@@ -301,7 +301,7 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
     // Note: Character validation handled by generatorUtils.ts (single source of truth)
     return {
       text: result.content,
-      format: result.format,
+      format: selectedFormat, // ✅ FIX: Use OUR selected format, not what AI returned
       topic,
       angle,
       tone,
@@ -524,8 +524,22 @@ THREAD-SPECIFIC RULES:
     throw new Error('Invalid content: missing text field');
   }
   
-  const isThread = Array.isArray(tweetText);
-  const format = contentData.format || (isThread ? 'thread' : 'single');
+  let isThread = Array.isArray(tweetText);
+  
+  // ✅ FIX: Use the format WE selected (line 288: 7% threads), not what AI returned
+  // The AI cannot override our 7% thread rate decision
+  const format = contentData.format; // This is now selectedFormat (fixed at line 304)
+  
+  // ⚠️ ENFORCE FORMAT: If AI returned wrong format, convert it
+  if (format === 'single' && isThread) {
+    console.warn(`[PLAN_JOB] ⚠️ AI returned array but we selected SINGLE, using first tweet only`);
+    contentData.text = tweetText[0];
+    isThread = false; // Update isThread after conversion
+  } else if (format === 'thread' && !isThread) {
+    console.warn(`[PLAN_JOB] ⚠️ AI returned string but we selected THREAD, converting to array`);
+    contentData.text = [tweetText];
+    isThread = true; // Update isThread after conversion
+  }
   
   if (isThread) {
     // Validate thread format
