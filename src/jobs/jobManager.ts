@@ -121,31 +121,31 @@ export class JobManager {
       console.log('✅ JOB_MANAGER: Reply system ENABLED (ENABLE_REPLIES=true)');
       
       // Check if discovered_accounts table is empty on startup
-      // If empty, trigger account discovery IMMEDIATELY so reply system can work
-      try {
-        const { getAccountPoolHealth } = await import('./accountDiscoveryJob');
-        const poolHealth = await getAccountPoolHealth();
+    // If empty, trigger account discovery IMMEDIATELY so reply system can work
+    try {
+      const { getAccountPoolHealth } = await import('./accountDiscoveryJob');
+      const poolHealth = await getAccountPoolHealth();
+      
+      if (poolHealth.status === 'critical' && poolHealth.total_accounts === 0) {
+        console.log('[JOB_MANAGER] 🚨 discovered_accounts table is EMPTY - triggering immediate discovery...');
+        const { runAccountDiscovery } = await import('./accountDiscoveryJob');
         
-        if (poolHealth.status === 'critical' && poolHealth.total_accounts === 0) {
-          console.log('[JOB_MANAGER] 🚨 discovered_accounts table is EMPTY - triggering immediate discovery...');
-          const { runAccountDiscovery } = await import('./accountDiscoveryJob');
-          
-          // Run in background, don't block startup
-          runAccountDiscovery()
-            .then(() => {
-              console.log('[JOB_MANAGER] ✅ Initial account discovery completed');
-              this.stats.accountDiscoveryRuns = (this.stats.accountDiscoveryRuns || 0) + 1;
-              this.stats.lastAccountDiscoveryTime = new Date();
-            })
-            .catch((err) => {
-              console.error('[JOB_MANAGER] ❌ Initial account discovery failed:', err.message);
-              console.log('[JOB_MANAGER] 💡 Will retry in 25 minutes on scheduled run');
-            });
-        } else {
-          console.log(`[JOB_MANAGER] ℹ️ Account pool status: ${poolHealth.status} (${poolHealth.total_accounts} accounts) - reply system ready`);
-        }
-      } catch (error: any) {
-        console.error('[JOB_MANAGER] ⚠️ Failed to check account pool health:', error.message);
+        // Run in background, don't block startup
+        runAccountDiscovery()
+          .then(() => {
+            console.log('[JOB_MANAGER] ✅ Initial account discovery completed');
+            this.stats.accountDiscoveryRuns = (this.stats.accountDiscoveryRuns || 0) + 1;
+            this.stats.lastAccountDiscoveryTime = new Date();
+          })
+          .catch((err) => {
+            console.error('[JOB_MANAGER] ❌ Initial account discovery failed:', err.message);
+            console.log('[JOB_MANAGER] 💡 Will retry in 25 minutes on scheduled run');
+          });
+      } else {
+        console.log(`[JOB_MANAGER] ℹ️ Account pool status: ${poolHealth.status} (${poolHealth.total_accounts} accounts) - reply system ready`);
+      }
+    } catch (error: any) {
+      console.error('[JOB_MANAGER] ⚠️ Failed to check account pool health:', error.message);
       }
     }
     
@@ -399,17 +399,29 @@ export class JobManager {
       // Searches Twitter for truly massive viral health tweets only
       // Strategy: Broad discovery + AI health filtering + mega-viral thresholds
       // Frequency: Every 2 hours = 12 harvests/day = 720 opportunities/day (7.5x buffer for 96 replies/day)
+      console.log('[JOB_MANAGER] 📋 Scheduling mega_viral_harvester (every 2 hours, offset 10min)');
       this.scheduleStaggeredJob(
         'mega_viral_harvester',
         async () => {
-          await this.safeExecute('mega_viral_harvester', async () => {
-            const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
-            await replyOpportunityHarvester();
-          });
+          console.log('[JOB_MANAGER] 🔥 HARVESTER: Job triggered, attempting to run...');
+          try {
+            await this.safeExecute('mega_viral_harvester', async () => {
+              console.log('[JOB_MANAGER] 🔥 HARVESTER: Importing module...');
+              const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
+              console.log('[JOB_MANAGER] 🔥 HARVESTER: Module imported, executing...');
+              await replyOpportunityHarvester();
+              console.log('[JOB_MANAGER] 🔥 HARVESTER: Execution complete');
+            });
+          } catch (error: any) {
+            console.error('[JOB_MANAGER] 🔥 HARVESTER: FATAL ERROR:', error.message);
+            console.error('[JOB_MANAGER] 🔥 HARVESTER: Stack:', error.stack);
+            throw error;
+          }
         },
         120 * MINUTE, // Every 2 hours - ensures 720+ opportunities/day (safe buffer)
         10 * MINUTE // Start after 10 minutes
       );
+      console.log('[JOB_MANAGER] ✅ mega_viral_harvester scheduled successfully');
 
       // 📊 ENGAGEMENT RATE CALCULATOR - every 24 hours, offset 60 min
       // 🔥 NEW: Calculate real engagement rates for discovered accounts
