@@ -83,6 +83,110 @@ export function startHealthServer(): Promise<void> {
       }
     });
 
+    // 📊 POSTING SYSTEM HEALTH - Real-time posting metrics
+    app.get('/api/posting-health', async (_req, res) => {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+
+        const now = new Date();
+        const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+        const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+
+        // Posts in last hour (for rate check)
+        const { count: postsLastHour } = await supabase
+          .from('content_metadata')
+          .select('*', { count: 'exact', head: true })
+          .in('decision_type', ['single', 'thread'])
+          .eq('status', 'posted')
+          .gte('posted_at', oneHourAgo);
+
+        // Posts in last 24 hours
+        const { data: postsToday } = await supabase
+          .from('content_metadata')
+          .select('*')
+          .in('decision_type', ['single', 'thread'])
+          .eq('status', 'posted')
+          .gte('posted_at', oneDayAgo);
+
+        // Thread success rate (last 50 threads)
+        const { data: recentThreads } = await supabase
+          .from('content_metadata')
+          .select('status, error_message')
+          .eq('decision_type', 'thread')
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        const threadSuccess = recentThreads?.filter(t => t.status === 'posted').length || 0;
+        const threadTotal = recentThreads?.length || 0;
+        const threadSuccessRate = threadTotal > 0 ? (threadSuccess / threadTotal) * 100 : 0;
+
+        // Overdue posts (scheduled but not posted)
+        const { count: overdueCount } = await supabase
+          .from('content_metadata')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'scheduled')
+          .lt('scheduled_at', now.toISOString());
+
+        // Failed posts today
+        const { count: failedToday } = await supabase
+          .from('content_metadata')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'failed')
+          .gte('created_at', oneDayAgo);
+
+        // Calculate health status
+        const postsPerHour = postsLastHour || 0;
+        const postsIn24h = postsToday?.length || 0;
+        const avgPostsPerHour = postsIn24h / 24;
+
+        const isHealthy = 
+          postsPerHour <= 2 && // Not exceeding rate limit
+          avgPostsPerHour >= 1.5 && // Meeting target (1.5+ avg)
+          threadSuccessRate >= 90 && // High thread success
+          (overdueCount || 0) === 0; // No stuck posts
+
+        const status = isHealthy ? 'healthy' : 
+                      (avgPostsPerHour >= 1.0 && threadSuccessRate >= 70) ? 'degraded' : 
+                      'unhealthy';
+
+        res.json({
+          status,
+          timestamp: new Date().toISOString(),
+          metrics: {
+            posts_last_hour: postsPerHour,
+            posts_target_hour: 2,
+            posts_today: postsIn24h,
+            posts_target_today: 48,
+            avg_posts_per_hour: parseFloat(avgPostsPerHour.toFixed(1)),
+            thread_success_rate: parseFloat(threadSuccessRate.toFixed(1)),
+            thread_success_count: threadSuccess,
+            thread_total_count: threadTotal,
+            overdue_posts: overdueCount || 0,
+            failed_posts_today: failedToday || 0
+          },
+          health_checks: {
+            rate_limit_ok: postsPerHour <= 2,
+            generation_rate_ok: avgPostsPerHour >= 1.5,
+            thread_success_ok: threadSuccessRate >= 90,
+            no_overdue: (overdueCount || 0) === 0
+          },
+          color: status === 'healthy' ? '🟢' : status === 'degraded' ? '🟡' : '🔴'
+        });
+
+      } catch (error: any) {
+        console.error('❌ Posting health check failed:', error);
+        res.status(500).json({
+          status: 'error',
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
     // 💓 Simple health check for load balancers
     app.get('/ping', (_req, res) => {
       res.status(200).send('ok');
@@ -715,6 +819,7 @@ export function startHealthServer(): Promise<void> {
         endpoints: {
           dashboard: '/dashboard - 📊 Analytics Dashboard (WEB UI)',
           metrics: '/api/metrics - 📈 Metrics API (JSON)',
+          posting_health: '/api/posting-health - 📊 Real-time Posting System Health (JSON)',
           health: '/health - Railway health checks',
           status: '/status - Detailed bot status',
           environment: '/env - Environment variables check',
