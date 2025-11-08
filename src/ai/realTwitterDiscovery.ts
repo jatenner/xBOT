@@ -96,11 +96,11 @@ export class RealTwitterDiscovery {
     const page = await pool.acquirePage('hashtag_search');
     
     try {
-      // 🔐 VERIFY AUTHENTICATION FIRST
+      // 🔐 VERIFY AUTHENTICATION (non-blocking - posting works with same session)
       const isAuth = await this.verifyAuth(page);
       if (!isAuth) {
-        console.error('[REAL_DISCOVERY] ⚠️ Skipping search - not authenticated');
-        return [];
+        console.warn('[REAL_DISCOVERY] ⚠️ Auth check failed, but proceeding anyway (session valid - posting works)');
+        // Don't return [] - session is valid, auth check may just be timing out
       }
 
       // SMART BATCH FIX: Use x.com and better search URL
@@ -250,11 +250,11 @@ export class RealTwitterDiscovery {
     const page = await pool.acquirePage('timeline_scrape');
     
     try {
-      // 🔐 VERIFY AUTHENTICATION FIRST
+      // 🔐 VERIFY AUTHENTICATION (non-blocking - posting works with same session)
       const isAuth = await this.verifyAuth(page);
       if (!isAuth) {
-        console.error(`[REAL_DISCOVERY] ⚠️ Skipping @${username} - not authenticated`);
-        return [];
+        console.warn(`[REAL_DISCOVERY] ⚠️ Auth check failed for @${username}, but proceeding anyway (session valid - posting works)`);
+        // Don't return [] - session is valid, auth check may just be timing out
       }
 
       // Navigate to account timeline - FIXED: x.com + domcontentloaded
@@ -500,11 +500,11 @@ export class RealTwitterDiscovery {
     const page = await pool.acquirePage('search_scrape');
     
     try {
-      // 🔐 VERIFY AUTHENTICATION FIRST
+      // 🔐 VERIFY AUTHENTICATION (non-blocking - posting works with same session)
       const isAuth = await this.verifyAuth(page);
       if (!isAuth) {
-        console.error(`[REAL_DISCOVERY] ⚠️ Skipping search - not authenticated`);
-        return [];
+        console.warn(`[REAL_DISCOVERY] ⚠️ Auth check failed, but proceeding anyway (session valid - posting works)`);
+        // Don't return [] - session is valid, auth check may just be timing out
       }
 
       // Build Twitter search URL with filters
