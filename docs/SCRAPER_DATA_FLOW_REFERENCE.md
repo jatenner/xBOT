@@ -162,7 +162,8 @@ STEP 1: Account Seeding
 STEP 2: Tweet Scraping (viAccountScraper)
 ├─ Reads: vi_scrape_targets
 ├─ Scrapes: Twitter timelines
-├─ Stores in: vi_collected_tweets
+├─ Stores in: vi_collected_tweets (content, engagement, media flags, timestamps)
+├─ Concurrency: `VI_SCRAPER_CONCURRENCY` workers (default 8)
 └─ Status: ✅ Ready (fixed today, runs at 3 PM)
 
 STEP 3: Classification (viProcessor)

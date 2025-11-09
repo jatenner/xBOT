@@ -172,7 +172,11 @@ export class VIIntelligenceFeed {
         emoji_positions: ['end'],
         hook_pattern: 'question',
         cite_source_pct: 0.5,
-        caps_usage: 'single_word'
+        caps_usage: 'single_word',
+        media_presence_pct: 0.45,
+        top_media_types: ['image', 'card'],
+        screenshot_pct: 0.1,
+        callout_pct: 0.35
       },
       tier_breakdown: {},
       example_tweet_ids: {},
@@ -206,6 +210,20 @@ export async function applyVisualFormatting(
     return rawContent; // Fallback to unformatted
   }
   
+  const rec = intelligence.recommended_format || {};
+  const emojiPositions = Array.isArray(rec.emoji_positions) && rec.emoji_positions.length > 0
+    ? rec.emoji_positions.join(', ')
+    : 'none';
+  const mediaLine = typeof rec.media_presence_pct === 'number'
+    ? `- Media usage: ${Math.round((rec.media_presence_pct || 0) * 100)}% of high performers${Array.isArray(rec.top_media_types) && rec.top_media_types.length > 0 ? ` (common: ${rec.top_media_types.join(', ')})` : ''}`
+    : null;
+  const screenshotLine = typeof rec.screenshot_pct === 'number'
+    ? `- Screenshot-style posts: ${Math.round((rec.screenshot_pct || 0) * 100)}%`
+    : null;
+  const calloutLine = typeof rec.callout_pct === 'number'
+    ? `- Callouts/headers: ${Math.round((rec.callout_pct || 0) * 100)}% use bold callouts`
+    : null;
+  
   // Build AI prompt with tier-weighted intelligence
   const prompt = `You are a Twitter formatting expert for health/longevity content.
 
@@ -219,9 +237,11 @@ PROVEN PATTERNS (from ${intelligence.based_on_count} ${intelligence.primary_tier
 - Length: ${intelligence.recommended_format.char_count.median} chars (range: ${intelligence.recommended_format.char_count.range[0]}-${intelligence.recommended_format.char_count.range[1]})
 - Line breaks: ${intelligence.recommended_format.line_breaks.median}
 - Emojis: ${intelligence.recommended_format.emoji_count.median} (positions: ${intelligence.recommended_format.emoji_positions.join(', ')})
+ - Emojis: ${intelligence.recommended_format.emoji_count.median} (positions: ${emojiPositions})
 - Hook: ${intelligence.recommended_format.hook_pattern}
 - Cite source: ${Math.round((intelligence.recommended_format.cite_source_pct || 0) * 100)}% cite research/sources
 - Caps: ${intelligence.recommended_format.caps_usage}
+${mediaLine ? `${mediaLine}\n` : ''}${screenshotLine ? `${screenshotLine}\n` : ''}${calloutLine ? `${calloutLine}\n` : ''}
 
 ${intelligence.examples && intelligence.examples.length > 0 ? `
 SUCCESSFUL EXAMPLES (${intelligence.primary_tier} tier):

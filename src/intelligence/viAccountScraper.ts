@@ -11,6 +11,23 @@ import { log } from '../lib/logger';
 import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 import type { Page } from 'playwright';
 
+type ScrapedTweet = {
+  tweetId: string;
+  text: string;
+  viewsText: string;
+  likesText: string;
+  retweetsText: string;
+  repliesText: string;
+  timestamp?: string | null;
+  mediaTypes: string[];
+  hasMedia: boolean;
+  isReply: boolean;
+  isQuote: boolean;
+  originalAuthor: string;
+  rootTweetId?: string | null;
+  replyToTweetId?: string | null;
+};
+
 export class VIAccountScraper {
   private supabase = getSupabaseClient();
   private browserPool = UnifiedBrowserPool.getInstance();
@@ -36,49 +53,58 @@ export class VIAccountScraper {
     
     log({ op: 'vi_scraper_targets', count: targets.length });
     
-    let scraped = 0;
-    let failed = 0;
-    let newTweets = 0;
+    const stats = {
+      scraped: 0,
+      failed: 0,
+      newTweets: 0
+    };
     
-    // Process in batches to avoid overwhelming browser pool
-    const BATCH_SIZE = 5; // 5 accounts at a time
+    const concurrency = Math.max(
+      1,
+      Number.parseInt(process.env.VI_SCRAPER_CONCURRENCY || '8', 10)
+    );
+    const queue = [...targets];
+    const workerCount = Math.min(concurrency, queue.length);
     
-    for (let i = 0; i < targets.length; i += BATCH_SIZE) {
-      const batch = targets.slice(i, i + BATCH_SIZE);
-      
-      log({ op: 'vi_scraper_batch', batch_num: Math.floor(i / BATCH_SIZE) + 1, accounts: batch.length });
-      
-      // Scrape batch in parallel
-      const results = await Promise.allSettled(
-        batch.map(target => this.scrapeAccount(target))
-      );
-      
-      // Process results
-      results.forEach((result, idx) => {
-        if (result.status === 'fulfilled') {
-          scraped++;
-          newTweets += result.value;
-        } else {
-          failed++;
-          log({ 
-            op: 'vi_scrape_failed', 
-            username: batch[idx].username, 
-            error: result.reason?.message 
+    const worker = async (workerId: number): Promise<void> => {
+      while (queue.length > 0) {
+        const target = queue.shift();
+        if (!target) break;
+        
+        log({
+          op: 'vi_scraper_worker_start',
+          worker: workerId,
+          username: target.username
+        });
+        
+        try {
+          const stored = await this.scrapeAccount(target);
+          stats.scraped += 1;
+          stats.newTweets += stored;
+        } catch (error: any) {
+          stats.failed += 1;
+          log({
+            op: 'vi_scrape_failed',
+            username: target.username,
+            error: error?.message
           });
         }
-      });
-      
-      // Rate limit between batches (5 seconds)
-      if (i + BATCH_SIZE < targets.length) {
-        await this.sleep(5000);
+        
+        // Soft rate limit between accounts to avoid hammering Twitter
+        await this.sleep(Number(process.env.VI_SCRAPER_WORKER_DELAY_MS || '1500'));
       }
-    }
+    };
+    
+    await Promise.all(
+      Array.from({ length: workerCount }, (_, idx) => worker(idx + 1))
+    );
     
     log({ 
       op: 'vi_account_scraper_complete', 
-      scraped, 
-      failed, 
-      new_tweets: newTweets 
+      scraped: stats.scraped, 
+      failed: stats.failed, 
+      new_tweets: stats.newTweets,
+      concurrency: workerCount
     });
   }
   
@@ -106,58 +132,106 @@ export class VIAccountScraper {
         await this.autoTierAccount(page, target);
       }
       
-      // Scroll to load more tweets (3 scrolls = ~10-15 tweets)
-      for (let i = 0; i < 3; i++) {
-        await page.evaluate(() => window.scrollBy(0, 1000));
-        await this.sleep(1000);
+      // Scroll to load more tweets (adaptive based on env)
+      const scrollRounds = Math.max(
+        2,
+        Number.parseInt(process.env.VI_SCRAPER_SCROLL_ROUNDS || '5', 10)
+      );
+      for (let i = 0; i < scrollRounds; i++) {
+        await page.evaluate(() => window.scrollBy(0, window.innerHeight));
+        await this.sleep(750);
       }
       
       // Extract tweets
-      const tweets = await page.evaluate(() => {
+      const targetLower = (target.username || '').toLowerCase();
+      const tweets = await page.evaluate<ScrapedTweet[], string>((targetUsername) => {
         const tweetElements = document.querySelectorAll('[data-testid="tweet"]');
-        const results: any[] = [];
+        const results: ScrapedTweet[] = [];
         
         tweetElements.forEach((tweetEl) => {
           try {
-            // Get tweet text
-            const textElement = tweetEl.querySelector('[data-testid="tweetText"]');
-            const text = textElement?.textContent || '';
-            
-            // Get tweet ID from link
             const linkElement = tweetEl.querySelector('a[href*="/status/"]');
-            const href = linkElement?.getAttribute('href') || '';
-            const tweetId = href.split('/status/')[1]?.split('?')[0] || '';
+            if (!linkElement) return;
             
-            // Get engagement (visible metrics only)
+            const href = linkElement.getAttribute('href') || '';
+            const cleanHref = href.split('?')[0];
+            const match = cleanHref.match(/^\/([^/]+)\/status\/(\d+)/i);
+            if (!match) return;
+            
+            const author = match[1];
+            const tweetId = match[2];
+            if (!tweetId) return;
+            if (author.toLowerCase() !== targetUsername) return; // Skip retweets from other authors
+            
+            const textElement = tweetEl.querySelector('[data-testid="tweetText"]');
+            const text = textElement?.textContent?.trim() || '';
+            if (text.length < 10) return;
+            
+            const socialContext = tweetEl.querySelector('[data-testid="socialContext"]')?.textContent?.toLowerCase() || '';
+            if (socialContext.includes('reposted') || socialContext.includes('liked')) {
+              return; // Skip reposts/likes surfaced in timeline
+            }
+            
+            const timeElement = tweetEl.querySelector('time');
+            const timestamp = timeElement?.getAttribute('datetime') || null;
+            
             const likeElement = tweetEl.querySelector('[data-testid="like"]');
             const retweetElement = tweetEl.querySelector('[data-testid="retweet"]');
             const replyElement = tweetEl.querySelector('[data-testid="reply"]');
-            
-            // Get view count - it's shown as "X Views" or "XK Views" in analytics link
             const viewElement = tweetEl.querySelector('a[href*="/analytics"] span, [aria-label*="views"]');
+            
             const viewsText = viewElement?.textContent?.trim() || viewElement?.getAttribute('aria-label') || '0';
+            const likesText = likeElement?.getAttribute('aria-label') || likeElement?.textContent || '0';
+            const retweetsText = retweetElement?.getAttribute('aria-label') || retweetElement?.textContent || '0';
+            const repliesText = replyElement?.getAttribute('aria-label') || replyElement?.textContent || '0';
             
-            const likesText = likeElement?.getAttribute('aria-label') || '0';
-            const retweetsText = retweetElement?.getAttribute('aria-label') || '0';
-            const repliesText = replyElement?.getAttribute('aria-label') || '0';
+            const hasReplyLabel = tweetEl.textContent?.toLowerCase().includes('replying to') || false;
             
-            if (text && tweetId && text.length > 10) {
-              results.push({
-                tweetId,
-                text,
-                viewsText,
-                likesText,
-                retweetsText,
-                repliesText
-              });
+            const mediaTypes: string[] = [];
+            if (tweetEl.querySelector('[data-testid="tweetPhoto"], img[alt*="Image"]')) {
+              mediaTypes.push('image');
             }
+            if (tweetEl.querySelector('[data-testid="videoPlayer"], video')) {
+              mediaTypes.push('video');
+            }
+            if (tweetEl.querySelector('[data-testid="animatedGif"]')) {
+              mediaTypes.push('gif');
+            }
+            if (tweetEl.querySelector('[data-testid="card.wrapper"]')) {
+              mediaTypes.push('card');
+            }
+            if (tweetEl.querySelector('[data-testid="poll"]')) {
+              mediaTypes.push('poll');
+            }
+            
+            const quoteElement = tweetEl.querySelector('[data-testid="tweetInline"], [data-testid="tweet"] article');
+            const isQuote = !!quoteElement && quoteElement !== tweetEl;
+            
+            const rootTweetId = tweetEl.getAttribute('data-conversation-id') || null;
+            
+            results.push({
+              tweetId,
+              text,
+              viewsText,
+              likesText,
+              retweetsText,
+              repliesText,
+              timestamp,
+              mediaTypes: Array.from(new Set(mediaTypes)),
+              hasMedia: mediaTypes.length > 0,
+              isReply: hasReplyLabel,
+              isQuote,
+              originalAuthor: author,
+              rootTweetId,
+              replyToTweetId: null
+            });
           } catch (e) {
             // Skip malformed tweets
           }
         });
         
         return results;
-      });
+      }, targetLower);
       
       log({ 
         op: 'vi_scrape_account_success', 
@@ -275,7 +349,7 @@ export class VIAccountScraper {
   /**
    * Store tweet in database
    */
-  private async storeTweet(target: any, tweet: any): Promise<boolean> {
+  private async storeTweet(target: any, tweet: ScrapedTweet): Promise<boolean> {
     try {
       // Parse engagement counts (including REAL views from Twitter!)
       const views = this.parseEngagement(tweet.viewsText);
@@ -293,6 +367,11 @@ export class VIAccountScraper {
         ? (effectiveViews / target.followers_count) > 0.5 // 50% of followers saw it
         : false;
       
+      const timestampDate = tweet.timestamp ? new Date(tweet.timestamp) : null;
+      const postedAt = timestampDate && !Number.isNaN(timestampDate.getTime())
+        ? timestampDate.toISOString()
+        : new Date().toISOString();
+      
       const { error } = await this.supabase
         .from('vi_collected_tweets')
         .upsert({
@@ -302,17 +381,24 @@ export class VIAccountScraper {
           tier_weight: target.tier_weight || 1.0,
           author_followers: target.followers_count || 0,
           content: tweet.text,
-          is_thread: false, // Will be detected later if needed
+          original_author: tweet.originalAuthor,
+          is_thread: false, // TODO: detect thread depth
           thread_length: 1,
-          views: effectiveViews, // REAL views from Twitter (or estimated if unavailable)
-          likes: likes,
-          retweets: retweets,
-          replies: replies,
+          is_reply: tweet.isReply,
+          is_quote: tweet.isQuote,
+          has_media: !!tweet.hasMedia,
+          media_types: tweet.mediaTypes ?? [],
+          views: effectiveViews,
+          likes,
+          retweets,
+          replies,
           engagement_rate: engagementRate,
           is_viral: isViral,
           viral_multiplier: target.followers_count > 0 ? effectiveViews / target.followers_count : 0,
-          posted_at: new Date().toISOString(), // Approximate, can't get exact from timeline
+          posted_at: postedAt,
           scraped_at: new Date().toISOString(),
+          reply_to_tweet_id: tweet.replyToTweetId,
+          root_tweet_id: tweet.rootTweetId || tweet.tweetId,
           classified: false,
           analyzed: false
         }, {
