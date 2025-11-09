@@ -914,7 +914,7 @@ export class RealTwitterDiscovery {
     
     const discovered: DiscoveredAccount[] = [];
     
-    for (const username of this.HEALTH_ACCOUNTS.slice(0, limit)) {
+    for (const username of this.CURATED_HEALTH_ACCOUNTS.slice(0, limit)) {
       try {
         const account = await this.getAccountDetailsStandalone(username);
         if (account) {
