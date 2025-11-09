@@ -12,6 +12,8 @@ import { getSupabaseClient } from '../db/index';
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { dynamicPromptGenerator } from '../ai/content/dynamicPromptGenerator';
 import { contentDiversityEngine } from '../ai/content/contentDiversityEngine';
+import { formatContentForTwitter } from '../posting/aiVisualFormatter';
+import { validateAndImprove } from '../generators/contentAutoImprover';
 
 const MAX_GENERATION_RETRIES = Math.max(1, parseInt(process.env.PLAN_JOB_GENERATION_RETRIES || '3', 10) || 3);
 const GENERATION_RETRY_BACKOFF_MS = Math.max(250, parseInt(process.env.PLAN_JOB_RETRY_BACKOFF_MS || '1500', 10) || 1500);
@@ -552,16 +554,29 @@ THREAD-SPECIFIC RULES:
     
     // Validate each tweet length
     const threadTweets: string[] = [];
-    (contentData.text as string[]).forEach((tweet: string, i: number) => {
+    const originalTweets = Array.isArray(contentData.text) ? contentData.text as string[] : [];
+    for (let i = 0; i < originalTweets.length; i++) {
+      let tweet = originalTweets[i];
       if (tweet.length > 280) {
-        console.warn(`[PLAN_JOB] ❌ LENGTH_VIOLATION: Thread tweet ${i + 1} has ${tweet.length} chars (limit 280)`);
-        const error: any = new Error(`LENGTH_VIOLATION: thread tweet ${i + 1} has ${tweet.length} chars (limit 280)`);
-        error.code = 'LENGTH_VIOLATION';
-        error.meta = { format: 'thread', tweetIndex: i, length: tweet.length };
-        throw error;
+        console.warn(`[PLAN_JOB] ⚠️ Thread tweet ${i + 1} has ${tweet.length} chars (limit 280) - attempting auto-shorten`);
+        const shortened = await ensureTweetWithinLimit(tweet, {
+          topic,
+          angle,
+          tone,
+          generator: matchedGenerator,
+          slot: `${i + 1}/${originalTweets.length}`
+        });
+        if (!shortened) {
+          const error: any = new Error(`LENGTH_VIOLATION: thread tweet ${i + 1} has ${tweet.length} chars (limit 280)`);
+          error.code = 'LENGTH_VIOLATION';
+          error.meta = { format: 'thread', tweetIndex: i, length: tweet.length };
+          throw error;
+        }
+        console.log(`[PLAN_JOB] ✂️ Thread tweet ${i + 1} trimmed to ${shortened.length} chars`);
+        tweet = shortened;
       }
       threadTweets.push(tweet);
-    });
+    }
     contentData.text = threadTweets;
     
     console.log(`[PLAN_JOB] 🧵 ✨ THREAD GENERATED: ${contentData.text.length} tweets`);
@@ -571,14 +586,25 @@ THREAD-SPECIFIC RULES:
     });
   } else {
     // Handle single tweet
-    if (tweetText.length > 280) {
-      console.warn(`[PLAN_JOB] ❌ LENGTH_VIOLATION: Single tweet has ${tweetText.length} chars (limit 280)`);
-      const error: any = new Error(`LENGTH_VIOLATION: single tweet has ${tweetText.length} chars (limit 280)`);
-      error.code = 'LENGTH_VIOLATION';
-      error.meta = { format: 'single', length: tweetText.length };
-      throw error;
+    let singleTweet = tweetText;
+    if (singleTweet.length > 280) {
+      console.warn(`[PLAN_JOB] ⚠️ Single tweet has ${singleTweet.length} chars (limit 280) - attempting auto-shorten`);
+      const shortened = await ensureTweetWithinLimit(singleTweet, {
+        topic,
+        angle,
+        tone,
+        generator: matchedGenerator
+      });
+      if (!shortened) {
+        const error: any = new Error(`LENGTH_VIOLATION: single tweet has ${singleTweet.length} chars (limit 280)`);
+        error.code = 'LENGTH_VIOLATION';
+        error.meta = { format: 'single', length: singleTweet.length };
+        throw error;
+      }
+      console.log(`[PLAN_JOB] ✂️ Single tweet trimmed to ${shortened.length} chars`);
+      singleTweet = shortened;
     }
-    contentData.text = tweetText;
+    contentData.text = singleTweet;
     console.log(`[PLAN_JOB] 📝 Generated single tweet (${contentData.text.length} chars)`);
   }
 
@@ -618,8 +644,6 @@ THREAD-SPECIFIC RULES:
  */
 async function formatAndQueueContent(content: any): Promise<void> {
   console.log(`[PLAN_JOB] 🎨 Applying visual formatting to content...`);
-  
-  const { formatContentForTwitter } = await import('../posting/aiVisualFormatter');
   
   // Handle single tweet vs thread
   const isThread = Array.isArray(content.text);
@@ -1191,4 +1215,38 @@ function categorizeError(error: any): string {
 
 function isRetryableGenerationError(type: string): boolean {
   return type === 'length_violation' || type === 'rate_limit' || type === 'unknown';
+}
+
+interface LengthContext {
+  topic?: string;
+  angle?: string;
+  tone?: string;
+  generator?: string;
+  slot?: string;
+}
+
+async function ensureTweetWithinLimit(text: string, context: LengthContext): Promise<string | null> {
+  try {
+    const target = text.trim();
+    if (target.length <= 280) {
+      return target;
+    }
+
+    const { content, passed } = await validateAndImprove(target, { topic: context.topic, format: 'single' });
+    if (!passed) {
+      console.warn(`[PLAN_JOB] ⚠️ Auto-shorten failed quality validation for ${context.slot || 'single tweet'}`);
+      return null;
+    }
+
+    const finalText = Array.isArray(content) ? String(content[0]) : String(content);
+    if (finalText.length > 280) {
+      console.warn(`[PLAN_JOB] ⚠️ Auto-shorten still too long (${finalText.length} chars) for ${context.slot || 'single tweet'}`);
+      return null;
+    }
+
+    return finalText;
+  } catch (error: any) {
+    console.error(`[PLAN_JOB] ❌ Auto-shorten failed: ${error.message}`);
+    return null;
+  }
 }
