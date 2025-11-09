@@ -988,6 +988,9 @@ export class RealTwitterDiscovery {
     
     const supabase = getSupabaseClient();
     
+    let successCount = 0;
+    let failCount = 0;
+    
     for (const opp of opportunities) {
       try {
         // Calculate tweet_posted_at from posted_minutes_ago
@@ -995,7 +998,7 @@ export class RealTwitterDiscovery {
           ? new Date(Date.now() - opp.posted_minutes_ago * 60 * 1000).toISOString()
           : new Date().toISOString();
         
-          await supabase
+          const { data, error } = await supabase
           .from('reply_opportunities')
           .upsert({
             // Core fields
@@ -1023,11 +1026,23 @@ export class RealTwitterDiscovery {
             ai_judge_reason: (opp as any).ai_judge_reason
           }, {
             onConflict: 'target_tweet_id'
-          });
+          })
+          .select();
+        
+        if (error) {
+          console.error(`[REAL_DISCOVERY] ❌ DB ERROR storing ${opp.tweet_id}:`, error.message, error.details, error.hint);
+          failCount++;
+        } else {
+          successCount++;
+          console.log(`[REAL_DISCOVERY] ✅ Stored opportunity ${opp.tweet_id} (@${opp.tweet_author}, ${opp.like_count} likes, tier:${(opp as any).tier})`);
+        }
       } catch (error: any) {
-        console.error(`[REAL_DISCOVERY] ⚠️ Failed to store opportunity ${opp.tweet_id}:`, error.message);
+        console.error(`[REAL_DISCOVERY] ❌ Exception storing opportunity ${opp.tweet_id}:`, error.message, error.stack);
+        failCount++;
       }
     }
+    
+    console.log(`[REAL_DISCOVERY] 💾 Storage complete: ${successCount} succeeded, ${failCount} failed`);
     
     // Log tier breakdown
     const golden = opportunities.filter((o: any) => o.tier === 'golden').length;
