@@ -69,6 +69,9 @@ export class VIAccountFinder {
     
     const bigAccounts = ['PeterAttiaMD', 'hubermanlab', 'foundmyfitness'];
     let discovered = 0;
+    const sampleSize = Math.max(5, Number(process.env.VI_DISCOVERY_REPLY_LIMIT || '15'));
+    const perEvaluationDelay = Math.max(500, Number(process.env.VI_DISCOVERY_ACCOUNT_DELAY_MS || '1500'));
+    const evaluated = new Set<string>();
     
     for (const bigAccount of bigAccounts) {
       let page: Page | null = null;
@@ -110,13 +113,16 @@ export class VIAccountFinder {
         
         log({ op: 'vi_reply_authors_found', account: bigAccount, count: replyAuthors.length });
         
-        // Evaluate first 5 (to avoid too much work)
-        for (const author of replyAuthors.slice(0, 5)) {
+        // Evaluate sampled authors
+        for (const author of replyAuthors.slice(0, sampleSize)) {
+          const normalized = author.toLowerCase();
+          if (evaluated.has(normalized)) continue;
+          evaluated.add(normalized);
           const added = await this.evaluateAndAdd(author, 'reply_network');
           if (added) discovered++;
           
           // Rate limit
-          await this.sleep(3000);
+          await this.sleep(perEvaluationDelay);
         }
         
       } finally {
@@ -141,7 +147,7 @@ export class VIAccountFinder {
       .select('username')
       .eq('tier', 'micro')
       .eq('is_health_verified', true)
-      .limit(3); // Check 3 micro accounts
+      .limit(Number(process.env.VI_DISCOVERY_FOLLOWING_SEEDS || '5'));
     
     if (!microAccounts || microAccounts.length === 0) {
       log({ op: 'vi_no_micro_seeds' });
@@ -149,6 +155,9 @@ export class VIAccountFinder {
     }
     
     let discovered = 0;
+    const sampleSize = Math.max(5, Number(process.env.VI_DISCOVERY_FOLLOWING_LIMIT || '12'));
+    const perEvaluationDelay = Math.max(500, Number(process.env.VI_DISCOVERY_ACCOUNT_DELAY_MS || '1500'));
+    const evaluated = new Set<string>();
     
     for (const micro of microAccounts) {
       let page: Page | null = null;
@@ -187,12 +196,15 @@ export class VIAccountFinder {
         
         log({ op: 'vi_following_found', account: micro.username, count: following.length });
         
-        // Evaluate first 5
-        for (const username of following.slice(0, 5)) {
+        // Evaluate sampled accounts
+        for (const username of following.slice(0, sampleSize)) {
+          const normalized = username.toLowerCase();
+          if (evaluated.has(normalized)) continue;
+          evaluated.add(normalized);
           const added = await this.evaluateAndAdd(username, 'following_network');
           if (added) discovered++;
           
-          await this.sleep(3000);
+          await this.sleep(perEvaluationDelay);
         }
         
       } finally {
@@ -211,8 +223,13 @@ export class VIAccountFinder {
   private async findViaKeywords(): Promise<number> {
     log({ op: 'vi_find_via_keywords' });
     
-    const keywords = ['longevity tips', 'biohacking', 'sleep optimization'];
+    const keywords = process.env.VI_DISCOVERY_KEYWORDS
+      ? process.env.VI_DISCOVERY_KEYWORDS.split(',').map(k => k.trim()).filter(Boolean)
+      : ['longevity tips', 'biohacking', 'sleep optimization', 'hormone balance', 'functional medicine'];
     let discovered = 0;
+    const sampleSize = Math.max(3, Number(process.env.VI_DISCOVERY_KEYWORD_LIMIT || '8'));
+    const perEvaluationDelay = Math.max(500, Number(process.env.VI_DISCOVERY_ACCOUNT_DELAY_MS || '1500'));
+    const evaluated = new Set<string>();
     
     for (const keyword of keywords) {
       let page: Page | null = null;
@@ -252,12 +269,15 @@ export class VIAccountFinder {
         
         log({ op: 'vi_keyword_authors_found', keyword, count: authors.length });
         
-        // Evaluate first 3 (keyword search has more false positives)
-        for (const author of authors.slice(0, 3)) {
+        // Evaluate sampled authors
+        for (const author of authors.slice(0, sampleSize)) {
+          const normalized = author.toLowerCase();
+          if (evaluated.has(normalized)) continue;
+          evaluated.add(normalized);
           const added = await this.evaluateAndAdd(author, 'keyword_search');
           if (added) discovered++;
           
-          await this.sleep(3000);
+          await this.sleep(perEvaluationDelay);
         }
         
       } finally {

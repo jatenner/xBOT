@@ -7,6 +7,18 @@ import { Client } from 'pg';
 
 const databaseUrl = process.env.DATABASE_URL!;
 
+if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
+const SAMPLE_ORDER_COLUMNS: Record<string, string> = {
+  vi_collected_tweets: 'scraped_at',
+  vi_content_classification: 'classified_at',
+  vi_visual_formatting: 'analyzed_at',
+  vi_format_intelligence: 'updated_at',
+  vi_scrape_targets: 'updated_at'
+};
+
 async function checkVIDatabase() {
   const client = new Client({ 
     connectionString: databaseUrl,
@@ -36,16 +48,21 @@ async function checkVIDatabase() {
       console.log(`📊 ${table}: ${count} rows ${count === 0 ? '❌ EMPTY' : '✅'}`);
       
       if (count > 0) {
-        // Show sample
-        const sample = await client.query(`
-          SELECT * FROM ${table} 
-          ORDER BY created_at DESC NULLS LAST
-          LIMIT 1;
-        `);
-        
-        if (sample.rows.length > 0) {
-          const row = sample.rows[0];
-          console.log(`   Latest: ${JSON.stringify(row).substring(0, 100)}...`);
+        const orderColumn = SAMPLE_ORDER_COLUMNS[table] || 'created_at';
+        try {
+          // Show sample
+          const sample = await client.query(`
+            SELECT * FROM ${table} 
+            ORDER BY ${orderColumn} DESC NULLS LAST
+            LIMIT 1;
+          `);
+          
+          if (sample.rows.length > 0) {
+            const row = sample.rows[0];
+            console.log(`   Latest: ${JSON.stringify(row).substring(0, 120)}...`);
+          }
+        } catch (sampleError: any) {
+          console.log(`   (Sample unavailable: ${sampleError.message})`);
         }
       }
     }
@@ -54,7 +71,7 @@ async function checkVIDatabase() {
     
     // Check when VI scraper last ran
     const scraperCheck = await client.query(`
-      SELECT MAX(created_at) as last_scrape 
+      SELECT MAX(scraped_at) as last_scrape 
       FROM vi_collected_tweets;
     `);
     
@@ -68,8 +85,9 @@ async function checkVIDatabase() {
     // Check classification status
     const classCheck = await client.query(`
       SELECT 
-        COUNT(*) FILTER (WHERE topic IS NOT NULL) as classified,
-        COUNT(*) FILTER (WHERE topic IS NULL) as unclassified,
+        COUNT(*) FILTER (WHERE classified = true) as classified,
+        COUNT(*) FILTER (WHERE analyzed = true) as analyzed,
+        COUNT(*) FILTER (WHERE classified = false) as unclassified,
         COUNT(*) as total
       FROM vi_collected_tweets;
     `);
@@ -77,10 +95,12 @@ async function checkVIDatabase() {
     if (classCheck.rows[0].total > 0) {
       const stats = classCheck.rows[0];
       console.log(`📊 Classification: ${stats.classified} classified, ${stats.unclassified} pending`);
+      console.log(`📊 Analysis: ${stats.analyzed} analyzed`);
     }
     
   } catch (error: any) {
     console.error('❌ Error:', error.message);
+    console.error('   Hint: ensure NODE_TLS_REJECT_UNAUTHORIZED=0 when running this script locally.');
   } finally {
     await client.end();
   }

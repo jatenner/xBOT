@@ -268,6 +268,15 @@ Tweet to analyze:
    */
   private async analyzeTweet(tweet: any): Promise<void> {
     const content = tweet.content;
+    const mediaTypes = Array.isArray(tweet.media_types)
+      ? (tweet.media_types as string[]).filter(Boolean)
+      : [];
+    const hasMedia = tweet.has_media ?? mediaTypes.length > 0;
+    const screenshotDetected = hasMedia &&
+      mediaTypes.includes('image') &&
+      content.length <= 80 &&
+      content.split('\n').length <= 2;
+    const calloutDetected = /(^|\n)\s*(key takeaway|bottom line|action steps?|what to do|tl;dr|summary:?)/i.test(content);
     
     // Extract all visual patterns
     const patterns = {
@@ -303,7 +312,13 @@ Tweet to analyze:
       
       // Special characters
       uses_arrows: /[↑↓→←]/.test(content),
-      uses_special_chars: content.match(/[→•▪◦≠±×÷]/) || []
+      uses_special_chars: content.match(/[→•▪◦≠±×÷]/) || [],
+      
+      // Media signals
+      has_media: hasMedia,
+      media_types: mediaTypes,
+      screenshot_detected: screenshotDetected,
+      callout_detected: calloutDetected
     };
     
     // Store patterns
@@ -577,7 +592,11 @@ Tweet to analyze:
       emoji_positions: this.mostCommon(visuals.flatMap(v => v.emoji_positions || [])),
       hook_pattern: this.mode(visuals.map(v => v.hook_type)),
       cite_source_pct: visuals.filter(v => v.cites_source).length / visuals.length,
-      caps_usage: this.analyzeCapsUsage(visuals)
+      caps_usage: this.analyzeCapsUsage(visuals),
+      media_presence_pct: visuals.filter(v => v.has_media).length / visuals.length,
+      top_media_types: this.mostCommon(visuals.flatMap(v => v.media_types || [])),
+      screenshot_pct: visuals.filter(v => v.screenshot_detected).length / visuals.length,
+      callout_pct: visuals.filter(v => v.callout_detected).length / visuals.length
     };
   }
   
@@ -625,7 +644,11 @@ Tweet to analyze:
       emoji_positions: this.mostCommon(allPatterns.flatMap(p => p.emoji_positions || [])),
       hook_pattern: this.mode(allPatterns.map(p => p.hook_pattern).filter(Boolean)),
       cite_source_pct: this.average(allPatterns.map(p => p.cite_source_pct).filter(n => n !== undefined)),
-      caps_usage: this.mode(allPatterns.map(p => p.caps_usage).filter(Boolean))
+      caps_usage: this.mode(allPatterns.map(p => p.caps_usage).filter(Boolean)),
+      media_presence_pct: this.average(allPatterns.map(p => p.media_presence_pct).filter(n => typeof n === 'number')),
+      top_media_types: this.mostCommon(allPatterns.flatMap(p => p.top_media_types || [])),
+      screenshot_pct: this.average(allPatterns.map(p => p.screenshot_pct).filter(n => typeof n === 'number')),
+      callout_pct: this.average(allPatterns.map(p => p.callout_pct).filter(n => typeof n === 'number'))
     };
   }
   

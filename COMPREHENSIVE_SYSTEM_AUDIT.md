@@ -175,6 +175,13 @@ intelligence = await buildVisualFormatIntelligence(generator, tone);
 // - contextualInsights (what's working for THIS generator)
 ```
 
+### ✅ VI Scraper Scaling Upgrade (Nov 9, 2025)
+- Parallelized scraping (`VI_SCRAPER_CONCURRENCY`, default 8 workers) keeps browser load stable
+- Captures timeline timestamps, media flags, reply/quote context, and conversation roots for every tweet
+- Visual analyzer records media usage, screenshot heuristics, and callout frequency for downstream weighting
+- Supabase RPC `vi_get_viable_combinations` supplies high-confidence topic/angle/tone/structure groupings
+- Account discovery now samples 10–15 candidates per strategy with deduped in-run queues and configurable delays
+
 ---
 
 ### 3. **12 Generator System** ✅

@@ -16,7 +16,8 @@
 STEP 1: SCRAPING (Every 8 hours)
 ├─ Source: 100 health/longevity accounts on Twitter
 ├─ Method: Playwright browser automation
-├─ Extracts: Content + ALL engagement metrics
+├─ Extracts: Content + ALL engagement + media/timestamp data
+├─ Concurrency: Configurable via `VI_SCRAPER_CONCURRENCY` (default 8 parallel accounts)
 └─ Stores: vi_collected_tweets table
 
 STEP 2: CLASSIFICATION (Every 6 hours) 
@@ -76,6 +77,7 @@ STEP 5: APPLICATION (Manual trigger)
 |--------|------|-------------|--------|---------|
 | `tweet_id` | TEXT | Twitter status ID (unique) | Direct from URL | `1986052289568588160` |
 | `author_username` | TEXT | Tweet author | Direct from profile | `PeterAttiaMD` |
+| `original_author` | TEXT | Original poster (for retweets/quotes) | Parsed from URL | `PeterAttiaMD` |
 | `content` | TEXT | Full tweet text | Direct from tweet | `"Sleep timing matters more than..."` |
 | `tier` | TEXT | Author's tier | Inherited from vi_scrape_targets | `growth` |
 | `tier_weight` | FLOAT | Weight for analysis | Inherited from vi_scrape_targets | `1.0` |
@@ -94,7 +96,13 @@ STEP 5: APPLICATION (Manual trigger)
 | **METADATA** | | | | |
 | `is_thread` | BOOLEAN | Part of a thread? | Detected | `false` |
 | `thread_length` | INT | Number of tweets in thread | Detected | `1` |
-| `posted_at` | TIMESTAMPTZ | When tweet was posted | Approximate | `2025-11-05 07:45:00` |
+| `is_reply` | BOOLEAN | Reply content? | `Replying to` banner | `true` |
+| `is_quote` | BOOLEAN | Contains quoted tweet? | Inline quote detection | `false` |
+| `has_media` | BOOLEAN | Includes media | Image/video/card detection | `true` |
+| `media_types` | TEXT[] | Types of media present | `["image","card"]` | `['image']` |
+| `reply_to_tweet_id` | TEXT | Parent tweet (if reply) | Currently null (future) | `null` |
+| `root_tweet_id` | TEXT | Conversation root | `data-conversation-id` | `1986052289568588160` |
+| `posted_at` | TIMESTAMPTZ | When tweet was posted | Timeline timestamp (`time` tag) | `2025-11-05 07:45:00` |
 | `scraped_at` | TIMESTAMPTZ | When we scraped it | Exact | `2025-11-05 11:02:03` |
 | `classified` | BOOLEAN | AI classification complete? | Status | `false` |
 | `analyzed` | BOOLEAN | Visual analysis complete? | Status | `false` |
@@ -169,6 +177,11 @@ Return JSON with confidence scores.
 | **SPECIAL CHARACTERS** | | | | |
 | `uses_arrows` | BOOLEAN | Uses arrow symbols? | Contains `→`, `↑`, etc. | `false` |
 | `uses_special_chars` | TEXT[] | Special formatting chars | Array | `['→', '•', '≠']` |
+| **VISUAL CONTEXT** | | | | |
+| `has_media` | BOOLEAN | Media present in tweet | From vi_collected_tweets | `true` |
+| `media_types` | TEXT[] | Media mix | `['image', 'card']` |
+| `screenshot_detected` | BOOLEAN | Likely screenshot post? | Heuristic (<80 chars + image) | `false` |
+| `callout_detected` | BOOLEAN | Headline/callout present? | Detects phrases like `TL;DR` | `true` |
 
 ---
 
