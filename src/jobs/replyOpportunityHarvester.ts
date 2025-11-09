@@ -64,27 +64,15 @@ export async function replyOpportunityHarvester(): Promise<void> {
   // 
   // Result: 10-50x MORE health opportunities discovered!
   const searchQueries = [
-    // 🧪 TEST TIERS (Lower bar to see if Twitter returns ANY results)
-    { minLikes: 50, maxReplies: 30, label: 'TEST (50+)', maxAgeHours: 24 },
-    { minLikes: 100, maxReplies: 40, label: 'TEST+ (100+)', maxAgeHours: 24 },
-    { minLikes: 100, maxReplies: 60, label: 'HEALTH FOCUS (100+)', maxAgeHours: 24, query: '(health OR fitness OR wellness OR nutrition OR supplement OR \"mental health\" OR longevity) min_faves:100 lang:en -filter:replies -airdrop -giveaway -bitcoin -solana' },
-    { minLikes: 300, maxReplies: 80, label: 'HEALTH FOCUS (300+)', maxAgeHours: 24, query: '(sleep OR \"circadian\" OR hormone OR fasting OR glucose OR protein OR hypertrophy) min_faves:300 lang:en -filter:replies -airdrop -giveaway -bitcoin -nfl -nba' },
-    
-    // 🔥 FRESH TIER (500-2K likes, <12h) - Maximum freshness, active conversations
-    { minLikes: 500, maxReplies: 50, label: 'FRESH (500+)', maxAgeHours: 12 },
-    { minLikes: 1000, maxReplies: 80, label: 'FRESH+ (1K+)', maxAgeHours: 12 },
-    
-    // ⚡ TRENDING TIER (2K-10K likes, <24h) - Rising tweets, good visibility
-    { minLikes: 2000, maxReplies: 150, label: 'TRENDING (2K+)', maxAgeHours: 24 },
-    { minLikes: 5000, maxReplies: 300, label: 'TRENDING+ (5K+)', maxAgeHours: 24 },
-    
-    // 🚀 VIRAL TIER (10K-50K likes, <48h) - Established viral, still active
-    { minLikes: 10000, maxReplies: 500, label: 'VIRAL (10K+)', maxAgeHours: 48 },
-    { minLikes: 25000, maxReplies: 800, label: 'VIRAL+ (25K+)', maxAgeHours: 48 },
-    
-    // 💎 MEGA TIER (50K+ likes) - Rare opportunities, worth trying even if older
-    { minLikes: 50000, maxReplies: 1000, label: 'MEGA (50K+)', maxAgeHours: 72 },
-    { minLikes: 100000, maxReplies: 1500, label: 'MEGA+ (100K+)', maxAgeHours: 72 }
+    { label: 'FRESH (500+)', minLikes: 500, maxReplies: 80, maxAgeHours: 12, query: 'min_faves:500 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino -nfl -nba' },
+    { label: 'FRESH+ (1K+)', minLikes: 1000, maxReplies: 120, maxAgeHours: 12, query: 'min_faves:1000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino -nfl' },
+    { label: 'TRENDING (2K+)', minLikes: 2000, maxReplies: 200, maxAgeHours: 24, query: 'min_faves:2000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino -nfl' },
+    { label: 'TRENDING+ (5K+)', minLikes: 5000, maxReplies: 250, maxAgeHours: 24, query: 'min_faves:5000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' },
+    { label: 'VIRAL (10K+)', minLikes: 10000, maxReplies: 400, maxAgeHours: 48, query: 'min_faves:10000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' },
+    { label: 'VIRAL+ (25K+)', minLikes: 25000, maxReplies: 600, maxAgeHours: 48, query: 'min_faves:25000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' },
+    { label: 'MEGA (50K+)', minLikes: 50000, maxReplies: 900, maxAgeHours: 72, query: 'min_faves:50000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' },
+    { label: 'MEGA+ (100K+)', minLikes: 100000, maxReplies: 1500, maxAgeHours: 72, query: 'min_faves:100000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' },
+    { label: 'HEALTH HOT (300+)', minLikes: 300, maxReplies: 120, maxAgeHours: 24, query: '("sleep" OR "circadian" OR "glucose" OR "metabolic health" OR "insulin" OR "peptide" OR "rapamycin" OR "sauna" OR "hrv" OR "testosterone") min_faves:300 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' }
   ];
   
   const testLimitRaw = process.env.HARVESTER_TEST_LIMIT;
@@ -100,7 +88,6 @@ export async function replyOpportunityHarvester(): Promise<void> {
   console.log(`[HARVESTER] 🚫 No topic restrictions - AI filters AFTER scraping`);
   
   // Step 4: TIME-BOXED SEARCH-BASED HARVESTING
-  const { realTwitterDiscovery } = await import('../ai/realTwitterDiscovery');
   const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
   
   let totalHarvested = 0;
@@ -183,33 +170,16 @@ export async function replyOpportunityHarvester(): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
 
-  // Step 5: Scrape curated health accounts to guarantee high-signal inventory
-  if (Array.isArray((realTwitterDiscovery as any).curatedAccounts)) {
-    const curatedAccounts: string[] = (realTwitterDiscovery as any).curatedAccounts;
-    const accountBatch = curatedAccounts.slice(0, 8);
-    for (const username of accountBatch) {
-      try {
-        console.log(`[HARVESTER]   👤 Scraping curated account @${username}...`);
-        const accountOpps = await realTwitterDiscovery.findReplyOpportunitiesFromAccount(username);
-        totalHarvested += accountOpps.length;
-        console.log(`[HARVESTER]     ✓ Account @${username} yielded ${accountOpps.length} opportunities`);
-      } catch (error: any) {
-        console.warn(`[HARVESTER]     ⚠️ Failed to scrape @${username}: ${error.message}`);
-      }
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-  }
-    
-    // Step 5: Clean up old opportunities (only ones older than 36h or already replied/expired)
-    const { error: cleanupError } = await supabase
-      .from('reply_opportunities')
-      .delete()
-      .or(`tweet_posted_at.lt.${thirtySixHoursAgo.toISOString()},status.eq.expired,replied_to.eq.true`);
+  // Step 5: Clean up old opportunities (only ones older than 36h or already replied/expired)
+  const { error: cleanupError } = await supabase
+    .from('reply_opportunities')
+    .delete()
+    .or(`tweet_posted_at.lt.${thirtySixHoursAgo.toISOString()},status.eq.expired,replied_to.eq.true`);
     
     if (cleanupError) {
       console.warn(`[HARVESTER] ⚠️ Failed to clean up old opportunities:`, cleanupError.message);
     } else {
-      console.log(`[HARVESTER] 🧹 Cleaned up opportunities >24h old`);
+      console.log(`[HARVESTER] 🧹 Cleaned up stale opportunities (>36h or marked expired)`);
     }
     
   // Step 6: Report final status with tier breakdown

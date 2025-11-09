@@ -388,7 +388,8 @@ async function generateRealReplies(): Promise<void> {
   }
   
   console.log('[REPLY_JOB] 🎯 Starting reply generation (AI-driven targeting)...');
-  console.log('[REPLY_JOB] 📋 Target: 5 replies per cycle (10 attempts/hour → ~4 posted/hour)');
+  const targetRepliesThisCycle = poolCount >= 200 ? 6 : poolCount <= 30 ? 3 : 5;
+  console.log(`[REPLY_JOB] 📋 Target: ${targetRepliesThisCycle} replies per cycle (auto-adjusted for pool size)`);
   
   // Log account pool status
   const { getAccountPoolHealth } = await import('./accountDiscoveryJob');
@@ -412,15 +413,15 @@ async function generateRealReplies(): Promise<void> {
   // ============================================================
   console.log('[REPLY_JOB] 🔍 Preflight check: Verifying opportunity pool...');
   
-  let { data: poolCheck, error: poolCheckError } = await supabaseClient
+  let { count: poolCount, error: poolCheckError } = await supabaseClient
     .from('reply_opportunities')
     .select('id', { count: 'exact', head: true })
     .eq('replied_to', false)
     .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString());
-  
-  const poolCount = (poolCheck as any)?.length || 0;
+ 
+  poolCount = poolCount || 0;
   console.log(`[REPLY_JOB] 📊 Opportunity pool: ${poolCount} available`);
-  
+ 
   if (poolCount < 10) {
     console.warn(`[REPLY_JOB] ⚠️ Pool low (${poolCount} < 10) - triggering harvester preflight`);
     
@@ -487,67 +488,66 @@ async function generateRealReplies(): Promise<void> {
   // Strategy: Prioritize HIGHEST engagement first (TITAN > ULTRA > MEGA > SUPER > HIGH)
   // Goal: Reply to biggest tweets possible to maximize exposure
   const sortedOpportunities = [...allOpportunities].sort((a, b) => {
-    // Tier priority (higher number = higher priority)
     const tierOrder: Record<string, number> = {
-      'TITAN': 10,    // 250K+ likes (highest priority!)
-      'ULTRA': 9,     // 100K+ likes
-      'MEGA': 8,      // 50K+ likes
-      'SUPER': 7,     // 25K+ likes
-      'HIGH': 6,      // 10K+ likes
-      'golden': 5,    // Legacy high tier
-      'good': 4,      // Legacy medium tier
-      'acceptable': 3 // Legacy low tier
+      'TITAN': 10,
+      'ULTRA': 9,
+      'MEGA': 8,
+      'SUPER': 7,
+      'HIGH': 6,
+      'golden': 5,
+      'good': 4,
+      'acceptable': 3
     };
-    const aTier = tierOrder[String(a.tier || '')] || 0;
-    const bTier = tierOrder[String(b.tier || '')] || 0;
-    if (aTier !== bTier) return bTier - aTier; // Higher tier first
-    
-    // Within same tier, prioritize by ABSOLUTE engagement (250K likes beats 100K likes!)
+    const aTier = tierOrder[String(a.tier || '').toUpperCase()] || 0;
+    const bTier = tierOrder[String(b.tier || '').toUpperCase()] || 0;
+    if (aTier !== bTier) return bTier - aTier;
+
     const aLikes = Number(a.like_count) || 0;
     const bLikes = Number(b.like_count) || 0;
-    if (aLikes !== bLikes) return bLikes - aLikes; // More likes first
-    
-    // Then by fewer comments (less competition)
+    if (aLikes !== bLikes) return bLikes - aLikes;
+
     const aComments = Number(a.reply_count) || 0;
     const bComments = Number(b.reply_count) || 0;
-    if (aComments !== bComments) return aComments - bComments; // Fewer comments first
-    
-    // Finally, by engagement rate (for ties)
+    if (aComments !== bComments) return aComments - bComments;
+
     return (Number(b.engagement_rate) || 0) - (Number(a.engagement_rate) || 0);
   });
-  
+
+  const highVirality = sortedOpportunities.filter(opp => (Number(opp.like_count) || 0) >= 10000).slice(0, 5);
+  const freshHot = sortedOpportunities.filter(opp => (Number(opp.posted_minutes_ago) || 9999) <= 360).slice(0, 5);
+  const priorityPool = Array.from(new Set([...highVirality, ...freshHot, ...sortedOpportunities]));
+
+  const candidateOpportunities = priorityPool.slice(0, 40);
+
   // 🚨 CRITICAL FIX: Check for TWEET IDs we've already replied to (not just usernames!)
   // This prevents multiple replies to the same tweet
   const { data: alreadyRepliedTweets } = await supabaseClient
     .from('content_metadata')
     .select('target_tweet_id')
     .eq('decision_type', 'reply')
-    .in('status', ['posted', 'queued', 'ready']); // Check all stages
-  
+    .in('status', ['posted', 'queued', 'ready']);
+
   const repliedTweetIds = new Set(
     (alreadyRepliedTweets || [])
       .map(r => r.target_tweet_id)
-      .filter(id => id) // Filter out nulls
+      .filter(id => id)
   );
-  
+
   console.log(`[REPLY_JOB] 🔒 Already replied to ${repliedTweetIds.size} unique tweets`);
-  
-  // Filter out tweets we've already replied to
-  const dbOpportunities = sortedOpportunities
+
+  const dbOpportunities = candidateOpportunities
     .filter(opp => {
-      // Must have valid tweet ID
       if (!opp.target_tweet_id) {
         console.log(`[REPLY_JOB] ⚠️ Skipping opportunity with NULL tweet_id from @${opp.target_username}`);
         return false;
       }
-      // Must not have replied already
       if (repliedTweetIds.has(opp.target_tweet_id)) {
         console.log(`[REPLY_JOB] ⏭️ Already replied to tweet ${opp.target_tweet_id} from @${opp.target_username}`);
         return false;
       }
       return true;
     })
-    .slice(0, 10); // Top 10 opportunities
+    .slice(0, 10);
   
   if (dbOpportunities.length === 0) {
     console.log('[REPLY_JOB] ⚠️ No new opportunities (all recently replied)');
@@ -610,7 +610,7 @@ async function generateRealReplies(): Promise<void> {
   // Job runs every 30 min (2 runs/hour)
   // Generate 5 per run = 10 attempts/hour
   // With ~42% success rate = ~4 posted replies/hour = ~100/day
-  const TARGET_REPLIES_PER_CYCLE = 5;
+  const TARGET_REPLIES_PER_CYCLE = targetRepliesThisCycle;
   const availableOpportunities = opportunities.length;
   
   // How many can we actually generate?

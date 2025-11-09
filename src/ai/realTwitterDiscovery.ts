@@ -35,13 +35,6 @@ export interface ReplyOpportunity {
 export class RealTwitterDiscovery {
   private static instance: RealTwitterDiscovery;
   
-  private readonly CURATED_HEALTH_ACCOUNTS = [
-    'hubermanlab', 'peterattia', 'RhondaPatrick', 'drmarkhyman',
-    'bengreenfieldhq', 'foundmyfitness', 'DrJockers', 'KellyStarrett',
-    'SleepDiplomat', 'drchatterjeeuk', 'DrAmyShah', 'theproof', 'DrDianeBrain',
-    'PeterDiamandis', 'DrStevenLin', 'drwillcole', 'markhymanmd'
-  ];
-  
   private readonly HEALTH_HASHTAGS = [
     'longevity', 'biohacking', 'nutrition', 'sleep', 'fitness',
     'wellness', 'health', 'neuroscience', 'exercise', 'fasting',
@@ -53,7 +46,7 @@ export class RealTwitterDiscovery {
     secondary: ['supplement', 'vitamin', 'protein', 'sleep', 'workout', 'exercise', 'fasting', 'glucose', 'insulin', 'hormone', 'gut', 'microbiome'],
     tertiary: ['recovery', 'hydrate', 'immune', 'metabolic', 'sauna', 'cold plunge', 'meditation', 'stress', 'mental health', 'therapy']
   };
-  public readonly curatedAccounts = this.CURATED_HEALTH_ACCOUNTS;
+  public readonly curatedAccounts = [];
 
   private constructor() {}
 
@@ -914,7 +907,7 @@ export class RealTwitterDiscovery {
     
     const discovered: DiscoveredAccount[] = [];
     
-    for (const username of this.CURATED_HEALTH_ACCOUNTS.slice(0, limit)) {
+    for (const username of this.HEALTH_HASHTAGS.slice(0, limit)) {
       try {
         const account = await this.getAccountDetailsStandalone(username);
         if (account) {
