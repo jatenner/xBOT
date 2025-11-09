@@ -388,9 +388,7 @@ async function generateRealReplies(): Promise<void> {
   }
   
   console.log('[REPLY_JOB] 🎯 Starting reply generation (AI-driven targeting)...');
-  const targetRepliesThisCycle = poolCount >= 200 ? 6 : poolCount <= 30 ? 3 : 5;
-  console.log(`[REPLY_JOB] 📋 Target: ${targetRepliesThisCycle} replies per cycle (auto-adjusted for pool size)`);
-  
+ 
   // Log account pool status
   const { getAccountPoolHealth } = await import('./accountDiscoveryJob');
   const poolHealth = await getAccountPoolHealth();
@@ -421,6 +419,8 @@ async function generateRealReplies(): Promise<void> {
  
   poolCount = poolCount || 0;
   console.log(`[REPLY_JOB] 📊 Opportunity pool: ${poolCount} available`);
+  const targetRepliesThisCycle = poolCount >= 200 ? 6 : poolCount <= 30 ? 3 : 5;
+  console.log(`[REPLY_JOB] 📋 Target: ${targetRepliesThisCycle} replies per cycle (auto-adjusted for pool size)`);
  
   if (poolCount < 10) {
     console.warn(`[REPLY_JOB] ⚠️ Pool low (${poolCount} < 10) - triggering harvester preflight`);
