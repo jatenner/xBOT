@@ -19,11 +19,11 @@ export interface HealthJudgment {
 
 export class HealthContentJudge {
   private static instance: HealthContentJudge;
-  private readonly HEALTH_THRESHOLD = Number(process.env.HEALTH_RELEVANCE_THRESHOLD ?? 4);
+  private readonly HEALTH_THRESHOLD = Number(process.env.HEALTH_RELEVANCE_THRESHOLD ?? 3);
   private readonly keywordGroups = {
-    primary: ['health', 'wellness', 'fitness', 'nutrition', 'biohack', 'longevity', 'medical', 'doctor', 'dr ', 'patient'],
-    secondary: ['supplement', 'vitamin', 'protein', 'sleep', 'workout', 'exercise', 'fasting', 'glucose', 'insulin', 'hormone', 'gut', 'microbiome'],
-    tertiary: ['recovery', 'hydrate', 'immune', 'metabolic', 'sauna', 'cold plunge', 'meditation', 'stress', 'mental health', 'therapy']
+    primary: ['health', 'wellness', 'fitness', 'nutrition', 'biohack', 'longevity', 'medical', 'doctor', 'dr ', 'patient', 'metabolic', 'longevity', 'hormonal'],
+    secondary: ['supplement', 'vitamin', 'protein', 'sleep', 'workout', 'exercise', 'fasting', 'glucose', 'insulin', 'hormone', 'gut', 'microbiome', 'circadian', 'peptide', 'testosterone', 'ozempic', 'semaglutide'],
+    tertiary: ['recovery', 'hydrate', 'immune', 'metabolic', 'sauna', 'cold plunge', 'meditation', 'stress', 'mental health', 'therapy', 'hrv', 'detox', 'breathwork']
   };
 
   private constructor() {}
@@ -170,6 +170,10 @@ Return ONLY valid JSON (no markdown):
         isHealthRelevant = true;
         reason = 'keyword_fallback';
         console.log(`[HEALTH_JUDGE] ✅ Keyword fallback accepted tweet ${index} (score=${score}, keywordScore=${keywordScore})`);
+      }
+
+      if (!isHealthRelevant) {
+        console.log(`[HEALTH_JUDGE] ❌ Rejected tweet ${index}: score=${score}, keywordScore=${keywordScore}, reason=${reason}`);
       }
 
       return {
