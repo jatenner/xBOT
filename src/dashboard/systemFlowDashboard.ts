@@ -222,25 +222,27 @@ async function fetchSystemFlowData(supabase: any): Promise<SystemFlowData> {
       .order('updated_at', { ascending: false })
       .limit(10);
     
-    // Get recent posts with full data for tabs
+    // Get recent posts with full data for tabs (relaxed filters to show all content)
     const { data: recentPosts } = await supabase
       .from('content_metadata')
       .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, decision_type, generator_name, tweet_id, status, error_message, topic, tone, angle, structure, created_at')
-      .in('status', ['posted', 'failed'])
       .in('decision_type', ['single', 'thread'])
-      .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
       .order('created_at', { ascending: false })
       .limit(100);
     
-    // Get recent replies with full data for tabs
+    console.log('[FLOW_DASHBOARD] Posts query returned:', recentPosts?.length || 0, 'posts');
+    
+    // Get recent replies with full data for tabs (relaxed filters to show all content)
     const { data: recentReplies } = await supabase
       .from('content_metadata')
       .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, reply_to_username, generator_name, tweet_id, status, error_message, topic, tone, angle, structure, created_at')
-      .in('status', ['posted', 'failed'])
       .eq('decision_type', 'reply')
-      .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
       .order('created_at', { ascending: false })
       .limit(100);
+    
+    console.log('[FLOW_DASHBOARD] Replies query returned:', recentReplies?.length || 0, 'replies');
     
     return {
       pipelines: {
