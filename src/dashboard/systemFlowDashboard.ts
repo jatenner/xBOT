@@ -222,48 +222,90 @@ async function fetchSystemFlowData(supabase: any): Promise<SystemFlowData> {
       .order('updated_at', { ascending: false })
       .limit(10);
     
-    // Get recent posts with full data for tabs (relaxed filters to show all content)
-    const { data: recentPostsRaw, error: postsError } = await supabase
-      .from('content_metadata')
-      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, decision_type, generator_name, tweet_id, status, error_message, raw_topic, tone, angle, format_strategy, created_at')
-      .in('decision_type', ['single', 'thread'])
-      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-      .order('created_at', { ascending: false })
-      .limit(100);
+    const since30Days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     
-    if (postsError) {
-      console.error('[FLOW_DASHBOARD] Posts query error:', postsError.message);
+    const { data: postedDecisions, error: postedDecisionsError } = await supabase
+      .from('posted_decisions')
+      .select('decision_id, tweet_id, posted_at, decision_type')
+      .gte('posted_at', since30Days)
+      .order('posted_at', { ascending: false })
+      .limit(150);
+    
+    if (postedDecisionsError) {
+      console.error('[FLOW_DASHBOARD] posted_decisions query error:', postedDecisionsError.message);
     }
     
-    const recentPosts = (recentPostsRaw || []).map((row: any) => ({
-      ...row,
-      topic: row.raw_topic || '',
-      structure: row.format_strategy || '',
-    }));
+    const decisionIds = postedDecisions?.map((row: any) => row.decision_id) || [];
+    let metadataByDecisionId = new Map<string, any>();
     
-    console.log('[FLOW_DASHBOARD] Posts query returned:', recentPosts.length, 'posts');
-    
-    // Get recent replies with full data for tabs (relaxed filters to show all content)
-    const { data: recentRepliesRaw, error: repliesError } = await supabase
-      .from('content_metadata')
-      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, target_username, generator_name, tweet_id, status, error_message, raw_topic, tone, angle, format_strategy, created_at')
-      .eq('decision_type', 'reply')
-      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-      .order('created_at', { ascending: false })
-      .limit(100);
-    
-    if (repliesError) {
-      console.error('[FLOW_DASHBOARD] Replies query error:', repliesError.message);
+    if (decisionIds.length > 0) {
+      const { data: metadataRows, error: metadataError } = await supabase
+        .from('content_metadata')
+        .select('decision_id, content, raw_topic, tone, angle, format_strategy, generator_name, status, target_username, actual_impressions, actual_likes, actual_retweets, actual_replies, error_message, created_at, posted_at')
+        .in('decision_id', decisionIds);
+      
+      if (metadataError) {
+        console.error('[FLOW_DASHBOARD] content_metadata lookup error:', metadataError.message);
+      } else {
+        metadataByDecisionId = new Map(
+          (metadataRows || []).map((row: any) => [row.decision_id, row])
+        );
+      }
     }
     
-    const recentReplies = (recentRepliesRaw || []).map((row: any) => ({
-      ...row,
-      reply_to_username: row.target_username || '',
-      topic: row.raw_topic || '',
-      structure: row.format_strategy || '',
-    }));
+    const recentPosts = (postedDecisions || [])
+      .filter((row: any) => row.decision_type === 'single' || row.decision_type === 'thread')
+      .map((row: any) => {
+        const meta = metadataByDecisionId.get(row.decision_id) || {};
+        return {
+          decision_id: row.decision_id,
+          tweet_id: row.tweet_id,
+          posted_at: row.posted_at,
+          decision_type: row.decision_type,
+          content: meta.content || '',
+          topic: meta.raw_topic || '',
+          tone: meta.tone || '',
+          angle: meta.angle || '',
+          structure: meta.format_strategy || '',
+          generator_name: meta.generator_name || '',
+          status: meta.status || 'posted',
+          error_message: meta.error_message || '',
+          actual_impressions: meta.actual_impressions ?? null,
+          actual_likes: meta.actual_likes ?? null,
+          actual_retweets: meta.actual_retweets ?? null,
+          actual_replies: meta.actual_replies ?? null,
+          created_at: meta.created_at || null
+        };
+      });
     
-    console.log('[FLOW_DASHBOARD] Replies query returned:', recentReplies.length, 'replies');
+    const recentReplies = (postedDecisions || [])
+      .filter((row: any) => row.decision_type === 'reply')
+      .map((row: any) => {
+        const meta = metadataByDecisionId.get(row.decision_id) || {};
+        return {
+          decision_id: row.decision_id,
+          tweet_id: row.tweet_id,
+          posted_at: row.posted_at,
+          decision_type: row.decision_type,
+          content: meta.content || '',
+          reply_to_username: meta.target_username || '',
+          topic: meta.raw_topic || '',
+          tone: meta.tone || '',
+          angle: meta.angle || '',
+          structure: meta.format_strategy || '',
+          generator_name: meta.generator_name || '',
+          status: meta.status || 'posted',
+          error_message: meta.error_message || '',
+          actual_impressions: meta.actual_impressions ?? null,
+          actual_likes: meta.actual_likes ?? null,
+          actual_retweets: meta.actual_retweets ?? null,
+          actual_replies: meta.actual_replies ?? null,
+          created_at: meta.created_at || null
+        };
+      });
+    
+    console.log('[FLOW_DASHBOARD] Posts join returned:', recentPosts.length, 'posts');
+    console.log('[FLOW_DASHBOARD] Replies join returned:', recentReplies.length, 'replies');
     
     return {
       pipelines: {
@@ -317,7 +359,7 @@ function generateFlowHTML(data: SystemFlowData): string {
             </div>
             <div class="refresh-indicator">
                 <span class="pulse-dot"></span>
-                Refreshes in <span id="countdown">5</span>s | Last updated: <span id="timestamp">${timestamp}</span>
+                Refreshes in <span id="countdown">05:00</span> | Last updated: <span id="timestamp">${timestamp}</span>
             </div>
         </div>
 
@@ -574,7 +616,7 @@ function generateFlowHTML(data: SystemFlowData): string {
         <div class="footer">
             <p>🔄 Monitoring all data pipelines in real-time</p>
             <p style="font-size: 12px; margin-top: 5px; color: #718096;">
-                Expected flow: 2 posts/hour, 4 replies/hour • Auto-refreshes every 5 seconds
+                Expected flow: 2 posts/hour, 4 replies/hour • Auto-refreshes every 5 minutes
             </p>
         </div>
 
@@ -1352,14 +1394,23 @@ function getFlowStyles(): string {
 
 function getFlowScripts(): string {
   return `
-        let countdown = 5;
+        let countdownSeconds = 300; // 5 minutes
+        const formatCountdown = () => {
+            const minutes = Math.floor(countdownSeconds / 60).toString().padStart(2, '0');
+            const seconds = (countdownSeconds % 60).toString().padStart(2, '0');
+            return \`\${minutes}:\${seconds}\`;
+        };
+        
+        const countdownEl = document.getElementById('countdown');
+        if (countdownEl) countdownEl.textContent = formatCountdown();
+        
         setInterval(() => {
-            countdown--;
-            if (countdown <= 0) {
+            countdownSeconds--;
+            if (countdownSeconds <= 0) {
                 location.reload();
+                return;
             }
-            const countdownEl = document.getElementById('countdown');
-            if (countdownEl) countdownEl.textContent = countdown.toString();
+            if (countdownEl) countdownEl.textContent = formatCountdown();
         }, 1000);
         
         setInterval(() => {
