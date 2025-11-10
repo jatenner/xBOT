@@ -300,47 +300,107 @@ function generateFlowHTML(data: SystemFlowData): string {
             </div>
         </div>
 
-        <!-- QUEUE OVERVIEW -->
-        <div class="queue-overview">
-            <div class="queue-stat">
-                <div class="stat-value">${queueStatus.contentQueued}</div>
-                <div class="stat-label">Content Queued</div>
+        <!-- VIEW SWITCHER -->
+        <div class="view-switcher">
+            <button class="view-btn active" data-view="pipeline">🔄 Live Pipeline</button>
+            <button class="view-btn" data-view="posts">📤 Posts (${data.recentPosts.length})</button>
+            <button class="view-btn" data-view="replies">💬 Replies (${data.recentReplies.length})</button>
+        </div>
+
+        <!-- PIPELINE VIEW -->
+        <div id="pipeline-view" class="view-section active">
+            <div class="pipeline-explainer">
+                <h3>🔄 Live System Health</h3>
+                <p>Full snapshot of every pipeline. Watch the flow in real-time and pinpoint bottlenecks instantly.</p>
             </div>
-            <div class="queue-stat">
-                <div class="stat-value">${queueStatus.repliesQueued}</div>
-                <div class="stat-label">Replies Queued</div>
+
+            <div class="view-subsection">
+                <h4>Queue Overview</h4>
+                <div class="queue-overview">
+                    <div class="queue-card">
+                        <h3>${queueStatus.contentQueued}</h3>
+                        <p>CONTENT QUEUED</p>
+                        <span class="queue-desc">Posts waiting to be published</span>
+                    </div>
+                    <div class="queue-card">
+                        <h3>${queueStatus.repliesQueued}</h3>
+                        <p>REPLIES QUEUED</p>
+                        <span class="queue-desc">Replies waiting to be published</span>
+                    </div>
+                    <div class="queue-card highlight">
+                        <h3>${queueStatus.readyToPost}</h3>
+                        <p>READY TO POST</p>
+                        <span class="queue-desc">Content scheduled in next 5 minutes</span>
+                    </div>
+                </div>
             </div>
-            <div class="queue-stat highlight">
-                <div class="stat-value">${queueStatus.readyToPost}</div>
-                <div class="stat-label">Ready to Post</div>
+
+            <div class="view-subsection">
+                <h4>Pipeline Flow</h4>
+                <div class="pipelines-grid">
+                    ${generatePipelineCard(pipelines.contentPipeline, '1')}
+                    ${generatePipelineCard(pipelines.replyPipeline, '2')}
+                    ${generatePipelineCard(pipelines.harvestPipeline, '3')}
+                    ${generatePipelineCard(pipelines.scrapingPipeline, '4')}
+                    ${generatePipelineCard(pipelines.learningPipeline, '5')}
+                </div>
+            </div>
+
+            <div class="pipeline-legend">
+                <h4>Pipeline Explanations</h4>
+                <div class="legend-grid">
+                    <div class="legend-item">
+                        <span class="legend-number">1️⃣</span>
+                        <div>
+                            <strong>Content Pipeline</strong>
+                            <p>AI posts + threads. Target: 2 posts/hour. Bottlenecks mean the audience gets quiet.</p>
+                        </div>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-number">2️⃣</span>
+                        <div>
+                            <strong>Reply Pipeline</strong>
+                            <p>AI replies to targets. Target: 4 replies/hour. Keeps conversations alive.</p>
+                        </div>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-number">3️⃣</span>
+                        <div>
+                            <strong>Harvest Pipeline</strong>
+                            <p>Finds hot conversation starters. Feeds the reply system.</p>
+                        </div>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-number">4️⃣</span>
+                        <div>
+                            <strong>Scraping Pipeline</strong>
+                            <p>Collects live metrics (impressions, likes, etc.) so dashboards stay fresh.</p>
+                        </div>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-number">5️⃣</span>
+                        <div>
+                            <strong>Learning Pipeline</strong>
+                            <p>Turns performance data into new posting strategy. Keeps the system improving.</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- PIPELINE FLOWS -->
-        <div class="pipelines">
-            ${generatePipelineCard(pipelines.contentPipeline, '1')}
-            ${generatePipelineCard(pipelines.replyPipeline, '2')}
-            ${generatePipelineCard(pipelines.harvestPipeline, '3')}
-            ${generatePipelineCard(pipelines.scrapingPipeline, '4')}
-            ${generatePipelineCard(pipelines.learningPipeline, '5')}
-        </div>
-
-        <!-- TABS SECTION -->
-        <div class="tabs-section">
-            <div class="tabs-header">
-                <button class="tab-btn active" onclick="switchTab('posts')">📤 Posts (${data.recentPosts.length})</button>
-                <button class="tab-btn" onclick="switchTab('replies')">💬 Replies (${data.recentReplies.length})</button>
-                <button class="tab-btn" onclick="switchTab('pipeline')">🔄 Live Pipeline Health</button>
-            </div>
-            
-            <!-- POSTS TAB -->
-            <div id="posts-tab" class="tab-content active">
+        <!-- POSTS VIEW -->
+        <div id="posts-view" class="view-section">
+            <div class="view-subsection">
+                <div class="section-header">
+                    <h3>📤 Recent Posts (${data.recentPosts.length})</h3>
+                    <p class="section-info">Every AI post with full metadata, status, and performance. Sort to track winners or diagnose failures fast.</p>
+                </div>
                 <div class="tab-controls">
-                    <div class="sort-controls">
+                    <div class="sort-controls" data-target="posts">
                         <span class="sort-label">Sort by:</span>
-                        <button class="sort-btn active" onclick="sortPosts('date')">📅 Date</button>
-                        <button class="sort-btn" onclick="sortPosts('impressions')">👁️ Impressions</button>
-                        <button class="sort-btn" onclick="sortPosts('likes')">❤️ Likes</button>
+                        <button class="sort-btn active" data-sort="date" data-table="posts">📅 Date</button>
+                        <button class="sort-btn" data-sort="impressions" data-table="posts">👁️ Impressions</button>
+                        <button class="sort-btn" data-sort="likes" data-table="posts">❤️ Likes</button>
                     </div>
                 </div>
                 <div class="data-table-container">
@@ -366,12 +426,12 @@ function generateFlowHTML(data: SystemFlowData): string {
                                 const timestamp = post.posted_at || post.created_at;
                                 const timeAgo = formatTimeAgo(new Date(timestamp));
                                 const fullTime = new Date(timestamp).toLocaleString();
-                                const isSuccess = post.status === 'posted';
-                                const statusIcon = isSuccess ? '✅' : '❌';
-                                const statusClass = isSuccess ? 'status-success' : 'status-fail';
-                                const statusText = isSuccess ? 'Posted' : 'Failed';
+                                const status = (post.status || '').toLowerCase();
+                                const statusIcon = status === 'posted' ? '✅' : status === 'failed' ? '❌' : '⏳';
+                                const statusClass = status === 'posted' ? 'status-success' : status === 'failed' ? 'status-fail' : 'status-pending';
+                                const statusText = status === 'posted' ? 'Posted' : status === 'failed' ? 'Failed' : status || 'Queued';
                                 const errorHint = post.error_message ? `title="${post.error_message}"` : '';
-                                
+
                                 return `
                                 <tr data-impressions="${post.actual_impressions || 0}" data-likes="${post.actual_likes || 0}" data-date="${new Date(timestamp).getTime()}">
                                     <td class="time-cell" title="${fullTime}">${timeAgo}</td>
@@ -380,31 +440,37 @@ function generateFlowHTML(data: SystemFlowData): string {
                                             ${statusIcon} ${statusText}
                                         </span>
                                     </td>
-                                    <td class="content-cell">${(post.content || '').substring(0, 80)}...</td>
+                                    <td class="content-cell">${(post.content || '').substring(0, 120)}...</td>
                                     <td class="topic-cell">${post.topic || '-'}</td>
                                     <td class="tone-cell">${post.tone || '-'}</td>
                                     <td class="angle-cell">${post.angle || '-'}</td>
                                     <td class="structure-cell">${post.structure || post.decision_type || '-'}</td>
                                     <td class="gen-cell">${post.generator_name || 'unknown'}</td>
-                                    <td class="metric-cell">${isSuccess ? (post.actual_impressions || 0).toLocaleString() : '-'}</td>
-                                    <td class="metric-cell">${isSuccess ? (post.actual_likes || 0).toLocaleString() : '-'}</td>
-                                    <td class="metric-cell">${isSuccess ? (post.actual_replies || 0).toLocaleString() : '-'}</td>
-                                    <td class="metric-cell">${isSuccess ? (post.actual_retweets || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${status === 'posted' ? (post.actual_impressions || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${status === 'posted' ? (post.actual_likes || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${status === 'posted' ? (post.actual_replies || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${status === 'posted' ? (post.actual_retweets || 0).toLocaleString() : '-'}</td>
                                 </tr>
                             `}).join('')}
                         </tbody>
                     </table>
                 </div>
             </div>
-            
-            <!-- REPLIES TAB -->
-            <div id="replies-tab" class="tab-content">
+        </div>
+
+        <!-- REPLIES VIEW -->
+        <div id="replies-view" class="view-section">
+            <div class="view-subsection">
+                <div class="section-header">
+                    <h3>💬 Recent Replies (${data.recentReplies.length})</h3>
+                    <p class="section-info">Live replies with targeting info, AI tone, and engagement metrics. Spot top performers or failures instantly.</p>
+                </div>
                 <div class="tab-controls">
-                    <div class="sort-controls">
+                    <div class="sort-controls" data-target="replies">
                         <span class="sort-label">Sort by:</span>
-                        <button class="sort-btn active" onclick="sortReplies('date')">📅 Date</button>
-                        <button class="sort-btn" onclick="sortReplies('impressions')">👁️ Impressions</button>
-                        <button class="sort-btn" onclick="sortReplies('likes')">❤️ Likes</button>
+                        <button class="sort-btn active" data-sort="date" data-table="replies">📅 Date</button>
+                        <button class="sort-btn" data-sort="impressions" data-table="replies">👁️ Impressions</button>
+                        <button class="sort-btn" data-sort="likes" data-table="replies">❤️ Likes</button>
                     </div>
                 </div>
                 <div class="data-table-container">
@@ -430,12 +496,12 @@ function generateFlowHTML(data: SystemFlowData): string {
                                 const timestamp = reply.posted_at || reply.created_at;
                                 const timeAgo = formatTimeAgo(new Date(timestamp));
                                 const fullTime = new Date(timestamp).toLocaleString();
-                                const isSuccess = reply.status === 'posted';
-                                const statusIcon = isSuccess ? '✅' : '❌';
-                                const statusClass = isSuccess ? 'status-success' : 'status-fail';
-                                const statusText = isSuccess ? 'Posted' : 'Failed';
+                                const status = (reply.status || '').toLowerCase();
+                                const statusIcon = status === 'posted' ? '✅' : status === 'failed' ? '❌' : '⏳';
+                                const statusClass = status === 'posted' ? 'status-success' : status === 'failed' ? 'status-fail' : 'status-pending';
+                                const statusText = status === 'posted' ? 'Posted' : status === 'failed' ? 'Failed' : status || 'Queued';
                                 const errorHint = reply.error_message ? `title="${reply.error_message}"` : '';
-                                
+
                                 return `
                                 <tr data-impressions="${reply.actual_impressions || 0}" data-likes="${reply.actual_likes || 0}" data-date="${new Date(timestamp).getTime()}">
                                     <td class="time-cell" title="${fullTime}">${timeAgo}</td>
@@ -444,97 +510,20 @@ function generateFlowHTML(data: SystemFlowData): string {
                                             ${statusIcon} ${statusText}
                                         </span>
                                     </td>
-                                    <td class="content-cell">${(reply.content || '').substring(0, 80)}...</td>
+                                    <td class="content-cell">${(reply.content || '').substring(0, 120)}...</td>
                                     <td class="replied-to-cell">@${reply.reply_to_username || 'unknown'}</td>
                                     <td class="topic-cell">${reply.topic || '-'}</td>
                                     <td class="tone-cell">${reply.tone || '-'}</td>
                                     <td class="angle-cell">${reply.angle || '-'}</td>
                                     <td class="gen-cell">${reply.generator_name || 'unknown'}</td>
-                                    <td class="metric-cell">${isSuccess ? (reply.actual_impressions || 0).toLocaleString() : '-'}</td>
-                                    <td class="metric-cell">${isSuccess ? (reply.actual_likes || 0).toLocaleString() : '-'}</td>
-                                    <td class="metric-cell">${isSuccess ? (reply.actual_replies || 0).toLocaleString() : '-'}</td>
-                                    <td class="metric-cell">${isSuccess ? (reply.actual_retweets || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${status === 'posted' ? (reply.actual_impressions || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${status === 'posted' ? (reply.actual_likes || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${status === 'posted' ? (reply.actual_replies || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${status === 'posted' ? (reply.actual_retweets || 0).toLocaleString() : '-'}</td>
                                 </tr>
                             `}).join('')}
                         </tbody>
                     </table>
-                </div>
-            </div>
-            
-            <!-- PIPELINE TAB -->
-            <div id="pipeline-tab" class="tab-content">
-                <div class="pipeline-explainer">
-                    <h3>🔄 Live System Health</h3>
-                    <p>This view shows real-time data flow through xBOT's 5 core pipelines. Each pipeline processes data independently and feeds into the next stage.</p>
-                </div>
-                
-                <!-- QUEUE OVERVIEW -->
-                <div class="queue-overview">
-                    <div class="queue-card">
-                        <h3>${queueStatus.contentQueued}</h3>
-                        <p>CONTENT QUEUED</p>
-                        <span class="queue-desc">Posts waiting to be published</span>
-                    </div>
-                    <div class="queue-card">
-                        <h3>${queueStatus.repliesQueued}</h3>
-                        <p>REPLIES QUEUED</p>
-                        <span class="queue-desc">Replies waiting to be published</span>
-                    </div>
-                    <div class="queue-card highlight">
-                        <h3>${queueStatus.readyToPost}</h3>
-                        <p>READY TO POST</p>
-                        <span class="queue-desc">Content ready in next 5 minutes</span>
-                    </div>
-                </div>
-
-                <!-- PIPELINES -->
-                <div class="pipelines-grid">
-                    ${generatePipelineCard(pipelines.contentPipeline, '1')}
-                    ${generatePipelineCard(pipelines.replyPipeline, '2')}
-                    ${generatePipelineCard(pipelines.harvestPipeline, '3')}
-                    ${generatePipelineCard(pipelines.scrapingPipeline, '4')}
-                    ${generatePipelineCard(pipelines.learningPipeline, '5')}
-                </div>
-                
-                <div class="pipeline-legend">
-                    <h4>Pipeline Explanations:</h4>
-                    <div class="legend-grid">
-                        <div class="legend-item">
-                            <span class="legend-number">1️⃣</span>
-                            <div>
-                                <strong>Content Pipeline</strong>
-                                <p>Generates original posts and threads using AI. Target: 2 posts/hour</p>
-                            </div>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-number">2️⃣</span>
-                            <div>
-                                <strong>Reply Pipeline</strong>
-                                <p>Creates AI-generated replies to harvested opportunities. Target: 4 replies/hour</p>
-                            </div>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-number">3️⃣</span>
-                            <div>
-                                <strong>Harvest Pipeline</strong>
-                                <p>Discovers reply opportunities from target accounts (tier-based)</p>
-                            </div>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-number">4️⃣</span>
-                            <div>
-                                <strong>Scraping Pipeline</strong>
-                                <p>Collects engagement metrics from Twitter for posted content</p>
-                            </div>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-number">5️⃣</span>
-                            <div>
-                                <strong>Learning Pipeline</strong>
-                                <p>Analyzes performance data to improve future content decisions</p>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -1002,51 +991,77 @@ function getFlowStyles(): string {
             color: #64748b;
         }
         
-        .tabs-section {
-            background: #1e293b;
-            border-radius: 15px;
-            border: 2px solid #334155;
-            margin-bottom: 30px;
-            overflow: hidden;
-        }
-        
-        .tabs-header {
+        .view-switcher {
             display: flex;
-            background: #0f172a;
-            border-bottom: 2px solid #334155;
+            gap: 12px;
+            margin: 30px 0 20px;
         }
         
-        .tab-btn {
+        .view-btn {
             flex: 1;
-            padding: 20px;
-            border: none;
-            background: transparent;
-            color: #64748b;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            border-bottom: 3px solid transparent;
-        }
-        
-        .tab-btn:hover {
-            background: #1e293b;
+            padding: 14px 18px;
+            background: #0f172a;
+            border: 2px solid #1e293b;
+            border-radius: 12px;
             color: #94a3b8;
+            font-weight: 600;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.25s ease;
         }
         
-        .tab-btn.active {
+        .view-btn:hover {
+            border-color: #3b82f6;
             color: #3b82f6;
-            border-bottom-color: #3b82f6;
-            background: #1e293b;
         }
         
-        .tab-content {
+        .view-btn.active {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+            border-color: #2563eb;
+            color: #dbeafe;
+            box-shadow: 0 15px 25px -15px rgba(59, 130, 246, 0.6);
+        }
+        
+        .view-section {
             display: none;
-            padding: 25px;
+            background: #0f172a;
+            border-radius: 20px;
+            border: 2px solid #1e293b;
+            padding: 30px;
+            margin-bottom: 35px;
         }
         
-        .tab-content.active {
+        .view-section.active {
             display: block;
+        }
+        
+        .view-subsection {
+            margin-bottom: 35px;
+        }
+        
+        .view-subsection h4 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #e2e8f0;
+        }
+        
+        .section-header {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .section-header h3 {
+            font-size: 22px;
+            color: #3b82f6;
+        }
+        
+        .section-info {
+            font-size: 14px;
+            color: #94a3b8;
+            line-height: 1.6;
+            max-width: 760px;
         }
         
         .tab-controls {
@@ -1206,6 +1221,11 @@ function getFlowStyles(): string {
             color: #ef4444;
         }
         
+        .status-pending {
+            background: #f9731620;
+            color: #f97316;
+        }
+        
         .topic-cell, .tone-cell, .angle-cell, .structure-cell {
             font-size: 12px;
             color: #94a3b8;
@@ -1317,46 +1337,50 @@ function getFlowScripts(): string {
             if (countdown <= 0) {
                 location.reload();
             }
-            document.getElementById('countdown').textContent = countdown;
+            const countdownEl = document.getElementById('countdown');
+            if (countdownEl) countdownEl.textContent = countdown.toString();
         }, 1000);
         
         setInterval(() => {
-            document.getElementById('timestamp').textContent = new Date().toLocaleString();
+            const timestampEl = document.getElementById('timestamp');
+            if (timestampEl) timestampEl.textContent = new Date().toLocaleString();
         }, 1000);
         
-        // Tab switching
-        function switchTab(tabName) {
-            // Update tab buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
+        function showView(view) {
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-view') === view);
             });
-            event.target.classList.add('active');
-            
-            // Update tab content
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
+            document.querySelectorAll('.view-section').forEach(section => {
+                const sectionId = section.getAttribute('id');
+                section.classList.toggle('active', sectionId === view + '-view');
             });
-            document.getElementById(tabName + '-tab').classList.add('active');
         }
         
-        // Sorting functions
-        function sortPosts(sortBy) {
-            // Update sort buttons
-            document.querySelectorAll('#posts-tab .sort-btn').forEach(btn => {
-                btn.classList.remove('active');
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const view = btn.getAttribute('data-view');
+                if (view) showView(view);
             });
-            event.target.classList.add('active');
+        });
+        
+        showView('pipeline');
+        
+        function sortTable(tableKey, sortBy) {
+            const table = document.getElementById(tableKey + '-table');
+            if (!table) return;
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
             
-            const tbody = document.querySelector('#posts-table tbody');
             const rows = Array.from(tbody.querySelectorAll('tr'));
-            
             rows.sort((a, b) => {
                 if (sortBy === 'date') {
-                    return parseInt(b.dataset.date) - parseInt(a.dataset.date);
-                } else if (sortBy === 'impressions') {
-                    return parseInt(b.dataset.impressions) - parseInt(a.dataset.impressions);
-                } else if (sortBy === 'likes') {
-                    return parseInt(b.dataset.likes) - parseInt(a.dataset.likes);
+                    return parseInt(b.dataset.date || '0') - parseInt(a.dataset.date || '0');
+                }
+                if (sortBy === 'impressions') {
+                    return parseInt(b.dataset.impressions || '0') - parseInt(a.dataset.impressions || '0');
+                }
+                if (sortBy === 'likes') {
+                    return parseInt(b.dataset.likes || '0') - parseInt(a.dataset.likes || '0');
                 }
                 return 0;
             });
@@ -1365,30 +1389,20 @@ function getFlowScripts(): string {
             rows.forEach(row => tbody.appendChild(row));
         }
         
-        function sortReplies(sortBy) {
-            // Update sort buttons
-            document.querySelectorAll('#replies-tab .sort-btn').forEach(btn => {
-                btn.classList.remove('active');
+        document.querySelectorAll('.sort-controls').forEach(group => {
+            const tableKey = group.getAttribute('data-target');
+            if (!tableKey) return;
+            const buttons = group.querySelectorAll('.sort-btn');
+            buttons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const sortBy = btn.getAttribute('data-sort');
+                    if (!sortBy) return;
+                    buttons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    sortTable(tableKey, sortBy);
+                });
             });
-            event.target.classList.add('active');
-            
-            const tbody = document.querySelector('#replies-table tbody');
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            
-            rows.sort((a, b) => {
-                if (sortBy === 'date') {
-                    return parseInt(b.dataset.date) - parseInt(a.dataset.date);
-                } else if (sortBy === 'impressions') {
-                    return parseInt(b.dataset.impressions) - parseInt(a.dataset.impressions);
-                } else if (sortBy === 'likes') {
-                    return parseInt(b.dataset.likes) - parseInt(a.dataset.likes);
-                }
-                return 0;
-            });
-            
-            tbody.innerHTML = '';
-            rows.forEach(row => tbody.appendChild(row));
-        }
+        });
   `;
 }
 
