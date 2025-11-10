@@ -225,13 +225,12 @@ async function fetchSystemFlowData(supabase: any): Promise<SystemFlowData> {
     // Get recent posts with full data for tabs
     const { data: recentPosts } = await supabase
       .from('content_metadata')
-      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, decision_type, generator_name, tweet_id')
-      .eq('status', 'posted')
+      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, decision_type, generator_name, tweet_id, status, error_message, topic, tone, angle, structure, created_at')
+      .in('status', ['posted', 'failed'])
       .in('decision_type', ['single', 'thread'])
-      .not('tweet_id', 'is', null)
-      .gte('posted_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-      .order('posted_at', { ascending: false })
-      .limit(50);
+      .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(100);
     
     // Get recent replies with full data for tabs
     const { data: recentReplies } = await supabase
@@ -346,28 +345,49 @@ function generateFlowHTML(data: SystemFlowData): string {
                     <table class="data-table" id="posts-table">
                         <thead>
                             <tr>
-                                <th>Time</th>
+                                <th>Posted</th>
+                                <th>Status</th>
                                 <th>Content</th>
-                                <th>Type</th>
+                                <th>Topic</th>
+                                <th>Tone</th>
+                                <th>Angle</th>
+                                <th>Structure</th>
+                                <th>Generator</th>
                                 <th>Impressions</th>
                                 <th>Likes</th>
+                                <th>Replies</th>
                                 <th>RTs</th>
-                                <th>Generator</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${data.recentPosts.map((post: any) => {
-                                const timeAgo = formatTimeAgo(new Date(post.posted_at));
-                                const fullTime = new Date(post.posted_at).toLocaleString();
+                                const timestamp = post.posted_at || post.created_at;
+                                const timeAgo = formatTimeAgo(new Date(timestamp));
+                                const fullTime = new Date(timestamp).toLocaleString();
+                                const isSuccess = post.status === 'posted';
+                                const statusIcon = isSuccess ? '✅' : '❌';
+                                const statusClass = isSuccess ? 'status-success' : 'status-fail';
+                                const statusText = isSuccess ? 'Posted' : 'Failed';
+                                const errorHint = post.error_message ? `title="${post.error_message}"` : '';
+                                
                                 return `
-                                <tr data-impressions="${post.actual_impressions || 0}" data-likes="${post.actual_likes || 0}" data-date="${new Date(post.posted_at).getTime()}">
+                                <tr data-impressions="${post.actual_impressions || 0}" data-likes="${post.actual_likes || 0}" data-date="${new Date(timestamp).getTime()}">
                                     <td class="time-cell" title="${fullTime}">${timeAgo}</td>
-                                    <td class="content-cell">${(post.content || '').substring(0, 100)}...</td>
-                                    <td><span class="type-badge ${post.decision_type}">${post.decision_type}</span></td>
-                                    <td class="metric-cell">${(post.actual_impressions || 0).toLocaleString()}</td>
-                                    <td class="metric-cell">${(post.actual_likes || 0).toLocaleString()}</td>
-                                    <td class="metric-cell">${(post.actual_retweets || 0).toLocaleString()}</td>
+                                    <td class="status-cell">
+                                        <span class="status-badge ${statusClass}" ${errorHint}>
+                                            ${statusIcon} ${statusText}
+                                        </span>
+                                    </td>
+                                    <td class="content-cell">${(post.content || '').substring(0, 80)}...</td>
+                                    <td class="topic-cell">${post.topic || '-'}</td>
+                                    <td class="tone-cell">${post.tone || '-'}</td>
+                                    <td class="angle-cell">${post.angle || '-'}</td>
+                                    <td class="structure-cell">${post.structure || post.decision_type || '-'}</td>
                                     <td class="gen-cell">${post.generator_name || 'unknown'}</td>
+                                    <td class="metric-cell">${isSuccess ? (post.actual_impressions || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${isSuccess ? (post.actual_likes || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${isSuccess ? (post.actual_replies || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${isSuccess ? (post.actual_retweets || 0).toLocaleString() : '-'}</td>
                                 </tr>
                             `}).join('')}
                         </tbody>
@@ -1058,6 +1078,58 @@ function getFlowStyles(): string {
         .type-badge.thread {
             background: #9f123920;
             color: #f472b6;
+        }
+        
+        .status-cell {
+            white-space: nowrap;
+        }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            cursor: help;
+        }
+        
+        .status-success {
+            background: #10b98120;
+            color: #10b981;
+        }
+        
+        .status-fail {
+            background: #ef444420;
+            color: #ef4444;
+        }
+        
+        .topic-cell, .tone-cell, .angle-cell, .structure-cell {
+            font-size: 12px;
+            color: #94a3b8;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .topic-cell {
+            color: #60a5fa;
+            font-weight: 600;
+        }
+        
+        .tone-cell {
+            color: #a78bfa;
+        }
+        
+        .angle-cell {
+            color: #f59e0b;
+        }
+        
+        .structure-cell {
+            color: #ec4899;
         }
   `;
 }
