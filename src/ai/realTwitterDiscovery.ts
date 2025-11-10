@@ -988,10 +988,39 @@ export class RealTwitterDiscovery {
     
     const supabase = getSupabaseClient();
     
+    const targetIds = opportunities
+      .map(opp => String(opp.tweet_id || '').trim())
+      .filter(id => id.length > 0);
+    
+    const alreadyRepliedIds = new Set<string>();
+    if (targetIds.length > 0) {
+      const { data: repliedRows, error: repliedError } = await supabase
+        .from('content_metadata')
+        .select('target_tweet_id')
+        .eq('decision_type', 'reply')
+        .eq('status', 'posted')
+        .in('target_tweet_id', targetIds);
+      
+      if (repliedError) {
+        console.warn('[REAL_DISCOVERY] ⚠️ Failed to fetch replied tweet IDs:', repliedError.message);
+      } else {
+        (repliedRows || []).forEach(row => {
+          if (row?.target_tweet_id) {
+            alreadyRepliedIds.add(String(row.target_tweet_id));
+          }
+        });
+      }
+    }
+    
     let successCount = 0;
     let failCount = 0;
     
     for (const opp of opportunities) {
+      if (alreadyRepliedIds.has(String(opp.tweet_id))) {
+        console.log(`[REAL_DISCOVERY] ⏭️ Skipping ${opp.tweet_id} (already replied)`);
+        continue;
+      }
+      
       try {
         // Calculate tweet_posted_at from posted_minutes_ago
         const tweetPostedAt = opp.posted_minutes_ago 

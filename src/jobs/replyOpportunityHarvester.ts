@@ -26,6 +26,37 @@ export async function replyOpportunityHarvester(): Promise<void> {
   try {
     const supabase = getSupabaseClient();
     
+    // Step 0: Purge opportunities we already replied to
+    const { data: repliedRows, error: repliedError } = await supabase
+      .from('content_metadata')
+      .select('target_tweet_id')
+      .eq('decision_type', 'reply')
+      .eq('status', 'posted')
+      .not('target_tweet_id', 'is', null)
+      .gte('posted_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString());
+    
+    if (repliedError) {
+      console.warn('[HARVESTER] ⚠️ Unable to fetch replied tweet IDs for cleanup:', repliedError.message);
+    } else if (repliedRows && repliedRows.length > 0) {
+      const repliedIds = repliedRows
+        .map(row => String(row.target_tweet_id || '').trim())
+        .filter(id => id.length > 0);
+      if (repliedIds.length > 0) {
+        const chunkSize = 200;
+        for (let i = 0; i < repliedIds.length; i += chunkSize) {
+          const chunk = repliedIds.slice(i, i + chunkSize);
+          const { error: cleanupError } = await supabase
+            .from('reply_opportunities')
+            .delete()
+            .in('target_tweet_id', chunk);
+          if (cleanupError) {
+            console.warn('[HARVESTER] ⚠️ Failed to clean replied opportunities chunk:', cleanupError.message);
+            break;
+          }
+        }
+      }
+    }
+    
     // Step 1: Check current pool size
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const thirtySixHoursAgo = new Date(Date.now() - 36 * 60 * 60 * 1000);
