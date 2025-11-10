@@ -7,15 +7,19 @@ import Redis from 'ioredis';
 
 // Redis connection (lazy initialization)
 let redis: Redis | null = null;
+let warned = false;
 
-function getRedis(): Redis {
+function getRedis(): Redis | null {
   if (!redis && process.env.REDIS_URL) {
     redis = new Redis(process.env.REDIS_URL, {
       maxRetriesPerRequest: 3,
       lazyConnect: true
     });
+  } else if (!process.env.REDIS_URL && !warned) {
+    console.warn('⚠️ BUDGET_GUARD: REDIS_URL not set. Budget enforcement metrics will be stored in-memory only.');
+    warned = true;
   }
-  return redis!;
+  return redis;
 }
 
 // Environment configuration

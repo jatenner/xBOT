@@ -6,6 +6,7 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { withFreshClient } from './client';
 
 export interface DatabaseError extends Error {
   code?: string;
@@ -289,23 +290,12 @@ export class HardenedSupabaseClient {
 
     for (const table of requiredTables) {
       try {
-        const { error } = await this.client.rpc('exec_sql', { sql: table.sql });
-        
-        if (error) {
-          console.error(`❌ TABLE_CREATION_FAILED: ${table.name}:`, error);
-        } else {
-          console.log(`✅ TABLE_READY: ${table.name}`);
-        }
+        await withFreshClient(async (pgClient) => {
+          await pgClient.query(table.sql);
+        });
+        console.log(`✅ TABLE_READY: ${table.name}`);
       } catch (error) {
-        // If RPC doesn't exist, try direct query (less safe but fallback)
-        console.warn(`⚠️ RPC_UNAVAILABLE: Using direct query for ${table.name}`);
-        
-        try {
-          // This is a workaround - normally we'd use migrations
-          console.log(`🔧 MIGRATION_WORKAROUND: ${table.name} may need manual creation`);
-        } catch (directError) {
-          console.error(`❌ DIRECT_QUERY_FAILED: ${table.name}:`, directError);
-        }
+        console.error(`❌ TABLE_CREATION_FAILED: ${table.name}:`, error instanceof Error ? error.message : error);
       }
     }
   }

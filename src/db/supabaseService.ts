@@ -4,6 +4,7 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { withFreshClient } from './client';
 
 interface ApiUsageRecord {
   intent: string;
@@ -95,18 +96,9 @@ export async function ensureApiUsageTable(): Promise<DatabaseResult> {
           FOR INSERT TO authenticated WITH CHECK (true);
       `;
       
-      const { error: createError } = await client.rpc('exec_sql', { 
-        sql: createTableSQL 
+      await withFreshClient(async (pgClient) => {
+        await pgClient.query(createTableSQL);
       });
-      
-      if (createError) {
-        console.error('❌ TABLE_CREATE_FAILED:', createError);
-        return { 
-          success: false, 
-          error: 'Failed to create api_usage table',
-          details: createError
-        };
-      }
       
       console.log('✅ API_USAGE_TABLE: Created successfully');
     }

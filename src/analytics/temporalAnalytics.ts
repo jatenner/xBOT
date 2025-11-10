@@ -57,10 +57,10 @@ export class TemporalAnalytics {
     console.log('[TEMPORAL] 📈 Analyzing overall account growth...');
 
     const { data, error } = await this.supabase
-      .from('content_generation_metadata_comprehensive')
-      .select('posted_at, actual_views, actual_likes, actual_retweets')
+      .from('content_metadata')
+      .select('posted_at, actual_impressions, actual_likes, actual_retweets')
       .not('posted_at', 'is', null)
-      .not('actual_views', 'is', null)
+      .not('actual_impressions', 'is', null)
       .order('posted_at', { ascending: true });
 
     if (error || !data || data.length === 0) {
@@ -86,7 +86,8 @@ export class TemporalAnalytics {
       }
       
       const week = weeklyMap.get(weekKey)!;
-      if (post.actual_views) week.views.push(post.actual_views as number);
+      const impressions = Number(post.actual_impressions) || 0;
+      if (impressions > 0) week.views.push(impressions);
       if (post.actual_likes) week.likes.push(post.actual_likes as number);
       if (post.actual_retweets) week.retweets.push(post.actual_retweets as number);
     });
@@ -146,11 +147,11 @@ export class TemporalAnalytics {
     const column = columnMap[factor];
 
     const { data, error } = await this.supabase
-      .from('content_generation_metadata_comprehensive')
-      .select(`posted_at, ${column}, actual_views`)
+      .from('content_metadata')
+      .select(`posted_at, ${column}, actual_impressions`)
       .not('posted_at', 'is', null)
       .not(column, 'is', null)
-      .not('actual_views', 'is', null)
+      .not('actual_impressions', 'is', null)
       .order('posted_at', { ascending: true });
 
     if (error || !data || data.length === 0) {
@@ -175,7 +176,7 @@ export class TemporalAnalytics {
         weeklyData.set(weekKey, []);
       }
 
-      weeklyData.get(weekKey)!.push(post.actual_views as number);
+      weeklyData.get(weekKey)!.push(Number(post.actual_impressions) || 0);
     });
 
     // Calculate momentum for each factor value
@@ -321,18 +322,18 @@ export class TemporalAnalytics {
     const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     const { data } = await this.supabase
-      .from('content_generation_metadata_comprehensive')
-      .select('actual_views, actual_likes, actual_retweets')
+      .from('content_metadata')
+      .select('actual_impressions, actual_likes, actual_retweets')
       .gte('posted_at', weekStart.toISOString())
       .lt('posted_at', weekEnd.toISOString())
-      .not('actual_views', 'is', null);
+      .not('actual_impressions', 'is', null);
 
     if (!data || data.length === 0) {
       return { avgViews: 0, avgLikes: 0, avgRetweets: 0, totalPosts: 0 };
     }
 
     return {
-      avgViews: this.avg(data.map((d: any) => d.actual_views as number)),
+      avgViews: this.avg(data.map((d: any) => Number(d.actual_impressions) || 0)),
       avgLikes: this.avg(data.map((d: any) => (d.actual_likes || 0) as number)),
       avgRetweets: this.avg(data.map((d: any) => (d.actual_retweets || 0) as number)),
       totalPosts: data.length

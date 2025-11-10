@@ -167,7 +167,7 @@ async function learnFromPostPerformance(
   
   // Get full post metadata (includes angle, tone, format_strategy)
   const { data: fullPost } = await supabase
-    .from('content_generation_metadata_comprehensive')
+    .from('content_metadata')
     .select('angle, angle_type, tone, tone_cluster, tone_is_singular, format_strategy, visual_format')
     .eq('decision_id', postId)
     .single();

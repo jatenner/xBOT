@@ -18,7 +18,7 @@ export async function findMissingTweetIds(): Promise<void> {
     
     // Find posts/replies with placeholder IDs posted in last 24 hours
     const { data: placeholders, error } = await supabase
-      .from('content_generation_metadata_comprehensive')
+      .from('content_metadata')
       .select('decision_id, decision_type, content, tweet_id, posted_at, target_tweet_id')
       .eq('status', 'posted')
       .or('tweet_id.like.posted_%,tweet_id.like.reply_%')

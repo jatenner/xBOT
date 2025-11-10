@@ -3,7 +3,9 @@
  * Consolidated environment variable semantics with deprecation warnings
  */
 
-export type AppMode = 'live' | 'shadow';
+import { resolveMode, type UnifiedMode } from './mode';
+
+export type AppMode = UnifiedMode;
 
 export interface EnvConfig {
   MODE: AppMode;
@@ -15,40 +17,8 @@ export interface EnvConfig {
   SUPABASE_SERVICE_ROLE_KEY: string;
 }
 
-function normalizeMode(): AppMode {
-  const mode = process.env.MODE?.toLowerCase();
-  
-  // Handle legacy flags with deprecation warnings
-  if (!mode) {
-    const legacyPosting = process.env.POSTING_DISABLED === 'true';
-    const legacyDryRun = process.env.DRY_RUN === 'true';
-    const legacyLivePosts = process.env.LIVE_POSTS === 'true';
-    
-    if (legacyPosting || legacyDryRun) {
-      console.warn('⚠️ DEPRECATED: POSTING_DISABLED and DRY_RUN are deprecated. Use MODE=shadow instead.');
-      return 'shadow';
-    }
-    
-    if (legacyLivePosts) {
-      console.warn('⚠️ DEPRECATED: LIVE_POSTS is deprecated. Use MODE=live instead.');
-      return 'live';
-    }
-    
-    // Default to shadow for safety
-    console.warn('⚠️ MODE not set. Defaulting to MODE=shadow (safe mode, no posting).');
-    return 'shadow';
-  }
-  
-  if (mode !== 'live' && mode !== 'shadow') {
-    console.error(`❌ Invalid MODE="${mode}". Must be "live" or "shadow". Defaulting to shadow.`);
-    return 'shadow';
-  }
-  
-  return mode as AppMode;
-}
-
 export function getEnvConfig(): EnvConfig {
-  const MODE = normalizeMode();
+  const MODE = resolveMode().mode;
   
   return {
     MODE,
@@ -103,11 +73,15 @@ export function isRealMetricsAllowed(): { allowed: boolean; reason?: string } {
 export function validateEnvOrExit(): void {
   const config = getEnvConfig();
   const missing: string[] = [];
+  const warnings: string[] = [];
   
   if (!config.OPENAI_API_KEY) missing.push('OPENAI_API_KEY');
-  if (!config.REDIS_URL) missing.push('REDIS_URL');
   if (!config.SUPABASE_URL) missing.push('SUPABASE_URL');
   if (!config.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+  
+  if (!config.REDIS_URL) {
+    warnings.push('REDIS_URL not set. Budget enforcement will use in-memory fallback (non-persistent).');
+  }
   
   if (missing.length > 0) {
     console.error(`❌ FATAL: Missing required environment variables: ${missing.join(', ')}`);
@@ -117,6 +91,7 @@ export function validateEnvOrExit(): void {
   if (!config.ADMIN_TOKEN) {
     console.warn('⚠️ WARNING: ADMIN_TOKEN not set. Admin endpoints will be unavailable.');
   }
+  warnings.forEach((warn) => console.warn(`⚠️ WARNING: ${warn}`));
   
   console.log(`✅ ENV_CONFIG: MODE=${config.MODE}, REAL_METRICS=${config.REAL_METRICS_ENABLED}`);
 }

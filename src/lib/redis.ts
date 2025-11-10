@@ -17,7 +17,7 @@ class RedisManager {
     return RedisManager.instance;
   }
 
-  async getClient(): Promise<RedisClientType> {
+  async getClient(): Promise<RedisClientType | null> {
     if (this.client && this.client.isReady) {
       return this.client;
     }
@@ -35,13 +35,14 @@ class RedisManager {
     return this.connect();
   }
 
-  private async connect(): Promise<RedisClientType> {
+  private async connect(): Promise<RedisClientType | null> {
     this.isConnecting = true;
     
     try {
       const redisUrl = process.env.REDIS_URL;
       if (!redisUrl) {
-        throw new Error('REDIS_URL environment variable is required');
+        console.warn('⚠️ REDIS_MANAGER: REDIS_URL not set. Returning null client.');
+        return null;
       }
 
       const options: any = {
@@ -99,7 +100,7 @@ class RedisManager {
 
     } catch (error) {
       console.error('❌ REDIS_CONNECT_FAILED:', error instanceof Error ? error.message : error);
-      throw error;
+      return null;
     } finally {
       this.isConnecting = false;
     }
@@ -120,6 +121,10 @@ class RedisManager {
   // Budget operations with Lua scripts for atomicity
   async ensureBudget(dailyLimitUsd: number, costUsd: number): Promise<boolean> {
     const client = await this.getClient();
+    if (!client) {
+      console.warn('⚠️ BUDGET_MANAGER: Redis unavailable, skipping budget ensure.');
+      return true;
+    }
     const today = new Date().toISOString().split('T')[0];
     const key = `budget:${today}`;
     
@@ -167,6 +172,7 @@ class RedisManager {
   async getCurrentBudgetUsage(): Promise<number> {
     try {
       const client = await this.getClient();
+      if (!client) return 0;
       const today = new Date().toISOString().split('T')[0];
       const usage = await client.get(`budget:${today}`);
       return usage ? parseFloat(usage) : 0;

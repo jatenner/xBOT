@@ -70,7 +70,7 @@ export async function formatContentForTwitter(context: VisualFormatContext): Pro
     // Fallback to simple recent formats query
     const supabase = getSupabaseClient();
     const { data: recentFormats } = await supabase
-      .from('content_generation_metadata_comprehensive')
+      .from('content_metadata')
       .select('visual_format')
       .not('visual_format', 'is', null)
       .order('created_at', { ascending: false })

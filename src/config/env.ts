@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resolveMode, logModeResolution } from "./mode";
 
 const envSchema = z.object({
   // Core Database
@@ -44,10 +45,17 @@ const envSchema = z.object({
   NODE_ENV: z.string().default("production"),
   PORT: z.string().default("8080"),
   HOST: z.string().default("0.0.0.0"),
-  MODE: z.enum(["live", "shadow", "dry"]).optional().default("live"),
+  MODE: z.string().optional(),
 });
 
-export const ENV = envSchema.parse(process.env);
+const parsedEnv = envSchema.parse(process.env);
+const modeResolution = resolveMode();
+logModeResolution(modeResolution);
+
+export const ENV = {
+  ...parsedEnv,
+  MODE: modeResolution.mode,
+} as const;
 
 // Typed helpers
 export const isProduction = ENV.NODE_ENV === "production";

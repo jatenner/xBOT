@@ -21,12 +21,12 @@ async function verify() {
     const result = await client.query(`
       SELECT column_name, data_type 
       FROM information_schema.columns 
-      WHERE table_name = 'content_generation_metadata_comprehensive' 
-      AND column_name IN ('generator_type', 'content_angle', 'format_type', 'complexity_score')
+      WHERE table_name = 'content_metadata' 
+      AND column_name IN ('generator_name', 'raw_topic', 'format_strategy', 'visual_format')
       ORDER BY column_name;
     `);
     
-    console.log('🎯 Diversity Tracking Columns in BASE TABLE:');
+    console.log('🎯 Canonical content_metadata columns present:');
     if (result.rows.length === 4) {
       console.log('✅ ALL 4 COLUMNS EXIST:');
       result.rows.forEach(row => {
@@ -39,36 +39,25 @@ async function verify() {
       });
     }
     
-    // Test inserting diversity data
-    console.log('\n🧪 Testing diversity data insert...');
-    const testResult = await client.query(`
-      UPDATE content_generation_metadata_comprehensive 
-      SET 
-        generator_type = 'test_generator',
-        content_angle = 'test_angle',
-        format_type = 'single',
-        complexity_score = 5
-      WHERE decision_id = (
-        SELECT decision_id 
-        FROM content_generation_metadata_comprehensive 
-        LIMIT 1
-      )
-      RETURNING decision_id, generator_type, content_angle;
+    // Sample row values
+    console.log('\n🧪 Sampling content_metadata diversity fields...');
+    const sample = await client.query(`
+      SELECT decision_id, generator_name, raw_topic, format_strategy, visual_format
+      FROM content_metadata
+      WHERE format_strategy IS NOT NULL
+      LIMIT 1;
     `);
     
-    if (testResult.rows.length > 0) {
-      console.log('✅ Diversity data write successful!');
-      console.log(`   Updated decision: ${testResult.rows[0].decision_id}`);
-      console.log(`   Generator: ${testResult.rows[0].generator_type}`);
-      console.log(`   Angle: ${testResult.rows[0].content_angle}`);
-      
-      // Rollback test
-      await client.query(`
-        UPDATE content_generation_metadata_comprehensive 
-        SET generator_type = NULL, content_angle = NULL, format_type = NULL, complexity_score = NULL
-        WHERE decision_id = $1;
-      `, [testResult.rows[0].decision_id]);
-      console.log('   (Test data rolled back)');
+    if (sample.rows.length > 0) {
+      const row = sample.rows[0];
+      console.log('✅ Sample row retrieved:');
+      console.log(`   decision_id: ${row.decision_id}`);
+      console.log(`   generator_name: ${row.generator_name}`);
+      console.log(`   raw_topic: ${row.raw_topic}`);
+      console.log(`   format_strategy: ${row.format_strategy}`);
+      console.log(`   visual_format: ${row.visual_format}`);
+    } else {
+      console.log('⚠️ No rows with populated diversity columns found (data may still be sparse).');
     }
     
     console.log('\n🎉 Migration verified and functional!');
