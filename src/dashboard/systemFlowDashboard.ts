@@ -223,9 +223,9 @@ async function fetchSystemFlowData(supabase: any): Promise<SystemFlowData> {
       .limit(10);
     
     // Get recent posts with full data for tabs (relaxed filters to show all content)
-    const { data: recentPosts, error: postsError } = await supabase
+    const { data: recentPostsRaw, error: postsError } = await supabase
       .from('content_metadata')
-      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, decision_type, generator_name, tweet_id, status, error_message, raw_topic:topic, tone, angle, format_strategy:structure, created_at')
+      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, decision_type, generator_name, tweet_id, status, error_message, raw_topic, tone, angle, format_strategy, created_at')
       .in('decision_type', ['single', 'thread'])
       .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
       .order('created_at', { ascending: false })
@@ -235,12 +235,18 @@ async function fetchSystemFlowData(supabase: any): Promise<SystemFlowData> {
       console.error('[FLOW_DASHBOARD] Posts query error:', postsError.message);
     }
     
-    console.log('[FLOW_DASHBOARD] Posts query returned:', recentPosts?.length || 0, 'posts');
+    const recentPosts = (recentPostsRaw || []).map((row: any) => ({
+      ...row,
+      topic: row.raw_topic || '',
+      structure: row.format_strategy || '',
+    }));
+    
+    console.log('[FLOW_DASHBOARD] Posts query returned:', recentPosts.length, 'posts');
     
     // Get recent replies with full data for tabs (relaxed filters to show all content)
-    const { data: recentReplies, error: repliesError } = await supabase
+    const { data: recentRepliesRaw, error: repliesError } = await supabase
       .from('content_metadata')
-      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, target_username:reply_to_username, generator_name, tweet_id, status, error_message, raw_topic:topic, tone, angle, format_strategy:structure, created_at')
+      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, target_username, generator_name, tweet_id, status, error_message, raw_topic, tone, angle, format_strategy, created_at')
       .eq('decision_type', 'reply')
       .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
       .order('created_at', { ascending: false })
@@ -250,7 +256,14 @@ async function fetchSystemFlowData(supabase: any): Promise<SystemFlowData> {
       console.error('[FLOW_DASHBOARD] Replies query error:', repliesError.message);
     }
     
-    console.log('[FLOW_DASHBOARD] Replies query returned:', recentReplies?.length || 0, 'replies');
+    const recentReplies = (recentRepliesRaw || []).map((row: any) => ({
+      ...row,
+      reply_to_username: row.target_username || '',
+      topic: row.raw_topic || '',
+      structure: row.format_strategy || '',
+    }));
+    
+    console.log('[FLOW_DASHBOARD] Replies query returned:', recentReplies.length, 'replies');
     
     return {
       pipelines: {
@@ -265,8 +278,8 @@ async function fetchSystemFlowData(supabase: any): Promise<SystemFlowData> {
         repliesQueued: repliesQueued?.length || 0,
         readyToPost: readyContent + readyReplies
       },
-      recentPosts: recentPosts || [],
-      recentReplies: recentReplies || [],
+      recentPosts,
+      recentReplies,
       errors: errors || [],
       timestamp: now
     };
