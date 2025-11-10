@@ -9,10 +9,12 @@ import { getBrowser, createContext } from '../browser/browserFactory';
 import { existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { ImprovedReplyIdExtractor } from './ImprovedReplyIdExtractor';
+import { BulletproofTweetExtractor } from '../utils/bulletproofTweetExtractor';
 
 export interface PostResult {
   success: boolean;
   tweetId?: string;
+  tweetUrl?: string;
   error?: string;
 }
 
@@ -41,24 +43,23 @@ export class UltimateTwitterPoster {
         await this.ensureContext();
         const result = await this.attemptPost(content);
         
-        if (result.success) {
-          const ms = Date.now() - startTime;
-          log({ op: 'ultimate_poster_complete', outcome: 'success', attempt: retryCount + 1, tweet_id: result.tweetId, ms });
-          return result;
+        if (!result.success) {
+          if (result.error?.includes('session expired') || result.error?.includes('not logged in')) {
+            log({ op: 'ultimate_poster_auth_error', action: 'refreshing_session' });
+            await this.refreshSession();
+          }
+          throw new Error(result.error || 'Post attempt failed');
         }
-        
-        // If we got a specific error that suggests retry won't help, don't retry
-        if (result.error?.includes('session expired') || result.error?.includes('not logged in')) {
-          log({ op: 'ultimate_poster_auth_error', action: 'refreshing_session' });
-          await this.refreshSession();
-        }
-        
-        throw new Error(result.error || 'Post attempt failed');
+
+        const canonical = await this.extractCanonicalTweet(content);
+        const ms = Date.now() - startTime;
+        log({ op: 'ultimate_poster_complete', outcome: 'success', attempt: retryCount + 1, tweet_id: canonical.tweetId, ms });
+        await this.dispose();
+        return { success: true, tweetId: canonical.tweetId, tweetUrl: canonical.tweetUrl };
         
       } catch (error) {
         log({ op: 'ultimate_poster_attempt', outcome: 'error', attempt: retryCount + 1, error: error.message });
         
-        // Check if this is a recoverable error
         const isRecoverable = this.isRecoverableError(error.message);
         
         if (retryCount < maxRetries && isRecoverable) {
@@ -66,7 +67,6 @@ export class UltimateTwitterPoster {
           await this.cleanup();
           retryCount++;
           
-          // Add progressive delay between retries
           const delay = (retryCount) * 2000; // 2s, 4s delays
           log({ op: 'ultimate_poster_delay', delay_ms: delay });
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -74,16 +74,17 @@ export class UltimateTwitterPoster {
           continue;
         }
         
-        // Final failure - capture artifacts
         const ms = Date.now() - startTime;
         log({ op: 'ultimate_poster_complete', outcome: 'failure', attempts: retryCount + 1, error: error.message, ms });
         await this.captureFailureArtifacts(error.message);
+        await this.cleanup();
         return { success: false, error: error.message };
       }
     }
 
     const ms = Date.now() - startTime;
     log({ op: 'ultimate_poster_complete', outcome: 'max_retries', attempts: retryCount, ms });
+    await this.cleanup();
     return { success: false, error: 'Max retries exceeded' };
   }
 
@@ -1062,6 +1063,42 @@ export class UltimateTwitterPoster {
     }
   }
 
+  private async extractCanonicalTweet(content: string): Promise<{ tweetId: string; tweetUrl: string }> {
+    if (!this.page) {
+      throw new Error('Browser page unavailable for tweet verification');
+    }
+
+    const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+
+    if (this.capturedTweetId) {
+      const tweetUrl = `https://x.com/${username}/status/${this.capturedTweetId}`;
+      return { tweetId: this.capturedTweetId, tweetUrl };
+    }
+
+    // Give Twitter a moment to surface the new post before extraction
+    await this.page.waitForTimeout(4000);
+
+    const extraction = await BulletproofTweetExtractor.extractWithRetries(this.page, {
+      expectedContent: content,
+      expectedUsername: username,
+      maxAgeSeconds: 600,
+      navigateToVerify: true
+    });
+
+    BulletproofTweetExtractor.logVerificationSteps(extraction);
+
+    if (!extraction.success || !extraction.tweetId) {
+      throw new Error(`Tweet ID extraction failed: ${extraction.error || 'Unknown error'}`);
+    }
+
+    const tweetUrl = extraction.url || `https://x.com/${username}/status/${extraction.tweetId}`;
+
+    return {
+      tweetId: extraction.tweetId,
+      tweetUrl
+    };
+  }
+
   async dispose(): Promise<void> {
     await this.cleanup();
   }
@@ -1187,27 +1224,31 @@ export class UltimateTwitterPoster {
         );
 
         if (!extractionResult.success || !extractionResult.tweetId) {
-          console.warn(`⚠️ ULTIMATE_POSTER: All ID extraction strategies failed`);
-          console.warn(`⚠️ Reply was posted successfully, but ID not found`);
-          console.warn(`🔄 Using placeholder ID - background job will find real ID later`);
+          console.error(`ULTIMATE_POSTER: ❌ Reply ID extraction failed after posting`);
           
-          // Use placeholder - reply WAS posted, we just don't have the ID yet
-          const placeholderId = `reply_posted_${Date.now()}`;
+          try {
+            const deleted = await this.deleteTweetByContent(content);
+            console.log(`ULTIMATE_POSTER: 🧹 Cleanup after reply failure ${deleted ? 'succeeded' : 'skipped'}`);
+          } catch (cleanupError: any) {
+            console.warn(`ULTIMATE_POSTER: ⚠️ Cleanup error after reply failure: ${cleanupError.message}`);
+          }
           
-          return {
-            success: true,
-            tweetId: placeholderId
-          };
+          throw new Error(`Reply ID extraction failed: ${extractionResult.error || 'Unknown error'}`);
         }
 
         const tweetId = extractionResult.tweetId;
-        console.log(`ULTIMATE_POSTER: ✅ ID extracted via '${extractionResult.strategy}' strategy`);
+        const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+        const tweetUrl = `https://x.com/${username}/status/${tweetId}`;
 
+        console.log(`ULTIMATE_POSTER: ✅ ID extracted via '${extractionResult.strategy}' strategy`);
         console.log(`ULTIMATE_POSTER: ✅ Reply posted successfully: ${tweetId}`);
+
+        await this.dispose();
 
         return {
           success: true,
-          tweetId: tweetId
+          tweetId,
+          tweetUrl
         };
 
       } catch (error: any) {
@@ -1225,6 +1266,7 @@ export class UltimateTwitterPoster {
       }
     }
 
+    await this.cleanup();
     return { success: false, error: 'Max retries exceeded for reply' };
   }
 
@@ -1309,6 +1351,62 @@ export class UltimateTwitterPoster {
     } catch (error) {
       console.error(`❌ REPLY_ID_EXTRACTION ERROR: ${error}`);
       return undefined;
+    }
+  }
+
+  private normalizeContent(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/[^\w\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .substring(0, 120);
+  }
+
+  private async deleteTweetByContent(content: string): Promise<boolean> {
+    if (!this.page) return false;
+
+    try {
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+      const normalizedTarget = this.normalizeContent(content);
+
+      await this.page.goto(`https://x.com/${username}`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 20000
+      });
+      await this.page.waitForTimeout(2000);
+
+      const articles = await this.page.$$('article[data-testid="tweet"]');
+      for (const article of articles) {
+        const textContent = await article.innerText();
+        const normalizedArticle = this.normalizeContent(textContent || '');
+
+        if (normalizedArticle.includes(normalizedTarget.substring(0, Math.min(60, normalizedTarget.length)))) {
+          const moreButton = await article.$('[data-testid="caret"]');
+          if (!moreButton) continue;
+
+          await moreButton.click();
+          await this.page.waitForTimeout(500);
+
+          const deleteButton = await this.page.$('[data-testid="Dropdown"] [role="menuitem"]:has-text("Delete")');
+          if (!deleteButton) continue;
+          await deleteButton.click();
+
+          const confirmButton = await this.page.$('[data-testid="confirmationSheetConfirm"]');
+          if (!confirmButton) continue;
+          await confirmButton.click();
+
+          await this.page.waitForTimeout(1000);
+          console.log('ULTIMATE_POSTER: ✅ Deleted reply due to extraction failure');
+          return true;
+        }
+      }
+
+      console.warn('ULTIMATE_POSTER: ⚠️ Unable to locate reply for deletion');
+      return false;
+    } catch (error: any) {
+      console.error(`ULTIMATE_POSTER: ❌ Error while deleting reply: ${error.message}`);
+      return false;
     }
   }
 }
