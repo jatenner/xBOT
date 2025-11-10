@@ -1202,6 +1202,17 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     
     await poster.dispose();
     
+    try {
+      // Clean up opportunity so it never resurfaces
+      await supabase
+        .from('reply_opportunities')
+        .delete()
+        .eq('target_tweet_id', decision.target_tweet_id);
+      console.log(`[POSTING_QUEUE] 🧹 Cleared opportunity for ${decision.target_tweet_id}`);
+    } catch (cleanupError: any) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Failed to clear opportunity ${decision.target_tweet_id}:`, cleanupError.message);
+    }
+    
     // 🚨 CRITICAL: Reply ID MUST be real for metrics scraping!
     if (!result.tweetId || result.tweetId.startsWith('reply_posted_') || result.tweetId.startsWith('posted_')) {
       console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Reply posted but got invalid ID: ${result.tweetId}`);
