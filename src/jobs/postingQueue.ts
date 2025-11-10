@@ -1034,71 +1034,27 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
       } else {
         console.log(`[POSTING_QUEUE] 📝 Posting as SINGLE tweet`);
         const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
-        const { BulletproofTweetExtractor } = await import('../utils/bulletproofTweetExtractor');
         
         // ✅ Content is ALREADY formatted (done in planJob before queueing)
         console.log(`[POSTING_QUEUE] 💡 Using pre-formatted content (visual formatting applied before queueing)`);
         
         const poster = new UltimateTwitterPoster();
         const result = await poster.postTweet(decision.content);
+        await poster.dispose();
         
-        if (!result.success) {
-          await poster.dispose();
+        if (!result.success || !result.tweetId) {
           console.error(`[POSTING_QUEUE] ❌ Playwright posting failed: ${result.error}`);
           throw new Error(result.error || 'Playwright posting failed');
         }
         
-        // ✅ POST SUCCEEDED - Now extract tweet ID using ONLY bulletproof method
-        console.log(`[POSTING_QUEUE] ✅ Tweet posted! Waiting for Twitter to process...`);
+        const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+        const tweetUrl = `https://x.com/${username}/status/${result.tweetId}`;
         
-        const page = (poster as any).page;
-        if (!page) {
-          await poster.dispose();
-          console.warn(`[POSTING_QUEUE] ⚠️ No browser page available - will try background recovery for ID`);
-          // Return with NULL ID - background job will recover
-          return { tweetId: null, tweetUrl: null };
-        }
-        
-        // Give Twitter time to process the post and update profile
-        await page.waitForTimeout(5000); // Increased to 5 seconds
-        console.log(`[POSTING_QUEUE] 🔍 Now extracting tweet ID with ultra-reliable extraction (7 retries)...`);
-        
-        // Use bulletproof extractor WITH RETRIES (7 attempts total!)
-        // This is CRITICAL - we MUST get the ID for rate limiting and metrics
-        const extraction = await BulletproofTweetExtractor.extractWithRetries(page, {
-          expectedContent: decision.content,  // ✅ Already formatted content
-          expectedUsername: process.env.TWITTER_USERNAME || 'SignalAndSynapse',
-          maxAgeSeconds: 600, // ✅ FIXED: 10 minutes to handle Twitter profile caching
-          navigateToVerify: true
-        });
-        
-        BulletproofTweetExtractor.logVerificationSteps(extraction);
-        
-        // Clean up browser
-        await poster.dispose();
-        
-        if (!extraction.success || !extraction.tweetId) {
-          // 🚨 CRITICAL: ID extraction failed!
-          // CANNOT proceed without tweet_id - needed for:
-          // 1. Rate limiting (accurate 2/hr tracking)
-          // 2. Metrics scraper (collect performance data)
-          // 3. Learning system (complete data for improvement)
-          console.error(`[POSTING_QUEUE] 🚨 CRITICAL: ID extraction failed after posting!`);
-          console.error(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 60)}..."`);
-          console.error(`[POSTING_QUEUE] 💡 Error: ${extraction.error || 'Unknown error'}`);
-          console.error(`[POSTING_QUEUE] ⚠️ Tweet IS live but we MUST have tweet_id!`);
-          console.error(`[POSTING_QUEUE] 🚫 Cannot track metrics or rate limit without ID`);
-          
-          // Throw error - this will mark as failed and trigger retry
-          // Better to retry than have incomplete data
-          throw new Error(`ID extraction failed - required for rate limiting and metrics: ${extraction.error}`);
-        }
-        
-        console.log(`[POSTING_QUEUE] ✅ Tweet ID extracted: ${extraction.tweetId}`);
-        console.log(`[POSTING_QUEUE] ✅ Tweet URL: ${extraction.url}`);
+        console.log(`[POSTING_QUEUE] ✅ Tweet ID extracted: ${result.tweetId}`);
+        console.log(`[POSTING_QUEUE] ✅ Tweet URL: ${tweetUrl}`);
         
         // Return object with both ID and URL
-        return { tweetId: extraction.tweetId, tweetUrl: extraction.url || extraction.tweetId };
+        return { tweetId: result.tweetId, tweetUrl };
       }
     } catch (error: any) {
       console.error(`[POSTING_QUEUE] ❌ Playwright system error: ${error.message}`);
