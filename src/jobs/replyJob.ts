@@ -252,17 +252,31 @@ async function checkTimeBetweenReplies(): Promise<{
       return { canReply: true, minutesSinceLast: 999 };
     }
     
+    // 🚨 FIX: Handle null posted_at (corrupted data from old system)
+    if (!data.posted_at) {
+      console.warn('[TIME_BETWEEN] ⚠️ Last reply has NULL posted_at - treating as stale, allowing replies');
+      return { canReply: true, minutesSinceLast: 999 };
+    }
+    
     const lastReplyTime = new Date(String(data.posted_at));
+    
+    // 🚨 FIX: Handle invalid dates
+    if (isNaN(lastReplyTime.getTime())) {
+      console.warn('[TIME_BETWEEN] ⚠️ Invalid posted_at date - allowing replies');
+      return { canReply: true, minutesSinceLast: 999 };
+    }
+    
     const now = new Date();
     const elapsedMs = now.getTime() - lastReplyTime.getTime();
     const minIntervalMs = REPLY_CONFIG.MIN_MINUTES_BETWEEN * 60 * 1000;
-    const graceMs = 30 * 1000; // 30 second tolerance to avoid equality blocking
+    const graceMs = 60 * 1000; // 60 second tolerance (increased from 30s to avoid edge cases)
     const staleThresholdMs = 60 * 60 * 1000; // 1 hour: treat as stale and allow replies
 
     let canReply = elapsedMs + graceMs >= minIntervalMs;
 
     if (!canReply && elapsedMs >= staleThresholdMs) {
       canReply = true;
+      console.log('[TIME_BETWEEN] ⏰ Last reply is stale (>1h ago), allowing new replies');
     }
 
     const remainingMs = Math.max(0, minIntervalMs - elapsedMs);
