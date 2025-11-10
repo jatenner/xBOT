@@ -7,6 +7,35 @@ import { getSupabaseClient } from '../db/index';
 import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 import { BrowserSemaphore } from '../browser/BrowserSemaphore';
 
+function sanitizeHTML(input: any): string {
+  if (input === null || input === undefined) return '';
+  return String(input)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return value;
+  }
+}
+
+function truncateText(value: string, length: number = 80): string {
+  if (!value) return '';
+  return value.length > length ? `${value.substring(0, length)}…` : value;
+}
+
+function formatNumber(value?: number | null): string {
+  if (value === null || value === undefined) return '—';
+  return Number.isFinite(value) ? value.toLocaleString() : String(value);
+}
+
 export async function generateSystemHealthDashboard(): Promise<string> {
   try {
     const supabase = getSupabaseClient();
@@ -19,16 +48,19 @@ export async function generateSystemHealthDashboard(): Promise<string> {
       harvesterStatus,
       browserStatus,
       recentActivity,
-      jobTimings
+      jobTimings,
+      postingAudit
     ] = await Promise.all([
       getQueueStatus(supabase),
       getScraperStatus(supabase),
       getHarvesterStatus(supabase),
       getBrowserPoolStatus(),
       getRecentSystemActivity(supabase),
-      getJobScheduleStatus(supabase)
+      getJobScheduleStatus(supabase),
+      getPostingAudit(supabase)
     ]);
     
+    const twitterUsername = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
     return generateHealthHTML({
       queueStatus,
       scraperStatus,
@@ -36,6 +68,8 @@ export async function generateSystemHealthDashboard(): Promise<string> {
       browserStatus,
       recentActivity,
       jobTimings,
+      postingAudit,
+      twitterUsername,
       timestamp: now
     });
     
@@ -133,6 +167,93 @@ async function getScraperStatus(supabase: any) {
       posted_at: p.posted_at,
       age_minutes: Math.round((Date.now() - new Date(p.posted_at).getTime()) / (1000 * 60))
     }))
+  };
+}
+
+async function getPostingAudit(supabase: any) {
+  const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const [
+    postedCount,
+    failedCount,
+    missingIdCount,
+    totalCount,
+    recentDecisions
+  ] = await Promise.all([
+    supabase
+      .from('content_metadata')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'posted')
+      .gte('posted_at', last24h),
+    supabase
+      .from('content_metadata')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'failed')
+      .gte('updated_at', last24h),
+    supabase
+      .from('content_metadata')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'posted')
+      .is('tweet_id', null),
+    supabase
+      .from('content_metadata')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', last24h),
+    supabase
+      .from('content_metadata')
+      .select('id, decision_id, decision_type, status, tweet_id, posted_at, scheduled_at, created_at, updated_at, generator_name, raw_topic, angle, tone, format_strategy, error_message, features, content, actual_impressions')
+      .order('created_at', { ascending: false })
+      .limit(50)
+  ]);
+
+  const recent = (recentDecisions.data || []).map((row: any) => {
+    let features: any = {};
+    if (row.features) {
+      if (typeof row.features === 'string') {
+        try {
+          features = JSON.parse(row.features);
+        } catch {
+          features = {};
+        }
+      } else if (typeof row.features === 'object') {
+        features = row.features;
+      }
+    }
+
+    const contentPreview = row.content ? truncateText(String(row.content).replace(/\s+/g, ' ').trim(), 120) : '';
+
+    return {
+      id: row.id,
+      decisionId: row.decision_id,
+      type: row.decision_type || 'unknown',
+      status: row.status || 'unknown',
+      tweetId: row.tweet_id || null,
+      generator: row.generator_name || 'unknown',
+      topic: row.raw_topic || '',
+      angle: row.angle || '',
+      tone: row.tone || '',
+      format: row.format_strategy || '',
+      createdAt: row.created_at,
+      scheduledAt: row.scheduled_at,
+      postedAt: row.posted_at,
+      updatedAt: row.updated_at,
+      lastAttempt: features?.last_attempt || row.updated_at,
+      retryCount: typeof features?.retry_count === 'number' ? features.retry_count : 0,
+      error: row.error_message || features?.last_error || '',
+      impressions: row.actual_impressions ?? null,
+      contentPreview
+    };
+  });
+
+  return {
+    summary: {
+      total24h: totalCount.count || 0,
+      posted24h: postedCount.count || 0,
+      failed24h: failedCount.count || 0,
+      missingIds: missingIdCount.count || 0,
+      recentCount: recent.length
+    },
+    recent
   };
 }
 
@@ -299,6 +420,69 @@ async function getJobScheduleStatus(supabase: any) {
 
 function generateHealthHTML(data: any): string {
   const timestamp = new Date(data.timestamp).toLocaleString();
+  const safeUsername = sanitizeHTML(data.twitterUsername || 'SignalAndSynapse');
+  const postingSummary = data.postingAudit?.summary || { total24h: 0, posted24h: 0, failed24h: 0, missingIds: 0, recentCount: 0 };
+
+  const postingRows = (data.postingAudit?.recent || []).map((row: any) => {
+    const typeClass = row.type === 'thread' ? 'type-thread' : row.type === 'reply' ? 'type-reply' : 'type-single';
+    const typeLabel = sanitizeHTML((row.type || 'unknown').toUpperCase());
+    const typeBadge = `<span class="type-badge ${typeClass}">${typeLabel}</span>`;
+
+    const statusMap: Record<string, string> = {
+      posted: 'posted',
+      failed: 'failed',
+      queued: 'queued',
+      skipped: 'skipped'
+    };
+    const statusClass = statusMap[row.status] || 'default';
+    const statusLabel = sanitizeHTML((row.status || 'unknown').toUpperCase());
+    const statusPill = `<span class="status-pill ${statusClass}">${statusLabel}</span>`;
+
+    const tweetCell = row.tweetId
+      ? `<a href="https://x.com/${safeUsername}/status/${sanitizeHTML(row.tweetId)}" target="_blank"><code>${sanitizeHTML(row.tweetId)}</code></a>`
+      : '<span class="badge badge-warning">Missing</span>';
+
+    const viewsCell = sanitizeHTML(formatNumber(row.impressions));
+    const generatorBadge = `<span class="badge">${sanitizeHTML(row.generator || 'unknown')}</span>`;
+
+    const topicText = sanitizeHTML(truncateText(row.topic || row.angle || row.tone || '—', 80));
+    const contentBlock = row.contentPreview ? `<div class="audit-content">${sanitizeHTML(row.contentPreview)}</div>` : '';
+    const topicCell = `${topicText}${contentBlock}`;
+
+    const createdCell = sanitizeHTML(formatDateTime(row.createdAt));
+    const postedCell = sanitizeHTML(formatDateTime(row.postedAt));
+
+    let errorCell: string;
+    if (row.error) {
+      const errorText = sanitizeHTML(truncateText(row.error, 160));
+      errorCell = `<div class="error-msg">${errorText}</div>`;
+    } else {
+      errorCell = '<span class="badge badge-success">OK</span>';
+    }
+
+    const retryMetaParts: string[] = [];
+    if (row.retryCount) retryMetaParts.push(sanitizeHTML(`Retries: ${row.retryCount}`));
+    if (row.lastAttempt) retryMetaParts.push(sanitizeHTML(`Last attempt: ${formatDateTime(row.lastAttempt)}`));
+    if (retryMetaParts.length) {
+      errorCell += `<div class="audit-error-meta">${retryMetaParts.join(' • ')}</div>`;
+    }
+
+    return `
+        <tr>
+          <td>${typeBadge}</td>
+          <td>${statusPill}</td>
+          <td>${tweetCell}</td>
+          <td>${viewsCell}</td>
+          <td>${generatorBadge}</td>
+          <td>${topicCell}</td>
+          <td>${createdCell}</td>
+          <td>${postedCell}</td>
+          <td>${errorCell}</td>
+        </tr>
+      `;
+  }).join('');
+
+  const postingTableBody = postingRows || '<tr><td colspan="9" style="text-align:center; color:#999;">No decisions recorded yet.</td></tr>';
   
   return `<!DOCTYPE html>
 <html>
@@ -397,6 +581,52 @@ function generateHealthHTML(data: any): string {
                     ${data.queueStatus.replies.upcoming.length === 0 ? '<div class="no-data">None queued</div>' : ''}
                 </div>
             </div>
+        </div>
+
+        <!-- POSTING AUDIT -->
+        <div class="section">
+            <h2>🧾 Posting Audit (Last 50 decisions)</h2>
+            <div class="grid-4">
+                <div class="health-card status-neutral">
+                    <div class="health-label">Decisions (24h)</div>
+                    <div class="health-value">${formatNumber(postingSummary.total24h)}</div>
+                    <div class="health-detail">Generated in past 24h</div>
+                </div>
+                <div class="health-card ${postingSummary.failed24h === 0 ? 'status-good' : 'status-warning'}">
+                    <div class="health-label">Failures (24h)</div>
+                    <div class="health-value">${formatNumber(postingSummary.failed24h)}</div>
+                    <div class="health-detail">${postingSummary.failed24h === 0 ? 'None detected' : 'Needs attention'}</div>
+                </div>
+                <div class="health-card ${postingSummary.missingIds === 0 ? 'status-good' : 'status-critical'}">
+                    <div class="health-label">Missing Tweet IDs</div>
+                    <div class="health-value">${formatNumber(postingSummary.missingIds)}</div>
+                    <div class="health-detail">Should always be 0</div>
+                </div>
+                <div class="health-card status-neutral">
+                    <div class="health-label">Rows Shown</div>
+                    <div class="health-value">${formatNumber(postingSummary.recentCount)}</div>
+                    <div class="health-detail">Most recent decisions</div>
+                </div>
+            </div>
+
+            <table class="compact-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Tweet</th>
+                        <th>Views</th>
+                        <th>Generator</th>
+                        <th>Topic / Snippet</th>
+                        <th>Created</th>
+                        <th>Posted</th>
+                        <th>Error / Retries</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${postingTableBody}
+                </tbody>
+            </table>
         </div>
 
         <!-- METRICS SCRAPER STATUS -->
@@ -849,6 +1079,26 @@ function getHealthStyles(): string {
         .badge-warning {
             background: #ed8936;
         }
+        .badge-success {
+            background: #38a169;
+        }
+        .badge-danger {
+            background: #e53e3e;
+        }
+        
+        .status-pill {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        .status-pill.posted { background: #d1fae5; color: #065f46; }
+        .status-pill.failed { background: #fee2e2; color: #991b1b; }
+        .status-pill.queued { background: #dbeafe; color: #1d4ed8; }
+        .status-pill.skipped { background: #fef3c7; color: #92400e; }
+        .status-pill.default { background: #e2e8f0; color: #2d3748; }
         
         .tier-badge {
             padding: 4px 10px;
@@ -871,6 +1121,17 @@ function getHealthStyles(): string {
         .type-single { background: #dbeafe; color: #1e40af; }
         .type-thread { background: #fce7f3; color: #9f1239; }
         .type-reply { background: #d1fae5; color: #065f46; }
+        
+        .audit-error-meta {
+            font-size: 11px;
+            color: #718096;
+            margin-top: 4px;
+        }
+        .audit-content {
+            font-size: 12px;
+            color: #4a5568;
+            margin-top: 4px;
+        }
         
         .pool-card {
             background: #f7fafc;
