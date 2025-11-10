@@ -223,24 +223,32 @@ async function fetchSystemFlowData(supabase: any): Promise<SystemFlowData> {
       .limit(10);
     
     // Get recent posts with full data for tabs (relaxed filters to show all content)
-    const { data: recentPosts } = await supabase
+    const { data: recentPosts, error: postsError } = await supabase
       .from('content_metadata')
-      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, decision_type, generator_name, tweet_id, status, error_message, topic, tone, angle, structure, created_at')
+      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, decision_type, generator_name, tweet_id, status, error_message, raw_topic:topic, tone, angle, format_strategy:structure, created_at')
       .in('decision_type', ['single', 'thread'])
       .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
       .order('created_at', { ascending: false })
       .limit(100);
     
+    if (postsError) {
+      console.error('[FLOW_DASHBOARD] Posts query error:', postsError.message);
+    }
+    
     console.log('[FLOW_DASHBOARD] Posts query returned:', recentPosts?.length || 0, 'posts');
     
     // Get recent replies with full data for tabs (relaxed filters to show all content)
-    const { data: recentReplies } = await supabase
+    const { data: recentReplies, error: repliesError } = await supabase
       .from('content_metadata')
-      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, reply_to_username, generator_name, tweet_id, status, error_message, topic, tone, angle, structure, created_at')
+      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, target_username:reply_to_username, generator_name, tweet_id, status, error_message, raw_topic:topic, tone, angle, format_strategy:structure, created_at')
       .eq('decision_type', 'reply')
       .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
       .order('created_at', { ascending: false })
       .limit(100);
+    
+    if (repliesError) {
+      console.error('[FLOW_DASHBOARD] Replies query error:', repliesError.message);
+    }
     
     console.log('[FLOW_DASHBOARD] Replies query returned:', recentReplies?.length || 0, 'replies');
     
