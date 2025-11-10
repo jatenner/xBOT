@@ -1111,10 +1111,19 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
 async function postReply(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 💬 Posting reply to @${decision.target_username}: "${decision.content.substring(0, 50)}..."`);
   
-  // 🔒 BROWSER SEMAPHORE: Acquire exclusive browser access (high priority)
+  // 🔒 BROWSER SEMAPHORE: Acquire exclusive browser access (HIGHEST priority)
   const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
   
-  return await withBrowserLock('reply_posting', BrowserPriority.REPLIES, async () => {
+  // 🚨 CRITICAL: Wrap in 90s timeout to prevent 480s hangs
+  const REPLY_TIMEOUT_MS = 90000; // 90 seconds max for reply posting
+  
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`Reply posting timeout after ${REPLY_TIMEOUT_MS/1000}s`));
+    }, REPLY_TIMEOUT_MS);
+  });
+  
+  const postingPromise = withBrowserLock('reply_posting', BrowserPriority.REPLIES, async () => {
     if (!decision.target_tweet_id) {
     throw new Error('Reply decision missing target_tweet_id');
   }
@@ -1209,6 +1218,9 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     throw new Error(`Reply posting failed: ${error.message}`);
   }
   }); // End withBrowserLock
+  
+  // Race between posting and timeout
+  return await Promise.race([postingPromise, timeoutPromise]);
 }
 
 /**
