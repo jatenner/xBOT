@@ -235,13 +235,12 @@ async function fetchSystemFlowData(supabase: any): Promise<SystemFlowData> {
     // Get recent replies with full data for tabs
     const { data: recentReplies } = await supabase
       .from('content_metadata')
-      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, reply_to_username, generator_name, tweet_id')
-      .eq('status', 'posted')
+      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, actual_replies, reply_to_username, generator_name, tweet_id, status, error_message, topic, tone, angle, structure, created_at')
+      .in('status', ['posted', 'failed'])
       .eq('decision_type', 'reply')
-      .not('tweet_id', 'is', null)
-      .gte('posted_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-      .order('posted_at', { ascending: false })
-      .limit(50);
+      .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(100);
     
     return {
       pipelines: {
@@ -327,8 +326,9 @@ function generateFlowHTML(data: SystemFlowData): string {
         <!-- TABS SECTION -->
         <div class="tabs-section">
             <div class="tabs-header">
-                <button class="tab-btn active" onclick="switchTab('posts')">📤 Recent Posts (${data.recentPosts.length})</button>
-                <button class="tab-btn" onclick="switchTab('replies')">💬 Recent Replies (${data.recentReplies.length})</button>
+                <button class="tab-btn active" onclick="switchTab('posts')">📤 Posts (${data.recentPosts.length})</button>
+                <button class="tab-btn" onclick="switchTab('replies')">💬 Replies (${data.recentReplies.length})</button>
+                <button class="tab-btn" onclick="switchTab('pipeline')">🔄 Live Pipeline Health</button>
             </div>
             
             <!-- POSTS TAB -->
@@ -409,32 +409,130 @@ function generateFlowHTML(data: SystemFlowData): string {
                     <table class="data-table" id="replies-table">
                         <thead>
                             <tr>
-                                <th>Time</th>
+                                <th>Posted</th>
+                                <th>Status</th>
                                 <th>Content</th>
                                 <th>Replied To</th>
+                                <th>Topic</th>
+                                <th>Tone</th>
+                                <th>Angle</th>
+                                <th>Generator</th>
                                 <th>Impressions</th>
                                 <th>Likes</th>
+                                <th>Replies</th>
                                 <th>RTs</th>
-                                <th>Generator</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${data.recentReplies.map((reply: any) => {
-                                const timeAgo = formatTimeAgo(new Date(reply.posted_at));
-                                const fullTime = new Date(reply.posted_at).toLocaleString();
+                                const timestamp = reply.posted_at || reply.created_at;
+                                const timeAgo = formatTimeAgo(new Date(timestamp));
+                                const fullTime = new Date(timestamp).toLocaleString();
+                                const isSuccess = reply.status === 'posted';
+                                const statusIcon = isSuccess ? '✅' : '❌';
+                                const statusClass = isSuccess ? 'status-success' : 'status-fail';
+                                const statusText = isSuccess ? 'Posted' : 'Failed';
+                                const errorHint = reply.error_message ? `title="${reply.error_message}"` : '';
+                                
                                 return `
-                                <tr data-impressions="${reply.actual_impressions || 0}" data-likes="${reply.actual_likes || 0}" data-date="${new Date(reply.posted_at).getTime()}">
+                                <tr data-impressions="${reply.actual_impressions || 0}" data-likes="${reply.actual_likes || 0}" data-date="${new Date(timestamp).getTime()}">
                                     <td class="time-cell" title="${fullTime}">${timeAgo}</td>
-                                    <td class="content-cell">${(reply.content || '').substring(0, 100)}...</td>
+                                    <td class="status-cell">
+                                        <span class="status-badge ${statusClass}" ${errorHint}>
+                                            ${statusIcon} ${statusText}
+                                        </span>
+                                    </td>
+                                    <td class="content-cell">${(reply.content || '').substring(0, 80)}...</td>
                                     <td class="replied-to-cell">@${reply.reply_to_username || 'unknown'}</td>
-                                    <td class="metric-cell">${(reply.actual_impressions || 0).toLocaleString()}</td>
-                                    <td class="metric-cell">${(reply.actual_likes || 0).toLocaleString()}</td>
-                                    <td class="metric-cell">${(reply.actual_retweets || 0).toLocaleString()}</td>
+                                    <td class="topic-cell">${reply.topic || '-'}</td>
+                                    <td class="tone-cell">${reply.tone || '-'}</td>
+                                    <td class="angle-cell">${reply.angle || '-'}</td>
                                     <td class="gen-cell">${reply.generator_name || 'unknown'}</td>
+                                    <td class="metric-cell">${isSuccess ? (reply.actual_impressions || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${isSuccess ? (reply.actual_likes || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${isSuccess ? (reply.actual_replies || 0).toLocaleString() : '-'}</td>
+                                    <td class="metric-cell">${isSuccess ? (reply.actual_retweets || 0).toLocaleString() : '-'}</td>
                                 </tr>
                             `}).join('')}
                         </tbody>
                     </table>
+                </div>
+            </div>
+            
+            <!-- PIPELINE TAB -->
+            <div id="pipeline-tab" class="tab-content">
+                <div class="pipeline-explainer">
+                    <h3>🔄 Live System Health</h3>
+                    <p>This view shows real-time data flow through xBOT's 5 core pipelines. Each pipeline processes data independently and feeds into the next stage.</p>
+                </div>
+                
+                <!-- QUEUE OVERVIEW -->
+                <div class="queue-overview">
+                    <div class="queue-card">
+                        <h3>${queueStatus.contentQueued}</h3>
+                        <p>CONTENT QUEUED</p>
+                        <span class="queue-desc">Posts waiting to be published</span>
+                    </div>
+                    <div class="queue-card">
+                        <h3>${queueStatus.repliesQueued}</h3>
+                        <p>REPLIES QUEUED</p>
+                        <span class="queue-desc">Replies waiting to be published</span>
+                    </div>
+                    <div class="queue-card highlight">
+                        <h3>${queueStatus.readyToPost}</h3>
+                        <p>READY TO POST</p>
+                        <span class="queue-desc">Content ready in next 5 minutes</span>
+                    </div>
+                </div>
+
+                <!-- PIPELINES -->
+                <div class="pipelines-grid">
+                    ${generatePipelineCard(pipelines.contentPipeline, '1')}
+                    ${generatePipelineCard(pipelines.replyPipeline, '2')}
+                    ${generatePipelineCard(pipelines.harvestPipeline, '3')}
+                    ${generatePipelineCard(pipelines.scrapingPipeline, '4')}
+                    ${generatePipelineCard(pipelines.learningPipeline, '5')}
+                </div>
+                
+                <div class="pipeline-legend">
+                    <h4>Pipeline Explanations:</h4>
+                    <div class="legend-grid">
+                        <div class="legend-item">
+                            <span class="legend-number">1️⃣</span>
+                            <div>
+                                <strong>Content Pipeline</strong>
+                                <p>Generates original posts and threads using AI. Target: 2 posts/hour</p>
+                            </div>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-number">2️⃣</span>
+                            <div>
+                                <strong>Reply Pipeline</strong>
+                                <p>Creates AI-generated replies to harvested opportunities. Target: 4 replies/hour</p>
+                            </div>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-number">3️⃣</span>
+                            <div>
+                                <strong>Harvest Pipeline</strong>
+                                <p>Discovers reply opportunities from target accounts (tier-based)</p>
+                            </div>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-number">4️⃣</span>
+                            <div>
+                                <strong>Scraping Pipeline</strong>
+                                <p>Collects engagement metrics from Twitter for posted content</p>
+                            </div>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-number">5️⃣</span>
+                            <div>
+                                <strong>Learning Pipeline</strong>
+                                <p>Analyzes performance data to improve future content decisions</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1130,6 +1228,81 @@ function getFlowStyles(): string {
         
         .structure-cell {
             color: #ec4899;
+        }
+        
+        .pipeline-explainer {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 2px solid #3b82f6;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .pipeline-explainer h3 {
+            color: #3b82f6;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        
+        .pipeline-explainer p {
+            color: #94a3b8;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .queue-desc {
+            display: block;
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 5px;
+        }
+        
+        .pipeline-legend {
+            background: #1e293b;
+            border-radius: 12px;
+            border: 2px solid #334155;
+            padding: 25px;
+            margin-top: 30px;
+        }
+        
+        .pipeline-legend h4 {
+            color: #e2e8f0;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .legend-grid {
+            display: grid;
+            gap: 15px;
+        }
+        
+        .legend-item {
+            display: flex;
+            gap: 15px;
+            align-items: start;
+            padding: 15px;
+            background: #0f172a;
+            border-radius: 8px;
+            border-left: 3px solid #3b82f6;
+        }
+        
+        .legend-number {
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+        
+        .legend-item strong {
+            color: #e2e8f0;
+            font-size: 14px;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .legend-item p {
+            color: #94a3b8;
+            font-size: 13px;
+            line-height: 1.5;
+            margin: 0;
         }
   `;
 }
