@@ -33,6 +33,8 @@ interface SystemFlowData {
     repliesQueued: number;
     readyToPost: number;
   };
+  recentPosts: any[];
+  recentReplies: any[];
   errors: any[];
   timestamp: Date;
 }
@@ -220,6 +222,28 @@ async function fetchSystemFlowData(supabase: any): Promise<SystemFlowData> {
       .order('updated_at', { ascending: false })
       .limit(10);
     
+    // Get recent posts with full data for tabs
+    const { data: recentPosts } = await supabase
+      .from('content_metadata')
+      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, decision_type, generator_name, tweet_id')
+      .eq('status', 'posted')
+      .in('decision_type', ['single', 'thread'])
+      .not('tweet_id', 'is', null)
+      .gte('posted_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order('posted_at', { ascending: false })
+      .limit(50);
+    
+    // Get recent replies with full data for tabs
+    const { data: recentReplies } = await supabase
+      .from('content_metadata')
+      .select('content, posted_at, actual_impressions, actual_likes, actual_retweets, reply_to_username, generator_name, tweet_id')
+      .eq('status', 'posted')
+      .eq('decision_type', 'reply')
+      .not('tweet_id', 'is', null)
+      .gte('posted_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order('posted_at', { ascending: false })
+      .limit(50);
+    
     return {
       pipelines: {
         contentPipeline,
@@ -233,6 +257,8 @@ async function fetchSystemFlowData(supabase: any): Promise<SystemFlowData> {
         repliesQueued: repliesQueued?.length || 0,
         readyToPost: readyContent + readyReplies
       },
+      recentPosts: recentPosts || [],
+      recentReplies: recentReplies || [],
       errors: errors || [],
       timestamp: now
     };
@@ -297,6 +323,100 @@ function generateFlowHTML(data: SystemFlowData): string {
             ${generatePipelineCard(pipelines.harvestPipeline, '3')}
             ${generatePipelineCard(pipelines.scrapingPipeline, '4')}
             ${generatePipelineCard(pipelines.learningPipeline, '5')}
+        </div>
+
+        <!-- TABS SECTION -->
+        <div class="tabs-section">
+            <div class="tabs-header">
+                <button class="tab-btn active" onclick="switchTab('posts')">📤 Recent Posts (${data.recentPosts.length})</button>
+                <button class="tab-btn" onclick="switchTab('replies')">💬 Recent Replies (${data.recentReplies.length})</button>
+            </div>
+            
+            <!-- POSTS TAB -->
+            <div id="posts-tab" class="tab-content active">
+                <div class="tab-controls">
+                    <div class="sort-controls">
+                        <span class="sort-label">Sort by:</span>
+                        <button class="sort-btn active" onclick="sortPosts('date')">📅 Date</button>
+                        <button class="sort-btn" onclick="sortPosts('impressions')">👁️ Impressions</button>
+                        <button class="sort-btn" onclick="sortPosts('likes')">❤️ Likes</button>
+                    </div>
+                </div>
+                <div class="data-table-container">
+                    <table class="data-table" id="posts-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Content</th>
+                                <th>Type</th>
+                                <th>Impressions</th>
+                                <th>Likes</th>
+                                <th>RTs</th>
+                                <th>Generator</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.recentPosts.map((post: any) => {
+                                const timeAgo = formatTimeAgo(new Date(post.posted_at));
+                                const fullTime = new Date(post.posted_at).toLocaleString();
+                                return `
+                                <tr data-impressions="${post.actual_impressions || 0}" data-likes="${post.actual_likes || 0}" data-date="${new Date(post.posted_at).getTime()}">
+                                    <td class="time-cell" title="${fullTime}">${timeAgo}</td>
+                                    <td class="content-cell">${(post.content || '').substring(0, 100)}...</td>
+                                    <td><span class="type-badge ${post.decision_type}">${post.decision_type}</span></td>
+                                    <td class="metric-cell">${(post.actual_impressions || 0).toLocaleString()}</td>
+                                    <td class="metric-cell">${(post.actual_likes || 0).toLocaleString()}</td>
+                                    <td class="metric-cell">${(post.actual_retweets || 0).toLocaleString()}</td>
+                                    <td class="gen-cell">${post.generator_name || 'unknown'}</td>
+                                </tr>
+                            `}).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- REPLIES TAB -->
+            <div id="replies-tab" class="tab-content">
+                <div class="tab-controls">
+                    <div class="sort-controls">
+                        <span class="sort-label">Sort by:</span>
+                        <button class="sort-btn active" onclick="sortReplies('date')">📅 Date</button>
+                        <button class="sort-btn" onclick="sortReplies('impressions')">👁️ Impressions</button>
+                        <button class="sort-btn" onclick="sortReplies('likes')">❤️ Likes</button>
+                    </div>
+                </div>
+                <div class="data-table-container">
+                    <table class="data-table" id="replies-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Content</th>
+                                <th>Replied To</th>
+                                <th>Impressions</th>
+                                <th>Likes</th>
+                                <th>RTs</th>
+                                <th>Generator</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.recentReplies.map((reply: any) => {
+                                const timeAgo = formatTimeAgo(new Date(reply.posted_at));
+                                const fullTime = new Date(reply.posted_at).toLocaleString();
+                                return `
+                                <tr data-impressions="${reply.actual_impressions || 0}" data-likes="${reply.actual_likes || 0}" data-date="${new Date(reply.posted_at).getTime()}">
+                                    <td class="time-cell" title="${fullTime}">${timeAgo}</td>
+                                    <td class="content-cell">${(reply.content || '').substring(0, 100)}...</td>
+                                    <td class="replied-to-cell">@${reply.reply_to_username || 'unknown'}</td>
+                                    <td class="metric-cell">${(reply.actual_impressions || 0).toLocaleString()}</td>
+                                    <td class="metric-cell">${(reply.actual_likes || 0).toLocaleString()}</td>
+                                    <td class="metric-cell">${(reply.actual_retweets || 0).toLocaleString()}</td>
+                                    <td class="gen-cell">${reply.generator_name || 'unknown'}</td>
+                                </tr>
+                            `}).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- ERRORS -->
@@ -395,6 +515,15 @@ function getFlowItemText(item: any): string {
     return `${item.actual_impressions} views, ${item.actual_likes || 0} likes`;
   }
   return 'Data item';
+}
+
+function formatTimeAgo(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
 }
 
 function getFlowStyles(): string {
@@ -752,6 +881,184 @@ function getFlowStyles(): string {
             padding: 20px;
             color: #64748b;
         }
+        
+        .tabs-section {
+            background: #1e293b;
+            border-radius: 15px;
+            border: 2px solid #334155;
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+        
+        .tabs-header {
+            display: flex;
+            background: #0f172a;
+            border-bottom: 2px solid #334155;
+        }
+        
+        .tab-btn {
+            flex: 1;
+            padding: 20px;
+            border: none;
+            background: transparent;
+            color: #64748b;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+        }
+        
+        .tab-btn:hover {
+            background: #1e293b;
+            color: #94a3b8;
+        }
+        
+        .tab-btn.active {
+            color: #3b82f6;
+            border-bottom-color: #3b82f6;
+            background: #1e293b;
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 25px;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .tab-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .sort-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .sort-label {
+            color: #64748b;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .sort-btn {
+            padding: 8px 16px;
+            border: 2px solid #334155;
+            background: transparent;
+            color: #94a3b8;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .sort-btn:hover {
+            border-color: #3b82f6;
+            color: #3b82f6;
+        }
+        
+        .sort-btn.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+        
+        .data-table-container {
+            background: #0f172a;
+            border-radius: 12px;
+            overflow-x: auto;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .data-table thead {
+            background: #1e293b;
+            border-bottom: 2px solid #334155;
+        }
+        
+        .data-table th {
+            padding: 15px;
+            text-align: left;
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        
+        .data-table tbody tr {
+            border-bottom: 1px solid #1e293b;
+            transition: background 0.2s;
+        }
+        
+        .data-table tbody tr:hover {
+            background: #1e293b;
+        }
+        
+        .data-table td {
+            padding: 15px;
+            font-size: 13px;
+            color: #e2e8f0;
+        }
+        
+        .time-cell {
+            color: #94a3b8;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        
+        .content-cell {
+            max-width: 400px;
+            color: #e2e8f0;
+        }
+        
+        .metric-cell {
+            text-align: right;
+            font-weight: 600;
+            color: #3b82f6;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .gen-cell {
+            color: #94a3b8;
+            font-size: 12px;
+        }
+        
+        .replied-to-cell {
+            color: #3b82f6;
+            font-weight: 600;
+        }
+        
+        .type-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 5px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        
+        .type-badge.single {
+            background: #1e40af20;
+            color: #60a5fa;
+        }
+        
+        .type-badge.thread {
+            background: #9f123920;
+            color: #f472b6;
+        }
   `;
 }
 
@@ -769,6 +1076,72 @@ function getFlowScripts(): string {
         setInterval(() => {
             document.getElementById('timestamp').textContent = new Date().toLocaleString();
         }, 1000);
+        
+        // Tab switching
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabName + '-tab').classList.add('active');
+        }
+        
+        // Sorting functions
+        function sortPosts(sortBy) {
+            // Update sort buttons
+            document.querySelectorAll('#posts-tab .sort-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            const tbody = document.querySelector('#posts-table tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            rows.sort((a, b) => {
+                if (sortBy === 'date') {
+                    return parseInt(b.dataset.date) - parseInt(a.dataset.date);
+                } else if (sortBy === 'impressions') {
+                    return parseInt(b.dataset.impressions) - parseInt(a.dataset.impressions);
+                } else if (sortBy === 'likes') {
+                    return parseInt(b.dataset.likes) - parseInt(a.dataset.likes);
+                }
+                return 0;
+            });
+            
+            tbody.innerHTML = '';
+            rows.forEach(row => tbody.appendChild(row));
+        }
+        
+        function sortReplies(sortBy) {
+            // Update sort buttons
+            document.querySelectorAll('#replies-tab .sort-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            const tbody = document.querySelector('#replies-table tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            rows.sort((a, b) => {
+                if (sortBy === 'date') {
+                    return parseInt(b.dataset.date) - parseInt(a.dataset.date);
+                } else if (sortBy === 'impressions') {
+                    return parseInt(b.dataset.impressions) - parseInt(a.dataset.impressions);
+                } else if (sortBy === 'likes') {
+                    return parseInt(b.dataset.likes) - parseInt(a.dataset.likes);
+                }
+                return 0;
+            });
+            
+            tbody.innerHTML = '';
+            rows.forEach(row => tbody.appendChild(row));
+        }
   `;
 }
 
