@@ -8,13 +8,15 @@
  * Philosophy: FAIL FAST, NOT FAIL SILENT
  */
 
+import { resolveMode, logModeResolution, type UnifiedMode } from './mode';
+
 export interface CriticalEnvVars {
   ENABLE_REPLIES: boolean;
   DATABASE_URL: string;
   OPENAI_API_KEY: string;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
-  MODE: 'live' | 'shadow';
+  MODE: UnifiedMode;
 }
 
 /**
@@ -27,12 +29,9 @@ export function validateEnvironmentVariables(): void {
   const missing: string[] = [];
   const warnings: string[] = [];
   
-  // Check 1: MODE (must be 'live' or 'shadow')
-  if (!process.env.MODE) {
-    missing.push('MODE (must be "live" or "shadow")');
-  } else if (process.env.MODE !== 'live' && process.env.MODE !== 'shadow') {
-    missing.push(`MODE has invalid value "${process.env.MODE}" (must be "live" or "shadow")`);
-  }
+  const resolution = resolveMode();
+  logModeResolution(resolution);
+  const mode = resolution.mode;
   
   // Check 2: Reply system configuration
   if (!process.env.ENABLE_REPLIES) {
@@ -57,7 +56,6 @@ export function validateEnvironmentVariables(): void {
   }
   
   // Check 5: OpenAI API key (only in live mode)
-  const mode = process.env.MODE || 'shadow';
   if (mode === 'live') {
     if (!process.env.OPENAI_API_KEY) {
       missing.push('OPENAI_API_KEY (required in live mode for content generation)');
@@ -140,8 +138,11 @@ export function validateEnvironmentVariables(): void {
  * Use this instead of directly accessing process.env
  */
 export function getValidatedEnv(): CriticalEnvVars {
+  const resolution = resolveMode();
+  logModeResolution(resolution);
+
   return {
-    MODE: (process.env.MODE as 'live' | 'shadow') || 'shadow',
+    MODE: resolution.mode,
     ENABLE_REPLIES: process.env.ENABLE_REPLIES === 'true',
     DATABASE_URL: process.env.DATABASE_URL!,
     SUPABASE_URL: process.env.SUPABASE_URL!,

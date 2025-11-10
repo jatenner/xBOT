@@ -69,15 +69,33 @@ export interface SpendingBreakdown {
 export class OpenAIBudgetedClient {
   private static instance: OpenAIBudgetedClient;
   private openai: OpenAI;
-  private redis: Redis;
+  private redis: Redis | null;
+  private redisEnabled: boolean;
   private config: BudgetConfig;
+  private memoryBudget = {
+    lastResetDate: '',
+    usedTodayUSD: 0,
+    totalCallsToday: 0,
+    blocked: false,
+    byModel: new Map<string, { calls: number; totalCost: number }>(),
+    byPurpose: new Map<string, { calls: number; totalCost: number }>(),
+    topExpensive: [] as Array<{ purpose: string; model: string; cost: number; timestamp: string }>
+  };
   
   private constructor() {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY!
     });
     
-    this.redis = new Redis(process.env.REDIS_URL!);
+    if (process.env.REDIS_URL) {
+      this.redis = new Redis(process.env.REDIS_URL);
+      this.redisEnabled = true;
+    } else {
+      this.redis = null;
+      this.redisEnabled = false;
+      this.memoryBudget.lastResetDate = this.getTodayDateString();
+      console.warn('⚠️ REDIS_URL not set. OpenAI budget tracking will fall back to in-memory store (non-persistent).');
+    }
     
     this.config = {
       dailyLimitUSD: parseFloat(process.env.DAILY_OPENAI_LIMIT_USD || '5.0'),
@@ -86,6 +104,7 @@ export class OpenAIBudgetedClient {
       strictMode: process.env.BUDGET_STRICT !== 'false',
       alertThreshold: parseFloat(process.env.BUDGET_ALERT_THRESHOLD || '0.8')
     };
+    this.memoryBudget.lastResetDate = this.getTodayDateString();
     
     // Validate pricing on startup
     const { valid, errors } = require('../config/openai/pricing').validatePricing();
@@ -250,6 +269,23 @@ export class OpenAIBudgetedClient {
    * Get current budget status
    */
   async getBudgetStatus(): Promise<BudgetStatus> {
+    if (!this.redisEnabled || !this.redis) {
+      this.ensureMemoryBudgetFresh();
+      const used = this.memoryBudget.usedTodayUSD;
+      const remainingUSD = Math.max(0, this.config.dailyLimitUSD - used);
+      const percentUsed = this.config.dailyLimitUSD === 0 ? 0 : (used / this.config.dailyLimitUSD) * 100;
+
+      return {
+        dailyLimitUSD: this.config.dailyLimitUSD,
+        usedTodayUSD: used,
+        remainingUSD,
+        percentUsed: Number(percentUsed.toFixed(2)),
+        isBlocked: this.memoryBudget.blocked,
+        lastResetDate: this.memoryBudget.lastResetDate,
+        totalCallsToday: this.memoryBudget.totalCallsToday
+      };
+    }
+
     const todayKey = this.getTodaySpendKey();
     const blockedKey = this.getBlockedKey();
     
@@ -380,8 +416,11 @@ export class OpenAIBudgetedClient {
     const projectedTotal = status.usedTodayUSD + estimatedCost;
     
     if (projectedTotal > status.dailyLimitUSD) {
-      // Set blocked flag
-      await this.redis.setex(this.getBlockedKey(), 86400, 'budget_exceeded');
+      if (this.redisEnabled && this.redis) {
+        await this.redis.setex(this.getBlockedKey(), 86400, 'budget_exceeded');
+      } else {
+        this.memoryBudget.blocked = true;
+      }
       
       throw new BudgetExceededError(
         status.dailyLimitUSD,
@@ -417,17 +456,48 @@ export class OpenAIBudgetedClient {
     model: string,
     requestId: string
   ): Promise<void> {
-    const todayKey = this.getTodaySpendKey();
-    
-    // Atomic Redis increment
-    const [newTotal] = await Promise.all([
-      this.redis.incrbyfloat(todayKey, cost),
-      this.redis.incr(`${todayKey}:calls`),
-      this.redis.expire(todayKey, 86400 * 2), // 2-day expiry
-      this.redis.expire(`${todayKey}:calls`, 86400 * 2)
-    ]);
-    
-    console.log(`[COST_TRACKER] model=${model} cost=$${cost.toFixed(4)} daily=$${parseFloat(newTotal.toString()).toFixed(4)}/${this.config.dailyLimitUSD.toFixed(2)} purpose=${metadata.purpose}`);
+    if (this.redisEnabled && this.redis) {
+      const todayKey = this.getTodaySpendKey();
+      
+      const [newTotal] = await Promise.all([
+        this.redis.incrbyfloat(todayKey, cost),
+        this.redis.incr(`${todayKey}:calls`),
+        this.redis.expire(todayKey, 86400 * 2), // 2-day expiry
+        this.redis.expire(`${todayKey}:calls`, 86400 * 2)
+      ]);
+      
+      console.log(`[COST_TRACKER] model=${model} cost=$${cost.toFixed(4)} daily=$${parseFloat(newTotal.toString()).toFixed(4)}/${this.config.dailyLimitUSD.toFixed(2)} purpose=${metadata.purpose}`);
+    } else {
+      this.ensureMemoryBudgetFresh();
+      this.memoryBudget.usedTodayUSD += cost;
+      this.memoryBudget.totalCallsToday += 1;
+      
+      const timestamp = new Date().toISOString();
+      
+      const modelStats = this.memoryBudget.byModel.get(model) || { calls: 0, totalCost: 0 };
+      modelStats.calls += 1;
+      modelStats.totalCost += cost;
+      this.memoryBudget.byModel.set(model, modelStats);
+      
+      const purpose = metadata.purpose || 'unknown';
+      const purposeStats = this.memoryBudget.byPurpose.get(purpose) || { calls: 0, totalCost: 0 };
+      purposeStats.calls += 1;
+      purposeStats.totalCost += cost;
+      this.memoryBudget.byPurpose.set(purpose, purposeStats);
+      
+      this.memoryBudget.topExpensive.push({
+        purpose,
+        model,
+        cost,
+        timestamp
+      });
+      this.memoryBudget.topExpensive.sort((a, b) => b.cost - a.cost);
+      if (this.memoryBudget.topExpensive.length > 10) {
+        this.memoryBudget.topExpensive.length = 10;
+      }
+      
+      console.log(`[COST_TRACKER] (memory) model=${model} cost=$${cost.toFixed(4)} daily=$${this.memoryBudget.usedTodayUSD.toFixed(4)}/${this.config.dailyLimitUSD.toFixed(2)} purpose=${purpose}`);
+    }
     
     // Store in database for detailed analytics
     this.storeInDatabase(cost, metadata, model, requestId).catch(error => {
@@ -439,7 +509,11 @@ export class OpenAIBudgetedClient {
     const status = await this.getBudgetStatus();
     
     if (status.usedTodayUSD >= status.dailyLimitUSD) {
-      await this.redis.setex(this.getBlockedKey(), 86400, 'budget_exceeded_post_call');
+      if (this.redisEnabled && this.redis) {
+        await this.redis.setex(this.getBlockedKey(), 86400, 'budget_exceeded_post_call');
+      } else {
+        this.memoryBudget.blocked = true;
+      }
       console.log(`🛑 BUDGET_CIRCUIT_BREAKER: Activated after exceeding $${status.dailyLimitUSD.toFixed(2)} (used: $${status.usedTodayUSD.toFixed(4)})`);
     }
     
@@ -450,8 +524,13 @@ export class OpenAIBudgetedClient {
   }
   
   private async refundEstimatedCost(cost: number, reason: string): Promise<void> {
-    const todayKey = this.getTodaySpendKey();
-    await this.redis.incrbyfloat(todayKey, -cost);
+    if (this.redisEnabled && this.redis) {
+      const todayKey = this.getTodaySpendKey();
+      await this.redis.incrbyfloat(todayKey, -cost);
+    } else {
+      this.ensureMemoryBudgetFresh();
+      this.memoryBudget.usedTodayUSD = Math.max(0, this.memoryBudget.usedTodayUSD - cost);
+    }
     console.log(`💸 BUDGET_REFUND: $${cost.toFixed(4)} refunded (${reason})`);
   }
   
@@ -490,6 +569,19 @@ export class OpenAIBudgetedClient {
       .map(msg => typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content))
       .join(' ');
     return estimateTokenCount(text);
+  }
+
+  private ensureMemoryBudgetFresh(): void {
+    const today = this.getTodayDateString();
+    if (this.memoryBudget.lastResetDate !== today) {
+      this.memoryBudget.lastResetDate = today;
+      this.memoryBudget.usedTodayUSD = 0;
+      this.memoryBudget.totalCallsToday = 0;
+      this.memoryBudget.blocked = false;
+      this.memoryBudget.byModel.clear();
+      this.memoryBudget.byPurpose.clear();
+      this.memoryBudget.topExpensive = [];
+    }
   }
   
   private getTodaySpendKey(): string {

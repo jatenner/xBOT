@@ -1103,10 +1103,11 @@ async function checkUniqueness(text: string | string[]): Promise<boolean> {
 async function selectOptimalSchedule(): Promise<Date> {
   const MIN_MINUTES_UNTIL_SLOT = parseInt(process.env.MIN_MINUTES_UNTIL_SLOT || '0', 10);
   const POST_NOW_ON_COLD_START = process.env.POST_NOW_ON_COLD_START !== 'false';
+  const config = getConfig();
   
   // 🚀 AGGRESSIVE GROWTH MODE: Always schedule for immediate posting
   // Instead of waiting for optimal timing, we post every 30 minutes for 2 posts/hour
-  const AGGRESSIVE_GROWTH_MODE = process.env.MODE === 'live';
+  const AGGRESSIVE_GROWTH_MODE = config.MODE === 'live';
   
   if (AGGRESSIVE_GROWTH_MODE) {
     console.log('[SCHEDULE] 🚀 AGGRESSIVE_GROWTH: Scheduling for immediate posting (2 posts/hour target)');

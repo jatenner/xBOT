@@ -71,7 +71,7 @@ export async function processPostingQueue(): Promise<void> {
           
           // Query recent posts
           const { data: recentContent } = await supabase
-            .from('content_generation_metadata_comprehensive')
+            .from('content_metadata')
             .select('decision_type, thread_parts')
             .in('decision_type', ['single', 'thread'])
             .eq('status', 'posted')
@@ -112,7 +112,7 @@ export async function processPostingQueue(): Promise<void> {
           if (decision.decision_type === 'thread') {
             const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
             const { data: recentThreads } = await supabase
-              .from('content_generation_metadata_comprehensive')
+              .from('content_metadata')
               .select('posted_at')
               .eq('decision_type', 'thread')
               .eq('status', 'posted')
@@ -131,9 +131,9 @@ export async function processPostingQueue(): Promise<void> {
         }
         
         if (isReply) {
-          // 🚨 FIX: Query content_generation_metadata_comprehensive TABLE directly
+          // 🚨 FIX: Query content_metadata TABLE directly
           const { count: replyCount } = await supabase
-            .from('content_generation_metadata_comprehensive')
+            .from('content_metadata')
             .select('*', { count: 'exact', head: true })
             .eq('decision_type', 'reply')
             .eq('status', 'posted')
@@ -988,7 +988,7 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         const { getSupabaseClient } = await import('../db/index');
         const supabase = getSupabaseClient();
         const { data: metadata } = await supabase
-          .from('content_generation_metadata_comprehensive')
+          .from('content_metadata')
           .select('raw_topic, angle, tone, format_strategy, generator_name')
           .eq('decision_id', decision.id)
           .single();

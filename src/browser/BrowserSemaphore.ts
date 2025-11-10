@@ -149,8 +149,8 @@ export async function withBrowserLock<T>(
  */
 export const BrowserPriority = {
   POSTING: 1,        // Highest - never wait
-  REPLIES: 2,        // Second - core engagement
-  METRICS: 2,        // 🔥 UPGRADED to HIGH (was 5) - critical for dashboard/learning data!
+  REPLIES: 1,        // 🔥 UPGRADED to HIGHEST (was 2) - core engagement, must not wait
+  METRICS: 2,        // High - critical for dashboard/learning data
   HARVESTING: 3,     // Third - feeds reply system
   FOLLOWER_TRACK: 4, // Medium - important but not urgent
   ANALYTICS: 6       // Lowest - background data

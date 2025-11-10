@@ -3,11 +3,10 @@
  * Prevents legacy env vars from silently disabling posting in live mode
  */
 
-export type Mode = 'live' | 'shadow' | 'dev' | 'test';
+import { resolveMode, type UnifiedMode } from './mode';
 
-export function getMode(): Mode {
-  const m = (process.env.MODE || 'dev').toLowerCase() as Mode;
-  return (['live','shadow','dev','test'] as const).includes(m) ? m : 'dev';
+export function getMode(): UnifiedMode {
+  return resolveMode().mode;
 }
 
 export const flags = (() => {
@@ -25,6 +24,7 @@ export const flags = (() => {
 
   return {
     mode,
+    MODE: mode,
     live,
     postingEnabled,
     plannerEnabled: true,

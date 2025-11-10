@@ -165,7 +165,7 @@ export async function buildVisualFormatIntelligence(
       (async () => {
         const supabase = getSupabaseClient();
         const { data } = await supabase
-          .from('content_generation_metadata_comprehensive')
+          .from('content_metadata')
           .select('visual_format')
           .not('visual_format', 'is', null)
           .order('created_at', { ascending: false })

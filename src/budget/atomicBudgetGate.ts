@@ -38,6 +38,16 @@ function getTodayKey(): string {
  */
 export async function ensureBudget(intent: string, estimatedCost: number): Promise<void> {
   const client = await getRedis();
+  if (!client) {
+    console.warn('⚠️ ATOMIC_BUDGET_GATE: Redis unavailable, skipping strict budget check.');
+    budgetLogs.push({
+      intent,
+      estimated_cost: estimatedCost,
+      timestamp: new Date().toISOString(),
+      status: 'ensured'
+    });
+    return;
+  }
   const key = getTodayKey();
   
   // Get current budget (simple atomic operation)
@@ -71,6 +81,18 @@ export async function ensureBudget(intent: string, estimatedCost: number): Promi
  */
 export async function commitCost(intent: string, actualCost: number): Promise<number> {
   const client = await getRedis();
+  if (!client) {
+    console.warn('⚠️ ATOMIC_BUDGET_GATE: Redis unavailable, commit recorded in memory only.');
+    const log: BudgetLog = {
+      intent,
+      estimated_cost: 0,
+      actual_cost: actualCost,
+      timestamp: new Date().toISOString(),
+      status: 'committed'
+    };
+    budgetLogs.push(log);
+    return actualCost;
+  }
   const key = getTodayKey();
   
   // Use atomic increment by float
@@ -120,6 +142,14 @@ export async function commitCost(intent: string, actualCost: number): Promise<nu
  */
 export async function getBudgetStatus(): Promise<BudgetStatus> {
   const client = await getRedis();
+  if (!client) {
+    return {
+      current: 0,
+      limit: DAILY_LIMIT_USD,
+      remaining: DAILY_LIMIT_USD,
+      key: getTodayKey()
+    };
+  }
   const key = getTodayKey();
   
   const current = await client.get(key);

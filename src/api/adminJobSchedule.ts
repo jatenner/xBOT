@@ -5,6 +5,7 @@
 
 import { Request, Response } from 'express';
 import { JobManager } from '../jobs/jobManager';
+import { getConfig } from '../config/config';
 
 export interface JobScheduleInfo {
   name: string;
@@ -27,6 +28,7 @@ export async function jobScheduleHandler(req: Request, res: Response): Promise<v
   try {
     const jobManager = JobManager.getInstance();
     const stats = jobManager.getStats();
+    const config = getConfig();
     
     // Calculate next run times based on current stats and intervals
     const now = new Date();
@@ -51,7 +53,7 @@ export async function jobScheduleHandler(req: Request, res: Response): Promise<v
         nextRun: calculateNextRun(new Date(Date.now() - 20 * 60 * 1000), 30), // 30 min interval
         lastRun: null, // Not tracked yet
         intervalMinutes: 30,
-        enabled: process.env.MODE === 'live' // Only enabled in live mode
+        enabled: config.MODE === 'live' // Only enabled in live mode
       },
       {
         name: 'outcomes',
@@ -65,7 +67,7 @@ export async function jobScheduleHandler(req: Request, res: Response): Promise<v
         nextRun: calculateNextRun(new Date(Date.now() - 25 * 60 * 1000), 30), // 30 min interval
         lastRun: null, // Not tracked yet
         intervalMinutes: 30,
-        enabled: process.env.MODE === 'live' // Only enabled in live mode
+        enabled: config.MODE === 'live' // Only enabled in live mode
       },
       {
         name: 'learn',

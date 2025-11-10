@@ -4,10 +4,11 @@
  */
 
 import { z } from 'zod';
+import { resolveMode, logModeResolution, type UnifiedMode } from './mode';
 
 // Core mode enum
-const ModeSchema = z.enum(['shadow', 'live']);
-export type Mode = z.infer<typeof ModeSchema>;
+const ModeSchema = z.enum(['live', 'shadow']);
+export type Mode = UnifiedMode;
 
 // Unified configuration schema
 const ConfigSchema = z.object({
@@ -84,16 +85,9 @@ const LEGACY_MAPPINGS: Record<string, { env: string; description: string }> = {
  * Load and validate configuration from environment
  */
 export function loadConfig(): Config {
-  // Infer MODE from legacy flags if not set
-  let mode: Mode = 'shadow'; // Default to safe mode
-  
-  if (process.env.MODE) {
-    mode = process.env.MODE as Mode;
-  } else if (process.env.POSTING_DISABLED === 'false' && process.env.DRY_RUN === 'false') {
-    mode = 'live';
-  } else if (process.env.POSTING_DISABLED === 'true' || process.env.DRY_RUN === 'true') {
-    mode = 'shadow';
-  }
+  const resolution = resolveMode();
+  logModeResolution(resolution);
+  const mode = resolution.mode;
 
   const rawConfig = {
     MODE: mode,

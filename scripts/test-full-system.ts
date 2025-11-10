@@ -26,14 +26,14 @@ async function testFullSystem() {
     const result = await client.query(`
       SELECT column_name 
       FROM information_schema.columns 
-      WHERE table_name = 'content_generation_metadata_comprehensive' 
-      AND column_name IN ('generator_type', 'content_angle', 'format_type', 'complexity_score');
+      WHERE table_name = 'content_metadata' 
+      AND column_name IN ('generator_name', 'raw_topic', 'format_strategy', 'tone');
     `);
     
     await client.end();
     
     if (result.rows.length === 4) {
-      console.log('✅ PASS - All 4 diversity columns exist');
+      console.log('✅ PASS - All 4 canonical diversity columns exist on content_metadata');
     } else {
       console.log(`❌ FAIL - Expected 4 columns, found ${result.rows.length}`);
     }

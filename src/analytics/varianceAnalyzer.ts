@@ -103,10 +103,10 @@ export class VarianceAnalyzer {
     console.log(`[VARIANCE] 📊 Analyzing aggregates for: ${factor}...`);
 
     const { data, error } = await this.supabase
-      .from('content_generation_metadata_comprehensive')
-      .select('visual_format, tone, generator_name, raw_topic, actual_views, actual_likes, actual_retweets')
+      .from('content_metadata')
+      .select('visual_format, tone, generator_name, raw_topic, actual_impressions, actual_likes, actual_retweets')
       .not(factor, 'is', null)
-      .not('actual_views', 'is', null);
+      .not('actual_impressions', 'is', null);
 
     if (error || !data || data.length === 0) {
       console.error(`[VARIANCE] Error fetching ${factor} data:`, error);
@@ -140,7 +140,8 @@ export class VarianceAnalyzer {
       }
 
       const agg = aggregateMap.get(value)!;
-      if (post.actual_views) agg.views.push(post.actual_views as number);
+      const impressions = Number(post.actual_impressions) || 0;
+      if (impressions > 0) agg.views.push(impressions);
       if (post.actual_likes) agg.likes.push(post.actual_likes as number);
       if (post.actual_retweets) agg.retweets.push(post.actual_retweets as number);
       if (post.raw_topic) agg.topics.add(post.raw_topic as string);
@@ -188,17 +189,17 @@ export class VarianceAnalyzer {
     console.log('[VARIANCE] 🔗 Finding synergies...');
 
     const { data } = await this.supabase
-      .from('content_generation_metadata_comprehensive')
-      .select('generator_name, tone, visual_format, actual_views')
+      .from('content_metadata')
+      .select('generator_name, tone, visual_format, actual_impressions')
       .not('generator_name', 'is', null)
       .not('tone', 'is', null)
       .not('visual_format', 'is', null)
-      .not('actual_views', 'is', null);
+      .not('actual_impressions', 'is', null);
 
     if (!data || data.length === 0) return [];
 
     // Calculate baseline (overall average)
-    const baseline = this.avg(data.map((d: any) => d.actual_views as number));
+    const baseline = this.avg(data.map((d: any) => Number(d.actual_impressions) || 0));
 
     // Group by combinations
     const comboMap = new Map<string, number[]>();
@@ -208,7 +209,7 @@ export class VarianceAnalyzer {
       if (!comboMap.has(combo)) {
         comboMap.set(combo, []);
       }
-      comboMap.get(combo)!.push(post.actual_views as number);
+      comboMap.get(combo)!.push(Number(post.actual_impressions) || 0);
     });
 
     // Calculate multipliers
@@ -440,10 +441,10 @@ export class VarianceAnalyzer {
 
   private async calculateVarianceForFactor(column: string): Promise<number> {
     const { data } = await this.supabase
-      .from('content_generation_metadata_comprehensive')
-      .select(`${column}, actual_views`)
+      .from('content_metadata')
+      .select(`${column}, actual_impressions`)
       .not(column, 'is', null)
-      .not('actual_views', 'is', null);
+      .not('actual_impressions', 'is', null);
 
     if (!data || data.length === 0) return 0;
 
@@ -455,7 +456,7 @@ export class VarianceAnalyzer {
       if (!groupMap.has(value)) {
         groupMap.set(value, []);
       }
-      groupMap.get(value)!.push(post.actual_views as number);
+      groupMap.get(value)!.push(Number(post.actual_impressions) || 0);
     });
 
     // Calculate average views for each value
