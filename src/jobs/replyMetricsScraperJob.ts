@@ -76,7 +76,16 @@ export async function replyMetricsScraperJob(): Promise<void> {
           
           // Scrape tweet metrics
           const scraper = BulletproofTwitterScraper.getInstance();
-          const result = await scraper.scrapeTweetMetrics(page, String(reply.tweet_id), 2);
+          const result = await scraper.scrapeTweetMetrics(
+            page,
+            String(reply.tweet_id),
+            2,
+            {
+              isReply: true,
+              useAnalytics: false,
+              tweetUrl: typeof features.tweet_url === 'string' ? features.tweet_url : undefined
+            }
+          );
           
           if (!result.success || !result.metrics) {
             console.warn(`[REPLY_METRICS]   ⚠️ No metrics for ${reply.tweet_id}: ${result.error || 'Unknown error'}`);

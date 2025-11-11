@@ -44,7 +44,7 @@ const ConfigSchema = z.object({
   
   // Job Scheduling - QUALITY-FIRST STRATEGY 🎯
   JOBS_AUTOSTART: z.boolean().default(true), // Auto-start jobs
-  JOBS_PLAN_INTERVAL_MIN: z.number().default(240), // Plan content every 4 hours (3-4 posts per run = ~14 posts/day)
+  JOBS_PLAN_INTERVAL_MIN: z.number().default(60), // Plan content every hour (supports ~2 posts/hour target)
   JOBS_REPLY_INTERVAL_MIN: z.number().default(30), // Replies every 30min (2 runs × 2 batch = 4 replies/hour)
   JOBS_LEARN_INTERVAL_MIN: z.number().default(60), // Learn every hour
   JOBS_POSTING_INTERVAL_MIN: z.number().default(5), // Check posting queue every 5 minutes

@@ -37,6 +37,21 @@ export interface ScrapingResult {
   screenshot?: string;
 }
 
+export interface ScrapeTweetMetricsOptions {
+  /**
+   * Force scraper to use the analytics modal first (default true unless explicitly disabled)
+   */
+  useAnalytics?: boolean;
+  /**
+   * Whether this tweet is a reply (changes navigation + scrolling strategy)
+   */
+  isReply?: boolean;
+  /**
+   * Canonical tweet URL to open (fallback to status URL if not provided)
+   */
+  tweetUrl?: string;
+}
+
 /**
  * Multiple selector strategies for each metric
  * Twitter frequently changes their HTML, so we need fallbacks
@@ -120,24 +135,54 @@ export class BulletproofTwitterScraper {
   async scrapeTweetMetrics(
     page: Page,
     tweetId: string,
-    maxAttempts: number = 3
+    maxAttemptsOrOptions?: number | ScrapeTweetMetricsOptions,
+    maybeOptions?: ScrapeTweetMetricsOptions
   ): Promise<ScrapingResult> {
+    let maxAttempts = 3;
+    let options: ScrapeTweetMetricsOptions = {};
+
+    if (typeof maxAttemptsOrOptions === 'number') {
+      maxAttempts = maxAttemptsOrOptions;
+      options = maybeOptions ?? {};
+    } else if (typeof maxAttemptsOrOptions === 'object' && maxAttemptsOrOptions !== null) {
+      options = maxAttemptsOrOptions;
+    }
+
+    const resolvedOptions: ScrapeTweetMetricsOptions = {
+      useAnalytics: options.useAnalytics ?? (process.env.USE_ANALYTICS_PAGE !== 'false'),
+      isReply: options.isReply ?? false,
+      tweetUrl: options.tweetUrl
+    };
+
     const startTime = Date.now();
-    log({ op: 'scraper_start', tweet_id: tweetId, max_attempts: maxAttempts });
+    log({
+      op: 'scraper_start',
+      tweet_id: tweetId,
+      max_attempts: maxAttempts,
+      is_reply: resolvedOptions.isReply,
+      use_analytics: resolvedOptions.useAnalytics
+    });
 
     let lastError: Error | null = null;
     let attempt = 1;
+    let navigationPerformed = false;
 
     while (attempt <= maxAttempts) {
       try {
         log({ op: 'scraper_attempt', tweet_id: tweetId, attempt, max: maxAttempts });
 
+        if (!navigationPerformed) {
+          await this.reloadTweetPage(page, tweetId, resolvedOptions);
+          navigationPerformed = true;
+        }
+
         // Step 1: Validate page state
         const isValid = await this.validatePageState(page);
         if (!isValid && attempt < maxAttempts) {
           console.warn(`  ⚠️ SCRAPER: Page state invalid, reloading...`);
-          await this.reloadTweetPage(page, tweetId);
+          await this.reloadTweetPage(page, tweetId, resolvedOptions);
           attempt++;
+          navigationPerformed = false;
           await this.sleep(2000 * attempt); // Exponential backoff
           continue;
         }
@@ -170,7 +215,7 @@ export class BulletproofTwitterScraper {
 
         // Step 2: Extract metrics using multiple selectors
         // PROPER FIX: Pass tweet ID so extraction targets the CORRECT article
-        const metrics = await this.extractMetricsWithFallbacks(page, tweetId);
+        const metrics = await this.extractMetricsWithFallbacks(page, tweetId, resolvedOptions);
 
         // Step 3: Validate extracted metrics
         if (this.areMetricsValid(metrics)) {
@@ -247,11 +292,12 @@ export class BulletproofTwitterScraper {
         // Reload page on last retry
         if (attempt === maxAttempts - 1) {
           console.log(`  🔄 SCRAPER: Final attempt - reloading page...`);
-          await this.reloadTweetPage(page, tweetId);
+          await this.reloadTweetPage(page, tweetId, resolvedOptions);
         }
       }
 
       attempt++;
+      navigationPerformed = false;
     }
 
     // All attempts failed - capture evidence and return UNDETERMINED
@@ -653,7 +699,11 @@ export class BulletproofTwitterScraper {
     return metrics;
   }
 
-  private async extractMetricsWithFallbacks(page: Page, tweetId?: string): Promise<Partial<ScrapedMetrics>> {
+  private async extractMetricsWithFallbacks(
+    page: Page,
+    tweetId?: string,
+    options: ScrapeTweetMetricsOptions = {}
+  ): Promise<Partial<ScrapedMetrics>> {
     // 📊 Check if we're on the analytics page
     const currentUrl = page.url();
     if (currentUrl.includes('/analytics')) {
@@ -707,8 +757,45 @@ export class BulletproofTwitterScraper {
         }
       }
       
-      const matchedArticle = articleData.find(a => a.isMatch);
-      
+      let matchedArticle = articleData.find(a => a.isMatch);
+      let scrollAttempts = 0;
+
+      while (!matchedArticle && scrollAttempts < 5) {
+        console.warn(`    ⚠️ VERIFICATION: Tweet not visible yet. Scrolling attempt ${scrollAttempts + 1}/5...`);
+        await page.evaluate(() => window.scrollBy(0, window.innerHeight));
+        await this.sleep(800);
+
+        const moreData = await page.evaluate((id) => {
+          const articles = document.querySelectorAll('article[data-testid="tweet"]');
+          const results = [];
+
+          for (let i = 0; i < articles.length; i++) {
+            const article = articles[i];
+            const link = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
+            if (link) {
+              const match = link.href.match(/\/status\/(\d+)/);
+              if (match) {
+                results.push({
+                  index: i,
+                  tweetId: match[1],
+                  isMatch: match[1] === id
+                });
+              }
+            }
+          }
+
+          return results;
+        }, tweetId);
+
+        if (moreData.length !== articleData.length) {
+          console.log(`    📊 VERIFICATION: Article list changed after scroll (${articleData.length} -> ${moreData.length})`);
+        }
+
+        articleData.splice(0, articleData.length, ...moreData);
+        matchedArticle = articleData.find(a => a.isMatch);
+        scrollAttempts++;
+      }
+
       if (!matchedArticle) {
         console.error(`    ❌ VERIFICATION FAILED: Could not find article with tweet ID ${tweetId}`);
         console.error(`    💡 Page is showing different tweets (recommended, parent tweets, quoted tweets)`);
@@ -1275,22 +1362,27 @@ export class BulletproofTwitterScraper {
   /**
    * Reload tweet page with error handling
    */
-  private async reloadTweetPage(page: Page, tweetId: string): Promise<void> {
+  private async reloadTweetPage(
+    page: Page,
+    tweetId: string,
+    options: ScrapeTweetMetricsOptions = {}
+  ): Promise<void> {
     try {
       // 📊 Navigate to ANALYTICS page for detailed metrics (impressions, engagements, profile visits)
       // 🔥 FIX: Use generic Twitter URL (works for singles AND replies!)
       // Using username-specific URL fails for replies since they appear in conversation context
-      const useAnalytics = process.env.USE_ANALYTICS_PAGE !== 'false'; // Default to true
-      const tweetUrl = useAnalytics 
-        ? `https://twitter.com/i/web/status/${tweetId}/analytics` // Generic URL works for ALL tweet types
-        : `https://twitter.com/i/web/status/${tweetId}`; // Generic URL for regular view too
+      const defaultUseAnalytics = process.env.USE_ANALYTICS_PAGE !== 'false';
+      const shouldUseAnalytics = options.useAnalytics ?? (options.isReply ? false : defaultUseAnalytics);
+      const canonicalUrl = options.tweetUrl ?? `https://x.com/i/web/status/${tweetId}`;
+      const analyticsUrl = canonicalUrl.endsWith('/analytics') ? canonicalUrl : `${canonicalUrl.replace(/\/analytics$/, '')}/analytics`;
+      const tweetUrl = shouldUseAnalytics ? analyticsUrl : canonicalUrl;
       
       // 🔥 CRITICAL: Warm up session BEFORE accessing analytics
-      if (useAnalytics) {
+      if (shouldUseAnalytics) {
         await this.warmUpSessionForAnalytics(page);
       }
       
-      console.log(`    🔄 RELOAD: Navigating to ${tweetUrl}${useAnalytics ? ' (analytics)' : ''}`);
+      console.log(`    🔄 RELOAD: Navigating to ${tweetUrl}${shouldUseAnalytics ? ' (analytics)' : ''}`);
       
       await page.goto(tweetUrl, {
         waitUntil: 'domcontentloaded',
