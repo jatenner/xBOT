@@ -729,6 +729,7 @@ async function generateRealReplies(): Promise<void> {
         target_tweet_content: target.tweet_content,
         generator_used: replyGenerator,
         estimated_reach: target.estimated_reach,
+        tweet_url: tweetUrlStr,
         scheduled_at: new Date(Date.now() + staggerDelay * 60 * 1000).toISOString(),
         visual_format: strategicReply.visualFormat || null
       };
@@ -924,7 +925,13 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
     target_username: reply.target_username,
     generator_name: reply.generator_used || 'unknown',
     bandit_arm: `strategic_reply_${reply.generator_used || 'unknown'}`,
-    created_at: new Date().toISOString()
+    created_at: new Date().toISOString(),
+    features: {
+      generator: reply.generator_used || 'unknown',
+      tweet_url: reply.tweet_url || null,
+      parent_tweet_id: reply.target_tweet_id,
+      parent_username: reply.target_username
+    }
   }]);
   
   if (error) {

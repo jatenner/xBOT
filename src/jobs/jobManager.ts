@@ -98,16 +98,18 @@ export class JobManager {
     
     log({ op: 'job_manager_start', mode: 'staggered' });
     
+    const envEnableReplies = process.env.ENABLE_REPLIES;
+    const repliesEnabled = envEnableReplies !== 'false';
+
     // 🚨 CRITICAL: Check reply system environment variable
-    // If ENABLE_REPLIES is not true, reply system will NOT start
-    if (process.env.ENABLE_REPLIES !== 'true') {
+    // Default: enabled unless explicitly disabled
+    if (!repliesEnabled) {
       console.warn('═══════════════════════════════════════════════════════');
       console.warn('⚠️  JOB_MANAGER: Reply system is DISABLED');
-      console.warn('   Reason: ENABLE_REPLIES environment variable not set to "true"');
+      console.warn('   Reason: ENABLE_REPLIES environment variable set to "false"');
       console.warn('');
       console.warn('   To enable replies:');
-      console.warn('   1. Add ENABLE_REPLIES=true to your .env file (local)');
-      console.warn('   2. Add ENABLE_REPLIES=true to Railway environment (production)');
+      console.warn('   1. Remove ENABLE_REPLIES or set ENABLE_REPLIES=true in your environment');
       console.warn('');
       console.warn('   Impact: 6 reply-related jobs will NOT run:');
       console.warn('   • mega_viral_harvester (finds viral tweets)');
@@ -118,7 +120,11 @@ export class JobManager {
       console.warn('   • reply_conversion_tracking (tracks follower attribution)');
       console.warn('═══════════════════════════════════════════════════════');
     } else {
-      console.log('✅ JOB_MANAGER: Reply system ENABLED (ENABLE_REPLIES=true)');
+      if (envEnableReplies === undefined) {
+        console.log('✅ JOB_MANAGER: Reply system ENABLED (default). Set ENABLE_REPLIES=false to disable.');
+      } else {
+        console.log('✅ JOB_MANAGER: Reply system ENABLED (ENABLE_REPLIES=true)');
+      }
       
       // Check if discovered_accounts table is empty on startup
     // If empty, trigger account discovery IMMEDIATELY so reply system can work
@@ -390,7 +396,7 @@ export class JobManager {
     // Finds tweets with 2K+ likes OR 200+ comments from ANY account
     // No dependency on discovered_accounts - catches ALL viral health content
     // ⚠️ IMPORTANT: Only schedule if replies are enabled
-    if (flags.replyEnabled && process.env.ENABLE_REPLIES === 'true') {
+    if (flags.replyEnabled && repliesEnabled) {
       console.log('═══════════════════════════════════════════════════════');
       console.log('💬 JOB_MANAGER: Reply jobs ENABLED - scheduling 6 jobs');
       console.log('═══════════════════════════════════════════════════════');
@@ -474,7 +480,7 @@ export class JobManager {
     } else {
       console.warn('═══════════════════════════════════════════════════════');
       console.warn('⚠️  JOB_MANAGER: Reply jobs DISABLED');
-      console.warn(`   • ENABLE_REPLIES: ${process.env.ENABLE_REPLIES || 'NOT SET'}`);
+      console.warn(`   • ENABLE_REPLIES: ${envEnableReplies || 'NOT SET (defaults to true)'}`);
       console.warn(`   • flags.replyEnabled: ${flags.replyEnabled}`);
       console.warn('');
       console.warn('   Reply system will NOT function without ENABLE_REPLIES=true');
