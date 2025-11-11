@@ -76,6 +76,7 @@ export async function replyMetricsScraperJob(): Promise<void> {
           
           // Scrape tweet metrics
           const scraper = BulletproofTwitterScraper.getInstance();
+          const features = (reply.features || {}) as any;
           const result = await scraper.scrapeTweetMetrics(
             page,
             String(reply.tweet_id),
@@ -96,7 +97,6 @@ export async function replyMetricsScraperJob(): Promise<void> {
           const metrics = result.metrics;
         
         // Extract parent tweet info from features
-        const features = (reply.features || {}) as any;
         const parentTweetId = features.parent_tweet_id || '';
         const parentUsername = features.parent_username || '';
         
