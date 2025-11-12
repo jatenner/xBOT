@@ -4,6 +4,7 @@
  */
 
 const { chromium } = require('playwright');
+const { loadTwitterStorageState, cloneStorageState } = require('../utils/twitterSessionState');
 
 class BrowserManager {
   constructor() {
@@ -116,15 +117,19 @@ class BrowserManager {
           ...options
         };
 
-        // Load session from TWITTER_SESSION_B64 if available
-        if (process.env.TWITTER_SESSION_B64 && !options.storageState) {
-          try {
-            const sessionData = Buffer.from(process.env.TWITTER_SESSION_B64, 'base64').toString('utf-8');
-            const sessionJson = JSON.parse(sessionData);
-            contextOptions.storageState = sessionJson;
-            console.log(`🔐 BROWSER_CONTEXT: Loaded authenticated session (${sessionJson.cookies?.length || 0} cookies)`);
-          } catch (error) {
-            console.warn(`⚠️ BROWSER_CONTEXT: Failed to load session:`, error.message);
+        if (!options.storageState) {
+          const sessionResult = await loadTwitterStorageState();
+          if (sessionResult.warnings && sessionResult.warnings.length > 0) {
+            sessionResult.warnings.forEach(warning => {
+              console.warn(`⚠️ BROWSER_CONTEXT: Session warning - ${warning}`);
+            });
+          }
+
+          if (sessionResult.storageState && sessionResult.cookieCount > 0) {
+            contextOptions.storageState = cloneStorageState(sessionResult.storageState);
+            console.log(`🔐 BROWSER_CONTEXT: Loaded authenticated session (${sessionResult.cookieCount} cookies, source=${sessionResult.source})`);
+          } else {
+            console.warn('⚠️ BROWSER_CONTEXT: No Twitter session available - context will be unauthenticated');
           }
         }
 

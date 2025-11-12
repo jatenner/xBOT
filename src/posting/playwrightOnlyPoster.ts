@@ -7,6 +7,7 @@
 
 import { log } from '../lib/logger';
 import { getConfig } from '../config/config';
+import { loadTwitterStorageState } from '../utils/twitterSessionState';
 
 interface PlaywrightPostResult {
     success: boolean;
@@ -61,39 +62,19 @@ export class PlaywrightOnlyPoster {
             });
 
             // Load Twitter session cookies (fix cookie format issues)
-            const sessionB64 = process.env.TWITTER_SESSION_B64;
-            if (sessionB64) {
-                try {
-                    console.log('🍪 PLAYWRIGHT_ONLY: Loading Twitter session...');
-                    const sessionData = JSON.parse(Buffer.from(sessionB64, 'base64').toString());
-                    
-                    if (sessionData.cookies && Array.isArray(sessionData.cookies)) {
-                        // Fix cookie format issues
-                        const validCookies = sessionData.cookies
-                            .filter((cookie: any) => cookie.name && cookie.value)
-                            .map((cookie: any) => ({
-                                name: cookie.name,
-                                value: cookie.value,
-                                domain: cookie.domain || '.x.com',
-                                path: cookie.path || '/',
-                                // Fix expires issue - use proper format or remove
-                                ...(cookie.expires && cookie.expires !== -1 ? 
-                                    { expires: Math.floor(cookie.expires) } : 
-                                    { expires: Math.floor(Date.now() / 1000) + 86400 * 30 } // 30 days from now
-                                ),
-                                httpOnly: cookie.httpOnly || false,
-                                secure: cookie.secure !== false, // Default to true
-                                sameSite: cookie.sameSite || 'Lax'
-                            }));
-                        
-                        console.log(`🍪 PLAYWRIGHT_ONLY: Adding ${validCookies.length} cookies...`);
-                        await context.addCookies(validCookies);
-                        console.log('✅ PLAYWRIGHT_ONLY: Session cookies loaded successfully');
-                    }
-                } catch (error: any) {
-                    console.warn('⚠️ PLAYWRIGHT_ONLY: Session loading failed:', error.message);
-                    console.log('🔄 PLAYWRIGHT_ONLY: Continuing without session (may need to login)');
-                }
+            const sessionResult = await loadTwitterStorageState();
+            if (sessionResult.warnings && sessionResult.warnings.length > 0) {
+                sessionResult.warnings.forEach(warning => {
+                    console.warn(`⚠️ PLAYWRIGHT_ONLY: Session warning - ${warning}`);
+                });
+            }
+
+            if (sessionResult.storageState && sessionResult.storageState.cookies.length > 0) {
+                console.log(`🍪 PLAYWRIGHT_ONLY: Adding ${sessionResult.storageState.cookies.length} cookies (source=${sessionResult.source})...`);
+                await context.addCookies(sessionResult.storageState.cookies);
+                console.log('✅ PLAYWRIGHT_ONLY: Session cookies loaded successfully');
+            } else {
+                console.warn('⚠️ PLAYWRIGHT_ONLY: No Twitter session detected - browser may require login');
             }
 
             // Navigate to Twitter compose page
