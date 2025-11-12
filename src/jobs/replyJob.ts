@@ -38,6 +38,11 @@ const getReplyConfig = () => {
 
 const REPLY_CONFIG = getReplyConfig();
 
+const HARVESTER_TRIGGER_THRESHOLD = 80;
+const HARVESTER_CRITICAL_THRESHOLD = 20;
+const HARVESTER_COOLDOWN_MS = 45 * 60 * 1000; // 45 minutes between forced runs
+let lastHarvesterTriggerTs = 0;
+
 // Global metrics
 let replyLLMMetrics = {
   calls_total: 0,
@@ -433,27 +438,46 @@ async function generateRealReplies(): Promise<void> {
  
   poolCount = poolCount || 0;
   console.log(`[REPLY_JOB] 📊 Opportunity pool: ${poolCount} available`);
-  const targetRepliesThisCycle = poolCount >= 200 ? 6 : poolCount <= 30 ? 3 : 5;
+  const targetRepliesThisCycle = poolCount >= 200 ? 6 : poolCount <= 50 ? 3 : 5;
   console.log(`[REPLY_JOB] 📋 Target: ${targetRepliesThisCycle} replies per cycle (auto-adjusted for pool size)`);
  
-  if (poolCount < 10) {
-    console.warn(`[REPLY_JOB] ⚠️ Pool low (${poolCount} < 10) - triggering harvester preflight`);
-    
-    try {
-      // Try tweet-based harvester first (best source)
-      const { tweetBasedHarvester } = await import('./tweetBasedHarvester');
-      console.log('[REPLY_JOB] 🌐 Running tweet-based harvester...');
-      await tweetBasedHarvester();
-      
-      // Also run account-based harvester as backup
-      const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
-      console.log('[REPLY_JOB] 👥 Running account-based harvester...');
-      await replyOpportunityHarvester();
-      
-      console.log('[REPLY_JOB] ✅ Harvester preflight complete');
-    } catch (error: any) {
-      console.error('[REPLY_JOB] ❌ Harvester preflight failed:', error.message);
-      console.log('[REPLY_JOB] ⚠️ Proceeding with available opportunities...');
+  if (poolCount < HARVESTER_TRIGGER_THRESHOLD) {
+    const now = Date.now();
+    const sinceLastTrigger = now - lastHarvesterTriggerTs;
+    const cooldownRemaining = HARVESTER_COOLDOWN_MS - sinceLastTrigger;
+
+    console.warn(`[REPLY_JOB] ⚠️ Opportunity pool below threshold (${poolCount} < ${HARVESTER_TRIGGER_THRESHOLD})`);
+
+    if (sinceLastTrigger >= HARVESTER_COOLDOWN_MS || poolCount < HARVESTER_CRITICAL_THRESHOLD) {
+      console.log(`[REPLY_JOB] 🚨 Triggering harvesters (cooldown ${Math.max(0, cooldownRemaining)}ms remaining, critical=${poolCount < HARVESTER_CRITICAL_THRESHOLD})`);
+      lastHarvesterTriggerTs = now;
+      try {
+        const { tweetBasedHarvester } = await import('./tweetBasedHarvester');
+        console.log('[REPLY_JOB] 🌐 Running tweet-based harvester...');
+        await tweetBasedHarvester();
+
+        const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
+        console.log('[REPLY_JOB] 👥 Running mega-viral harvester...');
+        await replyOpportunityHarvester();
+
+        console.log('[REPLY_JOB] ✅ Harvester preflight complete');
+
+        // Refresh pool count after harvest
+        const refreshed = await supabaseClient
+          .from('reply_opportunities')
+          .select('id', { count: 'exact', head: true })
+          .eq('replied_to', false)
+          .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString());
+        if (!refreshed.error) {
+          poolCount = refreshed.count || 0;
+          console.log(`[REPLY_JOB] 📈 Opportunity pool after harvest: ${poolCount}`);
+        }
+      } catch (error: any) {
+        console.error('[REPLY_JOB] ❌ Harvester preflight failed:', error.message);
+        console.log('[REPLY_JOB] ⚠️ Proceeding with available opportunities...');
+      }
+    } else {
+      console.log(`[REPLY_JOB] ⏳ Skipping harvester trigger (cooldown ${Math.round(cooldownRemaining / 1000)}s remaining)`);
     }
   }
   

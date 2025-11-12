@@ -67,12 +67,15 @@ export async function replyOpportunityHarvester(): Promise<void> {
       .gte('tweet_posted_at', twentyFourHoursAgo.toISOString());
     
     const poolSize = currentOpportunities || 0;
+    const initialPoolSize = poolSize;
+    const MIN_POOL_SIZE = 150;
+    const TARGET_POOL_SIZE = 250;
+    const poolWasCritical = poolSize < MIN_POOL_SIZE;
+    const harvestStartIso = new Date().toISOString();
     console.log(`[HARVESTER] 📊 Current pool: ${poolSize} opportunities (<24h old)`);
     
     // Step 2: Decide if we need to harvest
     // Need ~200 opportunities for 4 replies/hour (96/day with safety buffer)
-    const MIN_POOL_SIZE = 150;
-    const TARGET_POOL_SIZE = 250;
     
     if (poolSize >= TARGET_POOL_SIZE) {
       console.log(`[HARVESTER] ✅ Pool is full (${poolSize}/${TARGET_POOL_SIZE}), skipping harvest`);
@@ -123,6 +126,7 @@ export async function replyOpportunityHarvester(): Promise<void> {
   
   let totalHarvested = 0;
   let searchesProcessed = 0;
+  let highImpactCount = 0;
   
   const TIME_BUDGET = 30 * 60 * 1000; // 30 minutes max
   const startTime = Date.now();
@@ -184,7 +188,7 @@ export async function replyOpportunityHarvester(): Promise<void> {
     }
     
     // Check if we have enough high-impact opportunities (5K+ likes) to stop early
-    const { count: highImpactCount } = await supabase
+    const { count: highImpactCountResult } = await supabase
       .from('reply_opportunities')
       .select('*', { count: 'exact', head: true })
       .gte('like_count', 5000)
@@ -192,7 +196,8 @@ export async function replyOpportunityHarvester(): Promise<void> {
       .gt('expires_at', new Date().toISOString());
     
     // Need ~100 high-impact for 4 replies/hour (96/day) - stop at 150 to be safe
-    if ((highImpactCount || 0) >= 150) {
+    highImpactCount = highImpactCountResult || 0;
+    if (highImpactCount >= 150) {
       console.log(`[HARVESTER] 🎯 Found ${highImpactCount} high-impact opportunities (5K+ likes) - stopping early!`);
       break;
     }
@@ -274,6 +279,31 @@ export async function replyOpportunityHarvester(): Promise<void> {
     console.log(`[HARVESTER] 💡 Will harvest more in next cycle`);
   } else {
     console.log(`[HARVESTER] ✅ Pool healthy (${finalPoolSize}/${TARGET_POOL_SIZE})`);
+  }
+  
+  try {
+    await supabase
+      .from('system_events')
+      .insert({
+        event_type: 'reply_harvest_summary',
+        severity: finalPoolSize < MIN_POOL_SIZE ? 'warning' : poolWasCritical ? 'info' : 'notice',
+        event_data: {
+          started_at: harvestStartIso,
+          initial_pool: initialPoolSize,
+          final_pool: finalPoolSize,
+          harvested_count: totalHarvested,
+          searches_processed: searchesProcessed,
+          high_impact_count: highImpactCount || 0,
+          mega: megaViralCount || 0,
+          super: superViralCount || 0,
+          viral: viralCount || 0,
+          trending: trendingCount || 0,
+          pool_was_critical: poolWasCritical
+        },
+        created_at: new Date().toISOString()
+      });
+  } catch (eventError: any) {
+    console.warn('[HARVESTER] ⚠️ Failed to log harvest summary event:', eventError.message);
   }
     
   } catch (error: any) {

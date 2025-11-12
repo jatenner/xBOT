@@ -11,6 +11,7 @@ import { join } from 'path';
 import { ImprovedReplyIdExtractor } from './ImprovedReplyIdExtractor';
 import { BulletproofTweetExtractor } from '../utils/bulletproofTweetExtractor';
 import { ensureComposerFocused } from './composerFocus';
+import { supaService } from '../lib/supabaseService';
 
 export interface PostResult {
   success: boolean;
@@ -1278,17 +1279,35 @@ export class UltimateTwitterPoster {
         await this.page.waitForTimeout(3000);
 
         // 🔍 IMPROVED EXTRACTION with 3 fallback strategies
-        const extractionResult = await ImprovedReplyIdExtractor.extractReplyId(
+        let extractionResult = await ImprovedReplyIdExtractor.extractReplyId(
           this.page,
           replyToTweetId,
-          10000 // 10 second timeout
+          15000 // allow extra time for modern UI responses
         );
+
+        if (!extractionResult.success || !extractionResult.tweetId) {
+          console.warn('ULTIMATE_POSTER: ⚠️ Initial reply ID extraction failed, retrying after short wait');
+          await this.page.waitForTimeout(2000);
+          const secondPass = await ImprovedReplyIdExtractor.extractReplyId(
+            this.page,
+            replyToTweetId,
+            8000
+          );
+          if (secondPass.success && secondPass.tweetId) {
+            extractionResult = {
+              success: true,
+              tweetId: secondPass.tweetId,
+              strategy: secondPass.strategy ?? 'fallback'
+            };
+            console.log(`ULTIMATE_POSTER: ✅ Retry extraction succeeded via ${extractionResult.strategy} strategy`);
+          }
+        }
 
         if (!extractionResult.success || !extractionResult.tweetId) {
           console.error(`ULTIMATE_POSTER: ❌ Reply ID extraction failed after posting`);
           
           try {
-            const deleted = await this.deleteTweetByContent(content);
+            const deleted = await this.deleteTweetByContent(content, replyToTweetId);
             console.log(`ULTIMATE_POSTER: 🧹 Cleanup after reply failure ${deleted ? 'succeeded' : 'skipped'}`);
           } catch (cleanupError: any) {
             console.warn(`ULTIMATE_POSTER: ⚠️ Cleanup error after reply failure: ${cleanupError.message}`);
@@ -1424,12 +1443,56 @@ export class UltimateTwitterPoster {
       .substring(0, 120);
   }
 
-  private async deleteTweetByContent(content: string): Promise<boolean> {
+  private async deleteTweetByContent(content: string, parentTweetId?: string): Promise<boolean> {
     if (!this.page) return false;
 
     try {
       const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
       const normalizedTarget = this.normalizeContent(content);
+
+      if (parentTweetId) {
+        try {
+          await this.page.goto(`https://x.com/i/status/${parentTweetId}`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 20000
+          });
+          await this.page.waitForTimeout(2000);
+
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const threadArticles = await this.page.$$(`article[data-testid="tweet"]:has(a[href="/${username}"])`);
+            for (const article of threadArticles) {
+              const textContent = await article.innerText();
+              const normalizedArticle = this.normalizeContent(textContent || '');
+              if (!normalizedArticle.includes(normalizedTarget.substring(0, Math.min(60, normalizedTarget.length)))) {
+                continue;
+              }
+
+              const moreButton = await article.$('[data-testid="caret"]');
+              if (!moreButton) continue;
+
+              await moreButton.click();
+              await this.page.waitForTimeout(400);
+
+              const deleteButton = await this.page.$('[data-testid="Dropdown"] [role="menuitem"]:has-text("Delete")');
+              if (!deleteButton) continue;
+              await deleteButton.click();
+
+              const confirmButton = await this.page.$('[data-testid="confirmationSheetConfirm"]');
+              if (!confirmButton) continue;
+              await confirmButton.click();
+
+              await this.page.waitForTimeout(1000);
+              console.log('ULTIMATE_POSTER: ✅ Deleted reply from conversation thread after extraction failure');
+              return true;
+            }
+
+            await this.page.evaluate(() => window.scrollBy(0, window.innerHeight * 0.8)).catch(() => undefined);
+            await this.page.waitForTimeout(1200);
+          }
+        } catch (threadError: any) {
+          console.warn(`ULTIMATE_POSTER: ⚠️ Conversation delete attempt failed: ${threadError.message}`);
+        }
+      }
 
       await this.page.goto(`https://x.com/${username}`, {
         waitUntil: 'domcontentloaded',

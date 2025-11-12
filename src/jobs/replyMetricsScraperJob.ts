@@ -15,6 +15,8 @@ import { getSupabaseClient } from '../db';
 import { BulletproofTwitterScraper } from '../scrapers/bulletproofTwitterScraper';
 import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 
+const MAX_SCRAPE_RETRIES = 5;
+
 export async function replyMetricsScraperJob(): Promise<void> {
   console.log('[REPLY_METRICS] 🔍 Starting reply performance scraping...');
   
@@ -24,27 +26,38 @@ export async function replyMetricsScraperJob(): Promise<void> {
     // PRIORITY 1: Recent replies (last 7 days) - scrape aggressively
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     
+    const postedAfterIso = sevenDaysAgo.toISOString();
     const { data: recentReplies, error: recentError } = await supabase
       .from('content_metadata')
-      .select('decision_id, tweet_id, posted_at, content, features')
+      .select('decision_id, tweet_id, posted_at, content, features, actual_impressions')
       .eq('status', 'posted')
       .eq('decision_type', 'reply')
       .not('tweet_id', 'is', null)
-      .gte('posted_at', sevenDaysAgo.toISOString())
+      .or(`posted_at.gte.${postedAfterIso},actual_impressions.is.null,actual_impressions.eq.0`)
       .order('posted_at', { ascending: false })
-      .limit(20); // Scrape up to 20 recent replies
+      .limit(40); // Scrape a wider backlog to clear missing metrics
     
     if (recentError) {
       console.error('[REPLY_METRICS] ❌ Failed to fetch recent replies:', recentError.message);
       return;
     }
     
-    if (!recentReplies || recentReplies.length === 0) {
+    const repliesToScrape = (recentReplies || []).filter((reply) => {
+      const features = (reply.features || {}) as Record<string, any>;
+      const retryCount = Number(features.metrics_retry_count || 0);
+      if (retryCount >= MAX_SCRAPE_RETRIES) {
+        console.warn(`[REPLY_METRICS] ⏭️ Skipping ${reply.tweet_id} after ${retryCount} failed scraping attempts`);
+        return false;
+      }
+      return true;
+    });
+
+    if (repliesToScrape.length === 0) {
       console.log('[REPLY_METRICS] ℹ️ No recent replies to scrape');
       return;
     }
     
-    console.log(`[REPLY_METRICS] 📊 Found ${recentReplies.length} replies to scrape`);
+    console.log(`[REPLY_METRICS] 📊 Found ${repliesToScrape.length} replies to scrape`);
     
     // Get current follower count (to calculate followers gained)
     let currentFollowerCount = 0;
@@ -70,13 +83,15 @@ export async function replyMetricsScraperJob(): Promise<void> {
     const page = await pool.acquirePage('reply_metrics_scrape');
     
     try {
-      for (const reply of recentReplies) {
+      for (const reply of repliesToScrape) {
         try {
+          const baseFeatures = (reply.features || {}) as Record<string, any>;
+          const retryCount = Number(baseFeatures.metrics_retry_count || 0);
+
           console.log(`[REPLY_METRICS]   🔍 Scraping reply ${reply.tweet_id}...`);
           
           // Scrape tweet metrics
           const scraper = BulletproofTwitterScraper.getInstance();
-          const features = (reply.features || {}) as any;
           const result = await scraper.scrapeTweetMetrics(
             page,
             String(reply.tweet_id),
@@ -84,21 +99,52 @@ export async function replyMetricsScraperJob(): Promise<void> {
             {
               isReply: true,
               useAnalytics: false,
-              tweetUrl: typeof features.tweet_url === 'string' ? features.tweet_url : undefined
+              tweetUrl: typeof baseFeatures.tweet_url === 'string' ? baseFeatures.tweet_url : undefined
             }
           );
           
           if (!result.success || !result.metrics) {
             console.warn(`[REPLY_METRICS]   ⚠️ No metrics for ${reply.tweet_id}: ${result.error || 'Unknown error'}`);
             failedCount++;
+
+            const updatedFeatures = { ...baseFeatures, metrics_retry_count: retryCount + 1 };
+            try {
+              await supabase
+                .from('content_metadata')
+                .update({
+                  features: updatedFeatures,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('decision_id', reply.decision_id);
+            } catch (updateError: any) {
+              console.warn(`[REPLY_METRICS]   ⚠️ Failed to persist retry count for ${reply.tweet_id}: ${updateError.message}`);
+            }
+
+            if (updatedFeatures.metrics_retry_count >= MAX_SCRAPE_RETRIES) {
+              try {
+                await supabase.from('system_events').insert({
+                  event_type: 'reply_metrics_giveup',
+                  severity: 'warning',
+                  event_data: {
+                    reply_tweet_id: reply.tweet_id,
+                    decision_id: reply.decision_id,
+                    retries: updatedFeatures.metrics_retry_count,
+                    error: result.error || 'Unknown'
+                  },
+                  created_at: new Date().toISOString()
+                });
+              } catch (eventError: any) {
+                console.warn(`[REPLY_METRICS]   ⚠️ Failed to log metrics give-up event: ${eventError.message}`);
+              }
+            }
+
             continue;
           }
           
           const metrics = result.metrics;
-        
         // Extract parent tweet info from features
-        const parentTweetId = features.parent_tweet_id || '';
-        const parentUsername = features.parent_username || '';
+        const parentTweetId = baseFeatures.parent_tweet_id || '';
+        const parentUsername = baseFeatures.parent_username || '';
         
         // Calculate engagement rate
         const totalEngagement = (metrics.likes || 0) + (metrics.replies || 0) + (metrics.retweets || 0);
@@ -130,8 +176,8 @@ export async function replyMetricsScraperJob(): Promise<void> {
         
         // Calculate visibility score (how visible was it in the thread?)
         // Higher = better position, fewer competing replies
-        const parentReplies = features.parent_replies || 1;
-        const replyPosition = features.reply_position || parentReplies;
+        const parentReplies = baseFeatures.parent_replies || 1;
+        const replyPosition = baseFeatures.reply_position || parentReplies;
         const visibilityScore = Math.max(0, 1 - (replyPosition / Math.max(parentReplies, 10)));
         
         // Check if conversation continued (did we get replies?)
@@ -162,14 +208,14 @@ export async function replyMetricsScraperJob(): Promise<void> {
           reply_metadata: {
             retweets: metrics.retweets || 0,
             bookmarks: metrics.bookmarks || 0,
-            parent_likes: features.parent_likes || 0,
-            parent_replies: features.parent_replies || 0,
+            parent_likes: baseFeatures.parent_likes || 0,
+            parent_replies: baseFeatures.parent_replies || 0,
             reply_position: replyPosition,
             time_of_day: new Date(String(reply.posted_at)).getHours(),
             day_of_week: new Date(String(reply.posted_at)).getDay(),
-            hours_since_parent: features.hours_since_parent || 0,
-            parent_account_size: features.parent_account_size || 0,
-            generator_used: features.generator || 'unknown'
+            hours_since_parent: baseFeatures.hours_since_parent || 0,
+            parent_account_size: baseFeatures.parent_account_size || 0,
+            generator_used: baseFeatures.generator || 'unknown'
           },
           
           updated_at: new Date().toISOString()
@@ -188,6 +234,15 @@ export async function replyMetricsScraperJob(): Promise<void> {
           scrapedCount++;
 
           // Update content_metadata so dashboards & analytics stay in sync
+          const sanitizedFeatures =
+            retryCount > 0 && 'metrics_retry_count' in baseFeatures
+              ? (() => {
+                  const copy = { ...baseFeatures };
+                  delete copy.metrics_retry_count;
+                  return copy;
+                })()
+              : null;
+
           const { error: metaError } = await supabase
             .from('content_metadata')
             .update({
@@ -196,7 +251,8 @@ export async function replyMetricsScraperJob(): Promise<void> {
               actual_retweets: metrics.retweets ?? null,
               actual_replies: metrics.replies ?? null,
               actual_bookmarks: metrics.bookmarks ?? null,
-              updated_at: new Date().toISOString()
+              updated_at: new Date().toISOString(),
+              ...(sanitizedFeatures ? { features: sanitizedFeatures } : {})
             })
             .eq('decision_id', reply.decision_id);
 
