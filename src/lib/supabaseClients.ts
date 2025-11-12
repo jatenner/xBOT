@@ -13,7 +13,7 @@ export const admin = createClient(
     auth: { persistSession: false }, 
     global: { headers: { 'x-client-info': 'xbot-admin' } } 
   }
-);
+) as SupabaseClient<any, any, any>;
 
 export const anon = createClient(
   process.env.SUPABASE_URL!,
@@ -22,7 +22,7 @@ export const anon = createClient(
     auth: { persistSession: false }, 
     global: { headers: { 'x-client-info': 'xbot-anon' } } 
   }
-);
+) as SupabaseClient<any, any, any>;
 
 // Default export for backward compatibility
 export const supabase = admin;

@@ -462,6 +462,26 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     });
     
     console.log(`[POSTING_QUEUE] 📋 Filtered: ${rows.length} → ${filteredRows.length} (removed ${rows.length - filteredRows.length} duplicates)`);
+
+    // RETRY DEFERRAL: Respect future retry windows so one failure can't monopolize queue
+    const nowTs = now.getTime();
+    const throttledRows = filteredRows.filter(row => {
+      const decisionId = String(row.decision_id ?? '');
+      const features = (row.features || {}) as any;
+      const retryCount = Number(features?.retry_count || 0);
+      const scheduledTs = new Date(String(row.scheduled_at)).getTime();
+
+      if (retryCount > 0 && scheduledTs > nowTs) {
+        console.log(`[POSTING_QUEUE] ⏳ Skipping retry ${decisionId} until ${row.scheduled_at} (retry #${retryCount})`);
+        return false;
+      }
+
+      return true;
+    });
+
+    if (throttledRows.length !== filteredRows.length) {
+      console.log(`[POSTING_QUEUE] ⏳ Retry deferral removed ${filteredRows.length - throttledRows.length} items from this loop`);
+    }
     
     // SEPARATE RATE LIMITS: Content (2/hr for singles+threads combined) vs Replies (4/hr separate)
     const config = getConfig();
@@ -493,7 +513,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     console.log(`[POSTING_QUEUE] 🚦 Rate limits: Content ${contentPosted}/${maxContentPerHour} (singles+threads), Replies ${repliesPosted}/${maxRepliesPerHour}`);
     
     // Apply rate limits per type
-    const decisionsWithLimits = filteredRows.filter(row => {
+    const decisionsWithLimits = throttledRows.filter(row => {
       const type = String(row.decision_type ?? 'single');
       if (type === 'reply') {
         return repliesPosted < maxRepliesPerHour;

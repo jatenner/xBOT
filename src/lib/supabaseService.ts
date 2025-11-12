@@ -3,7 +3,7 @@
  * Bypasses RLS for writes and administrative operations
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 export const supaService = createClient(
   process.env.SUPABASE_URL!,
@@ -14,7 +14,7 @@ export const supaService = createClient(
       fetch 
     } 
   }
-);
+) as SupabaseClient<any, any, any>;
 
 /**
  * Ensure API usage table exists with proper structure
