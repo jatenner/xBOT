@@ -699,8 +699,8 @@ app.get('/dashboard/posts', async (req, res) => {
     
     console.log('📊 POSTS_DASHBOARD: Serving posts analytics...');
     
-    const { comprehensiveDashboard } = await import('./dashboard/comprehensiveDashboard');
-    const dashboardHTML = await comprehensiveDashboard.generatePostsDashboard();
+    const { generatePostsOverview } = await import('./dashboard/postsOverview');
+    const dashboardHTML = await generatePostsOverview();
     
     res.setHeader('Content-Type', 'text/html');
     res.send(dashboardHTML);
@@ -732,8 +732,8 @@ app.get('/dashboard/replies', async (req, res) => {
     
     console.log('📊 REPLIES_DASHBOARD: Serving replies analytics...');
     
-    const { comprehensiveDashboard } = await import('./dashboard/comprehensiveDashboard');
-    const dashboardHTML = await comprehensiveDashboard.generateRepliesDashboard();
+    const { generateRepliesOverview } = await import('./dashboard/repliesOverview');
+    const dashboardHTML = await generateRepliesOverview();
     
     res.setHeader('Content-Type', 'text/html');
     res.send(dashboardHTML);
@@ -763,10 +763,10 @@ app.get('/dashboard/health', async (req, res) => {
       `);
     }
     
-    console.log('🔄 FLOW_DASHBOARD: Serving system flow dashboard...');
+    console.log('🔄 FLOW_DASHBOARD: Serving system health overview...');
     
-    const { generateSystemFlowDashboard } = await import('./dashboard/systemFlowDashboard');
-    const dashboardHTML = await generateSystemFlowDashboard();
+    const { generateSystemHealthOverview } = await import('./dashboard/systemHealthOverview');
+    const dashboardHTML = await generateSystemHealthOverview();
     
     res.setHeader('Content-Type', 'text/html');
     res.send(dashboardHTML);
