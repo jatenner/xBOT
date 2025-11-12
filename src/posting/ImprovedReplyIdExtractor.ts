@@ -2,15 +2,16 @@
  * 🔍 IMPROVED REPLY TWEET ID EXTRACTOR
  * 
  * Fixes reliability issues with tweet ID extraction after posting replies.
- * Uses 3 fallback strategies to ensure we always get the real tweet ID.
+ * Uses layered fallback strategies to ensure we always get the real tweet ID.
  * 
  * Strategies:
  * 1. Network capture - Listen to Twitter API responses (most reliable)
  * 2. URL parsing - Extract from page URL after posting
  * 3. Profile scraping - Find the tweet from timeline (last resort)
+ * 4. Conversation scrape - Inspect the parent thread for our reply
  */
 
-import { Page } from 'playwright';
+import { Page, Response } from 'playwright';
 
 export interface ExtractionResult {
   success: boolean;
@@ -22,6 +23,8 @@ export interface ExtractionResult {
 export class ImprovedReplyIdExtractor {
   private static networkListenerActive = false;
   private static capturedTweetId: string | null = null;
+  private static pendingResponse?: Promise<string | null>;
+  private static responseListener?: (response: Response) => Promise<void>;
 
   /**
    * Extract reply tweet ID with multiple fallback strategies
@@ -40,9 +43,26 @@ export class ImprovedReplyIdExtractor {
     
     const startTime = Date.now();
 
+    try {
+      const awaitedId = await this.waitForCreateTweetResponse(page, maxWaitMs);
+      if (awaitedId) {
+        this.teardownListener(page);
+        const elapsed = Date.now() - startTime;
+        console.log(`[ID_EXTRACTOR] ✅ CreateTweet response matched in ${elapsed}ms: ${awaitedId}`);
+        return {
+          success: true,
+          tweetId: awaitedId,
+          strategy: 'network'
+        };
+      }
+    } catch (error: any) {
+      console.warn('[ID_EXTRACTOR] ⚠️ CreateTweet wait failed:', error.message);
+    }
+
     // Strategy 1: Network capture (most reliable - setup before posting!)
     const idFromNetwork = await this.tryNetworkCapture(page, maxWaitMs);
     if (idFromNetwork) {
+      this.teardownListener(page);
       const elapsed = Date.now() - startTime;
       console.log(`[ID_EXTRACTOR] ✅ Network strategy succeeded in ${elapsed}ms: ${idFromNetwork}`);
       return {
@@ -64,7 +84,7 @@ export class ImprovedReplyIdExtractor {
       };
     }
 
-    // Strategy 3: Profile scraping (fallback - most reliable but slowest)
+    // Strategy 3: Profile scraping (fallback - timeline view)
     const idFromProfile = await this.tryProfileScrape(page, parentTweetId, maxWaitMs);
     if (idFromProfile) {
       const elapsed = Date.now() - startTime;
@@ -73,6 +93,18 @@ export class ImprovedReplyIdExtractor {
         success: true,
         tweetId: idFromProfile,
         strategy: 'profile'
+      };
+    }
+
+    // Strategy 4: Conversation scrape (direct parent thread)
+    const idFromConversation = await this.tryConversationScrape(page, parentTweetId);
+    if (idFromConversation) {
+      const elapsed = Date.now() - startTime;
+      console.log(`[ID_EXTRACTOR] ✅ Conversation strategy succeeded in ${elapsed}ms: ${idFromConversation}`);
+      return {
+        success: true,
+        tweetId: idFromConversation,
+        strategy: 'fallback'
       };
     }
 
@@ -90,15 +122,16 @@ export class ImprovedReplyIdExtractor {
    * Must be called before clicking the post button
    */
   static setupNetworkListener(page: Page): void {
-    if (this.networkListenerActive) {
-      return; // Already listening
+    if (this.responseListener) {
+      page.off('response', this.responseListener);
+      this.responseListener = undefined;
     }
 
     console.log('[ID_EXTRACTOR] 🎧 Setting up network listener');
     this.capturedTweetId = null;
     this.networkListenerActive = true;
 
-    page.on('response', async (response) => {
+    this.responseListener = async (response: Response) => {
       try {
         const url = response.url();
 
@@ -122,7 +155,18 @@ export class ImprovedReplyIdExtractor {
       } catch (error: any) {
         // Ignore errors in listener
       }
-    });
+    };
+
+    page.on('response', this.responseListener);
+    this.pendingResponse = this.awaitCreateTweetResponse(page)
+      .then((id) => {
+        if (id && !this.capturedTweetId) {
+          console.log('[ID_EXTRACTOR] 🎯 Async CreateTweet response delivered tweet ID:', id);
+          this.capturedTweetId = id;
+        }
+        return id;
+      })
+      .catch(() => null);
   }
 
   /**
@@ -143,14 +187,24 @@ export class ImprovedReplyIdExtractor {
       if (this.capturedTweetId) {
         const id = this.capturedTweetId;
         this.capturedTweetId = null; // Reset for next reply
-        this.networkListenerActive = false;
+        this.teardownListener(page);
         return id;
       }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     console.log('[ID_EXTRACTOR] ⏱️ Network capture timeout');
-    this.networkListenerActive = false;
+
+    // Final attempt: wait directly for the CreateTweet response before giving up
+    const remainingMs = Math.max(500, maxWaitMs - (Date.now() - startTime));
+    const waitResult = await this.waitForCreateTweetResponse(page, remainingMs);
+    if (waitResult) {
+      this.capturedTweetId = null;
+      this.teardownListener(page);
+      return waitResult;
+    }
+
+    this.teardownListener(page);
     return null;
   }
 
@@ -211,9 +265,9 @@ export class ImprovedReplyIdExtractor {
       console.log('[ID_EXTRACTOR] Our username:', username);
 
       // Navigate to our profile
-      await page.goto(`https://x.com/${username}`, {
+      await page.goto(`https://x.com/${username}/with_replies`, {
         waitUntil: 'domcontentloaded',
-        timeout: 10000
+        timeout: 12000
       });
 
       await page.waitForTimeout(3000); // Wait for tweets to load
@@ -265,6 +319,72 @@ export class ImprovedReplyIdExtractor {
   }
 
   /**
+   * Strategy 4: Inspect the parent conversation for our reply node
+   */
+  private static async tryConversationScrape(
+    page: Page,
+    parentTweetId: string
+  ): Promise<string | null> {
+    console.log('[ID_EXTRACTOR] 🧵 Strategy 4: Conversation scrape...');
+
+    try {
+      const username = await this.getOurUsername(page);
+      if (!username) {
+        console.log('[ID_EXTRACTOR] ⚠️ Unable to determine username for conversation scrape');
+        return null;
+      }
+
+      await page.goto(`https://x.com/i/status/${parentTweetId}`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 15000
+      });
+
+      await page.waitForTimeout(3000);
+
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const candidateArticles = await page.$$(
+          `article[data-testid="tweet"]:has(a[href="/${username}"])`
+        );
+
+        console.log(`[ID_EXTRACTOR] Conversation scrape candidates (pass ${attempt + 1}): ${candidateArticles.length}`);
+
+        for (const article of candidateArticles) {
+          try {
+            const link = await article.$('a[href*="/status/"]');
+            if (!link) continue;
+
+            const href = await link.getAttribute('href');
+            if (!href) continue;
+
+            const match = href.match(/\/status\/(\d{15,20})/);
+            if (!match) continue;
+
+            const tweetId = match[1];
+            if (tweetId === parentTweetId) continue;
+
+            console.log(`[ID_EXTRACTOR] ✅ Conversation scrape located reply: ${tweetId}`);
+            return tweetId;
+          } catch (error) {
+            continue;
+          }
+        }
+
+        // Scroll a bit more to load additional replies before next pass
+        await page.evaluate(() => {
+          window.scrollBy(0, window.innerHeight * 0.8);
+        }).catch(() => undefined);
+        await page.waitForTimeout(1500);
+      }
+
+      console.log('[ID_EXTRACTOR] ⚠️ Conversation scrape exhausted without locating reply');
+      return null;
+    } catch (error: any) {
+      console.error('[ID_EXTRACTOR] Conversation scrape error:', error.message);
+      return null;
+    }
+  }
+
+  /**
    * Parse tweet ID from Twitter's CreateTweet API response
    */
   private static parseTweetIdFromResponse(json: any): string | null {
@@ -273,7 +393,23 @@ export class ImprovedReplyIdExtractor {
       const paths = [
         // GraphQL responses
         json?.data?.create_tweet?.tweet_results?.result?.rest_id,
+        json?.data?.create_tweet?.tweet_results?.result?.tweet?.rest_id,
+        json?.data?.create_tweet?.tweet_results?.result?.tweet?.legacy?.rest_id,
         json?.data?.CreateTweet?.tweet_results?.result?.rest_id,
+        json?.data?.CreateTweet?.tweet_results?.result?.tweet?.rest_id,
+        json?.data?.CreateTweet?.tweet_results?.result?.tweet?.legacy?.rest_id,
+        json?.data?.tweetCreate?.tweet_results?.result?.rest_id,
+        json?.data?.tweetCreate?.tweet_results?.result?.tweet?.rest_id,
+        json?.data?.tweetCreate?.tweet_results?.result?.tweet?.legacy?.rest_id,
+        json?.data?.tweetCreate?.tweet?.legacy?.rest_id,
+        json?.data?.tweetCreate?.tweet?.rest_id,
+        json?.data?.tweetCreate?.tweet_result?.result?.rest_id,
+        json?.data?.tweetCreate?.tweet_result?.result?.tweet?.rest_id,
+        json?.data?.tweetCreate?.tweet_result?.result?.tweet?.legacy?.rest_id,
+        json?.data?.tweetCreate?.tweet_result?.result?.tweet_id,
+        json?.data?.tweet_create?.tweet?.rest_id,
+        json?.data?.tweet_create?.tweet?.legacy?.rest_id,
+        json?.data?.tweet_create?.tweet_result?.result?.rest_id,
         
         // REST API responses
         json?.data?.tweet?.rest_id,
@@ -301,6 +437,52 @@ export class ImprovedReplyIdExtractor {
       console.error('[ID_EXTRACTOR] Error parsing response:', error.message);
       return null;
     }
+  }
+
+  private static async waitForCreateTweetResponse(page: Page, maxWaitMs: number): Promise<string | null> {
+    try {
+      // If we already have a pending promise from setup, use it first
+      if (this.pendingResponse) {
+        const existing = await Promise.race([
+          this.pendingResponse,
+          new Promise<string | null>((resolve) => setTimeout(() => resolve(null), maxWaitMs))
+        ]);
+        if (existing) return existing;
+      }
+
+      const response = await page.waitForResponse(
+        (res) => res.url().includes('CreateTweet'),
+        { timeout: maxWaitMs }
+      );
+      const json = await response.json().catch(() => null);
+      if (!json) return null;
+      return this.parseTweetIdFromResponse(json);
+    } catch {
+      return null;
+    }
+  }
+
+  private static async awaitCreateTweetResponse(page: Page): Promise<string | null> {
+    try {
+      const response = await page.waitForResponse(
+        (res) => res.url().includes('CreateTweet'),
+        { timeout: 8000 }
+      );
+      const json = await response.json().catch(() => null);
+      if (!json) return null;
+      return this.parseTweetIdFromResponse(json);
+    } catch {
+      return null;
+    }
+  }
+
+  private static teardownListener(page: Page): void {
+    if (this.responseListener) {
+      page.off('response', this.responseListener);
+      this.responseListener = undefined;
+    }
+    this.networkListenerActive = false;
+    this.pendingResponse = undefined;
   }
 
   /**
