@@ -1,6 +1,7 @@
 import { chromium, Browser, BrowserContext } from 'playwright';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { loadTwitterStorageState, cloneStorageState, type TwitterStorageState } from '../utils/twitterSessionState';
 
 let browser: Browser | null = null;
 let isInitializing = false;
@@ -71,29 +72,28 @@ export async function createContext(storageStatePath?: string): Promise<BrowserC
   };
 
   // Load storage state from TWITTER_SESSION_B64 environment variable first
-  if (process.env.TWITTER_SESSION_B64) {
-    try {
-      console.log('BROWSER_FACTORY: Loading session from TWITTER_SESSION_B64...');
-      const sessionData = Buffer.from(process.env.TWITTER_SESSION_B64, 'base64').toString('utf-8');
-      const sessionJson = JSON.parse(sessionData);
-      
-      if (sessionJson.cookies || sessionJson.origins) {
-        // Use the parsed session as storageState
-        contextOptions.storageState = sessionJson;
-        console.log(`BROWSER_FACTORY: ✅ Loaded session from TWITTER_SESSION_B64`);
-      } else if (Array.isArray(sessionJson)) {
-        // Handle legacy format where sessionJson is just cookies array
-        contextOptions.storageState = { cookies: sessionJson };
-        console.log(`BROWSER_FACTORY: ✅ Loaded legacy session format from TWITTER_SESSION_B64`);
-      }
-    } catch (error) {
-      console.error('BROWSER_FACTORY: ❌ Failed to parse TWITTER_SESSION_B64:', error.message);
+  let storageState: TwitterStorageState | undefined;
+
+  const sessionResult = await loadTwitterStorageState();
+  if (sessionResult.warnings && sessionResult.warnings.length > 0) {
+    for (const warning of sessionResult.warnings) {
+      console.warn(`BROWSER_FACTORY: ⚠️ Session warning - ${warning}`);
     }
   }
-  // Fallback to file-based session if no env var session was loaded
-  else if (storageStatePath && existsSync(storageStatePath)) {
+  if (sessionResult.storageState && sessionResult.cookieCount > 0) {
+    storageState = cloneStorageState(sessionResult.storageState);
+    console.log(`BROWSER_FACTORY: ✅ Loaded session from ${sessionResult.source} (${sessionResult.cookieCount} cookies)`);
+  } else if (storageStatePath && existsSync(storageStatePath)) {
     console.log(`BROWSER_FACTORY: Loading storage state from ${storageStatePath}`);
     contextOptions.storageState = storageStatePath;
+  } else {
+    if (sessionResult.source === 'none') {
+      console.warn('BROWSER_FACTORY: ⚠️ No Twitter session found - context will be unauthenticated');
+    }
+  }
+
+  if (storageState) {
+    contextOptions.storageState = storageState;
   }
 
   const context = await b.newContext(contextOptions);

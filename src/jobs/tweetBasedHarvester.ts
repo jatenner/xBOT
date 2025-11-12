@@ -327,6 +327,7 @@ export async function tweetBasedHarvester(): Promise<void> {
             console.log('[TWEET_HARVESTER] ✅ Session refreshed, retrying authentication...');
             // Release current page and try again with fresh session
             await pool.releasePage(page);
+            await pool.reloadSessionState();
             
             // Try one more time with fresh session
             const freshPage = await pool.acquirePage('tweet_search_fresh');

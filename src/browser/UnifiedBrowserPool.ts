@@ -13,8 +13,8 @@
  */
 
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
-import { SessionLoader } from '../utils/sessionLoader';
-import fs from 'fs';
+import type { BrowserContextOptions } from 'playwright';
+import { loadTwitterStorageState, cloneStorageState, type TwitterStorageState } from '../utils/twitterSessionState';
 
 interface ContextHandle {
   context: BrowserContext;
@@ -22,6 +22,7 @@ interface ContextHandle {
   lastUsed: Date;
   operationCount: number;
   maxOperations: number;
+  sessionAppliedVersion: number;
 }
 
 interface QueuedOperation {
@@ -39,6 +40,9 @@ export class UnifiedBrowserPool {
   private queue: QueuedOperation[] = [];
   private isProcessingQueue = false;
   private sessionLoaded = false;
+  private cachedStorageState: TwitterStorageState | null = null;
+  private sessionVersion = 0;
+  private sessionWarningLogged = false;
   
   // Configuration
   private readonly MAX_CONTEXTS = 8; // Optimized for FULL system: handles 9 concurrent jobs at peak + buffer
@@ -279,6 +283,7 @@ export class UnifiedBrowserPool {
             
             try {
               console.log(`[BROWSER_POOL]   → ${op.id}: Starting...`);
+              await this.ensureContextSession(context);
               
               // ✅ CRITICAL FIX: Race against timeout
               const result = await Promise.race([
@@ -347,6 +352,68 @@ export class UnifiedBrowserPool {
         reject(new Error(`[TIMEOUT] Operation ${operationId} exceeded ${ms}ms limit`));
       }, ms);
     });
+  }
+
+  private async ensureStorageState(forceReload = false): Promise<TwitterStorageState | undefined> {
+    if (!forceReload && this.cachedStorageState) {
+      return cloneStorageState(this.cachedStorageState);
+    }
+
+    const result = await loadTwitterStorageState();
+
+    if (result.warnings && result.warnings.length > 0) {
+      for (const warning of result.warnings) {
+        console.warn(`[BROWSER_POOL] ⚠️ Session load warning: ${warning}`);
+      }
+    }
+
+    if (result.storageState && result.cookieCount > 0) {
+      const serializedNew = JSON.stringify(result.storageState.cookies);
+      const serializedExisting = this.cachedStorageState
+        ? JSON.stringify(this.cachedStorageState.cookies)
+        : null;
+      const changed = !this.cachedStorageState || serializedExisting !== serializedNew;
+
+      this.cachedStorageState = result.storageState;
+      this.sessionLoaded = true;
+      this.sessionWarningLogged = false;
+
+      if (changed || forceReload) {
+        this.sessionVersion++;
+        console.log(`[BROWSER_POOL] ✅ Session ready (${result.cookieCount} cookies, source=${result.source}, version ${this.sessionVersion})`);
+      }
+
+      return cloneStorageState(result.storageState);
+    }
+
+    this.cachedStorageState = null;
+    this.sessionLoaded = false;
+
+    if (!this.sessionWarningLogged) {
+      console.warn('[BROWSER_POOL] ⚠️ No authenticated Twitter session detected - contexts will run unauthenticated');
+      this.sessionWarningLogged = true;
+    }
+
+    return undefined;
+  }
+
+  private async ensureContextSession(handle: ContextHandle): Promise<void> {
+    try {
+      const storageState = await this.ensureStorageState();
+      if (!storageState || storageState.cookies.length === 0) {
+        return;
+      }
+
+      if (handle.sessionAppliedVersion === this.sessionVersion) {
+        return;
+      }
+
+      await handle.context.addCookies(storageState.cookies);
+      handle.sessionAppliedVersion = this.sessionVersion;
+      console.log(`[BROWSER_POOL] 🍪 Applied session cookies to context (version ${this.sessionVersion})`);
+    } catch (error: any) {
+      console.warn(`[BROWSER_POOL] ⚠️ Failed to apply session cookies: ${error.message}`);
+    }
   }
 
   /**
@@ -457,44 +524,26 @@ export class UnifiedBrowserPool {
 
     const contextId = `ctx-${Date.now()}-${this.metrics.contextsCreated}`;
     console.log(`[BROWSER_POOL] 🆕 Creating context: ${contextId}`);
-    console.log(`[BROWSER_POOL] 🔍 TWITTER_SESSION_B64 exists: ${!!process.env.TWITTER_SESSION_B64}`);
-    console.log(`[BROWSER_POOL] 🔍 TWITTER_SESSION_B64 length: ${process.env.TWITTER_SESSION_B64?.length || 0}`);
-
-    // Load session state from TWITTER_SESSION_B64 (primary source)
-    let storageState;
-    if (process.env.TWITTER_SESSION_B64) {
-      try {
-        console.log('[BROWSER_POOL] 🔐 Loading session from TWITTER_SESSION_B64...');
-        const sessionData = Buffer.from(process.env.TWITTER_SESSION_B64, 'base64').toString('utf-8');
-        const sessionJson = JSON.parse(sessionData);
-        
-        if (sessionJson.cookies || sessionJson.origins) {
-          storageState = sessionJson;
-          console.log(`[BROWSER_POOL] ✅ Session loaded (${sessionJson.cookies?.length || 0} cookies)`);
-        } else if (Array.isArray(sessionJson)) {
-          // Handle legacy format where sessionJson is just cookies array
-          storageState = { cookies: sessionJson };
-          console.log(`[BROWSER_POOL] ✅ Legacy session loaded (${sessionJson.length} cookies)`);
-        }
-      } catch (error: any) {
-        console.warn('[BROWSER_POOL] ⚠️ Session load failed, using fresh context:', error.message);
-      }
-    } else {
-      console.warn('[BROWSER_POOL] ⚠️ TWITTER_SESSION_B64 not found - contexts will not be authenticated');
-    }
-
-    const context = await this.browser!.newContext({
-      storageState,
+    
+    const storageState = await this.ensureStorageState();
+    const contextOptions: BrowserContextOptions = {
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
       viewport: { width: 1280, height: 720 }
-    });
+    };
+
+    if (storageState) {
+      contextOptions.storageState = storageState;
+    }
+    
+    const context = await this.browser!.newContext(contextOptions);
 
     const handle: ContextHandle = {
       context,
       inUse: true,
       lastUsed: new Date(),
       operationCount: 0,
-      maxOperations: this.MAX_OPERATIONS_PER_CONTEXT
+      maxOperations: this.MAX_OPERATIONS_PER_CONTEXT,
+      sessionAppliedVersion: storageState ? this.sessionVersion : -1
     };
 
     this.contexts.set(contextId, handle);
@@ -690,6 +739,11 @@ export class UnifiedBrowserPool {
     };
   }
 
+  public async reloadSessionState(): Promise<void> {
+    this.cachedStorageState = null;
+    await this.ensureStorageState(true);
+  }
+
   /**
    * Print metrics (for monitoring)
    */
@@ -745,6 +799,8 @@ export class UnifiedBrowserPool {
       
       // Reset state
       this.sessionLoaded = false;
+      this.cachedStorageState = null;
+      this.sessionWarningLogged = false;
       this.metrics.failedOperations = 0;
       this.circuitBreaker.failures = 0;
       this.circuitBreaker.isOpen = false;
