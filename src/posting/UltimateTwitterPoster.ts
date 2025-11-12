@@ -4,12 +4,13 @@
  */
 
 import { log } from '../lib/logger';
-import { Page, BrowserContext } from 'playwright';
+import { Page, BrowserContext, Locator } from 'playwright';
 import { getBrowser, createContext } from '../browser/browserFactory';
 import { existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { ImprovedReplyIdExtractor } from './ImprovedReplyIdExtractor';
 import { BulletproofTweetExtractor } from '../utils/bulletproofTweetExtractor';
+import { ensureComposerFocused } from './composerFocus';
 
 export interface PostResult {
   success: boolean;
@@ -1136,91 +1137,89 @@ export class UltimateTwitterPoster {
           throw new Error('Not logged in - session expired');
         }
 
-        console.log(`ULTIMATE_POSTER: Finding reply button...`);
+        console.log(`ULTIMATE_POSTER: Focusing reply composer...`);
 
-        // Find and click reply button with extended timeout
-        const replyButton = this.page.locator('[data-testid="reply"]').first();
-        await replyButton.waitFor({ state: 'visible', timeout: 15000 }); // Increased from 5s → 15s
-        await replyButton.click();
-
-        // Wait for reply modal to appear
-        console.log(`ULTIMATE_POSTER: Waiting for reply modal...`);
-        await this.page.waitForTimeout(3000);
-
-        // Find composer in modal
-        const composerSelectors = [
-          '[data-testid^="tweetTextarea_"][data-testid$="RichTextEditor"]',
-          '[data-testid^="tweetTextarea_"][data-testid$="RichTextInputContainer"] div[contenteditable="true"]',
-          'div[data-testid^="tweetTextarea_"] div[contenteditable="true"]',
-          'div[role="dialog"] [data-testid^="tweetTextarea_"]',
-          'div[aria-modal="true"] [data-testid^="tweetTextarea_"]',
-          'div[role="dialog"] div[role="textbox"][contenteditable="true"]',
-          'div[aria-modal="true"] div[role="textbox"][contenteditable="true"]',
-          'div[role="textbox"][contenteditable="true"]',
-          '[data-testid="tweetTextarea_0"]',
-          '.public-DraftEditor-content[contenteditable="true"]',
-          'div[aria-modal="true"] [contenteditable="true"]',
-          'div[role="dialog"] [contenteditable="true"]',
-          '[contenteditable="true"]'
+        // Fallback list of reply button selectors (mirrors composerFocus.ts)
+        const replyButtonSelectors = [
+          '[data-testid="reply"]',
+          '[data-testid="replyButton"]',
+          '[data-testid="replyButtonInline"]',
+          '[role="button"][data-testid*="reply"]',
+          'button[data-testid*="reply"]',
+          'button[aria-label*="Reply"]',
+          'div[role="button"][aria-label*="Reply"]',
+          'button:has-text("Reply")',
+          'div[role="button"]:has-text("Reply")'
         ];
 
-        let composer = null;
-        for (const selector of composerSelectors) {
+        let replyButtonClicked = false;
+        for (const selector of replyButtonSelectors) {
           try {
-            const candidate = this.page.locator(selector).first();
-            await candidate.waitFor({ state: 'visible', timeout: 2500 });
-
-            const isVisible = await candidate.isVisible();
-            if (!isVisible) {
-              continue;
-            }
-
-            const editableHandle = await candidate.evaluateHandle((el: any) => {
-              if (!el) return null;
-              if (el.contentEditable === 'true' || el.tagName === 'TEXTAREA') return el;
-              const descendant =
-                el.querySelector('[contenteditable="true"]') ||
-                el.querySelector('textarea') ||
-                el.querySelector('div[role="textbox"][contenteditable="true"]') ||
-                el.querySelector('div[data-contents="true"][contenteditable="true"]');
-              return descendant || el;
-            });
-
-            const editableElement = editableHandle?.asElement();
-            if (!editableElement) {
-              continue;
-            }
-
-            await editableElement.waitForElementState('stable').catch(() => undefined);
-            composer = editableElement;
-            console.log(`ULTIMATE_POSTER: Found reply composer: "${selector}"`);
+            const button = this.page.locator(selector).first();
+            await button.waitFor({ state: 'visible', timeout: 5000 });
+            await button.click({ delay: 50 });
+            replyButtonClicked = true;
+            console.log(`ULTIMATE_POSTER: Clicked reply button via selector "${selector}"`);
             break;
           } catch {
             continue;
           }
         }
 
-        if (!composer) {
-          throw new Error('Reply composer not found');
+        if (!replyButtonClicked) {
+          throw new Error('Reply button not found');
         }
 
+        // Focus the composer using shared helper (handles new UI variants)
+        const focusResult = await ensureComposerFocused(this.page, { mode: 'reply' });
+        if (!focusResult.success || !focusResult.element) {
+          throw new Error(focusResult.error || 'Reply composer not focused');
+        }
+
+        const composer = focusResult.element as Locator;
+
         // 🎧 SETUP NETWORK LISTENER BEFORE POSTING
-        // This must happen BEFORE clicking the post button
+        // This must happen BEFORE typing/posting
         ImprovedReplyIdExtractor.setupNetworkListener(this.page);
         
         // Type reply content
         console.log(`ULTIMATE_POSTER: Typing reply content...`);
-        await composer.click();
+        await composer.click({ delay: 30 }).catch(() => undefined);
         await this.page.waitForTimeout(300);
-        await composer.fill(content);
-        await this.page.waitForTimeout(500);
+
+        const selectAllShortcut = process.platform === 'darwin' ? 'Meta+A' : 'Control+A';
+        let composed = false;
+        try {
+          await composer.fill('');
+          await composer.fill(content);
+          composed = true;
+        } catch (fillError: any) {
+          console.warn(`ULTIMATE_POSTER: fill() failed on reply composer: ${fillError.message}`);
+        }
+
+        if (!composed) {
+          try {
+            await composer.press(selectAllShortcut);
+          } catch {
+            await this.page.keyboard.press(selectAllShortcut).catch(() => undefined);
+          }
+          await this.page.keyboard.type(content, { delay: 15 });
+        }
+
+        await this.page.waitForTimeout(400);
 
         // Find and click post button
         const postButtonSelectors = [
           '[data-testid="tweetButton"]',
           '[data-testid="tweetButtonInline"]',
+          '[data-testid="replyButton"]',
+          '[data-testid="replyButtonInline"]',
+          'div[role="button"][data-testid*="tweetButton"]',
+          'button[aria-label*="Reply"]',
           'div[role="button"]:has-text("Reply")',
-          'div[role="button"]:has-text("Post")'
+          'button:has-text("Reply")',
+          'div[role="button"]:has-text("Post")',
+          'button:has-text("Post")'
         ];
 
         let posted = false;
