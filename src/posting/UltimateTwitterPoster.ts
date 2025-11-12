@@ -1139,44 +1139,78 @@ export class UltimateTwitterPoster {
 
         console.log(`ULTIMATE_POSTER: Focusing reply composer...`);
 
-        // Fallback list of reply button selectors (mirrors composerFocus.ts)
-        const replyButtonSelectors = [
-          '[data-testid="reply"]',
-          '[data-testid="replyButton"]',
-          '[data-testid="replyButtonInline"]',
-          '[role="button"][data-testid*="reply"]',
-          'button[data-testid*="reply"]',
-          'button[aria-label*="Reply"]',
-          'div[role="button"][aria-label*="Reply"]',
-          'button:has-text("Reply")',
-          'div[role="button"]:has-text("Reply")'
-        ];
+        let composer: Locator | null = null;
 
-        let replyButtonClicked = false;
-        for (const selector of replyButtonSelectors) {
-          try {
-            const button = this.page.locator(selector).first();
-            await button.waitFor({ state: 'visible', timeout: 5000 });
-            await button.click({ delay: 50 });
-            replyButtonClicked = true;
-            console.log(`ULTIMATE_POSTER: Clicked reply button via selector "${selector}"`);
-            break;
-          } catch {
-            continue;
+        try {
+          const focusResult = await ensureComposerFocused(this.page, { mode: 'reply' });
+          if (!focusResult.success || !focusResult.element) {
+            throw new Error(focusResult.error || 'Reply composer not focused');
+          }
+          composer = focusResult.element as Locator;
+          if (focusResult.selectorUsed) {
+            console.log(`ULTIMATE_POSTER: Reply composer focused via ${focusResult.selectorUsed}`);
+          } else {
+            console.log(`ULTIMATE_POSTER: Reply composer focused`);
+          }
+        } catch (focusError: any) {
+          console.warn(`ULTIMATE_POSTER: ensureComposerFocused failed (${focusError.message}). Falling back.`);
+
+          const replyButtonSelectors = [
+            '[data-testid="reply"]',
+            '[data-testid="replyButton"]',
+            '[data-testid="replyButtonInline"]',
+            '[role="button"][data-testid*="reply"]',
+            'button[data-testid*="reply"]',
+            'button[aria-label*="Reply"]',
+            'div[role="button"][aria-label*="Reply"]',
+            'button:has-text("Reply")',
+            'div[role="button"]:has-text("Reply")'
+          ];
+
+          let replyButtonClicked = false;
+          for (const selector of replyButtonSelectors) {
+            try {
+              const button = this.page.locator(selector).first();
+              await button.waitFor({ state: 'visible', timeout: 4000 });
+              await button.click({ delay: 40 });
+              replyButtonClicked = true;
+              console.log(`ULTIMATE_POSTER: Fallback clicked reply button via selector "${selector}"`);
+              break;
+            } catch {
+              continue;
+            }
+          }
+
+          if (!replyButtonClicked) {
+            throw new Error('Reply button not found (fallback)');
+          }
+
+          const composerFallbackSelectors = [
+            'div[role="dialog"] div[role="textbox"][contenteditable="true"]',
+            'div[aria-modal="true"] div[role="textbox"][contenteditable="true"]',
+            'div[role="dialog"] [data-testid^="tweetTextarea_"] div[contenteditable="true"]',
+            '[data-testid^="tweetTextarea_"][data-testid$="RichTextInputContainer"] div[contenteditable="true"]',
+            '[data-testid^="tweetTextarea_"][data-testid$="RichTextEditor"]',
+            'div[contenteditable="true"][role="textbox"]',
+            '[contenteditable="true"]'
+          ];
+
+          for (const selector of composerFallbackSelectors) {
+            try {
+              const candidate = this.page.locator(selector).first();
+              await candidate.waitFor({ state: 'visible', timeout: 2500 });
+              composer = candidate;
+              console.log(`ULTIMATE_POSTER: Fallback composer located via "${selector}"`);
+              break;
+            } catch {
+              continue;
+            }
+          }
+
+          if (!composer) {
+            throw new Error('Reply composer not found after fallback focus');
           }
         }
-
-        if (!replyButtonClicked) {
-          throw new Error('Reply button not found');
-        }
-
-        // Focus the composer using shared helper (handles new UI variants)
-        const focusResult = await ensureComposerFocused(this.page, { mode: 'reply' });
-        if (!focusResult.success || !focusResult.element) {
-          throw new Error(focusResult.error || 'Reply composer not focused');
-        }
-
-        const composer = focusResult.element as Locator;
 
         // 🎧 SETUP NETWORK LISTENER BEFORE POSTING
         // This must happen BEFORE typing/posting
