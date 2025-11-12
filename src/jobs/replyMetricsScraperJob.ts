@@ -186,6 +186,23 @@ export async function replyMetricsScraperJob(): Promise<void> {
         } else {
           console.log(`[REPLY_METRICS]   ✅ ${reply.tweet_id}: ${metrics.views || 0} views, ${metrics.likes || 0} likes, +${followersGained} followers`);
           scrapedCount++;
+
+          // Update content_metadata so dashboards & analytics stay in sync
+          const { error: metaError } = await supabase
+            .from('content_metadata')
+            .update({
+              actual_impressions: metrics.views ?? null,
+              actual_likes: metrics.likes ?? null,
+              actual_retweets: metrics.retweets ?? null,
+              actual_replies: metrics.replies ?? null,
+              actual_bookmarks: metrics.bookmarks ?? null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('decision_id', reply.decision_id);
+
+          if (metaError) {
+            console.error(`[REPLY_METRICS]   ❌ Failed to update content_metadata for ${reply.tweet_id}:`, metaError.message);
+          }
         }
         
         // Small delay between scrapes
