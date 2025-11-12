@@ -14,25 +14,33 @@ const PLAYWRIGHT_COMPOSER_STRICT = true;
 
 // Comprehensive selector sets - UPDATED FOR CURRENT X INTERFACE
 const COMPOSER_SELECTORS = [
-  // Primary X/Twitter selectors (October 2025)
+  // Primary X/Twitter selectors (November 2025 refresh)
   '[data-testid="tweetTextarea_0"]',
-  'div[contenteditable="true"][role="textbox"]',
+  '[data-testid="tweetTextarea_1"]',
+  '[data-testid^="tweetTextarea_"][data-testid$="RichTextEditor"]',
+  '[data-testid^="tweetTextarea_"][data-testid$="RichTextInputContainer"] div[contenteditable="true"]',
+  'div[data-testid^="tweetTextarea_"] div[contenteditable="true"]',
+  'div[role="textbox"][data-testid^="tweetTextarea_"]',
   'div[aria-label*="Post text"]',
   'div[aria-label*="What is happening"]',
   'div[aria-label*="What\'s happening"]',
-  
-  // Fallback selectors
-  '[data-testid="tweetTextarea_1"]',
+  'div[role="textbox"][contenteditable="true"]',
+  'div[contenteditable="true"][role="textbox"]',
+
+  // Generic fallbacks
   '[data-testid="tweetTextEditor"]',
-  'div[contenteditable="true"]',
-  '.public-DraftEditor-content',
-  '[placeholder*="What\'s happening"]'
+  '.public-DraftEditor-content[contenteditable="true"]',
+  '[placeholder*="What\'s happening"]',
+  'div[contenteditable="true"]'
 ];
 
 const REPLY_SELECTORS = [
   '[data-testid="reply"]',
-  '[data-testid="tweetButtonInline"]', 
-  '[role="button"][data-testid*="reply"]'
+  '[data-testid="tweetButtonInline"]',
+  '[role="button"][data-testid*="reply"]',
+  'button[aria-label*="Reply"]',
+  'div[role="button"][aria-label*="Reply"]',
+  'button:has-text("Reply")'
 ];
 
 export interface ComposerFocusOptions {
@@ -111,21 +119,81 @@ async function tryComposerSelectors(page: Page, timeoutMs: number): Promise<Comp
     try {
       const element = await page.locator(selector).first();
       await element.waitFor({ state: 'visible', timeout: timeoutMs / COMPOSER_SELECTORS.length });
-      
-      // Verify it's actually editable
-      const isEditable = await element.evaluate((el: any) => 
-        el.contentEditable === 'true' || el.tagName === 'TEXTAREA'
-      );
-      
+
+      const isEditable = await element.evaluate((el: any) => {
+        const doc = el?.ownerDocument || document;
+        const computedRole = (el.getAttribute('role') || '').toLowerCase();
+        const tag = (el.tagName || '').toLowerCase();
+        const contentEditable = el.contentEditable === 'true';
+
+        if (contentEditable) return true;
+        if (tag === 'textarea') return true;
+        if (computedRole === 'textbox' && typeof (el as any).focus === 'function') return true;
+
+        // Some of the new React rich text editors wrap the editable region in a descendant div
+        const descendant = el.querySelector('[contenteditable="true"]');
+        if (descendant) return true;
+
+        // Look for aria-multiline textbox with descendant span
+        return Boolean(
+          el.querySelector('div[role="textbox"][contenteditable="true"]') ||
+          el.querySelector('div[data-contents="true"][contenteditable="true"]')
+        );
+      });
+
       if (isEditable) {
-        await element.click({ delay: 50 });
+        const elementHandle = await element.elementHandle();
+        if (!elementHandle) {
+          continue;
+        }
+
+        const editableHandle = await elementHandle.evaluateHandle((el: any) => {
+          if (el.contentEditable === 'true' || el.tagName === 'TEXTAREA') return el;
+          return (
+            el.querySelector('[contenteditable="true"]') ||
+            el.querySelector('textarea') ||
+            el.querySelector('div[role="textbox"][contenteditable="true"]') ||
+            el.querySelector('div[data-contents="true"][contenteditable="true"]') ||
+            el
+          );
+        });
+
+        const target = editableHandle.asElement() || elementHandle;
+
+        await target.waitForElementState('stable').catch(() => undefined);
+        await target.focus().catch(() => undefined);
+        await target.click({ delay: 30 }).catch(() => undefined);
+        await editableHandle.dispose();
+
+        const locator = page.locator(selector).first();
         console.log(`✅ COMPOSER_FOCUS: Success with selector: ${selector}`);
-        return { success: true, element, selectorUsed: selector };
+        return { success: true, element: locator, selectorUsed: selector };
       }
-    } catch {
+    } catch (error: any) {
       continue;
     }
   }
+
+  try {
+    const roleTextbox = page.getByRole('textbox').first();
+    await roleTextbox.waitFor({ state: 'visible', timeout: timeoutMs / 2 });
+    await roleTextbox.click({ delay: 30 });
+    console.log('✅ COMPOSER_FOCUS: Fallback via getByRole("textbox")');
+    return { success: true, element: roleTextbox, selectorUsed: 'role=textbox' };
+  } catch {
+    // Ignore
+  }
+
+  const richTextFallback = page.locator('[contenteditable="true"]').first();
+  try {
+    await richTextFallback.waitFor({ state: 'visible', timeout: timeoutMs / 2 });
+    await richTextFallback.click({ delay: 30 });
+    console.log('✅ COMPOSER_FOCUS: Fallback via [contenteditable="true"]');
+    return { success: true, element: richTextFallback, selectorUsed: '[contenteditable="true"] (fallback)' };
+  } catch {
+    // ignore
+  }
+
   return { success: false, error: 'No composer selectors matched' };
 }
 

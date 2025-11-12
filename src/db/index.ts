@@ -1,8 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Pool } from 'pg';
 import { DATABASE_URL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from '../config/env';
 
-let supabaseClient: ReturnType<typeof createClient> | null = null;
+let supabaseClient: SupabaseClient<any, any, any> | null = null;
 let pgPool: Pool | null = null;
 
 /**
@@ -15,7 +15,7 @@ export function getSupabaseClient() {
         autoRefreshToken: false,
         persistSession: false
       }
-    });
+    }) as SupabaseClient<any, any, any>;
   }
   
   if (!supabaseClient) {
