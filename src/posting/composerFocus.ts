@@ -25,6 +25,9 @@ const COMPOSER_SELECTORS = [
   'div[aria-label*="What is happening"]',
   'div[aria-label*="What\'s happening"]',
   'div[role="textbox"][contenteditable="true"]',
+  '[data-testid="tweetTextarea_0_label"]',
+  '[data-testid="tweetTextarea_0_label"] + div [contenteditable="true"]',
+  'div[data-testid="tweetTextarea_0"] div[contenteditable="true"]',
   'div[contenteditable="true"][role="textbox"]',
 
   // Generic fallbacks
@@ -76,6 +79,8 @@ export async function ensureComposerFocused(
     try {
       console.log(`🎯 COMPOSER_FOCUS: Attempt ${attempt + 1}/${retries} (${mode} mode)`);
       
+      await dismissComposerMask(page);
+      
       // Try primary strategy based on mode
       if (mode === 'reply') {
         const replyResult = await tryReplyFlow(page, timeoutMs);
@@ -119,6 +124,7 @@ async function tryComposerSelectors(page: Page, timeoutMs: number): Promise<Comp
     try {
       const element = await page.locator(selector).first();
       await element.waitFor({ state: 'visible', timeout: timeoutMs / COMPOSER_SELECTORS.length });
+      await dismissComposerMask(page);
 
       const isEditable = await element.evaluate((el: any) => {
         const doc = el?.ownerDocument || document;
@@ -247,4 +253,28 @@ async function tryPageReset(page: Page, timeoutMs: number): Promise<ComposerFocu
     // Silent failure
   }
   return { success: false, error: 'Page reset failed' };
+}
+
+async function dismissComposerMask(page: Page): Promise<void> {
+  try {
+    const mask = page.locator('[data-testid="twc-cc-mask"]');
+    if (await mask.first().isVisible({ timeout: 200 })) {
+      await mask.first().click({ trial: true }).catch(() => undefined);
+      await mask.first().evaluate((el: HTMLElement) => {
+        el.style.pointerEvents = 'none';
+        el.style.opacity = '0';
+      }).catch(() => undefined);
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const label = page.locator('[data-testid="tweetTextarea_0_label"]');
+    if (await label.first().isVisible({ timeout: 200 })) {
+      await label.first().click({ delay: 20 }).catch(() => undefined);
+    }
+  } catch {
+    // ignore
+  }
 }
