@@ -1149,25 +1149,53 @@ export class UltimateTwitterPoster {
 
         // Find composer in modal
         const composerSelectors = [
-          '[data-testid="tweetTextarea_0"]',
-          'div[role="dialog"] [contenteditable="true"]',
-          'div[aria-modal="true"] [contenteditable="true"]',
+          '[data-testid^="tweetTextarea_"][data-testid$="RichTextEditor"]',
+          '[data-testid^="tweetTextarea_"][data-testid$="RichTextInputContainer"] div[contenteditable="true"]',
+          'div[data-testid^="tweetTextarea_"] div[contenteditable="true"]',
+          'div[role="dialog"] [data-testid^="tweetTextarea_"]',
+          'div[aria-modal="true"] [data-testid^="tweetTextarea_"]',
+          'div[role="dialog"] div[role="textbox"][contenteditable="true"]',
+          'div[aria-modal="true"] div[role="textbox"][contenteditable="true"]',
           'div[role="textbox"][contenteditable="true"]',
+          '[data-testid="tweetTextarea_0"]',
+          '.public-DraftEditor-content[contenteditable="true"]',
+          'div[aria-modal="true"] [contenteditable="true"]',
+          'div[role="dialog"] [contenteditable="true"]',
           '[contenteditable="true"]'
         ];
 
         let composer = null;
         for (const selector of composerSelectors) {
           try {
-            const element = this.page.locator(selector).first();
-            await element.waitFor({ state: 'visible', timeout: 2000 });
-            
-            if (await element.isVisible() && await element.isEditable()) {
-              composer = element;
-              console.log(`ULTIMATE_POSTER: Found reply composer: "${selector}"`);
-              break;
+            const candidate = this.page.locator(selector).first();
+            await candidate.waitFor({ state: 'visible', timeout: 2500 });
+
+            const isVisible = await candidate.isVisible();
+            if (!isVisible) {
+              continue;
             }
-          } catch (e) {
+
+            const editableHandle = await candidate.evaluateHandle((el: any) => {
+              if (!el) return null;
+              if (el.contentEditable === 'true' || el.tagName === 'TEXTAREA') return el;
+              const descendant =
+                el.querySelector('[contenteditable="true"]') ||
+                el.querySelector('textarea') ||
+                el.querySelector('div[role="textbox"][contenteditable="true"]') ||
+                el.querySelector('div[data-contents="true"][contenteditable="true"]');
+              return descendant || el;
+            });
+
+            const editableElement = editableHandle?.asElement();
+            if (!editableElement) {
+              continue;
+            }
+
+            await editableElement.waitForElementState('stable').catch(() => undefined);
+            composer = editableElement;
+            console.log(`ULTIMATE_POSTER: Found reply composer: "${selector}"`);
+            break;
+          } catch {
             continue;
           }
         }

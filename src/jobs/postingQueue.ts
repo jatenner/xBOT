@@ -465,11 +465,28 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
 
     // RETRY DEFERRAL: Respect future retry windows so one failure can't monopolize queue
     const nowTs = now.getTime();
+    const decisionsExceededRetries: { id: string; type: string; retryCount: number }[] = [];
     const throttledRows = filteredRows.filter(row => {
       const decisionId = String(row.decision_id ?? '');
       const features = (row.features || {}) as any;
       const retryCount = Number(features?.retry_count || 0);
       const scheduledTs = new Date(String(row.scheduled_at)).getTime();
+
+      const decisionType = String(row.decision_type ?? 'single');
+      const maxRetries =
+        decisionType === 'thread'
+          ? 3
+          : decisionType === 'reply'
+          ? 3
+          : 3;
+
+      if (retryCount >= maxRetries) {
+        console.error(
+          `[POSTING_QUEUE] ❌ ${decisionType} ${decisionId} exceeded max retries (${retryCount}/${maxRetries})`
+        );
+        decisionsExceededRetries.push({ id: decisionId, type: decisionType, retryCount });
+        return false;
+      }
 
       if (retryCount > 0 && scheduledTs > nowTs) {
         console.log(`[POSTING_QUEUE] ⏳ Skipping retry ${decisionId} until ${row.scheduled_at} (retry #${retryCount})`);
@@ -481,6 +498,24 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
 
     if (throttledRows.length !== filteredRows.length) {
       console.log(`[POSTING_QUEUE] ⏳ Retry deferral removed ${filteredRows.length - throttledRows.length} items from this loop`);
+    }
+
+    if (decisionsExceededRetries.length > 0) {
+      console.log(`[POSTING_QUEUE] ❌ Marking ${decisionsExceededRetries.length} decisions as failed (max retries exceeded)`);
+      const decisionIds = decisionsExceededRetries.map(item => item.id);
+
+      try {
+        await supabase
+          .from('content_metadata')
+          .update({
+            status: 'failed',
+            updated_at: new Date().toISOString(),
+            error_message: 'Exceeded retry limit'
+          })
+          .in('decision_id', decisionIds);
+      } catch (retryFailError: any) {
+        console.error(`[POSTING_QUEUE] ⚠️ Failed to mark decisions as failed: ${retryFailError.message}`);
+      }
     }
     
     // SEPARATE RATE LIMITS: Content (2/hr for singles+threads combined) vs Replies (4/hr separate)
