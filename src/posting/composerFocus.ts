@@ -20,6 +20,7 @@ const COMPOSER_SELECTORS = [
   '[data-testid^="tweetTextarea_"][data-testid$="RichTextEditor"]',
   '[data-testid^="tweetTextarea_"][data-testid$="RichTextInputContainer"] div[contenteditable="true"]',
   'div[data-testid^="tweetTextarea_"] div[contenteditable="true"]',
+  'div[data-testid="tweetTextarea_0RichTextInputContainer"] div[contenteditable="true"]',
   'div[role="textbox"][data-testid^="tweetTextarea_"]',
   'div[aria-label*="Post text"]',
   'div[aria-label*="What is happening"]',
@@ -38,6 +39,8 @@ const COMPOSER_SELECTORS = [
 ];
 
 const REPLY_SELECTORS = [
+  '[data-testid="replyButton"]',
+  'div[data-testid="replyButton"]',
   '[data-testid="reply"]',
   '[data-testid="tweetButtonInline"]',
   '[role="button"][data-testid*="reply"]',
@@ -120,10 +123,16 @@ export async function ensureComposerFocused(
 }
 
 async function tryComposerSelectors(page: Page, timeoutMs: number): Promise<ComposerFocusResult> {
+  try {
+    await page.waitForSelector('[data-testid^="tweetTextarea_"]', { timeout: timeoutMs }).catch(() => undefined);
+  } catch {
+    // ignore
+  }
+
   for (const selector of COMPOSER_SELECTORS) {
     try {
       const element = await page.locator(selector).first();
-      await element.waitFor({ state: 'visible', timeout: timeoutMs / COMPOSER_SELECTORS.length });
+      await element.waitFor({ state: 'visible', timeout: timeoutMs }).catch(() => undefined);
       await dismissComposerMask(page);
 
       const isEditable = await element.evaluate((el: any) => {
@@ -207,9 +216,9 @@ async function tryReplyFlow(page: Page, timeoutMs: number): Promise<ComposerFocu
   for (const selector of REPLY_SELECTORS) {
     try {
       const replyBtn = await page.locator(selector).first();
-      await replyBtn.waitFor({ state: 'visible', timeout: PLAYWRIGHT_REPLY_TIMEOUT_MS });
-      await replyBtn.click({ delay: 50 });
-      await page.waitForTimeout(500);
+      await replyBtn.waitFor({ state: 'visible', timeout: PLAYWRIGHT_REPLY_TIMEOUT_MS }).catch(() => undefined);
+      await replyBtn.click({ delay: 50 }).catch(() => undefined);
+      await page.waitForTimeout(750);
       
       // Now try to find the composer that opened
       const composerResult = await tryComposerSelectors(page, timeoutMs);
@@ -257,13 +266,16 @@ async function tryPageReset(page: Page, timeoutMs: number): Promise<ComposerFocu
 
 async function dismissComposerMask(page: Page): Promise<void> {
   try {
-    const mask = page.locator('[data-testid="twc-cc-mask"]');
+    const mask = page.locator('[data-testid="twc-cc-mask"], [data-testid="mask"]');
     if (await mask.first().isVisible({ timeout: 200 })) {
-      await mask.first().click({ trial: true }).catch(() => undefined);
       await mask.first().evaluate((el: HTMLElement) => {
         el.style.pointerEvents = 'none';
         el.style.opacity = '0';
       }).catch(() => undefined);
+      const box = await mask.first().boundingBox();
+      if (box) {
+        await page.mouse.click(box.x + 2, box.y + 2).catch(() => undefined);
+      }
     }
   } catch {
     // ignore
