@@ -8,6 +8,8 @@ import { log } from '../lib/logger';
 import { getConfig, getModeFlags } from '../config/config';
 import { learningSystem } from '../learning/learningSystem';
 
+const FOLLOWER_BASELINE_TIMEOUT_MS = Number(process.env.FOLLOWER_BASELINE_TIMEOUT_MS ?? '10000');
+
 export async function processPostingQueue(): Promise<void> {
   const config = getConfig();
   const flags = getModeFlags(config);
@@ -691,8 +693,44 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     try {
       console.log(`${logPrefix} 🔍 DEBUG: Capturing follower baseline`);
       const { followerAttributionService } = await import('../intelligence/followerAttributionService');
-      await followerAttributionService.captureFollowerCountBefore(decision.id);
-      console.log(`${logPrefix} 🔍 DEBUG: Follower baseline captured`);
+
+      let baselineTimedOut = false;
+      let baselineTimeoutHandle: NodeJS.Timeout | null = null;
+
+      const baselinePromise = followerAttributionService.captureFollowerCountBefore(decision.id);
+
+      const timeoutPromise = new Promise<void>((resolve) => {
+        baselineTimeoutHandle = setTimeout(() => {
+          baselineTimedOut = true;
+          baselineTimeoutHandle = null;
+          console.warn(`[POSTING_QUEUE] ⚠️ Follower baseline capture timed out after ${FOLLOWER_BASELINE_TIMEOUT_MS}ms (decision ${decision.id})`);
+          resolve();
+        }, FOLLOWER_BASELINE_TIMEOUT_MS);
+      });
+
+      await Promise.race([
+        baselinePromise.then(
+          () => {
+            if (baselineTimeoutHandle) {
+              clearTimeout(baselineTimeoutHandle);
+              baselineTimeoutHandle = null;
+            }
+            if (!baselineTimedOut) {
+              console.log(`${logPrefix} 🔍 DEBUG: Follower baseline captured`);
+            }
+          },
+          (error: any) => {
+            if (baselineTimeoutHandle) {
+              clearTimeout(baselineTimeoutHandle);
+              baselineTimeoutHandle = null;
+            }
+            if (!baselineTimedOut) {
+              console.warn(`[POSTING_QUEUE] ⚠️ Follower baseline capture failed: ${error.message}`);
+            }
+          }
+        ),
+        timeoutPromise
+      ]);
     } catch (attrError: any) {
       console.warn(`[POSTING_QUEUE] ⚠️ Follower capture failed: ${attrError.message}`);
     }
