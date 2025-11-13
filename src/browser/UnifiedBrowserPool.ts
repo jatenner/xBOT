@@ -12,6 +12,8 @@
  * - Session persistence across all operations
  */
 
+import fs from 'fs';
+import { createHash } from 'crypto';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import type { BrowserContextOptions } from 'playwright';
 import { loadTwitterStorageState, cloneStorageState, type TwitterStorageState } from '../utils/twitterSessionState';
@@ -70,6 +72,8 @@ export class UnifiedBrowserPool {
   private cachedStorageState: TwitterStorageState | null = null;
   private sessionVersion = 0;
   private sessionWarningLogged = false;
+  private sessionEnvHash: string | null = null;
+  private sessionFileSignature: string | null = null;
   
   // Configuration
   private readonly MAX_CONTEXTS = MAX_CONTEXTS_CONFIG; // Tunable via BROWSER_MAX_CONTEXTS (default=2 for Railway stability)
@@ -448,8 +452,44 @@ export class UnifiedBrowserPool {
     throw error;
   }
 
+  private getSessionCanonicalPath(): string {
+    return process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';
+  }
+
+  private computeSessionSignatures(): { envHash: string | null; fileSignature: string | null } {
+    let envHash: string | null = null;
+    const sessionB64 = process.env.TWITTER_SESSION_B64?.trim();
+    if (sessionB64 && sessionB64.length > 0) {
+      try {
+        envHash = createHash('sha256').update(sessionB64).digest('hex');
+      } catch (error: any) {
+        console.warn(`[BROWSER_POOL] ⚠️ Session env hash failed: ${error.message}`);
+      }
+    }
+
+    let fileSignature: string | null = null;
+    const canonicalPath = this.getSessionCanonicalPath();
+    try {
+      const stats = fs.statSync(canonicalPath);
+      fileSignature = `${stats.size}:${Math.floor(stats.mtimeMs)}`;
+    } catch {
+      fileSignature = null;
+    }
+
+    return { envHash, fileSignature };
+  }
+
   private async ensureStorageState(forceReload = false): Promise<TwitterStorageState | undefined> {
-    if (!forceReload && this.cachedStorageState) {
+    const hasCachedState = !!this.cachedStorageState;
+    const signaturesBefore = this.computeSessionSignatures();
+    const signatureChanged = hasCachedState && (
+      (this.sessionEnvHash ?? null) !== (signaturesBefore.envHash ?? null) ||
+      (this.sessionFileSignature ?? null) !== (signaturesBefore.fileSignature ?? null)
+    );
+
+    const needsReload = forceReload || !hasCachedState || signatureChanged;
+
+    if (!needsReload && this.cachedStorageState) {
       return cloneStorageState(this.cachedStorageState);
     }
 
@@ -461,12 +501,16 @@ export class UnifiedBrowserPool {
       }
     }
 
+    const signaturesAfter = this.computeSessionSignatures();
+    this.sessionEnvHash = signaturesAfter.envHash;
+    this.sessionFileSignature = signaturesAfter.fileSignature;
+
     if (result.storageState && result.cookieCount > 0) {
       const serializedNew = JSON.stringify(result.storageState.cookies);
       const serializedExisting = this.cachedStorageState
         ? JSON.stringify(this.cachedStorageState.cookies)
         : null;
-      const changed = !this.cachedStorageState || serializedExisting !== serializedNew;
+      const changed = !this.cachedStorageState || serializedExisting !== serializedNew || signatureChanged || forceReload;
 
       this.cachedStorageState = result.storageState;
       this.sessionLoaded = true;

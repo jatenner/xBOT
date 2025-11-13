@@ -72,10 +72,15 @@ async function testMetricsScraper() {
     const page = await browserPool.acquirePage('manual_test');
     
     console.log('✅ Browser acquired, starting scrape...');
-    const result = await orchestrator.scrapeAndStore(page, tweetId, {
-      collectionPhase: 'manual_test',
-      postedAt: postedTime
-    });
+    const result = await orchestrator.scrapeAndStore(
+      page,
+      tweetId,
+      {
+        collectionPhase: 'manual_test',
+        postedAt: postedTime
+      },
+      { useAnalytics: false }
+    );
     
     await browserPool.releasePage(page);
     

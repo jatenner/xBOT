@@ -19,6 +19,9 @@ const MAX_SCRAPE_RETRIES = 5;
 
 export async function replyMetricsScraperJob(): Promise<void> {
   console.log('[REPLY_METRICS] 🔍 Starting reply performance scraping...');
+  if (!process.env.USE_ANALYTICS_PAGE) {
+    process.env.USE_ANALYTICS_PAGE = 'false';
+  }
   
   try {
     const supabase = getSupabaseClient();
@@ -250,7 +253,6 @@ export async function replyMetricsScraperJob(): Promise<void> {
               actual_likes: metrics.likes ?? null,
               actual_retweets: metrics.retweets ?? null,
               actual_replies: metrics.replies ?? null,
-              actual_bookmarks: metrics.bookmarks ?? null,
               updated_at: new Date().toISOString(),
               ...(sanitizedFeatures ? { features: sanitizedFeatures } : {})
             })

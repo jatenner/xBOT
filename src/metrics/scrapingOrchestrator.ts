@@ -101,7 +101,8 @@ export class ScrapingOrchestrator {
   async scrapeAndStore(
     page: Page,
     tweetId: string,
-    metadata?: ScrapingMetadata
+    metadata?: ScrapingMetadata,
+    options?: { useAnalytics?: boolean }
   ): Promise<OrchestrationResult> {
     console.log(`📊 ORCHESTRATOR: Processing ${tweetId}...`);
     
@@ -124,7 +125,13 @@ export class ScrapingOrchestrator {
       
       // STEP 2: Scrape using BulletproofScraper
       console.log(`  🔍 SCRAPING: Using BulletproofTwitterScraper...`);
-      const scrapingResult = await this.scraper.scrapeTweetMetrics(page, tweetId);
+      const scrapingResult = await this.scraper.scrapeTweetMetrics(
+        page,
+        tweetId,
+        {
+          useAnalytics: options?.useAnalytics
+        }
+      );
       
       if (!scrapingResult.success || !scrapingResult.metrics) {
         console.error(`  ❌ SCRAPING_FAILED: ${scrapingResult.error}`);
