@@ -13,6 +13,7 @@ import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { strategicReplySystem } from '../growth/strategicReplySystem';
 import { getPersonalityScheduler, type GeneratorType } from '../scheduling/personalityScheduler';
 import { ReplyDiagnosticLogger } from '../utils/replyDiagnostics';
+import { formatContentForTwitter } from '../posting/aiVisualFormatter';
 
 // ============================================================
 // RATE LIMIT CONFIGURATION (from .env)
@@ -755,8 +756,30 @@ async function generateRealReplies(): Promise<void> {
         estimated_reach: target.estimated_reach,
         tweet_url: tweetUrlStr,
         scheduled_at: new Date(Date.now() + staggerDelay * 60 * 1000).toISOString(),
-        visual_format: strategicReply.visualFormat || null
+        visual_format: strategicReply.visualFormat || null,
+        topic: target.reply_angle || target.account.category || 'health'
       };
+      
+      // ============================================================
+      // VISUAL FORMATTING: Apply AI formatter before queueing
+      // ============================================================
+      const formatterContext = {
+        content: reply.content,
+        generator: String(reply.generator_used || 'reply_specialist'),
+        topic: String(reply.topic || target.account.category || 'health'),
+        angle: String(target.reply_angle || 'value_add_reply'),
+        tone: 'engaging_reply',
+        formatStrategy: 'reply_value_add'
+      };
+      
+      try {
+        const formatResult = await formatContentForTwitter(formatterContext);
+        reply.content = formatResult.formatted;
+        reply.visual_format = formatResult.visualApproach;
+        console.log(`[REPLY_JOB] 🎨 Visual format applied: ${formatResult.visualApproach}`);
+      } catch (formatError: any) {
+        console.warn(`[REPLY_JOB] ⚠️ Visual formatter failed, using original reply: ${formatError.message}`);
+      }
       
       // Queue for posting with smart spacing
       await queueReply(reply, staggerDelay);

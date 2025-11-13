@@ -584,7 +584,18 @@ export class RealTwitterDiscovery {
         }
         const __name = globalAny.__name as (target: Function, value: string) => Function;
         const results: any[] = [];
-        const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
+        let tweetElements = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+        
+        // New Twitter UI sometimes wraps tweets in generic article or cell divs
+        if (tweetElements.length === 0) {
+          tweetElements = Array.from(document.querySelectorAll('article[role="article"]'));
+        }
+        if (tweetElements.length === 0) {
+          tweetElements = Array.from(document.querySelectorAll('div[data-testid="cellInnerDiv"]'));
+        }
+        if (tweetElements.length === 0) {
+          tweetElements = Array.from(document.querySelectorAll('div[data-testid="tweet"]'));
+        }
         
         // 🔍 DIAGNOSTIC: Log what we found
         console.log(`[EXTRACTION] Found ${tweetElements.length} tweet elements on page`);
