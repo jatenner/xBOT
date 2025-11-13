@@ -98,13 +98,22 @@ async function scrapeViralTweets(options: ScrapeOptions = {}) {
             const retweetButton = tweet.querySelector('[data-testid="retweet"]');
             const replyButton = tweet.querySelector('[data-testid="reply"]');
             
-            const likes = parseInt(likeButton?.getAttribute('aria-label')?.match(/\\d+/)?.[0] || '0');
-            const retweets = parseInt(retweetButton?.getAttribute('aria-label')?.match(/\\d+/)?.[0] || '0');
-            const replies = parseInt(replyButton?.getAttribute('aria-label')?.match(/\\d+/)?.[0] || '0');
+            const normalizeCount = (value: string | null | undefined): number => {
+              if (!value) return 0;
+              const match = value.match(/[\d,]+/);
+              if (!match) return 0;
+              return parseInt(match[0].replace(/,/g, ''), 10);
+            };
+
+            const likes = normalizeCount(likeButton?.getAttribute('aria-label'));
+            const retweets = normalizeCount(retweetButton?.getAttribute('aria-label'));
+            const replies = normalizeCount(replyButton?.getAttribute('aria-label'));
             
             // Get tweet ID from link
             const linkElement = tweet.querySelector('a[href*="/status/"]');
-            const tweetId = linkElement?.getAttribute('href')?.match(/status\\/(\\d+)/)?.[1] || '';
+            const tweetHref = linkElement?.getAttribute('href') || '';
+            const tweetMatch = tweetHref.match(/status\/(\d+)/);
+            const tweetId = tweetMatch ? tweetMatch[1] : '';
             
             // Rough views estimate (Twitter doesn't always show)
             // Use engagement as proxy: views ≈ likes * 50 (rough estimate)

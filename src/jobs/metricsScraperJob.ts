@@ -11,8 +11,37 @@ import { BulletproofTwitterScraper } from '../scrapers/bulletproofTwitterScraper
 import { ScrapingOrchestrator } from '../metrics/scrapingOrchestrator';
 import { Sentry } from '../observability/instrument';
 
+const parseMetricValue = (value: unknown): number | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.replace(/,/g, '').trim();
+    if (normalized.length === 0) {
+      return null;
+    }
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+};
+
+const toNumberWithFallback = (value: unknown, fallback = 0): number => {
+  const parsed = parseMetricValue(value);
+  return parsed === null ? fallback : parsed;
+};
+
 export async function metricsScraperJob(): Promise<void> {
   log({ op: 'metrics_scraper_start' });
+  if (!process.env.USE_ANALYTICS_PAGE) {
+    process.env.USE_ANALYTICS_PAGE = 'false';
+  }
   
   // Start Sentry span for performance tracking
   return await Sentry.startSpan(
@@ -138,23 +167,79 @@ export async function metricsScraperJob(): Promise<void> {
             const postedAt = new Date(String(post.posted_at));  // ✅ FIXED: Use posted_at, not created_at
             const hoursSincePost = (Date.now() - postedAt.getTime()) / (1000 * 60 * 60);
             
-            const result = await orchestrator.scrapeAndStore(page, String(post.tweet_id), {
-              collectionPhase: 'scheduled_job',
-              postedAt: postedAt
-            });
+            let scrapeAttempt = 0;
+            let lastError: string | undefined;
+            let result = await orchestrator.scrapeAndStore(
+              page,
+              String(post.tweet_id),
+              {
+                collectionPhase: 'scheduled_job',
+                postedAt: postedAt
+              },
+              { useAnalytics: false }
+            );
+
+            while (!result.success && scrapeAttempt < 1) {
+              const errorMessage = (result.error || '').toUpperCase();
+              if (!errorMessage.includes('ANALYTICS_AUTH_FAILED')) {
+                break;
+              }
+
+              scrapeAttempt++;
+              lastError = errorMessage;
+              console.warn(`[METRICS_JOB] ⚠️ Analytics auth failed for ${post.tweet_id}. Reloading session (attempt ${scrapeAttempt})...`);
+
+              try {
+                await pool.reloadSessionState();
+                console.log('[METRICS_JOB] 🔄 Session reloaded. Retrying scrape...');
+              } catch (reloadError: any) {
+                console.error(`[METRICS_JOB] ❌ Session reload failed: ${reloadError?.message || reloadError}`);
+                break;
+              }
+
+              // Brief pause before retrying to allow cookies to apply
+              await new Promise(resolve => setTimeout(resolve, 1500));
+
+              result = await orchestrator.scrapeAndStore(
+                page,
+                String(post.tweet_id),
+                {
+                  collectionPhase: 'scheduled_job',
+                  postedAt: postedAt
+                },
+                { useAnalytics: false }
+              );
+            }
             
             if (!result.success) {
-              console.warn(`[METRICS_JOB] ⚠️ Scraping failed for ${post.tweet_id}: ${result.error}`);
+              const errorMessage = result.error || lastError || 'unknown_error';
+              console.warn(`[METRICS_JOB] ⚠️ Scraping failed for ${post.tweet_id}: ${errorMessage}`);
               failed++;
               continue;
             }
             
-            const metrics = result.metrics || {} as any;
+            const metrics = (result.metrics || {}) as Record<string, unknown>;
+            const likesValue = toNumberWithFallback(metrics.likes);
+            const retweetsValue = toNumberWithFallback(metrics.retweets);
+            const repliesValue = toNumberWithFallback(metrics.replies);
+            const quoteTweetsValue = toNumberWithFallback(metrics.quote_tweets);
+            const bookmarksValue = toNumberWithFallback(metrics.bookmarks);
+            const viewsValue = toNumberWithFallback(metrics.views);
+            const viewsNullable = parseMetricValue(metrics.views);
+            const profileClicksValue = parseMetricValue(metrics.profile_clicks);
+            const likesNullable = parseMetricValue(metrics.likes);
+            const retweetsNullable = parseMetricValue(metrics.retweets);
+            const repliesNullable = parseMetricValue(metrics.replies);
+            const quoteTweetsNullable = parseMetricValue(metrics.quote_tweets);
+            const bookmarksNullable = parseMetricValue(metrics.bookmarks);
             const isFirstHour = hoursSincePost <= 1;
             
-            const totalEngagement = (metrics.likes ?? 0) + (metrics.retweets ?? 0) + 
-                                    (metrics.quote_tweets ?? 0) + (metrics.replies ?? 0) + 
-                                    (metrics.bookmarks ?? 0);
+            const totalEngagement =
+              likesValue +
+              retweetsValue +
+              quoteTweetsValue +
+              repliesValue +
+              bookmarksValue;
             
             // 🐛 DEBUG: Log what the scraper actually extracted
             console.log(`[METRICS_JOB] 🔍 Extracted metrics for ${post.tweet_id}:`, JSON.stringify({
@@ -178,14 +263,14 @@ export async function metricsScraperJob(): Promise<void> {
             const { data: outcomeData, error: outcomeError } = await supabase.from('outcomes').upsert({
               decision_id: post.decision_id,  // 🔥 FIX: Use decision_id (UUID), not integer id
               tweet_id: post.tweet_id,
-              likes: metrics.likes ?? null,
-              retweets: metrics.retweets ?? null,
-              quote_tweets: metrics.quote_tweets ?? null,
-              replies: metrics.replies ?? null,
-              views: metrics.views ?? null,
-              bookmarks: metrics.bookmarks ?? null,
-              impressions: metrics.views ?? null, // Map views to impressions
-              profile_clicks: metrics.profile_clicks ?? null, // 📊 Save Profile visits from analytics page
+              likes: likesNullable,
+              retweets: retweetsNullable,
+              quote_tweets: quoteTweetsNullable,
+              replies: repliesNullable,
+              views: viewsNullable,
+              bookmarks: bookmarksNullable,
+              impressions: viewsNullable, // Map views to impressions
+              profile_clicks: profileClicksValue, // 📊 Save Profile visits from analytics page
               first_hour_engagement: isFirstHour ? totalEngagement : null,
               collected_at: new Date().toISOString(),
               data_source: 'orchestrator_v2',
@@ -201,11 +286,11 @@ export async function metricsScraperJob(): Promise<void> {
             // CRITICAL: Also update learning_posts table (used by 30+ learning systems!)
             const { error: learningError } = await supabase.from('learning_posts').upsert({
               tweet_id: post.tweet_id,
-              likes_count: metrics.likes ?? 0,
-              retweets_count: metrics.retweets ?? 0,
-              replies_count: metrics.replies ?? 0,
-              bookmarks_count: metrics.bookmarks ?? 0,
-              impressions_count: metrics.views ?? 0,
+              likes_count: likesValue,
+              retweets_count: retweetsValue,
+              replies_count: repliesValue,
+              bookmarks_count: bookmarksValue,
+              impressions_count: viewsValue,
               updated_at: new Date().toISOString()
             }, { onConflict: 'tweet_id' });
             
@@ -217,10 +302,10 @@ export async function metricsScraperJob(): Promise<void> {
             // CRITICAL: Also update tweet_metrics table (used by timing & quantity optimizers!)
             const { error: metricsTableError } = await supabase.from('tweet_metrics').upsert({
               tweet_id: post.tweet_id,
-              likes_count: metrics.likes ?? 0,
-              retweets_count: metrics.retweets ?? 0,
-              replies_count: metrics.replies ?? 0,
-              impressions_count: metrics.views ?? 0,
+              likes_count: likesValue,
+              retweets_count: retweetsValue,
+              replies_count: repliesValue,
+              impressions_count: viewsValue,
               updated_at: new Date().toISOString(),
               created_at: post.posted_at  // ✅ Use posted_at (when actually posted to Twitter)
             }, { onConflict: 'tweet_id' });
@@ -249,17 +334,17 @@ export async function metricsScraperJob(): Promise<void> {
             
             // 🔥 CRITICAL FIX: Update content_metadata table (used by dashboard!)
             // Dashboard reads actual_impressions, actual_likes, actual_retweets from content_metadata
-            const engagementRate = metrics.views && metrics.views > 0 
-              ? ((metrics.likes + metrics.retweets + metrics.replies) / metrics.views) 
+            const engagementRate = viewsValue > 0 
+              ? ((likesValue + retweetsValue + repliesValue) / viewsValue) 
               : 0;
             
             const { error: contentMetadataError } = await supabase
               .from('content_metadata')
               .update({
-                actual_impressions: metrics.views ?? null,  // Dashboard shows this as "VIEWS"
-                actual_likes: metrics.likes ?? 0,           // Dashboard shows this as "LIKES"
-                actual_retweets: metrics.retweets ?? 0,     // Used for viral score
-                actual_replies: metrics.replies ?? 0,       // Used for engagement rate
+                actual_impressions: viewsNullable,  // Dashboard shows this as "VIEWS"
+                actual_likes: likesValue,           // Dashboard shows this as "LIKES"
+                actual_retweets: retweetsValue,     // Used for viral score
+                actual_replies: repliesValue,       // Used for engagement rate
                 actual_engagement_rate: engagementRate,     // Dashboard shows this as "ER"
                 updated_at: new Date().toISOString()
               })
@@ -271,7 +356,7 @@ export async function metricsScraperJob(): Promise<void> {
               failed++;
               continue;
             } else {
-              console.log(`[METRICS_JOB] ✅ Dashboard data updated: ${metrics.views ?? 0} views, ${metrics.likes ?? 0} likes`);
+              console.log(`[METRICS_JOB] ✅ Dashboard data updated: ${viewsValue} views, ${likesValue} likes`);
             }
             
             // 🔍 VERIFICATION LOOP: Ensure data actually reached dashboard
@@ -285,18 +370,18 @@ export async function metricsScraperJob(): Promise<void> {
               if (verifyError || !verification) {
                 console.error(`[METRICS_JOB] ❌ VERIFICATION: Failed to read back from content_metadata for ${post.tweet_id}`);
                 console.error(`[METRICS_JOB] 💡 Sync write succeeded but read failed - possible database issue`);
-              } else if (verification.actual_impressions === null && metrics.views !== null && metrics.views > 0) {
+              } else if (verification.actual_impressions === null && viewsValue > 0) {
                 console.error(`[METRICS_JOB] ❌ VERIFICATION: Data NOT in dashboard for ${post.tweet_id}`);
-                console.error(`[METRICS_JOB] 💡 Expected ${metrics.views} views, got NULL - retrying sync...`);
+                console.error(`[METRICS_JOB] 💡 Expected ${viewsValue} views, got NULL - retrying sync...`);
                 
                 // AUTO-FIX: Retry sync one more time
                 const { error: retryError } = await supabase
                   .from('content_metadata')
                   .update({
-                    actual_impressions: metrics.views,
-                    actual_likes: metrics.likes ?? 0,
-                    actual_retweets: metrics.retweets ?? 0,
-                    actual_replies: metrics.replies ?? 0,
+                    actual_impressions: viewsValue,
+                    actual_likes: likesValue,
+                    actual_retweets: retweetsValue,
+                    actual_replies: repliesValue,
                     actual_engagement_rate: engagementRate
                   })
                   .eq('decision_id', post.decision_id);
@@ -314,7 +399,7 @@ export async function metricsScraperJob(): Promise<void> {
               // Don't fail the job - metrics are stored, just verification failed
             }
             
-            console.log(`[METRICS_JOB] ✅ Updated ${post.tweet_id}: ${metrics.likes ?? 0} likes, ${metrics.views ?? 0} views`);
+            console.log(`[METRICS_JOB] ✅ Updated ${post.tweet_id}: ${likesValue} likes, ${viewsValue} views`);
             updated++;
             
             // Update generator stats for autonomous learning
