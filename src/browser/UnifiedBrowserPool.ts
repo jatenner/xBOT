@@ -16,6 +16,32 @@ import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import type { BrowserContextOptions } from 'playwright';
 import { loadTwitterStorageState, cloneStorageState, type TwitterStorageState } from '../utils/twitterSessionState';
 
+const clamp = (value: number, min: number, max: number): number => {
+  if (Number.isNaN(value)) return min;
+  return Math.max(min, Math.min(max, value));
+};
+
+const parseEnvInt = (key: string, fallback: number, min: number, max: number): number => {
+  const raw = process.env[key];
+  if (!raw) return fallback;
+  const parsed = parseInt(raw, 10);
+  if (Number.isNaN(parsed)) return fallback;
+  return clamp(parsed, min, max);
+};
+
+const MAX_CONTEXTS_CONFIG = parseEnvInt('BROWSER_MAX_CONTEXTS', 2, 1, 4);
+const MAX_OPERATIONS_CONFIG = parseEnvInt('BROWSER_MAX_OPERATIONS', 25, 5, 100);
+const QUEUE_WAIT_TIMEOUT_CONFIG = parseEnvInt('BROWSER_QUEUE_TIMEOUT_MS', 60000, 10000, 300000);
+const CIRCUIT_BREAKER_TIMEOUT_CONFIG = parseEnvInt('BROWSER_CIRCUIT_BREAKER_TIMEOUT_MS', 60000, 30000, 600000);
+const HARD_FAILURE_COOLDOWN_MS = parseEnvInt('BROWSER_HARD_FAILURE_COOLDOWN_MS', 180000, 60000, 900000);
+
+const RESOURCE_ERROR_PATTERNS = [
+  'Resource temporarily unavailable',
+  'Target page, context or browser has been closed',
+  'zygote could not fork',
+  'pthread_create'
+];
+
 interface ContextHandle {
   context: BrowserContext;
   inUse: boolean;
@@ -31,6 +57,7 @@ interface QueuedOperation {
   operation: (context: BrowserContext) => Promise<any>;
   resolve: (value: any) => void;
   reject: (error: Error) => void;
+  cancelTimeout?: () => void;
 }
 
 export class UnifiedBrowserPool {
@@ -45,11 +72,11 @@ export class UnifiedBrowserPool {
   private sessionWarningLogged = false;
   
   // Configuration
-  private readonly MAX_CONTEXTS = 8; // Optimized for FULL system: handles 9 concurrent jobs at peak + buffer
-  private readonly MAX_OPERATIONS_PER_CONTEXT = 50; // Refresh context after 50 operations
+  private readonly MAX_CONTEXTS = MAX_CONTEXTS_CONFIG; // Tunable via BROWSER_MAX_CONTEXTS (default=2 for Railway stability)
+  private readonly MAX_OPERATIONS_PER_CONTEXT = MAX_OPERATIONS_CONFIG; // Tunable via BROWSER_MAX_OPERATIONS (default=25)
   private readonly CONTEXT_IDLE_TIMEOUT = 5 * 60 * 1000; // Close idle contexts after 5 min
   private readonly CLEANUP_INTERVAL = 60 * 1000; // Check every minute
-  private readonly QUEUE_WAIT_TIMEOUT = 120000; // 120 second max wait in queue (harvester operations can be slow)
+  private readonly QUEUE_WAIT_TIMEOUT = QUEUE_WAIT_TIMEOUT_CONFIG; // Max wait in queue (default 60s)
   
   private cleanupTimer: NodeJS.Timeout | null = null;
   private metrics = {
@@ -62,16 +89,18 @@ export class UnifiedBrowserPool {
     successfulOperations: 0,
     failedOperations: 0
   };
+  private resourceFailureCount = 0;
   
   // Circuit breaker state
   private circuitBreaker = {
     failures: 0,
     lastFailure: 0,
     isOpen: false,
-    openUntil: 0
+    openUntil: 0,
+    reason: null as string | null
   };
   private readonly CIRCUIT_BREAKER_THRESHOLD = 5; // Open after 5 failures
-  private readonly CIRCUIT_BREAKER_TIMEOUT = 60000; // Stay open for 1 minute
+  private readonly CIRCUIT_BREAKER_TIMEOUT = CIRCUIT_BREAKER_TIMEOUT_CONFIG; // Stay open for configurable duration
 
   private constructor() {
     // Start periodic cleanup
@@ -162,6 +191,11 @@ export class UnifiedBrowserPool {
     const operationId = `${operationName}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     console.log(`[BROWSER_POOL] 📝 Request: ${operationName} (queue: ${this.queue.length}, active: ${this.getActiveCount()})`);
+
+    if (this.isCircuitBreakerOpen()) {
+      const breakerReason = this.circuitBreaker.reason || 'circuit_breaker';
+      throw new Error(`Browser pool circuit breaker open (${breakerReason})`);
+    }
     
     // Update metrics
     this.metrics.totalOperations++;
@@ -200,7 +234,8 @@ export class UnifiedBrowserPool {
         priority,
         operation: wrappedOperation as any,
         resolve: resolve as any,
-        reject
+        reject,
+        cancelTimeout: () => clearTimeout(queueTimeoutTimer)
       });
       
       // Sort queue by priority (lower number = higher priority)
@@ -232,6 +267,18 @@ export class UnifiedBrowserPool {
 
     try {
       while (this.queue.length > 0) {
+        
+        if (this.isCircuitBreakerOpen()) {
+          const breakerReason = this.circuitBreaker.reason || 'circuit_breaker';
+          console.warn(`[BROWSER_POOL] 🚫 Circuit breaker (${breakerReason}) open - draining queue of ${this.queue.length} operations`);
+          while (this.queue.length > 0) {
+            const drained = this.queue.shift()!;
+            this.metrics.queuedOperations = Math.max(0, this.metrics.queuedOperations - 1);
+            drained.cancelTimeout?.();
+            drained.reject(new Error(`Browser pool unavailable: ${breakerReason}`));
+          }
+          break;
+        }
         
         // ═══════════════════════════════════════════════════════════
         // PARALLEL BATCH: Acquire up to MAX_CONTEXTS for concurrent execution
@@ -316,7 +363,8 @@ export class UnifiedBrowserPool {
               
               op.reject(error);
               this.metrics.failedOperations++;
-              this.recordFailure();
+              const failureReason = isTimeout ? 'operation_timeout' : (error.message || 'operation_failed');
+              this.recordFailure(failureReason);
               
             } finally {
               // Release context back to pool (unless it was force-closed)
@@ -352,6 +400,52 @@ export class UnifiedBrowserPool {
         reject(new Error(`[TIMEOUT] Operation ${operationId} exceeded ${ms}ms limit`));
       }, ms);
     });
+  }
+
+  private isResourceExhaustionError(error: any): boolean {
+    if (!error || typeof error.message !== 'string') {
+      return false;
+    }
+    return RESOURCE_ERROR_PATTERNS.some(pattern => error.message.toLowerCase().includes(pattern.toLowerCase()));
+  }
+
+  private openCircuitBreaker(reason: string, cooldownMs: number = this.CIRCUIT_BREAKER_TIMEOUT): void {
+    const newExpiry = Date.now() + cooldownMs;
+    if (this.circuitBreaker.isOpen && this.circuitBreaker.reason === reason) {
+      this.circuitBreaker.openUntil = Math.max(this.circuitBreaker.openUntil, newExpiry);
+      return;
+    }
+    this.circuitBreaker.isOpen = true;
+    this.circuitBreaker.reason = reason;
+    this.circuitBreaker.openUntil = newExpiry;
+    this.circuitBreaker.failures = Math.max(this.circuitBreaker.failures, this.CIRCUIT_BREAKER_THRESHOLD);
+    console.error(`[BROWSER_POOL] 🚨 Circuit breaker OPEN (${reason}) for ${Math.round(cooldownMs / 1000)}s`);
+  }
+
+  private async handleResourceExhaustion(error: any): Promise<never> {
+    const message = error?.message || 'unknown resource error';
+    this.resourceFailureCount++;
+    this.metrics.failedOperations++;
+    console.error(`[BROWSER_POOL] ❌ RESOURCE EXHAUSTION: ${message}`);
+
+    // Immediately open the circuit breaker with extended cooldown
+    this.openCircuitBreaker('resource_exhaustion', HARD_FAILURE_COOLDOWN_MS);
+
+    // Attempt graceful reset in background (best effort)
+    if (this.resourceFailureCount === 1) {
+      try {
+        await this.resetPool();
+      } catch (resetError: any) {
+        console.error(`[BROWSER_POOL] ❌ Reset failed after resource exhaustion:`, resetError?.message || resetError);
+      }
+    } else {
+      console.warn(`[BROWSER_POOL] ⚠️ Skipping repeated reset (count=${this.resourceFailureCount}) while circuit breaker cools down`);
+    }
+
+    // resetPool clears breaker state; ensure cooldown remains active
+    this.openCircuitBreaker('resource_exhaustion', HARD_FAILURE_COOLDOWN_MS);
+
+    throw error;
   }
 
   private async ensureStorageState(forceReload = false): Promise<TwitterStorageState | undefined> {
@@ -519,7 +613,14 @@ export class UnifiedBrowserPool {
   private async createNewContext(): Promise<ContextHandle> {
     // Ensure browser exists
     if (!this.browser || !this.browser.isConnected()) {
-      await this.initializeBrowser();
+      try {
+        await this.initializeBrowser();
+      } catch (error: any) {
+        if (this.isResourceExhaustionError(error)) {
+          await this.handleResourceExhaustion(error);
+        }
+        throw error;
+      }
     }
 
     const contextId = `ctx-${Date.now()}-${this.metrics.contextsCreated}`;
@@ -535,7 +636,15 @@ export class UnifiedBrowserPool {
       contextOptions.storageState = storageState;
     }
     
-    const context = await this.browser!.newContext(contextOptions);
+    let context: BrowserContext;
+    try {
+      context = await this.browser!.newContext(contextOptions);
+    } catch (error: any) {
+      if (this.isResourceExhaustionError(error)) {
+        await this.handleResourceExhaustion(error);
+      }
+      throw error;
+    }
 
     const handle: ContextHandle = {
       context,
@@ -569,20 +678,27 @@ export class UnifiedBrowserPool {
       console.warn('[BROWSER_POOL] ⚠️ TWITTER_SESSION_B64 not found - sessions will be unauthenticated');
     }
 
-    this.browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage', // Important for Railway memory limits
-        '--disable-gpu',
-        '--disable-web-security',
-        '--memory-pressure-off',
-        '--max_old_space_size=2048', // Limit to 2GB
-        // Force new headless mode (fixes zygote crash)
-        '--headless=new'
-      ]
-    });
+    try {
+      this.browser = await chromium.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage', // Important for Railway memory limits
+          '--disable-gpu',
+          '--disable-web-security',
+          '--memory-pressure-off',
+          '--max_old_space_size=2048', // Limit to 2GB
+          // Force new headless mode (fixes zygote crash)
+          '--headless=new'
+        ]
+      });
+    } catch (error: any) {
+      if (this.isResourceExhaustionError(error)) {
+        await this.handleResourceExhaustion(error);
+      }
+      throw error;
+    }
 
     console.log('[BROWSER_POOL] ✅ Browser initialized');
   }
@@ -669,25 +785,31 @@ export class UnifiedBrowserPool {
   private recordSuccess(): void {
     // Reset failure count on success
     this.circuitBreaker.failures = 0;
+    this.resourceFailureCount = 0;
     
-    // Close circuit if it was open
+    // Close circuit if cooldown elapsed
     if (this.circuitBreaker.isOpen && Date.now() > this.circuitBreaker.openUntil) {
-      console.log('[BROWSER_POOL] ✅ Circuit breaker CLOSED (recovered from failures)');
+      const reason = this.circuitBreaker.reason || 'failures';
+      console.log(`[BROWSER_POOL] ✅ Circuit breaker CLOSED (recovered from ${reason})`);
       this.circuitBreaker.isOpen = false;
+      this.circuitBreaker.reason = null;
     }
   }
 
   /**
    * Circuit breaker: Record failed operation
    */
-  private recordFailure(): void {
+  private recordFailure(reason?: string): void {
     this.circuitBreaker.failures++;
     this.circuitBreaker.lastFailure = Date.now();
     
+    if (reason && reason.toLowerCase().includes('resource')) {
+      this.openCircuitBreaker(reason, HARD_FAILURE_COOLDOWN_MS);
+      return;
+    }
+    
     if (this.circuitBreaker.failures >= this.CIRCUIT_BREAKER_THRESHOLD && !this.circuitBreaker.isOpen) {
-      this.circuitBreaker.isOpen = true;
-      this.circuitBreaker.openUntil = Date.now() + this.CIRCUIT_BREAKER_TIMEOUT;
-      console.error(`[BROWSER_POOL] 🚨 Circuit breaker OPEN after ${this.circuitBreaker.failures} failures. Will retry in ${this.CIRCUIT_BREAKER_TIMEOUT/1000}s`);
+      this.openCircuitBreaker('failure_threshold', this.CIRCUIT_BREAKER_TIMEOUT);
     }
   }
 
@@ -695,15 +817,20 @@ export class UnifiedBrowserPool {
    * Check if circuit breaker allows operation
    */
   public isCircuitBreakerOpen(): boolean {
-    if (this.circuitBreaker.isOpen) {
-      // Check if timeout has passed
-      if (Date.now() > this.circuitBreaker.openUntil) {
-        console.log('[BROWSER_POOL] 🔄 Circuit breaker timeout passed, attempting recovery...');
-        return false; // Allow retry
-      }
-      return true; // Still open
+    if (!this.circuitBreaker.isOpen) {
+      return false;
     }
-    return false;
+    
+    if (Date.now() > this.circuitBreaker.openUntil) {
+      const reason = this.circuitBreaker.reason || 'failures';
+      console.log(`[BROWSER_POOL] 🔄 Circuit breaker cooldown elapsed (reason=${reason}) - allowing retries`);
+      this.circuitBreaker.isOpen = false;
+      this.circuitBreaker.reason = null;
+      this.circuitBreaker.failures = 0;
+      return false;
+    }
+    
+    return true;
   }
 
   /**
@@ -721,7 +848,8 @@ export class UnifiedBrowserPool {
       circuitBreaker: {
         isOpen: this.circuitBreaker.isOpen,
         failures: this.circuitBreaker.failures,
-        openUntil: this.circuitBreaker.isOpen ? new Date(this.circuitBreaker.openUntil).toISOString() : null
+        openUntil: this.circuitBreaker.isOpen ? new Date(this.circuitBreaker.openUntil).toISOString() : null,
+        reason: this.circuitBreaker.reason
       },
       successRate: successRate.toFixed(1) + '%'
     };
