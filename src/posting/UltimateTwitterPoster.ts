@@ -20,10 +20,16 @@ export interface PostResult {
   error?: string;
 }
 
+interface PosterOptions {
+  purpose?: 'reply' | 'post';
+}
+
 export class UltimateTwitterPoster {
   private context: BrowserContext | null = null;
   private page: Page | null = null;
   private readonly storageStatePath = join(process.cwd(), 'twitter-auth.json');
+  private readonly purpose: 'reply' | 'post';
+  private readonly forceFreshContextPerAttempt: boolean;
   
   // Circuit breaker pattern
   private clickFailures = 0;
@@ -33,6 +39,11 @@ export class UltimateTwitterPoster {
   // PHASE 3.5: Real tweet ID extraction
   private capturedTweetId: string | null = null;
 
+  constructor(options: PosterOptions = {}) {
+    this.purpose = options.purpose ?? 'post';
+    this.forceFreshContextPerAttempt = this.purpose === 'reply';
+  }
+
   async postTweet(content: string): Promise<PostResult> {
     let retryCount = 0;
     const maxRetries = 2; // Increased retries
@@ -41,6 +52,7 @@ export class UltimateTwitterPoster {
     while (retryCount <= maxRetries) {
       try {
         log({ op: 'ultimate_poster_attempt', attempt: retryCount + 1, max: maxRetries + 1, content_length: content.length });
+        await this.prepareForAttempt(retryCount);
         
         await this.ensureContext();
         const result = await this.attemptPost(content);
@@ -1105,6 +1117,27 @@ export class UltimateTwitterPoster {
     await this.cleanup();
   }
 
+  async handleFailure(errorMessage: string): Promise<void> {
+    try {
+      await this.captureFailureArtifacts(errorMessage);
+    } catch (artifactError: any) {
+      console.warn(`ULTIMATE_POSTER: Failed to capture failure artifacts: ${artifactError?.message || artifactError}`);
+    } finally {
+      await this.cleanup();
+    }
+  }
+
+  private async prepareForAttempt(attempt: number): Promise<void> {
+    if (!this.forceFreshContextPerAttempt) return;
+    if (attempt === 0) {
+      await this.cleanup();
+      return;
+    }
+
+    await this.cleanup();
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+
   /**
    * 💬 POST REPLY TO TWEET (Permanent Solution)
    * Navigates to tweet and posts actual reply (not @mention)
@@ -1118,6 +1151,7 @@ export class UltimateTwitterPoster {
     while (retryCount <= maxRetries) {
       try {
         console.log(`ULTIMATE_POSTER: Reply attempt ${retryCount + 1}/${maxRetries + 1}`);
+        await this.prepareForAttempt(retryCount);
         
         await this.ensureContext();
         

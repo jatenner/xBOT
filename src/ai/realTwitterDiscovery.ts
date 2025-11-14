@@ -1004,20 +1004,65 @@ export class RealTwitterDiscovery {
       .filter(id => id.length > 0);
     
     const alreadyRepliedIds = new Set<string>();
+    const reservedOpportunityIds = new Set<string>();
+    const pendingReplyIds = new Set<string>();
+
     if (targetIds.length > 0) {
-      const { data: repliedRows, error: repliedError } = await supabase
-        .from('content_metadata')
-        .select('target_tweet_id')
-        .eq('decision_type', 'reply')
-        .eq('status', 'posted')
-        .in('target_tweet_id', targetIds);
-      
-      if (repliedError) {
-        console.warn('[REAL_DISCOVERY] ⚠️ Failed to fetch replied tweet IDs:', repliedError.message);
+      const [
+        repliedRows,
+        existingOppRows,
+        pendingReplyRows
+      ] = await Promise.all([
+        supabase
+          .from('content_metadata')
+          .select('target_tweet_id')
+          .eq('decision_type', 'reply')
+          .eq('status', 'posted')
+          .in('target_tweet_id', targetIds),
+        supabase
+          .from('reply_opportunities')
+          .select('target_tweet_id,replied_to,status,reply_decision_id')
+          .in('target_tweet_id', targetIds),
+        supabase
+          .from('content_metadata')
+          .select('target_tweet_id,status')
+          .eq('decision_type', 'reply')
+          .in('status', ['queued', 'ready', 'posting', 'retrying'])
+          .in('target_tweet_id', targetIds)
+      ]);
+
+      if (repliedRows.error) {
+        console.warn('[REAL_DISCOVERY] ⚠️ Failed to fetch replied tweet IDs:', repliedRows.error.message);
       } else {
-        (repliedRows || []).forEach(row => {
+        (repliedRows.data || []).forEach(row => {
           if (row?.target_tweet_id) {
             alreadyRepliedIds.add(String(row.target_tweet_id));
+          }
+        });
+      }
+
+      if (existingOppRows.error) {
+        console.warn('[REAL_DISCOVERY] ⚠️ Failed to fetch existing opportunities:', existingOppRows.error.message);
+      } else {
+        (existingOppRows.data || []).forEach(row => {
+          if (!row?.target_tweet_id) return;
+          const status = String(row.status || '').toLowerCase();
+          const isReserved =
+            Boolean(row.replied_to) ||
+            ['replied', 'claimed', 'in_progress'].includes(status) ||
+            Boolean(row.reply_decision_id);
+          if (isReserved) {
+            reservedOpportunityIds.add(String(row.target_tweet_id));
+          }
+        });
+      }
+
+      if (pendingReplyRows.error) {
+        console.warn('[REAL_DISCOVERY] ⚠️ Failed to fetch pending reply targets:', pendingReplyRows.error.message);
+      } else {
+        (pendingReplyRows.data || []).forEach(row => {
+          if (row?.target_tweet_id) {
+            pendingReplyIds.add(String(row.target_tweet_id));
           }
         });
       }
@@ -1027,8 +1072,17 @@ export class RealTwitterDiscovery {
     let failCount = 0;
     
     for (const opp of opportunities) {
-      if (alreadyRepliedIds.has(String(opp.tweet_id))) {
+      const targetId = String(opp.tweet_id);
+      if (alreadyRepliedIds.has(targetId)) {
         console.log(`[REAL_DISCOVERY] ⏭️ Skipping ${opp.tweet_id} (already replied)`);
+        continue;
+      }
+      if (reservedOpportunityIds.has(targetId)) {
+        console.log(`[REAL_DISCOVERY] ⏭️ Skipping ${opp.tweet_id} (reserved by existing opportunity)`);
+        continue;
+      }
+      if (pendingReplyIds.has(targetId)) {
+        console.log(`[REAL_DISCOVERY] ⏭️ Skipping ${opp.tweet_id} (reply already queued)`);
         continue;
       }
       

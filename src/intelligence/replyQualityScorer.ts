@@ -81,65 +81,57 @@ export class ReplyQualityScorer {
   }
   
   /**
-   * Calculate tier based on ABSOLUTE ENGAGEMENT (likes) + REPLY COMPETITION
-   * 🔥 MEGA-VIRAL ONLY STRATEGY: Target truly massive health tweets for maximum exposure
+   * Calculate tier based on absolute engagement + reply competition.
    * 
-   * 5-TIER SYSTEM: Ultra-high-impact tweets only (MINIMUM 10K likes)
-   * TITAN (golden): 250K+ likes, <2000 replies → 2.5M+ impressions (absolute mega-viral)
-   * ULTRA (golden): 100K+ likes, <1500 replies → 1M+ impressions (massive viral)
-   * MEGA (golden): 50K+ likes, <1000 replies → 500K+ impressions (super viral)
-   * SUPER (good): 25K+ likes, <800 replies → 250K+ impressions (very viral)
-   * HIGH (acceptable): 10K+ likes, <500 replies → 100K+ impressions (viral minimum)
+   * Updated to align with the new 8-tier system used by replyOpportunityHarvester:
+   * - FRESH tiers capture 500-1K like tweets that are exploding now
+   * - TRENDING tiers capture 2K-5K like tweets with strong momentum
+   * - VIRAL tiers capture 10K-25K like tweets (core targets)
+   * - MEGA tiers capture 50K+ like tweets (bonus reach)
    * 
-   * HARD FLOOR: Nothing under 10K likes accepted (ensures massive reach)
+   * Reply count guards prevent us from diving into buried replies.
    */
-  calculateTier(metrics: TweetMetrics): 'TITAN' | 'ULTRA' | 'MEGA' | 'SUPER' | 'HIGH' | 'golden' | 'good' | 'acceptable' | null {
-    const absoluteLikes = metrics.like_count;
-    const absoluteReplies = metrics.reply_count;
-    const tweetAge = metrics.posted_minutes_ago;
-    
-    // Only consider tweets from last 24 hours
-    if (tweetAge > 1440) return null;
-    
-    // 🚫 HARD FLOOR: Reject anything under 10K likes
-    if (absoluteLikes < 10000) return null;
-    
-    // ═══════════════════════════════════════════════════════════
-    // 5-TIER MEGA-VIRAL SYSTEM
-    // MINIMUM 10K | GOAL 50K-250K+ for massive exposure
-    // ═══════════════════════════════════════════════════════════
-    
-    // TIER 1 - TITAN: 250,000+ likes, <2000 replies
-    // Visibility: 2.5M+ impressions | Your reply seen by millions
-    if (absoluteLikes >= 250000 && absoluteReplies < 2000) {
-      return 'TITAN';
-    }
-    
-    // TIER 2 - ULTRA: 100,000+ likes, <1500 replies
-    // Visibility: 1M+ impressions | Massive viral reach
-    if (absoluteLikes >= 100000 && absoluteReplies < 1500) {
-      return 'ULTRA';
-    }
-    
-    // TIER 3 - MEGA: 50,000+ likes, <1000 replies
-    // Visibility: 500K+ impressions | Super viral content
-    if (absoluteLikes >= 50000 && absoluteReplies < 1000) {
-      return 'MEGA';
-    }
-    
-    // TIER 4 - SUPER: 25,000+ likes, <800 replies
-    // Visibility: 250K+ impressions | Very high viral reach
-    if (absoluteLikes >= 25000 && absoluteReplies < 800) {
-      return 'SUPER';
-    }
-    
-    // TIER 5 - HIGH: 10,000+ likes, <500 replies
-    // Visibility: 100K+ impressions | Minimum viral threshold
-    if (absoluteLikes >= 10000 && absoluteReplies < 500) {
-      return 'HIGH';
-    }
-    
-    // Too many replies = buried, even with high likes
+  calculateTier(metrics: TweetMetrics):
+    | 'MEGA+'
+    | 'MEGA'
+    | 'VIRAL+'
+    | 'VIRAL'
+    | 'TRENDING+'
+    | 'TRENDING'
+    | 'FRESH+'
+    | 'FRESH'
+    | 'golden'
+    | 'good'
+    | 'acceptable'
+    | null {
+    const likes = Number(metrics.like_count || 0);
+    const replies = Number(metrics.reply_count || 0);
+    const tweetAgeMinutes = Number.isFinite(metrics.posted_minutes_ago)
+      ? Number(metrics.posted_minutes_ago)
+      : Number.MAX_SAFE_INTEGER;
+
+    // Ignore anything older than 72 hours – beyond that window, conversation is stale.
+    if (tweetAgeMinutes > 72 * 60) return null;
+
+    // Top tiers – elite viral conversations
+    if (likes >= 100000 && replies <= 1600) return 'MEGA+';
+    if (likes >= 50000 && replies <= 1400) return 'MEGA';
+    if (likes >= 25000 && replies <= 900) return 'VIRAL+';
+    if (likes >= 10000 && replies <= 700) return 'VIRAL';
+
+    // Strong trending tweets
+    if (likes >= 5000 && replies <= 500) return 'TRENDING+';
+    if (likes >= 2000 && replies <= 350) return 'TRENDING';
+
+    // Fresh conversations still heating up
+    if (likes >= 1000 && replies <= 250) return 'FRESH+';
+    if (likes >= 500 && replies <= 180) return 'FRESH';
+
+    // Legacy tiers kept for backwards compatibility / long tail
+    if (likes >= 300 && replies <= 140) return 'golden';
+    if (likes >= 150 && replies <= 110) return 'good';
+    if (likes >= 80 && replies <= 80) return 'acceptable';
+
     return null;
   }
   
