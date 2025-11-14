@@ -20,7 +20,9 @@
 import { getSupabaseClient } from '../db';
 import { realTwitterDiscovery } from '../ai/realTwitterDiscovery';
 
-export async function replyOpportunityHarvester(): Promise<void> {
+const MAX_RECOVERY_ATTEMPTS = Number(process.env.HARVESTER_RECOVERY_ATTEMPTS ?? 2);
+
+export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<void> {
   console.log('[HARVESTER] 🔍 Starting TWEET-FIRST viral search harvesting...');
   
   try {
@@ -286,7 +288,46 @@ export async function replyOpportunityHarvester(): Promise<void> {
   
   if (finalPoolSize < MIN_POOL_SIZE) {
     console.warn(`[HARVESTER] ⚠️ Pool still low (${finalPoolSize}/${MIN_POOL_SIZE})`);
-    console.log(`[HARVESTER] 💡 Will harvest more in next cycle`);
+    console.log(`[HARVESTER] 💡 Auto-recovery logic engaged (attempt ${recoveryAttempt}/${MAX_RECOVERY_ATTEMPTS})`);
+    
+    try {
+      await supabase.from('system_events').insert({
+        event_type: 'reply_harvester_low_pool',
+        severity: 'warning',
+        event_data: {
+          initial_pool: initialPoolSize,
+          final_pool: finalPoolSize,
+          harvested: totalHarvested,
+          recovery_attempt: recoveryAttempt
+        },
+        created_at: new Date().toISOString()
+      });
+    } catch (eventError: any) {
+      console.warn('[HARVESTER] ⚠️ Failed to log low pool event:', eventError.message);
+    }
+
+    if (recoveryAttempt < MAX_RECOVERY_ATTEMPTS) {
+      const waitMs = Math.min(60000, 15000 * (recoveryAttempt + 1));
+      console.log(`[HARVESTER] 🔁 Recovery attempt ${recoveryAttempt + 1}/${MAX_RECOVERY_ATTEMPTS} starting in ${Math.round(waitMs / 1000)}s...`);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+      await replyOpportunityHarvester(recoveryAttempt + 1);
+      return;
+    }
+
+    console.error(`[HARVESTER] ❌ Pool remained critical after ${MAX_RECOVERY_ATTEMPTS} recovery attempts`);
+    try {
+      await supabase.from('system_events').insert({
+        event_type: 'reply_harvester_recovery_failed',
+        severity: 'critical',
+        event_data: {
+          final_pool: finalPoolSize,
+          attempts: MAX_RECOVERY_ATTEMPTS
+        },
+        created_at: new Date().toISOString()
+      });
+    } catch (eventError: any) {
+      console.warn('[HARVESTER] ⚠️ Failed to log recovery failure:', eventError.message);
+    }
   } else {
     console.log(`[HARVESTER] ✅ Pool healthy (${finalPoolSize}/${TARGET_POOL_SIZE})`);
   }
