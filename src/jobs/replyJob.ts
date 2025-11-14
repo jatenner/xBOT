@@ -504,42 +504,62 @@ async function generateRealReplies(): Promise<void> {
     return;
   }
   
-  // Log tier breakdown (support both new and legacy tier names)
-  const titans = allOpportunities.filter(o => o.tier === 'TITAN').length;
-  const ultras = allOpportunities.filter(o => o.tier === 'ULTRA').length;
-  const megas = allOpportunities.filter(o => o.tier === 'MEGA').length;
-  const supers = allOpportunities.filter(o => o.tier === 'SUPER').length;
-  const highs = allOpportunities.filter(o => o.tier === 'HIGH').length;
-  const golden = allOpportunities.filter(o => o.tier === 'golden').length;
-  const good = allOpportunities.filter(o => o.tier === 'good').length;
-  const acceptable = allOpportunities.filter(o => o.tier === 'acceptable').length;
-  
+  const normalizeTierCounts = (opps: Array<{ tier?: string | null }>) =>
+    opps.reduce<Record<string, number>>((acc, opp) => {
+    const key = String(opp.tier || '').toUpperCase();
+    if (!key) return acc;
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+    }, {});
+
+  const tierCounts = normalizeTierCounts(allOpportunities);
+  const countTiers = (counts: Record<string, number>, ...tiers: string[]) =>
+    tiers.reduce((sum, tier) => sum + (counts[tier] || 0), 0);
+
+  const megaCount = countTiers(tierCounts, 'MEGA+', 'MEGA', 'ULTRA', 'TITAN');
+  const viralCount = countTiers(tierCounts, 'VIRAL+', 'VIRAL', 'SUPER', 'HIGH');
+  const trendingCount = countTiers(tierCounts, 'TRENDING+', 'TRENDING', 'GOOD');
+  const freshCount = countTiers(tierCounts, 'FRESH+', 'FRESH', 'GOLDEN', 'ACCEPTABLE');
+
   console.log(`[REPLY_JOB] 📊 Opportunity pool: ${allOpportunities.length} total`);
-  if (titans + ultras + megas + supers + highs > 0) {
-    console.log(`[REPLY_JOB]   🏆 TITAN (250K+): ${titans} | ULTRA (100K+): ${ultras} | MEGA (50K+): ${megas}`);
-    console.log(`[REPLY_JOB]   ✅ SUPER (25K+): ${supers} | HIGH (10K+): ${highs}`);
-  }
-  if (golden + good + acceptable > 0) {
-    console.log(`[REPLY_JOB]   Legacy: ${golden} golden, ${good} good, ${acceptable} acceptable`);
+  if (megaCount + viralCount + trendingCount + freshCount > 0) {
+    console.log(`[REPLY_JOB]   🏆 MEGA (50K+ likes): ${megaCount}`);
+    console.log(`[REPLY_JOB]   🚀 VIRAL (10K+ likes): ${viralCount}`);
+    console.log(`[REPLY_JOB]   📈 TRENDING (2K-10K likes): ${trendingCount}`);
+    console.log(`[REPLY_JOB]   🔥 FRESH (500-2K likes): ${freshCount}`);
   }
   
   // 🔥 WATERFALL PRIORITY: Sort by tier → ABSOLUTE likes
   // Strategy: Prioritize HIGHEST engagement first (TITAN > ULTRA > MEGA > SUPER > HIGH)
   // Goal: Reply to biggest tweets possible to maximize exposure
+  const tierPriority = [
+    'MEGA+',
+    'TITAN',
+    'MEGA',
+    'ULTRA',
+    'VIRAL+',
+    'SUPER',
+    'VIRAL',
+    'HIGH',
+    'TRENDING+',
+    'TRENDING',
+    'FRESH+',
+    'FRESH',
+    'GOLDEN',
+    'GOOD',
+    'ACCEPTABLE'
+  ];
+
+  const tierRank = (tier: unknown) => {
+    const key = String(tier || '').toUpperCase();
+    const index = tierPriority.indexOf(key);
+    return index === -1 ? tierPriority.length : index;
+  };
+
   const sortedOpportunities = [...allOpportunities].sort((a, b) => {
-    const tierOrder: Record<string, number> = {
-      'TITAN': 10,
-      'ULTRA': 9,
-      'MEGA': 8,
-      'SUPER': 7,
-      'HIGH': 6,
-      'golden': 5,
-      'good': 4,
-      'acceptable': 3
-    };
-    const aTier = tierOrder[String(a.tier || '').toUpperCase()] || 0;
-    const bTier = tierOrder[String(b.tier || '').toUpperCase()] || 0;
-    if (aTier !== bTier) return bTier - aTier;
+    const aRank = tierRank(a.tier);
+    const bRank = tierRank(b.tier);
+    if (aRank !== bRank) return aRank - bRank;
 
     const aLikes = Number(a.like_count) || 0;
     const bLikes = Number(b.like_count) || 0;
@@ -593,22 +613,15 @@ async function generateRealReplies(): Promise<void> {
     return;
   }
   
-  // Count selected by tier
-  const selectedTitans = dbOpportunities.filter(o => o.tier === 'TITAN').length;
-  const selectedUltras = dbOpportunities.filter(o => o.tier === 'ULTRA').length;
-  const selectedMegas = dbOpportunities.filter(o => o.tier === 'MEGA').length;
-  const selectedSupers = dbOpportunities.filter(o => o.tier === 'SUPER').length;
-  const selectedHighs = dbOpportunities.filter(o => o.tier === 'HIGH').length;
-  const selectedGolden = dbOpportunities.filter(o => o.tier === 'golden').length;
-  const selectedGood = dbOpportunities.filter(o => o.tier === 'good').length;
-  const selectedAcceptable = dbOpportunities.filter(o => o.tier === 'acceptable').length;
+  const selectedTierCounts = normalizeTierCounts(dbOpportunities);
+  const selectionMega = countTiers(selectedTierCounts, 'MEGA+', 'MEGA', 'ULTRA', 'TITAN');
+  const selectionViral = countTiers(selectedTierCounts, 'VIRAL+', 'VIRAL', 'SUPER', 'HIGH');
+  const selectionTrending = countTiers(selectedTierCounts, 'TRENDING+', 'TRENDING', 'GOOD');
+  const selectionFresh = countTiers(selectedTierCounts, 'FRESH+', 'FRESH', 'GOLDEN', 'ACCEPTABLE');
   
   console.log(`[REPLY_JOB] 🎯 Selected ${dbOpportunities.length} best opportunities (waterfall priority):`);
-  if (selectedTitans + selectedUltras + selectedMegas + selectedSupers + selectedHighs > 0) {
-    console.log(`[REPLY_JOB]   🏆 ${selectedTitans} TITAN, ${selectedUltras} ULTRA, ${selectedMegas} MEGA, ${selectedSupers} SUPER, ${selectedHighs} HIGH`);
-  }
-  if (selectedGolden + selectedGood + selectedAcceptable > 0) {
-    console.log(`[REPLY_JOB]   Legacy: ${selectedGolden} golden, ${selectedGood} good, ${selectedAcceptable} acceptable`);
+  if (dbOpportunities.length > 0) {
+    console.log(`[REPLY_JOB]   🏆 MEGA: ${selectionMega} | 🚀 VIRAL: ${selectionViral} | 📈 TRENDING: ${selectionTrending} | 🔥 FRESH: ${selectionFresh}`);
   }
   console.log(`[REPLY_JOB]   Filtered out ${repliedTweetIds.size} already-replied tweets`);
   

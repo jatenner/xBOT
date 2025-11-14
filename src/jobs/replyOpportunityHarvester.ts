@@ -108,9 +108,19 @@ export async function replyOpportunityHarvester(): Promise<void> {
     { label: 'MEGA+ (100K+)', minLikes: 100000, maxReplies: 1500, maxAgeHours: 72, query: 'min_faves:100000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' },
     { label: 'HEALTH HOT (300+)', minLikes: 300, maxReplies: 120, maxAgeHours: 24, query: '("sleep" OR "circadian" OR "glucose" OR "metabolic health" OR "insulin" OR "peptide" OR "rapamycin" OR "sauna" OR "hrv" OR "testosterone") min_faves:300 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' }
   ];
+
+  const fallbackQueries = [
+    { label: 'RESCUE HEALTH (250+)', minLikes: 250, maxReplies: 150, maxAgeHours: 24, query: '("sleep" OR "insulin" OR "glucose" OR "longevity" OR "diet" OR "exercise") min_faves:250 -filter:replies lang:en -giveaway -crypto -nft' },
+    { label: 'RESCUE GENERAL (200+)', minLikes: 200, maxReplies: 140, maxAgeHours: 18, query: '(health OR wellness OR recovery OR hospital OR clinic OR doctor OR patients) min_faves:200 -filter:replies lang:en -crypto -nft -betting' },
+    { label: 'RESCUE FAST RISING (150+)', minLikes: 150, maxReplies: 100, maxAgeHours: 12, query: '(sleep OR cortisol OR metabolism OR gut OR workout OR gym OR immunity) min_faves:150 -filter:replies lang:en -airdrop -crypto -nft' }
+  ];
   
   const testLimitRaw = process.env.HARVESTER_TEST_LIMIT;
   const testLimit = testLimitRaw ? Math.max(1, Math.min(searchQueries.length, parseInt(testLimitRaw, 10) || 1)) : searchQueries.length;
+  const queriesToRun = searchQueries.slice(0, testLimit);
+  if (poolSize < MIN_POOL_SIZE) {
+    queriesToRun.push(...fallbackQueries);
+  }
 
   console.log(`[HARVESTER] 🔥 Configured ${searchQueries.length} FRESHNESS-OPTIMIZED discovery tiers`);
   console.log(`[HARVESTER] 🎯 Strategy: 3-TIER MIX (Fresh → Trending → Viral)`);
@@ -134,7 +144,7 @@ export async function replyOpportunityHarvester(): Promise<void> {
   console.log(`[HARVESTER] 🚀 Starting TWEET-FIRST search harvesting (time budget: 30min)...`);
   
   // Process search queries sequentially (can't parallelize searches easily)
-  for (const searchQuery of searchQueries.slice(0, testLimit)) {
+  for (const searchQuery of queriesToRun) {
     // Check time budget
     const elapsed = Date.now() - startTime;
     if (elapsed >= TIME_BUDGET) {

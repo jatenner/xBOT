@@ -800,7 +800,8 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
               ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
               retry_count: retryCount + 1,
               last_error: postError.message,
-              last_attempt: new Date().toISOString()
+              last_attempt: new Date().toISOString(),
+              last_post_error: postError.message
             }
           })
           .eq('decision_id', decision.id);
@@ -811,7 +812,20 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       
       // All retries exhausted - mark as failed
       console.error(`[POSTING_QUEUE] ❌ All ${maxRetries} retries exhausted for ${decision.decision_type}`);
-      await updateDecisionStatus(decision.id, 'failed');
+      await supabase
+        .from('content_metadata')
+        .update({
+          status: 'failed',
+          updated_at: new Date().toISOString(),
+          features: {
+            ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
+            retry_count: retryCount,
+            last_error: postError.message,
+            last_attempt: new Date().toISOString(),
+            last_post_error: postError.message
+          }
+        })
+        .eq('decision_id', decision.id);
       await updatePostingMetrics('error');
       throw postError;
     }
@@ -1163,9 +1177,12 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   // 🔒 BROWSER SEMAPHORE: Acquire exclusive browser access (HIGHEST priority)
   const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
   
-  // 🚨 CRITICAL: Wrap in 90s timeout to prevent 480s hangs
-  const REPLY_TIMEOUT_MS = 90000; // 90 seconds max for reply posting
+  // 🚨 CRITICAL: Wrap in timeout to prevent browser semaphore starvation
+  const REPLY_TIMEOUT_MS = 210000; // 3.5 minutes (allows profile/conversation fallback)
+  const TIMEOUT_WARNING_MS = 120000; // Warn if we cross 2 minutes
   
+  let warningTimer: NodeJS.Timeout | null = null;
+
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => {
       reject(new Error(`Reply posting timeout after ${REPLY_TIMEOUT_MS/1000}s`));
@@ -1209,70 +1226,57 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   console.log(`[POSTING_QUEUE] 💬 Using UltimateTwitterPoster.postReply() for REAL replies...`);
   
   try {
-    // Validate we have the target tweet ID
     if (!decision.target_tweet_id) {
       throw new Error('Cannot post reply: missing target_tweet_id');
     }
-    
-    // Use UltimateTwitterPoster for replies (no Redis dependency!)
+
     const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
-    const poster = new UltimateTwitterPoster();
-    
-    console.log(`[POSTING_QUEUE] 💬 Posting REAL reply to tweet ${decision.target_tweet_id}...`);
-    console.log(`[POSTING_QUEUE] 📝 Reply content: "${decision.content.substring(0, 60)}..."`);
-    
-    // Post as ACTUAL reply (not @mention tweet!) - content already formatted
-    const result = await poster.postReply(
-      decision.content, // Already formatted in replyJob
-      decision.target_tweet_id
-    );
-    
-    if (!result.success || !result.tweetId) {
-      throw new Error(result.error || 'Reply posting failed');
-    }
-    
-    // ═══════════════════════════════════════════════════════════
-    // ✅ CRITICAL VALIDATION: Reply ID MUST be different from parent!
-    // ═══════════════════════════════════════════════════════════
-    if (result.tweetId === decision.target_tweet_id) {
-      console.error(`[POSTING_QUEUE] 🚨 CRITICAL BUG DETECTED:`);
-      console.error(`   Reply ID matches parent ID: ${result.tweetId}`);
-      console.error(`   This means ID extraction failed!`);
-      console.error(`   To @${decision.target_username}: "${decision.content.substring(0, 40)}..."`);
-      
-      // Don't store bad data - throw error
-      throw new Error(`Reply ID extraction bug: got parent ID ${decision.target_tweet_id} instead of new reply ID`);
-    }
-    
-    console.log(`[POSTING_QUEUE] ✅ Reply ID validated: ${result.tweetId} (≠ parent ${decision.target_tweet_id})`);
-    console.log(`[POSTING_QUEUE] ✅ REAL reply posted successfully with ID: ${result.tweetId}`);
-    const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
-    console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
-    
-    await poster.dispose();
-    
+    const PosterCtor = UltimateTwitterPoster;
+    let poster: InstanceType<typeof PosterCtor> | null = null;
+
     try {
-      // Clean up opportunity so it never resurfaces
-      await supabase
-        .from('reply_opportunities')
-        .delete()
-        .eq('target_tweet_id', decision.target_tweet_id);
-      console.log(`[POSTING_QUEUE] 🧹 Cleared opportunity for ${decision.target_tweet_id}`);
-    } catch (cleanupError: any) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Failed to clear opportunity ${decision.target_tweet_id}:`, cleanupError.message);
+      poster = new PosterCtor({ purpose: 'reply' });
+      console.log(`[POSTING_QUEUE] 💬 Posting REAL reply to tweet ${decision.target_tweet_id}...`);
+      console.log(`[POSTING_QUEUE] 📝 Reply content: "${decision.content.substring(0, 60)}..."`);
+
+      const result = await poster.postReply(decision.content, decision.target_tweet_id);
+
+      if (!result.success || !result.tweetId) {
+        throw new Error(result.error || 'Reply posting failed');
+      }
+
+      if (result.tweetId === decision.target_tweet_id) {
+        throw new Error(`Reply ID extraction bug: got parent ID ${decision.target_tweet_id} instead of new reply ID`);
+      }
+
+      console.log(`[POSTING_QUEUE] ✅ Reply ID validated: ${result.tweetId} (≠ parent ${decision.target_tweet_id})`);
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+      console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
+
+      await poster.dispose();
+      poster = null;
+
+      try {
+        await supabase
+          .from('reply_opportunities')
+          .delete()
+          .eq('target_tweet_id', decision.target_tweet_id);
+        console.log(`[POSTING_QUEUE] 🧹 Cleared opportunity for ${decision.target_tweet_id}`);
+      } catch (cleanupError: any) {
+        console.warn(`[POSTING_QUEUE] ⚠️ Failed to clear opportunity ${decision.target_tweet_id}:`, cleanupError.message);
+      }
+
+      if (!result.tweetId || result.tweetId.startsWith('reply_posted_') || result.tweetId.startsWith('posted_')) {
+        throw new Error(`Reply ID extraction failed: got ${result.tweetId || 'null'}`);
+      }
+
+      return result.tweetId;
+    } catch (innerError: any) {
+      if (poster) {
+        await poster.handleFailure(innerError.message || 'reply_posting_failure');
+      }
+      throw innerError;
     }
-    
-    // 🚨 CRITICAL: Reply ID MUST be real for metrics scraping!
-    if (!result.tweetId || result.tweetId.startsWith('reply_posted_') || result.tweetId.startsWith('posted_')) {
-      console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Reply posted but got invalid ID: ${result.tweetId}`);
-      console.error(`[POSTING_QUEUE] 📝 Reply to: ${decision.target_tweet_id}`);
-      console.error(`[POSTING_QUEUE] 📊 Without real ID, metrics scraper cannot collect data!`);
-      console.error(`[POSTING_QUEUE] 🧠 This corrupts learning system with missing data!`);
-      throw new Error(`Reply ID extraction failed: got ${result.tweetId || 'null'}`);
-    }
-    
-    console.log(`[POSTING_QUEUE] ✅ Reply ID validated: ${result.tweetId}`);
-    return result.tweetId;
   } catch (error: any) {
     console.error(`[POSTING_QUEUE] ❌ Reply system error: ${error.message}`);
     throw new Error(`Reply posting failed: ${error.message}`);
@@ -1280,7 +1284,18 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   }); // End withBrowserLock
   
   // Race between posting and timeout
-  return await Promise.race([postingPromise, timeoutPromise]);
+  warningTimer = setTimeout(() => {
+    console.warn(`[POSTING_QUEUE] ⚠️ Reply still processing after ${TIMEOUT_WARNING_MS / 1000}s (decision ${decision.id})`);
+  }, TIMEOUT_WARNING_MS);
+
+  try {
+    return await Promise.race([postingPromise, timeoutPromise]);
+  } finally {
+    if (warningTimer) {
+      clearTimeout(warningTimer);
+      warningTimer = null;
+    }
+  }
 }
 
 /**

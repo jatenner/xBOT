@@ -477,6 +477,20 @@ export class JobManager {
         90 * MINUTE, // Every 90 minutes (reduced from 60min - not time-sensitive)
         95 * MINUTE // Start after 95 minutes (better stagger, give time for replies to get engagement)
       );
+
+      // 🏥 REPLY HEALTH MONITOR - every 30 min, offset 20 min (pool & SLO watchdog)
+      // Logs system_events warnings before the reply system starves
+      this.scheduleStaggeredJob(
+        'reply_health_monitor',
+        async () => {
+          await this.safeExecute('reply_health_monitor', async () => {
+            const { runReplyHealthMonitor } = await import('./replyHealthMonitor');
+            await runReplyHealthMonitor();
+          });
+        },
+        30 * MINUTE, // Every 30 minutes to catch pool depletion quickly
+        20 * MINUTE // Start after 20 minutes (after first harvest + reply cycles)
+      );
     } else {
       console.warn('═══════════════════════════════════════════════════════');
       console.warn('⚠️  JOB_MANAGER: Reply jobs DISABLED');

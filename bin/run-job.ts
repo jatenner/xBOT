@@ -13,12 +13,12 @@
 
 import { exit } from 'process';
 
-type JobType = 'plan' | 'posting' | 'reply' | 'learn' | 'outcomes';
+type JobType = 'plan' | 'posting' | 'reply' | 'learn' | 'outcomes' | 'reply-health';
 
 const jobType = process.argv[2] as JobType;
 
-if (!jobType || !['plan', 'posting', 'reply', 'learn', 'outcomes'].includes(jobType)) {
-  console.error('❌ Usage: tsx bin/run-job.ts <plan|posting|reply|learn|outcomes>');
+if (!jobType || !['plan', 'posting', 'reply', 'learn', 'outcomes', 'reply-health'].includes(jobType)) {
+  console.error('❌ Usage: tsx bin/run-job.ts <plan|posting|reply|learn|outcomes|reply-health>');
   exit(1);
 }
 
@@ -94,6 +94,13 @@ async function runDirectly(job: JobType): Promise<void> {
         const { collectRealOutcomes } = await import('../src/jobs/outcomeIngestJob');
         await collectRealOutcomes();
         console.log('[OUTCOME_INGEST] ✅ Direct execution completed');
+        break;
+      }
+
+      case 'reply-health': {
+        const { runReplyHealthMonitor } = await import('../src/jobs/replyHealthMonitor');
+        await runReplyHealthMonitor();
+        console.log('[REPLY_HEALTH] ✅ Direct execution completed');
         break;
       }
       

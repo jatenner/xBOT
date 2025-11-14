@@ -21,26 +21,26 @@ import type { Page } from 'playwright';
 // Strategy: Hit health Twitter from different angles to catch EVERYTHING
 // Each search uses OR operators to cast wide net within that category
 const BROAD_SEARCH_PATTERNS = [
-  // Pattern 1: MAINSTREAM HEALTH (catches 70% of everything)
-  '(health OR wellness OR fitness OR nutrition OR longevity) min_faves:2000',
+  // Pattern 1: MAINSTREAM HEALTH (catches majority of conversations)
+  '(health OR wellness OR fitness OR nutrition OR longevity) min_faves:800',
   
-  // Pattern 2: DIET & NUTRITION (extremely viral category)
-  '(diet OR keto OR carnivore OR vegan OR fasting OR weight loss) min_faves:2000',
+  // Pattern 2: DIET & NUTRITION (high-engagement category)
+  '(diet OR keto OR carnivore OR vegan OR fasting OR weight loss) min_faves:700',
   
-  // Pattern 3: OPTIMIZATION & BIOHACKING (high-engagement community)
-  '(biohacking OR longevity OR aging OR optimize OR performance) min_faves:2000',
+  // Pattern 3: OPTIMIZATION & BIOHACKING (engaged communities)
+  '(biohacking OR longevity OR aging OR optimize OR performance) min_faves:700',
   
-  // Pattern 4: FITNESS & TRAINING (huge engagement)
-  '(workout OR gym OR exercise OR training OR fitness OR muscle) min_faves:2000',
+  // Pattern 4: FITNESS & TRAINING (large volume, fast moving)
+  '(workout OR gym OR exercise OR training OR fitness OR muscle) min_faves:600',
   
   // Pattern 5: WELLNESS & MENTAL HEALTH (massive audience)
-  '(sleep OR mental health OR anxiety OR stress OR meditation OR mindfulness) min_faves:2000',
+  '(sleep OR mental health OR anxiety OR stress OR meditation OR mindfulness) min_faves:600',
   
-  // Pattern 6: SCIENCE & RESEARCH (high-quality content)
-  '(study OR research OR science OR protocol OR supplement OR vitamin) min_faves:2000',
+  // Pattern 6: SCIENCE & RESEARCH (quality insights)
+  '(study OR research OR science OR protocol OR supplement OR vitamin OR clinical trial) min_faves:500',
   
-  // Pattern 7: TRENDING HOT TOPICS (what's viral NOW)
-  '(ozempic OR seed oils OR carnivore OR testosterone OR gut health) min_faves:2000'
+  // Pattern 7: TRENDING HOT TOPICS (what\'s viral NOW)
+  '(ozempic OR seed oils OR semaglutide OR testosterone OR gut health OR cortisol) min_faves:500'
 ];
 
 // No rotation needed - search ALL patterns every cycle (only 7 searches, very fast)

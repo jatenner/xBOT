@@ -32,7 +32,7 @@ export async function replyMetricsScraperJob(): Promise<void> {
     const postedAfterIso = sevenDaysAgo.toISOString();
     const { data: recentReplies, error: recentError } = await supabase
       .from('content_metadata')
-      .select('decision_id, tweet_id, posted_at, content, features, actual_impressions')
+      .select('decision_id, tweet_id, posted_at, content, features, actual_impressions, target_username, target_tweet_id')
       .eq('status', 'posted')
       .eq('decision_type', 'reply')
       .not('tweet_id', 'is', null)
@@ -87,9 +87,49 @@ export async function replyMetricsScraperJob(): Promise<void> {
     
     try {
       for (const reply of repliesToScrape) {
+        let baseFeatures: Record<string, any> = {};
+        let retryCount = 0;
+        let nowIso = new Date().toISOString();
+        let parentUsername: string | undefined;
+        let canonicalTweetUrl: string | undefined;
+        let reservationFeatures: Record<string, any> = {};
+
         try {
-          const baseFeatures = (reply.features || {}) as Record<string, any>;
-          const retryCount = Number(baseFeatures.metrics_retry_count || 0);
+          baseFeatures = (reply.features || {}) as Record<string, any>;
+          retryCount = Number(baseFeatures.metrics_retry_count || 0);
+          nowIso = new Date().toISOString();
+          parentUsername = typeof baseFeatures.parent_username === 'string' && baseFeatures.parent_username.length > 0
+            ? baseFeatures.parent_username
+            : typeof reply.target_username === 'string' && reply.target_username.length > 0
+              ? reply.target_username
+              : undefined;
+          canonicalTweetUrl =
+            typeof baseFeatures.tweet_url === 'string' && baseFeatures.tweet_url.length > 0
+              ? baseFeatures.tweet_url
+              : parentUsername
+                ? `https://x.com/${parentUsername}/status/${reply.tweet_id}`
+                : undefined;
+
+          // Mark job in progress to avoid double-scraping in parallel runs
+          reservationFeatures = {
+            ...baseFeatures,
+            metrics_in_progress: true,
+            metrics_last_attempt_at: nowIso
+          };
+          if (!reservationFeatures.tweet_url && canonicalTweetUrl) {
+            reservationFeatures.tweet_url = canonicalTweetUrl;
+          }
+          try {
+            await supabase
+              .from('content_metadata')
+              .update({
+                features: reservationFeatures,
+                updated_at: nowIso
+              })
+              .eq('decision_id', reply.decision_id);
+          } catch (reservationError: any) {
+            console.warn(`[REPLY_METRICS]   ⚠️ Failed to flag in-progress for ${reply.tweet_id}: ${reservationError.message}`);
+          }
 
           console.log(`[REPLY_METRICS]   🔍 Scraping reply ${reply.tweet_id}...`);
           
@@ -102,7 +142,7 @@ export async function replyMetricsScraperJob(): Promise<void> {
             {
               isReply: true,
               useAnalytics: false,
-              tweetUrl: typeof baseFeatures.tweet_url === 'string' ? baseFeatures.tweet_url : undefined
+              tweetUrl: canonicalTweetUrl
             }
           );
           
@@ -110,7 +150,13 @@ export async function replyMetricsScraperJob(): Promise<void> {
             console.warn(`[REPLY_METRICS]   ⚠️ No metrics for ${reply.tweet_id}: ${result.error || 'Unknown error'}`);
             failedCount++;
 
-            const updatedFeatures = { ...baseFeatures, metrics_retry_count: retryCount + 1 };
+            const updatedFeatures = {
+              ...reservationFeatures,
+              metrics_retry_count: retryCount + 1,
+              metrics_in_progress: false,
+              metrics_last_error: result.error || 'Unknown',
+              metrics_last_attempt_at: nowIso
+            };
             try {
               await supabase
                 .from('content_metadata')
@@ -145,106 +191,110 @@ export async function replyMetricsScraperJob(): Promise<void> {
           }
           
           const metrics = result.metrics;
-        // Extract parent tweet info from features
-        const parentTweetId = baseFeatures.parent_tweet_id || '';
-        const parentUsername = baseFeatures.parent_username || '';
+          // Extract parent tweet info from features
+          const parentTweetId = baseFeatures.parent_tweet_id || reply.target_tweet_id || '';
+          const parentUsernameFinal = parentUsername || '';
         
-        // Calculate engagement rate
-        const totalEngagement = (metrics.likes || 0) + (metrics.replies || 0) + (metrics.retweets || 0);
-        const engagementRate = metrics.views && metrics.views > 0 ? totalEngagement / metrics.views : 0;
+          // Calculate engagement rate
+          const totalEngagement = (metrics.likes || 0) + (metrics.replies || 0) + (metrics.retweets || 0);
+          const engagementRate = metrics.views && metrics.views > 0 ? totalEngagement / metrics.views : 0;
         
-        // Check if reply was already tracked
-        const { data: existingPerf } = await supabase
-          .from('reply_performance')
-          .select('id, followers_gained')
-          .eq('reply_tweet_id', reply.tweet_id)
-          .single();
+          // Check if reply was already tracked
+          const { data: existingPerf } = await supabase
+            .from('reply_performance')
+            .select('id, followers_gained')
+            .eq('reply_tweet_id', reply.tweet_id)
+            .single();
         
-        // Calculate followers gained (if we have baseline)
-        let followersGained = 0;
-        if (existingPerf && existingPerf.followers_gained) {
-          followersGained = Number(existingPerf.followers_gained); // Keep existing value
-        } else if (currentFollowerCount > 0) {
-          // Try to estimate (very rough)
-          // In reality, you'd track follower count at time of posting
-          const hoursOld = (Date.now() - new Date(String(reply.posted_at)).getTime()) / (1000 * 60 * 60);
-          const estimatedGrowthRate = 0.5; // Assume 0.5 followers/hour baseline
-          const estimatedBaseline = Math.floor(hoursOld * estimatedGrowthRate);
-          
-          // If engagement is high, attribute some followers
-          if (engagementRate > 0.02) { // 2%+ engagement rate
-            followersGained = Math.floor(metrics.likes * 0.01); // Rough estimate: 1% of likes
+          // Calculate followers gained (if we have baseline)
+          let followersGained = 0;
+          if (existingPerf && existingPerf.followers_gained) {
+            followersGained = Number(existingPerf.followers_gained); // Keep existing value
+          } else if (currentFollowerCount > 0) {
+            // Try to estimate (very rough)
+            // In reality, you'd track follower count at time of posting
+            const hoursOld = (Date.now() - new Date(String(reply.posted_at)).getTime()) / (1000 * 60 * 60);
+            const estimatedGrowthRate = 0.5; // Assume 0.5 followers/hour baseline
+            
+            // If engagement is high, attribute some followers
+            if (engagementRate > 0.02) { // 2%+ engagement rate
+              followersGained = Math.floor(metrics.likes * 0.01); // Rough estimate: 1% of likes
+            }
           }
-        }
-        
-        // Calculate visibility score (how visible was it in the thread?)
-        // Higher = better position, fewer competing replies
-        const parentReplies = baseFeatures.parent_replies || 1;
-        const replyPosition = baseFeatures.reply_position || parentReplies;
-        const visibilityScore = Math.max(0, 1 - (replyPosition / Math.max(parentReplies, 10)));
-        
-        // Check if conversation continued (did we get replies?)
-        const conversationContinued = (metrics.replies || 0) > 0;
-        
-        // 🔥 STORE ALL METADATA in reply_performance table
-        const perfData = {
-          decision_id: reply.decision_id,
-          reply_tweet_id: reply.tweet_id,
-          parent_tweet_id: parentTweetId,
-          parent_username: parentUsername,
           
-          // Engagement metrics
-          likes: metrics.likes || 0,
-          replies: metrics.replies || 0,
-          impressions: metrics.views || 0,
+          // Calculate visibility score (how visible was it in the thread?)
+          // Higher = better position, fewer competing replies
+          const parentReplies = baseFeatures.parent_replies || 1;
+          const replyPosition = baseFeatures.reply_position || parentReplies;
+          const visibilityScore = Math.max(0, 1 - (replyPosition / Math.max(parentReplies, 10)));
           
-          // Follower impact
-          followers_gained: followersGained,
+          // Check if conversation continued (did we get replies?)
+          const conversationContinued = (metrics.replies || 0) > 0;
           
-          // Quality metrics
-          reply_relevance_score: engagementRate,
-          conversation_continuation: conversationContinued,
-          visibility_score: visibilityScore,
-          engagement_rate: engagementRate,
+          // 🔥 STORE ALL METADATA in reply_performance table
+          const perfData = {
+            decision_id: reply.decision_id,
+            reply_tweet_id: reply.tweet_id,
+            parent_tweet_id: parentTweetId,
+            parent_username: parentUsernameFinal,
+            
+            // Engagement metrics
+            likes: metrics.likes || 0,
+            replies: metrics.replies || 0,
+            impressions: metrics.views || 0,
+            
+            // Follower impact
+            followers_gained: followersGained,
+            
+            // Quality metrics
+            reply_relevance_score: engagementRate,
+            conversation_continuation: conversationContinued,
+            visibility_score: visibilityScore,
+            engagement_rate: engagementRate,
+            
+            // Metadata (store extra context as JSON)
+            reply_metadata: {
+              retweets: metrics.retweets || 0,
+              bookmarks: metrics.bookmarks || 0,
+              parent_likes: baseFeatures.parent_likes || 0,
+              parent_replies: baseFeatures.parent_replies || 0,
+              reply_position: replyPosition,
+              time_of_day: new Date(String(reply.posted_at)).getHours(),
+              day_of_week: new Date(String(reply.posted_at)).getDay(),
+              hours_since_parent: baseFeatures.hours_since_parent || 0,
+              parent_account_size: baseFeatures.parent_account_size || 0,
+              generator_used: baseFeatures.generator || 'unknown'
+            },
+            
+            updated_at: new Date().toISOString()
+          };
           
-          // Metadata (store extra context as JSON)
-          reply_metadata: {
-            retweets: metrics.retweets || 0,
-            bookmarks: metrics.bookmarks || 0,
-            parent_likes: baseFeatures.parent_likes || 0,
-            parent_replies: baseFeatures.parent_replies || 0,
-            reply_position: replyPosition,
-            time_of_day: new Date(String(reply.posted_at)).getHours(),
-            day_of_week: new Date(String(reply.posted_at)).getDay(),
-            hours_since_parent: baseFeatures.hours_since_parent || 0,
-            parent_account_size: baseFeatures.parent_account_size || 0,
-            generator_used: baseFeatures.generator || 'unknown'
-          },
+          // Upsert to reply_performance
+          const { error: perfError } = await supabase
+            .from('reply_performance')
+            .upsert(perfData, { onConflict: 'reply_tweet_id' });
           
-          updated_at: new Date().toISOString()
-        };
-        
-        // Upsert to reply_performance
-        const { error: perfError } = await supabase
-          .from('reply_performance')
-          .upsert(perfData, { onConflict: 'reply_tweet_id' });
-        
-        if (perfError) {
-          console.error(`[REPLY_METRICS]   ❌ Failed to store performance:`, perfError.message);
-          failedCount++;
-        } else {
-          console.log(`[REPLY_METRICS]   ✅ ${reply.tweet_id}: ${metrics.views || 0} views, ${metrics.likes || 0} likes, +${followersGained} followers`);
-          scrapedCount++;
+          if (perfError) {
+            console.error(`[REPLY_METRICS]   ❌ Failed to store performance:`, perfError);
+          } else {
+            console.log(`[REPLY_METRICS]   ✅ Stored reply_performance for ${reply.tweet_id}`);
+          }
 
-          // Update content_metadata so dashboards & analytics stay in sync
-          const sanitizedFeatures =
-            retryCount > 0 && 'metrics_retry_count' in baseFeatures
-              ? (() => {
-                  const copy = { ...baseFeatures };
-                  delete copy.metrics_retry_count;
-                  return copy;
-                })()
-              : null;
+          // Update content_metadata so dashboards & analytics stay in sync (always attempt)
+          const successFeatures: Record<string, any> = {
+            ...reservationFeatures,
+            metrics_in_progress: false,
+            metrics_last_success_at: nowIso,
+            metrics_last_error: null,
+            metrics_last_views: metrics.views ?? null,
+            metrics_last_likes: metrics.likes ?? null
+          };
+          if ('metrics_retry_count' in successFeatures) {
+            delete successFeatures.metrics_retry_count;
+          }
+          if (canonicalTweetUrl) {
+            successFeatures.tweet_url = canonicalTweetUrl;
+          }
 
           const { error: metaError } = await supabase
             .from('content_metadata')
@@ -254,21 +304,61 @@ export async function replyMetricsScraperJob(): Promise<void> {
               actual_retweets: metrics.retweets ?? null,
               actual_replies: metrics.replies ?? null,
               updated_at: new Date().toISOString(),
-              ...(sanitizedFeatures ? { features: sanitizedFeatures } : {})
+              features: successFeatures
             })
             .eq('decision_id', reply.decision_id);
 
           if (metaError) {
             console.error(`[REPLY_METRICS]   ❌ Failed to update content_metadata for ${reply.tweet_id}:`, metaError.message);
+            failedCount++;
+          } else {
+            scrapedCount++;
+            console.log(`[REPLY_METRICS]   ✅ Updated content_metadata for ${reply.tweet_id}: ${metrics.views || 0} views, ${metrics.likes || 0} likes`);
           }
-        }
-        
-        // Small delay between scrapes
-        await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Small delay between scrapes
+          await new Promise(resolve => setTimeout(resolve, 2000));
         
       } catch (error: any) {
         console.error(`[REPLY_METRICS]   ❌ Error scraping ${reply.tweet_id}:`, error.message);
         failedCount++;
+
+        const failureFeatures = {
+          ...reservationFeatures,
+          metrics_in_progress: false,
+          metrics_retry_count: retryCount + 1,
+          metrics_last_error: error.message,
+          metrics_last_attempt_at: nowIso
+        };
+        try {
+          await supabase
+            .from('content_metadata')
+            .update({
+              features: failureFeatures,
+              updated_at: new Date().toISOString()
+            })
+            .eq('decision_id', reply.decision_id);
+        } catch (persistError: any) {
+          console.warn(`[REPLY_METRICS]   ⚠️ Failed to persist failure state for ${reply.tweet_id}: ${persistError.message}`);
+        }
+
+        if (failureFeatures.metrics_retry_count >= MAX_SCRAPE_RETRIES) {
+          try {
+            await supabase.from('system_events').insert({
+              event_type: 'reply_metrics_giveup',
+              severity: 'warning',
+              event_data: {
+                reply_tweet_id: reply.tweet_id,
+                decision_id: reply.decision_id,
+                retries: failureFeatures.metrics_retry_count,
+                error: error.message || 'Unknown'
+              },
+              created_at: new Date().toISOString()
+            });
+          } catch (eventError: any) {
+            console.warn(`[REPLY_METRICS]   ⚠️ Failed to log metrics give-up event (catch): ${eventError.message}`);
+          }
+        }
       }
     }
     } finally {
