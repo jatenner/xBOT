@@ -207,6 +207,58 @@ created_at TIMESTAMPTZ
 
 ---
 
+### 8. `job_heartbeats` (JOB MONITORING TABLE - NEW)
+
+**Purpose:** Single row per job capturing the most recent success/failure timestamps so the watchdog can detect stalled pipelines instantly.
+
+**Key Columns:**
+```sql
+job_name TEXT PRIMARY KEY          -- e.g., 'posting', 'reply_posting'
+last_success TIMESTAMPTZ           -- last successful completion time
+last_failure TIMESTAMPTZ           -- last failure timestamp
+last_run_status TEXT               -- 'success' | 'failure' | 'running'
+last_error TEXT                    -- Most recent failure message (if any)
+consecutive_failures INT           -- Number of failures since last success
+updated_at TIMESTAMPTZ             -- Row update timestamp
+```
+
+**Used By:**
+- `JobManager.safeExecute` (writes heartbeat data)
+- `jobWatchdog` (reads thresholds, auto-heals stalled jobs)
+- Dashboards / health checks (source of truth for “last run”)
+
+**Data Flow:**
+1. Every scheduled job calls `recordJobStart` before execution.
+2. On completion, `recordJobSuccess` or `recordJobFailure` upserts the row.
+3. `jobWatchdog` queries this table and triggers recovery + `system_events` logs if any heartbeat exceeds its SLA window.
+
+---
+
+### 9. `posting_attempts` (POSTING TELEMETRY TABLE - NEW)
+
+**Purpose:** Stores per-attempt telemetry (currently focused on replies) so we can analyze slow steps, flaky sessions, and repeated failures.
+
+**Key Columns:**
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+job_type TEXT DEFAULT 'reply'
+decision_id UUID REFERENCES content_metadata(decision_id) ON DELETE SET NULL
+target_tweet_id TEXT
+tweet_id TEXT
+status TEXT                    -- 'success' or 'failure'
+error_message TEXT
+metrics JSONB                  -- timings, retries, session refresh counts, etc.
+created_at TIMESTAMPTZ DEFAULT NOW()
+```
+
+**Written By:**
+- `UltimateTwitterPoster.postReply` via `ReplyPostingTelemetry`
+
+**Used By:**
+- Watchdog dashboards, regression analysis, incident investigations
+
+---
+
 ## 🔄 DATA FLOW (Complete)
 
 ### Posting Flow:

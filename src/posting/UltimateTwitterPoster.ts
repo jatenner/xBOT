@@ -12,6 +12,7 @@ import { ImprovedReplyIdExtractor } from './ImprovedReplyIdExtractor';
 import { BulletproofTweetExtractor } from '../utils/bulletproofTweetExtractor';
 import { ensureComposerFocused } from './composerFocus';
 import { supaService } from '../lib/supabaseService';
+import { ReplyPostingTelemetry } from './ReplyPostingTelemetry';
 
 export interface PostResult {
   success: boolean;
@@ -30,6 +31,8 @@ export class UltimateTwitterPoster {
   private readonly storageStatePath = join(process.cwd(), 'twitter-auth.json');
   private readonly purpose: 'reply' | 'post';
   private readonly forceFreshContextPerAttempt: boolean;
+  private sessionRefreshes = 0;
+  private composerFocusAttempts = 0;
   
   // Circuit breaker pattern
   private clickFailures = 0;
@@ -896,6 +899,7 @@ export class UltimateTwitterPoster {
   }
 
   private async refreshSession(): Promise<void> {
+    this.sessionRefreshes++;
     console.log('ULTIMATE_POSTER: Refreshing Twitter session...');
     
     // If we have a storage state file, delete it to force re-authentication
@@ -1142,13 +1146,16 @@ export class UltimateTwitterPoster {
    * 💬 POST REPLY TO TWEET (Permanent Solution)
    * Navigates to tweet and posts actual reply (not @mention)
    */
-  async postReply(content: string, replyToTweetId: string): Promise<PostResult> {
+  async postReply(content: string, replyToTweetId: string, decisionId?: string): Promise<PostResult> {
     let retryCount = 0;
     const maxRetries = 2;
 
     console.log(`ULTIMATE_POSTER: Posting reply to tweet ${replyToTweetId}`);
 
     while (retryCount <= maxRetries) {
+      const sessionRefreshesBefore = this.sessionRefreshes;
+      let composerAttempts = 0;
+      const telemetry = new ReplyPostingTelemetry(decisionId, replyToTweetId, retryCount + 1);
       try {
         console.log(`ULTIMATE_POSTER: Reply attempt ${retryCount + 1}/${maxRetries + 1}`);
         await this.prepareForAttempt(retryCount);
@@ -1165,6 +1172,7 @@ export class UltimateTwitterPoster {
         });
 
         await this.page.waitForTimeout(2000);
+        telemetry.mark('navigation_complete');
 
         // Check authentication
         const isLoggedOut = await this.checkIfLoggedOut();
@@ -1187,6 +1195,8 @@ export class UltimateTwitterPoster {
           } else {
             console.log(`ULTIMATE_POSTER: Reply composer focused`);
           }
+          telemetry.mark('composer_ready');
+          composerAttempts += 1;
         } catch (focusError: any) {
           console.warn(`ULTIMATE_POSTER: ensureComposerFocused failed (${focusError.message}). Falling back.`);
 
@@ -1236,6 +1246,8 @@ export class UltimateTwitterPoster {
               await candidate.waitFor({ state: 'visible', timeout: 2500 });
               composer = candidate;
               console.log(`ULTIMATE_POSTER: Fallback composer located via "${selector}"`);
+              composerAttempts += 1;
+              telemetry.mark('composer_ready');
               break;
             } catch {
               continue;
@@ -1308,6 +1320,7 @@ export class UltimateTwitterPoster {
         if (!posted) {
           throw new Error('Could not click post button');
         }
+        telemetry.mark('post_clicked');
 
         // Wait for post to complete
         await this.page.waitForTimeout(3000);
@@ -1356,6 +1369,10 @@ export class UltimateTwitterPoster {
 
         console.log(`ULTIMATE_POSTER: ✅ ID extracted via '${extractionResult.strategy}' strategy`);
         console.log(`ULTIMATE_POSTER: ✅ Reply posted successfully: ${tweetId}`);
+        telemetry.mark('id_extracted');
+        telemetry.setComposerAttempts(composerAttempts);
+        telemetry.setSessionRefreshes(Math.max(0, this.sessionRefreshes - sessionRefreshesBefore));
+        await telemetry.flush('success', { tweetId });
 
         await this.dispose();
 
@@ -1367,6 +1384,9 @@ export class UltimateTwitterPoster {
 
       } catch (error: any) {
         console.error(`ULTIMATE_POSTER: Reply attempt ${retryCount + 1} failed:`, error.message);
+        telemetry.setComposerAttempts(composerAttempts);
+        telemetry.setSessionRefreshes(Math.max(0, this.sessionRefreshes - sessionRefreshesBefore));
+        await telemetry.flush('failure', { error: error.message });
         
         if (retryCount < maxRetries) {
           console.log('ULTIMATE_POSTER: Retrying reply with fresh context...');

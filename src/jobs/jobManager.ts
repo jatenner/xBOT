@@ -14,6 +14,7 @@ import { collectRealOutcomes } from './realOutcomesJob';
 import { collectRealOutcomes as collectAnalytics } from './analyticsCollectorJob';
 import { runLearningCycle } from './learnJob';
 import { runPhantomRecoveryJob } from './phantomRecoveryJob';
+import { recordJobFailure, recordJobStart, recordJobSuccess } from './jobHeartbeat';
 
 export interface JobStats {
   planRuns: number;
@@ -595,6 +596,21 @@ export class JobManager {
       4 * MINUTE  // Run 4 minutes after startup (recovers IDs quickly)
     );
 
+    // Watchdog - every 5 minutes to enforce SLAs
+    this.scheduleStaggeredJob(
+      'job_watchdog',
+      async () => {
+        await this.safeExecute('job_watchdog', async () => {
+          const { runJobWatchdog } = await import('./jobWatchdog');
+          await runJobWatchdog(async (jobTarget) => {
+            await this.runJobNow(jobTarget);
+          });
+        });
+      },
+      5 * MINUTE,
+      2 * MINUTE
+    );
+
     // Viral thread - every 24 hours if enabled
     if (flags.live) {
       const viralThreadIntervalMin = config.JOBS_VIRAL_THREAD_INTERVAL_MIN || 1440;
@@ -965,6 +981,7 @@ export class JobManager {
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        await recordJobStart(jobName);
         if (attempt > 1) {
           console.log(`🕒 JOB_${jobName.toUpperCase()}: Starting (attempt ${attempt}/${maxRetries})...`);
         } else {
@@ -973,11 +990,13 @@ export class JobManager {
         
         await jobFn();
         console.log(`✅ JOB_${jobName.toUpperCase()}: Completed successfully`);
+        await recordJobSuccess(jobName);
         return; // Success!
         
       } catch (error) {
         const errorMsg = error?.message || String(error);
         console.error(`❌ JOB_${jobName.toUpperCase()}: Attempt ${attempt} failed - ${errorMsg}`);
+        await recordJobFailure(jobName, errorMsg);
         
         if (attempt < maxRetries) {
           const delay = Math.min(1000 * Math.pow(2, attempt), 30000); // Exponential backoff: 2s, 4s, 8s (max 30s)
@@ -1073,7 +1092,7 @@ export class JobManager {
   /**
    * Force run a specific job (for testing/manual trigger)
    */
-  public async runJobNow(jobName: 'plan' | 'reply' | 'posting' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn' | 'trainPredictor' | 'account_discovery'): Promise<void> {
+  public async runJobNow(jobName: 'plan' | 'reply' | 'reply_posting' | 'posting' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn' | 'trainPredictor' | 'account_discovery' | 'metrics_scraper' | 'reply_metrics_scraper' | 'mega_viral_harvester'): Promise<void> {
     console.log(`🔄 JOB_MANAGER: Force running ${jobName} job...`);
     
     switch (jobName) {
@@ -1086,6 +1105,7 @@ export class JobManager {
         break;
       
       case 'reply':
+      case 'reply_posting':
         await this.safeExecute('reply', async () => {
           await generateReplies();
           this.stats.replyRuns++;
@@ -1147,6 +1167,27 @@ export class JobManager {
           const coefficients = await trainWeeklyModel();
           await persistCoefficients(coefficients);
           console.log(`✅ Predictor ${coefficients.version} trained and persisted`);
+        });
+        break;
+      
+      case 'metrics_scraper':
+        await this.safeExecute('metrics_scraper', async () => {
+          const { metricsScraperJob } = await import('./metricsScraperJob');
+          await metricsScraperJob();
+        });
+        break;
+      
+      case 'reply_metrics_scraper':
+        await this.safeExecute('reply_metrics_scraper', async () => {
+          const { replyMetricsScraperJob } = await import('./replyMetricsScraperJob');
+          await replyMetricsScraperJob();
+        });
+        break;
+      
+      case 'mega_viral_harvester':
+        await this.safeExecute('mega_viral_harvester', async () => {
+          const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
+          await replyOpportunityHarvester();
         });
         break;
     }

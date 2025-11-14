@@ -1239,7 +1239,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       console.log(`[POSTING_QUEUE] 💬 Posting REAL reply to tweet ${decision.target_tweet_id}...`);
       console.log(`[POSTING_QUEUE] 📝 Reply content: "${decision.content.substring(0, 60)}..."`);
 
-      const result = await poster.postReply(decision.content, decision.target_tweet_id);
+      const result = await poster.postReply(decision.content, decision.target_tweet_id, decision.id);
 
       if (!result.success || !result.tweetId) {
         throw new Error(result.error || 'Reply posting failed');
