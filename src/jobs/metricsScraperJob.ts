@@ -143,7 +143,13 @@ export async function metricsScraperJob(): Promise<void> {
       return;
     }
     
-    console.log(`[METRICS_JOB] 🔍 Batching ${postsToScrape.length} tweets into single browser session...`);
+    const maxPostsPerRun = Number(process.env.METRICS_MAX_POSTS_PER_RUN ?? 3);
+    const postsToProcess = postsToScrape.slice(0, Math.max(1, maxPostsPerRun));
+    if (postsToProcess.length < postsToScrape.length) {
+      console.log(`[METRICS_JOB] ⏳ Processing ${postsToProcess.length}/${postsToScrape.length} tweets this cycle (remaining next run)`);
+    }
+    
+    console.log(`[METRICS_JOB] 🔍 Batching ${postsToProcess.length} tweets into single browser session...`);
     
     // 🔒 BROWSER SEMAPHORE: Acquire ONE browser lock for ALL tweets (BATCHED)
     const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
@@ -155,12 +161,12 @@ export async function metricsScraperJob(): Promise<void> {
       const page = await pool.acquirePage('metrics_batch');
       
       try {
-        console.log(`[METRICS_JOB] 🚀 Starting batched scraping of ${postsToScrape.length} tweets...`);
+        console.log(`[METRICS_JOB] 🚀 Starting batched scraping of ${postsToProcess.length} tweets...`);
         
         // Process all tweets in sequence using the same browser session
-        for (const post of postsToScrape) {
+        for (const post of postsToProcess) {
           try {
-            console.log(`[METRICS_JOB] 🔍 Scraping ${post.tweet_id} (${updated + failed + 1}/${postsToScrape.length})...`);
+            console.log(`[METRICS_JOB] 🔍 Scraping ${post.tweet_id} (${updated + failed + 1}/${postsToProcess.length})...`);
             
             // Use the shared page from the batch session
             // PHASE 4: Use orchestrator (includes validation, quality tracking, caching)

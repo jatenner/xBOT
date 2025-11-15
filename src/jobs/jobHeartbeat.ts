@@ -1,7 +1,7 @@
 import { getSupabaseClient } from '../db';
 import { log } from '../lib/logger';
 
-type JobStatus = 'running' | 'success' | 'failure';
+type JobStatus = 'running' | 'success' | 'failure' | 'skipped';
 
 const TABLE_NAME = 'job_heartbeats';
 
@@ -60,6 +60,15 @@ export async function recordJobFailure(jobName: string, errorMessage: string): P
   } catch (error: any) {
     console.error('[JOB_HEARTBEAT] ❌ Failed to record job failure:', error.message || error);
   }
+}
+
+export async function recordJobSkip(jobName: string, reason: string): Promise<void> {
+  await upsertHeartbeat({
+    job_name: jobName,
+    last_run_status: 'skipped' as JobStatus,
+    last_error: reason,
+    updated_at: nowIso()
+  });
 }
 
 export async function getHeartbeat(jobName: string) {

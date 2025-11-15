@@ -119,9 +119,14 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   
   const testLimitRaw = process.env.HARVESTER_TEST_LIMIT;
   const testLimit = testLimitRaw ? Math.max(1, Math.min(searchQueries.length, parseInt(testLimitRaw, 10) || 1)) : searchQueries.length;
-  const queriesToRun = searchQueries.slice(0, testLimit);
+  let queriesToRun = searchQueries.slice(0, testLimit);
   if (poolSize < MIN_POOL_SIZE) {
     queriesToRun.push(...fallbackQueries);
+  }
+  const maxSearchesPerRun = Number(process.env.HARVESTER_MAX_SEARCHES_PER_RUN ?? 3);
+  if (queriesToRun.length > maxSearchesPerRun) {
+    console.log(`[HARVESTER] ⏳ Limiting to ${maxSearchesPerRun} searches this cycle (remaining will run next loop)`);
+    queriesToRun = queriesToRun.slice(0, maxSearchesPerRun);
   }
 
   console.log(`[HARVESTER] 🔥 Configured ${searchQueries.length} FRESHNESS-OPTIMIZED discovery tiers`);
