@@ -72,7 +72,7 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     const initialPoolSize = poolSize;
     const MIN_POOL_SIZE = 150;
     const TARGET_POOL_SIZE = 250;
-    const poolWasCritical = poolSize < MIN_POOL_SIZE;
+  const poolWasCritical = poolSize < MIN_POOL_SIZE;
     const harvestStartIso = new Date().toISOString();
     console.log(`[HARVESTER] 📊 Current pool: ${poolSize} opportunities (<24h old)`);
     
@@ -124,9 +124,14 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     queriesToRun.push(...fallbackQueries);
   }
   const maxSearchesPerRun = Number(process.env.HARVESTER_MAX_SEARCHES_PER_RUN ?? 3);
-  if (queriesToRun.length > maxSearchesPerRun) {
-    console.log(`[HARVESTER] ⏳ Limiting to ${maxSearchesPerRun} searches this cycle (remaining will run next loop)`);
-    queriesToRun = queriesToRun.slice(0, maxSearchesPerRun);
+  const maxCriticalSearches = Number(process.env.HARVESTER_MAX_CRITICAL_SEARCHES_PER_RUN ?? 6);
+  const searchLimit = poolWasCritical ? maxCriticalSearches : maxSearchesPerRun;
+  if (queriesToRun.length > searchLimit) {
+    console.log(`[HARVESTER] ⏳ Limiting to ${searchLimit} searches this cycle (remaining will run next loop)`);
+    queriesToRun = queriesToRun.slice(0, searchLimit);
+  }
+  if (poolWasCritical) {
+    console.warn('[HARVESTER] 🚨 CRITICAL MODE: Pool is dangerously low, running extended discovery cycle');
   }
 
   console.log(`[HARVESTER] 🔥 Configured ${searchQueries.length} FRESHNESS-OPTIMIZED discovery tiers`);

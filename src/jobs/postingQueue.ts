@@ -833,6 +833,8 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         console.log(`[POSTING_QUEUE] 🔄 ${decision.decision_type} will retry (attempt ${retryCount + 1}/${maxRetries}) in ${retryDelayMinutes}min`);
         console.log(`[POSTING_QUEUE] 📝 Error: ${postError.message}`);
         
+        const shouldForceReset = /timeout|session/i.test(postError.message || '');
+        const existingForceReset = Boolean((metadata?.features as any)?.force_session_reset);
         await supabase
           .from('content_metadata')
           .update({
@@ -842,7 +844,8 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
               retry_count: retryCount + 1,
               last_error: postError.message,
               last_attempt: new Date().toISOString(),
-              last_post_error: postError.message
+              last_post_error: postError.message,
+              force_session_reset: shouldForceReset || existingForceReset
             }
           })
           .eq('decision_id', decision.id);
