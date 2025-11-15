@@ -14,7 +14,7 @@ import { collectRealOutcomes } from './realOutcomesJob';
 import { collectRealOutcomes as collectAnalytics } from './analyticsCollectorJob';
 import { runLearningCycle } from './learnJob';
 import { runPhantomRecoveryJob } from './phantomRecoveryJob';
-import { recordJobFailure, recordJobStart, recordJobSuccess } from './jobHeartbeat';
+import { recordJobFailure, recordJobSkip, recordJobStart, recordJobSuccess } from './jobHeartbeat';
 
 export interface JobStats {
   planRuns: number;
@@ -65,17 +65,32 @@ export class JobManager {
     intervalMs: number,
     initialDelayMs: number
   ): void {
+    let isRunning = false;
+    const executeJob = async (phase: 'initial' | 'recurring') => {
+      if (isRunning) {
+        console.warn(`⏳ JOB_${name.toUpperCase()}: Previous run still executing, skipping ${phase} trigger`);
+        await recordJobSkip(name, 'previous_run_in_progress');
+        return;
+      }
+      isRunning = true;
+      try {
+        await jobFn();
+      } finally {
+        isRunning = false;
+      }
+    };
+
     log({ op: 'job_schedule', job: name, initial_delay_s: Math.round(initialDelayMs / 1000), interval_min: Math.round(intervalMs / 60000) });
     
     // Schedule first run after initial delay
     const initialTimer = setTimeout(async () => {
       try {
-        await jobFn(); // First execution
+        await executeJob('initial'); // First execution
         
         // Then set up recurring interval
         const recurringTimer = setInterval(async () => {
           try {
-            await jobFn();
+            await executeJob('recurring');
           } catch (error) {
             console.error(`❌ JOB_${name.toUpperCase()}: Recurring execution failed:`, error?.message || String(error));
           }

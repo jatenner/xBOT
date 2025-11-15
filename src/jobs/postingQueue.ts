@@ -3,12 +3,29 @@
  * Processes ready decisions and posts them to Twitter
  */
 
+import fs from 'fs';
+import path from 'path';
 import { ENV } from '../config/env';
 import { log } from '../lib/logger';
 import { getConfig, getModeFlags } from '../config/config';
 import { learningSystem } from '../learning/learningSystem';
 
 const FOLLOWER_BASELINE_TIMEOUT_MS = Number(process.env.FOLLOWER_BASELINE_TIMEOUT_MS ?? '10000');
+const TWITTER_AUTH_PATH = path.join(process.cwd(), 'twitter-auth.json');
+const MAX_POSTING_RECOVERY_ATTEMPTS = Number(process.env.POSTING_MAX_RECOVERY_ATTEMPTS ?? 2);
+
+async function forceTwitterSessionReset(reason: string): Promise<void> {
+  try {
+    if (fs.existsSync(TWITTER_AUTH_PATH)) {
+      fs.unlinkSync(TWITTER_AUTH_PATH);
+      console.log(`[POSTING_QUEUE] 🧼 Twitter auth cache cleared (${reason})`);
+    } else {
+      console.log(`[POSTING_QUEUE] 🧼 No cached twitter session to clear (${reason})`);
+    }
+  } catch (error: any) {
+    console.warn(`[POSTING_QUEUE] ⚠️ Failed to clear twitter session (${reason}): ${error.message}`);
+  }
+}
 
 export async function processPostingQueue(): Promise<void> {
   const config = getConfig();
@@ -594,6 +611,28 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
   
   console.log(`${logPrefix} Processing ${decision.decision_type}: ${decision.id}`);
   console.log(`${logPrefix} 🔍 DEBUG: Starting processDecision`);
+
+  const decisionFeatures = (decision.features || {}) as Record<string, any>;
+  if (decisionFeatures.force_session_reset) {
+    await forceTwitterSessionReset(`decision:${decision.id}`);
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      const updatedFeatures = {
+        ...decisionFeatures,
+        force_session_reset: false,
+        last_force_reset_at: new Date().toISOString()
+      };
+      await supabase
+        .from('content_metadata')
+        .update({ features: updatedFeatures })
+        .eq('decision_id', decision.id);
+      decision.features = updatedFeatures;
+      console.log(`${logPrefix} 🧽 Session reset flag cleared for ${decision.id}`);
+    } catch (flagError: any) {
+      console.warn(`${logPrefix} ⚠️ Failed to clear session reset flag: ${flagError.message}`);
+    }
+  }
   
   // 🔒 WRAP ENTIRE FUNCTION IN TRY-CATCH (critical fix for silent failures)
   try {
@@ -779,7 +818,9 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         .single();
       
       const retryCount = (metadata?.features as any)?.retry_count || 0;
+      const recoveryAttempts = Number((metadata?.features as any)?.recovery_attempts || 0);
       const maxRetries = 3;
+      const maxRecoveryAttempts = MAX_POSTING_RECOVERY_ATTEMPTS;
       
       if (retryCount < maxRetries) {
         // Calculate retry delay (progressive backoff)
@@ -810,8 +851,32 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         return; // Don't mark as failed, will retry
       }
       
-      // All retries exhausted - mark as failed
-      console.error(`[POSTING_QUEUE] ❌ All ${maxRetries} retries exhausted for ${decision.decision_type}`);
+      if (recoveryAttempts < maxRecoveryAttempts) {
+        const recoveryDelayMinutes = Math.min(45, (recoveryAttempts + 1) * 10);
+        const recoveryDelay = recoveryDelayMinutes * 60 * 1000;
+        console.log(`[POSTING_QUEUE] 🛠️ Scheduling recovery attempt ${recoveryAttempts + 1}/${maxRecoveryAttempts} with forced session reset in ${recoveryDelayMinutes}min`);
+        await supabase
+          .from('content_metadata')
+          .update({
+            status: 'queued',
+            scheduled_at: new Date(Date.now() + recoveryDelay).toISOString(),
+            features: {
+              ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
+              retry_count: 0,
+              recovery_attempts: recoveryAttempts + 1,
+              force_session_reset: true,
+              last_error: postError.message,
+              last_attempt: new Date().toISOString(),
+              last_post_error: postError.message
+            }
+          })
+          .eq('decision_id', decision.id);
+        await updatePostingMetrics('error');
+        return;
+      }
+      
+      // All retries + recoveries exhausted - mark as failed
+      console.error(`[POSTING_QUEUE] ❌ All ${maxRetries} retries + ${maxRecoveryAttempts} recoveries exhausted for ${decision.decision_type}`);
       await supabase
         .from('content_metadata')
         .update({
@@ -820,6 +885,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
           features: {
             ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
             retry_count: retryCount,
+             recovery_attempts: recoveryAttempts,
             last_error: postError.message,
             last_attempt: new Date().toISOString(),
             last_post_error: postError.message

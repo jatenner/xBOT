@@ -88,11 +88,17 @@ async function logRateLimitFailure(failureType: string, errorMessage: string): P
  * Check hourly reply quota WITH RETRY LOGIC
  * 🔒 FAIL-CLOSED: Blocks posting if check fails (safety first)
  */
-async function checkReplyHourlyQuota(): Promise<{
+type QuotaResultBase = {
   canReply: boolean;
-  repliesThisHour: number;
   minutesUntilNext?: number;
-}> {
+  degradedReason?: string;
+};
+
+async function checkReplyHourlyQuota(): Promise<
+  QuotaResultBase & {
+    repliesThisHour: number;
+  }
+> {
   const MAX_RETRIES = 3;
   
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -121,10 +127,11 @@ async function checkReplyHourlyQuota(): Promise<{
           continue;
         }
         
-        // All retries failed - FAIL CLOSED for safety
-        console.error('[REPLY_QUOTA] 🔒 FAIL-CLOSED: Blocking posting as safety measure');
-        await logRateLimitFailure('hourly_quota_check_failed', error.message);
-        return { canReply: false, repliesThisHour: 999 }; // Block posting
+        // All retries failed - ENTER DEGRADED MODE (fail-open with warning)
+        const degradedReason = 'hourly_quota_check_failed';
+        console.error('[REPLY_QUOTA] ⚠️ Entering degraded mode (hourly quota check failed)');
+        await logRateLimitFailure(degradedReason, error.message);
+        return { canReply: true, repliesThisHour: 0, degradedReason };
       }
       
       const repliesThisHour = count || 0;
@@ -149,26 +156,27 @@ async function checkReplyHourlyQuota(): Promise<{
         continue;
       }
       
-      // All retries failed - FAIL CLOSED for safety
-      console.error('[REPLY_QUOTA] 🔒 FAIL-CLOSED: Blocking posting as safety measure');
-      await logRateLimitFailure('hourly_quota_exception', error.message);
-      return { canReply: false, repliesThisHour: 999 };
+      const degradedReason = 'hourly_quota_exception';
+      console.error('[REPLY_QUOTA] ⚠️ Entering degraded mode (hourly quota exception)');
+      await logRateLimitFailure(degradedReason, error.message);
+      return { canReply: true, repliesThisHour: 0, degradedReason };
     }
   }
   
-  // Should never reach here, but fail closed just in case
-  return { canReply: false, repliesThisHour: 999 };
+  // Should never reach here, but stay open if it does
+  return { canReply: true, repliesThisHour: 0, degradedReason: 'hourly_quota_unexpected_fallback' };
 }
 
 /**
  * Check daily reply quota WITH RETRY LOGIC
  * 🔒 FAIL-CLOSED: Blocks posting if check fails (safety first)
  */
-async function checkReplyDailyQuota(): Promise<{
-  canReply: boolean;
-  repliesToday: number;
-  resetTime?: Date;
-}> {
+async function checkReplyDailyQuota(): Promise<
+  QuotaResultBase & {
+    repliesToday: number;
+    resetTime?: Date;
+  }
+> {
   const MAX_RETRIES = 3;
   
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -195,10 +203,10 @@ async function checkReplyDailyQuota(): Promise<{
           continue;
         }
         
-        // All retries failed - FAIL CLOSED for safety
-        console.error('[DAILY_QUOTA] 🔒 FAIL-CLOSED: Blocking posting as safety measure');
-        await logRateLimitFailure('daily_quota_check_failed', error.message);
-        return { canReply: false, repliesToday: 999 };
+        const degradedReason = 'daily_quota_check_failed';
+        console.error('[DAILY_QUOTA] ⚠️ Entering degraded mode (daily quota check failed)');
+        await logRateLimitFailure(degradedReason, error.message);
+        return { canReply: true, repliesToday: 0, degradedReason };
       }
       
       const repliesToday = count || 0;
@@ -220,14 +228,14 @@ async function checkReplyDailyQuota(): Promise<{
         continue;
       }
       
-      // All retries failed - FAIL CLOSED for safety
-      console.error('[DAILY_QUOTA] 🔒 FAIL-CLOSED: Blocking posting as safety measure');
-      await logRateLimitFailure('daily_quota_exception', error.message);
-      return { canReply: false, repliesToday: 999 };
+      const degradedReason = 'daily_quota_exception';
+      console.error('[DAILY_QUOTA] ⚠️ Entering degraded mode (daily quota exception)');
+      await logRateLimitFailure(degradedReason, error.message);
+      return { canReply: true, repliesToday: 0, degradedReason };
     }
   }
   
-  return { canReply: false, repliesToday: 999 };
+  return { canReply: true, repliesToday: 0, degradedReason: 'daily_quota_unexpected_fallback' };
 }
 
 /**
@@ -317,6 +325,9 @@ export async function generateReplies(): Promise<void> {
     ReplyDiagnosticLogger.logCycleEnd(false, ['Hourly quota exceeded']);
     return;
   }
+  if (hourlyCheck.degradedReason) {
+    console.warn(`[REPLY_JOB] ⚠️ Hourly quota check degraded (${hourlyCheck.degradedReason}) - continuing with safeguards`);
+  }
   
   // Check 2: Daily quota
   const dailyCheck = await checkReplyDailyQuota();
@@ -324,6 +335,9 @@ export async function generateReplies(): Promise<void> {
     ReplyDiagnosticLogger.logBlocked('Daily quota exceeded', dailyCheck.resetTime);
     ReplyDiagnosticLogger.logCycleEnd(false, ['Daily quota exceeded']);
     return;
+  }
+  if (dailyCheck.degradedReason) {
+    console.warn(`[REPLY_JOB] ⚠️ Daily quota check degraded (${dailyCheck.degradedReason}) - continuing with safeguards`);
   }
   
   // Check 3: Time between replies
