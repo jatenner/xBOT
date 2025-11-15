@@ -143,7 +143,7 @@ export async function metricsScraperJob(): Promise<void> {
       return;
     }
     
-    const maxPostsPerRun = Number(process.env.METRICS_MAX_POSTS_PER_RUN ?? 3);
+    const maxPostsPerRun = Number(process.env.METRICS_MAX_POSTS_PER_RUN ?? 1);
     const postsToProcess = postsToScrape.slice(0, Math.max(1, maxPostsPerRun));
     if (postsToProcess.length < postsToScrape.length) {
       console.log(`[METRICS_JOB] ⏳ Processing ${postsToProcess.length}/${postsToScrape.length} tweets this cycle (remaining next run)`);

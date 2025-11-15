@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../db';
 import { log } from '../lib/logger';
+import { recordJobFailure } from './jobHeartbeat';
 
 export type WatchdogRecoverableJob =
   | 'plan'
@@ -61,6 +62,25 @@ export async function runJobWatchdog(runJobNow: (jobName: WatchdogRecoverableJob
     const lastSuccess = record?.last_success ? new Date(record.last_success).getTime() : null;
     const lastUpdate = record?.updated_at ? new Date(record.updated_at).getTime() : null;
     const isRunning = record?.last_run_status === 'running' && lastUpdate && now - lastUpdate < job.thresholdMinutes * 60_000;
+
+    if (record?.last_run_status === 'running' && lastUpdate && now - lastUpdate >= job.thresholdMinutes * 60_000) {
+      log({
+        op: 'job_watchdog_stuck',
+        job: job.jobName,
+        minutes_running: Math.floor((now - lastUpdate) / 60000),
+        description: 'Job stuck in running state beyond threshold'
+      });
+      await logSystemEvent('job_watchdog_stuck', {
+        job: job.jobName,
+        minutes_running: Math.floor((now - lastUpdate) / 60000),
+        description: 'Job stuck in running state beyond threshold'
+      });
+      if (job.recoverTarget) {
+        await recordJobFailure(job.jobName, 'stuck_running_timeout');
+        await runJobNow(job.recoverTarget);
+        continue;
+      }
+    }
 
     if (isRunning) {
       continue;
