@@ -143,8 +143,11 @@ export async function metricsScraperJob(): Promise<void> {
       return;
     }
     
-    const maxPostsPerRun = Number(process.env.METRICS_MAX_POSTS_PER_RUN ?? 1);
-    const postsToProcess = postsToScrape.slice(0, Math.max(1, maxPostsPerRun));
+    // 🔧 CONFIG: Control how many tweets we refresh per run
+    // Default bumped from 1 → 10 so metrics stay fresh even if env is not set
+    const maxPostsPerRunRaw = Number(process.env.METRICS_MAX_POSTS_PER_RUN ?? '10');
+    const maxPostsPerRun = Number.isFinite(maxPostsPerRunRaw) && maxPostsPerRunRaw > 0 ? maxPostsPerRunRaw : 10;
+    const postsToProcess = postsToScrape.slice(0, maxPostsPerRun);
     if (postsToProcess.length < postsToScrape.length) {
       console.log(`[METRICS_JOB] ⏳ Processing ${postsToProcess.length}/${postsToScrape.length} tweets this cycle (remaining next run)`);
     }
