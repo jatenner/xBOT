@@ -52,9 +52,9 @@ export class NewsCuratorService {
       const { data: scrapedNews } = await supabase
         .from('health_news_scraped')
         .select('*')
-        .gte('freshness_score', 60) // Only fresh content
-        .gte('viral_score', 100) // Only decent engagement
-        .is('analyzed', null) // Not yet analyzed
+        .gte('freshness_score', 60) // Keep fresh content
+        .gte('viral_score', 20) // Relaxed to allow initial curation
+        .or('analyzed.is.null,analyzed.eq.false') // Not yet analyzed
         .order('viral_score', { ascending: false })
         .limit(20); // Analyze top 20
       

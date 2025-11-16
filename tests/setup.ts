@@ -26,3 +26,7 @@ process.env.REDIS_URL = 'redis://localhost:6379';
 process.env.DAILY_OPENAI_LIMIT_USD = '5.00';
 process.env.POSTING_DISABLED = 'true';
 process.env.REAL_METRICS_ENABLED = 'false';
+// Provide a non-secret dummy OpenAI key for tests that instantiate the client
+if (!process.env.OPENAI_API_KEY) {
+  process.env.OPENAI_API_KEY = 'test-openai-key';
+}

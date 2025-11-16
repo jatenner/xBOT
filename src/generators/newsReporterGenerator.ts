@@ -31,7 +31,7 @@ export async function generateNewsReporterContent(params: {
   const { topic, angle = 'journalistic', tone = 'balanced', formatStrategy = 'news-focused', format, research, intelligence } = params;
   const intelligenceContext = await buildIntelligenceContext(intelligence);
   
-  // 🗞️ GET REAL SCRAPED NEWS
+  // 🗞️ GET REAL SCRAPED NEWS (curated → strict)
   const realNews = await getRealNewsForTopic(topic);
   
   if (realNews) {
@@ -40,6 +40,9 @@ export async function generateNewsReporterContent(params: {
   
   const patterns = getGeneratorPatterns('news_reporter');
   
+  // Compute AI-driven policy only if we have real news
+  const policy = realNews ? computeNewsPolicy(realNews) : null;
+
   const systemPrompt = `
 IDENTITY:
 You are a health news reporter who covers breaking research, new studies,
@@ -114,11 +117,22 @@ You will be asked to defend your reporting. Be prepared to:
 - No hashtags
 - Max 1 emoji (prefer 0)`;
 
+  const labelPrefix = realNews
+    ? (policy?.label === 'breaking' ? '⚡ Breaking — ' : 'News — ')
+    : '';
+
+  const recencyBadge = realNews ? policy?.recencyBadge ?? '' : '';
+
   const userPrompt = realNews 
-    ? `Report on: "${realNews.headline}" - ${realNews.key_claim}`
-    : `Report breaking science about ${topic}.`;
+    ? `Report on: "${realNews.headline}" - ${realNews.key_claim}. Use label prefix "${labelPrefix}" and include recency badge "${recencyBadge}" and source "@${realNews.author_username}" at the end like: — ${realNews.author_username}.`
+    : `NO REAL NEWS AVAILABLE. Do NOT generate content.`;
 
   try {
+    // If no real news, skip instead of fallback (enforce real-news-only)
+    if (!realNews) {
+      throw new Error('NO_REAL_NEWS_AVAILABLE');
+    }
+
     const response = await createBudgetedChatCompletion({
       model: getContentGenerationModel(), // Budget-optimized
       messages: [
@@ -132,29 +146,29 @@ You will be asked to defend your reporting. Be prepared to:
 
     const parsed = JSON.parse(response.choices[0].message.content || '{}');
     
-    // Mark news as used if we used real news
-    if (realNews) {
-      await markNewsAsUsed(realNews.id);
-    }
+    // Mark news as used
+    await markNewsAsUsed(realNews.id);
     
+    // Post-process to ensure distinct labeling and source trail
+    const extracted = validateAndExtractContent(parsed, format, 'GENERATOR');
+    const contentWithLabel = applyNewsStyling(extracted, {
+      label: policy?.label || 'news',
+      recencyBadge: policy?.recencyBadge || '',
+      sourceUsername: realNews.author_username
+    });
+
     return {
-      content: validateAndExtractContent(parsed, format, 'GENERATOR'),
+      content: contentWithLabel,
       format,
-      confidence: realNews ? 0.95 : 0.8, // Higher confidence with real news
-      visualFormat: parsed.visualFormat || 'paragraph'
+      confidence: 0.95,
+      visualFormat: 'news-report'
     };
     
   } catch (error: any) {
     console.error('[NEWS_REPORTER_GEN] Error:', error.message);
     
-    // IMPROVED FALLBACK: News-style framing even without real news
-    return {
-      content: format === 'thread'
-        ? generateHighQualityThreadFallback(topic)
-        : generateHighQualitySingleFallback(topic),
-      format,
-      confidence: 0.7 // Higher confidence with improved fallbacks
-    };
+    // Hard skip when no real news; caller can decide to pick another generator
+    throw error;
   }
 }
 
@@ -230,6 +244,55 @@ function generateHighQualityThreadFallback(topic: string): string[] {
  */
 function capitalizeFirst(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * Compute AI-driven news policy decisions
+ * - label: 'breaking' vs 'news'
+ * - recency badge: (today)/(24h)/(this week)
+ */
+function computeNewsPolicy(realNews: any): { label: 'breaking' | 'news'; recencyBadge: string } {
+  const postedAt = realNews.posted_at ? new Date(realNews.posted_at).getTime() : Date.now();
+  const ageHours = Math.max(0, (Date.now() - postedAt) / 36e5);
+  const credibility = (realNews.source_credibility || 'medium') as 'high' | 'medium' | 'low';
+  const viral = Number(realNews.viral_score || 0);
+  const freshness = Number(realNews.freshness_score || 0);
+
+  // Simple learned-friendly scoring (weights can be adjusted online later)
+  const recencyScore = Math.max(0, 100 - Math.min(100, ageHours)); // 0–100
+  const credScore = credibility === 'high' ? 100 : credibility === 'medium' ? 65 : 35;
+  const score = 0.4 * recencyScore + 0.3 * credScore + 0.2 * freshness + 0.1 * Math.min(100, viral);
+
+  const label: 'breaking' | 'news' = score >= 75 ? 'breaking' : 'news';
+
+  const recencyBadge =
+    ageHours < 6 ? '(today)' : ageHours < 24 ? '(24h)' : ageHours < 168 ? '(this week)' : '';
+
+  return { label, recencyBadge };
+}
+
+/**
+ * Apply distinct news styling to content
+ * - Prepend label + keep thread structure
+ * - Append source at end of each tweet or single
+ */
+function applyNewsStyling(
+  extracted: string | string[],
+  opts: { label: 'breaking' | 'news'; recencyBadge: string; sourceUsername?: string }
+): string | string[] {
+  const prefix = opts.label === 'breaking' ? '⚡ Breaking — ' : 'News — ';
+  const sourceTrail = opts.sourceUsername ? ` — ${opts.sourceUsername}` : '';
+  const recency = opts.recencyBadge ? ` ${opts.recencyBadge}` : '';
+
+  if (Array.isArray(extracted)) {
+    return extracted.map((t, idx) => {
+      if (idx === 0) {
+        return `${prefix}${t}${recency}${sourceTrail}`.trim();
+      }
+      return `${t}${sourceTrail}`.trim();
+    });
+  }
+  return `${prefix}${extracted}${recency}${sourceTrail}`.trim();
 }
 
 /**
