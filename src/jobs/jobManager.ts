@@ -265,10 +265,15 @@ export class JobManager {
     this.scheduleStaggeredJob(
       'metrics_scraper',
       async () => {
-        await this.safeExecute('metrics_scraper', async () => {
-          const { metricsScraperJob } = await import('./metricsScraperJob');
-          await metricsScraperJob();
-        });
+          const { shouldRunLowPriority } = await import('../browser/BrowserHealthGate');
+          if (!(await shouldRunLowPriority())) {
+            await (await import('./jobHeartbeat')).recordJobSkip('metrics_scraper', 'browser_degraded');
+            return;
+          }
+          await this.safeExecute('metrics_scraper', async () => {
+            const { metricsScraperJob } = await import('./metricsScraperJob');
+            await metricsScraperJob();
+          });
       },
       20 * MINUTE, // Every 20 minutes (balanced: was 6hr - too slow, was 10min - too aggressive)
       0 * MINUTE   // 🔥 START IMMEDIATELY on deploy (was 5min - too slow!)
@@ -279,10 +284,15 @@ export class JobManager {
     this.scheduleStaggeredJob(
       'reply_metrics_scraper',
       async () => {
-        await this.safeExecute('reply_metrics_scraper', async () => {
-          const { replyMetricsScraperJob } = await import('./replyMetricsScraperJob');
-          await replyMetricsScraperJob();
-        });
+          const { shouldRunLowPriority } = await import('../browser/BrowserHealthGate');
+          if (!(await shouldRunLowPriority())) {
+            await (await import('./jobHeartbeat')).recordJobSkip('reply_metrics_scraper', 'browser_degraded');
+            return;
+          }
+          await this.safeExecute('reply_metrics_scraper', async () => {
+            const { replyMetricsScraperJob } = await import('./replyMetricsScraperJob');
+            await replyMetricsScraperJob();
+          });
       },
       30 * MINUTE, // Every 30 minutes (replies need time to accumulate engagement)
       10 * MINUTE  // Offset 10 minutes (stagger from main metrics scraper)
@@ -425,6 +435,11 @@ export class JobManager {
       this.scheduleStaggeredJob(
         'mega_viral_harvester',
         async () => {
+          const { shouldRunLowPriority } = await import('../browser/BrowserHealthGate');
+          if (!(await shouldRunLowPriority())) {
+            await (await import('./jobHeartbeat')).recordJobSkip('mega_viral_harvester', 'browser_degraded');
+            return;
+          }
           console.log('[JOB_MANAGER] 🔥 HARVESTER: Job triggered, attempting to run...');
           try {
             await this.safeExecute('mega_viral_harvester', async () => {
@@ -616,6 +631,13 @@ export class JobManager {
       'job_watchdog',
       async () => {
         await this.safeExecute('job_watchdog', async () => {
+          // Opportunistically prewarm the browser first in case launches are failing
+          try {
+            const { prewarmBrowserJob } = await import('./prewarmBrowserJob');
+            await prewarmBrowserJob();
+          } catch (prewarmError: any) {
+            console.warn('[JOB_MANAGER] ⚠️ Prewarm failed:', prewarmError.message);
+          }
           const { runJobWatchdog } = await import('./jobWatchdog');
           await runJobWatchdog(async (jobTarget) => {
             await this.runJobNow(jobTarget);
