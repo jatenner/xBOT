@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../db/index';
+import { getMetricsHealthReport } from './metricsHealthTracker';
 
 interface HealthCard {
   name: string;
@@ -208,7 +209,13 @@ export async function generateSystemHealthOverview(): Promise<string> {
     opportunitySnapshot,
     latestMetrics,
     postsWithMissingMetrics,
-    repliesWithMissingMetrics
+    repliesWithMissingMetrics,
+    totalPosts24h,
+    totalReplies24h,
+    scrapedPosts24h,
+    scrapedReplies24h,
+    lastScrapeTime,
+    scrapeFrequency
   ] = await Promise.all([
     supabase
       .from('content_metadata')
@@ -287,7 +294,50 @@ export async function generateSystemHealthOverview(): Promise<string> {
       .eq('decision_type', 'reply')
       .eq('status', 'posted')
       .gte('posted_at', twentyFourHoursAgoIso)
-      .or('actual_impressions.is.null,actual_impressions.eq.0')
+      .or('actual_impressions.is.null,actual_impressions.eq.0'),
+    // Total posts (24h)
+    supabase
+      .from('content_metadata')
+      .select('*', { count: 'exact', head: true })
+      .in('decision_type', ['single', 'thread'])
+      .eq('status', 'posted')
+      .gte('posted_at', twentyFourHoursAgoIso),
+    // Total replies (24h)
+    supabase
+      .from('content_metadata')
+      .select('*', { count: 'exact', head: true })
+      .eq('decision_type', 'reply')
+      .eq('status', 'posted')
+      .gte('posted_at', twentyFourHoursAgoIso),
+    // Scraped posts (24h) - have metrics
+    supabase
+      .from('content_metadata')
+      .select('*', { count: 'exact', head: true })
+      .in('decision_type', ['single', 'thread'])
+      .eq('status', 'posted')
+      .gte('posted_at', twentyFourHoursAgoIso)
+      .not('actual_impressions', 'is', null)
+      .gt('actual_impressions', 0),
+    // Scraped replies (24h) - have metrics
+    supabase
+      .from('content_metadata')
+      .select('*', { count: 'exact', head: true })
+      .eq('decision_type', 'reply')
+      .eq('status', 'posted')
+      .gte('posted_at', twentyFourHoursAgoIso)
+      .not('actual_impressions', 'is', null)
+      .gt('actual_impressions', 0),
+    // Last scrape time from outcomes table
+    supabase
+      .from('outcomes')
+      .select('collected_at')
+      .order('collected_at', { ascending: false })
+      .limit(1),
+    // Scrape frequency - count scrapes in last 24h
+    supabase
+      .from('outcomes')
+      .select('collected_at', { count: 'exact', head: true })
+      .gte('collected_at', twentyFourHoursAgoIso)
   ]);
 
   const contentGeneratedAt = contentGenerated.data?.[0]?.created_at ?? null;
@@ -388,10 +438,28 @@ export async function generateSystemHealthOverview(): Promise<string> {
     ]
   });
 
-  // Scraping pipeline
+  // Scraping pipeline - comprehensive tracking
   const metricsMinutes = minutesAgo(latestMetricsAt);
   const postsMissingMetrics = postsWithMissingMetrics.count || 0;
   const repliesMissingMetrics = repliesWithMissingMetrics.count || 0;
+  
+  // New comprehensive metrics
+  const totalPosts = totalPosts24h.count || 0;
+  const totalReplies = totalReplies24h.count || 0;
+  const scrapedPosts = scrapedPosts24h.count || 0;
+  const scrapedReplies = scrapedReplies24h.count || 0;
+  const postsScrapeRate = totalPosts > 0 ? Math.round((scrapedPosts / totalPosts) * 100) : 0;
+  const repliesScrapeRate = totalReplies > 0 ? Math.round((scrapedReplies / totalReplies) * 100) : 0;
+  
+  // Last scrape time from outcomes
+  const lastScrapeAt = lastScrapeTime.data?.[0]?.collected_at ?? null;
+  const lastScrapeMinutes = minutesAgo(lastScrapeAt);
+  
+  // Scrape frequency (how many scrapes in last 24h)
+  const scrapes24h = scrapeFrequency.count || 0;
+  const scrapeFrequencyText = scrapes24h > 0 
+    ? `${scrapes24h} scrapes in last 24h`
+    : 'No scrapes in last 24h';
 
   let scrapingStatus: HealthCard['status'] = 'healthy';
   if (metricsMinutes === null || metricsMinutes > 90) {
@@ -402,19 +470,57 @@ export async function generateSystemHealthOverview(): Promise<string> {
   if (postsMissingMetrics > 5 || repliesMissingMetrics > 5) {
     scrapingStatus = 'warning';
   }
+  if (postsScrapeRate < 80 && totalPosts > 0) {
+    scrapingStatus = 'warning'; // Less than 80% scraped
+  }
+  if (repliesScrapeRate < 80 && totalReplies > 0) {
+    scrapingStatus = 'warning';
+  }
+
+  // Get comprehensive health report for multiple time windows
+  let healthReport;
+  try {
+    healthReport = await getMetricsHealthReport([12, 14, 24, 48]);
+  } catch (error: any) {
+    console.warn('[HEALTH_DASHBOARD] Failed to get health report:', error.message);
+    healthReport = null;
+  }
+
+  // Build detailed metrics card
+  const metricsDetails = [
+    `📊 Posts: ${scrapedPosts}/${totalPosts} scraped (${postsScrapeRate}%)`,
+    `💬 Replies: ${scrapedReplies}/${totalReplies} scraped (${repliesScrapeRate}%)`,
+    scrapeFrequencyText
+  ];
+
+  // Add time window breakdown if available
+  if (healthReport) {
+    const window24h = healthReport.breakdown.posts.find(w => w.windowHours === 24);
+    const window12h = healthReport.breakdown.posts.find(w => w.windowHours === 12);
+    
+    if (window24h) {
+      metricsDetails.push(`📈 24h: ${window24h.scraped}/${window24h.total} scraped, ${window24h.updated} fresh, ${window24h.stale} stale, ${window24h.missing} missing`);
+    }
+    if (window12h) {
+      metricsDetails.push(`⏱️ 12h: ${window12h.scraped}/${window12h.total} scraped (${window12h.scrapeRate}%), ${window12h.updated} fresh`);
+    }
+  } else {
+    // Fallback to simple metrics
+    metricsDetails.push(
+      postsMissingMetrics > 0 
+        ? `⚠️ ${postsMissingMetrics} posts missing metrics`
+        : '✅ All posts have metrics',
+      repliesMissingMetrics > 0
+        ? `⚠️ ${repliesMissingMetrics} replies missing metrics`
+        : '✅ All replies have metrics'
+    );
+  }
 
   cards.push({
     name: 'Metrics Scraper',
     status: scrapingStatus,
-    headline: `Last scrape ${formatMinutes(metricsMinutes)}`,
-    details: [
-      postsMissingMetrics
-        ? `⚠️ Posts missing metrics (24h): ${postsMissingMetrics}`
-        : 'All recent posts have metrics',
-      repliesMissingMetrics
-        ? `⚠️ Replies missing metrics (24h): ${repliesMissingMetrics}`
-        : 'All recent replies have metrics'
-    ]
+    headline: `Last scrape ${formatMinutes(lastScrapeMinutes ?? metricsMinutes)}`,
+    details: metricsDetails
   });
 
   const failures = (recentFailures.data || []).map(failure => ({

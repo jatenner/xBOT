@@ -54,35 +54,58 @@ export async function metricsScraperJob(): Promise<void> {
   try {
     const supabase = getSupabaseClient();
     
-    // PRIORITY 1: Recent tweets (last 3 days) - scrape aggressively
-    // 🔥 CRITICAL FIX: Use posted_at (when posted to Twitter), NOT created_at (when generated)!
-    // Replies can be generated hours before posting, so created_at is misleading
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    // PRIORITY 1: Posts missing metrics (last 7 days) - scrape aggressively
+    // 🔥 FIX: Focus on posts that actually need scraping (missing metrics)
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const { data: missingMetricsPosts, error: missingError } = await supabase
+      .from('content_metadata')
+      .select('decision_id, tweet_id, posted_at')
+      .eq('status', 'posted')
+      .not('tweet_id', 'is', null)
+      .in('decision_type', ['single', 'thread'])  // Only posts, not replies
+      .gte('posted_at', sevenDaysAgo.toISOString())
+      .or('actual_impressions.is.null,actual_impressions.eq.0')  // Missing metrics
+      .order('posted_at', { ascending: false })
+      .limit(15); // 🔥 INCREASED: Process more posts per run to clear backlog
+    
+    // PRIORITY 2: Recent posts that might need refresh (last 24h, even if they have metrics)
+    // This ensures fresh metrics for recent posts
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const { data: recentPosts, error: recentError } = await supabase
       .from('content_metadata')
       .select('decision_id, tweet_id, posted_at')
       .eq('status', 'posted')
       .not('tweet_id', 'is', null)
-      .gte('posted_at', threeDaysAgo.toISOString())  // ✅ FIXED: Use posted_at for recency
-      .order('posted_at', { ascending: false })      // ✅ FIXED: Sort by when posted
-      .limit(5); // 🔥 OPTIMIZED: 5 recent tweets (reduced from 8) for faster processing
+      .in('decision_type', ['single', 'thread'])
+      .gte('posted_at', oneDayAgo.toISOString())
+      .order('posted_at', { ascending: false })
+      .limit(5); // Refresh recent posts even if they have metrics
     
-    // PRIORITY 2: Historical tweets (3-30 days old) - scrape less frequently
+    // PRIORITY 3: Historical tweets (7-30 days old) - scrape less frequently
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const { data: historicalPosts, error: historicalError } = await supabase
       .from('content_metadata')
       .select('decision_id, tweet_id, posted_at')
       .eq('status', 'posted')
       .not('tweet_id', 'is', null)
-      .lt('posted_at', threeDaysAgo.toISOString())   // ✅ FIXED: Use posted_at
-      .gte('posted_at', thirtyDaysAgo.toISOString()) // ✅ FIXED: Use posted_at
-      .order('posted_at', { ascending: false })      // ✅ FIXED: Sort by when posted
-      .limit(2); // 🔥 OPTIMIZED: 2 historical tweets for balance
+      .in('decision_type', ['single', 'thread'])
+      .lt('posted_at', sevenDaysAgo.toISOString())
+      .gte('posted_at', thirtyDaysAgo.toISOString())
+      .or('actual_impressions.is.null,actual_impressions.eq.0')  // Only missing metrics
+      .order('posted_at', { ascending: false })
+      .limit(3); // Historical tweets with missing metrics
     
-    // Combine: prioritize recent, then add some historical
-    const posts = [...(recentPosts || []), ...(historicalPosts || [])];
+    // Combine: prioritize missing metrics, then recent refreshes, then historical
+    // Deduplicate by decision_id to avoid processing same post twice
+    const allPosts = [...(missingMetricsPosts || []), ...(recentPosts || []), ...(historicalPosts || [])];
+    const seen = new Set<string>();
+    const posts = allPosts.filter(post => {
+      if (seen.has(post.decision_id)) return false;
+      seen.add(post.decision_id);
+      return true;
+    });
     
-    const postsError = recentError || historicalError;
+    const postsError = missingError || recentError || historicalError;
     
     if (postsError) {
       console.error('[METRICS_JOB] ❌ Failed to fetch posts:', postsError.message);
@@ -94,9 +117,10 @@ export async function metricsScraperJob(): Promise<void> {
       return;
     }
     
+    const missingCount = missingMetricsPosts?.length || 0;
     const recentCount = recentPosts?.length || 0;
     const historicalCount = historicalPosts?.length || 0;
-    console.log(`[METRICS_JOB] 📊 Found ${posts.length} posts to check (${recentCount} recent, ${historicalCount} historical)`);
+    console.log(`[METRICS_JOB] 📊 Found ${posts.length} posts to check (${missingCount} missing metrics, ${recentCount} recent refresh, ${historicalCount} historical)`);
     
     let updated = 0;
     let skipped = 0;
@@ -110,19 +134,37 @@ export async function metricsScraperJob(): Promise<void> {
     
     for (const post of posts) {
       try {
-        // Check if we collected metrics recently (skip if collected in last hour)
+        // Check if we collected metrics recently (skip if collected in last 30 minutes for efficiency)
+        // But ALWAYS scrape if actual_impressions is null/0 (missing metrics)
+        const { data: contentMeta } = await supabase
+          .from('content_metadata')
+          .select('actual_impressions, updated_at')
+          .eq('decision_id', post.decision_id)
+          .single();
+        
+        const hasMetrics = contentMeta?.actual_impressions !== null && contentMeta?.actual_impressions > 0;
+        const recentlyUpdated = contentMeta?.updated_at && 
+          new Date(String(contentMeta.updated_at)) > new Date(Date.now() - 30 * 60 * 1000);
+        
+        // Skip if we have metrics AND updated recently (avoid redundant scraping)
+        if (hasMetrics && recentlyUpdated) {
+          skipped++;
+          continue;
+        }
+        
+        // Check outcomes table for very recent scraping (last 30 min)
         const { data: lastMetrics } = await supabase
           .from('outcomes')
           .select('collected_at')
-          .eq('decision_id', post.decision_id)  // 🔥 FIX: Use decision_id (UUID)
+          .eq('decision_id', post.decision_id)
           .order('collected_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
         
-        if (lastMetrics && 
-            new Date(String(lastMetrics.collected_at)) > new Date(Date.now() - 60 * 60 * 1000)) {
+        if (lastMetrics && hasMetrics &&
+            new Date(String(lastMetrics.collected_at)) > new Date(Date.now() - 30 * 60 * 1000)) {
           skipped++;
-          continue; // Skip if collected in last hour
+          continue; // Skip if collected in last 30 minutes AND we have metrics
         }
         
         // Skip invalid tweet IDs (from cleanup)
@@ -144,12 +186,12 @@ export async function metricsScraperJob(): Promise<void> {
     }
     
     // 🔧 CONFIG: Control how many tweets we refresh per run
-    // Default bumped from 1 → 10 so metrics stay fresh even if env is not set
-    const maxPostsPerRunRaw = Number(process.env.METRICS_MAX_POSTS_PER_RUN ?? '10');
-    const maxPostsPerRun = Number.isFinite(maxPostsPerRunRaw) && maxPostsPerRunRaw > 0 ? maxPostsPerRunRaw : 10;
+    // 🔥 INCREASED: Default to 20 posts per run to clear backlogs faster
+    const maxPostsPerRunRaw = Number(process.env.METRICS_MAX_POSTS_PER_RUN ?? '20');
+    const maxPostsPerRun = Number.isFinite(maxPostsPerRunRaw) && maxPostsPerRunRaw > 0 ? maxPostsPerRunRaw : 20;
     const postsToProcess = postsToScrape.slice(0, maxPostsPerRun);
     if (postsToProcess.length < postsToScrape.length) {
-      console.log(`[METRICS_JOB] ⏳ Processing ${postsToProcess.length}/${postsToScrape.length} tweets this cycle (remaining next run)`);
+      console.log(`[METRICS_JOB] ⏳ Processing ${postsToProcess.length}/${postsToScrape.length} tweets this cycle (${postsToScrape.length - postsToProcess.length} remaining for next run)`);
     }
     
     console.log(`[METRICS_JOB] 🔍 Batching ${postsToProcess.length} tweets into single browser session...`);

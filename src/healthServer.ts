@@ -83,6 +83,41 @@ export function startHealthServer(): Promise<void> {
       }
     });
 
+    // 📊 METRICS HEALTH TRACKER - Comprehensive metrics scraping health
+    app.get('/api/metrics-health', async (_req, res) => {
+      try {
+        const { getMetricsHealthReport, getTimeWindowDetails } = await import('./dashboard/metricsHealthTracker');
+        const windowParam = req.query.window as string;
+        const typeParam = req.query.type as 'post' | 'reply' | 'all' | undefined;
+        
+        if (windowParam && !isNaN(Number(windowParam))) {
+          // Get detailed breakdown for specific window
+          const details = await getTimeWindowDetails(Number(windowParam), typeParam || 'all');
+          res.json({
+            windowHours: Number(windowParam),
+            type: typeParam || 'all',
+            ...details,
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          // Get comprehensive report for all windows
+          const windows = req.query.windows 
+            ? (req.query.windows as string).split(',').map(w => Number(w)).filter(w => !isNaN(w))
+            : [12, 14, 24, 48, 72];
+          
+          const report = await getMetricsHealthReport(windows);
+          res.json(report);
+        }
+      } catch (error: any) {
+        console.error('[METRICS_HEALTH] Error:', error);
+        res.status(500).json({
+          status: 'error',
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
     // 📊 POSTING SYSTEM HEALTH - Real-time posting metrics
     app.get('/api/posting-health', async (_req, res) => {
       try {

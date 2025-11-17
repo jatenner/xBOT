@@ -26,26 +26,50 @@ export async function replyMetricsScraperJob(): Promise<void> {
   try {
     const supabase = getSupabaseClient();
     
-    // PRIORITY 1: Recent replies (last 7 days) - scrape aggressively
+    // PRIORITY 1: Replies missing metrics (last 7 days) - scrape aggressively
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     
     const postedAfterIso = sevenDaysAgo.toISOString();
+    const { data: missingMetricsReplies, error: missingError } = await supabase
+      .from('content_metadata')
+      .select('decision_id, tweet_id, posted_at, content, features, actual_impressions, target_username, target_tweet_id')
+      .eq('status', 'posted')
+      .eq('decision_type', 'reply')
+      .not('tweet_id', 'is', null)
+      .gte('posted_at', postedAfterIso)
+      .or('actual_impressions.is.null,actual_impressions.eq.0')  // 🔥 FIX: Focus on missing metrics
+      .order('posted_at', { ascending: false })
+      .limit(30); // 🔥 INCREASED: Process more replies per run
+    
+    // PRIORITY 2: Recent replies (last 24h) that might need refresh
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const { data: recentReplies, error: recentError } = await supabase
       .from('content_metadata')
       .select('decision_id, tweet_id, posted_at, content, features, actual_impressions, target_username, target_tweet_id')
       .eq('status', 'posted')
       .eq('decision_type', 'reply')
       .not('tweet_id', 'is', null)
-      .or(`posted_at.gte.${postedAfterIso},actual_impressions.is.null,actual_impressions.eq.0`)
+      .gte('posted_at', oneDayAgo.toISOString())
       .order('posted_at', { ascending: false })
-      .limit(40); // Scrape a wider backlog to clear missing metrics
+      .limit(10); // Refresh recent replies even if they have metrics
     
-    if (recentError) {
-      console.error('[REPLY_METRICS] ❌ Failed to fetch recent replies:', recentError.message);
+    // Combine and deduplicate
+    const allReplies = [...(missingMetricsReplies || []), ...(recentReplies || [])];
+    const seen = new Set<string>();
+    const recentRepliesDeduped = allReplies.filter(reply => {
+      if (seen.has(reply.decision_id)) return false;
+      seen.add(reply.decision_id);
+      return true;
+    });
+    
+    const repliesError = missingError || recentError;
+    
+    if (repliesError) {
+      console.error('[REPLY_METRICS] ❌ Failed to fetch recent replies:', repliesError.message);
       return;
     }
     
-    const repliesToScrape = (recentReplies || []).filter((reply) => {
+    const repliesToScrape = recentRepliesDeduped.filter((reply) => {
       const features = (reply.features || {}) as Record<string, any>;
       const retryCount = Number(features.metrics_retry_count || 0);
       if (retryCount >= MAX_SCRAPE_RETRIES) {
@@ -60,7 +84,9 @@ export async function replyMetricsScraperJob(): Promise<void> {
       return;
     }
     
-    console.log(`[REPLY_METRICS] 📊 Found ${repliesToScrape.length} replies to scrape`);
+    const missingCount = missingMetricsReplies?.length || 0;
+    const refreshCount = recentReplies?.length || 0;
+    console.log(`[REPLY_METRICS] 📊 Found ${repliesToScrape.length} replies to scrape (${missingCount} missing metrics, ${refreshCount} recent refresh)`);
     
     // Get current follower count (to calculate followers gained)
     let currentFollowerCount = 0;
