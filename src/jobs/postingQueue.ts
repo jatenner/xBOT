@@ -322,9 +322,10 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     // ✅ FIX: Fetch content and replies SEPARATELY to prevent blocking
     // Prioritize content posts (main tweets), then add replies
+    // ✅ Include visual_format in SELECT
     const { data: contentPosts, error: contentError } = await supabase
       .from('content_metadata')
-      .select('*')
+      .select('*, visual_format')
       .eq('status', 'queued')
       .in('decision_type', ['single', 'thread'])
       .lte('scheduled_at', graceWindow.toISOString())
@@ -333,7 +334,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     const { data: replyPosts, error: replyError } = await supabase
       .from('content_metadata')
-      .select('*')
+      .select('*, visual_format')
       .eq('status', 'queued')
       .eq('decision_type', 'reply')
       .lte('scheduled_at', graceWindow.toISOString())
@@ -594,7 +595,9 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       status: String(row.status ?? 'ready_for_posting'),
       created_at: String(row.created_at ?? new Date().toISOString()),
       // CRITICAL: Pass through features for thread_tweets
-      features: row.features as any
+      features: row.features as any,
+      // ✅ Pass through visual_format for formatting
+      visual_format: row.visual_format ? String(row.visual_format) : undefined
     }));
     
     return decisions;
@@ -1169,10 +1172,19 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
           .eq('decision_id', decision.id)
           .single();
         
-        // ✅ Content is ALREADY formatted (done in planJob before queueing)
-        // No need to format again - just use thread_parts directly
-        console.log(`[POSTING_QUEUE] 📝 Using pre-formatted thread (${thread_parts.length} tweets)`);
-        console.log(`[POSTING_QUEUE] 💡 Visual formatting was applied before queueing`);
+        // 🎨 APPLY VISUAL FORMATTING TO THREAD (if specified)
+        let formattedThreadParts = thread_parts;
+        if (decision.visual_format) {
+          console.log(`[POSTING_QUEUE] 🎨 Applying visual format to thread: "${decision.visual_format}"`);
+          const { applyVisualFormat } = await import('../posting/visualFormatter');
+          formattedThreadParts = thread_parts.map(part => {
+            const formatResult = applyVisualFormat(part, decision.visual_format);
+            return formatResult.formatted;
+          });
+          console.log(`[POSTING_QUEUE] ✅ Visual formatting applied to ${formattedThreadParts.length} thread parts`);
+        } else {
+          console.log(`[POSTING_QUEUE] 💡 No visual format specified, using thread as-is`);
+        }
         
         // 🚀 POST THREAD (using BulletproofThreadComposer - creates CONNECTED threads, not reply chains)
         console.log(`[POSTING_QUEUE] 🚀 Posting thread to Twitter via native composer...`);
@@ -1182,7 +1194,7 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         // 🛡️ TIMEOUT PROTECTION: Prevent thread posting from hanging (120 second max)
         const THREAD_POST_TIMEOUT_MS = 120000; // 120 seconds max for threads (longer due to multiple tweets)
         const result = await withTimeout(
-          () => BulletproofThreadComposer.post(thread_parts),
+          () => BulletproofThreadComposer.post(formattedThreadParts),
           { 
             timeoutMs: THREAD_POST_TIMEOUT_MS, 
             operationName: `thread_post_${thread_parts.length}_tweets`
@@ -1220,16 +1232,25 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         console.log(`[POSTING_QUEUE] 📝 Posting as SINGLE tweet`);
         const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
         const { withTimeout } = await import('../utils/operationTimeout');
+        const { applyVisualFormat } = await import('../posting/visualFormatter');
         
-        // ✅ Content is ALREADY formatted (done in planJob before queueing)
-        console.log(`[POSTING_QUEUE] 💡 Using pre-formatted content (visual formatting applied before queueing)`);
+        // 🎨 APPLY VISUAL FORMATTING (if specified)
+        let contentToPost = decision.content;
+        if (decision.visual_format) {
+          console.log(`[POSTING_QUEUE] 🎨 Applying visual format: "${decision.visual_format}"`);
+          const formatResult = applyVisualFormat(decision.content, decision.visual_format);
+          contentToPost = formatResult.formatted;
+          console.log(`[POSTING_QUEUE] ✅ Visual formatting applied: ${formatResult.transformations.join(', ')}`);
+        } else {
+          console.log(`[POSTING_QUEUE] 💡 No visual format specified, using content as-is`);
+        }
         
         const poster = new UltimateTwitterPoster();
         
         // 🛡️ TIMEOUT PROTECTION: Prevent hanging operations (90 second max)
         const SINGLE_POST_TIMEOUT_MS = 90000; // 90 seconds max for single post
         const result = await withTimeout(
-          () => poster.postTweet(decision.content),
+          () => poster.postTweet(contentToPost),
           { 
             timeoutMs: SINGLE_POST_TIMEOUT_MS, 
             operationName: 'single_post',
