@@ -907,6 +907,23 @@ app.get('/dashboard/factors', async (req, res) => {
 });
 
 // Visual Intelligence dashboard page
+app.get('/dashboard/vi', async (req, res) => {
+  const token = req.query.token as string;
+  if (token !== 'xbot-admin-2025') {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const { generateVIDashboard } = await import('./dashboard/viDashboard');
+    const html = await generateVIDashboard();
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error: any) {
+    console.error('[VI_DASHBOARD] Error:', error);
+    res.status(500).send(`<h1>Error</h1><p>${error.message}</p>`);
+  }
+});
+
 app.get('/dashboard/formatting', async (req, res) => {
   try {
     const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');

@@ -382,9 +382,10 @@ export class JobManager {
       180 * MINUTE  // Offset 3 hours (spread out from other scrapers)
     );
 
-    // 👥 Peer scraper - every 8 hours, offset 260 min (format learning from health accounts)
+    // 👥 Peer scraper - every 2 hours, offset 260 min (MAXIMIZED: format learning from health accounts)
     // Scrapes hardcoded health Twitter accounts for niche-specific format patterns
     // Complements viral scraper (general patterns) with health-specific insights
+    // OPTIMIZED: 2 hours = 12 runs/day = ~12,600 tweets/day (was 8 hours = 3,150/day)
     this.scheduleStaggeredJob(
       'peer_scraper',
       async () => {
@@ -393,7 +394,7 @@ export class JobManager {
           await peerScraperJob();
         });
       },
-      480 * MINUTE, // Every 8 hours (less frequent than viral scraper - more stable patterns)
+      120 * MINUTE, // Every 2 hours (MAXIMIZED: 12 runs/day for maximum collection)
       260 * MINUTE  // Offset ~4.3 hours (spread out from viral scraper)
     );
 
