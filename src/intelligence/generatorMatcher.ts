@@ -13,7 +13,7 @@
  * - Tone: "Skeptical investigative"
  * - Best match: "contrarian" (challenges systems, questions industry)
  * 
- * Available Generators (13 total):
+ * Available Generators (22 total):
  * - contrarian: Challenges mainstream, questions systems
  * - culturalBridge: Books, influencers, cultural connections, people stories
  * - dataNerd: Research-heavy, data-driven
@@ -27,6 +27,15 @@
  * - provocateur: Bold, controversial, edgy
  * - interestingContent: High-interest, engaging content
  * - dynamicContent: Adaptive, versatile content
+ * - popCultureAnalyst: Connects health to pop culture, trends, influencers
+ * - teacher: Patient, step-by-step educational content
+ * - investigator: Deep research synthesis across multiple studies
+ * - connector: Systems thinking, shows interconnections
+ * - pragmatist: Realistic, achievable protocols (80/20 approach)
+ * - historian: Historical context and health evolution
+ * - translator: Translates complex science to simple language
+ * - patternFinder: Identifies patterns across research/domains
+ * - experimenter: Experimental protocols and self-experimentation
  */
 
 export type GeneratorType = 
@@ -42,7 +51,16 @@ export type GeneratorType =
   | 'philosopher'
   | 'provocateur'
   | 'interestingContent'
-  | 'dynamicContent';
+  | 'dynamicContent'
+  | 'popCultureAnalyst' // NEW - Nov 6, 2025
+  | 'teacher' // NEW - Nov 6, 2025
+  | 'investigator' // NEW - Nov 6, 2025
+  | 'connector' // NEW - Nov 6, 2025
+  | 'pragmatist' // NEW - Nov 6, 2025
+  | 'historian' // NEW - Nov 6, 2025
+  | 'translator' // NEW - Nov 6, 2025
+  | 'patternFinder' // NEW - Nov 6, 2025
+  | 'experimenter'; // NEW - Nov 6, 2025
 
 export class GeneratorMatcher {
   private static instance: GeneratorMatcher;
@@ -60,7 +78,7 @@ export class GeneratorMatcher {
    * Select generator for content creation
    * 
    * 🎲 CURRENT MODE: PURE RANDOM (Data Collection Phase)
-   * - All generators have equal ~7.7% chance (1/13)
+   * - All generators have equal ~4.5% chance (1/22)
    * - No bias, no assumptions
    * - Collects unbiased performance data
    * 
@@ -135,7 +153,17 @@ export class GeneratorMatcher {
       'philosopher',
       'provocateur',
       'interestingContent',
-      'dynamicContent'
+      'dynamicContent',
+      // NEW GENERATORS (Nov 6, 2025)
+      'popCultureAnalyst',
+      'teacher',
+      'investigator',
+      'connector',
+      'pragmatist',
+      'historian',
+      'translator',
+      'patternFinder',
+      'experimenter'
     ];
   }
 }
