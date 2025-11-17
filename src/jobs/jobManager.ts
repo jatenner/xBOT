@@ -617,6 +617,32 @@ export class JobManager {
     // 🔍 ID Recovery - every 10 minutes, offset 4 min
     // Self-healing job to find real tweet IDs for posts with NULL tweet_id
     // Allows posting to succeed even if immediate ID extraction fails
+    // 🔒 TWEET ID RECOVERY: Recover missing tweet IDs (runs alongside existing id_recovery)
+    this.scheduleStaggeredJob(
+      'tweet_id_recovery',
+      async () => {
+        await this.safeExecute('tweet_id_recovery', async () => {
+          const { runTweetIdRecovery } = await import('./tweetIdRecoveryJob');
+          await runTweetIdRecovery();
+        });
+      },
+      30 * MINUTE, // Every 30 minutes
+      5 * MINUTE   // Start after 5 minutes
+    );
+    
+    // 🔒 ID HEALTH MONITOR: Check ID health every hour
+    this.scheduleStaggeredJob(
+      'id_health_monitor',
+      async () => {
+        await this.safeExecute('id_health_monitor', async () => {
+          const { checkIDHealth } = await import('../monitoring/idHealthMonitor');
+          await checkIDHealth();
+        });
+      },
+      60 * MINUTE, // Every hour
+      10 * MINUTE  // Start after 10 minutes
+    );
+    
     this.scheduleStaggeredJob(
       'id_recovery',
       async () => {

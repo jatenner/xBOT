@@ -714,6 +714,22 @@ app.get('/dashboard/posts', async (req, res) => {
 });
 
 // Replies dashboard page
+app.get('/dashboard/command-center', async (req, res) => {
+  const token = req.query.token as string;
+  if (token !== 'xbot-admin-2025') {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const { generateCommandCenterDashboard } = await import('./dashboard/commandCenterDashboard');
+    const html = await generateCommandCenterDashboard();
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error: any) {
+    console.error('[COMMAND_CENTER] Error:', error);
+    res.status(500).send(`<h1>Error</h1><p>${error.message}</p>`);
+  }
+});
+
 app.get('/dashboard/replies', async (req, res) => {
   try {
     const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
@@ -914,8 +930,8 @@ app.get('/dashboard/vi', async (req, res) => {
   }
 
   try {
-    const { generateVIDashboard } = await import('./dashboard/viDashboard');
-    const html = await generateVIDashboard();
+    const { generateVIDashboardEnhanced } = await import('./dashboard/viDashboardEnhanced');
+    const html = await generateVIDashboardEnhanced();
     res.setHeader('Content-Type', 'text/html');
     res.send(html);
   } catch (error: any) {
