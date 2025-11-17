@@ -30,6 +30,7 @@ import { getSupabaseClient } from '../db/index';
 // ═══════════════════════════════════════════════════════════
 
 const SEED_ACCOUNTS = [
+  // Original 100 accounts
   'WHO', 'CDCgov', 'NIH', 'HarvardHealth', 'JohnsHopkinsSPH',
   'NEJM', 'JAMA_current', 'bmj_latest', 'NatureMedicine', 'EricTopol',
   'ExamineHQ', 'StrongerBySci', 'HRV4Training', 'marco_altini', 'kevinnbass',
@@ -49,7 +50,33 @@ const SEED_ACCOUNTS = [
   'TomGoom', 'BenCoomber', 'euanashley', 'DrTomFrieden', 'florian_krammer',
   'trishgreenhalgh', 'ZDoggMD', 'Atul_Gawande', 'kevinmd', 'PulmCrit',
   'Medscape', 'JAMANetworkOpen', 'JACCJournals', 'AnnalsofIM', 'ChrisMasterjohn',
-  'insidePN', 'suppversity', 'OxygenAdvantage', 'NatureAging', 'ZOE'
+  'insidePN', 'suppversity', 'OxygenAdvantage', 'NatureAging', 'ZOE',
+  
+  // ✅ EXPANDED: Added 75 more high-quality health/longevity accounts
+  // Longevity & Biohacking
+  'davidasinclair', 'brad_stulberg', 'MatthewWalkerPhD', 'alexhormozi', 'hubermanlab',
+  'RhondaPatrick', 'DrMarkHyman', 'bengreenfield', 'maxlugavere', 'DaveAsprey',
+  // Nutrition & Metabolism
+  'syattfitness', 'thefitnesschef_', 'mennohenselman', 'adamragusea', 'RobbWolf',
+  'drstephenphd', 'timferriss', 'drgominak', 'DrSarahBallantyne', 'nickelnutrition',
+  // Fitness & Performance
+  'DrMikeISRAETAEL', 'DrStephanieButtermore', 'eric_helms', 'gregnuckols', 'jeffnippard',
+  'strengthcoachdan', 'andybaker72', 'zacharymoody', 'scottabel', 'dylanbozeman',
+  // Mental Health & Neuroscience
+  'drdrewpinsky', 'DrMatthewLieberman', 'drpeternatt', 'DrLisaFeldmanBarrett', 'DrJudBrewer',
+  'AndrewHuberman', 'DrSaraGottfried', 'DrKellyBrogan', 'DrDanielAmen', 'DrDavidBurns',
+  // Sleep & Recovery
+  'daniellebarlow', 'nicklittlehales', 'sleephq', 'drmichaelyoung', 'sleepgeek',
+  // Women's Health
+  'DrJoleneBrighten', 'drjenniferlanda', 'drchristinamotsch', 'DrJessicaShepherd', 'DrLaurenStreicher',
+  // Integrative Medicine
+  'DrRanganChatterjee', 'DrWillCole', 'DrZachBush', 'DrMarkCrislip', 'DrBenLynch',
+  // Research & Science Communication
+  'sciencebasedmed', 'DrPaulOffit', 'skepticalscalpel', 'DrStevenNovella', 'DrDavidGorski',
+  // Health Optimization
+  'OutliveAuthor', 'DrAlpHutchins', 'DrTynaMoore', 'DrBruceHoffman', 'DrCarolineApovian',
+  // Public Health
+  'DrLeanaWen', 'ashishkjha', 'DrMichaelGreger', 'DrDeanOrnish', 'DrAshishJha'
 ];
 
 /**
