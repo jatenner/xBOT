@@ -297,20 +297,93 @@ function applyNewsStyling(
 
 /**
  * Get real scraped news for topic
+ * FIXED: Uses flexible keyword matching instead of exact topic match
  */
 async function getRealNewsForTopic(topic: string): Promise<any | null> {
   try {
     const { NewsCuratorService } = await import('../news/newsCuratorService');
     const curator = NewsCuratorService.getInstance();
     
-    // Get fresh, high-credibility, unused news
-    const news = await curator.getCuratedNews({
+    // Extract keywords from topic (e.g., "sleep optimization" -> ["sleep", "optimization"])
+    const topicKeywords = extractHealthKeywords(topic);
+    
+    // Try exact match first
+    let news = await curator.getCuratedNews({
       topic,
       minCredibility: 'medium',
       minFreshnessScore: 60,
       unused: true,
       limit: 1
     });
+    
+    // If no exact match, try keyword-based matching
+    if (news.length === 0 && topicKeywords.length > 0) {
+      console.log(`[NEWS_REPORTER] 🔍 No exact match for "${topic}", trying keywords: ${topicKeywords.join(', ')}`);
+      
+      // Get all unused health news
+      const allNews = await curator.getCuratedNews({
+        minCredibility: 'medium',
+        minFreshnessScore: 60,
+        unused: true,
+        limit: 30 // Get more to find best match
+      });
+      
+      if (allNews.length === 0) {
+        console.log(`[NEWS_REPORTER] ⚠️ No unused health news available at all`);
+        return null;
+      }
+      
+      // Find news that matches any keyword
+      const matchedNews = allNews.filter(item => {
+        const newsTopic = item.topic?.toLowerCase() || '';
+        const headline = item.headline?.toLowerCase() || '';
+        const keyClaim = item.key_claim?.toLowerCase() || '';
+        const combined = `${newsTopic} ${headline} ${keyClaim}`;
+        
+        // Check if any keyword appears in the news
+        return topicKeywords.some(keyword => 
+          combined.includes(keyword.toLowerCase())
+        );
+      });
+      
+      if (matchedNews.length > 0) {
+        // Sort by relevance (more keyword matches = better)
+        matchedNews.sort((a, b) => {
+          const aText = `${a.topic} ${a.headline} ${a.key_claim}`.toLowerCase();
+          const bText = `${b.topic} ${b.headline} ${b.key_claim}`.toLowerCase();
+          const aMatches = topicKeywords.filter(k => aText.includes(k.toLowerCase())).length;
+          const bMatches = topicKeywords.filter(k => bText.includes(k.toLowerCase())).length;
+          return bMatches - aMatches; // More matches first
+        });
+        
+        news = [matchedNews[0]]; // Use best match
+        console.log(`[NEWS_REPORTER] ✅ Found keyword match: "${news[0].topic}" for topic "${topic}"`);
+      } else {
+        // FALLBACK: If no keyword match, use the most relevant health news anyway
+        // This ensures news_reporter can still work even with imperfect matches
+        console.log(`[NEWS_REPORTER] ⚠️ No keyword match found, using best available health news as fallback`);
+        
+        // Filter to only health-related topics (exclude non-health like "quantum physics", "births", etc.)
+        const healthTopics = ['supplement', 'nutrition', 'mental health', 'health', 'wellness', 
+                             'exercise', 'fitness', 'medication', 'treatment', 'research', 
+                             'immunology', 'medical devices'];
+        const healthNews = allNews.filter(item => 
+          healthTopics.some(ht => item.topic?.toLowerCase().includes(ht))
+        );
+        
+        if (healthNews.length > 0) {
+          // Use the freshest, most viral health news
+          healthNews.sort((a, b) => {
+            const scoreA = a.freshness_score + (a.viral_score / 1000);
+            const scoreB = b.freshness_score + (b.viral_score / 1000);
+            return scoreB - scoreA;
+          });
+          
+          news = [healthNews[0]];
+          console.log(`[NEWS_REPORTER] ✅ Using fallback health news: "${news[0].topic} - ${news[0].headline.substring(0, 50)}..."`);
+        }
+      }
+    }
     
     if (news.length > 0) {
       // Get the full scraped tweet data
@@ -336,6 +409,77 @@ async function getRealNewsForTopic(topic: string): Promise<any | null> {
     console.warn('[NEWS_REPORTER] ⚠️ Could not fetch real news:', error);
     return null;
   }
+}
+
+/**
+ * Extract health-related keywords from topic string
+ * Handles topics like "sleep optimization (health: circadian rhythm)" -> ["sleep", "optimization", "circadian", "rhythm"]
+ * IMPROVED: Also includes related/synonym keywords for better matching
+ */
+function extractHealthKeywords(topic: string): string[] {
+  // Remove parenthetical content but keep the words inside
+  const cleaned = topic
+    .replace(/\([^)]*\)/g, ' ') // Remove parentheses but keep content
+    .replace(/[^\w\s]/g, ' ') // Remove special chars
+    .toLowerCase()
+    .trim();
+  
+  // Split into words
+  const words = cleaned.split(/\s+/).filter(w => w.length > 2); // Filter out short words
+  
+  // Health-related keywords to prioritize
+  const healthKeywords = [
+    'sleep', 'nutrition', 'exercise', 'fitness', 'health', 'wellness', 'diet',
+    'supplement', 'vitamin', 'protein', 'metabolism', 'cardio', 'strength',
+    'recovery', 'mental', 'brain', 'cognitive', 'immune', 'hormone', 'stress',
+    'gut', 'microbiome', 'circadian', 'fasting', 'keto', 'muscle', 'bone',
+    'heart', 'blood', 'sugar', 'insulin', 'testosterone', 'estrogen', 'thyroid',
+    'inflammation', 'anxiety', 'depression', 'focus', 'memory', 'energy',
+    'longevity', 'aging', 'biohack', 'optimization', 'performance'
+  ];
+  
+  // Extract direct matches
+  const directMatches = words.filter(w => healthKeywords.includes(w));
+  
+  // Extract partial matches (word contains keyword or vice versa)
+  const partialMatches = words.filter(word => 
+    healthKeywords.some(hk => word.includes(hk) || hk.includes(word))
+  );
+  
+  // Add related keywords based on topic context
+  const relatedKeywords: string[] = [];
+  const topicLower = topic.toLowerCase();
+  
+  // Sleep-related
+  if (topicLower.includes('sleep') || topicLower.includes('circadian') || topicLower.includes('rest')) {
+    relatedKeywords.push('sleep', 'rest', 'recovery', 'mental health', 'brain');
+  }
+  
+  // Nutrition-related
+  if (topicLower.includes('nutrition') || topicLower.includes('diet') || topicLower.includes('food') || topicLower.includes('eating')) {
+    relatedKeywords.push('nutrition', 'diet', 'food', 'supplement', 'vitamin', 'health');
+  }
+  
+  // Exercise-related
+  if (topicLower.includes('exercise') || topicLower.includes('workout') || topicLower.includes('cardio') || topicLower.includes('fitness')) {
+    relatedKeywords.push('exercise', 'fitness', 'cardio', 'strength', 'recovery', 'muscle');
+  }
+  
+  // Mental health-related
+  if (topicLower.includes('mental') || topicLower.includes('brain') || topicLower.includes('cognitive') || topicLower.includes('anxiety') || topicLower.includes('depression')) {
+    relatedKeywords.push('mental health', 'brain', 'cognitive', 'anxiety', 'depression', 'stress');
+  }
+  
+  // Gut health-related
+  if (topicLower.includes('gut') || topicLower.includes('microbiome') || topicLower.includes('digest')) {
+    relatedKeywords.push('gut', 'microbiome', 'nutrition', 'health', 'immune');
+  }
+  
+  // Combine all keywords and remove duplicates
+  const allKeywordsArray = [...directMatches, ...partialMatches, ...relatedKeywords];
+  const uniqueKeywords = Array.from(new Set(allKeywordsArray));
+  
+  return uniqueKeywords;
 }
 
 /**
