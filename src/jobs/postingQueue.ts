@@ -1177,8 +1177,17 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         // 🚀 POST THREAD (using BulletproofThreadComposer - creates CONNECTED threads, not reply chains)
         console.log(`[POSTING_QUEUE] 🚀 Posting thread to Twitter via native composer...`);
         const { BulletproofThreadComposer } = await import('../posting/BulletproofThreadComposer');
+        const { withTimeout } = await import('../utils/operationTimeout');
         
-        const result = await BulletproofThreadComposer.post(thread_parts);
+        // 🛡️ TIMEOUT PROTECTION: Prevent thread posting from hanging (120 second max)
+        const THREAD_POST_TIMEOUT_MS = 120000; // 120 seconds max for threads (longer due to multiple tweets)
+        const result = await withTimeout(
+          () => BulletproofThreadComposer.post(thread_parts),
+          { 
+            timeoutMs: THREAD_POST_TIMEOUT_MS, 
+            operationName: `thread_post_${thread_parts.length}_tweets`
+          }
+        );
         
         if (!result.success) {
           // Thread completely failed - ensure we have a detailed error message
@@ -1210,12 +1219,30 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
       } else {
         console.log(`[POSTING_QUEUE] 📝 Posting as SINGLE tweet`);
         const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
+        const { withTimeout } = await import('../utils/operationTimeout');
         
         // ✅ Content is ALREADY formatted (done in planJob before queueing)
         console.log(`[POSTING_QUEUE] 💡 Using pre-formatted content (visual formatting applied before queueing)`);
         
         const poster = new UltimateTwitterPoster();
-        const result = await poster.postTweet(decision.content);
+        
+        // 🛡️ TIMEOUT PROTECTION: Prevent hanging operations (90 second max)
+        const SINGLE_POST_TIMEOUT_MS = 90000; // 90 seconds max for single post
+        const result = await withTimeout(
+          () => poster.postTweet(decision.content),
+          { 
+            timeoutMs: SINGLE_POST_TIMEOUT_MS, 
+            operationName: 'single_post',
+            onTimeout: async () => {
+              console.error(`[POSTING_QUEUE] ⏱️ Single post timeout after ${SINGLE_POST_TIMEOUT_MS}ms - cleaning up`);
+              try {
+                await poster.dispose();
+              } catch (e) {
+                console.error(`[POSTING_QUEUE] ⚠️ Error during timeout cleanup:`, e);
+              }
+            }
+          }
+        );
         await poster.dispose();
         
         if (!result.success || !result.tweetId) {

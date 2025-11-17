@@ -14,6 +14,32 @@ export function getSupabaseClient() {
       auth: {
         autoRefreshToken: false,
         persistSession: false
+      },
+      // 🛡️ DATABASE RESILIENCE: Add timeout and connection limits
+      db: {
+        schema: 'public'
+      },
+      global: {
+        fetch: async (url, options = {}) => {
+          // Add timeout to fetch requests (30 seconds)
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000);
+          
+          try {
+            const response = await fetch(url, {
+              ...options,
+              signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            return response;
+          } catch (error: any) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+              throw new Error('Database request timeout after 30s');
+            }
+            throw error;
+          }
+        }
       }
     }) as SupabaseClient<any, any, any>;
   }
@@ -59,25 +85,55 @@ export async function safeQuery<T = any>(
 }
 
 /**
- * Safe Supabase operation with error handling
+ * Safe Supabase operation with error handling and retry logic
+ * Now includes automatic retry with exponential backoff for transient failures
  */
 export async function safeSupabaseQuery<T = any>(
   operation: () => Promise<any>
 ): Promise<{ data: T | null; error: string | null }> {
+  const { withCircuitBreaker } = await import('../utils/dbResilience');
+  
   try {
-    const result = await operation();
-    
-    if (result.error) {
-      console.error('Supabase operation error:', result.error);
-      return { data: null, error: result.error.message };
-    }
+    const result = await withCircuitBreaker(
+      async () => {
+        const opResult = await operation();
+        
+        // Check for Supabase error in result
+        if (opResult?.error) {
+          const error = new Error(opResult.error.message || 'Supabase operation error');
+          (error as any).code = opResult.error.code;
+          throw error;
+        }
+        
+        return opResult;
+      },
+      {
+        maxRetries: 3,
+        initialDelayMs: 1000,
+        maxDelayMs: 5000,
+        retryableErrors: [
+          'ETIMEDOUT',
+          'ECONNREFUSED',
+          'timeout',
+          'connection',
+          'network',
+          'temporarily unavailable',
+          'too many clients',
+          'connection terminated'
+        ],
+        onRetry: (attempt, error) => {
+          console.warn(`[DB_RESILIENCE] Retrying Supabase query (attempt ${attempt}): ${error.message.substring(0, 100)}`);
+        }
+      }
+    );
     
     return { data: result.data, error: null };
   } catch (error) {
-    console.error('Supabase operation exception:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown Supabase error';
+    console.error(`[DB_RESILIENCE] Supabase operation failed after retries:`, errorMessage);
     return { 
       data: null, 
-      error: error instanceof Error ? error.message : 'Unknown Supabase error' 
+      error: errorMessage
     };
   }
 }
