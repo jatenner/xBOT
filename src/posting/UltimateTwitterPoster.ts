@@ -5,7 +5,6 @@
 
 import { log } from '../lib/logger';
 import { Page, BrowserContext, Locator } from 'playwright';
-import { getBrowser, createContext } from '../browser/browserFactory';
 import { existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { ImprovedReplyIdExtractor } from './ImprovedReplyIdExtractor';
@@ -26,8 +25,9 @@ interface PosterOptions {
 }
 
 export class UltimateTwitterPoster {
-  private context: BrowserContext | null = null;
-  private page: Page | null = null;
+  // 🌐 MIGRATED TO UNIFIED BROWSER POOL: No more instance context/page storage
+  // Pool manages browser lifecycle - prevents resource exhaustion
+  private page: Page | null = null; // Only stored during active operation
   private readonly storageStatePath = join(process.cwd(), 'twitter-auth.json');
   private readonly purpose: 'reply' | 'post';
   private readonly forceFreshContextPerAttempt: boolean;
@@ -51,58 +51,75 @@ export class UltimateTwitterPoster {
     let retryCount = 0;
     const maxRetries = 2; // Increased retries
     const startTime = Date.now();
+    
+    // 🛡️ TIMEOUT PROTECTION: Overall timeout for entire postTweet operation (80 seconds max)
+    const { withTimeout } = await import('../utils/operationTimeout');
+    const OVERALL_TIMEOUT_MS = 80000; // 80 seconds max for entire operation (including retries)
 
-    while (retryCount <= maxRetries) {
-      try {
-        log({ op: 'ultimate_poster_attempt', attempt: retryCount + 1, max: maxRetries + 1, content_length: content.length });
-        await this.prepareForAttempt(retryCount);
+    return withTimeout(async () => {
+      while (retryCount <= maxRetries) {
+        try {
+          log({ op: 'ultimate_poster_attempt', attempt: retryCount + 1, max: maxRetries + 1, content_length: content.length });
+          await this.prepareForAttempt(retryCount);
+          
+          await this.ensureContext();
+          const result = await this.attemptPost(content);
         
-        await this.ensureContext();
-        const result = await this.attemptPost(content);
-        
-        if (!result.success) {
-          if (result.error?.includes('session expired') || result.error?.includes('not logged in')) {
-            log({ op: 'ultimate_poster_auth_error', action: 'refreshing_session' });
-            await this.refreshSession();
+          if (!result.success) {
+            if (result.error?.includes('session expired') || result.error?.includes('not logged in')) {
+              log({ op: 'ultimate_poster_auth_error', action: 'refreshing_session' });
+              await this.refreshSession();
+            }
+            throw new Error(result.error || 'Post attempt failed');
           }
-          throw new Error(result.error || 'Post attempt failed');
-        }
 
-        const canonical = await this.extractCanonicalTweet(content);
-        const ms = Date.now() - startTime;
-        log({ op: 'ultimate_poster_complete', outcome: 'success', attempt: retryCount + 1, tweet_id: canonical.tweetId, ms });
-        await this.dispose();
-        return { success: true, tweetId: canonical.tweetId, tweetUrl: canonical.tweetUrl };
-        
-      } catch (error) {
-        log({ op: 'ultimate_poster_attempt', outcome: 'error', attempt: retryCount + 1, error: error.message });
-        
-        const isRecoverable = this.isRecoverableError(error.message);
-        
-        if (retryCount < maxRetries && isRecoverable) {
-          log({ op: 'ultimate_poster_retry', retry_count: retryCount, recoverable: true });
+          const canonical = await this.extractCanonicalTweet(content);
+          const ms = Date.now() - startTime;
+          log({ op: 'ultimate_poster_complete', outcome: 'success', attempt: retryCount + 1, tweet_id: canonical.tweetId, ms });
+          await this.dispose();
+          return { success: true, tweetId: canonical.tweetId, tweetUrl: canonical.tweetUrl };
+          
+        } catch (error) {
+          log({ op: 'ultimate_poster_attempt', outcome: 'error', attempt: retryCount + 1, error: error.message });
+          
+          const isRecoverable = this.isRecoverableError(error.message);
+          
+          if (retryCount < maxRetries && isRecoverable) {
+            log({ op: 'ultimate_poster_retry', retry_count: retryCount, recoverable: true });
+            await this.cleanup();
+            retryCount++;
+            
+            const delay = (retryCount) * 2000; // 2s, 4s delays
+            log({ op: 'ultimate_poster_delay', delay_ms: delay });
+            await new Promise(resolve => setTimeout(resolve, delay));
+            
+            continue;
+          }
+          
+          const ms = Date.now() - startTime;
+          log({ op: 'ultimate_poster_complete', outcome: 'failure', attempts: retryCount + 1, error: error.message, ms });
+          await this.captureFailureArtifacts(error.message);
           await this.cleanup();
-          retryCount++;
-          
-          const delay = (retryCount) * 2000; // 2s, 4s delays
-          log({ op: 'ultimate_poster_delay', delay_ms: delay });
-          await new Promise(resolve => setTimeout(resolve, delay));
-          
-          continue;
+          return { success: false, error: error.message };
         }
-        
-        const ms = Date.now() - startTime;
-        log({ op: 'ultimate_poster_complete', outcome: 'failure', attempts: retryCount + 1, error: error.message, ms });
-        await this.captureFailureArtifacts(error.message);
-        await this.cleanup();
-        return { success: false, error: error.message };
       }
-    }
 
-    const ms = Date.now() - startTime;
-    log({ op: 'ultimate_poster_complete', outcome: 'max_retries', attempts: retryCount, ms });
-    await this.cleanup();
-    return { success: false, error: 'Max retries exceeded' };
+      const ms = Date.now() - startTime;
+      log({ op: 'ultimate_poster_complete', outcome: 'max_retries', attempts: retryCount, ms });
+      await this.cleanup();
+      return { success: false, error: 'Max retries exceeded' };
+    }, {
+      timeoutMs: OVERALL_TIMEOUT_MS,
+      operationName: 'postTweet',
+      onTimeout: async () => {
+        console.error(`[ULTIMATE_POSTER] ⏱️ postTweet timeout after ${OVERALL_TIMEOUT_MS}ms - cleaning up`);
+        try {
+          await this.cleanup();
+        } catch (e) {
+          console.error(`[ULTIMATE_POSTER] ⚠️ Error during timeout cleanup:`, e);
+        }
+      }
+    });
   }
 
   private isRecoverableError(errorMessage: string): boolean {
@@ -122,22 +139,26 @@ export class UltimateTwitterPoster {
     return recoverableErrors.some(error => errorMessage.includes(error));
   }
 
+  /**
+   * 🌐 MIGRATED TO UNIFIED BROWSER POOL
+   * Acquires page from pool (manages browser lifecycle automatically)
+   */
   private async ensureContext(): Promise<void> {
-    if (!this.context) {
-      console.log('ULTIMATE_POSTER: Creating new browser context...');
-      this.context = await createContext(this.storageStatePath);
-      
-      // Enable tracing for debugging
-      await this.context.tracing.start({ screenshots: true, snapshots: true });
-    }
-
     if (!this.page) {
-      this.page = await this.context.newPage();
+      const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+      const browserPool = UnifiedBrowserPool.getInstance();
+      
+      const operationName = this.purpose === 'reply' ? 'reply_posting' : 'tweet_posting';
+      console.log(`ULTIMATE_POSTER: Acquiring page from UnifiedBrowserPool (operation: ${operationName})...`);
+      
+      this.page = await browserPool.acquirePage(operationName);
       
       // Set up error handling
       this.page.on('pageerror', (error) => {
         console.error('ULTIMATE_POSTER: Page error:', error.message);
       });
+      
+      console.log('ULTIMATE_POSTER: ✅ Page acquired from pool');
     }
   }
 
@@ -898,45 +919,34 @@ export class UltimateTwitterPoster {
     return path.split('.').reduce((current, key) => current?.[key], obj);
   }
 
+  /**
+   * 🌐 MIGRATED TO UNIFIED BROWSER POOL
+   * Reloads session state in pool (pool manages session lifecycle)
+   */
   private async refreshSession(): Promise<void> {
     this.sessionRefreshes++;
-    console.log('ULTIMATE_POSTER: Refreshing Twitter session...');
+    console.log('ULTIMATE_POSTER: Refreshing Twitter session via UnifiedBrowserPool...');
     
-    // If we have a storage state file, delete it to force re-authentication
-    if (existsSync(this.storageStatePath)) {
-      try {
-        require('fs').unlinkSync(this.storageStatePath);
-        console.log('ULTIMATE_POSTER: Cleared expired storage state');
-      } catch (e) {
-        console.warn('ULTIMATE_POSTER: Could not clear storage state:', e.message);
-      }
-    }
-
-    // Load session from environment variable as fallback
-    const sessionB64 = process.env.TWITTER_SESSION_B64;
-    if (sessionB64) {
-      try {
-        console.log('ULTIMATE_POSTER: Loading session from environment...');
-        const sessionData = JSON.parse(Buffer.from(sessionB64, 'base64').toString());
-        
-        // Create a temporary context to load cookies
-        const tempContext = await createContext();
-        
-        // Parse and add cookies
-        let cookies = Array.isArray(sessionData) ? sessionData : sessionData.cookies || [];
-        if (cookies.length > 0) {
-          await tempContext.addCookies(cookies);
-          
-          // Save as storage state for future use
-          await tempContext.storageState({ path: this.storageStatePath });
-          console.log('ULTIMATE_POSTER: Session refreshed and saved');
+    try {
+      const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+      const browserPool = UnifiedBrowserPool.getInstance();
+      
+      // Reload session state in pool (pool will detect changes and update contexts)
+      await browserPool.reloadSessionState();
+      console.log('ULTIMATE_POSTER: ✅ Session state reloaded in pool');
+      
+      // If we have a storage state file, delete it to force re-authentication
+      if (existsSync(this.storageStatePath)) {
+        try {
+          require('fs').unlinkSync(this.storageStatePath);
+          console.log('ULTIMATE_POSTER: Cleared expired storage state');
+        } catch (e) {
+          console.warn('ULTIMATE_POSTER: Could not clear storage state:', e?.message || e);
         }
-        
-        await tempContext.close();
-      } catch (e) {
-        console.error('ULTIMATE_POSTER: Failed to refresh session:', e.message);
-        throw new Error('Session refresh failed - manual re-authentication may be required');
       }
+    } catch (e) {
+      console.error('ULTIMATE_POSTER: Failed to refresh session:', e?.message || e);
+      throw new Error('Session refresh failed - manual re-authentication may be required');
     }
   }
 
@@ -955,16 +965,8 @@ export class UltimateTwitterPoster {
       });
       console.log(`ULTIMATE_POSTER: Screenshot saved to ${screenshotPath}`);
 
-      // Stop and save tracing if active
-      if (this.context) {
-        try {
-          const tracePath = join(artifactsDir, `trace-${timestamp}.zip`);
-          await this.context.tracing.stop({ path: tracePath });
-          console.log(`ULTIMATE_POSTER: Trace saved to ${tracePath}`);
-        } catch (e) {
-          console.log('ULTIMATE_POSTER: Could not save trace:', e.message);
-        }
-      }
+      // Tracing not available with UnifiedBrowserPool (pool manages contexts)
+      // Screenshot is sufficient for debugging
 
       // Save error details
       const errorLogPath = join(artifactsDir, `error-${timestamp}.json`);
@@ -981,18 +983,25 @@ export class UltimateTwitterPoster {
     }
   }
 
+  /**
+   * 🌐 MIGRATED TO UNIFIED BROWSER POOL
+   * Releases page back to pool (pool manages lifecycle)
+   */
   private async cleanup(): Promise<void> {
     try {
       if (this.page) {
-        await this.page.close();
+        const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+        const browserPool = UnifiedBrowserPool.getInstance();
+        
+        console.log('ULTIMATE_POSTER: Releasing page back to UnifiedBrowserPool...');
+        await browserPool.releasePage(this.page);
         this.page = null;
-      }
-      if (this.context) {
-        await this.context.close();
-        this.context = null;
+        console.log('ULTIMATE_POSTER: ✅ Page released to pool');
       }
     } catch (e) {
-      console.warn('ULTIMATE_POSTER: Cleanup error:', e.message);
+      console.warn('ULTIMATE_POSTER: Cleanup error:', e?.message || e);
+      // Ensure page is cleared even if release fails
+      this.page = null;
     }
   }
 

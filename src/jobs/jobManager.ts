@@ -46,6 +46,8 @@ export class JobManager {
     errors: 0
   };
   private isRunning = false;
+  // 🔥 CRITICAL JOB FAILURE TRACKING: Track consecutive failures for emergency recovery
+  private criticalJobFailures = new Map<string, number>();
 
   public static getInstance(): JobManager {
     if (!JobManager.instance) {
@@ -1017,6 +1019,30 @@ export class JobManager {
     const isCritical = jobName === 'plan' || jobName === 'posting';
     const maxRetries = isCritical ? 3 : 1;
     
+    // 🧠 MEMORY CHECK: Ensure we have enough memory before starting job
+    try {
+      const { MemoryMonitor } = await import('../utils/memoryMonitor');
+      const memory = MemoryMonitor.checkMemory();
+      
+      if (memory.status === 'critical') {
+        console.error(`🧠 [JOB_${jobName.toUpperCase()}] Memory critical (${memory.rssMB}MB) - performing emergency cleanup`);
+        await MemoryMonitor.emergencyCleanup();
+        
+        // Check again after cleanup
+        const afterCleanup = MemoryMonitor.checkMemory();
+        if (afterCleanup.status === 'critical') {
+          console.error(`🧠 [JOB_${jobName.toUpperCase()}] Memory still critical after cleanup (${afterCleanup.rssMB}MB) - skipping job`);
+          await recordJobSkip(jobName, `memory_critical_${afterCleanup.rssMB}mb`);
+          return;
+        }
+      } else if (memory.status === 'warning') {
+        console.warn(`🧠 [JOB_${jobName.toUpperCase()}] Memory warning: ${MemoryMonitor.getStatusMessage()}`);
+      }
+    } catch (memoryError) {
+      // Don't block jobs if memory monitor fails
+      console.warn(`🧠 [JOB_${jobName.toUpperCase()}] Memory check failed:`, memoryError);
+    }
+    
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         await recordJobStart(jobName);
@@ -1029,6 +1055,12 @@ export class JobManager {
         await jobFn();
         console.log(`✅ JOB_${jobName.toUpperCase()}: Completed successfully`);
         await recordJobSuccess(jobName);
+        
+        // Reset consecutive failure counter on success
+        if (isCritical) {
+          this.criticalJobFailures.set(jobName, 0);
+        }
+        
         return; // Success!
         
       } catch (error) {
@@ -1045,7 +1077,40 @@ export class JobManager {
           console.error(`❌ JOB_${jobName.toUpperCase()}: All ${maxRetries} attempts failed`);
           
           if (isCritical) {
+            // Track consecutive failures
+            const consecutiveFailures = (this.criticalJobFailures.get(jobName) || 0) + 1;
+            this.criticalJobFailures.set(jobName, consecutiveFailures);
+            
             console.error(`🚨 CRITICAL: ${jobName.toUpperCase()} job completely failed! System may not post content.`);
+            console.error(`   Consecutive failures: ${consecutiveFailures}`);
+            
+            // After 5 consecutive failures, log emergency event
+            if (consecutiveFailures >= 5) {
+              console.error(`═══════════════════════════════════════════════════════`);
+              console.error(`🚨 EMERGENCY: ${jobName.toUpperCase()} failed ${consecutiveFailures} times consecutively!`);
+              console.error(`   This indicates a persistent system issue.`);
+              console.error(`   The watchdog will attempt recovery.`);
+              console.error(`═══════════════════════════════════════════════════════`);
+              
+              // Log to system_events for monitoring
+              try {
+                const { getSupabaseClient } = await import('../db');
+                const supabase = getSupabaseClient();
+                await supabase.from('system_events').insert({
+                  event_type: 'critical_job_consecutive_failure',
+                  severity: 'critical',
+                  event_data: {
+                    job: jobName,
+                    consecutive_failures: consecutiveFailures,
+                    last_error: errorMsg.substring(0, 500)
+                  },
+                  created_at: new Date().toISOString()
+                });
+              } catch (dbError) {
+                // Don't block on DB errors
+                console.error(`⚠️ Failed to log critical job failure to DB:`, dbError);
+              }
+            }
           }
         }
       }

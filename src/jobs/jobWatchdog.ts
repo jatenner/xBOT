@@ -26,6 +26,9 @@ const CRITICAL_JOBS: CriticalJobConfig[] = [
   { jobName: 'mega_viral_harvester', thresholdMinutes: 150, recoverTarget: 'mega_viral_harvester', description: 'Reply harvester idle' }
 ];
 
+// 🔥 HUNG JOB DETECTION: Detect jobs stuck in "running" state for too long
+const HUNG_JOB_THRESHOLD_MINUTES = 15; // 15 minutes max runtime
+
 async function logSystemEvent(eventType: string, data: Record<string, unknown>) {
   try {
     const supabase = getSupabaseClient();
@@ -63,21 +66,70 @@ export async function runJobWatchdog(runJobNow: (jobName: WatchdogRecoverableJob
     const lastUpdate = record?.updated_at ? new Date(record.updated_at).getTime() : null;
     const isRunning = record?.last_run_status === 'running' && lastUpdate && now - lastUpdate < job.thresholdMinutes * 60_000;
 
-    if (record?.last_run_status === 'running' && lastUpdate && now - lastUpdate >= job.thresholdMinutes * 60_000) {
-      log({
-        op: 'job_watchdog_stuck',
-        job: job.jobName,
-        minutes_running: Math.floor((now - lastUpdate) / 60000),
-        description: 'Job stuck in running state beyond threshold'
-      });
-      await logSystemEvent('job_watchdog_stuck', {
-        job: job.jobName,
-        minutes_running: Math.floor((now - lastUpdate) / 60000),
-        description: 'Job stuck in running state beyond threshold'
-      });
-      if (job.recoverTarget) {
-        await recordJobFailure(job.jobName, 'stuck_running_timeout');
-        await runJobNow(job.recoverTarget);
+    // 🔥 ENHANCED: Check for hung jobs (stuck in "running" for >15 minutes)
+    if (record?.last_run_status === 'running' && lastUpdate) {
+      const runTimeMinutes = (now - lastUpdate) / 60000;
+      
+      // If job has been running for longer than HUNG threshold, it's definitely hung
+      if (runTimeMinutes > HUNG_JOB_THRESHOLD_MINUTES) {
+        const minutesRunning = Math.floor(runTimeMinutes);
+        console.error(`🚨 [JOB_WATCHDOG] HUNG JOB DETECTED: ${job.jobName} running for ${minutesRunning} minutes`);
+        
+        log({
+          op: 'job_watchdog_hung',
+          job: job.jobName,
+          minutes_running: minutesRunning,
+          description: `Job hung in running state for ${minutesRunning} minutes`
+        });
+        
+        await logSystemEvent('job_watchdog_hung', {
+          job: job.jobName,
+          minutes_running: minutesRunning,
+          hung_threshold_minutes: HUNG_JOB_THRESHOLD_MINUTES,
+          description: 'Job hung - stuck in running state beyond 15 minute threshold'
+        });
+        
+        if (job.recoverTarget) {
+          await recordJobFailure(job.jobName, `hung_${minutesRunning}_minutes`);
+          console.log(`🔄 [JOB_WATCHDOG] Attempting recovery for hung job: ${job.recoverTarget}`);
+          try {
+            await runJobNow(job.recoverTarget);
+            log({
+              op: 'job_watchdog_hung_recovery_attempted',
+              job: job.jobName,
+              recover_target: job.recoverTarget
+            });
+          } catch (recoveryError: any) {
+            console.error(`❌ [JOB_WATCHDOG] Recovery failed for ${job.recoverTarget}:`, recoveryError.message);
+            await logSystemEvent('job_watchdog_hung_recovery_failed', {
+              job: job.jobName,
+              recover_target: job.recoverTarget,
+              error: recoveryError?.message || String(recoveryError)
+            });
+          }
+        }
+        continue;
+      }
+      
+      // If job has been running longer than job-specific threshold, also treat as stuck
+      if (runTimeMinutes > job.thresholdMinutes) {
+        const minutesRunning = Math.floor(runTimeMinutes);
+        log({
+          op: 'job_watchdog_stuck',
+          job: job.jobName,
+          minutes_running: minutesRunning,
+          description: 'Job stuck in running state beyond threshold'
+        });
+        await logSystemEvent('job_watchdog_stuck', {
+          job: job.jobName,
+          minutes_running: minutesRunning,
+          threshold_minutes: job.thresholdMinutes,
+          description: 'Job stuck in running state beyond threshold'
+        });
+        if (job.recoverTarget) {
+          await recordJobFailure(job.jobName, 'stuck_running_timeout');
+          await runJobNow(job.recoverTarget);
+        }
         continue;
       }
     }

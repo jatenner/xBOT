@@ -321,6 +321,126 @@ async function boot() {
     const flags = getModeFlags(config);
     console.log(`💓 HEARTBEAT: ${new Date().toISOString()} - posting_disabled=${flags.postingDisabled}, dry_run=${flags.dryRun}, mode=${config.MODE}`);
   }, 60000); // 1-minute heartbeat
+
+  // 🛡️ PROCESS KEEP-ALIVE: Prevent silent process exits
+  // This ensures the process never exits gracefully even if all timers are cleared
+  const keepAliveInterval = setInterval(() => {
+    // Keep-alive heartbeat - prevents process from exiting
+  }, 30000); // Every 30 seconds
+
+  // 🔥 CRITICAL JOB MONITOR: Auto-restart if critical jobs fail
+  // If posting/plan jobs haven't succeeded in 30 minutes, force Railway restart
+  let lastCriticalJobSuccess = Date.now();
+  const CRITICAL_JOB_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+  const CRITICAL_JOB_CHECK_INTERVAL = 5 * 60 * 1000; // Check every 5 minutes
+
+  setInterval(() => {
+    const jobManager = JobManager.getInstance();
+    const stats = jobManager.getStats();
+    
+    // Check if critical jobs have succeeded recently
+    const now = Date.now();
+    const lastPostingTime = stats.lastPostingTime?.getTime() || 0;
+    const lastPlanTime = stats.lastPlanTime?.getTime() || 0;
+    const mostRecentSuccess = Math.max(lastPostingTime, lastPlanTime);
+    
+    if (mostRecentSuccess > 0) {
+      lastCriticalJobSuccess = mostRecentSuccess;
+    }
+    
+    const timeSinceLastSuccess = now - lastCriticalJobSuccess;
+    
+    if (timeSinceLastSuccess > CRITICAL_JOB_TIMEOUT) {
+      console.error('═══════════════════════════════════════════════════════');
+      console.error('🚨 CRITICAL: No successful jobs in 30 minutes!');
+      console.error(`   Last success: ${new Date(lastCriticalJobSuccess).toISOString()}`);
+      console.error(`   Time since: ${Math.round(timeSinceLastSuccess / 60000)} minutes`);
+      console.error('   This indicates system is stuck - forcing Railway restart...');
+      console.error('═══════════════════════════════════════════════════════');
+      
+          // Log to system_events before exiting
+          (async () => {
+            try {
+              const { getSupabaseClient } = await import('./db');
+              const supabase = getSupabaseClient();
+              await supabase.from('system_events').insert({
+                event_type: 'critical_job_timeout',
+                severity: 'critical',
+                event_data: {
+                  time_since_last_success_minutes: Math.round(timeSinceLastSuccess / 60000),
+                  last_posting_time: stats.lastPostingTime?.toISOString(),
+                  last_plan_time: stats.lastPlanTime?.toISOString()
+                },
+                created_at: new Date().toISOString()
+              });
+            } catch (e) {
+              // Ignore DB errors during emergency exit
+            }
+          })();
+      
+      // Force Railway restart by exiting with error code
+      process.exit(1);
+    } else {
+      // Update last success time from stats
+      if (stats.lastPostingTime || stats.lastPlanTime) {
+        const mostRecent = Math.max(
+          stats.lastPostingTime?.getTime() || 0,
+          stats.lastPlanTime?.getTime() || 0
+        );
+        if (mostRecent > lastCriticalJobSuccess) {
+          lastCriticalJobSuccess = mostRecent;
+        }
+      }
+    }
+  }, CRITICAL_JOB_CHECK_INTERVAL);
+
+  console.log('✅ PROCESS_KEEP_ALIVE: Keep-alive and critical job monitor started');
+  console.log('   • Keep-alive heartbeat: every 30 seconds');
+  console.log('   • Critical job timeout: 30 minutes');
+  console.log('   • Auto-restart if no successful jobs in 30 minutes');
+
+  // 🧠 MEMORY MONITOR: Check memory every minute and auto-cleanup
+  (async () => {
+    const { MemoryMonitor } = await import('./utils/memoryMonitor');
+    
+    setInterval(() => {
+      const memory = MemoryMonitor.checkMemory();
+      
+      if (memory.status === 'critical') {
+        console.error(`🧠 [MEMORY_MONITOR] ${MemoryMonitor.getStatusMessage()} - performing emergency cleanup`);
+        MemoryMonitor.emergencyCleanup().catch(err => {
+          console.error(`🧠 [MEMORY_MONITOR] Emergency cleanup failed:`, err);
+        });
+      } else if (memory.status === 'warning') {
+        console.warn(`🧠 [MEMORY_MONITOR] ${MemoryMonitor.getStatusMessage()}`);
+      }
+    }, 60000); // Every minute
+    
+    console.log('✅ MEMORY_MONITOR: Started (checks every 60 seconds)');
+    console.log('   • Warning threshold: 400MB');
+    console.log('   • Critical threshold: 450MB');
+    console.log('   • Auto-cleanup when critical');
+  })();
+
+  // 🔐 SESSION MONITOR: Check Twitter session every 10 minutes and auto-refresh if expired
+  (async () => {
+    const { SessionMonitor } = await import('./utils/sessionMonitor');
+    
+    // Initial check after 2 minutes (give system time to start)
+    setTimeout(async () => {
+      await SessionMonitor.autoCheckAndRefresh();
+    }, 2 * 60 * 1000);
+    
+    // Then check every 10 minutes
+    setInterval(async () => {
+      await SessionMonitor.autoCheckAndRefresh();
+    }, 10 * 60 * 1000); // Every 10 minutes
+    
+    console.log('✅ SESSION_MONITOR: Started (checks every 10 minutes)');
+    console.log('   • Auto-detects expired sessions');
+    console.log('   • Auto-refreshes from TWITTER_SESSION_B64');
+    console.log('   • First check after 2 minutes');
+  })();
 }
 
 boot().catch((e) => {
