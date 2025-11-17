@@ -59,9 +59,10 @@ export class VIAccountScraper {
       newTweets: 0
     };
     
+    // ✅ OPTIMIZED FOR THOUSANDS: Increased default concurrency for faster collection
     const concurrency = Math.max(
       1,
-      Number.parseInt(process.env.VI_SCRAPER_CONCURRENCY || '8', 10)
+      Number.parseInt(process.env.VI_SCRAPER_CONCURRENCY || '12', 10) // Increased from 8 to 12
     );
     const queue = [...targets];
     const workerCount = Math.min(concurrency, queue.length);
@@ -132,10 +133,10 @@ export class VIAccountScraper {
         await this.autoTierAccount(page, target);
       }
       
-      // Scroll to load more tweets (adaptive based on env)
+      // ✅ OPTIMIZED FOR THOUSANDS: Increased default scroll rounds to collect more tweets per account
       const scrollRounds = Math.max(
         2,
-        Number.parseInt(process.env.VI_SCRAPER_SCROLL_ROUNDS || '5', 10)
+        Number.parseInt(process.env.VI_SCRAPER_SCROLL_ROUNDS || '15', 10) // Increased from 5 to 15 (3x more tweets)
       );
       for (let i = 0; i < scrollRounds; i++) {
         await page.evaluate(() => window.scrollBy(0, window.innerHeight));

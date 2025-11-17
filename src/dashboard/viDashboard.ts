@@ -143,23 +143,94 @@ async function getTierBreakdown(supabase: any) {
 }
 
 async function getTopicBreakdown(supabase: any) {
-  const { data, error } = await supabase
+  // ✅ FIX: Use manual join instead of Supabase relationship join
+  // This works even if the foreign key relationship isn't recognized by Supabase schema cache
+  
+  try {
+    // Try the relationship join first (faster if it works)
+    const { data: relationshipData, error: relationshipError } = await supabase
+      .from('vi_content_classification')
+      .select(`
+        topic,
+        tweet_id,
+        vi_collected_tweets!inner(views, likes, engagement_rate)
+      `)
+      .gte('topic_confidence', 0.6)
+      .gt('vi_collected_tweets.views', 0)
+      .limit(1000);
+
+    if (!relationshipError && relationshipData && relationshipData.length > 0) {
+      // Relationship join worked, process normally
+      const byTopic: Record<string, { count: number; avgViews: number; avgLikes: number; avgER: number }> = {};
+      
+      relationshipData.forEach((c: any) => {
+        const tweet = c.vi_collected_tweets;
+        if (!tweet) return;
+        
+        const topic = c.topic || 'unknown';
+        if (!byTopic[topic]) {
+          byTopic[topic] = { count: 0, avgViews: 0, avgLikes: 0, avgER: 0 };
+        }
+        byTopic[topic].count++;
+        byTopic[topic].avgViews += tweet.views || 0;
+        byTopic[topic].avgLikes += tweet.likes || 0;
+        byTopic[topic].avgER += tweet.engagement_rate || 0;
+      });
+
+      return Object.entries(byTopic).map(([topic, stats]) => ({
+        topic,
+        count: stats.count,
+        avgViews: Math.round(stats.avgViews / stats.count),
+        avgLikes: Math.round(stats.avgLikes / stats.count),
+        avgER: (stats.avgER / stats.count) * 100
+      })).sort((a, b) => b.count - a.count).slice(0, 15);
+    }
+  } catch (relationshipJoinError) {
+    // Fall through to manual join
+    console.warn('[VI_DASHBOARD] Relationship join failed, using manual join:', relationshipJoinError);
+  }
+
+  // ✅ FALLBACK: Manual join using two separate queries
+  // Get classifications
+  const { data: classifications, error: classError } = await supabase
     .from('vi_content_classification')
-    .select(`
-      topic,
-      vi_collected_tweets!inner(views, likes, engagement_rate)
-    `)
+    .select('tweet_id, topic')
     .gte('topic_confidence', 0.6)
-    .gt('vi_collected_tweets.views', 0)
     .limit(1000);
 
-  if (error) throw error;
+  if (classError) {
+    console.error('[VI_DASHBOARD] Failed to fetch classifications:', classError);
+    return [];
+  }
 
+  if (!classifications || classifications.length === 0) {
+    return [];
+  }
+
+  // Get tweet IDs
+  const tweetIds = classifications.map(c => c.tweet_id).filter(Boolean);
+
+  // Get tweets with metrics
+  const { data: tweets, error: tweetsError } = await supabase
+    .from('vi_collected_tweets')
+    .select('tweet_id, views, likes, engagement_rate')
+    .in('tweet_id', tweetIds)
+    .gt('views', 0);
+
+  if (tweetsError) {
+    console.error('[VI_DASHBOARD] Failed to fetch tweets:', tweetsError);
+    return [];
+  }
+
+  // Create lookup map
+  const tweetMap = new Map<string, any>((tweets || []).map((t: any) => [t.tweet_id, t]));
+
+  // Combine data
   const byTopic: Record<string, { count: number; avgViews: number; avgLikes: number; avgER: number }> = {};
   
-  (data || []).forEach((c: any) => {
-    const tweet = c.vi_collected_tweets;
-    if (!tweet) return;
+  classifications.forEach((c: any) => {
+    const tweet = tweetMap.get(c.tweet_id) as any;
+    if (!tweet || !tweet.views) return;
     
     const topic = c.topic || 'unknown';
     if (!byTopic[topic]) {
