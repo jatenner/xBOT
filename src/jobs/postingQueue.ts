@@ -657,8 +657,30 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       const retryCount = (threadData.features as any)?.retry_count || 0;
       
       // 🔥 MAX RETRY LIMIT: Prevent infinite thread retries
+      // BUT: Check if already posted first (database save might have failed)
       const MAX_THREAD_RETRIES = 3;
       if (retryCount >= MAX_THREAD_RETRIES) {
+        // 🚨 CRITICAL: Check if post is already on Twitter before marking as failed
+        const { data: alreadyPosted } = await supabase
+          .from('posted_decisions')
+          .select('tweet_id')
+          .eq('decision_id', decision.id)
+          .single();
+        
+        if (alreadyPosted) {
+          console.log(`${logPrefix} ✅ Thread already posted as ${alreadyPosted.tweet_id} - database just needs sync`);
+          // Mark as posted and return (don't throw error)
+          await supabase
+            .from('content_metadata')
+            .update({
+              status: 'posted',
+              posted_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('decision_id', decision.id);
+          return; // Exit early - post is already live
+        }
+        
         console.error(`${logPrefix} ❌ Thread ${decision.id} exceeded max retries (${retryCount}/${MAX_THREAD_RETRIES})`);
         throw new Error(`Thread exceeded maximum retry limit (${MAX_THREAD_RETRIES} attempts)`);
       }
@@ -1090,6 +1112,23 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     console.error(`[POSTING_QUEUE] ⚠️ Post-posting operation failed: ${error.message}`);
     if (postingSucceeded && tweetId) {
       console.error(`[POSTING_QUEUE] ✅ But tweet ${tweetId} is LIVE - this is not a failure!`);
+      // 🚨 CRITICAL: If tweet is live, mark as posted even if database save failed
+      try {
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        await supabase
+          .from('content_metadata')
+          .update({
+            status: 'posted',
+            tweet_id: tweetId,
+            posted_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('decision_id', decision.id);
+        console.log(`[POSTING_QUEUE] ✅ Status synced to 'posted' for live tweet ${tweetId}`);
+      } catch (syncError: any) {
+        console.error(`[POSTING_QUEUE] 💥 Failed to sync status for live tweet: ${syncError.message}`);
+      }
     }
     // DON'T re-throw - tweet might be live!
   }
