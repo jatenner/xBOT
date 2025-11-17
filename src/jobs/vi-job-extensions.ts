@@ -186,9 +186,13 @@ export async function runVIAccountDiscovery(): Promise<void> {
     return; // Silently skip if disabled
   }
   
-  // Only run on Sundays (weekly)
-  const isSunday = new Date().getDay() === 0;
-  if (!isSunday) {
+  // ✅ ENHANCED: Run every 3 days (was weekly on Sunday only) for faster diversity growth
+  // Run on: Sunday, Wednesday, Saturday (every 3 days)
+  const dayOfWeek = new Date().getDay();
+  const shouldRun = dayOfWeek === 0 || dayOfWeek === 3 || dayOfWeek === 6; // Sun, Wed, Sat
+  
+  if (!shouldRun) {
+    log({ op: 'vi_discovery_skipped', day: dayOfWeek });
     return; // Skip on other days
   }
   

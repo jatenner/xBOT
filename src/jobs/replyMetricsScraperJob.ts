@@ -14,6 +14,8 @@
 import { getSupabaseClient } from '../db';
 import { BulletproofTwitterScraper } from '../scrapers/bulletproofTwitterScraper';
 import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
+import { validateTweetIdForScraping } from './metricsScraperValidation';
+import { IDValidator } from '../validation/idValidator';
 
 const MAX_SCRAPE_RETRIES = 5;
 
@@ -39,7 +41,17 @@ export async function replyMetricsScraperJob(): Promise<void> {
       .gte('posted_at', postedAfterIso)
       .or('actual_impressions.is.null,actual_impressions.eq.0')  // 🔥 FIX: Focus on missing metrics
       .order('posted_at', { ascending: false })
-      .limit(30); // 🔥 INCREASED: Process more replies per run
+      .limit(50); // 🔥 INCREASED: Process more replies per run
+    
+    // 🔒 VALIDATION: Filter out replies with invalid tweet IDs
+    const validReplies = (missingMetricsReplies || []).filter((reply: any) => {
+      const validation = validateTweetIdForScraping(reply.tweet_id);
+      if (!validation.valid) {
+        console.warn(`[REPLY_METRICS] ⚠️ Skipping reply with invalid tweet_id: ${reply.decision_id} (${validation.error})`);
+        return false;
+      }
+      return true;
+    });
     
     // PRIORITY 2: Recent replies (last 24h) that might need refresh
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -51,10 +63,20 @@ export async function replyMetricsScraperJob(): Promise<void> {
       .not('tweet_id', 'is', null)
       .gte('posted_at', oneDayAgo.toISOString())
       .order('posted_at', { ascending: false })
-      .limit(10); // Refresh recent replies even if they have metrics
+      .limit(20); // Refresh recent replies even if they have metrics
+    
+    // 🔒 VALIDATION: Filter out replies with invalid tweet IDs
+    const validRecentReplies = (recentReplies || []).filter((reply: any) => {
+      const validation = validateTweetIdForScraping(reply.tweet_id);
+      if (!validation.valid) {
+        console.warn(`[REPLY_METRICS] ⚠️ Skipping recent reply with invalid tweet_id: ${reply.decision_id} (${validation.error})`);
+        return false;
+      }
+      return true;
+    });
     
     // Combine and deduplicate
-    const allReplies = [...(missingMetricsReplies || []), ...(recentReplies || [])];
+    const allReplies = [...validReplies, ...validRecentReplies];
     const seen = new Set<string>();
     const recentRepliesDeduped = allReplies.filter(reply => {
       if (seen.has(reply.decision_id)) return false;
@@ -322,6 +344,7 @@ export async function replyMetricsScraperJob(): Promise<void> {
             successFeatures.tweet_url = canonicalTweetUrl;
           }
 
+          // Update content_metadata so dashboards & analytics stay in sync
           const { error: metaError } = await supabase
             .from('content_metadata')
             .update({
@@ -340,6 +363,26 @@ export async function replyMetricsScraperJob(): Promise<void> {
           } else {
             scrapedCount++;
             console.log(`[REPLY_METRICS]   ✅ Updated content_metadata for ${reply.tweet_id}: ${metrics.views || 0} views, ${metrics.likes || 0} likes`);
+          }
+          
+          // 🔥 CRITICAL: Also write to tweet_metrics table (dashboard checks this!)
+          const { error: tweetMetricsError } = await supabase
+            .from('tweet_metrics')
+            .upsert({
+              tweet_id: reply.tweet_id,
+              impressions_count: metrics.views ?? null,
+              likes_count: metrics.likes ?? null,
+              retweets_count: metrics.retweets ?? null,
+              replies_count: metrics.replies ?? null,
+              updated_at: new Date().toISOString()
+            }, {
+              onConflict: 'tweet_id'
+            });
+          
+          if (tweetMetricsError) {
+            console.warn(`[REPLY_METRICS]   ⚠️ Failed to update tweet_metrics for ${reply.tweet_id}:`, tweetMetricsError.message);
+          } else {
+            console.log(`[REPLY_METRICS]   ✅ Updated tweet_metrics for ${reply.tweet_id}`);
           }
           
           // Small delay between scrapes

@@ -10,6 +10,7 @@ import { getSupabaseClient } from '../db';
 import { BulletproofTwitterScraper } from '../scrapers/bulletproofTwitterScraper';
 import { ScrapingOrchestrator } from '../metrics/scrapingOrchestrator';
 import { Sentry } from '../observability/instrument';
+import { validatePostsForScraping, validateTweetIdForScraping } from './metricsScraperValidation';
 
 const parseMetricValue = (value: unknown): number | null => {
   if (value === null || value === undefined) {
@@ -96,10 +97,25 @@ export async function metricsScraperJob(): Promise<void> {
       .limit(3); // Historical tweets with missing metrics
     
     // Combine: prioritize missing metrics, then recent refreshes, then historical
-    // Deduplicate by decision_id to avoid processing same post twice
-    const allPosts = [...(missingMetricsPosts || []), ...(recentPosts || []), ...(historicalPosts || [])];
+    const allPostsRaw = [...(missingMetricsPosts || []), ...(recentPosts || []), ...(historicalPosts || [])];
+    
+    // 🔒 VALIDATION: Filter out posts with invalid tweet IDs before processing
+    const validatedPostIds = new Set<string>();
+    const filteredPosts = allPostsRaw.filter((post: any) => {
+      // Validate tweet ID
+      const validation = validateTweetIdForScraping(post.tweet_id);
+      if (!validation.valid) {
+        console.warn(`[METRICS_SCRAPER] ⚠️ Skipping post with invalid tweet_id: ${post.decision_id} (${validation.error})`);
+        return false;
+      }
+      
+      validatedPostIds.add(post.decision_id);
+      return true;
+    });
+    
+    // Deduplicate by decision_id
     const seen = new Set<string>();
-    const posts = allPosts.filter(post => {
+    const posts = filteredPosts.filter((post: any) => {
       if (seen.has(post.decision_id)) return false;
       seen.add(post.decision_id);
       return true;

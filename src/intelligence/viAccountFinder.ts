@@ -67,9 +67,16 @@ export class VIAccountFinder {
   private async findViaReplyNetwork(): Promise<number> {
     log({ op: 'vi_find_via_replies' });
     
-    const bigAccounts = ['PeterAttiaMD', 'hubermanlab', 'foundmyfitness'];
+    // ✅ EXPANDED: 10 big accounts (was 3) for better diversity
+    const bigAccounts = [
+      'PeterAttiaMD', 'hubermanlab', 'foundmyfitness',
+      'RhondaPatrick', 'DrMarkHyman', 'davidasinclair',
+      'bengreenfield', 'DrAndyGalpin', 'MatthewWalkerPhD',
+      'DrSaraGottfried'
+    ];
     let discovered = 0;
-    const sampleSize = Math.max(5, Number(process.env.VI_DISCOVERY_REPLY_LIMIT || '15'));
+    // ✅ INCREASED: 30 samples (was 15) for 2x more diversity
+    const sampleSize = Math.max(10, Number(process.env.VI_DISCOVERY_REPLY_LIMIT || '30'));
     const perEvaluationDelay = Math.max(500, Number(process.env.VI_DISCOVERY_ACCOUNT_DELAY_MS || '1500'));
     const evaluated = new Set<string>();
     
@@ -155,7 +162,8 @@ export class VIAccountFinder {
     }
     
     let discovered = 0;
-    const sampleSize = Math.max(5, Number(process.env.VI_DISCOVERY_FOLLOWING_LIMIT || '12'));
+    // ✅ INCREASED: 25 samples (was 12) for 2x more diversity
+    const sampleSize = Math.max(10, Number(process.env.VI_DISCOVERY_FOLLOWING_LIMIT || '25'));
     const perEvaluationDelay = Math.max(500, Number(process.env.VI_DISCOVERY_ACCOUNT_DELAY_MS || '1500'));
     const evaluated = new Set<string>();
     
@@ -227,7 +235,8 @@ export class VIAccountFinder {
       ? process.env.VI_DISCOVERY_KEYWORDS.split(',').map(k => k.trim()).filter(Boolean)
       : ['longevity tips', 'biohacking', 'sleep optimization', 'hormone balance', 'functional medicine'];
     let discovered = 0;
-    const sampleSize = Math.max(3, Number(process.env.VI_DISCOVERY_KEYWORD_LIMIT || '8'));
+    // ✅ INCREASED: 15 samples (was 8) for 2x more diversity
+    const sampleSize = Math.max(5, Number(process.env.VI_DISCOVERY_KEYWORD_LIMIT || '15'));
     const perEvaluationDelay = Math.max(500, Number(process.env.VI_DISCOVERY_ACCOUNT_DELAY_MS || '1500'));
     const evaluated = new Set<string>();
     
