@@ -388,16 +388,19 @@ export class JobManager {
     // Scrapes hardcoded health Twitter accounts for niche-specific format patterns
     // Complements viral scraper (general patterns) with health-specific insights
     // OPTIMIZED: 2 hours = 12 runs/day = ~12,600 tweets/day (was 8 hours = 3,150/day)
+    // 🔥 CRITICAL: VI Collection needs to run continuously until 10k-100k tweets collected
+    // Reduced initial delay to 10 minutes (was 260 min) so it starts quickly
     this.scheduleStaggeredJob(
       'peer_scraper',
       async () => {
+        // VI collection is critical - ensure it runs with retries
         await this.safeExecute('peer_scraper', async () => {
           const { peerScraperJob } = await import('./peerScraperJob');
           await peerScraperJob();
         });
       },
       120 * MINUTE, // Every 2 hours (MAXIMIZED: 12 runs/day for maximum collection)
-      260 * MINUTE  // Offset ~4.3 hours (spread out from viral scraper)
+      10 * MINUTE   // 🔥 REDUCED: Start after 10 minutes (was 260 min = 4.3 hours)
     );
 
     // Account Discovery - every 90 min, offset 25 min (OPTIMIZED: reduced from 60min)
@@ -1042,7 +1045,8 @@ export class JobManager {
    * Non-critical jobs fail fast after 1 attempt
    */
   private async safeExecute(jobName: string, jobFn: () => Promise<void>): Promise<void> {
-    const isCritical = jobName === 'plan' || jobName === 'posting';
+    // 🔥 VI Collection is critical - treat peer_scraper as critical for continuous collection
+    const isCritical = jobName === 'plan' || jobName === 'posting' || jobName === 'peer_scraper';
     const maxRetries = isCritical ? 3 : 1;
     
     // 🧠 MEMORY CHECK: Ensure we have enough memory before starting job
@@ -1221,7 +1225,7 @@ export class JobManager {
   /**
    * Force run a specific job (for testing/manual trigger)
    */
-  public async runJobNow(jobName: 'plan' | 'reply' | 'reply_posting' | 'posting' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn' | 'trainPredictor' | 'account_discovery' | 'metrics_scraper' | 'reply_metrics_scraper' | 'mega_viral_harvester'): Promise<void> {
+  public async runJobNow(jobName: 'plan' | 'reply' | 'reply_posting' | 'posting' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn' | 'trainPredictor' | 'account_discovery' | 'metrics_scraper' | 'reply_metrics_scraper' | 'mega_viral_harvester' | 'peer_scraper'): Promise<void> {
     console.log(`🔄 JOB_MANAGER: Force running ${jobName} job...`);
     
     switch (jobName) {
@@ -1317,6 +1321,13 @@ export class JobManager {
         await this.safeExecute('mega_viral_harvester', async () => {
           const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
           await replyOpportunityHarvester();
+        });
+        break;
+      
+      case 'peer_scraper':
+        await this.safeExecute('peer_scraper', async () => {
+          const { peerScraperJob } = await import('./peerScraperJob');
+          await peerScraperJob();
         });
         break;
     }

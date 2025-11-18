@@ -94,6 +94,29 @@ async function getCollectionStats(supabase: any) {
     .select('*', { count: 'exact', head: true })
     .eq('analyzed', true);
 
+  // 🔥 NEW: Tweets collected in last 4 hours (critical metric)
+  const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+  const { count: recent4h, data: recent4hData } = await supabase
+    .from('vi_collected_tweets')
+    .select('scraped_at', { count: 'exact' })
+    .gte('scraped_at', fourHoursAgo)
+    .order('scraped_at', { ascending: false });
+
+  // Get last collection time
+  const { data: lastCollection } = await supabase
+    .from('vi_collected_tweets')
+    .select('scraped_at')
+    .order('scraped_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  // Get last 24 hours for rate calculation
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count: recent24h } = await supabase
+    .from('vi_collected_tweets')
+    .select('*', { count: 'exact', head: true })
+    .gte('scraped_at', twentyFourHoursAgo);
+
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const { count: recent } = await supabase
     .from('vi_collected_tweets')
@@ -117,12 +140,29 @@ async function getCollectionStats(supabase: any) {
     .select('*', { count: 'exact', head: true })
     .eq('is_viral', true);
 
+  // Calculate hours since last collection
+  let hoursSinceLastCollection: number | null = null;
+  if (lastCollection?.scraped_at) {
+    const lastCollectionTime = new Date(lastCollection.scraped_at);
+    hoursSinceLastCollection = Math.round((Date.now() - lastCollectionTime.getTime()) / (1000 * 60 * 60) * 10) / 10;
+  }
+
+  // Calculate collection rate (tweets per hour)
+  const collectionRate4h = recent4h ? recent4h / 4 : 0; // tweets per hour
+  const collectionRate24h = recent24h ? recent24h / 24 : 0;
+
   return {
     total: total || 0,
     withViews: withViews || 0,
     classified: classified || 0,
     analyzed: analyzed || 0,
     recent7d: recent || 0,
+    recent24h: recent24h || 0,
+    recent4h: recent4h || 0, // 🔥 NEW: Critical metric
+    lastCollectionTime: lastCollection?.scraped_at || null,
+    hoursSinceLastCollection: hoursSinceLastCollection,
+    collectionRate4h: collectionRate4h, // tweets/hour in last 4h
+    collectionRate24h: collectionRate24h, // tweets/hour in last 24h
     activeAccounts: (accounts || []).length,
     successful: successful || 0,
     viral: viral || 0,
@@ -989,6 +1029,14 @@ function generateEnhancedHTML(data: any): string {
         <div class="header">
             <h1>🔍 Visual Intelligence Dashboard</h1>
             <p>Teaching the AI the language of Twitter through ${collectionStats.total.toLocaleString()} analyzed tweets</p>
+            ${collectionStats.hoursSinceLastCollection !== null ? `
+            <div style="margin-top: 15px; padding: 12px; background: ${collectionStats.hoursSinceLastCollection <= 2 ? '#d1fae5' : collectionStats.hoursSinceLastCollection <= 6 ? '#fef3c7' : '#fee2e2'}; border-radius: 8px; display: inline-block; border: 2px solid ${collectionStats.hoursSinceLastCollection <= 2 ? '#10b981' : collectionStats.hoursSinceLastCollection <= 6 ? '#f59e0b' : '#ef4444'};">
+                <strong>Collection Status:</strong> 
+                ${collectionStats.hoursSinceLastCollection <= 2 ? '✅ Active' : collectionStats.hoursSinceLastCollection <= 6 ? '⚠️ Slowing' : '❌ Stalled'} 
+                • Last collection: ${collectionStats.hoursSinceLastCollection < 0.1 ? '< 6 minutes ago' : collectionStats.hoursSinceLastCollection < 1 ? `${Math.round(collectionStats.hoursSinceLastCollection * 60)} minutes ago` : `${collectionStats.hoursSinceLastCollection.toFixed(1)} hours ago`}
+                ${collectionStats.recent4h > 0 ? `• Last 4h: ${collectionStats.recent4h.toLocaleString()} tweets (${Math.round(collectionStats.collectionRate4h)}/hour)` : '• No tweets in last 4 hours'}
+            </div>
+            ` : ''}
         </div>
 
         <div class="nav-tabs">
@@ -1027,10 +1075,27 @@ function generateEnhancedHTML(data: any): string {
                 <div class="stat-sub">${collectionStats.analyzedPercent}% complete</div>
             </div>
             <div class="stat-card">
+                <div class="stat-label">Last 4 Hours</div>
+                <div class="stat-value">${collectionStats.recent4h.toLocaleString()}</div>
+                <div class="stat-sub">${collectionStats.recent4h > 0 ? `~${Math.round(collectionStats.collectionRate4h)}/hour` : '0 tweets'}</div>
+            </div>
+            <div class="stat-card">
                 <div class="stat-label">Last 7 Days</div>
                 <div class="stat-value">${collectionStats.recent7d.toLocaleString()}</div>
                 <div class="stat-sub">~${Math.round(collectionStats.recent7d / 7)}/day</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-label">Last 24 Hours</div>
+                <div class="stat-value">${collectionStats.recent24h.toLocaleString()}</div>
+                <div class="stat-sub">${collectionStats.recent24h > 0 ? `~${Math.round(collectionStats.collectionRate24h)}/hour` : '0 tweets'}</div>
+            </div>
+            ${collectionStats.hoursSinceLastCollection !== null ? `
+            <div class="stat-card" style="background: ${collectionStats.hoursSinceLastCollection > 6 ? '#fee' : collectionStats.hoursSinceLastCollection > 3 ? '#ffe' : '#efe'}">
+                <div class="stat-label">Last Collection</div>
+                <div class="stat-value">${collectionStats.hoursSinceLastCollection < 0.1 ? '< 6min' : collectionStats.hoursSinceLastCollection < 1 ? `${Math.round(collectionStats.hoursSinceLastCollection * 60)}m ago` : `${collectionStats.hoursSinceLastCollection.toFixed(1)}h ago`}</div>
+                <div class="stat-sub">${collectionStats.lastCollectionTime ? new Date(collectionStats.lastCollectionTime).toLocaleString() : 'Never'}</div>
+            </div>
+            ` : ''}
         </div>
 
         <!-- Learning Progress -->
