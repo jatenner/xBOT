@@ -98,7 +98,7 @@ Apply these formulas naturally within your generator's personality.`;
 /**
  * Get all available viral formulas (for reference)
  */
-export function getAllViralFormulas(): string {
-  return getViralFormulasSection();
+export async function getAllViralFormulas(): Promise<string> {
+  return await getViralFormulasSection();
 }
 

@@ -34,7 +34,9 @@ export interface LearnedViralFormula {
 
 export class DataDrivenViralFormulas {
   private static instance: DataDrivenViralFormulas;
-  private supabase = getSupabaseClient();
+  private getSupabase() {
+    return getSupabaseClient();
+  }
   private cache: LearnedViralFormula[] = [];
   private cacheExpiry: Date | null = null;
   private readonly CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -98,7 +100,8 @@ export class DataDrivenViralFormulas {
 
     try {
       // Get posts with high engagement (2%+ engagement rate OR 5K+ views)
-      const { data: successfulPosts, error } = await this.supabase
+      const supabase = this.getSupabase();
+      const { data: successfulPosts, error } = await supabase
         .from('content_metadata')
         .select(`
           decision_id,
@@ -143,7 +146,8 @@ export class DataDrivenViralFormulas {
 
     try {
       // Get viral replies from reply_metrics table
-      const { data: viralReplies, error } = await this.supabase
+      const supabase = this.getSupabase();
+      const { data: viralReplies, error } = await supabase
         .from('reply_metrics')
         .select(`
           reply_id,
@@ -185,7 +189,8 @@ export class DataDrivenViralFormulas {
 
     try {
       // Get high-performing tweets analyzed by VI
-      const { data: viTweets, error } = await this.supabase
+      const supabase = this.getSupabase();
+      const { data: viTweets, error } = await supabase
         .from('vi_tweets')
         .select(`
           tweet_id,
@@ -225,7 +230,8 @@ export class DataDrivenViralFormulas {
 
     try {
       // Get high-performing competitor posts
-      const { data: competitorPosts, error } = await this.supabase
+      const supabase = this.getSupabase();
+      const { data: competitorPosts, error } = await supabase
         .from('peer_posts')
         .select(`
           tweet_id,
@@ -262,7 +268,7 @@ export class DataDrivenViralFormulas {
    */
   private async extractFormulasFromPosts(
     posts: any[],
-    source: 'own_posts'
+    source: 'own_posts' | 'competitor_analysis'
   ): Promise<LearnedViralFormula[]> {
     const { createBudgetedChatCompletion } = await import('../services/openaiBudgetedClient');
 
