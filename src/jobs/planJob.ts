@@ -77,19 +77,13 @@ async function generateRealContent(): Promise<void> {
   }
   
   // ═══════════════════════════════════════════════════════════
-  // 🎯 BATCH GENERATION: Generate 1-2 posts per run (strict 2/hour limit)
+  // 🎯 BATCH GENERATION: Generate 1 post per run (strict 2/hour limit)
   // ═══════════════════════════════════════════════════════════
-  // CRITICAL: Generate 1-2 posts max to prevent over-posting
-  // - Base: 1 post per run (safer, prevents over-posting)
-  // - Buffer: 2 posts if queue is very low (but rate limits enforce 2/hour max)
-  // - Posting queue respects 2/hour limit regardless of what's generated
-  const queueDepth = await getQueueDepth();
-  const hasBuffer = queueDepth < 2; // Only buffer if queue is very low
-  const numToGenerate = hasBuffer ? 2 : 1; // Generate 1-2 max (rate limits enforce 2/hour)
-  
-  if (hasBuffer) {
-    console.log('🎲 Generation buffer activated: Creating 3 posts this run');
-  }
+  // CRITICAL: Generate 1 post per run to prevent over-posting
+  // - Rate limits enforce 2/hour max regardless of what's generated
+  // - Plan job runs every 2 hours, so 1 post per run = ~12 posts/day max
+  // - Posting queue will enforce strict 2/hour limit
+  const numToGenerate = 1; // Generate 1 post per run (rate limits enforce 2/hour)
   
   log({ op: 'generate_real', num_to_generate: numToGenerate, target_rate: '2/hour' });
   
