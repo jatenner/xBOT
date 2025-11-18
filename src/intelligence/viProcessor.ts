@@ -59,8 +59,8 @@ export class VIProcessor {
     
     log({ op: 'vi_classifier_processing', count: tweets.length });
     
-    // Process in batches (10 at a time to avoid overwhelming OpenAI)
-    const BATCH_SIZE = 10;
+    // ✅ OPTIMIZED: Process in batches (20 at a time for better throughput)
+    const BATCH_SIZE = 20; // Increased from 10 to 20
     let classified = 0;
     
     for (let i = 0; i < tweets.length; i += BATCH_SIZE) {
@@ -71,8 +71,8 @@ export class VIProcessor {
           await this.classifyTweet(tweet);
           classified++;
           
-          // Small delay between OpenAI calls
-          await this.sleep(500);
+          // ✅ OPTIMIZED: Reduced delay from 500ms to 100ms (OpenAI has built-in rate limits)
+          await this.sleep(100); // Reduced from 500ms to 100ms
           
         } catch (error: any) {
           log({ op: 'vi_classify_error', tweet_id: tweet.tweet_id, error: error.message });
@@ -84,17 +84,18 @@ export class VIProcessor {
   }
   
   /**
-   * Get unclassified tweets (max 100 per run)
+   * Get unclassified tweets (max 500 per run - OPTIMIZED for faster analysis)
    */
   private async getUnclassified(): Promise<any[]> {
     const tweets: any[] = [];
     
+    // ✅ OPTIMIZED: Increased from 50 to 250 per table (500 total) for 5x faster analysis
     // From vi_collected_tweets
     const { data: collected } = await this.supabase
       .from('vi_collected_tweets')
       .select('*')
       .eq('classified', false)
-      .limit(50);
+      .limit(250); // Increased from 50 to 250
     
     if (collected) {
       tweets.push(...collected.map(t => ({ ...t, source_table: 'vi_collected_tweets' })));
@@ -105,7 +106,7 @@ export class VIProcessor {
       .from('vi_viral_unknowns')
       .select('*')
       .eq('classified', false)
-      .limit(50);
+      .limit(250); // Increased from 50 to 250
     
     if (viral) {
       tweets.push(...viral.map(t => ({ ...t, source_table: 'vi_viral_unknowns' })));

@@ -194,7 +194,14 @@ export class BulletproofThreadComposer {
     const pool = UnifiedBrowserPool.getInstance();
     
     // ✅ FIX: Use the same authenticated browser pool as single posts!
-    const page = await pool.acquirePage('thread_posting');
+    // Use HIGH PRIORITY (2) so thread posting always gets precedence over background jobs
+    const page = await pool.withContext(
+      'thread_posting',
+      async (context) => {
+        return await context.newPage();
+      },
+      2 // High priority (lower number) - ensures posting never waits for VI scraper
+    );
     
     try {
       // ✅ Navigate to Twitter compose page

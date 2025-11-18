@@ -151,7 +151,14 @@ export class UltimateTwitterPoster {
       const operationName = this.purpose === 'reply' ? 'reply_posting' : 'tweet_posting';
       console.log(`ULTIMATE_POSTER: Acquiring page from UnifiedBrowserPool (operation: ${operationName})...`);
       
-      this.page = await browserPool.acquirePage(operationName);
+      // Use HIGH PRIORITY (2) so posting always gets precedence over background jobs like VI scraping
+      this.page = await browserPool.withContext(
+        operationName,
+        async (context) => {
+          return await context.newPage();
+        },
+        2 // High priority (lower number) - ensures posting never waits for VI scraper
+      );
       
       // Set up error handling
       this.page.on('pageerror', (error) => {

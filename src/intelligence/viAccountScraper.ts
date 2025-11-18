@@ -59,10 +59,10 @@ export class VIAccountScraper {
       newTweets: 0
     };
     
-    // ✅ OPTIMIZED FOR THOUSANDS: Increased default concurrency for faster collection
+    // ✅ OPTIMIZED FOR 10K-50K TWEETS: Increased concurrency for faster collection (safe increase)
     const concurrency = Math.max(
       1,
-      Number.parseInt(process.env.VI_SCRAPER_CONCURRENCY || '12', 10) // Increased from 8 to 12
+      Number.parseInt(process.env.VI_SCRAPER_CONCURRENCY || '15', 10) // Increased from 12 to 15 (25% faster, still safe)
     );
     const queue = [...targets];
     const workerCount = Math.min(concurrency, queue.length);
@@ -116,8 +116,15 @@ export class VIAccountScraper {
     let page: Page | null = null;
     
     try {
-      // Acquire page from browser pool (uses existing session)
-      page = await this.browserPool.acquirePage(`vi_scrape_${target.username}`);
+      // Acquire page from browser pool with LOW PRIORITY (8) so posting (priority 5) gets precedence
+      // This ensures posting/replies never get blocked by VI scraping
+      page = await this.browserPool.withContext(
+        `vi_scrape_${target.username}`,
+        async (context) => {
+          return await context.newPage();
+        },
+        8 // Lower priority (higher number) - posting uses default 5
+      );
       
       // Navigate to user profile
       await page.goto(`https://twitter.com/${target.username}`, {
@@ -133,10 +140,10 @@ export class VIAccountScraper {
         await this.autoTierAccount(page, target);
       }
       
-      // ✅ OPTIMIZED FOR THOUSANDS: Increased default scroll rounds to collect more tweets per account
+      // ✅ OPTIMIZED FOR 10K-50K TWEETS: Increased scroll rounds to collect more tweets per account
       const scrollRounds = Math.max(
         2,
-        Number.parseInt(process.env.VI_SCRAPER_SCROLL_ROUNDS || '15', 10) // Increased from 5 to 15 (3x more tweets)
+        Number.parseInt(process.env.VI_SCRAPER_SCROLL_ROUNDS || '40', 10) // Increased from 15 to 40 (2.7x more tweets per account)
       );
       for (let i = 0; i < scrollRounds; i++) {
         await page.evaluate(() => window.scrollBy(0, window.innerHeight));
