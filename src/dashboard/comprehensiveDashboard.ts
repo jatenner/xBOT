@@ -113,11 +113,11 @@ export async function generateRepliesDashboard(): Promise<string> {
 async function getTopPerformingPosts(supabase: any) {
   const { data } = await supabase
     .from('content_metadata')
-    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, posted_at')
+    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, posted_at, decision_type')
     .eq('status', 'posted')
-    .eq('decision_type', 'single')
-    // ✅ REMOVED actual_likes filter - show ALL posts including brand new ones!
-    .order('actual_impressions', { ascending: false, nullsLast: true })
+    .in('decision_type', ['single', 'thread', 'reply'])
+    // ✅ FIX: Order by posted_at (most recent first) instead of impressions
+    .order('posted_at', { ascending: false })
     .limit(500); // Show ALL posts (up to 500)
 
   return data || [];

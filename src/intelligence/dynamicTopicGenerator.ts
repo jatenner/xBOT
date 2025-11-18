@@ -180,23 +180,32 @@ This creates BIAS toward medical/educational topics.
 Don't let training distribution determine output distribution.
 ACTIVELY sample from underrepresented clusters to achieve UNIFORM distribution:
 
-TARGET SAMPLING (Aim for these percentages):
-- Educational/Medical: 25% (REDUCE from natural 60%)
-- Cultural/Influencer: 25% (INCREASE from natural 5%)
-- Industry/Business: 20% (INCREASE from natural 5%)
-- Controversial/Challenge: 15% (INCREASE from natural <1%)
-- Media/Content: 15% (INCREASE from natural 10%)
+TARGET SAMPLING (Aim for these percentages - PRIORITIZE FUN/RELATABLE):
+- Cultural/Influencer: 30% (INCREASE - most relatable and fun!)
+- Controversial/Challenge: 25% (INCREASE - most interesting!)
+- Personal/Experiential: 20% (INCREASE - stories and experiments)
+- Industry/Business: 15% (INCREASE - interesting behind-the-scenes)
+- Educational/Medical: 10% (REDUCE - only when framed in fun/relatable way)
 
-EDUCATIONAL CLUSTER (25% target):
-- Biological mechanisms, physiological processes
-- Research findings, clinical evidence
-- Medical conditions, health optimization
+PERSONAL/EXPERIENTIAL CLUSTER (20% target - STORIES AND EXPERIMENTS):
+- Personal experiments - "I Tracked My Sleep for 30 Days - Here's What I Learned"
+- Real experiences - "What Happened When I Stopped Drinking Coffee"
+- Before/after stories - "How I Fixed My Energy in 2 Weeks"
+- Trial results - "I Tested 5 Sleep Supplements - Here's What Worked"
+- Personal discoveries - "The One Thing That Changed My Health"
 
-CULTURAL CLUSTER (25% target):
-- Influencer practices (Huberman, Attia, Bryan Johnson, Wim Hof)
-- Book movements (Atomic Habits impact, Why We Sleep influence)
-- Social trends (biohacking communities, fitness movements)
-- Celebrity protocols (what's viral, what works)
+EDUCATIONAL CLUSTER (10% target - ONLY WHEN FUN/RELATABLE):
+- Frame scientific topics in relatable ways - "Why Your Body Does X" not "Biological Mechanism Y"
+- Make it interesting - "The Hidden Reason You're Always Tired" not "Cortisol Regulation"
+- Use everyday language - "Your Body's Energy System" not "Mitochondrial Function"
+
+CULTURAL CLUSTER (30% target - MOST RELATABLE AND FUN):
+- Influencer practices (Huberman, Attia, Bryan Johnson, Wim Hof) - "I Tried X's Protocol"
+- Book movements (Atomic Habits impact, Why We Sleep influence) - "The Book That Changed My Sleep"
+- Social trends (biohacking communities, fitness movements) - "Why Everyone's Doing X"
+- Celebrity protocols (what's viral, what works) - "The Trend That Actually Works"
+- Personal experiments - "I Tried X for 30 Days"
+- Viral health hacks - "The TikTok Trend That's Actually Legit"
 
 INDUSTRY CLUSTER (20% target):
 - Supplement industry (who profits, pricing models, marketing tactics)
@@ -204,11 +213,13 @@ INDUSTRY CLUSTER (20% target):
 - Medical system economics (conflicts of interest, business models)
 - Cost analysis (expensive vs cheap interventions)
 
-CONTROVERSIAL CLUSTER (15% target):
-- Mainstream misconceptions (accepted but wrong)
-- Suppressed information (what industry hides)
-- Contrarian positions (challenge health orthodoxy)
-- Unpopular truths (evidence vs popular belief)
+CONTROVERSIAL CLUSTER (25% target - MOST INTERESTING):
+- Mainstream misconceptions (accepted but wrong) - "Why Everyone's Wrong About X"
+- Suppressed information (what industry hides) - "What They Don't Want You to Know"
+- Contrarian positions (challenge health orthodoxy) - "The Unpopular Truth About X"
+- Unpopular truths (evidence vs popular belief) - "The Science They're Hiding"
+- Industry secrets - "Why Your Doctor Doesn't Tell You This"
+- Debunking myths - "The Supplement That's Actually a Scam"
 
 MEDIA CLUSTER (15% target):
 - Podcast discussions (Huberman, Attia, Ferriss episodes)
@@ -234,10 +245,10 @@ You can generate content about ANY aspect of health, wellness, fitness, nutritio
 
 **Mental & Brain Health (15+ subtopics):**
 - Cognitive: memory, focus, processing speed, brain fog, mental clarity
-- Neurological: neurotransmitters, neuroplasticity, BDNF, brain aging, dementia
+- Neurological: brain health, learning, brain aging, mental performance
 - Psychological: anxiety, depression, mood, emotional regulation, stress
 - Performance: flow state, productivity, creativity, learning, problem-solving
-- Sleep: REM, deep sleep, sleep cycles, insomnia, sleep quality, circadian rhythms
+- Sleep: sleep quality, insomnia, sleep cycles, rest, recovery
 
 **Nutrition & Diet (25+ subtopics):**
 - Macros: protein, fats, carbs, fiber, meal timing, fasting protocols
@@ -247,43 +258,68 @@ You can generate content about ANY aspect of health, wellness, fitness, nutritio
 - Hydration: electrolytes, water quality, hydration timing, dehydration effects
 
 **Fitness & Movement (20+ subtopics):**
-- Strength training: hypertrophy, progressive overload, muscle protein synthesis
-- Cardio: Zone 2, VO2max, HIIT, mitochondrial health, endurance
+- Strength training: building muscle, getting stronger, progressive training
+- Cardio: heart health, endurance training, aerobic fitness
 - Recovery: stretching, foam rolling, massage, cold/heat therapy, rest days
 - Athletic performance: explosiveness, power, speed, agility, coordination
-- Body composition: fat loss, muscle gain, recomposition, metabolism
+- Body composition: fat loss, muscle gain, body transformation, metabolism
 
 **Biohacking & Optimization (30+ subtopics):**
-- Supplements: nootropics, adaptogens, vitamins, minerals, peptides, herbs
-- Environmental: light exposure, temperature, air quality, EMF, nature exposure
-- Wearables: CGM, HRV, sleep tracking, fitness trackers, biomarker monitoring
-- Longevity: NAD+, rapamycin, metformin, senolytic, anti-aging protocols
+- Supplements: vitamins, minerals, herbs, natural boosters
+- Environmental: light exposure, temperature, air quality, nature exposure
+- Wearables: sleep tracking, fitness trackers, health monitoring
+- Longevity: anti-aging, life extension, healthy aging protocols
 - Recovery protocols: sauna, cold plunge, red light, compression, massage
 
 **Emerging Health Topics (15+ subtopics):**
-- Peptides: BPC-157, TB-500, growth hormone peptides
-- Psychedelics: psilocybin, microdosing, ketamine, MDMA therapy
-- Continuous monitoring: CGM, continuous ketone monitors, real-time biomarkers
-- Genetic optimization: APOE4, MTHFR, genetic testing, epigenetics
-- Functional medicine: root cause analysis, systems approach, personalized protocols
+- Peptides: recovery peptides, healing compounds, performance boosters
+- Psychedelics: microdosing, therapeutic use, mental health treatments
+- Continuous monitoring: blood sugar tracking, health monitoring, real-time data
+- Genetic optimization: genetic testing, personalized health, DNA insights
+- Functional medicine: root cause approach, personalized protocols, holistic health
 
 ⚠️ CRITICAL: Be TRULY diverse WITHIN health!
 - Don't default to sleep/circadian/psychedelics (explore ALL health domains!)
 - Cover the ENTIRE spectrum: hormones, gut health, supplements, recovery, etc.
-- Be specific: "BDNF" not "brain health", "HRV" not "heart health"
+- Be specific but RELATABLE: "Why Your Energy Crashes at 3pm" not "BDNF regulation"
 - Think: "What health topic does NO other account talk about?"
-- Explore obscure but fascinating health topics
+- Explore interesting health topics that normal people care about
+- Use everyday language: "heart rate variability" not "HRV", "brain health" not "BDNF"
 
-⚠️ ACCESSIBILITY: Use common, relatable language in topics:
-- Prefer everyday terms over pure scientific jargon
-- Think: "Cold Showers" not "Cryotherapy Protocol"
-- Think: "Sleep Better" not "Circadian Rhythm Entrainment"
-- Think: "Gut Health Reset" not "Microbiome Optimization"
-- Think: "This Molecule Your Body Stops Making" not "NAD+ Precursor Supplementation"
-- Still be specific and interesting, just more accessible
-- You CAN use technical terms, but frame them relatably
-- Example: "NAD+ (Your Cells' Energy Molecule)" ✅
-- Example: "Phosphatidylserine: The Overlooked Hero" ❌ (no context)
+🎯 FUN, RELATABLE, INTERESTING TOPICS - NOT BORING TECHNICAL TERMS!
+
+❌ AVOID: Boring technical/biological terms that nobody knows:
+- "Myostatin" ❌ (too technical, nobody knows what this is)
+- "Phosphatidylserine" ❌ (scientific jargon)
+- "BDNF upregulation" ❌ (too academic)
+- "Mitochondrial biogenesis" ❌ (sounds like a textbook)
+- "Hormonal cascade mechanisms" ❌ (boring science speak)
+- "Neurotransmitter modulation" ❌ (too technical)
+
+✅ PRIORITIZE: Fun, relatable, interesting topics people actually care about:
+- "Why Your Morning Coffee Is Ruining Your Sleep" ✅ (relatable, interesting)
+- "The 2-Minute Habit That Changed My Energy" ✅ (personal, actionable)
+- "What I Learned From Tracking My Sleep for 30 Days" ✅ (story, relatable)
+- "The Supplement Industry Doesn't Want You to Know This" ✅ (controversial, interesting)
+- "Why Everyone's Doing Cold Plunges Wrong" ✅ (trending, relatable)
+- "The Real Reason You're Always Tired (It's Not What You Think)" ✅ (hook, relatable)
+- "I Tried Bryan Johnson's Protocol for 2 Weeks - Here's What Happened" ✅ (personal, trending)
+- "The $50 Supplement That Actually Works (And Why It's Not Advertised)" ✅ (interesting, relatable)
+
+🎯 TOPIC SELECTION PRIORITY:
+1. **RELATABLE** - Things people experience daily (sleep, energy, mood, stress)
+2. **INTERESTING** - Surprising, counterintuitive, or controversial
+3. **FUN** - Entertaining, engaging, not dry/educational
+4. **TRENDING** - What's hot in health/wellness right now
+5. **PERSONAL** - Real experiences, stories, experiments
+
+⚠️ CRITICAL RULES:
+- If topic is technical (like "myostatin"), reframe it: "The Muscle Growth Hormone Nobody Talks About" ✅
+- If topic is scientific, make it relatable: "Why Your Body Stops Building Muscle After 30" ✅
+- Always ask: "Would a normal person care about this?" If no, reframe it
+- Prefer topics that spark curiosity, not topics that sound like a biology textbook
+- Use everyday language: "sleep better" not "circadian entrainment"
+- Make it interesting: "The Hidden Reason You're Tired" not "Cortisol Dysregulation"
 
 === PERSPECTIVES (Dimensions) ===
 
@@ -305,12 +341,22 @@ ${patternsText}
 
 === REQUIREMENTS ===
 
-1. **Be SPECIFIC** (exact protocols, measurements, mechanisms - not generic advice)
+1. **Be FUN & RELATABLE** (people should actually care and want to read this!)
 2. **Be INTERESTING** (counterintuitive, surprising, controversial, or novel)
-3. **Optimize for FOLLOWERS** (not just engagement)
-4. **Avoid POPULAR/OBVIOUS** topics unless you have a unique angle
-5. **EXPLORE THE UNEXPECTED** - don't default to common wellness topics
-6. **Include NUMBERS** or specific research when possible
+3. **Avoid BORING TECHNICAL TERMS** (no "myostatin", "phosphatidylserine", etc. - reframe them!)
+4. **Optimize for FOLLOWERS** (not just engagement - topics people want to follow for)
+5. **Use EVERYDAY LANGUAGE** (normal people should understand and relate)
+6. **PRIORITIZE STORIES & EXPERIMENTS** (personal experiences, trials, results)
+7. **Make it CURIOUS** (hook that makes people want to know more)
+8. **Include NUMBERS** or specific research when possible (but frame it relatably)
+
+🎯 BEFORE FINALIZING TOPIC, ASK:
+- Would a normal person (not a biohacker) find this interesting? ✅/❌
+- Is this fun to read about, or does it sound like a textbook? ✅/❌
+- Can I explain this to a friend without using scientific jargon? ✅/❌
+- Does this spark curiosity or sound boring? ✅/❌
+
+If any answer is ❌, REFRAME THE TOPIC to be more fun, relatable, and interesting!
 
 === RECENT TOPICS (Avoid for next ~20 posts, then fair game again) ===
 
@@ -339,13 +385,18 @@ Return JSON with:
 
     const user = `Generate a unique, engaging health/wellness/fitness topic that will get followers.
 
+IMPORTANT: Use RELATABLE, FUN language - not technical jargon!
+- "Why Your Energy Crashes at 3pm" ✅ not "Cortisol Dysregulation" ❌
+- "The Sleep Habit That Changed Everything" ✅ not "Circadian Entrainment" ❌
+- "I Tried Cold Plunges for 30 Days" ✅ not "Thermogenesis Protocol" ❌
+
 Explore the FULL spectrum of health - don't default to common topics like sleep or mental health.
-Cover: hormones, gut health, supplements, recovery, peptides, genetics, longevity protocols, etc.
+Cover: hormones, gut health, supplements, recovery, fitness, nutrition, etc.
 
 Use the high-performing patterns if relevant, or discover something new within health.
-Be creative, specific, and explore UNCOMMON health topics.
+Be creative, specific, and explore INTERESTING health topics that normal people care about.
 
-Think: "What fascinating health topic would make someone instantly follow this account?"`;
+Think: "What fascinating, relatable health topic would make someone instantly follow this account?"`;
 
 
     return { system, user };

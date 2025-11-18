@@ -158,11 +158,15 @@ MINIMAL/SPARSE (target 12%):
 - Hemingway-style: Short. Punchy. White space.
 - One-liners with extreme brevity
 - Breathing room, no density
+- SPACING: Maximum line breaks (3-5 breaks), lots of white space
+- Example: "Short.\n\nPunchy.\n\nImpact."
 
 DENSE/PACKED (target 12%):
 - Maximum info, minimum words
 - Numbers dominate: 40%↓ 2.5x↑ $200 3wks
 - Compressed data-heavy
+- SPACING: Zero line breaks, tight paragraphs, no white space
+- Example: "Sentence one. Sentence two. Sentence three." (all one block)
 
 UNCONVENTIONAL/CHAOTIC (target 12%):
 - Break expected flow, surprise structure
@@ -173,11 +177,15 @@ CONVERSATIONAL/NATURAL (target 12%):
 - How you'd actually explain verbally
 - Stream of consciousness
 - Informal flowing
+- SPACING: 1-2 strategic breaks, natural pauses
+- Example: "Hook sentence.\n\nSupporting detail with flow."
 
 AGGRESSIVE/URGENT (target 12%):
 - Commands: Do this. Not that. Now.
 - Imperative sentences, no fluff
 - Urgent pacing
+- SPACING: Zero breaks, compact, fast-paced
+- Example: "Do this. Not that. Now." (all one block)
 
 DATA-LED (target 12%):
 - Numbers first, words support
@@ -192,6 +200,8 @@ NARRATIVE/STORY (target 12%):
 ORGANIZED/CLEAN (target 12%):
 - Bullets, lists, clear hierarchy
 - Your DEFAULT - use LEAST often to compensate bias
+- SPACING: 2-3 breaks for structure, clear separation
+- Example: "Point one.\n\nPoint two.\n\nPoint three."
 
 QUESTION-DRIVEN (target 8%):
 - Cascade of questions

@@ -59,6 +59,9 @@ export interface GrowthIntelligencePackage {
   
   // 🆕 Recent posts from this specific generator (avoid self-repetition)
   recentPosts?: string[];
+  
+  // 🆕 Performance insights from actual posted content (data-driven patterns)
+  performanceInsights?: string[];
 }
 
 // Type alias for generators that accept growth intelligence
@@ -136,6 +139,20 @@ ${intelligence.discoveredPatterns.slice(0, 3).map(p => `• ${p.pattern}: ${Math
 `;
   }
   
+  // 🆕 Performance insights (data-driven patterns from actual results)
+  if (intelligence.performanceInsights && intelligence.performanceInsights.length > 0) {
+    contextString += `📊 PERFORMANCE INSIGHTS (From Your Actual Posted Content):
+${intelligence.performanceInsights.map(insight => `• ${insight}`).join('\n')}
+
+💡 USE THESE INSIGHTS:
+- These are patterns discovered from your ACTUAL performance data
+- Apply successful patterns intelligently - understand WHY they worked
+- Don't copy blindly - adapt these insights to this new content
+- Use this data to make better decisions, not as rigid rules
+
+`;
+  }
+  
   // Recent posts (avoid repetition)
   if (intelligence.recentPosts && intelligence.recentPosts.length > 0) {
     contextString += `
@@ -152,6 +169,22 @@ ${intelligence.recentPosts.slice(0, 5).map((post, i) => `${i + 1}. "${post.subst
 
 `;
   }
+  
+  // 🆕 RELATABLE LANGUAGE MANDATE (Fixes technical/boring content issue)
+  contextString += `🎯 CRITICAL: RELATABLE LANGUAGE MANDATE
+Even if the topic mentions a technical term (like "myostatin", "BDNF", "phosphatidylserine"), you MUST reframe it in relatable language:
+- "Myostatin" → "The hormone that limits muscle growth" or "Why your body stops building muscle"
+- "BDNF" → "Your brain's growth factor" or "The molecule that helps your brain grow"
+- "Phosphatidylserine" → "A brain supplement" or "The compound that helps memory"
+- "Cortisol dysregulation" → "Why your stress hormones are out of whack"
+- "Mitochondrial function" → "Your cells' energy system"
+- "HPA axis" → "Your stress response system"
+
+ALWAYS ask: "Would a normal person (not a biohacker) understand and care about this?" If no, reframe it.
+Make it FUN, RELATABLE, and INTERESTING - not like a biology textbook.
+The topic might be technical, but your CONTENT should be accessible and engaging.
+
+`;
   
   // Creativity mandate
   contextString += `🎨 CREATIVITY MANDATE:

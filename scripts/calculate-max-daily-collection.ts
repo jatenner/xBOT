@@ -140,3 +140,5 @@ async function calculateMaxDailyCollection() {
 
 calculateMaxDailyCollection();
 
+
+
