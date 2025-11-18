@@ -7,7 +7,7 @@
  * Used to inform post generation with trending context
  */
 
-import { supabaseClient } from '../db/supabaseClient';
+import { getSupabaseClient } from '../db';
 import { OpenAI } from 'openai';
 
 export interface TrendingTopic {
@@ -56,7 +56,8 @@ export class TrendingTopicExtractor {
       // Get recent viral tweets from reply_opportunities (last 24 hours)
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       
-      const { data: opportunities, error } = await supabaseClient
+      const supabase = getSupabaseClient();
+      const { data: opportunities, error } = await supabase
         .from('reply_opportunities')
         .select('tweet_content, like_count, reply_count, tier, tweet_posted_at')
         .gte('tweet_posted_at', twentyFourHoursAgo.toISOString())
