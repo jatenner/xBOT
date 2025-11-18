@@ -346,9 +346,47 @@ async function generateContentWithLLM() {
   await diversityEnforcer.getDiversitySummary();
   
   // STEP 1: Generate TOPIC (avoiding last 10)
-  const topicGenerator = getDynamicTopicGenerator();
-  const dynamicTopic = await topicGenerator.generateTopic();
-  const topic = dynamicTopic.topic; // Extract just the topic string
+  // 🎯 TRENDING TOPIC INTEGRATION: 35% of posts use trending topics from harvester
+  const useTrendingTopic = Math.random() < 0.35; // 35% chance
+  
+  let dynamicTopic;
+  let topic: string;
+  
+  if (useTrendingTopic) {
+    console.log('[PLAN_JOB] 🔥 Using trending topic from harvester data...');
+    try {
+      const { trendingTopicExtractor } = await import('../intelligence/trendingTopicExtractor');
+      const trendingTopic = await trendingTopicExtractor.getTopTrendingTopic();
+      
+      if (trendingTopic) {
+        console.log(`[PLAN_JOB] 📈 Trending topic: "${trendingTopic}"`);
+        // Use trending topic but still generate dynamic topic structure
+        const topicGenerator = getDynamicTopicGenerator();
+        dynamicTopic = await topicGenerator.generateTopic({
+          preferTrending: true,
+          recentTopics: [] // Will be populated by generator
+        });
+        // Override topic with trending one
+        topic = trendingTopic;
+        dynamicTopic.topic = trendingTopic;
+        dynamicTopic.viral_potential = Math.min(0.95, (dynamicTopic.viral_potential || 0.7) + 0.15); // Boost viral potential
+      } else {
+        console.log('[PLAN_JOB] ⚠️ No trending topics available, falling back to regular generation');
+        const topicGenerator = getDynamicTopicGenerator();
+        dynamicTopic = await topicGenerator.generateTopic();
+        topic = dynamicTopic.topic;
+      }
+    } catch (error: any) {
+      console.warn(`[PLAN_JOB] ⚠️ Trending topic extraction failed: ${error.message}, using regular generation`);
+      const topicGenerator = getDynamicTopicGenerator();
+      dynamicTopic = await topicGenerator.generateTopic();
+      topic = dynamicTopic.topic;
+    }
+  } else {
+    const topicGenerator = getDynamicTopicGenerator();
+    dynamicTopic = await topicGenerator.generateTopic();
+    topic = dynamicTopic.topic; // Extract just the topic string
+  }
   
   console.log(`\n🎯 TOPIC: "${topic}"`);
   console.log(`   Cluster sampled: ${dynamicTopic.cluster_sampled || 'unknown'}`);

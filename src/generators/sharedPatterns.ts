@@ -103,8 +103,8 @@ export const VOICE_GUIDELINES = `
 📏 CHARACTER LIMITS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-▸ Single tweets: 200-270 characters (safe margin from 280 limit)
-▸ Thread tweets: 180-250 characters each
+▸ Single tweets: MAXIMUM 200 characters (optimized for viral engagement)
+▸ Thread tweets: MAXIMUM 200 characters each
 ▸ If approaching limit, CUT WORDS, don't truncate mid-sentence
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -117,6 +117,36 @@ Every post MUST include at least ONE:
 ✓ Percentage/ratio: "40% increase", "2-3x better"
 ✓ Research reference: "Harvard tracked 4,500 people", "96-person study"
 ✓ Mechanism pathway: "Blue light → brain clock → serotonin"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔥 VIRAL FORMULAS (PROVEN ENGAGEMENT PATTERNS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use these structures to maximize engagement (same formulas that work in viral replies):
+
+CONTRARIAN EXPERT:
+"Actually, latest research from [Institution] shows the opposite: [surprising finding]. [Specific stat]% of people don't realize [insight]."
+
+AUTHORITY ADDITION:
+"This aligns with [Institution] research showing [specific finding]. The mechanism involves [brief explanation]. [Stat]% improvement in studies."
+
+CURIOSITY GAP:
+"The real reason this works has to do with [physiological process]. Most people miss the [specific detail] that makes all the difference."
+
+MYTH CORRECTION:
+"Common misconception. [Institution] studies actually show [correct information]. The [specific number]% difference is significant."
+
+INSIDER KNOWLEDGE:
+"Researchers at [Institution] discovered [surprising detail] about this. The [specific mechanism] explains why [insight]."
+
+CURIOSITY TRIGGERS (use these phrases):
+✅ "The real reason..."
+✅ "Most people don't realize..."
+✅ "Latest research shows..."
+✅ "The mechanism involves..."
+✅ "Researchers discovered..."
+
+Apply these formulas naturally within your generator's personality - don't force them, but use them when they fit.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✨ EXAMPLES OF EXCELLENT CONTENT
