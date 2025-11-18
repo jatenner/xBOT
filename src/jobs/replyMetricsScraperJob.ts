@@ -385,6 +385,53 @@ export async function replyMetricsScraperJob(): Promise<void> {
             console.log(`[REPLY_METRICS]   ✅ Updated tweet_metrics for ${reply.tweet_id}`);
           }
           
+          // 🔥 CRITICAL: Write to outcomes table (used by bandit algorithms and learning systems)
+          const { error: outcomesError } = await supabase
+            .from('outcomes')
+            .upsert({
+              decision_id: reply.decision_id,
+              tweet_id: reply.tweet_id,
+              likes: metrics.likes ?? null,
+              retweets: metrics.retweets ?? null,
+              replies: metrics.replies ?? null,
+              views: metrics.views ?? null,
+              impressions: metrics.views ?? null,
+              bookmarks: metrics.bookmarks ?? null,
+              engagement_rate: engagementRate,
+              collected_at: new Date().toISOString(),
+              data_source: 'reply_metrics_scraper',
+              simulated: false
+            }, {
+              onConflict: 'decision_id'
+            });
+          
+          if (outcomesError) {
+            console.warn(`[REPLY_METRICS]   ⚠️ Failed to update outcomes for ${reply.tweet_id}:`, outcomesError.message);
+          } else {
+            console.log(`[REPLY_METRICS]   ✅ Updated outcomes for ${reply.tweet_id}`);
+          }
+          
+          // 🔥 CRITICAL: Write to learning_posts table (used by 30+ learning systems)
+          const { error: learningError } = await supabase
+            .from('learning_posts')
+            .upsert({
+              tweet_id: reply.tweet_id,
+              likes_count: metrics.likes ?? 0,
+              retweets_count: metrics.retweets ?? 0,
+              replies_count: metrics.replies ?? 0,
+              bookmarks_count: metrics.bookmarks ?? 0,
+              impressions_count: metrics.views ?? 0,
+              updated_at: new Date().toISOString()
+            }, {
+              onConflict: 'tweet_id'
+            });
+          
+          if (learningError) {
+            console.warn(`[REPLY_METRICS]   ⚠️ Failed to update learning_posts for ${reply.tweet_id}:`, learningError.message);
+          } else {
+            console.log(`[REPLY_METRICS]   ✅ Updated learning_posts for ${reply.tweet_id}`);
+          }
+          
           // Small delay between scrapes
           await new Promise(resolve => setTimeout(resolve, 2000));
         
