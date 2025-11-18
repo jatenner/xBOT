@@ -77,14 +77,15 @@ async function generateRealContent(): Promise<void> {
   }
   
   // ═══════════════════════════════════════════════════════════
-  // 🎯 BATCH GENERATION: Generate 2-3 posts per run (buffer for failures)
+  // 🎯 BATCH GENERATION: Generate 1-2 posts per run (strict 2/hour limit)
   // ═══════════════════════════════════════════════════════════
-  // CRITICAL: Generate 2-3 posts to account for duplicates/failures
-  // - Base: 2 posts per run (meets 2/hour target)
-  // - Buffer: 30% chance of 3rd post (compensates for 10% failure rate)
+  // CRITICAL: Generate 1-2 posts max to prevent over-posting
+  // - Base: 1 post per run (safer, prevents over-posting)
+  // - Buffer: 2 posts if queue is very low (but rate limits enforce 2/hour max)
   // - Posting queue respects 2/hour limit regardless of what's generated
-  const hasBuffer = Math.random() < 0.3; // 30% chance of buffer post
-  const numToGenerate = hasBuffer ? 3 : 2;
+  const queueDepth = await getQueueDepth();
+  const hasBuffer = queueDepth < 2; // Only buffer if queue is very low
+  const numToGenerate = hasBuffer ? 2 : 1; // Generate 1-2 max (rate limits enforce 2/hour)
   
   if (hasBuffer) {
     console.log('🎲 Generation buffer activated: Creating 3 posts this run');
@@ -207,28 +208,30 @@ async function generateRealContent(): Promise<void> {
     return;
   }
   
-  console.log(`\n📅 SMART SCHEDULING (EXACTLY 2 posts/hour):`);
+  console.log(`\n📅 SMART SCHEDULING (MAX 2 tweets/hour):`);
   
   const now = Date.now();
   for (let i = 0; i < generatedPosts.length; i++) {
     const post = generatedPosts[i];
     
-    // ⚡ STRICT SCHEDULE: EXACTLY 30 minutes apart, no variation
-    // Post 1: +0min, Post 2: +30min, Post 3: +60min, Post 4: +90min
-    const baseDelay = i * 30; // Exactly 30-minute intervals
+    // 🎯 STRICT SCHEDULE: Max 2 tweets per hour = 30 minutes minimum spacing
+    // Post 1: +0min, Post 2: +30min (if generated)
+    // If more than 2 generated, space them out further to stay under 2/hour
+    const minSpacingMinutes = 30; // Minimum 30 minutes between posts
+    const baseDelay = i * minSpacingMinutes;
     
     const scheduledAt = new Date(now + baseDelay * 60000);
     post.scheduled_at = scheduledAt.toISOString();
     
     const minutesUntil = baseDelay;
     
-    console.log(`   Post ${i + 1}: ${scheduledAt.toLocaleTimeString()} (EXACTLY +${minutesUntil}min)`);
+    console.log(`   Post ${i + 1}: ${scheduledAt.toLocaleTimeString()} (${minutesUntil}min from now)`);
     
     // 🎨 CRITICAL FIX: Apply visual formatting BEFORE queueing
     await formatAndQueueContent(post);
   }
   
-  console.log(`\n💡 Generated ${generatedPosts.length} posts spaced 30min apart = ${generatedPosts.length} posts/hour`);
+  console.log(`\n💡 Generated ${generatedPosts.length} posts (max 2 will post per hour due to rate limits)`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 }
 
