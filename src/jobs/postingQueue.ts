@@ -68,6 +68,7 @@ export async function processPostingQueue(): Promise<void> {
     let repliesPostedThisCycle = 0;
     
     const config = getConfig();
+    // 🎯 STRICT RATE LIMIT: Max 2 tweets per hour (user requirement)
     const maxContentPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 2);
     const maxContentPerHour = Number.isFinite(maxContentPerHourRaw) ? maxContentPerHourRaw : 2;
     const maxRepliesPerHourRaw = Number(config.REPLIES_PER_HOUR ?? 4);
@@ -117,13 +118,15 @@ export async function processPostingQueue(): Promise<void> {
             ? (decision.thread_parts?.length || 5)
             : 1;
           
-          const wouldExceed = actualTweetsThisHour + thisTweetCount > maxContentPerHour * 3; // 2 decisions * ~3 tweets avg = 6 tweets
+          // 🎯 STRICT LIMIT: Max 2 tweets per hour (not 6!)
+          const maxTweetsPerHour = maxContentPerHour; // 2 tweets max
+          const wouldExceed = actualTweetsThisHour + thisTweetCount > maxTweetsPerHour;
           
-          log({ op: 'rate_limit_check', actual_tweets: actualTweetsThisHour, this_tweet_count: thisTweetCount, limit: maxContentPerHour * 3 });
-          console.log(`[POSTING_QUEUE] 📊 ACTUAL tweets this hour: ${actualTweetsThisHour}/${maxContentPerHour * 3} (this decision would add ${thisTweetCount})`);
+          log({ op: 'rate_limit_check', actual_tweets: actualTweetsThisHour, this_tweet_count: thisTweetCount, limit: maxTweetsPerHour });
+          console.log(`[POSTING_QUEUE] 📊 ACTUAL tweets this hour: ${actualTweetsThisHour}/${maxTweetsPerHour} (this decision would add ${thisTweetCount})`);
           
           if (wouldExceed) {
-            console.log(`[POSTING_QUEUE] ⛔ SKIP: Would exceed ACTUAL tweet limit (${actualTweetsThisHour + thisTweetCount} > ${maxContentPerHour * 3})`);
+            console.log(`[POSTING_QUEUE] ⛔ SKIP: Would exceed ACTUAL tweet limit (${actualTweetsThisHour + thisTweetCount} > ${maxTweetsPerHour})`);
             continue; // Skip this decision
           }
           
@@ -289,7 +292,7 @@ async function checkPostingRateLimits(): Promise<boolean> {
       return false;
     }
     
-    console.log(`[POSTING_QUEUE] ✅ Rate limit OK: ${postsThisHour}/${maxPostsPerHour} posts`);
+    console.log(`[POSTING_QUEUE] ✅ Rate limit OK: ${postsThisHour}/${maxPostsPerHour} posts (max 2 tweets/hour)`);
     return true;
     
   } catch (error) {
