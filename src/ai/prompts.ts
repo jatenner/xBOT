@@ -113,10 +113,10 @@ STRICT CONTENT RULES (ENFORCED BY AUTOMATION):
 - More emojis = AUTO-REJECTION
 
 ❌ CHARACTER LIMITS (AUTO-ENFORCED):
-- Single tweet: MAXIMUM 250 characters (HARD LIMIT - we validate at 260, Twitter rejects at 280)
-- Thread tweets: MAXIMUM 250 characters per tweet
+- Single tweet: MAXIMUM 200 characters (HARD LIMIT - optimized for viral engagement)
+- Thread tweets: MAXIMUM 200 characters per tweet
 - COUNT EVERY CHARACTER including spaces and punctuation
-- If you're at 240+ characters, STOP and remove words
+- If you're at 190+ characters, STOP and remove words
 - Going over limit = AUTO-REJECTION + API cost wasted
 
 🚫 CRITICAL COMPLETENESS RULES:
@@ -181,6 +181,30 @@ STRICT CONTENT RULES (ENFORCED BY AUTOMATION):
    ❌ WRONG: "Studies show..." (too vague)
    ❌ WRONG: "Research suggests..." (no mechanism)
 
+🔥 VIRAL FORMULAS (PROVEN ENGAGEMENT PATTERNS - Use these structures):
+
+CONTRARIAN EXPERT:
+"Actually, latest research from [Institution] shows the opposite: [surprising finding]. [Specific stat]% of people don't realize [insight]."
+
+AUTHORITY ADDITION:
+"This aligns with [Institution] research showing [specific finding]. The mechanism involves [brief explanation]. [Stat]% improvement in studies."
+
+CURIOSITY GAP:
+"The real reason this works has to do with [physiological process]. Most people miss the [specific detail] that makes all the difference."
+
+MYTH CORRECTION:
+"Common misconception. [Institution] studies actually show [correct information]. The [specific number]% difference is significant."
+
+INSIDER KNOWLEDGE:
+"Researchers at [Institution] discovered [surprising detail] about this. The [specific mechanism] explains why [insight]."
+
+CURIOSITY TRIGGERS (use these phrases):
+✅ "The real reason..."
+✅ "Most people don't realize..."
+✅ "Latest research shows..."
+✅ "The mechanism involves..."
+✅ "Researchers discovered..."
+
 🔥 HOOK CONSTRUCTION PRINCIPLES (create YOUR OWN unique hooks, don't copy patterns):
 - Lead with the most surprising data point or counterintuitive finding
 - Use specific numbers and research-backed claims (not generic "studies show")
@@ -189,6 +213,7 @@ STRICT CONTENT RULES (ENFORCED BY AUTOMATION):
 - Focus on optimization vs. basic advice ("from good to elite performance")
 - Target specific pain points with precise solutions
 - Use comparative frameworks ("X vs Y: which one actually works")
+- Apply viral formulas above for maximum engagement
 
 HOOK VARIETY MANDATE:
 - Rotate between 7+ distinct hook types: data-led, myth-busting, personal discovery, expert insight, protocol-based, mechanism-explained, optimization-focused
@@ -218,20 +243,20 @@ THREAD STRUCTURE (5-9 tweets):
 8-9. Summary or call-to-action (optional)
 
 THREAD REQUIREMENTS - CRITICAL CHARACTER LIMITS:
-- MAXIMUM 250 characters per tweet (we validate at 260, Twitter rejects at 280)
+- MAXIMUM 200 characters per tweet (optimized for viral engagement)
 - MINIMUM 100 characters per tweet (for meaningful content)
 - Count EXACT characters including spaces, punctuation, everything
-- If any tweet approaches 250 chars, CUT words aggressively
+- If any tweet approaches 200 chars, CUT words aggressively
 - Better to be 200 chars and valuable than 270 chars and rejected
 - No numbering (1/8, 2/8) - let content flow naturally
 - Each tweet valuable on its own if seen in isolation
 - Build toward a complete framework or system
 ` : `
 SINGLE TWEET REQUIREMENTS - CRITICAL CHARACTER LIMITS:
-- MAXIMUM 250 characters (we validate at 260, Twitter rejects at 280)
+- MAXIMUM 200 characters (optimized for viral engagement)
 - MINIMUM 100 characters (for meaningful content)
 - Count EXACT characters including spaces, punctuation, everything
-- If your content approaches 250 chars, CUT words aggressively
+- If your content approaches 200 chars, CUT words aggressively
 - Better to be 200 chars and valuable than 270 chars and rejected
 - Complete thought with actionable advice
 - Include brief evidence/mechanism if making a claim

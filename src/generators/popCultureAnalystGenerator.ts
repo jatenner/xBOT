@@ -89,7 +89,7 @@ STANDARDS:
 - Cultural relevance: Pick timely, interesting examples people care about
 
 CONSTRAINTS:
-- Format: Twitter (280 char limit, aim for 250-270 for buffer)
+- Format: Twitter (MAXIMUM 200 characters - optimized for viral engagement)
 - No hashtags, minimal emojis (0-1, prefer 0)
 - Complete sentences only (no cut-offs or ellipses)
 - Return JSON: { "tweet": "..." } or { "tweets": [...] }

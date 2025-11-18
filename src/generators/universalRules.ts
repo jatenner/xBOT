@@ -7,8 +7,8 @@
 export const UNIVERSAL_NON_NEGOTIABLES = `
 🚨 NON-NEGOTIABLES (SYSTEM AUTO-REJECTS IF VIOLATED):
 
-1. CHARACTER LIMIT: Target 200-270 characters (Twitter max: 280)
-   ⚠️ Ideal range leaves room for engagement and quote tweets
+1. CHARACTER LIMIT: MAXIMUM 200 characters (optimized for viral engagement)
+   ⚠️ Twitter max is 280, but 200 is optimal for engagement
    ⚠️ Count every character including spaces, punctuation, emojis
    ⚠️ If close to limit, remove the last sentence - better short than rejected
 

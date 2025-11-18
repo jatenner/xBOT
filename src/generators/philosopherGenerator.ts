@@ -65,7 +65,7 @@ STANDARDS:
 - Grounded: Philosophy informed by biology
 
 CONSTRAINTS:
-- Format: Twitter (280 char limit, aim for 250-270)
+- Format: Twitter (MAXIMUM 200 characters - optimized for viral engagement)
 - No hashtags, minimal emojis (0-1, prefer 0)
 - Complete sentences only
 - Return JSON: { "tweet": "..." } or { "tweets": [...] }

@@ -64,7 +64,7 @@ STANDARDS:
 - Constructiveness: Point toward better approaches
 
 CONSTRAINTS:
-- Format: Twitter (280 char limit, aim for 250-270)
+- Format: Twitter (MAXIMUM 200 characters - optimized for viral engagement)
 - No hashtags, minimal emojis (0-1, prefer 0)
 - Complete sentences only
 - Return JSON: { "tweet": "..." } or { "tweets": [...] }
@@ -106,6 +106,12 @@ You will be asked to defend your provocation. Be prepared to:
 - Explain incentive structures
 - Acknowledge legitimate complexity
 - Show why this question matters
+
+🔥 VIRAL FORMULAS (use when they fit your provocative style):
+- CONTRARIAN EXPERT: "Actually, latest research shows the opposite..."
+- CURIOSITY GAP: "The real reason this works..."
+- MYTH CORRECTION: "Common misconception. Studies show..."
+Apply these naturally within your provocative voice.
 `;
 
   const userPrompt = format === 'thread'
