@@ -31,7 +31,7 @@ const parseEnvInt = (key: string, fallback: number, min: number, max: number): n
   return clamp(parsed, min, max);
 };
 
-const MAX_CONTEXTS_CONFIG = parseEnvInt('BROWSER_MAX_CONTEXTS', 2, 1, 4);
+const MAX_CONTEXTS_CONFIG = parseEnvInt('BROWSER_MAX_CONTEXTS', 3, 1, 6); // Increased to 3 for better capacity (posting + VI scraper + buffer)
 const MAX_OPERATIONS_CONFIG = parseEnvInt('BROWSER_MAX_OPERATIONS', 25, 5, 100);
 const QUEUE_WAIT_TIMEOUT_CONFIG = parseEnvInt('BROWSER_QUEUE_TIMEOUT_MS', 60000, 10000, 300000);
 const CIRCUIT_BREAKER_TIMEOUT_CONFIG = parseEnvInt('BROWSER_CIRCUIT_BREAKER_TIMEOUT_MS', 60000, 30000, 600000);
@@ -242,7 +242,8 @@ export class UnifiedBrowserPool {
         cancelTimeout: () => clearTimeout(queueTimeoutTimer)
       });
       
-      // Sort queue by priority (lower number = higher priority)
+      // ✅ FAIR SCHEDULING: Sort by priority, but ensure low-priority ops eventually get processed
+      // Strategy: Process high-priority first, but always include at least 1 low-priority op per batch
       this.queue.sort((a, b) => a.priority - b.priority);
       
       // Start processing if not already running
@@ -290,7 +291,18 @@ export class UnifiedBrowserPool {
         
         const batch: Array<{op: QueuedOperation, context: ContextHandle}> = [];
         
+        // ✅ FAIR SCHEDULING: Ensure both high-priority (posting) and low-priority (VI scraper) get processed
+        // Strategy: With 3 contexts, we can run 1 posting + 1 VI scraper + 1 buffer simultaneously
+        // This guarantees VI scraper always gets a turn even when posting is active
+        
+        // Separate queue into high and low priority
+        const PRIORITY_THRESHOLD = 5; // Ops with priority <= 5 are high-priority
+        const highPriorityOps = this.queue.filter(op => op.priority <= PRIORITY_THRESHOLD);
+        const lowPriorityOps = this.queue.filter(op => op.priority > PRIORITY_THRESHOLD);
+        
         // Try to acquire multiple contexts (up to MAX_CONTEXTS)
+        // ✅ FAIR: If we have 2+ contexts, always include at least 1 low-priority op when available
+        let lowPriorityIncluded = false;
         for (let i = 0; i < this.MAX_CONTEXTS && this.queue.length > 0; i++) {
           const contextHandle = await this.acquireContext();
           
@@ -299,11 +311,30 @@ export class UnifiedBrowserPool {
             break;
           }
           
-          const op = this.queue.shift();
+          // ✅ FAIR SCHEDULING: Include low-priority op if we have capacity and haven't included one yet
+          let op: QueuedOperation | undefined;
+          if (this.MAX_CONTEXTS >= 2 && !lowPriorityIncluded && lowPriorityOps.length > 0 && i >= 1) {
+            // Include at least 1 low-priority op when we have 2+ contexts (after processing at least 1 high-priority)
+            op = lowPriorityOps.shift();
+            lowPriorityIncluded = true;
+          } else if (highPriorityOps.length > 0) {
+            // Process high-priority first
+            op = highPriorityOps.shift();
+          } else if (lowPriorityOps.length > 0) {
+            // Then process low-priority
+            op = lowPriorityOps.shift();
+          }
+          
           if (!op) {
             // No more operations, release the context we just acquired
             this.releaseContext(contextHandle);
             break;
+          }
+          
+          // Remove from main queue
+          const queueIndex = this.queue.findIndex(q => q.id === op.id);
+          if (queueIndex !== -1) {
+            this.queue.splice(queueIndex, 1);
           }
           
           this.metrics.queuedOperations--;

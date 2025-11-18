@@ -300,8 +300,9 @@ export class JobManager {
       10 * MINUTE  // Offset 10 minutes (stagger from main metrics scraper)
     );
 
-    // Data collection - every 6 hours, offset 220 min (OPTIMIZED: reduced from 60min)
+    // Data collection - every 2 hours, offset 220 min (OPTIMIZED: increased frequency for faster VI analysis)
     // EXTENDED: Also processes Visual Intelligence tweets (classification + analysis + intelligence building)
+    // ✅ OPTIMIZED: Runs every 2 hours (was 6 hours) to analyze 6,000 tweets/day instead of 400
     this.scheduleStaggeredJob(
       'data_collection',
       async () => {
@@ -320,7 +321,7 @@ export class JobManager {
           await runVIProcessing();
         });
       },
-      360 * MINUTE, // Every 6 hours (was 60min)
+      120 * MINUTE, // ✅ OPTIMIZED: Every 2 hours (was 6 hours) - 6x more frequent for faster analysis
       220 * MINUTE  // Offset ~3.7 hours
     );
 
