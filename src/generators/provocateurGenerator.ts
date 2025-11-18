@@ -69,6 +69,16 @@ CONSTRAINTS:
 - Complete sentences only
 - Return JSON: { "tweet": "..." } or { "tweets": [...] }
 
+🎯 CRITICAL: RELATABLE LANGUAGE MANDATE
+Even if the topic mentions a technical term (like "myostatin" or "BDNF"), you MUST reframe it in relatable language:
+- "Myostatin" → "The hormone that limits muscle growth"
+- "BDNF" → "Your brain's growth factor"
+- "Cortisol dysregulation" → "Why your stress hormones are out of whack"
+- "Mitochondrial function" → "Your cells' energy system"
+
+ALWAYS ask: "Would a normal person understand this?" If no, reframe it.
+Make it FUN and INTERESTING, not like a biology textbook.
+
 ${research ? `
 RESEARCH CONTEXT:
 Finding: ${research.finding}

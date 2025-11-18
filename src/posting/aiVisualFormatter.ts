@@ -20,6 +20,8 @@ import { getSupabaseClient } from '../db';
 import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import type { VisualFormatIntelligence } from '../analytics/visualFormatAnalytics';
 import { generateFallbackViralInsights } from './viralFallbackInsights';
+import { getGeneratorVisualRecommendations } from '../intelligence/generatorVisualIntelligence';
+import { getContextualFormatIntelligence } from '../intelligence/contextualFormatIntelligence';
 
 const FORBIDDEN_OPENERS: RegExp[] = [
   /^did you know\b/i,
@@ -50,9 +52,14 @@ export interface VisualFormatResult {
  */
 export async function formatContentForTwitter(context: VisualFormatContext): Promise<VisualFormatResult> {
   console.log('[VISUAL_FORMATTER] 🎨 Final Twitter formatting pass...');
-  console.log(`[VISUAL_FORMATTER] 📋 Context: ${context.generator} | ${context.tone} | ${context.angle}`);
+  console.log(`[VISUAL_FORMATTER] 📋 Context: ${context.generator} | ${context.tone} | ${context.angle} | ${context.topic}`);
   
   const { content, generator, topic, angle, tone, formatStrategy } = context;
+  
+  // ✅ VERIFY: All context is passed correctly
+  if (!generator || !topic || !tone || !angle) {
+    console.warn(`[VISUAL_FORMATTER] ⚠️ Missing context: generator=${generator}, topic=${topic}, tone=${tone}, angle=${angle}`);
+  }
   
   // 🧠 BUILD COMPLETE VISUAL FORMAT INTELLIGENCE
   const { buildVisualFormatIntelligence } = await import('../analytics/visualFormatAnalytics');
@@ -84,13 +91,41 @@ export async function formatContentForTwitter(context: VisualFormatContext): Pro
     };
   }
   
+  // 🆕 Get data-driven visual intelligence (generator + topic + tone + angle + structure)
+  let generatorVisualIntelligence = '';
+  try {
+    // Query database: "What format worked for this generator + topic + tone combo?"
+    const contextualFormatIntelligence = await getContextualFormatIntelligence(
+      generator,
+      topic,
+      tone,
+      angle,
+      context.formatStrategy
+    );
+    
+    if (contextualFormatIntelligence) {
+      generatorVisualIntelligence = contextualFormatIntelligence;
+      console.log(`[VISUAL_FORMATTER] ✅ Contextual format intelligence loaded (${generator} + ${topic} + ${tone})`);
+    } else {
+      // Fallback to generator-only if no contextual data
+      generatorVisualIntelligence = await getGeneratorVisualRecommendations(generator);
+      if (generatorVisualIntelligence) {
+        console.log(`[VISUAL_FORMATTER] ✅ Generator-only VI loaded for ${generator}`);
+      }
+    }
+  } catch (error: any) {
+    console.warn(`[VISUAL_FORMATTER] ⚠️ Could not load format intelligence: ${error.message}`);
+  }
+  
   // Build context-aware prompt with performance insights
   const systemPrompt = await buildSmartFormattingPrompt(
     generator,
     tone,
     topic,
+    angle, // ✅ Pass angle for context
     intelligence,
-    content
+    content,
+    generatorVisualIntelligence
   );
 
   const userPrompt = `Format this tweet for Twitter (visual formatting ONLY - do NOT rewrite):
@@ -101,10 +136,16 @@ Given: ${generator} personality, ${tone} tone, ${angle} angle
 
 Your job: Make it look GREAT on Twitter feed while preserving the exact hook and message.
 
-ONLY adjust: line breaks, 0-1 emoji, CAPS for 1-2 words, spacing.
+🚨 SPACING VARIETY IS CRITICAL:
+- Check recent posts: Did they use compact spacing? → Use spacious (3+ breaks)
+- Did they use spacious? → Use compact (0 breaks)
+- NEVER repeat the same spacing pattern
+- Rotate: tight → balanced → spacious → tight
+
+ONLY adjust: line breaks (0, 1, 2, 3+ - VARY IT!), 0-1 emoji, CAPS for 1-2 words, spacing.
 DO NOT change: the hook, opening, message, or substance.
 
-Format it for Twitter!`;
+Format it for Twitter with AGGRESSIVE spacing variety!`;
 
   try {
     const response = await createBudgetedChatCompletion({
@@ -408,27 +449,40 @@ async function buildSmartFormattingPrompt(
   generator: string,
   tone: string,
   topic: string,
+  angle: string,
   intelligence: VisualFormatIntelligence,
-  content: string
+  content: string,
+  generatorVisualIntelligence: string = ''
 ): Promise<string> {
-  // Generator-specific guidance (personality-aware)
-  const generatorGuidance: Record<string, string> = {
-    'provocateur': 'Bold, direct statements. No fluff. Let controversy speak for itself. Skip formatting tricks.',
-    'dataNerd': 'Clean data presentation. Use bullets for stats, but keep analytical not listy.',
-    'mythBuster': 'Use 🚫/✅ format when debunking. Sharp contrast between myth and truth.',
-    'storyteller': 'Pure narrative flow. NO bullets, NO numbers, NO lists. Story format only.',
-    'coach': 'Conversational advice. Can use steps but make them feel helpful not clinical.',
-    'philosopher': 'Thought-provoking questions. Minimal formatting. Let ideas breathe.',
-    'contrarian': 'Controversial take first. No softening. Format should amplify the boldness.',
-    'explorer': 'Curiosity-driven. Questions work great. Keep it open-ended and intriguing.',
-    'thoughtLeader': 'Authoritative but accessible. Can use structure but must feel effortless.',
-    'newsReporter': 'Factual and crisp. Lead with what happened. Data-first formatting.',
-    'culturalBridge': 'Connecting perspectives. Compare/contrast format works well.',
-    'interestingContent': 'Surprising facts. Hook first, then explain. Keep it punchy.'
+  // 🆕 DATA-DRIVEN: No hardcoded guidance - let the data speak
+  // The system will learn from posted tweets what works for each generator
+  // We only provide basic personality context, not format rules
+  
+  const basicPersonality: Record<string, string> = {
+    'historian': 'Historical perspective and context',
+    'contrarian': 'Bold, controversial takes',
+    'newsReporter': 'News and factual reporting',
+    'storyteller': 'Narrative and storytelling',
+    'coach': 'Actionable advice and guidance',
+    'philosopher': 'Thought-provoking questions and ideas',
+    'dataNerd': 'Data and statistics',
+    'mythBuster': 'Debunking misconceptions',
+    'provocateur': 'Provocative and challenging',
+    'explorer': 'Curiosity and exploration',
+    'thoughtLeader': 'Authoritative insights',
+    'culturalBridge': 'Connecting perspectives',
+    'interestingContent': 'Surprising facts',
+    'teacher': 'Educational content',
+    'investigator': 'Investigative discovery',
+    'connector': 'Linking ideas',
+    'pragmatist': 'Practical solutions',
+    'translator': 'Simplifying complexity',
+    'patternFinder': 'Identifying patterns',
+    'experimenter': 'Experimental testing'
   };
   
-  const guidance = generatorGuidance[generator] || 'Clear, engaging formatting that serves the content.';
-  
+  const personality = basicPersonality[generator] || 'Content creation';
+
   // Performance insights from intelligence  
   let performanceInsights = '';
   if (intelligence.contextualInsights && intelligence.contextualInsights.length > 0) {
@@ -490,41 +544,92 @@ ${overusedPatterns.includes('question') ? '✅ Statement format - no question' :
   }
   
   // NEW: Build intelligent viral insights (context-aware)
+  // 🆕 INCREMENTAL LEARNING: Use whatever VI data we have, even if incomplete
   let viralInsights = '';
   try {
     const supabase = getSupabaseClient();
     
-    // Get pattern statistics (understand the data)
-    const { data: patternStats } = await supabase
+    // Strategy 1: Try fully processed viral_tweet_library (best quality)
+    let { data: patternStats } = await supabase
       .from('viral_tweet_library')
       .select('hook_type, formatting_patterns, why_it_works, engagement_rate, pattern_strength')
       .gte('pattern_strength', 7)
       .not('why_it_works', 'is', null)
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .limit(50);
+    
+    // Strategy 2: If no processed data, use raw collected tweets (incremental learning)
+    if (!patternStats || patternStats.length === 0) {
+      console.log('[VISUAL_FORMATTER] ℹ️ No processed viral patterns, checking raw collected tweets...');
+      
+      // Get high-engagement tweets from vi_collected_tweets (even if not fully classified)
+      const { data: rawTweets } = await supabase
+        .from('vi_collected_tweets')
+        .select('content, views, likes, engagement_rate')
+        .gt('engagement_rate', 0.05) // Only high-performing tweets
+        .order('engagement_rate', { ascending: false })
+        .limit(20); // Use top 20 for now
+      
+      if (rawTweets && rawTweets.length > 0) {
+        console.log(`[VISUAL_FORMATTER] 📊 Using ${rawTweets.length} high-performing tweets from VI collection (incremental learning)`);
+        // Convert raw tweets to pattern format for analysis
+        patternStats = rawTweets.map(t => ({
+          hook_type: 'unknown',
+          formatting_patterns: extractFormattingPatterns(t.content),
+          why_it_works: `High engagement rate: ${(t.engagement_rate * 100).toFixed(1)}%`,
+          engagement_rate: t.engagement_rate,
+          pattern_strength: Math.min(10, t.engagement_rate * 100) // Estimate strength from ER
+        }));
+      }
+    }
     
     if (patternStats && patternStats.length > 0) {
       // SMART APPROACH: Extract principles from patterns  
-      console.log(`[VISUAL_FORMATTER] 🧠 Analyzing ${patternStats.length} viral patterns with AI...`);
+      console.log(`[VISUAL_FORMATTER] 🧠 Analyzing ${patternStats.length} patterns (${patternStats.length >= 10 ? 'good dataset' : 'small but growing dataset'})...`);
       viralInsights = await buildIntelligentViralInsights(
         patternStats,
         generator,
         tone,
         content
       );
-      console.log('[VISUAL_FORMATTER] ✅ AI viral analysis complete');
+      console.log('[VISUAL_FORMATTER] ✅ VI analysis complete');
     } else {
-      // No viral patterns in database yet - use fallback
-      console.log('[VISUAL_FORMATTER] ℹ️ No viral patterns in database yet, using generic guidance');
+      // No VI data at all - use fallback but note it's building
+      console.log('[VISUAL_FORMATTER] ℹ️ No VI data yet - system will learn as database grows');
       viralInsights = await generateFallbackViralInsights(generator, tone);
     }
   } catch (error: any) {
     console.warn('[VISUAL_FORMATTER] ⚠️ Could not load viral patterns:', error.message);
   }
   
-  return `You're a Twitter formatting expert. Your job: make this tweet perform well.
+  // Helper function to extract formatting patterns from raw content
+  function extractFormattingPatterns(content: string): string {
+    const patterns: string[] = [];
+    const lineBreaks = (content.match(/\n\n/g) || []).length;
+    const emojiCount = (content.match(/[\u{1F300}-\u{1F9FF}]/gu) || []).length;
+    
+    if (lineBreaks > 0) patterns.push(`line_breaks_${lineBreaks}`);
+    if (emojiCount > 0) patterns.push(`emojis_${emojiCount}`);
+    if (content.match(/^\d+\./)) patterns.push('numbered_list');
+    if (content.match(/^["'"]/)) patterns.push('quote_opener');
+    if (content.match(/\?/)) patterns.push('question_hook');
+    
+    return patterns.join(', ') || 'plain';
+  }
+  
+  return `You're a Twitter formatting expert who understands Twitter as a platform. Your job: make this tweet perform well by understanding HOW Twitter works.
 
-GENERATOR PERSONALITY: ${generator}
-→ ${guidance}
+🧠 UNDERSTANDING TWITTER AS A PLATFORM:
+Twitter is a fast-scrolling, mobile-first feed where people consume content in seconds.
+- Content competes with thousands of other tweets
+- Algorithm favors: engagement velocity, scannability, visual structure
+- Mobile users scroll fast - you have 2-3 seconds to stop them
+- Readability = engagement. Scannable = shareable.
+- Visual structure matters more than perfect grammar
+- The feed is visual - spacing, breaks, emphasis create "stopping power"
+
+GENERATOR: ${generator} (${personality})
+${generatorVisualIntelligence}
 
 CONTENT CONTEXT:
 • Topic: ${topic}
@@ -534,8 +639,27 @@ ${performanceInsights}
 ${varietyNote}
 ${viralInsights}
 
-PROVEN TWITTER PRINCIPLES (evidence-based):
-${viralInsights ? '(Extracted from your viral tweet database)' : '(Based on 100K+ analyzed tweets)'}
+🎓 DUAL INTELLIGENCE SYSTEM - COMBINING TWO SOURCES:
+
+1. VI SYSTEM (What Works on Twitter - from 10k+ scraped tweets):
+${viralInsights ? `✅ Loaded: Patterns from viral tweets across Twitter showing what Twitter's algorithm rewards.\n${viralInsights}` : '⚠️ Not loaded: VI system data unavailable. This shows what works on Twitter in general.'}
+
+2. YOUR GENERATOR DATA (What Works for THIS Generator - from your posted tweets):
+${generatorVisualIntelligence ? `✅ Loaded: Patterns from your posted tweets showing what works for THIS generator.\n${generatorVisualIntelligence}` : '⚠️ Not loaded: Generator-specific data unavailable. This shows what works for YOUR generators specifically.'}
+
+🧠 INTELLIGENT COMBINATION APPROACH:
+You have TWO sources of intelligence:
+- VI System: "Here's what works on Twitter in general (from analyzing thousands of tweets)"
+- Your Data: "Here's what works for THIS generator specifically (from your posted tweets)"
+
+COMBINE THEM INTELLIGENTLY:
+1. Start with Twitter fundamentals (fast-scrolling, visual, mobile-first)
+2. Apply VI System patterns (what works on Twitter in general)
+3. Apply generator-specific patterns (what works for THIS generator)
+4. Adapt to this specific content (topic + tone + context)
+5. Make intelligent decisions that combine all three
+
+The goal: Use Twitter best practices (VI) + generator-specific patterns (your data) to format this content optimally.
 
 NOTE: The generator already created the hook. These are for your understanding of Twitter best practices, NOT for you to add:
 
@@ -544,6 +668,23 @@ STRUCTURE (How information flows):
 • Short sentences: Under 15 words → Scannable (+20% retention)
 • Bullets: For 3+ items → More saves/bookmarks (+30%)
 • White space: Let ideas breathe → Professional look
+
+🚨 CRITICAL SPACING VARIETY MANDATE:
+You MUST vary spacing patterns dramatically. Never use the same spacing twice in a row.
+
+SPACING PATTERNS (rotate aggressively):
+1. TIGHT/COMPACT (no line breaks): "Sentence one. Sentence two. Sentence three." → Dense, fast-paced
+2. SINGLE BREAK (one strategic break): "Hook sentence.\n\nSupporting detail." → Balanced
+3. MULTI-BREAK (2-3 breaks): "Hook.\n\nPoint one.\n\nPoint two." → Spacious, breathable
+4. MINIMALIST (extreme spacing): "Short.\n\nPunchy.\n\nImpact." → Maximum white space
+5. PARAGRAPH BLOCKS (grouped ideas): "First idea with multiple sentences.\n\nSecond idea block." → Structured
+6. STACCATO (many short breaks): "One.\n\nTwo.\n\nThree." → Rhythmic, punchy
+
+⚠️ NEVER REPEAT THE SAME SPACING PATTERN:
+- If last post was "compact", use "multi-break" or "minimalist"
+- If last post had 2 line breaks, use 0 or 4+ breaks
+- Rotate between tight, balanced, and spacious
+- Match spacing to content energy: urgent = tight, thoughtful = spacious
 
 EMPHASIS (What to highlight):
 • CAPS: 1-2 KEY TERMS max → Draws eye without shouting
@@ -554,6 +695,7 @@ LENGTH & PACING:
 • Optimal: 180-240 chars → Full visibility in feed
 • Max: 280 chars → Use every character wisely
 • Pacing: Slow down with line breaks, speed up with compact text
+• VARIETY: Alternate between fast (compact) and slow (spacious) pacing
 
 YOUR DECISION FRAMEWORK:
 1. Does this content NEED formatting or is plain better?
@@ -566,9 +708,12 @@ YOUR DECISION FRAMEWORK:
 3. What would stop a scroller?
    → Hook clarity matters more than visual tricks
 
-4. Does formatting match the ${generator} voice?
-   → Provocateur shouldn't use cute bullets
-   → Storyteller shouldn't use numbered lists
+4. What format works for THIS combination (${generator} + ${tone} + ${angle || 'informative'})?
+   → Use the data-driven intelligence above (from ${generatorVisualIntelligence ? 'your posted tweets' : 'VI system'})
+   → Analyze what formats succeeded for similar contexts
+   → Apply intelligently - understand WHY they worked, don't copy blindly
+   → Consider: Does this content need formatting, or is plain better?
+   → Match format to content energy: urgent = compact, thoughtful = spacious
 
 ⚠️ CRITICAL: YOUR JOB IS FORMATTING ONLY
 You are NOT rewriting content. The generator already created the hook, message, and flow.
@@ -581,11 +726,13 @@ You are NOT rewriting content. The generator already created the hook, message, 
 • Alter the tone or personality
 
 ✅ DO (Twitter Formatting Only):
-• Add line breaks for mobile readability
+• VARY SPACING AGGRESSIVELY - never use same pattern twice
+• Add line breaks strategically (0, 1, 2, 3+ - rotate!)
 • Add 0-1 relevant emoji (if it fits the tone)
 • Use CAPS for 1-2 KEY WORDS for emphasis
-• Adjust spacing/pacing for Twitter feed
+• Adjust spacing/pacing for Twitter feed (tight ↔ spacious)
 • Remove markdown Twitter doesn't support
+• Match spacing to content energy (urgent = compact, thoughtful = spacious)
 
 CRITICAL RULES:
 • ≤280 characters (count carefully!)

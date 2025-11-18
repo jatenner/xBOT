@@ -188,29 +188,41 @@ export async function buildGrowthIntelligencePackage(
       }
     };
     
-    // 🧠 GENERATOR-SPECIFIC LEARNING: Load recent posts from THIS generator
+    // 🧠 GENERATOR-SPECIFIC LEARNING: Load recent posts + ACTUAL PERFORMANCE DATA
     if (generatorName) {
       const { getSupabaseClient } = await import('../db');
       const supabase = getSupabaseClient();
       
+      // Get recent posts WITH performance metrics
       const { data: recentContent, error: recentError } = await supabase
         .from('content_metadata')
-        .select('content, raw_topic, angle')
+        .select('content, raw_topic, angle, actual_engagement_rate, actual_impressions, actual_likes, actual_retweets')
         .eq('generator_name', generatorName)
         .eq('status', 'posted')
+        .not('actual_engagement_rate', 'is', null)
+        .gt('actual_impressions', 0)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(20); // More posts for better pattern analysis
       
-      if (!recentError && recentContent) {
+      if (!recentError && recentContent && recentContent.length > 0) {
         intelligence.recentPosts = recentContent.map(p => {
-          // Include topic + angle + content for full context
-          return `[Topic: ${p.raw_topic || 'unknown'}] [Angle: ${p.angle || 'none'}]\n${p.content || ''}`;
+          const er = ((p.actual_engagement_rate || 0) * 100).toFixed(1);
+          const views = p.actual_impressions || 0;
+          const likes = p.actual_likes || 0;
+          return `[Topic: ${p.raw_topic || 'unknown'}] [Angle: ${p.angle || 'none'}] [ER: ${er}%] [Views: ${views}] [Likes: ${likes}]\n${p.content || ''}`;
         });
         
-        console.log(`[GROWTH_INTEL] 📚 Loaded ${intelligence.recentPosts.length} recent posts from ${generatorName}`);
+        // 🆕 ANALYZE PATTERNS FROM ACTUAL PERFORMANCE
+        const performancePatterns = analyzePerformancePatterns(recentContent);
+        if (performancePatterns.length > 0) {
+          intelligence.performanceInsights = performancePatterns;
+          console.log(`[GROWTH_INTEL] 📊 Found ${performancePatterns.length} performance patterns from actual data`);
+        }
+        
+        console.log(`[GROWTH_INTEL] 📚 Loaded ${intelligence.recentPosts.length} recent posts with performance data from ${generatorName}`);
       } else {
         intelligence.recentPosts = [];
-        console.log(`[GROWTH_INTEL] ℹ️ No recent posts found for ${generatorName} (might be first use)`);
+        console.log(`[GROWTH_INTEL] ℹ️ No recent posts with performance data found for ${generatorName} (might be first use)`);
       }
     }
     
@@ -219,21 +231,94 @@ export async function buildGrowthIntelligencePackage(
     return intelligence;
   } catch (error: any) {
     console.error('[GROWTH_INTEL] ❌ Error building package:', error.message);
-    
-    // Return minimal intelligence on error
+    // Return minimal package on error
     return {
-      growthTrend: {
-        trend: 'flat',
-        weeklyGrowthRate: 0,
-        momentum: 'stable',
-        recommendation: 'Intelligence temporarily unavailable - explore freely'
-      },
-      explorationGuidance: {
-        rate: 0.5,
-        reasoning: 'Default exploration rate (intelligence unavailable)'
-      }
+      growthTrend: { trend: 'flat', weeklyGrowthRate: 0, momentum: 'stable', recommendation: 'Continue exploring' },
+      momentumDimensions: { topics: [], formats: [], generators: [], visualFormats: [] },
+      ceilingStatus: { isSettling: false, currentCeiling: 0, potentialCeiling: 0, recommendation: 'Explore more' },
+      discoveredPatterns: [],
+      explorationGuidance: { rate: 0.5, reasoning: 'Balanced exploration' },
+      recentPosts: [],
+      performanceInsights: []
     };
   }
+}
+
+/**
+ * 🆕 Analyze actual performance patterns from posted content
+ * Returns data-driven insights (no hardcoding!)
+ */
+function analyzePerformancePatterns(posts: any[]): string[] {
+  const insights: string[] = [];
+  
+  if (posts.length < 3) return insights; // Need at least 3 posts for patterns
+  
+  // Calculate average performance
+  const avgER = posts.reduce((sum, p) => sum + (p.actual_engagement_rate || 0), 0) / posts.length;
+  const avgViews = posts.reduce((sum, p) => sum + (p.actual_impressions || 0), 0) / posts.length;
+  
+  // Find high performers (top 30%)
+  const sortedByER = [...posts].sort((a, b) => (b.actual_engagement_rate || 0) - (a.actual_engagement_rate || 0));
+  const topPerformers = sortedByER.slice(0, Math.max(1, Math.floor(posts.length * 0.3)));
+  const topAvgER = topPerformers.reduce((sum, p) => sum + (p.actual_engagement_rate || 0), 0) / topPerformers.length;
+  
+  // Find low performers (bottom 30%)
+  const lowPerformers = sortedByER.slice(-Math.max(1, Math.floor(posts.length * 0.3)));
+  const lowAvgER = lowPerformers.reduce((sum, p) => sum + (p.actual_engagement_rate || 0), 0) / lowPerformers.length;
+  
+  // Pattern 1: Compare high vs low performers
+  if (topAvgER > lowAvgER * 1.5) {
+    insights.push(`Your top-performing posts (${(topAvgER * 100).toFixed(1)}% ER) significantly outperform lower ones (${(lowAvgER * 100).toFixed(1)}% ER). Study what makes top performers different.`);
+  }
+  
+  // Pattern 2: Analyze content characteristics
+  const hasNumbers = (text: string) => /\d+/.test(text);
+  const hasQuestions = (text: string) => /\?/.test(text);
+  const hasSpecifics = (text: string) => /\d+%|\d+ hours|\d+ minutes|\d+mg|\d+g/.test(text);
+  
+  const topWithNumbers = topPerformers.filter(p => hasNumbers(p.content || '')).length;
+  const topWithSpecifics = topPerformers.filter(p => hasSpecifics(p.content || '')).length;
+  const topWithQuestions = topPerformers.filter(p => hasQuestions(p.content || '')).length;
+  
+  const lowWithNumbers = lowPerformers.filter(p => hasNumbers(p.content || '')).length;
+  const lowWithSpecifics = lowPerformers.filter(p => hasSpecifics(p.content || '')).length;
+  const lowWithQuestions = lowPerformers.filter(p => hasQuestions(p.content || '')).length;
+  
+  // Specific patterns
+  if (topWithSpecifics > lowWithSpecifics) {
+    const percentage = ((topWithSpecifics / topPerformers.length) * 100).toFixed(0);
+    insights.push(`${percentage}% of your top-performing posts include specific numbers (percentages, timeframes, dosages). Posts with specifics averaged ${(topAvgER * 100).toFixed(1)}% ER.`);
+  }
+  
+  if (topWithQuestions < lowWithQuestions) {
+    insights.push(`Your top-performing posts use questions less often. Posts without questions averaged ${(topAvgER * 100).toFixed(1)}% ER vs ${(lowAvgER * 100).toFixed(1)}% with questions.`);
+  }
+  
+  // Pattern 3: Topic/angle patterns
+  const topicPerformance: Record<string, { count: number; totalER: number }> = {};
+  posts.forEach(p => {
+    const topic = p.raw_topic || 'unknown';
+    if (!topicPerformance[topic]) {
+      topicPerformance[topic] = { count: 0, totalER: 0 };
+    }
+    topicPerformance[topic].count++;
+    topicPerformance[topic].totalER += p.actual_engagement_rate || 0;
+  });
+  
+  const topicAverages = Object.entries(topicPerformance)
+    .map(([topic, data]) => ({
+      topic,
+      avgER: data.totalER / data.count,
+      count: data.count
+    }))
+    .filter(t => t.count >= 2) // At least 2 posts
+    .sort((a, b) => b.avgER - a.avgER);
+  
+  if (topicAverages.length > 0 && topicAverages[0].avgER > avgER * 1.2) {
+    insights.push(`Posts about "${topicAverages[0].topic.substring(0, 40)}" averaged ${(topicAverages[0].avgER * 100).toFixed(1)}% ER (above your ${(avgER * 100).toFixed(1)}% average).`);
+  }
+  
+  return insights;
 }
 
 /**

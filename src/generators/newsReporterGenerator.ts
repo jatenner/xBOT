@@ -77,6 +77,15 @@ CONSTRAINTS:
 - Complete sentences only
 - Return JSON: { "tweet": "..." } or { "tweets": [...] }
 
+🎯 CRITICAL: RELATABLE NEWS REPORTING
+Even if the topic is technical, report it in relatable language:
+- "Myostatin research" → "New research on muscle growth hormones"
+- "BDNF study" → "Study on your brain's growth factor"
+- Use everyday language that normal people understand
+- Make news INTERESTING and ACCESSIBLE, not academic
+
+ALWAYS ask: "Would a normal person care about this news?" If no, reframe it.
+
 ${realNews ? `
 BREAKING NEWS:
 ${realNews.headline}

@@ -73,6 +73,16 @@ CONSTRAINTS:
 - Complete sentences only
 - Return JSON: { "tweet": "..." } or { "tweets": [...] }
 
+🎯 CRITICAL: RELATABLE DATA PRESENTATION
+Even if the topic is technical, present data in relatable ways:
+- "Myostatin levels decreased 23%" → "The muscle-limiting hormone dropped 23%"
+- "BDNF increased 200%" → "Your brain's growth factor doubled"
+- Use everyday language to explain technical concepts
+- Make numbers meaningful: "87% of people" not "most participants"
+
+ALWAYS ask: "Would a normal person care about this data?" If no, reframe it.
+Make data INTERESTING and RELATABLE, not academic.
+
 ${research ? `
 RESEARCH CONTEXT:
 Finding: ${research.finding}

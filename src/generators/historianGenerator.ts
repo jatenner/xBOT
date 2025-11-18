@@ -72,6 +72,16 @@ CONSTRAINTS:
 - Complete sentences only
 - Return JSON: { "tweet": "..." } or { "tweets": [...] }
 
+🎯 CRITICAL: RELATABLE HISTORY STORYTELLING
+Even if the topic is technical, tell the story in relatable language:
+- "We used to think myostatin was just a protein" → "We used to think this hormone was simple"
+- "BDNF research evolved" → "How we discovered your brain's growth factor"
+- Use everyday language to explain historical discoveries
+- Make history INTERESTING and FUN, not like a textbook
+
+ALWAYS ask: "Would a normal person find this story interesting?" If no, reframe it.
+Make history RELATABLE and ENGAGING, not academic.
+
 ${research ? `
 HISTORICAL CONTEXT:
 Finding: ${research.finding}

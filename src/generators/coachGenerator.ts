@@ -63,6 +63,15 @@ CONSTRAINTS:
 - Complete sentences only
 - Return JSON: { "tweet": "..." } or { "tweets": [...] }
 
+🎯 CRITICAL: RELATABLE COACHING LANGUAGE
+Even if the topic is technical, give advice in relatable language:
+- "Optimize myostatin" → "Boost your muscle growth hormone"
+- "Increase BDNF" → "Grow your brain's growth factor"
+- Use everyday language that normal people understand
+- Make advice ACTIONABLE and RELATABLE, not academic
+
+ALWAYS ask: "Would a normal person understand this advice?" If no, reframe it.
+
 ${research ? `
 RESEARCH CONTEXT:
 Finding: ${research.finding}

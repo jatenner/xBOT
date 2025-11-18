@@ -16,6 +16,8 @@ interface PostRow {
   actual_replies: number | null;
   actual_engagement_rate: number | null;
   posted_at: string | null;
+  target_username?: string | null;
+  target_tweet_id?: string | null;
 }
 
 interface MetricsRow {
@@ -148,6 +150,7 @@ const STYLES = `
 
   .badge.single { background: rgba(59, 130, 246, 0.12); color: #1d4ed8; }
   .badge.thread { background: rgba(236, 72, 153, 0.12); color: #be185d; }
+  .badge.reply { background: rgba(139, 92, 246, 0.12); color: #6d28d9; }
   .badge.stale { background: rgba(245, 158, 11, 0.12); color: #b45309; }
   .badge.ok { background: rgba(16, 185, 129, 0.12); color: #047857; }
 
@@ -199,21 +202,21 @@ export async function generatePostsOverview(): Promise<string> {
     supabase
       .from('content_metadata')
       .select(
-        'decision_type, tweet_id, content, raw_topic, topic_cluster, tone, angle, generator_name, predicted_er, actual_impressions, actual_likes, actual_retweets, actual_replies, actual_engagement_rate, posted_at'
+        'decision_type, tweet_id, content, raw_topic, topic_cluster, tone, angle, generator_name, predicted_er, actual_impressions, actual_likes, actual_retweets, actual_replies, actual_engagement_rate, posted_at, target_username, target_tweet_id'
       )
-      .in('decision_type', ['single', 'thread'])
+      .in('decision_type', ['single', 'thread', 'reply'])
       .eq('status', 'posted')
       .order('posted_at', { ascending: false })
       .limit(50),
     supabase
       .from('content_metadata')
       .select('*', { count: 'exact', head: true })
-      .in('decision_type', ['single', 'thread'])
+      .in('decision_type', ['single', 'thread', 'reply'])
       .eq('status', 'queued'),
     supabase
       .from('content_metadata')
-      .select('actual_impressions, actual_likes')
-      .in('decision_type', ['single', 'thread'])
+      .select('actual_impressions, actual_likes, decision_type')
+      .in('decision_type', ['single', 'thread', 'reply'])
       .eq('status', 'posted')
       .gte('posted_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
   ]);
@@ -254,6 +257,8 @@ export async function generatePostsOverview(): Promise<string> {
       const typeBadge =
         post.decision_type === 'thread'
           ? '<span class="badge thread">THREAD</span>'
+          : post.decision_type === 'reply'
+          ? '<span class="badge reply">REPLY</span>'
           : '<span class="badge single">SINGLE</span>';
       const metricsBadge = metricsMinutes === null
         ? '<span class="badge stale">No metrics yet</span>'
@@ -288,6 +293,7 @@ export async function generatePostsOverview(): Promise<string> {
           <td>
             <div class="content-preview">${post.content || '—'}</div>
             <div style="margin-top:6px;">${tweetLink}</div>
+            ${post.decision_type === 'reply' && post.target_username ? `<div style="margin-top:4px; font-size:11px; color:#64748b;">Replying to @${post.target_username}</div>` : ''}
           </td>
           <td><strong>${topic}</strong><br/><span style="color:#64748b;">Tone: ${tone}</span><br/><span style="color:#94a3b8;">Angle: ${angle}</span></td>
           <td>${generator}<br/><span style="color:#475569;">Predicted ER: ${predicted}</span></td>
