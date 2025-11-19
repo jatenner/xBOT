@@ -1262,7 +1262,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       // DON'T throw - post succeeded! But log this as critical issue.
       }
     
-    // Best-effort: Update metrics
+      // Best-effort: Update metrics
       try {
         await updatePostingMetrics('posted');
       } catch (metricsError: any) {
