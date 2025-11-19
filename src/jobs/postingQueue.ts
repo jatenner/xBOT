@@ -1372,48 +1372,15 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     }
     
     console.log(`[POSTING_QUEUE] 🎉 POST COMPLETE: Tweet is live on Twitter, all tracking initiated!`);
-  } catch (error: any) {
-    // This catch block only catches post-posting errors (tweet is already live)
-    // Actual posting errors are caught in the posting phase above
-    console.error(`[POSTING_QUEUE] ⚠️ Post-posting operation failed: ${error.message}`);
-    if (postingSucceeded && tweetId) {
-      console.error(`[POSTING_QUEUE] ✅ But tweet ${tweetId} is LIVE - this is not a failure!`);
-      // 🚨 CRITICAL: If tweet is live, mark as posted even if database save failed
-      try {
-        const { getSupabaseClient } = await import('../db/index');
-        const supabase = getSupabaseClient();
-        await supabase
-          .from('content_metadata')
-          .update({
-            status: 'posted',
-            tweet_id: tweetId,
-            posted_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('decision_id', decision.id);
-        console.log(`[POSTING_QUEUE] ✅ Status synced to 'posted' for live tweet ${tweetId}`);
-      } catch (syncError: any) {
-        console.error(`[POSTING_QUEUE] 💥 Failed to sync status for live tweet: ${syncError.message}`);
-      }
-    }
-    // DON'T re-throw - tweet might be live!
-  }
-  
   } catch (topLevelError: any) {
-    // 🚨 CRITICAL: Catch any errors that happened BEFORE the main try block
+    // Catch any errors that weren't handled by inner try-catch blocks
     const errorMsg = topLevelError?.message || topLevelError?.toString() || 'Unknown error';
-    const errorStack = topLevelError?.stack || 'No stack trace';
     console.error(`${logPrefix} 🚨 FUNCTION-LEVEL ERROR:`, errorMsg);
-    console.error(`${logPrefix} 🚨 Stack trace:`, errorStack);
-    
-    // Mark decision as failed
     try {
       await markDecisionFailed(decision.id, errorMsg);
     } catch (markError: any) {
       console.error(`${logPrefix} 🚨 Failed to mark decision as failed:`, markError.message);
     }
-    
-    // Re-throw so the calling function knows it failed
     throw topLevelError;
   }
 }
