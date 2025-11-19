@@ -1033,7 +1033,7 @@ function buildDynamicPrompt(performanceData: any, style: string, dayOfWeek: stri
     
     data_point: `Share a shocking statistic or data point about ${selectedTopic} that challenges assumptions. Connect it to a practical takeaway.`,
     
-    story_based: `Tell a compelling mini-story or case study about ${selectedTopic}. Make it relatable and inspiring without being preachy.`,
+    story_based: `Tell a compelling mini-story or case study about ${selectedTopic}. Use ONLY real, documented stories from research, published case studies, or historical events. NO fictional characters or made-up stories. Every story must be research-backed and verifiable. Make it relatable and inspiring without being preachy.`,
     
     question_hook: `Start with a provocative question about ${selectedTopic}, then answer it in a surprising way. Make people reconsider what they thought they knew.`,
     
@@ -1041,7 +1041,7 @@ function buildDynamicPrompt(performanceData: any, style: string, dayOfWeek: stri
     
     contrarian: `Take a contrarian stance on ${selectedTopic}. Challenge conventional wisdom with evidence. Be bold but not reckless.`,
     
-    personal_experience: `Share a relatable personal scenario about ${selectedTopic}. Use "Imagine you're..." or "Picture this..." to draw readers in.`,
+    personal_experience: `Share a relatable scenario about ${selectedTopic} based on real research or documented experiences. Use "Imagine you're..." or "Picture this..." to draw readers in, but ground it in real science or documented cases. NO fictional characters or made-up stories.`,
     
     shocking_stat: `Lead with a jaw-dropping statistic about ${selectedTopic} that most people don't know. Explain why it matters and what to do about it.`,
     
