@@ -1351,7 +1351,9 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       
       // SMART BATCH FIX: Simplified metrics collection (avoid complex scraping in posting flow)
       // Store placeholder entry, let scheduled scraper collect real metrics
-      await supabase.from('outcomes').upsert({
+      const { getSupabaseClient: getSupa } = await import('../db/index');
+      const supa = getSupa();
+      await supa.from('outcomes').upsert({
         decision_id: decision.id,
         tweet_id: tweetId,
         likes: null, // Will be filled by scheduled scraper
