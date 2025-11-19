@@ -283,9 +283,9 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
     // Note: intelligence parameter is optional - generators work without it
     // We pass topic directly, generators will use their specialized prompts
     
-    // ✅ THREADS ENABLED: 7% thread rate = ~3 threads per day out of 48 posts
-    const selectedFormat = Math.random() < 0.07 ? 'thread' : 'single';
-    console.log(`[SYSTEM_B] 📊 Format selected: ${selectedFormat} (target: 7% threads = ~3/day)`);
+    // ✅ THREADS ENABLED: 15% thread rate = ~3-4 threads per day out of 24 posts (1/hour)
+    const selectedFormat = Math.random() < 0.15 ? 'thread' : 'single';
+    console.log(`[SYSTEM_B] 📊 Format selected: ${selectedFormat} (target: 15% threads = ~3-4/day)`);
     
     const result = await generateFn({
       topic,
