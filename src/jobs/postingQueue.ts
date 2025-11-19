@@ -86,70 +86,41 @@ export async function processPostingQueue(): Promise<void> {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
         
         if (isContent) {
-          // 🚨 CRITICAL FIX: Count ACTUAL TWEETS, not just decisions
-          // A thread with 5 parts = 5 tweets on Twitter, not 1!
+          // 🎯 COUNT POSTS, NOT TWEETS: Threads count as 1 post, not multiple tweets
+          // A thread is ONE POST on Twitter, regardless of how many parts it has
           
           // Query recent posts
           const { data: recentContent } = await supabase
             .from('content_metadata')
-            .select('decision_type, thread_parts')
+            .select('decision_type')
             .in('decision_type', ['single', 'thread'])
             .eq('status', 'posted')
             .gte('posted_at', oneHourAgo);
           
-          // Count ACTUAL tweets (not decisions)
-          let actualTweetsThisHour = 0;
-          for (const post of recentContent || []) {
-            if (post.decision_type === 'thread') {
-              // Type-safe check for thread_parts
-              const threadParts = post.thread_parts as any[] | undefined;
-              const parts = Array.isArray(threadParts) ? threadParts.length : 5;
-              actualTweetsThisHour += parts; // Thread = multiple tweets!
-            } else {
-              actualTweetsThisHour += 1; // Single = 1 tweet
-            }
-          }
+          // Count POSTS (not tweets) - threads = 1 post, singles = 1 post
+          const postsThisHour = (recentContent || []).length;
           
-          // Add tweets from this cycle
-          actualTweetsThisHour += contentPostedThisCycle;
+          // Add posts from this cycle
+          const totalPostsThisHour = postsThisHour + contentPostedThisCycle;
           
           // Check if THIS decision would exceed limit
-          const thisTweetCount = decision.decision_type === 'thread' 
-            ? (decision.thread_parts?.length || 5)
-            : 1;
+          // Both threads and singles count as 1 post
+          const thisPostCount = 1; // Thread = 1 post, Single = 1 post
           
-          // 🎯 STRICT LIMIT: Max 2 tweets per hour (not 6!)
-          const maxTweetsPerHour = maxContentPerHour; // 2 tweets max
-          const wouldExceed = actualTweetsThisHour + thisTweetCount > maxTweetsPerHour;
+          // 🎯 STRICT LIMIT: Max 2 posts per hour
+          const maxPostsPerHour = maxContentPerHour; // 2 posts max
+          const wouldExceed = totalPostsThisHour + thisPostCount > maxPostsPerHour;
           
-          log({ op: 'rate_limit_check', actual_tweets: actualTweetsThisHour, this_tweet_count: thisTweetCount, limit: maxTweetsPerHour });
-          console.log(`[POSTING_QUEUE] 📊 ACTUAL tweets this hour: ${actualTweetsThisHour}/${maxTweetsPerHour} (this decision would add ${thisTweetCount})`);
+          log({ op: 'rate_limit_check', posts_this_hour: totalPostsThisHour, this_post_count: thisPostCount, limit: maxPostsPerHour });
+          console.log(`[POSTING_QUEUE] 📊 Posts this hour: ${totalPostsThisHour}/${maxPostsPerHour} (this ${decision.decision_type} would add ${thisPostCount} post)`);
           
           if (wouldExceed) {
-            console.log(`[POSTING_QUEUE] ⛔ SKIP: Would exceed ACTUAL tweet limit (${actualTweetsThisHour + thisTweetCount} > ${maxTweetsPerHour})`);
+            console.log(`[POSTING_QUEUE] ⛔ SKIP: Would exceed post limit (${totalPostsThisHour + thisPostCount} > ${maxPostsPerHour})`);
             continue; // Skip this decision
           }
           
-          // 🚨 THREAD SPACING: Minimum 30 minutes between threads to prevent spam appearance
-          if (decision.decision_type === 'thread') {
-            const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-            const { data: recentThreads } = await supabase
-              .from('content_metadata')
-              .select('posted_at')
-              .eq('decision_type', 'thread')
-              .eq('status', 'posted')
-              .gte('posted_at', thirtyMinsAgo)
-              .limit(1);
-            
-            if (recentThreads && recentThreads.length > 0) {
-              const firstThread = recentThreads[0] as { posted_at: string };
-              const postedAt = String(firstThread.posted_at);
-              const lastThreadMins = Math.round((Date.now() - new Date(postedAt).getTime()) / 60000);
-              console.log(`[POSTING_QUEUE] ⛔ SKIP THREAD: Last thread posted ${lastThreadMins}m ago (need 30m spacing)`);
-              log({ op: 'thread_spacing_block', last_thread_mins: lastThreadMins, min_spacing: 30 });
-              continue; // Skip this thread
-            }
-          }
+          // ✅ THREADS COUNT AS 1 POST: No special spacing needed
+          // Threads are treated the same as single posts for rate limiting
         }
         
         if (isReply) {
