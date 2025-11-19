@@ -1968,4 +1968,3 @@ async function ensureMinimumQueueDepth(): Promise<void> {
     // Don't throw - this is a safety net, not critical path
   }
 }
-}
