@@ -1205,6 +1205,8 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       console.error(`[POSTING_QUEUE] 🚨 THIS MAKES US LOOK LIKE A BOT - EMERGENCY FIX REQUIRED!`);
       
       // 🔥 EMERGENCY FALLBACK: Try multiple simple update strategies
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
       const emergencyStrategies = [
         // Strategy 1: Full update with all fields
         async () => {
