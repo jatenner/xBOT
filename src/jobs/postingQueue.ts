@@ -1375,8 +1375,6 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       }
     
       console.log(`[POSTING_QUEUE] 🎉 POST COMPLETE: Tweet is live on Twitter, all tracking initiated!`);
-    }
-    }
     } catch (topLevelError: any) {
     // Catch any errors that weren't handled by inner try-catch blocks
     const errorMsg = topLevelError?.message || topLevelError?.toString() || 'Unknown error';
