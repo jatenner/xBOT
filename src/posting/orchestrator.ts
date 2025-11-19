@@ -294,7 +294,7 @@ async function markAsFailed(decision_id: string, errorMsg: string): Promise<void
 
 async function isRateLimited(): Promise<boolean> {
   const config = getConfig();
-  const maxPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 1));
+  const maxPerHour = parseInt(String(config.MAX_POSTS_PER_HOUR || 1)); // 1 post/hour = 2 every 2 hours
   
   const supabase = getSupabaseClient();
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();

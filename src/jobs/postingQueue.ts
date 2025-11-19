@@ -68,9 +68,9 @@ export async function processPostingQueue(): Promise<void> {
     let repliesPostedThisCycle = 0;
     
     const config = getConfig();
-    // 🎯 STRICT RATE LIMIT: Max 2 tweets per hour (user requirement)
-    const maxContentPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 2);
-    const maxContentPerHour = Number.isFinite(maxContentPerHourRaw) ? maxContentPerHourRaw : 2;
+    // 🎯 STRICT RATE LIMIT: Max 1 post per hour = 2 posts every 2 hours (user requirement)
+    const maxContentPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 1);
+    const maxContentPerHour = Number.isFinite(maxContentPerHourRaw) ? maxContentPerHourRaw : 1;
     const maxRepliesPerHourRaw = Number(config.REPLIES_PER_HOUR ?? 4);
     const maxRepliesPerHour = Number.isFinite(maxRepliesPerHourRaw) ? maxRepliesPerHourRaw : 4;
     
@@ -107,8 +107,8 @@ export async function processPostingQueue(): Promise<void> {
           // Both threads and singles count as 1 post
           const thisPostCount = 1; // Thread = 1 post, Single = 1 post
           
-          // 🎯 STRICT LIMIT: Max 2 posts per hour
-          const maxPostsPerHour = maxContentPerHour; // 2 posts max
+          // 🎯 STRICT LIMIT: Max 1 post per hour = 2 posts every 2 hours
+          const maxPostsPerHour = maxContentPerHour; // 1 post max per hour
           const wouldExceed = totalPostsThisHour + thisPostCount > maxPostsPerHour;
           
           log({ op: 'rate_limit_check', posts_this_hour: totalPostsThisHour, this_post_count: thisPostCount, limit: maxPostsPerHour });
@@ -206,8 +206,8 @@ interface QueuedDecisionRow {
 
 async function checkPostingRateLimits(): Promise<boolean> {
   const config = getConfig();
-  const maxPostsPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 2);
-  const maxPostsPerHour = Number.isFinite(maxPostsPerHourRaw) ? maxPostsPerHourRaw : 2;
+  const maxPostsPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 1);
+  const maxPostsPerHour = Number.isFinite(maxPostsPerHourRaw) ? maxPostsPerHourRaw : 1;
   
   try {
     const { getSupabaseClient } = await import('../db/index');
@@ -263,7 +263,7 @@ async function checkPostingRateLimits(): Promise<boolean> {
       return false;
     }
     
-    console.log(`[POSTING_QUEUE] ✅ Rate limit OK: ${postsThisHour}/${maxPostsPerHour} posts (max 2 tweets/hour)`);
+    console.log(`[POSTING_QUEUE] ✅ Rate limit OK: ${postsThisHour}/${maxPostsPerHour} posts (max 1 post/hour = 2 every 2 hours)`);
     return true;
     
   } catch (error) {
@@ -513,10 +513,10 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       }
     }
     
-    // SEPARATE RATE LIMITS: Content (2/hr for singles+threads combined) vs Replies (4/hr separate)
+    // SEPARATE RATE LIMITS: Content (1/hr = 2 every 2 hours for singles+threads combined) vs Replies (4/hr separate)
     const config = getConfig();
-    const maxContentPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 2); // Singles + threads share this
-    const maxContentPerHour = Number.isFinite(maxContentPerHourRaw) ? maxContentPerHourRaw : 2;
+    const maxContentPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 1); // Singles + threads share this
+    const maxContentPerHour = Number.isFinite(maxContentPerHourRaw) ? maxContentPerHourRaw : 1;
     const maxRepliesPerHourRaw = Number(config.REPLIES_PER_HOUR ?? 4); // Replies independent
     const maxRepliesPerHour = Number.isFinite(maxRepliesPerHourRaw) ? maxRepliesPerHourRaw : 4;
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();

@@ -66,7 +66,7 @@ export function validateEnvironmentVariables(): void {
   
   // Check 6: Rate limits (warn if not set)
   if (!process.env.MAX_POSTS_PER_HOUR) {
-    warnings.push('MAX_POSTS_PER_HOUR not set (using default: 2)');
+    warnings.push('MAX_POSTS_PER_HOUR not set (using default: 1 = 2 posts every 2 hours)');
   }
   if (!process.env.REPLIES_PER_HOUR) {
     warnings.push('REPLIES_PER_HOUR not set (using default: 4)');

@@ -136,7 +136,7 @@ export class SimplifiedDynamicRates {
 
     return {
       current_rates: {
-        posts_per_hour: parseInt(process.env.MAX_POSTS_PER_HOUR || '2', 10),
+        posts_per_hour: parseInt(process.env.MAX_POSTS_PER_HOUR || '1', 10),
         replies_per_hour: Math.ceil(parseInt(process.env.REPLY_MAX_PER_DAY || '72', 10) / 24)
       },
       last_update: new Date().toISOString(),
