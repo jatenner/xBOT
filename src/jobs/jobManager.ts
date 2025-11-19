@@ -540,18 +540,33 @@ export class JobManager {
       console.warn('═══════════════════════════════════════════════════════');
     }
 
-    // Attribution - every 2 hours, offset 70 min
-    this.scheduleStaggeredJob(
-      'attribution',
-      async () => {
-        await this.safeExecute('attribution', async () => {
-          const { runAttributionJob } = await import('./attributionJob');
-          await runAttributionJob();
-        });
-      },
-      2 * 60 * MINUTE,
-      70 * MINUTE
-    );
+      // Attribution - every 2 hours, offset 70 min
+      this.scheduleStaggeredJob(
+        'attribution',
+        async () => {
+          await this.safeExecute('attribution', async () => {
+            const { runAttributionJob } = await import('./attributionJob');
+            await runAttributionJob();
+          });
+        },
+        2 * 60 * MINUTE,
+        70 * MINUTE
+      );
+
+      // 🔄 TWEET RECONCILIATION JOB - every 6 hours, offset 120 min
+      // 🔥 CRITICAL: Recovers false failures - tweets marked as failed but actually posted
+      this.scheduleStaggeredJob(
+        'tweet_reconciliation',
+        async () => {
+          await this.safeExecute('tweet_reconciliation', async () => {
+            const { reconcileFailedTweets } = await import('./tweetReconciliationJob');
+            await reconcileFailedTweets();
+          });
+        },
+        6 * 60 * MINUTE, // Every 6 hours
+        120 * MINUTE // Start after 2 hours (give system time to stabilize)
+      );
+      console.log('[JOB_MANAGER] ✅ tweet_reconciliation scheduled successfully');
 
     // Real outcomes - every 2 hours, offset 100 min
     this.scheduleStaggeredJob(
