@@ -52,9 +52,10 @@ export class UltimateTwitterPoster {
     const maxRetries = 2; // Increased retries
     const startTime = Date.now();
     
-    // 🛡️ TIMEOUT PROTECTION: Overall timeout for entire postTweet operation (80 seconds max)
+    // 🛡️ TIMEOUT PROTECTION: Overall timeout for entire postTweet operation (120 seconds max)
+    // 🔥 FIX: Increased from 80s to 120s - Twitter can take 55-90s to complete posting
     const { withTimeout } = await import('../utils/operationTimeout');
-    const OVERALL_TIMEOUT_MS = 80000; // 80 seconds max for entire operation (including retries)
+    const OVERALL_TIMEOUT_MS = 120000; // 120 seconds max for entire operation (including retries)
 
     return withTimeout(async () => {
       while (retryCount <= maxRetries) {

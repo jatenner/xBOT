@@ -583,6 +583,72 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
   }
 }
 
+/**
+ * 🔍 SUCCESS VERIFICATION: Check if tweet actually posted despite timeout/error
+ * This prevents marking tweets as failed when they actually succeeded
+ */
+async function verifyTweetPosted(content: string, decisionType: string): Promise<string | null> {
+  try {
+    const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+    const browserPool = UnifiedBrowserPool.getInstance();
+    const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+    
+    // Use browser pool to check if tweet exists
+    const tweetFound = await browserPool.withContext(
+      'tweet_verification',
+      async (context) => {
+        const page = await context.newPage();
+        try {
+          // Navigate to profile and search for recent tweet with matching content
+          await page.goto(`https://x.com/${username}`, { 
+            waitUntil: 'domcontentloaded', 
+            timeout: 30000 
+          });
+          
+          // Wait for timeline to load
+          await page.waitForSelector('[data-testid="tweetText"]', { timeout: 10000 }).catch(() => null);
+          
+          // Search for tweet with matching content (first 50 chars)
+          const searchText = content.substring(0, 50).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const tweetLocator = page.locator('[data-testid="tweetText"]').filter({ 
+            hasText: new RegExp(searchText, 'i') 
+          });
+          
+          const tweetExists = await tweetLocator.first().isVisible({ timeout: 5000 }).catch(() => false);
+          
+          if (tweetExists) {
+            // Try to extract tweet ID from the tweet element
+            try {
+              const tweetElement = await tweetLocator.first();
+              const tweetLink = await tweetElement.locator('..').locator('a[href*="/status/"]').first().getAttribute('href');
+              if (tweetLink) {
+                const match = tweetLink.match(/\/status\/(\d+)/);
+                if (match && match[1]) {
+                  return match[1];
+                }
+              }
+            } catch (e) {
+              // If ID extraction fails, at least we know tweet exists
+              return 'verified_but_no_id';
+            }
+            return 'verified';
+          }
+          
+          return null;
+        } finally {
+          await page.close();
+        }
+      },
+      5 // Lower priority (background verification)
+    );
+    
+    return tweetFound;
+  } catch (error: any) {
+    console.warn(`[POSTING_QUEUE] ⚠️ Tweet verification failed: ${error.message}`);
+    return null;
+  }
+}
+
 async function processDecision(decision: QueuedDecision): Promise<void> {
   const isThread = decision.decision_type === 'thread';
   const logPrefix = isThread ? '[POSTING_QUEUE] 🧵' : '[POSTING_QUEUE] 📝';
@@ -864,57 +930,123 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       console.log(`[POSTING_QUEUE] ⚠️ From this point on, all operations are best-effort only`);
       
     } catch (postError: any) {
-      // Posting failed - tweet never made it to Twitter
+      // Posting failed - BUT check if tweet actually posted (timeout might have happened after success)
       console.error(`[POSTING_QUEUE] ❌ POSTING FAILED: ${postError.message}`);
       console.error(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 100)}..."`);
       
-      // RETRY LOGIC: Both singles and threads get 3 retry attempts
-      // Temporary failures (network glitch, slow load) shouldn't be permanent
-      const { getSupabaseClient } = await import('../db/index');
-      const supabase = getSupabaseClient();
+      // 🔥 SUCCESS VERIFICATION: Check if tweet actually posted despite error (common with timeouts)
+      const isTimeout = /timeout|exceeded/i.test(postError.message);
+      if (isTimeout) {
+        console.log(`[POSTING_QUEUE] 🔍 Timeout detected - verifying if tweet actually posted...`);
+        try {
+          const verifiedTweetId = await verifyTweetPosted(decision.content, decision.decision_type);
+          if (verifiedTweetId) {
+            console.log(`[POSTING_QUEUE] ✅ VERIFICATION SUCCESS: Tweet is live on Twitter! ID: ${verifiedTweetId}`);
+            // Tweet is actually posted - treat as success!
+            tweetId = verifiedTweetId;
+            tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${verifiedTweetId}`;
+            postingSucceeded = true;
+            // Continue to database save (skip retry logic)
+          } else {
+            console.log(`[POSTING_QUEUE] ❌ VERIFICATION FAILED: Tweet not found on Twitter`);
+          }
+        } catch (verifyError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Verification check failed: ${verifyError.message}`);
+          // Continue with normal retry logic
+        }
+      }
       
-      const { data: metadata } = await supabase
-        .from('content_metadata')
-        .select('features')
-        .eq('decision_id', decision.id)
-        .single();
-      
-      const retryCount = (metadata?.features as any)?.retry_count || 0;
-      const recoveryAttempts = Number((metadata?.features as any)?.recovery_attempts || 0);
-      const maxRetries = 3;
-      const maxRecoveryAttempts = MAX_POSTING_RECOVERY_ATTEMPTS;
-      
-      if (retryCount < maxRetries) {
-        // Calculate retry delay (progressive backoff)
-        const retryDelayMinutes = decision.decision_type === 'thread' 
-          ? [5, 15, 30][retryCount]  // Threads: 5min, 15min, 30min
-          : [3, 10, 20][retryCount]; // Singles: 3min, 10min, 20min (faster retries)
+      // If verification found the tweet, skip retry logic and go to database save
+      if (postingSucceeded && tweetId) {
+        console.log(`[POSTING_QUEUE] 🎉 Tweet verified as posted - skipping retry, saving to database`);
+        // Continue to database save section below
+      } else {
+        // RETRY LOGIC: Both singles and threads get 3 retry attempts
+        // Temporary failures (network glitch, slow load) shouldn't be permanent
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
         
-        const retryDelay = retryDelayMinutes * 60 * 1000;
-        
-        console.log(`[POSTING_QUEUE] 🔄 ${decision.decision_type} will retry (attempt ${retryCount + 1}/${maxRetries}) in ${retryDelayMinutes}min`);
-        console.log(`[POSTING_QUEUE] 📝 Error: ${postError.message}`);
-        
-        const shouldForceReset = /timeout|session/i.test(postError.message || '');
-        const existingForceReset = Boolean((metadata?.features as any)?.force_session_reset);
-        await supabase
+        const { data: metadata } = await supabase
           .from('content_metadata')
-          .update({
-            status: 'queued',  // 🔄 Revert from 'posting' back to 'queued' for retry
-            scheduled_at: new Date(Date.now() + retryDelay).toISOString(),
-            features: {
-              ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
-              retry_count: retryCount + 1,
-              last_error: postError.message,
-              last_attempt: new Date().toISOString(),
-              last_post_error: postError.message,
-              force_session_reset: shouldForceReset || existingForceReset
-            }
-          })
-          .eq('decision_id', decision.id);
+          .select('features')
+          .eq('decision_id', decision.id)
+          .single();
         
-        await updatePostingMetrics('error');
-        return; // Don't mark as failed, will retry
+        const retryCount = (metadata?.features as any)?.retry_count || 0;
+        const recoveryAttempts = Number((metadata?.features as any)?.recovery_attempts || 0);
+        const maxRetries = 3;
+        const maxRecoveryAttempts = MAX_POSTING_RECOVERY_ATTEMPTS;
+        
+        if (retryCount < maxRetries) {
+          // 🔥 PRE-RETRY VERIFICATION: Check if previous attempt actually succeeded
+          // This prevents retrying when tweet is already live
+          const isTimeout = /timeout|exceeded/i.test(postError.message || '');
+          if (isTimeout && retryCount > 0) {
+            console.log(`[POSTING_QUEUE] 🔍 PRE-RETRY VERIFICATION: Checking if previous attempt succeeded...`);
+            try {
+              const preRetryCheck = await verifyTweetPosted(decision.content, decision.decision_type);
+              if (preRetryCheck && preRetryCheck !== 'verified_but_no_id' && preRetryCheck !== 'verified') {
+                // Previous attempt succeeded! Mark as posted
+                console.log(`[POSTING_QUEUE] ✅ PRE-RETRY VERIFICATION: Tweet is already live! ID: ${preRetryCheck}`);
+                console.log(`[POSTING_QUEUE] 🎉 Skipping retry - marking as posted`);
+                
+                tweetId = preRetryCheck;
+                tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${preRetryCheck}`;
+                postingSucceeded = true;
+                // Continue to database save (skip retry logic)
+                // Break out of retry block by returning early
+              } else if (preRetryCheck === 'verified' || preRetryCheck === 'verified_but_no_id') {
+                // Tweet exists but no ID - still mark as posted
+                console.log(`[POSTING_QUEUE] ✅ PRE-RETRY VERIFICATION: Tweet exists but ID extraction failed`);
+                tweetId = `recovered_${Date.now()}`;
+                tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}`;
+                postingSucceeded = true;
+                // Continue to database save
+              } else {
+                console.log(`[POSTING_QUEUE] ❌ PRE-RETRY VERIFICATION: Tweet not found - proceeding with retry`);
+              }
+            } catch (preRetryError: any) {
+              console.warn(`[POSTING_QUEUE] ⚠️ Pre-retry verification failed: ${preRetryError.message}`);
+              // Continue with retry if verification fails
+            }
+          }
+          
+          // If verification found the tweet, skip retry and go to database save
+          if (postingSucceeded && tweetId) {
+            console.log(`[POSTING_QUEUE] 🎉 Tweet verified as posted - skipping retry, saving to database`);
+            // Break out of retry block - will continue to database save
+          } else {
+            // Calculate retry delay (progressive backoff)
+            const retryDelayMinutes = decision.decision_type === 'thread' 
+              ? [5, 15, 30][retryCount]  // Threads: 5min, 15min, 30min
+              : [3, 10, 20][retryCount]; // Singles: 3min, 10min, 20min (faster retries)
+            
+            const retryDelay = retryDelayMinutes * 60 * 1000;
+            
+            console.log(`[POSTING_QUEUE] 🔄 ${decision.decision_type} will retry (attempt ${retryCount + 1}/${maxRetries}) in ${retryDelayMinutes}min`);
+            console.log(`[POSTING_QUEUE] 📝 Error: ${postError.message}`);
+            
+            const shouldForceReset = /timeout|session/i.test(postError.message || '');
+            const existingForceReset = Boolean((metadata?.features as any)?.force_session_reset);
+            await supabase
+              .from('content_metadata')
+              .update({
+                status: 'queued',  // 🔄 Revert from 'posting' back to 'queued' for retry
+                scheduled_at: new Date(Date.now() + retryDelay).toISOString(),
+                features: {
+                  ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
+                  retry_count: retryCount + 1,
+                  last_error: postError.message,
+                  last_attempt: new Date().toISOString(),
+                  last_post_error: postError.message,
+                  force_session_reset: shouldForceReset || existingForceReset
+                }
+              })
+              .eq('decision_id', decision.id);
+            
+            await updatePostingMetrics('error');
+            return; // Don't mark as failed, will retry
+          }
       }
       
       if (recoveryAttempts < maxRecoveryAttempts) {
@@ -941,25 +1073,80 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         return;
       }
       
-      // All retries + recoveries exhausted - mark as failed
+      // 🔥 CRITICAL FIX: Final verification before marking as failed
+      // All retries exhausted - but check ONE MORE TIME if tweet actually posted
       console.error(`[POSTING_QUEUE] ❌ All ${maxRetries} retries + ${maxRecoveryAttempts} recoveries exhausted for ${decision.decision_type}`);
-      await supabase
-        .from('content_metadata')
-        .update({
-          status: 'failed',
-          updated_at: new Date().toISOString(),
-          features: {
-            ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
-            retry_count: retryCount,
-             recovery_attempts: recoveryAttempts,
-            last_error: postError.message,
-            last_attempt: new Date().toISOString(),
-            last_post_error: postError.message
-          }
-        })
-        .eq('decision_id', decision.id);
-      await updatePostingMetrics('error');
-      throw postError;
+      console.log(`[POSTING_QUEUE] 🔍 FINAL VERIFICATION: Checking if tweet actually posted despite errors...`);
+      
+      try {
+        const finalVerification = await verifyTweetPosted(decision.content, decision.decision_type);
+        if (finalVerification && finalVerification !== 'verified_but_no_id' && finalVerification !== 'verified') {
+          // Tweet is actually live! Mark as posted instead of failed
+          console.log(`[POSTING_QUEUE] ✅ FINAL VERIFICATION SUCCESS: Tweet is live on Twitter! ID: ${finalVerification}`);
+          console.log(`[POSTING_QUEUE] 🎉 Recovering false failure - marking as posted`);
+          
+          tweetId = finalVerification;
+          tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${finalVerification}`;
+          postingSucceeded = true;
+          
+          // Mark as posted (will continue to database save section)
+          // Don't throw error, let it fall through to database save
+        } else if (finalVerification === 'verified' || finalVerification === 'verified_but_no_id') {
+          // Tweet exists but we couldn't get ID - still mark as posted with placeholder
+          console.log(`[POSTING_QUEUE] ✅ FINAL VERIFICATION: Tweet exists but ID extraction failed`);
+          console.log(`[POSTING_QUEUE] 🎉 Recovering false failure - marking as posted with placeholder ID`);
+          
+          tweetId = `recovered_${Date.now()}`;
+          tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}`;
+          postingSucceeded = true;
+          
+          // Mark as posted (will continue to database save section)
+        } else {
+          // Verification confirms tweet is NOT on Twitter - safe to mark as failed
+          console.log(`[POSTING_QUEUE] ❌ FINAL VERIFICATION: Tweet not found on Twitter - marking as failed`);
+          await supabase
+            .from('content_metadata')
+            .update({
+              status: 'failed',
+              updated_at: new Date().toISOString(),
+              features: {
+                ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
+                retry_count: retryCount,
+                recovery_attempts: recoveryAttempts,
+                last_error: postError.message,
+                last_attempt: new Date().toISOString(),
+                last_post_error: postError.message,
+                final_verification: 'not_found'
+              }
+            })
+            .eq('decision_id', decision.id);
+          await updatePostingMetrics('error');
+          throw postError;
+        }
+      } catch (verifyError: any) {
+        // Verification itself failed - be conservative, don't mark as failed yet
+        console.error(`[POSTING_QUEUE] ⚠️ Final verification check failed: ${verifyError.message}`);
+        console.log(`[POSTING_QUEUE] ⚠️ Cannot confirm if tweet posted - marking as failed but logging for reconciliation`);
+        await supabase
+          .from('content_metadata')
+          .update({
+            status: 'failed',
+            updated_at: new Date().toISOString(),
+            features: {
+              ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
+              retry_count: retryCount,
+              recovery_attempts: recoveryAttempts,
+              last_error: postError.message,
+              last_attempt: new Date().toISOString(),
+              last_post_error: postError.message,
+              final_verification: 'verification_failed',
+              needs_reconciliation: true
+            }
+          })
+          .eq('decision_id', decision.id);
+        await updatePostingMetrics('error');
+        throw postError;
+      }
     }
     
     // ═══════════════════════════════════════════════════════════
@@ -1309,8 +1496,9 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         const { BulletproofThreadComposer } = await import('../posting/BulletproofThreadComposer');
         const { withTimeout } = await import('../utils/operationTimeout');
         
-        // 🛡️ TIMEOUT PROTECTION: Prevent thread posting from hanging (120 second max)
-        const THREAD_POST_TIMEOUT_MS = 120000; // 120 seconds max for threads (longer due to multiple tweets)
+        // 🛡️ TIMEOUT PROTECTION: Prevent thread posting from hanging (180 second max)
+        // 🔥 FIX: Increased from 120s to 180s - Threads take longer (multiple tweets + verification)
+        const THREAD_POST_TIMEOUT_MS = 180000; // 180 seconds max for threads (longer due to multiple tweets)
         const result = await withTimeout(
           () => BulletproofThreadComposer.post(formattedThreadParts),
           { 
@@ -1365,8 +1553,9 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         
         const poster = new UltimateTwitterPoster();
         
-        // 🛡️ TIMEOUT PROTECTION: Prevent hanging operations (90 second max)
-        const SINGLE_POST_TIMEOUT_MS = 90000; // 90 seconds max for single post
+        // 🛡️ TIMEOUT PROTECTION: Prevent hanging operations (120 second max)
+        // 🔥 FIX: Increased from 90s to 120s - Twitter can take 55-90s to complete posting
+        const SINGLE_POST_TIMEOUT_MS = 120000; // 120 seconds max for single post
         const result = await withTimeout(
           () => poster.postTweet(contentToPost),
           { 
@@ -1693,8 +1882,11 @@ async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?
     } else {
       console.log(`[POSTING_QUEUE] 📝 Decision ${decisionId} marked as posted with tweet ID: ${tweetId}`);
     }
-  } catch (error) {
-    console.warn(`[POSTING_QUEUE] ⚠️ Failed to mark posted for ${decisionId}:`, error.message);
+  } catch (error: any) {
+    console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Failed to mark posted for ${decisionId}:`, error.message);
+    // 🔥 CRITICAL FIX: Re-throw error so retry loop can catch it
+    // Without this, the calling code thinks save succeeded when it actually failed!
+    throw error;
   }
 }
 
