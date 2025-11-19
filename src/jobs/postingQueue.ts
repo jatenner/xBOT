@@ -1372,8 +1372,8 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         // Don't fail the post, just log and continue
       }
     
-      console.log(`[POSTING_QUEUE] 🎉 POST COMPLETE: Tweet is live on Twitter, all tracking initiated!`);
-  } catch (topLevelError: any) {
+        console.log(`[POSTING_QUEUE] 🎉 POST COMPLETE: Tweet is live on Twitter, all tracking initiated!`);
+    } catch (topLevelError: any) {
     // Catch any errors that weren't handled by inner try-catch blocks
     const errorMsg = topLevelError?.message || topLevelError?.toString() || 'Unknown error';
     console.error(`${logPrefix} 🚨 FUNCTION-LEVEL ERROR:`, errorMsg);
