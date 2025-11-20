@@ -5,7 +5,7 @@
 
 import { log } from '../lib/logger';
 import { Page, BrowserContext, Locator } from 'playwright';
-import { existsSync, writeFileSync } from 'fs';
+import { existsSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { ImprovedReplyIdExtractor } from './ImprovedReplyIdExtractor';
 import { BulletproofTweetExtractor } from '../utils/bulletproofTweetExtractor';
@@ -41,6 +41,7 @@ export class UltimateTwitterPoster {
   
   // PHASE 3.5: Real tweet ID extraction
   private capturedTweetId: string | null = null;
+  private networkResponseListener: ((response: any) => void) | null = null;
 
   constructor(options: PosterOptions = {}) {
     this.purpose = options.purpose ?? 'post';
@@ -449,6 +450,10 @@ export class UltimateTwitterPoster {
             resolve('');
           }, 5000);
         });
+    
+    // 🔥 PRIORITY 1 FIX: Enhanced network interception with file backup
+    // Set up persistent response listener BEFORE posting to capture tweet ID
+    this.setupEnhancedNetworkInterception();
     
     // Set up network response monitoring (with longer timeout and more patterns)
     let networkVerificationPromise: Promise<any> | null = null;
@@ -925,6 +930,85 @@ export class UltimateTwitterPoster {
 
   private getNestedValue(obj: any, path: string): any {
     return path.split('.').reduce((current, key) => current?.[key], obj);
+  }
+
+  /**
+   * 🔥 PRIORITY 1 FIX: Enhanced network interception with file backup
+   * Sets up persistent response listener to capture tweet ID from API responses
+   * Stores captured IDs in temp file as backup if database save fails
+   */
+  private setupEnhancedNetworkInterception(): void {
+    if (!this.page) return;
+    
+    // Remove existing listener if any
+    if (this.networkResponseListener) {
+      this.page.off('response', this.networkResponseListener);
+    }
+    
+    this.networkResponseListener = async (response: any) => {
+      try {
+        const url = response.url();
+        
+        // Match Twitter API endpoints that contain tweet IDs
+        const isTweetCreationEndpoint = 
+          url.includes('/i/api/graphql') ||
+          url.includes('/i/api/1.1/statuses/update') ||
+          url.includes('/2/tweets') ||
+          url.includes('/CreateTweet') ||
+          url.includes('/compose/tweet') ||
+          url.includes('/tweet/create');
+        
+        if (isTweetCreationEndpoint && response.status() === 200) {
+          try {
+            const responseBody = await response.json();
+            const tweetId = this.extractTweetId(responseBody);
+            
+            if (tweetId && !this.capturedTweetId) {
+              this.capturedTweetId = tweetId;
+              console.log(`ULTIMATE_POSTER: 🎯 NETWORK INTERCEPTION: Captured tweet ID: ${tweetId}`);
+              
+              // 🔥 CRITICAL: Store in temp file as backup
+              this.saveTweetIdToFile(tweetId, 'network_interception');
+            }
+          } catch (jsonError: any) {
+            // Response might not be JSON, ignore
+          }
+        }
+      } catch (error: any) {
+        // Ignore errors in network interception (non-critical)
+      }
+    };
+    
+    this.page.on('response', this.networkResponseListener);
+    console.log('ULTIMATE_POSTER: ✅ Enhanced network interception active');
+  }
+
+  /**
+   * 🔥 PRIORITY 1 FIX: Save tweet ID to temp file as backup
+   * Used if database save fails - allows recovery later
+   */
+  private saveTweetIdToFile(tweetId: string, source: string, content?: string, decisionId?: string): void {
+    try {
+      const logsDir = join(process.cwd(), 'logs');
+      if (!existsSync(logsDir)) {
+        mkdirSync(logsDir, { recursive: true });
+      }
+      
+      const backupFile = join(logsDir, 'tweet_id_backups.jsonl');
+      const backupEntry = {
+        tweetId,
+        source,
+        content: content ? content.substring(0, 200) : null, // Store first 200 chars for matching
+        decisionId: decisionId || null,
+        timestamp: Date.now(),
+        date: new Date().toISOString()
+      };
+      
+      appendFileSync(backupFile, JSON.stringify(backupEntry) + '\n');
+      console.log(`ULTIMATE_POSTER: 💾 Tweet ID backed up to file: ${tweetId} (source: ${source})`);
+    } catch (error: any) {
+      console.warn(`ULTIMATE_POSTER: ⚠️ Failed to backup tweet ID to file: ${error.message}`);
+    }
   }
 
   /**

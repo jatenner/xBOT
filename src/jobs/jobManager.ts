@@ -483,6 +483,35 @@ export class JobManager {
         60 * MINUTE // Start after 60 minutes (give system time to start)
       );
 
+      // 🔥 PRIORITY 2 FIX: DATABASE RETRY QUEUE JOB - every 10 minutes
+      // Processes failed database saves from retry queue
+      this.scheduleStaggeredJob(
+        'db_retry_queue',
+        async () => {
+          await this.safeExecute('db_retry_queue', async () => {
+            const { processDbRetryQueue } = await import('./dbRetryQueueJob');
+            await processDbRetryQueue();
+          });
+        },
+        10 * MINUTE, // Every 10 minutes (frequent retries for fast recovery)
+        15 * MINUTE // Start after 15 minutes (after system is stable)
+      );
+
+      // 🔥 PRIORITY 4 FIX: TWEET RECONCILIATION JOB - every 24 hours, offset 120 min
+      // Finds tweets posted to Twitter but missing from database
+      // Auto-recovers matched tweets and processes retry queue
+      this.scheduleStaggeredJob(
+        'tweet_reconciliation',
+        async () => {
+          await this.safeExecute('tweet_reconciliation', async () => {
+            const { reconcileMissingTweets } = await import('./tweetReconciliationJob');
+            await reconcileMissingTweets();
+          });
+        },
+        1440 * MINUTE, // Every 24 hours (daily reconciliation)
+        120 * MINUTE // Start after 120 minutes (2 hours - after system is stable)
+      );
+
       // 💬 REPLY POSTING JOB - every 30 min (configurable via JOBS_REPLY_INTERVAL_MIN)
       // 🎯 CRITICAL: Generate and queue replies
       // ⏰ TIMING: Starts immediately, has own internal rate limiting
@@ -553,20 +582,7 @@ export class JobManager {
         70 * MINUTE
       );
 
-      // 🔄 TWEET RECONCILIATION JOB - every 6 hours, offset 120 min
-      // 🔥 CRITICAL: Recovers false failures - tweets marked as failed but actually posted
-      this.scheduleStaggeredJob(
-        'tweet_reconciliation',
-        async () => {
-          await this.safeExecute('tweet_reconciliation', async () => {
-            const { reconcileFailedTweets } = await import('./tweetReconciliationJob');
-            await reconcileFailedTweets();
-          });
-        },
-        6 * 60 * MINUTE, // Every 6 hours
-        120 * MINUTE // Start after 2 hours (give system time to stabilize)
-      );
-      console.log('[JOB_MANAGER] ✅ tweet_reconciliation scheduled successfully');
+      // Note: tweet_reconciliation is scheduled above in reply jobs section (line 486-499)
 
     // Real outcomes - every 2 hours, offset 100 min
     this.scheduleStaggeredJob(
