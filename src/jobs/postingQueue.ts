@@ -5,6 +5,8 @@
 
 import fs from 'fs';
 import path from 'path';
+import { appendFileSync, mkdirSync, existsSync } from 'fs';
+import { createHash } from 'crypto';
 import { ENV } from '../config/env';
 import { log } from '../lib/logger';
 import { getConfig, getModeFlags } from '../config/config';
@@ -655,6 +657,9 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
   
   console.log(`${logPrefix} Processing ${decision.decision_type}: ${decision.id}`);
   console.log(`${logPrefix} 🔍 DEBUG: Starting processDecision`);
+  
+  // 🔥 PRIORITY 5 FIX: Pre-post logging BEFORE posting
+  await logPostAttempt(decision, 'attempting');
 
   const decisionFeatures = (decision.features || {}) as Record<string, any>;
   if (decisionFeatures.force_session_reset) {
@@ -679,6 +684,17 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
   }
   
   // 🔒 WRAP ENTIRE FUNCTION IN TRY-CATCH (critical fix for silent failures)
+  // Declare variables at function scope so they're accessible in catch block
+  let tweetId: string = '';
+  let tweetUrl: string | undefined;
+  let tweetIds: string[] | undefined;
+  let postingSucceeded = false;
+  let metadata: any = null;
+  let retryCount = 0;
+  let recoveryAttempts = 0;
+  const maxRetries = 3;
+  const maxRecoveryAttempts = MAX_POSTING_RECOVERY_ATTEMPTS;
+
   try {
     // 🧵 THREAD DIAGNOSTICS: Enhanced logging for threads
     if (isThread) {
@@ -747,22 +763,15 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       }
   }
   
-      // Note: We keep status as 'queued' until actually posted
-      // No intermediate 'posting' status to avoid DB constraint violations
-    
-      // Update metrics
-      console.log(`${logPrefix} 🔍 DEBUG: About to update posting metrics`);
-      await updatePostingMetrics('queued');
-      console.log(`${logPrefix} 🔍 DEBUG: Posting metrics updated`);
-  
-    // Declare variables at function scope so they're accessible in catch block
-    let tweetId: string = '';
-    let tweetUrl: string | undefined;
-    let tweetIds: string[] | undefined;
-    let postingSucceeded = false;
-  
-    try {
-      console.log(`${logPrefix} 🔍 DEBUG: Entering main try block`);
+  // Note: We keep status as 'queued' until actually posted
+  // No intermediate 'posting' status to avoid DB constraint violations
+
+    // Update metrics
+    console.log(`${logPrefix} 🔍 DEBUG: About to update posting metrics`);
+    await updatePostingMetrics('queued');
+    console.log(`${logPrefix} 🔍 DEBUG: Posting metrics updated`);
+
+    console.log(`${logPrefix} 🔍 DEBUG: Entering main try block`);
       // 🚨 CRITICAL: Check if already posted (double-check before posting)
       const { getSupabaseClient } = await import('../db/index');
       const supabase = getSupabaseClient();
@@ -927,6 +936,9 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         console.log(`[POSTING_QUEUE] 🎉 TWEET POSTED SUCCESSFULLY: ${tweetId}`);
         console.log(`[POSTING_QUEUE] 🔗 Tweet URL: ${tweetUrl}`);
         console.log(`[POSTING_QUEUE] ⚠️ From this point on, all operations are best-effort only`);
+        
+        // 🔥 PRIORITY 4 FIX: Log successful post
+        await logPostAttempt(decision, 'success', tweetId);
       
       } catch (postError: any) {
         // Posting failed - BUT check if tweet actually posted (timeout might have happened after success)
@@ -965,16 +977,15 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
           const { getSupabaseClient } = await import('../db/index');
           const supabase = getSupabaseClient();
         
-          const { data: metadata } = await supabase
+          const { data: metadataData } = await supabase
             .from('content_metadata')
             .select('features')
             .eq('decision_id', decision.id)
             .single();
         
-          const retryCount = (metadata?.features as any)?.retry_count || 0;
-          const recoveryAttempts = Number((metadata?.features as any)?.recovery_attempts || 0);
-          const maxRetries = 3;
-          const maxRecoveryAttempts = MAX_POSTING_RECOVERY_ATTEMPTS;
+          metadata = metadataData;
+          retryCount = (metadata?.features as any)?.retry_count || 0;
+          recoveryAttempts = Number((metadata?.features as any)?.recovery_attempts || 0);
         
           if (retryCount < maxRetries) {
             // 🔥 PRE-RETRY VERIFICATION: Check if previous attempt actually succeeded
@@ -1149,244 +1160,263 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         }
       }
     
-    // ═══════════════════════════════════════════════════════════
-    // 🎯 PHASE 2: POST-POSTING OPERATIONS (BEST EFFORT ONLY)
-    // ═══════════════════════════════════════════════════════════
-    // Tweet is live - nothing below can fail the post!
-    
-    // Best-effort: Extract and classify hook
-    try {
-      const { hookAnalysisService } = await import('../intelligence/hookAnalysisService');
-      const hook = hookAnalysisService.extractHook(decision.content);
-      const hookType = hookAnalysisService.classifyHookType(hook);
-    
-      // Store hook in outcomes
-      const { getSupabaseClient: getSupa } = await import('../db/index');
-      const supa = getSupa();
-      await supa
-        .from('outcomes')
-        .update({ 
-          hook_text: hook, 
-          hook_type: hookType 
-        })
-        .eq('tweet_id', tweetId);
-    
-      console.log(`[POSTING_QUEUE] 🎣 Hook captured: "${hook}" (${hookType})`);
-    } catch (hookError: any) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Hook capture failed (non-critical): ${hookError.message}`);
-    }
-  
-    // Mark as posted and store tweet ID and URL
-    // 🚨 CRITICAL: Retry database save if it fails (tweet is already on Twitter!)
-    // 🔥 ABSOLUTE PRIORITY: tweet_id MUST be saved - missing IDs make us look like a bot!
-    let dbSaveSuccess = false;
-    for (let attempt = 1; attempt <= 5; attempt++) {  // Increased to 5 attempts
-      try {
-        console.log(`[POSTING_QUEUE] 💾 Database save attempt ${attempt}/5 for tweet ${tweetId}...`);
-        // 🆕 Pass thread IDs if available
-        await markDecisionPosted(decision.id, tweetId, tweetUrl, tweetIds);
-        dbSaveSuccess = true;
-        console.log(`[POSTING_QUEUE] ✅ Database save SUCCESS on attempt ${attempt}`);
-        break;
-      } catch (dbError: any) {
-        console.error(`[POSTING_QUEUE] 🚨 Database save attempt ${attempt}/5 failed:`, dbError.message);
-        if (attempt < 5) {
-          const delay = attempt * 2000; // Progressive backoff: 2s, 4s, 6s, 8s
-          console.log(`[POSTING_QUEUE] 🔄 Retrying in ${delay/1000} seconds...`);
-          await new Promise(r => setTimeout(r, delay));
-        }
-      }
-    }
-  
-    if (!dbSaveSuccess) {
-      console.error(`[POSTING_QUEUE] 💥 CRITICAL: Tweet ${tweetId} posted but database save failed after 5 attempts!`);
-      console.error(`[POSTING_QUEUE] 🔗 Tweet URL: ${tweetUrl}`);
-      console.error(`[POSTING_QUEUE] 📝 Content: ${decision.content.substring(0, 100)}`);
-      console.error(`[POSTING_QUEUE] 🚨 THIS MAKES US LOOK LIKE A BOT - EMERGENCY FIX REQUIRED!`);
-    
-      // 🔥 EMERGENCY FALLBACK: Try multiple simple update strategies
-      const { getSupabaseClient } = await import('../db/index');
-      const supabase = getSupabaseClient();
-      const emergencyStrategies = [
-        // Strategy 1: Full update with all fields
-        async () => {
-          await supabase
-            .from('content_metadata')
-            .update({ 
-              status: 'posted',
-              tweet_id: tweetId,
-              posted_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            })
-            .eq('decision_id', decision.id);
-        },
-        // Strategy 2: Just tweet_id (most critical)
-        async () => {
-          await supabase
-            .from('content_metadata')
-            .update({ tweet_id: tweetId })
-            .eq('decision_id', decision.id);
-        }
-      ];
-    
-      let emergencySuccess = false;
-      for (let strategyIdx = 0; strategyIdx < emergencyStrategies.length; strategyIdx++) {
+    // Only continue to post-posting operations if posting succeeded
+    if (postingSucceeded && tweetId) {
+        // ═══════════════════════════════════════════════════════════
+        // 🎯 PHASE 2: POST-POSTING OPERATIONS (BEST EFFORT ONLY)
+        // ═══════════════════════════════════════════════════════════
+        // Tweet is live - nothing below can fail the post!
+        
+        // Best-effort: Extract and classify hook
         try {
-          await emergencyStrategies[strategyIdx]();
-          emergencySuccess = true;
-          console.log(`[POSTING_QUEUE] ✅ Emergency save strategy ${strategyIdx + 1} succeeded!`);
-          break;
-        } catch (emergencyError: any) {
-          console.error(`[POSTING_QUEUE] ❌ Emergency strategy ${strategyIdx + 1} failed:`, emergencyError.message);
+          const { hookAnalysisService } = await import('../intelligence/hookAnalysisService');
+          const hook = hookAnalysisService.extractHook(decision.content);
+          const hookType = hookAnalysisService.classifyHookType(hook);
+        
+          // Store hook in outcomes
+          const { getSupabaseClient: getSupa } = await import('../db/index');
+          const supa = getSupa();
+          await supa
+            .from('outcomes')
+            .update({ 
+              hook_text: hook, 
+              hook_type: hookType 
+            })
+            .eq('tweet_id', tweetId);
+        
+          console.log(`[POSTING_QUEUE] 🎣 Hook captured: "${hook}" (${hookType})`);
+        } catch (hookError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Hook capture failed (non-critical): ${hookError.message}`);
         }
-      }
-    
-      if (!emergencySuccess) {
-        console.error(`[POSTING_QUEUE] 💥 ALL EMERGENCY SAVE STRATEGIES FAILED!`);
-        console.error(`[POSTING_QUEUE] 🚨 Tweet ${tweetId} is LIVE on Twitter but database has NO tweet_id!`);
-        console.error(`[POSTING_QUEUE] 📋 Manual intervention required - decision_id: ${decision.id}, tweet_id: ${tweetId}`);
       
-        // Store error message for recovery
+        // Mark as posted and store tweet ID and URL
+        // 🚨 CRITICAL: Retry database save if it fails (tweet is already on Twitter!)
+        // 🔥 ABSOLUTE PRIORITY: tweet_id MUST be saved - missing IDs make us look like a bot!
+        let dbSaveSuccess = false;
+        for (let attempt = 1; attempt <= 5; attempt++) {  // Increased to 5 attempts
+          try {
+            console.log(`[POSTING_QUEUE] 💾 Database save attempt ${attempt}/5 for tweet ${tweetId}...`);
+            // 🆕 Pass thread IDs if available
+            await markDecisionPosted(decision.id, tweetId, tweetUrl, tweetIds);
+            dbSaveSuccess = true;
+            console.log(`[POSTING_QUEUE] ✅ Database save SUCCESS on attempt ${attempt}`);
+            break;
+          } catch (dbError: any) {
+            console.error(`[POSTING_QUEUE] 🚨 Database save attempt ${attempt}/5 failed:`, dbError.message);
+            if (attempt < 5) {
+              const delay = attempt * 2000; // Progressive backoff: 2s, 4s, 6s, 8s
+              console.log(`[POSTING_QUEUE] 🔄 Retrying in ${delay/1000} seconds...`);
+              await new Promise(r => setTimeout(r, delay));
+            } else {
+              // 🔥 PRIORITY 2 FIX: Store in retry queue on final failure
+              try {
+                await storeInRetryQueue(decision.id, tweetId, tweetUrl, tweetIds, decision.content);
+                console.log(`[POSTING_QUEUE] 💾 Stored in retry queue after ${attempt} failed attempts`);
+              } catch (retryQueueError: any) {
+                console.error(`[POSTING_QUEUE] ⚠️ Failed to store in retry queue: ${retryQueueError.message}`);
+              }
+            }
+          }
+        }
+      
+        if (!dbSaveSuccess) {
+            console.error(`[POSTING_QUEUE] 💥 CRITICAL: Tweet ${tweetId} posted but database save failed after 5 attempts!`);
+          console.error(`[POSTING_QUEUE] 🔗 Tweet URL: ${tweetUrl}`);
+          console.error(`[POSTING_QUEUE] 📝 Content: ${decision.content.substring(0, 100)}`);
+          console.error(`[POSTING_QUEUE] 🚨 THIS MAKES US LOOK LIKE A BOT - EMERGENCY FIX REQUIRED!`);
+        
+          // 🔥 EMERGENCY FALLBACK: Try multiple simple update strategies
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          const emergencyStrategies = [
+            // Strategy 1: Full update with all fields
+            async () => {
+              await supabase
+                .from('content_metadata')
+                .update({ 
+                  status: 'posted',
+                  tweet_id: tweetId,
+                  posted_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                })
+                .eq('decision_id', decision.id);
+            },
+            // Strategy 2: Just tweet_id (most critical)
+            async () => {
+              await supabase
+                .from('content_metadata')
+                .update({ tweet_id: tweetId })
+                .eq('decision_id', decision.id);
+            }
+          ];
+        
+          let emergencySuccess = false;
+          for (let strategyIdx = 0; strategyIdx < emergencyStrategies.length; strategyIdx++) {
+            try {
+              await emergencyStrategies[strategyIdx]();
+              emergencySuccess = true;
+              console.log(`[POSTING_QUEUE] ✅ Emergency save strategy ${strategyIdx + 1} succeeded!`);
+              break;
+            } catch (emergencyError: any) {
+              console.error(`[POSTING_QUEUE] ❌ Emergency strategy ${strategyIdx + 1} failed:`, emergencyError.message);
+            }
+          }
+        
+          if (!emergencySuccess) {
+            console.error(`[POSTING_QUEUE] 💥 ALL EMERGENCY SAVE STRATEGIES FAILED!`);
+            console.error(`[POSTING_QUEUE] 🚨 Tweet ${tweetId} is LIVE on Twitter but database has NO tweet_id!`);
+            
+            // 🔥 PRIORITY 2 FIX: Store in retry queue for background recovery
+            try {
+              await storeInRetryQueue(decision.id, tweetId, tweetUrl, tweetIds, decision.content);
+              console.log(`[POSTING_QUEUE] 💾 Stored in retry queue for background recovery`);
+            } catch (retryQueueError: any) {
+              console.error(`[POSTING_QUEUE] ⚠️ Failed to store in retry queue: ${retryQueueError.message}`);
+            }
+            console.error(`[POSTING_QUEUE] 📋 Manual intervention required - decision_id: ${decision.id}, tweet_id: ${tweetId}`);
+          
+            // Store error message for recovery
+            try {
+              await supabase
+                .from('content_metadata')
+                .update({ 
+                  status: 'posted',
+                  error_message: `Tweet ID capture failed - tweet_id: ${tweetId}, URL: ${tweetUrl}`
+                })
+                .eq('decision_id', decision.id);
+            } catch (finalError: any) {
+              console.error(`[POSTING_QUEUE] 💥 Even error message save failed: ${finalError.message}`);
+            }
+          }
+        
+          // DON'T throw - post succeeded! But log this as critical issue.
+        }
+      
+        // Best-effort: Update metrics
         try {
-          await supabase
-            .from('content_metadata')
-            .update({ 
-              status: 'posted',
-              error_message: `Tweet ID capture failed - tweet_id: ${tweetId}, URL: ${tweetUrl}`
-            })
-            .eq('decision_id', decision.id);
-        } catch (finalError: any) {
-          console.error(`[POSTING_QUEUE] 💥 Even error message save failed: ${finalError.message}`);
+          await updatePostingMetrics('posted');
+        } catch (metricsError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Metrics update failed (non-critical): ${metricsError.message}`);
         }
-      }
-    
-    // DON'T throw - post succeeded! But log this as critical issue.
-    }
-  
-    // Best-effort: Update metrics
-    try {
-      await updatePostingMetrics('posted');
-    } catch (metricsError: any) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Metrics update failed (non-critical): ${metricsError.message}`);
-    }
-  
-    // Best-effort: Initialize attribution tracking
-    try {
-      const { initializePostAttribution } = await import('../learning/engagementAttribution');
-      await initializePostAttribution(tweetId, {
-        hook_pattern: (decision as any).metadata?.hook_pattern || 'unknown',
-        topic: (decision as any).metadata?.topic || decision.topic_cluster,
-        generator: (decision as any).metadata?.generator_used || 'unknown',
-        format: (decision as any).metadata?.format || 'single',
-        viral_score: (decision as any).metadata?.viral_score || 50
-      });
-      console.log(`[POSTING_QUEUE] 📊 Attribution tracking initialized`);
-    } catch (attrError: any) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Attribution init failed (non-critical): ${attrError.message}`);
-    }
-  
-    console.log(`[POSTING_QUEUE] ✅ ${decision.decision_type} POSTED SUCCESSFULLY: ${tweetId}`);
-  
-    // ═══════════════════════════════════════════════════════════
-    // 🚀 POST-POSTING FEEDBACK LOOP - Track with Advanced Algorithms
-    // ═══════════════════════════════════════════════════════════
-  
-    try {
-      // 1. TWITTER ALGORITHM OPTIMIZER - Track engagement velocity
-      const { getTwitterAlgorithmOptimizer } = await import('../algorithms/twitterAlgorithmOptimizer');
-      const twitterAlgo = getTwitterAlgorithmOptimizer();
-      await twitterAlgo.trackVelocity(tweetId, new Date().toISOString());
-      console.log(`[POSTING_QUEUE] ⚡ Velocity tracking initialized for ${tweetId}`);
-    } catch (veloError: any) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Velocity tracking failed: ${veloError.message}`);
-    }
-  
-    try {
-      // 2. CONVERSION FUNNEL TRACKER - Track full funnel
-      const { getConversionFunnelTracker } = await import('../algorithms/conversionFunnelTracker');
-      const funnelTracker = getConversionFunnelTracker();
-      await funnelTracker.trackFunnelMetrics(decision.id);
-      console.log(`[POSTING_QUEUE] 📊 Funnel tracking initialized for ${decision.id}`);
-    } catch (funnelError: any) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Funnel tracking failed: ${funnelError.message}`);
-    }
-  
-    try {
-      // 3. FOLLOWER PREDICTOR - Track prediction for accuracy
-      // Prediction data is stored in planJobNew, we'll update accuracy later when real results come in
-      const { getFollowerPredictor } = await import('../algorithms/followerPredictor');
-      const predictor = getFollowerPredictor();
-      // Note: Prediction was already tracked in planJobNew, will update with actuals in analytics job
-      console.log(`[POSTING_QUEUE] 🔮 Prediction will be validated with actual results`);
-    } catch (predError: any) {
-      console.warn(`[POSTING_QUEUE] ⚠️ Predictor tracking failed: ${predError.message}`);
-    }
-  
-    // ═══════════════════════════════════════════════════════════
-  
-    // PHASE 5 FIX: Initialize tracking in learning system FIRST
-    try {
-      // Step 1: Add post to tracking (so learning system knows about it)
-      await learningSystem.processNewPost(
-        decision.id,
-        String(decision.content),
-        {
-          followers_gained_prediction: decision.predicted_followers || 0
-        },
-        {
-          content_type_name: decision.decision_type,
-          hook_used: decision.hook_type || 'unknown',
-          topic: decision.topic_cluster || 'health'
+      
+        // Best-effort: Initialize attribution tracking
+        try {
+          const { initializePostAttribution } = await import('../learning/engagementAttribution');
+          await initializePostAttribution(tweetId, {
+            hook_pattern: (decision as any).metadata?.hook_pattern || 'unknown',
+            topic: (decision as any).metadata?.topic || decision.topic_cluster,
+            generator: (decision as any).metadata?.generator_used || 'unknown',
+            format: (decision as any).metadata?.format || 'single',
+            viral_score: (decision as any).metadata?.viral_score || 50
+          });
+          console.log(`[POSTING_QUEUE] 📊 Attribution tracking initialized`);
+        } catch (attrError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Attribution init failed (non-critical): ${attrError.message}`);
         }
-      );
-      console.log('[LEARNING_SYSTEM] ✅ Post ' + decision.id + ' tracked');
-    } catch (learningError: any) {
-      console.warn('[LEARNING_SYSTEM] ⚠️ Failed to track post:', learningError.message);
+      
+        console.log(`[POSTING_QUEUE] ✅ ${decision.decision_type} POSTED SUCCESSFULLY: ${tweetId}`);
+      
+        // ═══════════════════════════════════════════════════════════
+        // 🚀 POST-POSTING FEEDBACK LOOP - Track with Advanced Algorithms
+        // ═══════════════════════════════════════════════════════════
+      
+        try {
+          // 1. TWITTER ALGORITHM OPTIMIZER - Track engagement velocity
+          const { getTwitterAlgorithmOptimizer } = await import('../algorithms/twitterAlgorithmOptimizer');
+          const twitterAlgo = getTwitterAlgorithmOptimizer();
+          await twitterAlgo.trackVelocity(tweetId, new Date().toISOString());
+          console.log(`[POSTING_QUEUE] ⚡ Velocity tracking initialized for ${tweetId}`);
+        } catch (veloError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Velocity tracking failed: ${veloError.message}`);
+        }
+      
+        try {
+          // 2. CONVERSION FUNNEL TRACKER - Track full funnel
+          const { getConversionFunnelTracker } = await import('../algorithms/conversionFunnelTracker');
+          const funnelTracker = getConversionFunnelTracker();
+          await funnelTracker.trackFunnelMetrics(decision.id);
+          console.log(`[POSTING_QUEUE] 📊 Funnel tracking initialized for ${decision.id}`);
+        } catch (funnelError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Funnel tracking failed: ${funnelError.message}`);
+        }
+      
+        try {
+          // 3. FOLLOWER PREDICTOR - Track prediction for accuracy
+          // Prediction data is stored in planJobNew, we'll update accuracy later when real results come in
+          const { getFollowerPredictor } = await import('../algorithms/followerPredictor');
+          const predictor = getFollowerPredictor();
+          // Note: Prediction was already tracked in planJobNew, will update with actuals in analytics job
+          console.log(`[POSTING_QUEUE] 🔮 Prediction will be validated with actual results`);
+        } catch (predError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Predictor tracking failed: ${predError.message}`);
+        }
+      
+        // ═══════════════════════════════════════════════════════════
+      
+        // PHASE 5 FIX: Initialize tracking in learning system FIRST
+        try {
+          // Step 1: Add post to tracking (so learning system knows about it)
+          await learningSystem.processNewPost(
+            decision.id,
+            String(decision.content),
+            {
+              followers_gained_prediction: decision.predicted_followers || 0
+            },
+            {
+              content_type_name: decision.decision_type,
+              hook_used: decision.hook_type || 'unknown',
+              topic: decision.topic_cluster || 'health'
+            }
+          );
+          console.log('[LEARNING_SYSTEM] ✅ Post ' + decision.id + ' tracked');
+        } catch (learningError: any) {
+          console.warn('[LEARNING_SYSTEM] ⚠️ Failed to track post:', learningError.message);
+        }
+      
+        // SMART BATCH FIX: Immediate metrics scraping after post
+        try {
+          console.log(`[METRICS] 🔍 Collecting initial metrics for ${tweetId}...`);
+        
+          // Wait 30 seconds for tweet to be indexed by Twitter
+          await new Promise(resolve => setTimeout(resolve, 30000));
+        
+          // SMART BATCH FIX: Simplified metrics collection (avoid complex scraping in posting flow)
+          // Store placeholder entry, let scheduled scraper collect real metrics
+          const { getSupabaseClient: getSupa } = await import('../db/index');
+          const supa = getSupa();
+          await supa.from('outcomes').upsert({
+            decision_id: decision.id,
+            tweet_id: tweetId,
+            likes: null, // Will be filled by scheduled scraper
+            retweets: null,
+            replies: null,
+            views: null,
+            bookmarks: null,
+            impressions: null,
+            collected_at: new Date().toISOString(),
+            data_source: 'post_placeholder',
+            simulated: false
+          }, { onConflict: 'decision_id' });
+        
+          console.log(`[METRICS] ✅ Placeholder created for ${tweetId}, scheduled scraper will collect metrics`);
+        } catch (metricsError: any) {
+          console.warn(`[METRICS] ⚠️ Failed to collect initial metrics (non-critical): ${metricsError.message}`);
+          // Don't fail the post, just log and continue
+        }
+      
+      console.log(`[POSTING_QUEUE] 🎉 POST COMPLETE: Tweet is live on Twitter, all tracking initiated!`);
     }
-  
-    // SMART BATCH FIX: Immediate metrics scraping after post
-    try {
-      console.log(`[METRICS] 🔍 Collecting initial metrics for ${tweetId}...`);
-    
-      // Wait 30 seconds for tweet to be indexed by Twitter
-      await new Promise(resolve => setTimeout(resolve, 30000));
-    
-      // SMART BATCH FIX: Simplified metrics collection (avoid complex scraping in posting flow)
-      // Store placeholder entry, let scheduled scraper collect real metrics
-      const { getSupabaseClient: getSupa } = await import('../db/index');
-      const supa = getSupa();
-      await supa.from('outcomes').upsert({
-        decision_id: decision.id,
-        tweet_id: tweetId,
-        likes: null, // Will be filled by scheduled scraper
-        retweets: null,
-        replies: null,
-        views: null,
-        bookmarks: null,
-        impressions: null,
-        collected_at: new Date().toISOString(),
-        data_source: 'post_placeholder',
-        simulated: false
-      }, { onConflict: 'decision_id' });
-    
-      console.log(`[METRICS] ✅ Placeholder created for ${tweetId}, scheduled scraper will collect metrics`);
-    } catch (metricsError: any) {
-      console.warn(`[METRICS] ⚠️ Failed to collect initial metrics (non-critical): ${metricsError.message}`);
-      // Don't fail the post, just log and continue
-    }
-  
-    console.log(`[POSTING_QUEUE] 🎉 POST COMPLETE: Tweet is live on Twitter, all tracking initiated!`);
   } catch (topLevelError: any) {
-    // Catch any errors that weren't handled by inner try-catch blocks
-    const errorMsg = topLevelError?.message || topLevelError?.toString() || 'Unknown error';
-    console.error(`${logPrefix} 🚨 FUNCTION-LEVEL ERROR:`, errorMsg);
-    try {
-      await markDecisionFailed(decision.id, errorMsg);
-    } catch (markError: any) {
-      console.error(`${logPrefix} 🚨 Failed to mark decision as failed:`, markError.message);
+      // Catch any errors that weren't handled by inner try-catch blocks
+      const errorMsg = topLevelError?.message || topLevelError?.toString() || 'Unknown error';
+      console.error(`${logPrefix} 🚨 FUNCTION-LEVEL ERROR:`, errorMsg);
+      try {
+        await markDecisionFailed(decision.id, errorMsg);
+      } catch (markError: any) {
+        console.error(`${logPrefix} 🚨 Failed to mark decision as failed:`, markError.message);
+      }
+      throw topLevelError;
     }
-    throw topLevelError;
-  }
 }
 
 async function postContent(decision: QueuedDecision): Promise<{ tweetId: string; tweetUrl: string; tweetIds?: string[] }> {
@@ -1902,6 +1932,71 @@ async function updatePostingMetrics(type: 'queued' | 'posted' | 'error'): Promis
     }
   } catch (error) {
     console.warn('[POSTING_QUEUE] ⚠️ Failed to update posting metrics:', error.message);
+  }
+}
+
+/**
+ * 🔥 PRIORITY 2 FIX: Store failed database save in retry queue
+ * Saves to file for background job to retry later
+ */
+async function storeInRetryQueue(
+  decisionId: string,
+  tweetId: string,
+  tweetUrl: string | undefined,
+  tweetIds: string[] | undefined,
+  content: string
+): Promise<void> {
+  try {
+    const logsDir = path.join(process.cwd(), 'logs');
+    if (!existsSync(logsDir)) {
+      mkdirSync(logsDir, { recursive: true });
+    }
+    
+    const retryQueueFile = path.join(logsDir, 'db_retry_queue.jsonl');
+    const retryEntry = {
+      decisionId,
+      tweetId,
+      tweetUrl,
+      tweetIds,
+      content: content.substring(0, 200), // Store first 200 chars for matching
+      timestamp: Date.now(),
+      date: new Date().toISOString(),
+      retryCount: 0
+    };
+    
+    appendFileSync(retryQueueFile, JSON.stringify(retryEntry) + '\n');
+    console.log(`[POSTING_QUEUE] 💾 Stored in retry queue: decision_id=${decisionId}, tweet_id=${tweetId}`);
+  } catch (error: any) {
+    console.error(`[POSTING_QUEUE] ⚠️ Failed to store in retry queue: ${error.message}`);
+  }
+}
+
+/**
+ * 🔥 PRIORITY 5 FIX: Pre-post logging
+ * Logs all posting attempts BEFORE posting for recovery
+ */
+async function logPostAttempt(decision: QueuedDecision, action: 'attempting' | 'success' | 'failed', tweetId?: string): Promise<void> {
+  try {
+    const logsDir = path.join(process.cwd(), 'logs');
+    if (!existsSync(logsDir)) {
+      mkdirSync(logsDir, { recursive: true });
+    }
+    
+    const logFile = path.join(logsDir, 'post_attempts.log');
+    const logEntry = {
+      decisionId: decision.id,
+      decisionType: decision.decision_type,
+      content: decision.content.substring(0, 100),
+      action,
+      tweetId: tweetId || null,
+      timestamp: Date.now(),
+      date: new Date().toISOString()
+    };
+    
+    appendFileSync(logFile, JSON.stringify(logEntry) + '\n');
+  } catch (error: any) {
+    // Non-critical - don't fail posting if logging fails
+    console.warn(`[POSTING_QUEUE] ⚠️ Failed to log post attempt: ${error.message}`);
   }
 }
 
