@@ -301,6 +301,53 @@ export async function metricsScraperJob(): Promise<void> {
             const bookmarksNullable = parseMetricValue(metrics.bookmarks);
             const isFirstHour = hoursSincePost <= 1;
             
+            // 🔍 CONTENT VERIFICATION: Check if scraped content matches database content
+            const scrapedContent = result.content || metrics.content;
+            if (scrapedContent && typeof scrapedContent === 'string') {
+              try {
+                const { data: metadata } = await supabase
+                  .from('content_metadata')
+                  .select('content, thread_parts, decision_type')
+                  .eq('decision_id', post.decision_id)
+                  .single();
+                
+                if (metadata) {
+                  const expectedContent = metadata.decision_type === 'thread' 
+                    ? (Array.isArray(metadata.thread_parts) ? metadata.thread_parts.join(' ') : (metadata.content || ''))
+                    : (metadata.content || '');
+                  
+                  if (expectedContent && typeof expectedContent === 'string') {
+                    const { verifyContentMatch, verifyThreadContentMatch } = await import('../utils/contentVerification');
+                    const threadParts = Array.isArray(metadata.thread_parts) ? metadata.thread_parts as string[] : [];
+                    const verification = metadata.decision_type === 'thread'
+                      ? verifyThreadContentMatch(threadParts, scrapedContent, 0.6)
+                      : verifyContentMatch(expectedContent, scrapedContent, 0.7);
+                    
+                    if (!verification.isValid) {
+                      console.error(`[METRICS_JOB] 🚨 MISATTRIBUTION DETECTED!`);
+                      console.error(`[METRICS_JOB] Tweet ID: ${post.tweet_id}`);
+                      console.error(`[METRICS_JOB] Decision ID: ${post.decision_id}`);
+                      console.error(`[METRICS_JOB] Expected: "${verification.expectedPreview}..."`);
+                      console.error(`[METRICS_JOB] Actual: "${verification.actualPreview}..."`);
+                      console.error(`[METRICS_JOB] Similarity: ${(verification.similarity * 100).toFixed(1)}%`);
+                      console.error(`[METRICS_JOB] ⚠️ SKIPPING metrics update - content mismatch!`);
+                      console.error(`[METRICS_JOB] 💡 This indicates the tweet_id in database is WRONG!`);
+                      console.error(`[METRICS_JOB] 💡 Manual investigation required - tweet_id may belong to different post`);
+                      failed++;
+                      continue; // Skip this tweet - don't store wrong metrics
+                    } else {
+                      console.log(`[METRICS_JOB] ✅ CONTENT VERIFICATION: Match ${(verification.similarity * 100).toFixed(1)}% - proceeding`);
+                    }
+                  }
+                }
+              } catch (verifyError: any) {
+                console.warn(`[METRICS_JOB] ⚠️ Content verification failed: ${verifyError.message}`);
+                // Continue anyway - verification failure shouldn't block metrics collection
+              }
+            } else {
+              console.warn(`[METRICS_JOB] ⚠️ No content extracted for verification (tweet_id: ${post.tweet_id})`);
+            }
+            
             const totalEngagement =
               likesValue +
               retweetsValue +

@@ -93,7 +93,7 @@ Each tweet is SEPARATE, flows naturally, NO NUMBERS, NO FORMATTING.
 - NO numbered lists (1., 2., 3.)
 - NO bold formatting (**text**)
 - NO "🧵" or "thread below"
-- Each tweet: 150-230 characters
+- Each tweet: 100-200 characters (200 chars HARD LIMIT)
 - Each tweet stands alone BUT flows to next
 - DEPTH: Explain HOW and WHY, not just WHAT
 - SPECIFIC: Real numbers, studies, mechanisms
@@ -186,7 +186,7 @@ OUTPUT AS JSON:
   "closer": "Tweet 6 text here"
 }
 
-Each tweet: 150-230 characters. Natural flow. Deep insights. Conversational tone.`;
+Each tweet: 100-200 characters (200 chars HARD LIMIT). Natural flow. Deep insights. Conversational tone.`;
 
     const response = await createBudgetedChatCompletion({
       model: 'gpt-4o-mini',
@@ -238,8 +238,8 @@ Each tweet: 150-230 characters. Natural flow. Deep insights. Conversational tone
       if (tweet.length < 100) {
         issues.push(`Tweet ${i + 1} too short (${tweet.length} chars)`);
       }
-      if (tweet.length > 280) {
-        issues.push(`Tweet ${i + 1} too long (${tweet.length} chars)`);
+      if (tweet.length > 200) {
+        issues.push(`Tweet ${i + 1} too long (${tweet.length} chars, max 200)`);
       }
     });
     

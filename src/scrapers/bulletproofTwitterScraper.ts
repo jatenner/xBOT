@@ -22,6 +22,7 @@ export interface ScrapedMetrics {
   bookmarks: number | null;
   views: number | null;
   profile_clicks?: number | null; // From analytics page: "Profile visits"
+  content?: string | null; // 🆕 Content text for verification
   _verified: boolean;
   _status: 'CONFIRMED' | 'UNDETERMINED';
   _dataSource: 'scraped' | 'scraping_failed';
@@ -264,6 +265,7 @@ export class BulletproofTwitterScraper {
               bookmarks: metrics.bookmarks ?? null,
               views: metrics.views ?? null,
               profile_clicks: metrics.profile_clicks ?? null,
+              content: metrics.content ?? null, // 🆕 Include content for verification
               _selectors_used: metrics._selectors_used ?? [],
               _verified: true,
               _status: 'CONFIRMED',
@@ -859,6 +861,38 @@ export class BulletproofTwitterScraper {
     // These don't have aria-labels usually, use standard extraction
     results.quote_tweets = await this.extractMetricWithFallbacks(tweetArticle, 'quote_tweets', SELECTORS.quote_tweets);
     results.bookmarks = await this.extractMetricWithFallbacks(tweetArticle, 'bookmarks', SELECTORS.bookmarks);
+
+    // 🆕 CONTENT EXTRACTION: Extract tweet text for verification
+    try {
+      const contentText = await tweetArticle.evaluate((article: Element) => {
+        // Try multiple selectors for tweet text
+        const textSelectors = [
+          '[data-testid="tweetText"]',
+          'div[data-testid="tweetText"]',
+          'span[data-testid="tweetText"]',
+          'article span[lang]'
+        ];
+        
+        for (const selector of textSelectors) {
+          const element = article.querySelector(selector);
+          if (element) {
+            return element.textContent?.trim() || '';
+          }
+        }
+        
+        // Fallback: get all text from article (might include metadata)
+        return article.textContent?.trim() || '';
+      });
+      
+      if (contentText && contentText.length > 0) {
+        results.content = contentText.substring(0, 500); // Limit to 500 chars for storage
+        console.log(`    ✅ CONTENT: Extracted "${contentText.substring(0, 80)}..."`);
+      } else {
+        console.warn(`    ⚠️ CONTENT: Could not extract tweet text`);
+      }
+    } catch (contentError: any) {
+      console.warn(`    ⚠️ CONTENT: Extraction failed: ${contentError.message}`);
+    }
 
     // FINAL VERIFICATION: Confirm we extracted from the correct tweet
     if (tweetId && tweetArticle) {

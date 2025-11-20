@@ -900,6 +900,23 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       // ═══════════════════════════════════════════════════════════
     
       console.log(`${logPrefix} 🔍 DEBUG: About to call postContent`);
+      
+      // 🔒 VALIDATION: Check character limits before posting
+      if (decision.decision_type === 'thread' && decision.thread_parts) {
+        const parts = Array.isArray(decision.thread_parts) ? decision.thread_parts : [];
+        for (let i = 0; i < parts.length; i++) {
+          if (parts[i].length > 200) {
+            throw new Error(`Thread part ${i + 1} exceeds 200 chars (${parts[i].length} chars). Max limit: 200 chars for optimal engagement.`);
+          }
+        }
+        console.log(`${logPrefix} ✅ Character limit validation passed for ${parts.length} thread parts`);
+      } else if (decision.decision_type === 'single' && decision.content) {
+        if (decision.content.length > 280) {
+          throw new Error(`Single tweet exceeds 280 chars (${decision.content.length} chars). Max limit: 280 chars.`);
+        }
+        console.log(`${logPrefix} ✅ Character limit validation passed for single tweet`);
+      }
+      
       try {
         if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
           console.log(`${logPrefix} 🔍 DEBUG: Calling postContent for ${decision.decision_type}`);
@@ -936,6 +953,54 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         console.log(`[POSTING_QUEUE] 🎉 TWEET POSTED SUCCESSFULLY: ${tweetId}`);
         console.log(`[POSTING_QUEUE] 🔗 Tweet URL: ${tweetUrl}`);
         console.log(`[POSTING_QUEUE] ⚠️ From this point on, all operations are best-effort only`);
+        
+        // 🔍 CONTENT VERIFICATION: Verify tweet_id matches content (PREVENT MISATTRIBUTION)
+        try {
+          console.log(`[POSTING_QUEUE] 🔍 Verifying content matches tweet_id ${tweetId}...`);
+          const { verifyPostedContent } = await import('../utils/contentVerification');
+          const verification = await verifyPostedContent(
+            tweetId,
+            decision.decision_type === 'thread' 
+              ? (decision.thread_parts || []).join(' ')
+              : decision.content
+          );
+          
+          if (!verification.isValid) {
+            console.error(`[POSTING_QUEUE] 🚨 CRITICAL MISATTRIBUTION DETECTED!`);
+            console.error(`[POSTING_QUEUE] Tweet ID: ${tweetId}`);
+            console.error(`[POSTING_QUEUE] Expected: "${verification.expectedPreview}..."`);
+            console.error(`[POSTING_QUEUE] Actual: "${verification.actualPreview}..."`);
+            console.error(`[POSTING_QUEUE] Similarity: ${(verification.similarity * 100).toFixed(1)}%`);
+            console.error(`[POSTING_QUEUE] ⚠️ WRONG TWEET_ID STORED - MANUAL INVESTIGATION REQUIRED!`);
+            console.error(`[POSTING_QUEUE] 🚨 Do NOT store this tweet_id - it belongs to different content!`);
+            
+            // 🔥 CRITICAL: Mark as posted BUT store misattribution flag
+            // Don't fail the post (it's already live), but flag for manual fix
+            const { getSupabaseClient } = await import('../db/index');
+            const supabase = getSupabaseClient();
+            await supabase
+              .from('content_metadata')
+              .update({
+                status: 'posted',
+                tweet_id: tweetId,
+                posted_at: new Date().toISOString(),
+                features: {
+                  misattribution_detected: true,
+                  verification_error: verification.error,
+                  verification_similarity: verification.similarity
+                }
+              })
+              .eq('decision_id', decision.id);
+            
+            // Still continue - post is live, but flag it for manual investigation
+            console.error(`[POSTING_QUEUE] ⚠️ Misattribution flag stored - requires manual fix`);
+          } else {
+            console.log(`[POSTING_QUEUE] ✅ CONTENT VERIFICATION: Match ${(verification.similarity * 100).toFixed(1)}% - tweet_id is correct`);
+          }
+        } catch (verifyError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Content verification failed: ${verifyError.message}`);
+          // Continue anyway - verification failure shouldn't block posting
+        }
         
         // 🔥 PRIORITY 4 FIX: Log successful post
         await logPostAttempt(decision, 'success', tweetId);
