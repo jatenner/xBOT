@@ -205,22 +205,35 @@ CURIOSITY TRIGGERS (use these phrases):
 ✅ "The mechanism involves..."
 ✅ "Researchers discovered..."
 
-🔥 HOOK CONSTRUCTION PRINCIPLES (create YOUR OWN unique hooks, don't copy patterns):
+🎣 HOOK STRATEGY (AI decides based on content goals - hooks are OPTIONAL):
+
+WHEN TO USE A HOOK (for attention-grabbing/viral content):
+- Provocative questions challenging authority ("Why doesn't...?", "What are they afraid of...?")
+- Controversial/contrarian angles ("Most people think X, but research shows Y")
+- Surprising data points that create curiosity gap
+- Myth-busting or challenging mainstream assumptions
+- Use for maximum engagement/when you want content to go viral
+
+WHEN TO SKIP THE HOOK (for direct value/educational content):
+- Start directly with valuable information ("30g protein within 30 min boosts recovery by 40%")
+- Lead with data/facts for data-driven posts
+- Protocol-based content can stand alone without hooks
+- Educational insights can start directly ("Stanford 2022: 87 participants, 6-week protocol shows...")
+- Use when value is clear and hook would feel forced/formulaic
+
+DECISION CRITERIA:
+- Want maximum engagement? → Use provocative hook
+- Want to deliver value immediately? → Hook optional, lead with value
+- Content naturally provocative? → Hook enhances it
+- Content naturally educational? → Hook may feel forced
+
+HOOK CONSTRUCTION PRINCIPLES (if using a hook):
 - Lead with the most surprising data point or counterintuitive finding
 - Use specific numbers and research-backed claims (not generic "studies show")
 - Create cognitive dissonance ("You think X, but research shows Y")
 - Promise mechanism-level understanding (not just surface tips)
-- Focus on optimization vs. basic advice ("from good to elite performance")
-- Target specific pain points with precise solutions
-- Use comparative frameworks ("X vs Y: which one actually works")
-- Apply viral formulas above for maximum engagement
-
-HOOK VARIETY MANDATE:
-- Rotate between 7+ distinct hook types: data-led, myth-busting, personal discovery, expert insight, protocol-based, mechanism-explained, optimization-focused
-- NEVER use the same hook structure twice in a row
 - Avoid overused patterns like "99% of people" or "doctors won't tell you"
-- Create fresh, specific hooks for each piece of content
-- Test unconventional angles and lesser-known topics
+- Create fresh, specific hooks - never formulaic or generic
 
 🎨 MANDATORY VARIETY RULES:
 - NEVER use the same structure twice in a row

@@ -74,7 +74,8 @@ REQUIRED ELEMENTS:
 
 THREAD RULES (STRICT VALIDATION - FAILURE = REJECTION):
 - FLEXIBLE length: 3-7 tweets (can be short or long based on topic)
-- Each tweet PRECISELY 150-270 characters (count spaces!)
+- Each tweet PRECISELY 100-200 characters (count spaces!)
+- HARD LIMIT: 200 chars - exceeding this = AUTO-REJECTION
 - ZERO hashtags (#), ZERO quotes (" or '), ZERO apostrophes in contractions
 - Write "do not" instead of "don't", "cannot" instead of "can't"
 - Every tweet ends with punctuation (. ! ?) - NO ellipses (...)
@@ -88,12 +89,12 @@ THREAD RULES (STRICT VALIDATION - FAILURE = REJECTION):
 CHARACTER COUNT EXAMPLES:
 ✅ VALID (190 chars): "Elite athletes avoid heavy cardio during peak training phases. Stanford research shows excessive cardio elevates cortisol by 300% and reduces testosterone for 48 hours after each session."
 ❌ INVALID (170 chars): "Athletes avoid cardio. Bad for performance." (TOO SHORT)
-❌ INVALID (250 chars): "Elite professional athletes completely avoid heavy cardiovascular training during their peak performance training phases because extensive research shows it significantly impacts recovery." (TOO LONG)
+❌ INVALID (250 chars): "Elite professional athletes completely avoid heavy cardiovascular training during their peak performance training phases because extensive research shows it significantly impacts recovery." (TOO LONG - exceeds 200 char limit!)
 
 SCHEMA (return ONLY this JSON):
 {
   "topic": "string",
-  "tweets": [{"text": "string (150-270 chars each)"}],
+  "tweets": [{"text": "string (100-200 chars each)"}],
   "metadata": {
     "persona": "string",
     "emotion": "string", 

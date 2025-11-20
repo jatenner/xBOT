@@ -39,6 +39,7 @@ export interface OrchestrationResult {
   success: boolean;
   metrics?: ScrapedMetrics & { _validation?: ValidationResult };
   validationResult?: ValidationResult;
+  content?: string; // 🆕 Content text for verification
   error?: string;
   cached?: boolean;
 }
@@ -195,6 +196,7 @@ export class ScrapingOrchestrator {
           _validation: validationResult
         },
         validationResult,
+        content: scrapedMetrics.content ?? undefined, // 🆕 Include content for verification
         cached: false
       };
       

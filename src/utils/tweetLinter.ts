@@ -42,8 +42,8 @@ export function lintAndSplitThread(rawTweets: string[], finalFormat: FinalFormat
     if (finalFormat === 'single' || finalFormat === 'longform_single') {
       maxLength = TWEET_MAX_CHARS_HARD; // 279 for singles
     } else {
-      // Thread tweets: 240 for T1 (before-the-fold), 270 for T2+
-      maxLength = i === 0 ? 240 : 270;
+      // Thread tweets: 200 chars max for ALL parts (optimal for engagement)
+      maxLength = 200;
     }
     
     // Reject outright if content exceeds limit — no silent trimming
