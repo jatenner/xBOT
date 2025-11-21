@@ -1187,49 +1187,84 @@ export class JobManager {
   public async checkContentPipelineHealth(): Promise<void> {
     try {
       const now = new Date();
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
       
-      // Check 1: Has plan job run recently?
+      // Check 1: Has content been generated recently? (Database check - more reliable than stats)
+      const { data: lastGenerated, error: genError } = await supabase
+        .from('content_metadata')
+        .select('created_at')
+        .in('decision_type', ['single', 'thread'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (genError || !lastGenerated) {
+        console.warn(`⚠️ HEALTH_CHECK: No content found in database - running plan job...`);
+        await this.runJobNow('plan');
+        return;
+      }
+      
+      const lastGenTime = new Date(String(lastGenerated.created_at));
+      const hoursSinceLastGen = (now.getTime() - lastGenTime.getTime()) / (1000 * 60 * 60);
+      
+      if (hoursSinceLastGen > 3) {
+        console.error(`🚨 HEALTH_CHECK: Last content generated ${hoursSinceLastGen.toFixed(1)}h ago (>3h threshold)!`);
+        console.error(`🔧 ATTEMPTING EMERGENCY PLAN RUN...`);
+        await this.runJobNow('plan');
+        return; // Exit early after emergency run
+      }
+      
+      // Check 2: Has plan job run recently? (Stats check - secondary)
       if (this.stats.lastPlanTime) {
         const hoursSinceLastPlan = (now.getTime() - this.stats.lastPlanTime.getTime()) / (1000 * 60 * 60);
         
         if (hoursSinceLastPlan > 3) {
-          console.error(`🚨 HEALTH_CHECK: Plan job hasn't run in ${hoursSinceLastPlan.toFixed(1)} hours!`);
-          console.error(`🔧 ATTEMPTING EMERGENCY PLAN RUN...`);
-          await this.runJobNow('plan');
-          return; // Exit early after emergency run
+          console.warn(`⚠️ HEALTH_CHECK: Plan job stats show ${hoursSinceLastPlan.toFixed(1)}h since last run (but content exists)`);
         }
       } else {
-        console.warn(`⚠️ HEALTH_CHECK: Plan job has never run!`);
-        console.log(`🔧 Running plan job now...`);
-        await this.runJobNow('plan');
-        return;
+        console.warn(`⚠️ HEALTH_CHECK: Plan job has never run (according to stats)`);
       }
       
-      // Check 2: Does queue have content?
-      const { getSupabaseClient } = await import('../db/index');
-      const supabase = getSupabaseClient();
-      
-      const { data: queuedContent, error } = await supabase
+      // Check 3: Does queue have content ready?
+      const { data: queuedContent, error: queueError } = await supabase
         .from('content_metadata')
-        .select('id')
-        .is('posted_at', null)
-        .limit(1);
+        .select('decision_id, status, scheduled_at')
+        .eq('status', 'queued')
+        .limit(5);
       
-      if (error) {
-        console.error(`❌ HEALTH_CHECK: Failed to query queue:`, error.message);
+      if (queueError) {
+        console.error(`❌ HEALTH_CHECK: Failed to query queue:`, queueError.message);
         return;
       }
       
       if (!queuedContent || queuedContent.length === 0) {
-        console.warn(`⚠️ HEALTH_CHECK: No content in queue! Generating now...`);
+        console.warn(`⚠️ HEALTH_CHECK: No queued content found! Generating now...`);
         await this.runJobNow('plan');
         return;
       }
       
-      // All checks passed
-      console.log(`✅ HEALTH_CHECK: Content pipeline healthy (${queuedContent.length} posts queued)`);
+      // Check 4: Are there stuck posts?
+      const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+      const { data: stuckPosts } = await supabase
+        .from('content_metadata')
+        .select('decision_id')
+        .eq('status', 'posting')
+        .lt('created_at', thirtyMinAgo.toISOString());
       
-    } catch (error) {
+      if (stuckPosts && stuckPosts.length > 0) {
+        console.warn(`⚠️ HEALTH_CHECK: Found ${stuckPosts.length} stuck posts (status='posting' >30min) - will be recovered by posting queue`);
+      }
+      
+      // All checks passed
+      const readyCount = queuedContent.filter(c => {
+        const scheduled = new Date(String(c.scheduled_at));
+        return scheduled <= new Date(Date.now() + 5 * 60 * 1000); // Within 5min grace
+      }).length;
+      
+      console.log(`✅ HEALTH_CHECK: Content pipeline healthy (${queuedContent.length} queued, ${readyCount} ready, last gen ${hoursSinceLastGen.toFixed(1)}h ago)`);
+      
+    } catch (error: any) {
       console.error(`❌ HEALTH_CHECK: Error during health check:`, error.message);
     }
   }
