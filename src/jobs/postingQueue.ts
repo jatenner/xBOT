@@ -42,6 +42,29 @@ export async function processPostingQueue(): Promise<void> {
       return;
     }
     
+    // 🔄 AUTO-RECOVER STUCK POSTS: Reset posts stuck in 'posting' status >30min
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const { data: stuckPosts } = await supabase
+      .from('content_metadata')
+      .select('decision_id, decision_type, created_at')
+      .eq('status', 'posting')
+      .lt('created_at', thirtyMinAgo.toISOString());
+    
+    if (stuckPosts && stuckPosts.length > 0) {
+      console.log(`[POSTING_QUEUE] 🔄 Recovering ${stuckPosts.length} stuck posts (status='posting' >30min)...`);
+      for (const post of stuckPosts) {
+        const minutesStuck = Math.round((Date.now() - new Date(String(post.created_at)).getTime()) / (1000 * 60));
+        console.log(`[POSTING_QUEUE]   - Recovering ${post.decision_type} ${post.decision_id} (stuck ${minutesStuck}min)`);
+        await supabase
+          .from('content_metadata')
+          .update({ status: 'queued' })
+          .eq('decision_id', post.decision_id);
+      }
+      console.log(`[POSTING_QUEUE] ✅ Recovered ${stuckPosts.length} stuck posts`);
+    }
+    
     // 🎯 QUEUE DEPTH MONITOR: Ensure minimum content ready (2/hr content + 4/hr replies)
     // NOTE: Disabled temporarily to prevent over-generation
     // await ensureMinimumQueueDepth();
