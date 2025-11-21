@@ -128,7 +128,7 @@ export function validateSubstance(content: string | string[]): SubstanceValidati
     return {
       isValid: false,
       reason: 'Shallow quote format - missing mechanism explanation (HOW/WHY it works). Add interesting depth with mechanisms, not just facts.',
-      score: Math.min(40, score) // Cap score at 40 if shallow
+      score: 35 // Shallow content gets low score
     };
   }
   
