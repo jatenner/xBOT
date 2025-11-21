@@ -284,8 +284,8 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
     // We pass topic directly, generators will use their specialized prompts
     
     // ✅ THREADS ENABLED: 15% thread rate = ~3-4 threads per day out of 24 posts (1/hour)
-    const selectedFormat = Math.random() < 0.15 ? 'thread' : 'single';
-    console.log(`[SYSTEM_B] 📊 Format selected: ${selectedFormat} (target: 15% threads = ~3-4/day)`);
+    const selectedFormat = Math.random() < 0.40 ? 'thread' : 'single';
+    console.log(`[SYSTEM_B] 📊 Format selected: ${selectedFormat} (target: 40% threads = ~2-3/day for 6-8 posts/day)`);
     
     const result = await generateFn({
       topic,
@@ -1177,6 +1177,25 @@ async function selectOptimalSchedule(): Promise<Date> {
   
   const now = new Date();
   const currentHour = now.getHours();
+  
+  // 🎯 PEAK HOUR OPTIMIZATION: Prioritize high-engagement windows
+  // Peak hours: 6-9 AM (morning), 12-1 PM (lunch), 6-8 PM (evening)
+  const isPeakHour = (hour: number): boolean => {
+    return (hour >= 6 && hour <= 9) || (hour >= 12 && hour <= 13) || (hour >= 18 && hour <= 20);
+  };
+  
+  // If selected slot is not peak hour, try to move to nearest peak hour
+  if (!isPeakHour(timingSelection.slot)) {
+    const nextPeakHours = [6, 7, 8, 9, 12, 13, 18, 19, 20];
+    const nearestPeakHour = nextPeakHours.find(hour => hour > currentHour) || nextPeakHours[0];
+    
+    // Use nearest peak hour if it's within 2 hours, otherwise use UCB selection
+    const hoursUntilPeak = nearestPeakHour - currentHour;
+    if (hoursUntilPeak > 0 && hoursUntilPeak <= 2) {
+      console.log(`[SCHEDULE] 🎯 Shifting to peak hour ${nearestPeakHour} (was ${timingSelection.slot})`);
+      timingSelection.slot = nearestPeakHour;
+    }
+  }
   
   // Calculate target time for the selected slot
   let targetDate = new Date(now);

@@ -586,9 +586,20 @@ async function generateRealReplies(): Promise<void> {
     return (Number(b.engagement_rate) || 0) - (Number(a.engagement_rate) || 0);
   });
 
+  // 🎯 PRIORITIZE RECENCY: Fresh tweets (<2 hours old) get 10-50x more visibility
+  // Filter for tweets posted within last 2 hours (120 minutes)
+  const FRESH_TWEET_THRESHOLD_MINUTES = 120; // 2 hours = maximum visibility window
+  
   const highVirality = sortedOpportunities.filter(opp => (Number(opp.like_count) || 0) >= 10000).slice(0, 5);
-  const freshHot = sortedOpportunities.filter(opp => (Number(opp.posted_minutes_ago) || 9999) <= 360).slice(0, 5);
-  const priorityPool = Array.from(new Set([...highVirality, ...freshHot, ...sortedOpportunities]));
+  const freshHot = sortedOpportunities.filter(opp => {
+    const minutesAgo = Number(opp.posted_minutes_ago) || 9999;
+    return minutesAgo <= FRESH_TWEET_THRESHOLD_MINUTES; // Only tweets <2 hours old
+  }).slice(0, 10); // Increase priority pool for fresh tweets
+  
+  console.log(`[REPLY_JOB] 🔥 Fresh tweets (<${FRESH_TWEET_THRESHOLD_MINUTES} min): ${freshHot.length} opportunities`);
+  
+  // Prioritize fresh + viral, then others
+  const priorityPool = Array.from(new Set([...freshHot, ...highVirality, ...sortedOpportunities]));
 
   const candidateOpportunities = priorityPool.slice(0, 40);
 
