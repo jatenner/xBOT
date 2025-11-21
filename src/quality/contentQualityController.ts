@@ -407,6 +407,24 @@ Return ONLY the improved content, nothing else:`;
     if (content.includes('?')) score += 10; // Questions
     if (content.match(/most people|you don't know|secret|truth/i)) score += 15; // Curiosity gaps
 
+    // 🆕 DEPTH CHECK: Content must have interesting depth (not shallow quotes)
+    // Has mechanism explanation (HOW/WHY it works)
+    const hasMechanism = /(via|through|because|due to|works by|activates|triggers|happens when|increases|decreases)/i.test(content);
+    // Has interesting details (numbers, comparisons, or biological specifics)
+    const hasInterestingDetails = 
+      /\d+%|\d+x|\d+Hz|vs|compared to|instead of/.test(content) || 
+      /(cortex|blood flow|brain waves|alpha|beta|hormone|dopamine|serotonin)/i.test(content);
+    
+    // If content is long enough to have depth (100+ chars) but doesn't, penalize
+    if (content.length > 100 && !hasMechanism) {
+      score -= 20; // Penalize lack of mechanism explanation
+    }
+    
+    // Bonus for interesting depth
+    if (hasMechanism && hasInterestingDetails) {
+      score += 10; // Reward interesting depth with mechanisms + details
+    }
+
     // Deduct for boring patterns
     if (content.includes('comprehensive')) score -= 20;
     if (content.includes('ultimate guide')) score -= 20;

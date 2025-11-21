@@ -79,6 +79,22 @@ After reading, someone should understand:
 - Why people believe it
 - What evidence shows
 - What the corrected truth is
+- HOW/WHY the truth works (mechanism explanation)
+
+🎯 INTERESTING DEPTH REQUIREMENT (MANDATORY):
+Don't just state "Myth: X, Truth: Y." You MUST explain:
+- WHY the myth exists (context)
+- WHAT the mechanism is behind the truth (biological process)
+- HOW it actually works (specific details)
+- WHY this matters (deeper insight)
+
+Example of DEEP myth-busting:
+"Myth: Walking meetings are just a trend.
+Truth: Walking boosts creativity 60% via increased prefrontal cortex blood flow (15-20% increase) activating alpha brain waves (8-12Hz). Beta waves (13-30Hz) from sitting keep you focused but rigid. Movement literally switches your brain to breakthrough thinking mode."
+
+Note the depth: specific brain regions, blood flow percentages, brain wave frequencies, and why each matters.
+
+⚠️ Make it INTERESTING, not educational/academic. Use relatable language.
 
 ${format === 'thread' ? `
 THREAD FORMAT:

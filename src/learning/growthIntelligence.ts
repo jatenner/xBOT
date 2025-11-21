@@ -193,16 +193,38 @@ export async function buildGrowthIntelligencePackage(
       const { getSupabaseClient } = await import('../db');
       const supabase = getSupabaseClient();
       
-      // Get recent posts WITH performance metrics
-      const { data: recentContent, error: recentError } = await supabase
+      // 🚀 PRIORITY LEARNING: Get HIGH-PERFORMING posts first (200+ views = aspirational targets)
+      // Learn from posts that EXCEED current best, not just all posts
+      const { data: highPerformers, error: highError } = await supabase
         .from('content_metadata')
-        .select('content, raw_topic, angle, actual_engagement_rate, actual_impressions, actual_likes, actual_retweets')
+        .select('content, raw_topic, angle, actual_engagement_rate, actual_impressions, actual_likes, actual_retweets, visual_format')
         .eq('generator_name', generatorName)
         .eq('status', 'posted')
         .not('actual_engagement_rate', 'is', null)
-        .gt('actual_impressions', 0)
-        .order('created_at', { ascending: false })
-        .limit(20); // More posts for better pattern analysis
+        .gte('actual_impressions', 200) // 🎯 Learn from HIGH-PERFORMERS (aspirational goals)
+        .order('actual_impressions', { ascending: false }) // Sort by views, not date!
+        .limit(30); // More high-performing posts for better pattern analysis
+      
+      // If not enough high-performers, include medium performers
+      let recentContent = highPerformers || [];
+      if (!recentContent || recentContent.length < 10) {
+        const { data: mediumPerformers } = await supabase
+          .from('content_metadata')
+          .select('content, raw_topic, angle, actual_engagement_rate, actual_impressions, actual_likes, actual_retweets, visual_format')
+          .eq('generator_name', generatorName)
+          .eq('status', 'posted')
+          .not('actual_engagement_rate', 'is', null)
+          .gte('actual_impressions', 100)
+          .lt('actual_impressions', 200)
+          .order('actual_impressions', { ascending: false })
+          .limit(20);
+        
+        if (mediumPerformers) {
+          recentContent = [...recentContent, ...mediumPerformers];
+        }
+      }
+      
+      const recentError = highError; // Use error from primary query
       
       if (!recentError && recentContent && recentContent.length > 0) {
         intelligence.recentPosts = recentContent.map(p => {
@@ -212,14 +234,23 @@ export async function buildGrowthIntelligencePackage(
           return `[Topic: ${p.raw_topic || 'unknown'}] [Angle: ${p.angle || 'none'}] [ER: ${er}%] [Views: ${views}] [Likes: ${likes}]\n${p.content || ''}`;
         });
         
-        // 🆕 ANALYZE PATTERNS FROM ACTUAL PERFORMANCE
+        // 🆕 ANALYZE PATTERNS FROM ACTUAL PERFORMANCE (high-performers prioritized)
         const performancePatterns = analyzePerformancePatterns(recentContent);
         if (performancePatterns.length > 0) {
           intelligence.performanceInsights = performancePatterns;
-          console.log(`[GROWTH_INTEL] 📊 Found ${performancePatterns.length} performance patterns from actual data`);
+          console.log(`[GROWTH_INTEL] 📊 Found ${performancePatterns.length} performance patterns from high-performing posts`);
         }
         
-        console.log(`[GROWTH_INTEL] 📚 Loaded ${intelligence.recentPosts.length} recent posts with performance data from ${generatorName}`);
+        // 🎨 ADD VISUAL FORMATTING INTELLIGENCE: Learn from high-performing posts' formatting
+        const { getGeneratorVisualRecommendations } = await import('../intelligence/generatorVisualIntelligence');
+        const visualRecommendations = await getGeneratorVisualRecommendations(generatorName);
+        if (visualRecommendations) {
+          intelligence.visualFormattingInsights = visualRecommendations;
+          console.log(`[GROWTH_INTEL] 🎨 Loaded visual formatting recommendations from high-performing posts`);
+        }
+        
+        const highPerformerCount = recentContent.filter(p => (p.actual_impressions || 0) >= 200).length;
+        console.log(`[GROWTH_INTEL] 📚 Loaded ${intelligence.recentPosts.length} posts (${highPerformerCount} high-performers with 200+ views) from ${generatorName}`);
       } else {
         intelligence.recentPosts = [];
         console.log(`[GROWTH_INTEL] ℹ️ No recent posts with performance data found for ${generatorName} (might be first use)`);
@@ -316,6 +347,40 @@ function analyzePerformancePatterns(posts: any[]): string[] {
   
   if (topicAverages.length > 0 && topicAverages[0].avgER > avgER * 1.2) {
     insights.push(`Posts about "${topicAverages[0].topic.substring(0, 40)}" averaged ${(topicAverages[0].avgER * 100).toFixed(1)}% ER (above your ${(avgER * 100).toFixed(1)}% average).`);
+  }
+  
+  // 🆕 Pattern 4: INTERESTING DEPTH PATTERNS (not educational tone)
+  // Check for mechanisms in high vs low performers
+  const hasMechanism = (text: string) => 
+    /(via|through|because|due to|works by|activates|triggers|happens when)/i.test(text || '');
+  
+  const hasInterestingDetails = (text: string) =>
+    /\d+%|\d+x|\d+Hz|vs|compared to|instead of/.test(text || '') || 
+    /(blood flow|brain waves|alpha|beta|cortex|hormone|dopamine|serotonin)/i.test(text || '');
+  
+  const topWithMechanisms = topPerformers.filter(p => hasMechanism(p.content || ''));
+  const topWithDetails = topPerformers.filter(p => hasInterestingDetails(p.content || ''));
+  const lowWithMechanisms = lowPerformers.filter(p => hasMechanism(p.content || ''));
+  const lowWithDetails = lowPerformers.filter(p => hasInterestingDetails(p.content || ''));
+  
+  if (topWithMechanisms.length > topPerformers.length * 0.5) {
+    const percentage = ((topWithMechanisms.length / topPerformers.length) * 100).toFixed(0);
+    const avgViewsWithMechanisms = topPerformers
+      .filter(p => hasMechanism(p.content || ''))
+      .reduce((sum, p) => sum + (p.actual_impressions || 0), 0) / topWithMechanisms.length;
+    insights.push(`${percentage}% of your top-performing posts include mechanisms (HOW/WHY it works). Posts with mechanisms averaged ${avgViewsWithMechanisms.toFixed(0)} views. Interesting depth performs better than shallow quotes.`);
+  }
+  
+  if (topWithDetails.length > topPerformers.length * 0.5) {
+    const percentage = ((topWithDetails.length / topPerformers.length) * 100).toFixed(0);
+    insights.push(`${percentage}% of your top-performing posts include interesting details (numbers, comparisons, biological specifics). Specific depth beats generic statements.`);
+  }
+  
+  // Compare mechanism rates between top and low performers
+  const topMechanismRate = topWithMechanisms.length / topPerformers.length;
+  const lowMechanismRate = lowWithMechanisms.length / lowPerformers.length;
+  if (topMechanismRate > lowMechanismRate * 1.3) {
+    insights.push(`Your top performers are ${((topMechanismRate / lowMechanismRate) * 100).toFixed(0)}% more likely to include mechanisms. Deep content with explanations outperforms shallow quotes.`);
   }
   
   return insights;

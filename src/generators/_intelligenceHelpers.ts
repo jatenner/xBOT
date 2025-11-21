@@ -62,6 +62,9 @@ export interface GrowthIntelligencePackage {
   
   // 🆕 Performance insights from actual posted content (data-driven patterns)
   performanceInsights?: string[];
+  
+  // 🎨 Visual formatting intelligence (learned from high-performing posts - 200+ views)
+  visualFormattingInsights?: string; // Learned formatting recommendations from successful posts
 }
 
 // Type alias for generators that accept growth intelligence
@@ -151,6 +154,39 @@ ${intelligence.performanceInsights.map(insight => `• ${insight}`).join('\n')}
 - Use this data to make better decisions, not as rigid rules
 
 `;
+    
+    // 🆕 INTERESTING DEPTH INSIGHTS: Extract depth-related insights
+    const depthInsights = intelligence.performanceInsights.filter((insight: string) => 
+      insight.toLowerCase().includes('mechanism') || 
+      insight.toLowerCase().includes('depth') || 
+      insight.toLowerCase().includes('interesting')
+    );
+    
+    if (depthInsights.length > 0) {
+      contextString += `🔍 INTERESTING DEPTH PATTERNS (From Your Top Performers):
+${depthInsights.map((insight: string) => `• ${insight}`).join('\n')}
+
+💡 KEY TAKEAWAY: Deep content with mechanisms (HOW/WHY it works) performs better than shallow quotes.
+- Add mechanisms to make content deep and interesting
+- Include interesting details (numbers, comparisons, biological specifics)
+- Make it INTERESTING, not educational/academic
+
+`;
+    }
+  }
+  
+  // 🎨 Visual formatting intelligence (learned from HIGH-PERFORMING posts - 200+ views)
+  if (intelligence.visualFormattingInsights) {
+    contextString += `🎨 VISUAL FORMATTING INTELLIGENCE (Learned from High-Performing Posts - 200+ Views):
+${intelligence.visualFormattingInsights}
+
+🚀 CRITICAL: These are LEARNED patterns from your BEST posts (200+ views = aspirational targets).
+- The system analyzed what Twitter's algorithm and audience REWARDED for formatting
+- Apply these patterns to EXCEED your current best performance
+- Don't just match current best - use these to get MORE views and followers
+- These aren't hardcoded rules - they're what actually worked for high-performing content
+
+`;
   }
   
   // Recent posts (avoid repetition)
@@ -183,6 +219,26 @@ Even if the topic mentions a technical term (like "myostatin", "BDNF", "phosphat
 ALWAYS ask: "Would a normal person (not a biohacker) understand and care about this?" If no, reframe it.
 Make it FUN, RELATABLE, and INTERESTING - not like a biology textbook.
 The topic might be technical, but your CONTENT should be accessible and engaging.
+
+`;
+  
+  // 🆕 INTERESTING DEPTH REQUIREMENT (Catches shallow quotes)
+  contextString += `🎯 INTERESTING DEPTH REQUIREMENT (MANDATORY):
+Every tweet must explain HOW/WHY it works (mechanism) AND include interesting details.
+
+REQUIRED:
+- Mechanism explanation: HOW/WHY it works (via, because, works by, activates, triggers, etc.)
+- Interesting details: Numbers, comparisons (vs/compared to), or biological specifics
+
+EXAMPLES OF INTERESTING DEPTH:
+✅ "Walking boosts creativity 60% via increased prefrontal cortex blood flow (15-20% increase) activating alpha brain waves (8-12Hz). Beta waves keep you rigid."
+✅ "Cold showers work because you're training your nervous system to override panic. The cold is just the catalyst."
+❌ "Walking boosts creativity 60%. It's good for you." (missing mechanism)
+❌ "Myth: X. Truth: Y. It's smart." (shallow quote format)
+
+The difference: DEEP content explains mechanisms and adds interesting details. SHALLOW content just states facts.
+
+⚠️ IMPORTANT: Make it INTERESTING, not educational/academic. Use relatable language, not textbook terms.
 
 `;
   

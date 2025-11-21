@@ -98,6 +98,19 @@ After reading, someone should understand:
 - What study context supports them
 - How strong the evidence is
 - What this means practically
+- HOW/WHY it works (mechanism explanation)
+
+🎯 INTERESTING DEPTH REQUIREMENT:
+Don't just state numbers. You MUST explain:
+- WHY the numbers matter (mechanism)
+- HOW it actually works (biological process)
+- WHAT makes it interesting (beyond just data)
+
+Example of DEEP data content:
+"Walking boosts creativity 60% via increased prefrontal cortex blood flow (15-20% increase) activating alpha brain waves (8-12Hz). Beta waves keep you rigid."
+❌ Shallow: "Walking boosts creativity 60%. It's good for you."
+
+⚠️ Make it INTERESTING, not educational/academic. Use relatable language.
 
 ${format === 'thread' ? `
 THREAD FORMAT:

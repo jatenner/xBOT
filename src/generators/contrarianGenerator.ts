@@ -82,6 +82,20 @@ After reading, someone should understand:
 - What evidence contradicts or nuances it
 - Why both views exist
 - Who each approach works for
+- HOW/WHY it actually works (mechanism explanation)
+
+🎯 INTERESTING DEPTH REQUIREMENT:
+Don't just say "Everyone thinks X, but Y." You MUST explain:
+- WHY people think X (context)
+- WHAT the mechanism is behind Y (biological process)
+- HOW it actually works (specific details)
+- WHY this matters (deeper insight)
+
+Example of DEEP contrarian content:
+"Cold showers don't work because of the cold. They work because you're training your nervous system to override panic. The cold is just the catalyst."
+❌ Shallow: "Cold showers are good for you. They boost energy."
+
+⚠️ Make it INTERESTING, not educational/academic. Use relatable language.
 
 ${format === 'thread' ? `
 THREAD FORMAT:

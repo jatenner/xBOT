@@ -115,6 +115,23 @@ export function validateSubstance(content: string | string[]): SubstanceValidati
     };
   }
   
+  // 🆕 9. SHALLOW QUOTE DETECTION - Catches content that's just stating facts without depth
+  const isShallowQuote = 
+    // Pattern: "Myth: X. Truth: Y." without mechanism explanation
+    (/^(myth|truth):/i.test(text) && !/(via|because|due to|works by|activates|triggers|happens when|increases|decreases)/i.test(text)) ||
+    // Pattern: "Research shows X" without mechanism or interesting details
+    (/research shows|studies show/i.test(text) && !/(via|because|due to|works by|activates)/i.test(text) && !/\d+%|\d+x|\d+Hz/.test(text)) ||
+    // Pattern: Generic conclusion without mechanism (like "It's smart for your mind and body")
+    (/smart|good|beneficial|effective/i.test(text) && !/(via|because|due to|works by|activates)/i.test(text) && !/(cortex|cortisol|dopamine|blood flow|brain waves|alpha|beta|hormone)/i.test(text) && textToCheck.length > 100);
+  
+  if (isShallowQuote) {
+    return {
+      isValid: false,
+      reason: 'Shallow quote format - missing mechanism explanation (HOW/WHY it works). Add interesting depth with mechanisms, not just facts.',
+      score: Math.min(40, score) // Cap score at 40 if shallow
+    };
+  }
+  
   // CALCULATE SUBSTANCE SCORE
   let score = 50; // Base score if we got here
   
