@@ -35,16 +35,65 @@ export async function getGeneratorVisualPatterns(
   
   const supabase = getSupabaseClient();
   
-  // Query posted tweets for this generator
-  const { data: posts, error } = await supabase
+  // 🚀 PRIORITY LEARNING: Query HIGH-PERFORMING posts first (not just recent)
+  // Learn from posts with HIGH views (aspirational goals), not just all posts
+  // Goal: Exceed current best (200 views) by learning from top performers
+  
+  // Strategy 1: Get top performers (200+ views) - these are our ASPIRATIONAL TARGETS
+  const { data: topPerformers, error: topError } = await supabase
     .from('content_metadata')
     .select('content, visual_format, actual_engagement_rate, actual_impressions, posted_at')
     .eq('generator_name', generator)
     .eq('status', 'posted')
     .not('actual_engagement_rate', 'is', null)
-    .gt('actual_impressions', 0)
-    .order('posted_at', { ascending: false })
-    .limit(100); // Last 100 posts for this generator
+    .gte('actual_impressions', 200) // 🎯 LEARN FROM HIGH-PERFORMERS (200+ views = aspirational)
+    .order('actual_impressions', { ascending: false }) // Sort by views, not date!
+    .limit(50); // Top 50 high-performing posts
+  
+  // Strategy 2: If not enough high-performers, include medium performers (100+ views)
+  let posts = topPerformers || [];
+  if (!posts || posts.length < 10) {
+    console.log(`[GENERATOR_VI] ⚠️ Only ${posts.length} high-performers (200+ views), including medium performers (100+ views)...`);
+    
+    const { data: mediumPerformers } = await supabase
+      .from('content_metadata')
+      .select('content, visual_format, actual_engagement_rate, actual_impressions, posted_at')
+      .eq('generator_name', generator)
+      .eq('status', 'posted')
+      .not('actual_engagement_rate', 'is', null)
+      .gte('actual_impressions', 100) // Medium performers (100+ views)
+      .lt('actual_impressions', 200) // Below high-performer threshold
+      .order('actual_impressions', { ascending: false })
+      .limit(50);
+    
+    if (mediumPerformers) {
+      posts = [...posts, ...mediumPerformers];
+    }
+  }
+  
+  // Strategy 3: If still not enough, get recent posts (but prioritize by views, not date)
+  if (!posts || posts.length < 5) {
+    console.log(`[GENERATOR_VI] ⚠️ Only ${posts.length} total performers, including recent posts...`);
+    
+    const { data: recentPosts } = await supabase
+      .from('content_metadata')
+      .select('content, visual_format, actual_engagement_rate, actual_impressions, posted_at')
+      .eq('generator_name', generator)
+      .eq('status', 'posted')
+      .not('actual_engagement_rate', 'is', null)
+      .gt('actual_impressions', 0)
+      .order('actual_impressions', { ascending: false }) // 🎯 Sort by views, not date!
+      .limit(50);
+    
+    if (recentPosts) {
+      // Merge but prioritize high-performers (avoid duplicates by content)
+      const existingContent = new Set(posts.map(p => p.content?.substring(0, 50) || ''));
+      const newPosts = recentPosts.filter(p => !existingContent.has(p.content?.substring(0, 50) || ''));
+      posts = [...posts, ...newPosts];
+    }
+  }
+  
+  const error = topError; // Use error from primary query
   
   if (error) {
     log({ op: 'generator_vi_error', generator, error: error.message });

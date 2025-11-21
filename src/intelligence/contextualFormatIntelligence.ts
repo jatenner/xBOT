@@ -42,7 +42,8 @@ export async function getContextualFormatIntelligence(
   
   const supabase = getSupabaseClient();
   
-  // Strategy 1: Exact match (generator + topic + tone + angle)
+  // 🚀 PRIORITY LEARNING: Get HIGH-PERFORMING posts first (200+ views = aspirational targets)
+  // Strategy 1: Exact match (generator + topic + tone + angle) - HIGH PERFORMERS ONLY
   let { data: exactMatches } = await supabase
     .from('content_metadata')
     .select('content, visual_format, actual_engagement_rate, actual_impressions, posted_at')
@@ -51,14 +52,15 @@ export async function getContextualFormatIntelligence(
     .eq('angle', angle)
     .eq('status', 'posted')
     .not('actual_engagement_rate', 'is', null)
-    .gt('actual_impressions', 0)
-    .order('actual_engagement_rate', { ascending: false })
+    .gte('actual_impressions', 200) // 🎯 Learn from HIGH-PERFORMERS (aspirational goals)
+    .order('actual_impressions', { ascending: false }) // Sort by views, not ER!
     .limit(50);
   
-  // Strategy 2: If not enough exact matches, broaden to generator + tone
+  // Strategy 2: If not enough exact matches, broaden to generator + tone (but still prioritize high-performers)
   if (!exactMatches || exactMatches.length < 5) {
-    console.log(`[CONTEXTUAL_FORMAT] ⚠️ Only ${exactMatches?.length || 0} exact matches, broadening to generator + tone...`);
+    console.log(`[CONTEXTUAL_FORMAT] ⚠️ Only ${exactMatches?.length || 0} high-performing exact matches, broadening to generator + tone...`);
     
+    // Try high-performers first (200+ views)
     const { data: broadMatches } = await supabase
       .from('content_metadata')
       .select('content, visual_format, actual_engagement_rate, actual_impressions, posted_at')
@@ -66,8 +68,8 @@ export async function getContextualFormatIntelligence(
       .eq('tone', tone)
       .eq('status', 'posted')
       .not('actual_engagement_rate', 'is', null)
-      .gt('actual_impressions', 0)
-      .order('actual_engagement_rate', { ascending: false })
+      .gte('actual_impressions', 100) // Lower threshold but still prioritize
+      .order('actual_impressions', { ascending: false }) // 🎯 Sort by views!
       .limit(50);
     
     if (broadMatches && broadMatches.length > 0) {
@@ -75,9 +77,9 @@ export async function getContextualFormatIntelligence(
     }
   }
   
-  // Strategy 3: If still not enough, use generator-only
+  // Strategy 3: If still not enough, use generator-only (but prioritize by views)
   if (!exactMatches || exactMatches.length < 5) {
-    console.log(`[CONTEXTUAL_FORMAT] ⚠️ Only ${exactMatches?.length || 0} matches, using generator-only...`);
+    console.log(`[CONTEXTUAL_FORMAT] ⚠️ Only ${exactMatches?.length || 0} matches, using generator-only (prioritizing high-performers)...`);
     
     const { data: generatorMatches } = await supabase
       .from('content_metadata')
@@ -86,7 +88,7 @@ export async function getContextualFormatIntelligence(
       .eq('status', 'posted')
       .not('actual_engagement_rate', 'is', null)
       .gt('actual_impressions', 0)
-      .order('actual_engagement_rate', { ascending: false })
+      .order('actual_impressions', { ascending: false }) // 🎯 Sort by views, not ER!
       .limit(50);
     
     if (generatorMatches && generatorMatches.length > 0) {
