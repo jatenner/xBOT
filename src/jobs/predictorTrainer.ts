@@ -93,41 +93,114 @@ async function collectWeeklyTrainingData(): Promise<any[]> {
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
+    // 🔥 FIX: Join outcomes with content_metadata to get real features
     // Get outcomes with decision context from last 7 days
-    const { data: outcomes, error } = await supabase
+    const { data: outcomes, error: outcomesError } = await supabase
       .from('outcomes')
       .select(`
-        decision_id, er_calculated, followers_delta_24h, viral_score,
-        impressions, likes, retweets, replies, simulated, collected_at
+        decision_id, 
+        engagement_rate,
+        er_calculated, 
+        followers_gained,
+        followers_delta_24h, 
+        viral_score,
+        impressions, 
+        likes, 
+        retweets, 
+        replies, 
+        simulated, 
+        collected_at
       `)
       .gte('collected_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-      .order('collected_at', { ascending: false });
+      .order('collected_at', { ascending: false })
+      .limit(100); // Limit to most recent 100 outcomes
 
-    if (error || !outcomes || outcomes.length === 0) {
+    if (outcomesError || !outcomes || outcomes.length === 0) {
       console.log('[PREDICTOR_TRAINER] ⚠️ No training outcomes found');
       return [];
     }
 
-      // Transform to feature format (in real system would join with decisions table)
-      const trainingData = outcomes.map(outcome => ({
-        // Features (would come from decisions/content_metadata tables)
-        quality_score: 0.7 + Math.random() * 0.3, // Mock quality score
-        content_type_educational: Math.random() > 0.5 ? 1 : 0,
-        content_type_factual: Math.random() > 0.5 ? 1 : 0,
-        timing_slot: new Date(outcome.collected_at as string).getHours(),
-        length_medium: Math.random() > 0.5 ? 1 : 0,
-        novelty_score: Math.random(),
-        expertise_level: Math.random(),
-        viral_indicators: (outcome.viral_score as number) / 100,
+    // 🔥 FIX: Get engagement rate from multiple sources (same as learnJob)
+    const getEngagementRate = (outcome: any): number => {
+      if (outcome.engagement_rate != null && outcome.engagement_rate > 0) {
+        return Number(outcome.engagement_rate);
+      }
+      if (outcome.er_calculated != null && outcome.er_calculated > 0) {
+        return Number(outcome.er_calculated);
+      }
+      const impressions = outcome.impressions || 0;
+      if (impressions > 0) {
+        const likes = outcome.likes || 0;
+        const retweets = outcome.retweets || 0;
+        const replies = outcome.replies || 0;
+        return (likes + retweets + replies) / impressions;
+      }
+      return 0;
+    };
+
+    // 🔥 FIX: Join with content_metadata to get real features
+    const decisionIds = outcomes.map(o => o.decision_id);
+    const { data: contentData, error: contentError } = await supabase
+      .from('content_metadata')
+      .select(`
+        decision_id,
+        quality_score,
+        decision_type,
+        bandit_arm,
+        posted_at,
+        topic,
+        hook_type,
+        style
+      `)
+      .in('decision_id', decisionIds);
+
+    // Create lookup map for content metadata
+    const contentMap = new Map((contentData || []).map(c => [c.decision_id, c]));
+
+    // Transform to feature format with REAL data
+    const trainingData = outcomes
+      .map(outcome => {
+        const content = contentMap.get(outcome.decision_id);
+        if (!content) {
+          return null; // Skip if no content metadata found
+        }
+
+        // Extract content type from bandit_arm or decision_type
+        const banditArm = content.bandit_arm || '';
+        const isEducational = banditArm.includes('educational') || banditArm.includes('thread') || content.decision_type === 'thread';
+        const isFactual = banditArm.includes('factual') || banditArm.includes('data') || content.topic?.includes('study');
         
-        // Targets
-        actual_er: outcome.er_calculated,
-        follow_through: (outcome.followers_delta_24h as number) > 0 ? 1 : 0, // Binary follow conversion
+        // Get timing slot from posted_at or collected_at
+        const postedAt = content.posted_at || outcome.collected_at;
+        const timingSlot = new Date(postedAt as string).getHours();
         
-        // Meta
-        impressions: outcome.impressions,
-        simulated: outcome.simulated
-      }));
+        // Determine length from decision_type
+        const isMedium = content.decision_type === 'thread' || (content.decision_type === 'single' && (content.content?.length || 0) > 100);
+
+        return {
+          // Features (REAL data from content_metadata)
+          quality_score: content.quality_score ? Number(content.quality_score) : 0.75,
+          content_type_educational: isEducational ? 1 : 0,
+          content_type_factual: isFactual ? 1 : 0,
+          timing_slot: timingSlot,
+          length_medium: isMedium ? 1 : 0,
+          novelty_score: content.topic ? 0.6 + Math.random() * 0.2 : 0.5, // Mock for now (would extract from content)
+          expertise_level: content.style === 'expert' || content.style === 'authoritative' ? 0.8 : 0.6, // Mock for now
+          viral_indicators: outcome.viral_score ? (Number(outcome.viral_score) / 100) : 0.5,
+          
+          // Targets (from outcomes)
+          actual_er: getEngagementRate(outcome),
+          follow_through: (outcome.followers_gained || outcome.followers_delta_24h || 0) > 0 ? 1 : 0,
+          
+          // Meta
+          impressions: outcome.impressions || 0,
+          simulated: outcome.simulated || false,
+          decision_id: outcome.decision_id
+        };
+      })
+      .filter((sample): sample is NonNullable<typeof sample> => 
+        sample !== null && sample.actual_er > 0 && sample.impressions > 0 // Only include valid samples
+      );
 
     console.log(`[PREDICTOR_TRAINER] 📋 Collected ${trainingData.length} training samples`);
     return trainingData;
