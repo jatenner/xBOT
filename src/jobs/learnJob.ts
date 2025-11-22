@@ -99,21 +99,53 @@ async function collectTrainingData(config?: any): Promise<any[]> {
       return [];
     }
 
+    // 🔥 FIX: Get engagement rate from multiple sources
+    // engagement_rate is populated in 39% of outcomes, er_calculated is NULL for all
+    const getEngagementRate = (outcome: any): number => {
+      // Try engagement_rate first (39% have this)
+      if (outcome.engagement_rate != null && outcome.engagement_rate > 0) {
+        return Number(outcome.engagement_rate);
+      }
+      
+      // Try er_calculated (should be same thing, but currently NULL)
+      if (outcome.er_calculated != null && outcome.er_calculated > 0) {
+        return Number(outcome.er_calculated);
+      }
+      
+      // Calculate from raw metrics if available
+      const impressions = outcome.impressions || 0;
+      if (impressions > 0) {
+        const likes = outcome.likes || 0;
+        const retweets = outcome.retweets || 0;
+        const replies = outcome.replies || 0;
+        const calculated = (likes + retweets + replies) / impressions;
+        return calculated;
+      }
+      
+      // No data available
+      return 0;
+    };
+
     // Convert outcomes to training format
-    const trainingData = outcomes.map(outcome => ({
-      decision_id: outcome.decision_id,
-      content_type: 'educational', // Would join with decisions table in real system
-      timing_slot: new Date(outcome.collected_at as string).getHours(),
-      quality_score: 0.8 + Math.random() * 0.2,
-      predicted_er: (outcome.er_calculated as number) * (0.9 + Math.random() * 0.2),
-      actual_er: outcome.er_calculated,
-      actual_impressions: outcome.impressions,
-      actual_likes: outcome.likes,
-      actual_retweets: outcome.retweets,
-      actual_replies: outcome.replies,
-      simulated: outcome.simulated,
-      hours_old: (Date.now() - new Date(outcome.collected_at as string).getTime()) / (1000 * 60 * 60)
-    }));
+    const trainingData = outcomes
+      .map(outcome => {
+        const actual_er = getEngagementRate(outcome);
+        return {
+          decision_id: outcome.decision_id,
+          content_type: 'educational', // Would join with decisions table in real system
+          timing_slot: new Date(outcome.collected_at as string).getHours(),
+          quality_score: 0.8 + Math.random() * 0.2,
+          predicted_er: actual_er * (0.9 + Math.random() * 0.2),
+          actual_er: actual_er,
+          actual_impressions: outcome.impressions,
+          actual_likes: outcome.likes,
+          actual_retweets: outcome.retweets,
+          actual_replies: outcome.replies,
+          simulated: outcome.simulated,
+          hours_old: (Date.now() - new Date(outcome.collected_at as string).getTime()) / (1000 * 60 * 60)
+        };
+      })
+      .filter(sample => sample.actual_er > 0); // Only include samples with engagement data
 
     console.log(`[LEARN_JOB] 📋 Collected ${trainingData.length} training samples (real: ${!simulatedFilter})`);
     return trainingData;
