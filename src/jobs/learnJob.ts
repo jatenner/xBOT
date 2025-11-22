@@ -126,10 +126,24 @@ async function collectTrainingData(config?: any): Promise<any[]> {
       return 0;
     };
 
+    // 🚨 LEARNING GATE: Don't learn from low-engagement posts (noise, not signal)
+    // USER REQUIREMENT: Don't learn from posts with <100 views OR <5 likes
+    // This prevents learning from noise that would hurt optimization
+    const LEARNING_MIN_VIEWS = 100;
+    const LEARNING_MIN_LIKES = 5;
+    
     // Convert outcomes to training format
     const trainingData = outcomes
       .map(outcome => {
         const actual_er = getEngagementRate(outcome);
+        const impressions = outcome.impressions || 0;
+        const likes = outcome.likes || 0;
+        
+        // Skip low-engagement posts (noise)
+        if (impressions < LEARNING_MIN_VIEWS || likes < LEARNING_MIN_LIKES) {
+          return null; // Filter out below threshold
+        }
+        
         return {
           decision_id: outcome.decision_id,
           content_type: 'educational', // Would join with decisions table in real system
@@ -137,15 +151,26 @@ async function collectTrainingData(config?: any): Promise<any[]> {
           quality_score: 0.8 + Math.random() * 0.2,
           predicted_er: actual_er * (0.9 + Math.random() * 0.2),
           actual_er: actual_er,
-          actual_impressions: outcome.impressions,
-          actual_likes: outcome.likes,
-          actual_retweets: outcome.retweets,
-          actual_replies: outcome.replies,
+          actual_impressions: impressions,
+          actual_likes: likes,
+          actual_retweets: outcome.retweets || 0,
+          actual_replies: outcome.replies || 0,
           simulated: outcome.simulated,
           hours_old: (Date.now() - new Date(outcome.collected_at as string).getTime()) / (1000 * 60 * 60)
         };
       })
-      .filter(sample => sample.actual_er > 0); // Only include samples with engagement data
+      .filter((sample): sample is NonNullable<typeof sample> => 
+        sample !== null && 
+        sample.actual_er > 0 && 
+        sample.actual_impressions >= LEARNING_MIN_VIEWS && 
+        sample.actual_likes >= LEARNING_MIN_LIKES
+      );
+    
+    const skipped = outcomes.length - trainingData.length;
+    if (skipped > 0) {
+      console.log(`[LEARN_JOB] ⏭️ Skipped ${skipped} low-engagement outcomes (<${LEARNING_MIN_VIEWS} views OR <${LEARNING_MIN_LIKES} likes)`);
+      console.log(`[LEARN_JOB] ✅ Using ${trainingData.length} outcomes with meaningful engagement data`);
+    }
 
     console.log(`[LEARN_JOB] 📋 Collected ${trainingData.length} training samples (real: ${!simulatedFilter})`);
     return trainingData;
