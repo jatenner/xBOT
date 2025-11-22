@@ -369,6 +369,20 @@ export class JobManager {
       240 * MINUTE  // Offset 4 hours
     );
 
+    // 🧠 VI Deep Analysis - every 12 hours, offset 240 min (NEW: deep semantic/visual understanding)
+    // Deep AI-driven analysis of high-performing tweets to understand essence, not just structure
+    this.scheduleStaggeredJob(
+      'vi_deep_analysis',
+      async () => {
+        await this.safeExecute('vi_deep_analysis', async () => {
+          const { viDeepAnalysisJob } = await import('./viDeepAnalysisJob');
+          await viDeepAnalysisJob();
+        });
+      },
+      12 * 60 * MINUTE, // Every 12 hours
+      240 * MINUTE      // Start after 4 hours
+    );
+
     // 🔥 Viral tweet scraper - every 4 hours, offset 180 min (NEW: format learning)
     // Scrapes trending viral tweets to learn universal formatting patterns
     // Populates viral_tweet_library for AI Visual Formatter
