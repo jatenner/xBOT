@@ -157,12 +157,27 @@ async function collectWeeklyTrainingData(): Promise<any[]> {
     // Create lookup map for content metadata
     const contentMap = new Map((contentData || []).map(c => [c.decision_id, c]));
 
+    // 🚨 LEARNING GATE: Don't learn from low-engagement posts (noise, not signal)
+    // USER REQUIREMENT: Don't learn from posts with <100 views OR <5 likes
+    // This prevents learning from noise that would hurt optimization
+    const LEARNING_MIN_VIEWS = 100;
+    const LEARNING_MIN_LIKES = 5;
+    
     // Transform to feature format with REAL data
     const trainingData = outcomes
       .map(outcome => {
         const content = contentMap.get(outcome.decision_id);
         if (!content) {
           return null; // Skip if no content metadata found
+        }
+
+        const impressions = outcome.impressions || 0;
+        const likes = outcome.likes || 0;
+        const actual_er = getEngagementRate(outcome);
+        
+        // 🚨 LEARNING GATE: Skip low-engagement posts
+        if (impressions < LEARNING_MIN_VIEWS || likes < LEARNING_MIN_LIKES || actual_er === 0) {
+          return null; // Filter out noise - not meaningful data
         }
 
         // Extract content type from bandit_arm or decision_type
@@ -189,18 +204,29 @@ async function collectWeeklyTrainingData(): Promise<any[]> {
           viral_indicators: outcome.viral_score ? (Number(outcome.viral_score) / 100) : 0.5,
           
           // Targets (from outcomes)
-          actual_er: getEngagementRate(outcome),
+          actual_er: actual_er,
           follow_through: (outcome.followers_gained || outcome.followers_delta_24h || 0) > 0 ? 1 : 0,
           
           // Meta
-          impressions: outcome.impressions || 0,
+          impressions: impressions,
+          actual_likes: likes,  // Include likes for filtering
           simulated: outcome.simulated || false,
           decision_id: outcome.decision_id
         };
       })
-      .filter((sample): sample is NonNullable<typeof sample> => 
-        sample !== null && sample.actual_er > 0 && sample.impressions > 0 // Only include valid samples
-      );
+      .filter((sample): sample is NonNullable<typeof sample> => {
+        // Final filter: only include samples with meaningful engagement
+        if (!sample) return false;
+        return sample.actual_er > 0 && 
+               sample.impressions >= LEARNING_MIN_VIEWS && 
+               (sample as any).actual_likes >= LEARNING_MIN_LIKES;
+      });
+    
+    const skipped = outcomes.length - trainingData.length;
+    if (skipped > 0) {
+      console.log(`[PREDICTOR_TRAINER] ⏭️ Skipped ${skipped} low-engagement outcomes (<${LEARNING_MIN_VIEWS} views OR <${LEARNING_MIN_LIKES} likes)`);
+      console.log(`[PREDICTOR_TRAINER] ✅ Using ${trainingData.length} outcomes with meaningful engagement data`);
+    }
 
     console.log(`[PREDICTOR_TRAINER] 📋 Collected ${trainingData.length} training samples`);
     return trainingData;
