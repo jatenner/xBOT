@@ -148,18 +148,18 @@ async function collectTrainingData(config?: any): Promise<any[]> {
         }
         
         return {
-          decision_id: outcome.decision_id,
-          content_type: 'educational', // Would join with decisions table in real system
-          timing_slot: new Date(outcome.collected_at as string).getHours(),
-          quality_score: 0.8 + Math.random() * 0.2,
+      decision_id: outcome.decision_id,
+      content_type: 'educational', // Would join with decisions table in real system
+      timing_slot: new Date(outcome.collected_at as string).getHours(),
+      quality_score: 0.8 + Math.random() * 0.2,
           predicted_er: actual_er * (0.9 + Math.random() * 0.2),
           actual_er: actual_er,
           actual_impressions: impressions,
           actual_likes: likes,
           actual_retweets: outcome.retweets || 0,
           actual_replies: outcome.replies || 0,
-          simulated: outcome.simulated,
-          hours_old: (Date.now() - new Date(outcome.collected_at as string).getTime()) / (1000 * 60 * 60)
+      simulated: outcome.simulated,
+      hours_old: (Date.now() - new Date(outcome.collected_at as string).getTime()) / (1000 * 60 * 60)
         };
       })
       .filter((sample): sample is NonNullable<typeof sample> => {

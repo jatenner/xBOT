@@ -1023,27 +1023,27 @@ export class UnifiedBrowserPool {
       }
     } else {
       // STANDARD MODE: Close only idle contexts (original behavior)
-      const idleTimeout = 30000; // 30 seconds
-      const contextsToClose: string[] = [];
-      
-      for (const [id, handle] of this.contexts.entries()) {
-        const idleTime = now - handle.lastUsed.getTime();
-        if (!handle.inUse && idleTime > idleTimeout) {
-          contextsToClose.push(id);
-        }
+    const idleTimeout = 30000; // 30 seconds
+    const contextsToClose: string[] = [];
+    
+    for (const [id, handle] of this.contexts.entries()) {
+      const idleTime = now - handle.lastUsed.getTime();
+      if (!handle.inUse && idleTime > idleTimeout) {
+        contextsToClose.push(id);
       }
-      
-      // Close idle contexts
-      for (const id of contextsToClose) {
-        const handle = this.contexts.get(id);
-        if (handle) {
-          try {
-            await handle.context.close();
-            this.contexts.delete(id);
-            this.metrics.contextsClosed++;
-            console.log(`[BROWSER_POOL] 🚨 Closed idle context: ${id}`);
-          } catch (e) {
-            console.warn(`[BROWSER_POOL] ⚠️ Error closing context ${id}:`, e);
+    }
+    
+    // Close idle contexts
+    for (const id of contextsToClose) {
+      const handle = this.contexts.get(id);
+      if (handle) {
+        try {
+          await handle.context.close();
+          this.contexts.delete(id);
+          this.metrics.contextsClosed++;
+          console.log(`[BROWSER_POOL] 🚨 Closed idle context: ${id}`);
+        } catch (e) {
+          console.warn(`[BROWSER_POOL] ⚠️ Error closing context ${id}:`, e);
           }
         }
       }

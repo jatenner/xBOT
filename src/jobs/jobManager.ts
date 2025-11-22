@@ -1111,9 +1111,9 @@ export class JobManager {
         if (afterCleanup.status === 'critical') {
           // For non-critical jobs, just skip them
           if (jobName !== 'plan' && jobName !== 'posting') {
-            console.error(`🧠 [JOB_${jobName.toUpperCase()}] Memory still critical after cleanup (${afterCleanup.rssMB}MB) - skipping job`);
-            await recordJobSkip(jobName, `memory_critical_${afterCleanup.rssMB}mb`);
-            return;
+          console.error(`🧠 [JOB_${jobName.toUpperCase()}] Memory still critical after cleanup (${afterCleanup.rssMB}MB) - skipping job`);
+          await recordJobSkip(jobName, `memory_critical_${afterCleanup.rssMB}mb`);
+          return;
           }
           
           // For critical jobs (plan, posting), log warning but allow them to proceed
