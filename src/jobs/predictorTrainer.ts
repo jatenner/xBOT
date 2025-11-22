@@ -157,11 +157,14 @@ async function collectWeeklyTrainingData(): Promise<any[]> {
     // Create lookup map for content metadata
     const contentMap = new Map((contentData || []).map(c => [c.decision_id, c]));
 
-    // 🚨 LEARNING GATE: Don't learn from low-engagement posts (noise, not signal)
-    // USER REQUIREMENT: Don't learn from posts with <100 views OR <5 likes
-    // This prevents learning from noise that would hurt optimization
-    const LEARNING_MIN_VIEWS = 100;
-    const LEARNING_MIN_LIKES = 5;
+    // 🚨 ADAPTIVE LEARNING GATE: Use adaptive thresholds based on account performance
+    // If account has low engagement (e.g., 50 views is best), use percentile-based thresholds
+    // If account has decent engagement, use fixed thresholds (100 views, 5 likes)
+    const { calculateAdaptiveThresholds, passesLearningThreshold } = await import('./adaptiveLearningThresholds');
+    const thresholds = await calculateAdaptiveThresholds(outcomes);
+    
+    console.log(`[PREDICTOR_TRAINER] 🎯 Learning thresholds: ${thresholds.minViews} views, ${thresholds.minLikes} likes (${thresholds.method})`);
+    console.log(`[PREDICTOR_TRAINER] 📊 ${thresholds.reason}`);
     
     // Transform to feature format with REAL data
     const trainingData = outcomes
@@ -175,8 +178,8 @@ async function collectWeeklyTrainingData(): Promise<any[]> {
         const likes = outcome.likes || 0;
         const actual_er = getEngagementRate(outcome);
         
-        // 🚨 LEARNING GATE: Skip low-engagement posts
-        if (impressions < LEARNING_MIN_VIEWS || likes < LEARNING_MIN_LIKES || actual_er === 0) {
+        // 🚨 LEARNING GATE: Skip low-engagement posts (using adaptive thresholds)
+        if (!passesLearningThreshold(impressions, likes, thresholds) || actual_er === 0) {
           return null; // Filter out noise - not meaningful data
         }
 
@@ -218,14 +221,13 @@ async function collectWeeklyTrainingData(): Promise<any[]> {
         // Final filter: only include samples with meaningful engagement
         if (!sample) return false;
         return sample.actual_er > 0 && 
-               sample.impressions >= LEARNING_MIN_VIEWS && 
-               (sample as any).actual_likes >= LEARNING_MIN_LIKES;
+               passesLearningThreshold(sample.impressions, (sample as any).actual_likes, thresholds);
       });
     
     const skipped = outcomes.length - trainingData.length;
     if (skipped > 0) {
-      console.log(`[PREDICTOR_TRAINER] ⏭️ Skipped ${skipped} low-engagement outcomes (<${LEARNING_MIN_VIEWS} views OR <${LEARNING_MIN_LIKES} likes)`);
-      console.log(`[PREDICTOR_TRAINER] ✅ Using ${trainingData.length} outcomes with meaningful engagement data`);
+      console.log(`[PREDICTOR_TRAINER] ⏭️ Skipped ${skipped} low-engagement outcomes (<${thresholds.minViews} views OR <${thresholds.minLikes} likes)`);
+      console.log(`[PREDICTOR_TRAINER] ✅ Using ${trainingData.length} outcomes with meaningful engagement data (${((trainingData.length / outcomes.length) * 100).toFixed(1)}%)`);
     }
 
     console.log(`[PREDICTOR_TRAINER] 📋 Collected ${trainingData.length} training samples`);
