@@ -259,7 +259,65 @@ async function updateBanditArms(trainingData: any[]): Promise<{ armsUpdated: num
     console.log(`[LEARN_JOB]    ${slot}:00: avg_reward=${arm.avgReward.toFixed(4)} (n=${arm.samples})`);
   });
   
-  // TODO: Store arm updates in database (bandit_arms table)
+  // 🔥 FIX: Store arm updates in database (bandit_arms table)
+  try {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    
+    // Store content arms
+    for (const [contentType, arm] of contentArms.entries()) {
+      const armName = `content_${contentType}`;
+      const alpha = arm.successes + 1;
+      const beta = arm.failures + 1;
+      
+      await supabase
+        .from('bandit_arms')
+        .upsert({
+          arm_name: armName,
+          scope: 'content',
+          successes: arm.successes,
+          failures: arm.failures,
+          alpha: alpha,
+          beta: beta,
+          last_updated: new Date().toISOString()
+        }, {
+          onConflict: 'arm_name'
+        })
+        .catch(error => {
+          console.warn(`[LEARN_JOB] ⚠️ Failed to store bandit arm ${armName}:`, error.message);
+        });
+    }
+    
+    // Store timing arms
+    for (const [slot, arm] of timingArms.entries()) {
+      const armName = `timing_${slot}`;
+      // For timing arms, convert avg reward to successes/failures estimate
+      const totalAttempts = arm.samples;
+      const estimatedSuccesses = Math.round(arm.avgReward > 0.03 ? totalAttempts * 0.6 : totalAttempts * 0.4);
+      const estimatedFailures = totalAttempts - estimatedSuccesses;
+      
+      await supabase
+        .from('bandit_arms')
+        .upsert({
+          arm_name: armName,
+          scope: 'timing',
+          successes: estimatedSuccesses,
+          failures: estimatedFailures,
+          alpha: estimatedSuccesses + 1,
+          beta: estimatedFailures + 1,
+          last_updated: new Date().toISOString()
+        }, {
+          onConflict: 'arm_name'
+        })
+        .catch(error => {
+          console.warn(`[LEARN_JOB] ⚠️ Failed to store bandit arm ${armName}:`, error.message);
+        });
+    }
+    
+    console.log(`[LEARN_JOB] 💾 Stored ${contentArms.size + timingArms.size} bandit arms to database`);
+  } catch (error) {
+    console.warn(`[LEARN_JOB] ⚠️ Failed to persist bandit arms:`, error.message);
+  }
   
   const totalArmsUpdated = contentArms.size + timingArms.size;
   return { armsUpdated: totalArmsUpdated };
