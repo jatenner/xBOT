@@ -249,10 +249,12 @@ Return JSON in this exact format:
    */
   private async getDeepAnalysis(tweet: any, prompt: string): Promise<DeepTweetUnderstanding> {
     const response = await createBudgetedChatCompletion(
-      [
-        {
-          role: 'system',
-          content: `You are an expert Twitter content analyst with deep understanding of:
+      {
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert Twitter content analyst with deep understanding of:
 - Why tweets go viral (semantic, visual, emotional factors)
 - What makes people stop scrolling (cognitive hooks)
 - What drives engagement (value, curiosity, urgency)
@@ -260,17 +262,17 @@ Return JSON in this exact format:
 - Visual design principles (readability, scannability, hierarchy)
 
 Analyze tweets at a DEEP level, extracting not just structure but the ESSENCE of what makes them work.`
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 3000
+      },
       {
-        model: 'gpt-4o-mini', // Can upgrade to gpt-4o for better analysis
-        temperature: 0.3, // Lower temp for more consistent analysis
-        maxTokens: 3000,
-        requestType: 'vi_deep_analysis',
+        purpose: 'vi_deep_analysis',
         priority: 'high'
       }
     );

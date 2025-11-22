@@ -298,7 +298,7 @@ async function updateBanditArms(trainingData: any[]): Promise<{ armsUpdated: num
       const alpha = arm.successes + 1;
       const beta = arm.failures + 1;
       
-      await supabase
+      const { error } = await supabase
         .from('bandit_arms')
         .upsert({
           arm_name: armName,
@@ -310,10 +310,10 @@ async function updateBanditArms(trainingData: any[]): Promise<{ armsUpdated: num
           last_updated: new Date().toISOString()
         }, {
           onConflict: 'arm_name'
-        })
-        .catch(error => {
-          console.warn(`[LEARN_JOB] ⚠️ Failed to store bandit arm ${armName}:`, error.message);
         });
+      if (error) {
+        console.warn(`[LEARN_JOB] ⚠️ Failed to store bandit arm ${armName}:`, error.message);
+      }
     }
     
     // Store timing arms
@@ -324,7 +324,7 @@ async function updateBanditArms(trainingData: any[]): Promise<{ armsUpdated: num
       const estimatedSuccesses = Math.round(arm.avgReward > 0.03 ? totalAttempts * 0.6 : totalAttempts * 0.4);
       const estimatedFailures = totalAttempts - estimatedSuccesses;
       
-      await supabase
+      const { error } = await supabase
         .from('bandit_arms')
         .upsert({
           arm_name: armName,
@@ -336,10 +336,10 @@ async function updateBanditArms(trainingData: any[]): Promise<{ armsUpdated: num
           last_updated: new Date().toISOString()
         }, {
           onConflict: 'arm_name'
-        })
-        .catch(error => {
-          console.warn(`[LEARN_JOB] ⚠️ Failed to store bandit arm ${armName}:`, error.message);
         });
+      if (error) {
+        console.warn(`[LEARN_JOB] ⚠️ Failed to store bandit arm ${armName}:`, error.message);
+      }
     }
     
     console.log(`[LEARN_JOB] 💾 Stored ${contentArms.size + timingArms.size} bandit arms to database`);
