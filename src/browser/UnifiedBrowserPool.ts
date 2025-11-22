@@ -961,35 +961,90 @@ export class UnifiedBrowserPool {
   /**
    * 🚨 EMERGENCY CLEANUP: Force cleanup of idle contexts and free memory
    * Called when memory is critical to prevent OOM crashes
+   * 
+   * 🔥 ENHANCED: More aggressive cleanup - closes ALL contexts when memory is critical
    */
-  public async emergencyCleanup(): Promise<void> {
-    console.log('[BROWSER_POOL] 🚨 EMERGENCY CLEANUP: Freeing memory...');
+  public async emergencyCleanup(aggressive: boolean = false): Promise<void> {
+    console.log(`[BROWSER_POOL] 🚨 EMERGENCY CLEANUP: ${aggressive ? 'AGGRESSIVE' : 'STANDARD'} mode - Freeing memory...`);
     
     const beforeCount = this.contexts.size;
     const now = Date.now();
     
-    // Close all idle contexts (not in use for > 30 seconds)
-    const idleTimeout = 30000; // 30 seconds
-    const contextsToClose: string[] = [];
-    
-    for (const [id, handle] of this.contexts.entries()) {
-      const idleTime = now - handle.lastUsed.getTime();
-      if (!handle.inUse && idleTime > idleTimeout) {
-        contextsToClose.push(id);
+    // 🚨 AGGRESSIVE MODE: Close ALL contexts when memory is critical
+    // This is necessary when memory is stuck at 461MB+ and won't free up
+    if (aggressive) {
+      console.log(`[BROWSER_POOL] 🚨 AGGRESSIVE MODE: Closing ALL contexts to free memory...`);
+      
+      const contextsToClose: string[] = Array.from(this.contexts.keys());
+      
+      for (const id of contextsToClose) {
+        const handle = this.contexts.get(id);
+        if (handle) {
+          try {
+            // Force close even if in use
+            handle.inUse = false; // Mark as not in use to allow closing
+            try {
+              await handle.context.close();
+            } catch (e) {
+              // Force close failed - context may already be closed
+              // Continue anyway to remove from pool
+              console.warn(`[BROWSER_POOL] ⚠️ Context ${id} already closed or error:`, e);
+            }
+            this.contexts.delete(id);
+            this.metrics.contextsClosed++;
+            console.log(`[BROWSER_POOL] 🚨 Force-closed context: ${id}`);
+          } catch (e) {
+            // Even if close fails, remove from map to prevent leaks
+            this.contexts.delete(id);
+            console.warn(`[BROWSER_POOL] ⚠️ Error force-closing context ${id}, removed from pool:`, e);
+          }
+        }
       }
-    }
-    
-    // Close idle contexts
-    for (const id of contextsToClose) {
-      const handle = this.contexts.get(id);
-      if (handle) {
+      
+      // Clear all queued operations
+      if (this.queue.length > 0) {
+        console.log(`[BROWSER_POOL] 🚨 Clearing ${this.queue.length} queued operations due to emergency`);
+        for (const op of this.queue) {
+          op.reject(new Error('Emergency cleanup: Operation cancelled due to memory pressure'));
+        }
+        this.queue = [];
+      }
+      
+      // Optionally close and restart browser if still critical
+      if (this.browser && this.contexts.size === 0) {
         try {
-          await handle.context.close();
-          this.contexts.delete(id);
-          this.metrics.contextsClosed++;
-          console.log(`[BROWSER_POOL] 🚨 Closed idle context: ${id}`);
+          console.log(`[BROWSER_POOL] 🚨 Closing browser to free memory...`);
+          await this.browser.close().catch(() => {});
+          this.browser = null;
+          this.sessionLoaded = false; // Will reload session next time
         } catch (e) {
-          console.warn(`[BROWSER_POOL] ⚠️ Error closing context ${id}:`, e);
+          console.warn(`[BROWSER_POOL] ⚠️ Error closing browser:`, e);
+        }
+      }
+    } else {
+      // STANDARD MODE: Close only idle contexts (original behavior)
+      const idleTimeout = 30000; // 30 seconds
+      const contextsToClose: string[] = [];
+      
+      for (const [id, handle] of this.contexts.entries()) {
+        const idleTime = now - handle.lastUsed.getTime();
+        if (!handle.inUse && idleTime > idleTimeout) {
+          contextsToClose.push(id);
+        }
+      }
+      
+      // Close idle contexts
+      for (const id of contextsToClose) {
+        const handle = this.contexts.get(id);
+        if (handle) {
+          try {
+            await handle.context.close();
+            this.contexts.delete(id);
+            this.metrics.contextsClosed++;
+            console.log(`[BROWSER_POOL] 🚨 Closed idle context: ${id}`);
+          } catch (e) {
+            console.warn(`[BROWSER_POOL] ⚠️ Error closing context ${id}:`, e);
+          }
         }
       }
     }

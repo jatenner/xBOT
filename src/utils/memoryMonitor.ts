@@ -62,14 +62,18 @@ export class MemoryMonitor {
       }
       
       // Clean browser pool if available
+      // 🔥 FIX: Use aggressive mode when memory is critical to force close all contexts
       try {
         const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
         const pool = UnifiedBrowserPool.getInstance();
         if (pool.emergencyCleanup) {
-          await pool.emergencyCleanup();
+          // Use aggressive cleanup if memory is above critical threshold
+          const isCritical = before.rssMB > this.CRITICAL_THRESHOLD;
+          await pool.emergencyCleanup(isCritical);
         }
       } catch (e) {
         // Browser pool might not be available, continue anyway
+        console.warn(`🧠 [MEMORY_MONITOR] Browser pool cleanup failed:`, e);
       }
       
       const after = this.checkMemory();
