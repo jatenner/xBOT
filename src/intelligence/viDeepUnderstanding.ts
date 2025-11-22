@@ -151,14 +151,17 @@ ANALYSIS TASKS:
    - What creates urgency?
    - What questions does it raise?
 
-2. VISUAL UNDERSTANDING (How it looks):
-   - Readability: How easy is it to read? (0-100)
-   - Scannability: How easy to scan quickly? (0-100)
-   - Visual hierarchy: What draws the eye first?
-   - Pacing/rhythm: Fast, slow, or medium pacing?
-   - Emphasis techniques: Bold claims, numbers, caps, etc.
-   - White space usage: How is space used?
-   - Visual flow: How does the eye move through it?
+2. VISUAL UNDERSTANDING (How it actually looks on screen):
+   - Visual appearance: Minimal text, enhanced with emojis, or highly visual?
+   - Structural emojis: Are emojis used structurally (numbers 1️⃣ 2️⃣, arrows →, symbols ⚠️) or just decoration?
+   - Emoji function: What % are structural vs decorative?
+   - Visual hierarchy: What draws the eye first? (numbers, emojis, caps, text)
+   - Attention flow: In what order does the eye move through it?
+   - Focal points: Where does the eye naturally go?
+   - Typography: How are caps, numbers, and formatting used visually?
+   - Visual structure: Paragraph, list, or thread-like appearance?
+   - Scanning pattern: How is it scanned? What's the scan path?
+   - Visual perception: Readability, scannability, engagement (0-100 scores)
 
 3. ESSENCE EXTRACTION (The magic):
    - The hook: What makes you read it?
@@ -198,13 +201,20 @@ Return JSON in this exact format:
     "curiosity_gaps": ["string"]
   },
   "visual_analysis": {
-    "readability_score": number,
-    "scannability_score": number,
-    "visual_hierarchy": ["string"],
-    "pacing_rhythm": "fast|slow|medium",
-    "emphasis_techniques": ["string"],
-    "white_space_usage": "string",
-    "visual_flow": "string"
+    "overall_style": "minimal|enhanced|highly_visual|mixed",
+    "simplicity_score": number,
+    "visual_complexity": number,
+    "structural_emojis_count": number,
+    "decorative_emojis_count": number,
+    "emoji_structural_ratio": number,
+    "first_visual_element": "string",
+    "attention_flow": ["string"],
+    "focal_points": [{"element": "string", "position": number, "strength": number}],
+    "readability_visual": number,
+    "scannability_visual": number,
+    "engagement_visual": number,
+    "scanning_pattern": "string",
+    "visual_perception": "string"
   },
   "essence_analysis": {
     "the_hook": "string",

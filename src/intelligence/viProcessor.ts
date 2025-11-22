@@ -27,16 +27,23 @@ export class VIProcessor {
     // Stage 1: Classify unclassified tweets
     const classified = await this.classifyPending();
     
-    // Stage 2: Analyze classified tweets
+    // Stage 2: Analyze classified tweets (basic visual patterns)
     const analyzed = await this.analyzePending();
     
-    // Stage 3: Build intelligence from analyzed tweets
+    // Stage 3: 🆕 Visual appearance analysis (how tweets actually look)
+    const { VIVisualAnalysis } = await import('./viVisualAnalysis');
+    const visualAnalyzer = new VIVisualAnalysis();
+    const visuallyAnalyzed = await visualAnalyzer.processForVisualAnalysis();
+    log({ op: 'vi_visual_analysis_complete', analyzed: visuallyAnalyzed });
+    
+    // Stage 4: Build intelligence from analyzed tweets
     const patternsBuilt = await this.buildIntelligence();
     
     log({ 
       op: 'vi_processor_complete', 
       classified, 
       analyzed, 
+      visually_analyzed: visuallyAnalyzed,
       patterns_built: patternsBuilt 
     });
   }
