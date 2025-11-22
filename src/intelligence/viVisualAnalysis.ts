@@ -424,10 +424,12 @@ Return JSON in this exact format:
     visualElements: any
   ): Promise<VisualAppearanceAnalysis> {
     const response = await createBudgetedChatCompletion(
-      [
-        {
-          role: 'system',
-          content: `You are an expert in visual design and how content appears on social media platforms like Twitter.
+      {
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert in visual design and how content appears on social media platforms like Twitter.
 
 You understand:
 - Visual hierarchy (what draws the eye first)
@@ -438,17 +440,17 @@ You understand:
 - How simple vs enhanced visuals affect perception
 
 Analyze tweets from a VISUAL perspective - how they LOOK, not just what they SAY.`
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.2,
+        max_tokens: 4000
+      },
       {
-        model: 'gpt-4o-mini',
-        temperature: 0.2, // Lower for consistent analysis
-        maxTokens: 4000,
-        requestType: 'vi_visual_analysis',
+        purpose: 'vi_visual_analysis',
         priority: 'high'
       }
     );

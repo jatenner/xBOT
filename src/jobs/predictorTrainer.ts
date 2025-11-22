@@ -192,8 +192,8 @@ async function collectWeeklyTrainingData(): Promise<any[]> {
         const postedAt = content.posted_at || outcome.collected_at;
         const timingSlot = new Date(postedAt as string).getHours();
         
-        // Determine length from decision_type
-        const isMedium = content.decision_type === 'thread' || (content.decision_type === 'single' && (content.content?.length || 0) > 100);
+        // Determine length from decision_type (threads are medium, long singles are medium)
+        const isMedium = content.decision_type === 'thread';
 
         return {
           // Features (REAL data from content_metadata)

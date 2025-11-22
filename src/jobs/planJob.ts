@@ -350,9 +350,6 @@ async function generateContentWithLLM() {
   let dynamicTopic;
   let topic: string;
   
-  // ✅ NEW: Initialize VI insights (will be populated after topic/angle/tone generation)
-  let viInsights: any = null;
-  
   if (useTrendingTopic) {
     console.log('[PLAN_JOB] 🔥 Using trending topic from harvester data...');
     try {
@@ -432,13 +429,13 @@ async function generateContentWithLLM() {
   try {
     console.log('[VI_INSIGHTS] 🎨 Retrieving visual intelligence insights...');
     
-    const { viiIntelligenceFeed } = await import('../intelligence/viIntelligenceFeed');
-    const viFeed = new viiIntelligenceFeed();
+    const { VIIntelligenceFeed } = await import('../intelligence/viIntelligenceFeed');
+    const viFeed = new VIIntelligenceFeed();
     viInsights = await viFeed.getIntelligence({
       topic,
       angle,
       tone,
-      structure: formatStrategy?.format_type,
+      structure: typeof formatStrategy === 'string' ? formatStrategy : (formatStrategy as any)?.format_type || formatStrategy,
       generator: matchedGenerator
     });
     
