@@ -91,8 +91,35 @@ export class FollowerGrowthEngine {
   
   /**
    * Get viral hook templates optimized for growth
+   * 🎯 ENHANCED: Now uses follower conversion hooks (not just engagement)
    */
   public getViralHook(strategy: string, topic: string): string {
+    // Try to use new follower conversion hooks if available
+    // Note: Using lazy import pattern - if module not loaded, falls back to original hooks
+    try {
+      // Dynamic import with synchronous fallback pattern
+      const hookModule = require('./followerConversionHooks');
+      if (hookModule && hookModule.FollowerConversionHooks) {
+        const hookSystem = hookModule.FollowerConversionHooks.getInstance();
+        
+        // Map old strategy names to new ones
+        const strategyMap: Record<string, 'authority' | 'controversy' | 'transformation' | 'exclusivity'> = {
+          'curiosity_gap': 'authority',
+          'controversy': 'controversy',
+          'insider_info': 'exclusivity',
+          'myth_bust': 'controversy',
+          'surprising_data': 'transformation',
+        };
+        
+        const newStrategy = strategyMap[strategy] || 'authority';
+        return hookSystem.getFollowerHook(newStrategy, topic);
+      }
+    } catch (error) {
+      // Fallback to original hooks if new system not available
+      // This is expected if module not loaded yet - will use fallback
+    }
+    
+    // Original hooks (fallback)
     const hooks = {
       curiosity_gap: [
         `Everyone's ${topic} approach is backwards. Here's what actually works:`,
