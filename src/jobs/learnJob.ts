@@ -126,11 +126,14 @@ async function collectTrainingData(config?: any): Promise<any[]> {
       return 0;
     };
 
-    // 🚨 LEARNING GATE: Don't learn from low-engagement posts (noise, not signal)
-    // USER REQUIREMENT: Don't learn from posts with <100 views OR <5 likes
-    // This prevents learning from noise that would hurt optimization
-    const LEARNING_MIN_VIEWS = 100;
-    const LEARNING_MIN_LIKES = 5;
+    // 🚨 ADAPTIVE LEARNING GATE: Use adaptive thresholds based on account performance
+    // If account has low engagement (e.g., 50 views is best), use percentile-based thresholds
+    // If account has decent engagement, use fixed thresholds (100 views, 5 likes)
+    const { calculateAdaptiveThresholds, passesLearningThreshold } = await import('./adaptiveLearningThresholds');
+    const thresholds = await calculateAdaptiveThresholds(outcomes);
+    
+    console.log(`[LEARN_JOB] 🎯 Learning thresholds: ${thresholds.minViews} views, ${thresholds.minLikes} likes (${thresholds.method})`);
+    console.log(`[LEARN_JOB] 📊 ${thresholds.reason}`);
     
     // Convert outcomes to training format
     const trainingData = outcomes
@@ -139,8 +142,8 @@ async function collectTrainingData(config?: any): Promise<any[]> {
         const impressions = outcome.impressions || 0;
         const likes = outcome.likes || 0;
         
-        // Skip low-engagement posts (noise)
-        if (impressions < LEARNING_MIN_VIEWS || likes < LEARNING_MIN_LIKES) {
+        // Skip low-engagement posts (using adaptive thresholds)
+        if (!passesLearningThreshold(impressions, likes, thresholds)) {
           return null; // Filter out below threshold
         }
         
@@ -159,17 +162,17 @@ async function collectTrainingData(config?: any): Promise<any[]> {
           hours_old: (Date.now() - new Date(outcome.collected_at as string).getTime()) / (1000 * 60 * 60)
         };
       })
-      .filter((sample): sample is NonNullable<typeof sample> => 
-        sample !== null && 
-        sample.actual_er > 0 && 
-        sample.actual_impressions >= LEARNING_MIN_VIEWS && 
-        sample.actual_likes >= LEARNING_MIN_LIKES
-      );
+      .filter((sample): sample is NonNullable<typeof sample> => {
+        // Final filter: only include samples with meaningful engagement
+        if (!sample) return false;
+        return sample.actual_er > 0 && 
+               passesLearningThreshold(sample.actual_impressions, sample.actual_likes, thresholds);
+      });
     
     const skipped = outcomes.length - trainingData.length;
     if (skipped > 0) {
-      console.log(`[LEARN_JOB] ⏭️ Skipped ${skipped} low-engagement outcomes (<${LEARNING_MIN_VIEWS} views OR <${LEARNING_MIN_LIKES} likes)`);
-      console.log(`[LEARN_JOB] ✅ Using ${trainingData.length} outcomes with meaningful engagement data`);
+      console.log(`[LEARN_JOB] ⏭️ Skipped ${skipped} low-engagement outcomes (<${thresholds.minViews} views OR <${thresholds.minLikes} likes)`);
+      console.log(`[LEARN_JOB] ✅ Using ${trainingData.length} outcomes with meaningful engagement data (${((trainingData.length / outcomes.length) * 100).toFixed(1)}%)`);
     }
 
     console.log(`[LEARN_JOB] 📋 Collected ${trainingData.length} training samples (real: ${!simulatedFilter})`);
