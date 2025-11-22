@@ -1221,22 +1221,43 @@ async function selectOptimalSchedule(): Promise<Date> {
   const now = new Date();
   const currentHour = now.getHours();
   
-  // 🎯 PEAK HOUR OPTIMIZATION: Prioritize high-engagement windows
-  // Peak hours: 6-9 AM (morning), 12-1 PM (lunch), 6-8 PM (evening)
+  // 🎯 ENHANCED PEAK HOUR OPTIMIZATION: Prioritize high-engagement windows
+  // Peak hours: 6-9 AM (morning routine), 12-1 PM (lunch break), 6-8 PM (evening wind-down)
+  // These windows get 30-50% higher early engagement = algorithm boost
   const isPeakHour = (hour: number): boolean => {
     return (hour >= 6 && hour <= 9) || (hour >= 12 && hour <= 13) || (hour >= 18 && hour <= 20);
   };
   
+  // Calculate peak hour weight (higher weight = more likely to shift)
+  const getPeakHourWeight = (hour: number): number => {
+    if (hour >= 6 && hour <= 9) return 1.0;   // Morning: highest priority
+    if (hour >= 12 && hour <= 13) return 0.9;  // Lunch: high priority
+    if (hour >= 18 && hour <= 20) return 0.95; // Evening: very high priority
+    return 0.5; // Off-peak: lower priority
+  };
+  
   // If selected slot is not peak hour, try to move to nearest peak hour
   if (!isPeakHour(timingSelection.slot)) {
-    const nextPeakHours = [6, 7, 8, 9, 12, 13, 18, 19, 20];
-    const nearestPeakHour = nextPeakHours.find(hour => hour > currentHour) || nextPeakHours[0];
+    const peakHours = [
+      { hour: 6, weight: 1.0 }, { hour: 7, weight: 1.0 }, { hour: 8, weight: 1.0 }, { hour: 9, weight: 0.9 },
+      { hour: 12, weight: 0.9 }, { hour: 13, weight: 0.9 },
+      { hour: 18, weight: 0.95 }, { hour: 19, weight: 0.95 }, { hour: 20, weight: 0.9 }
+    ];
     
-    // Use nearest peak hour if it's within 2 hours, otherwise use UCB selection
-    const hoursUntilPeak = nearestPeakHour - currentHour;
-    if (hoursUntilPeak > 0 && hoursUntilPeak <= 2) {
-      console.log(`[SCHEDULE] 🎯 Shifting to peak hour ${nearestPeakHour} (was ${timingSelection.slot})`);
-      timingSelection.slot = nearestPeakHour;
+    // Find nearest peak hour (forward-looking)
+    const futurePeakHours = peakHours.filter(p => p.hour > currentHour);
+    const nearestPeakHour = futurePeakHours.length > 0 
+      ? futurePeakHours[0] 
+      : peakHours[0]; // Wrap to next day if needed
+    
+    // Use nearest peak hour if it's within 3 hours (more aggressive)
+    const hoursUntilPeak = nearestPeakHour.hour > currentHour 
+      ? nearestPeakHour.hour - currentHour 
+      : (24 - currentHour) + nearestPeakHour.hour;
+    
+    if (hoursUntilPeak > 0 && hoursUntilPeak <= 3) {
+      console.log(`[SCHEDULE] 🎯 Shifting to peak hour ${nearestPeakHour.hour} (weight: ${nearestPeakHour.weight}, was ${timingSelection.slot})`);
+      timingSelection.slot = nearestPeakHour.hour;
     }
   }
   

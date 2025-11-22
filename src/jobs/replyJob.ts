@@ -734,24 +734,60 @@ async function generateRealReplies(): Promise<void> {
       console.log(`[REPLY_JOB] 🎭 Using ${replyGenerator} for reply to @${target.account.username} (${target.account.category})`);
       
       // 🔥 NEW: Generate reply using ACTUAL selected generator (with fallback)
+      // 🎯 ENHANCED: Try relationship reply system first (follower-focused), then generator, then strategic
       let strategicReply;
       
       try {
-        // Try to use the selected generator
-        const { generateReplyWithGenerator } = await import('../generators/replyGeneratorAdapter');
-        strategicReply = await generateReplyWithGenerator(replyGenerator, {
-          tweet_content: target.tweet_content,
-          username: target.account.username,
-          category: target.account.category,
-          reply_angle: target.reply_angle
-        });
-        console.log(`[REPLY_JOB] ✅ ${replyGenerator} generator succeeded`);
+        // Try relationship reply system first (optimized for follower conversion)
+        const { RelationshipReplySystem } = await import('../growth/relationshipReplySystem');
+        const relationshipSystem = RelationshipReplySystem.getInstance();
         
-      } catch (generatorError: any) {
-        // Fallback to strategicReplySystem if generator fails
-        console.warn(`[REPLY_JOB] ⚠️ ${replyGenerator} generator failed, using fallback:`, generatorError.message);
-        strategicReply = await strategicReplySystem.generateStrategicReply(target);
-        console.log(`[REPLY_JOB] ✅ Fallback strategicReplySystem succeeded`);
+        // Extract tweet ID from URL for relationship system
+        const tweetUrlStr = String(target.tweet_url || '');
+        const tweetIdFromUrl = tweetUrlStr.split('/').pop() || 'unknown';
+        
+        const relationshipReply = await relationshipSystem.generateRelationshipReply({
+          tweet_id: tweetIdFromUrl,
+          username: target.account.username,
+          content: target.tweet_content || '',
+          likes: 0, // Will be filled from opportunity if available
+          replies: 0,
+          posted_at: new Date().toISOString(),
+        });
+        
+        // Convert relationship reply format to strategic reply format
+        strategicReply = {
+          content: relationshipReply.reply,
+          provides_value: true, // Relationship replies always provide value
+          adds_insight: relationshipReply.strategy === 'value_first' || relationshipReply.strategy === 'controversy',
+          not_spam: true, // Relationship replies are never spam
+          confidence: relationshipReply.expectedConversion === 'high' ? 0.9 : 
+                     relationshipReply.expectedConversion === 'medium' ? 0.7 : 0.5,
+          visualFormat: 'paragraph' as const
+        };
+        
+        console.log(`[REPLY_JOB] ✅ Relationship reply generated (strategy: ${relationshipReply.strategy}, conversion: ${relationshipReply.expectedConversion})`);
+        
+      } catch (relationshipError: any) {
+        console.warn(`[REPLY_JOB] ⚠️ Relationship reply system failed, trying generator:`, relationshipError.message);
+        
+        try {
+          // Try to use the selected generator
+          const { generateReplyWithGenerator } = await import('../generators/replyGeneratorAdapter');
+          strategicReply = await generateReplyWithGenerator(replyGenerator, {
+            tweet_content: target.tweet_content,
+            username: target.account.username,
+            category: target.account.category,
+            reply_angle: target.reply_angle
+          });
+          console.log(`[REPLY_JOB] ✅ ${replyGenerator} generator succeeded`);
+          
+        } catch (generatorError: any) {
+          // Fallback to strategicReplySystem if generator fails
+          console.warn(`[REPLY_JOB] ⚠️ ${replyGenerator} generator failed, using strategic fallback:`, generatorError.message);
+          strategicReply = await strategicReplySystem.generateStrategicReply(target);
+          console.log(`[REPLY_JOB] ✅ Fallback strategicReplySystem succeeded`);
+        }
       }
       
       // Validate quality

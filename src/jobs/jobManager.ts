@@ -1288,6 +1288,36 @@ export class JobManager {
       
       console.log(`✅ HEALTH_CHECK: Content pipeline healthy (${queuedContent.length} queued, ${readyCount} ready, last gen ${hoursSinceLastGen.toFixed(1)}h ago)`);
       
+      // Check 5: Profile optimization for follower conversion
+      try {
+        const { ProfileOptimizer } = await import('../intelligence/profileOptimizer');
+        const profileOptimizer = ProfileOptimizer.getInstance();
+        const profileAudit = await profileOptimizer.auditProfile();
+        
+        if (profileAudit.score < 70) {
+          console.warn(`[HEALTH_CHECK] ⚠️ Profile optimization needed: Score ${profileAudit.score}/100`);
+          console.warn(`[HEALTH_CHECK] Issues: ${profileAudit.issues.join(', ')}`);
+          console.warn(`[HEALTH_CHECK] Recommendations: ${profileAudit.recommendations.join('; ')}`);
+          
+          // Log to system_events for monitoring
+          await supabase.from('system_events').insert({
+            event_type: 'profile_optimization_needed',
+            severity: 'warning',
+            event_data: {
+              score: profileAudit.score,
+              issues: profileAudit.issues,
+              recommendations: profileAudit.recommendations,
+              content_mix: profileAudit.contentMix
+            },
+            created_at: new Date().toISOString()
+          });
+        } else {
+          console.log(`[HEALTH_CHECK] ✅ Profile optimized for follower conversion (score: ${profileAudit.score}/100)`);
+        }
+      } catch (profileError: any) {
+        console.warn(`[HEALTH_CHECK] ⚠️ Profile audit failed: ${profileError.message}`);
+      }
+      
     } catch (error: any) {
       console.error(`❌ HEALTH_CHECK: Error during health check:`, error.message);
     }
