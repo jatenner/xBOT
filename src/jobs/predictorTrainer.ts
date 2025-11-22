@@ -205,12 +205,12 @@ async function collectWeeklyTrainingData(): Promise<any[]> {
           novelty_score: content.topic ? 0.6 + Math.random() * 0.2 : 0.5, // Mock for now (would extract from content)
           expertise_level: content.style === 'expert' || content.style === 'authoritative' ? 0.8 : 0.6, // Mock for now
           viral_indicators: outcome.viral_score ? (Number(outcome.viral_score) / 100) : 0.5,
-          
+        
           // Targets (from outcomes)
           actual_er: actual_er,
           follow_through: (outcome.followers_gained || outcome.followers_delta_24h || 0) > 0 ? 1 : 0,
-          
-          // Meta
+        
+        // Meta
           impressions: impressions,
           actual_likes: likes,  // Include likes for filtering
           simulated: outcome.simulated || false,

@@ -112,8 +112,8 @@ function getEngagementRate(outcome: any): number {
     const retweets = outcome.retweets || 0;
     const replies = outcome.replies || 0;
     return (likes + retweets + replies) / impressions;
-  }
-  
+}
+
   // No data available
   return 0;
 }

@@ -233,7 +233,7 @@ async function generateRealContent(): Promise<void> {
  * 🎭 SYSTEM B: Call dedicated generator with specialized prompt
  */
 async function callDedicatedGenerator(generatorName: string, context: any) {
-  const { topic, angle, tone, formatStrategy, dynamicTopic, growthIntelligence } = context;
+  const { topic, angle, tone, formatStrategy, dynamicTopic, growthIntelligence, viInsights } = context;
   
   // Map generator names (from generatorMatcher) to their module files and function names
   const generatorMap: Record<string, { module: string, fn: string }> = {
@@ -293,7 +293,8 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
       tone, // ✅ Pass AI-generated tone
       formatStrategy, // ✅ Pass AI-generated format strategy
       format: selectedFormat, // ✅ FIXED: Dynamic format selection enables threads
-      intelligence: growthIntelligence // ✅ NEW: Pass growth intelligence to generators!
+      intelligence: growthIntelligence, // ✅ NEW: Pass growth intelligence to generators!
+      viInsights: viInsights || null // ✅ NEW: Pass VI insights to generators!
     });
     
     // Transform generator response to expected format
@@ -348,6 +349,9 @@ async function generateContentWithLLM() {
   
   let dynamicTopic;
   let topic: string;
+  
+  // ✅ NEW: Initialize VI insights (will be populated after topic/angle/tone generation)
+  let viInsights: any = null;
   
   if (useTrendingTopic) {
     console.log('[PLAN_JOB] 🔥 Using trending topic from harvester data...');
@@ -421,6 +425,34 @@ async function generateContentWithLLM() {
   contentDiversityEngine.trackTopic(topic);
   
   // ═══════════════════════════════════════════════════════════
+  // 🎨 STEP 5.25: GET VI INSIGHTS FOR VISUAL OPTIMIZATION
+  // ═══════════════════════════════════════════════════════════
+  
+  let viInsights = null;
+  try {
+    console.log('[VI_INSIGHTS] 🎨 Retrieving visual intelligence insights...');
+    
+    const { viiIntelligenceFeed } = await import('../intelligence/viIntelligenceFeed');
+    const viFeed = new viiIntelligenceFeed();
+    viInsights = await viFeed.getIntelligence({
+      topic,
+      angle,
+      tone,
+      structure: formatStrategy?.format_type,
+      generator: matchedGenerator
+    });
+    
+    if (viInsights) {
+      console.log(`[VI_INSIGHTS] ✅ Insights retrieved: ${viInsights.primary_tier} tier, ${viInsights.confidence_level} confidence (based on ${viInsights.based_on_count} tweets)`);
+    } else {
+      console.log('[VI_INSIGHTS] ⚠️ No insights found (will use default formatting)');
+    }
+  } catch (error: any) {
+    console.warn('[VI_INSIGHTS] ⚠️ VI insights unavailable:', error.message, '(continuing without VI)');
+    viInsights = null;
+  }
+  
+  // ═══════════════════════════════════════════════════════════
   // 🧠 STEP 5.5: BUILD GROWTH INTELLIGENCE - ACTIVATED!
   // ═══════════════════════════════════════════════════════════
   
@@ -447,7 +479,8 @@ async function generateContentWithLLM() {
     tone,
     formatStrategy,
     dynamicTopic,
-    growthIntelligence // ✅ Now passed to generator!
+    growthIntelligence, // ✅ Now passed to generator!
+    viInsights // ✅ NEW: Pass VI insights to generator
   });
   
   if (!generatedContent) {
@@ -679,6 +712,18 @@ THREAD-SPECIFIC RULES:
  */
 async function formatAndQueueContent(content: any): Promise<void> {
   console.log(`[PLAN_JOB] 🎨 Applying visual formatting to content...`);
+  
+  // ✅ NEW: Apply VI visual patterns BEFORE standard formatting
+  if (content.vi_insights) {
+    try {
+      console.log('[PLAN_JOB] 🎨 Applying VI visual patterns...');
+      const { enhanceContentWithVI } = await import('../generators/viContentEnhancer');
+      content.text = await enhanceContentWithVI(content.text, content.vi_insights);
+      console.log('[PLAN_JOB] ✅ VI visual patterns applied');
+    } catch (error: any) {
+      console.warn('[PLAN_JOB] ⚠️ VI visual enhancement failed:', error.message, '(continuing with standard formatting)');
+    }
+  }
   
   // Handle single tweet vs thread
   const isThread = Array.isArray(content.text);
