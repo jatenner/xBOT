@@ -78,28 +78,30 @@ export async function calculateAdaptiveThresholds(
 
   // Strategy: Use percentile-based thresholds for low-engagement accounts
   if (hasVeryLowEngagement) {
-    // Account is struggling: Use top 25% of posts + absolute minimum
-    const adaptiveViews = Math.max(p75Views, 10);  // At least 10 views
+    // Account is struggling: Use top 25% OR absolute minimum (whichever is lower)
+    // This ensures we learn from best posts even if they're low
+    const adaptiveViews = Math.min(Math.max(p75Views, 10), 50);  // Top 25% but cap at 50
     const adaptiveLikes = Math.max(p75Likes, 1);   // At least 1 like
     
     return {
       minViews: adaptiveViews,
       minLikes: adaptiveLikes,
       method: 'percentile',
-      reason: `Low engagement account (median: ${medianViews.toFixed(0)} views, ${medianLikes.toFixed(1)} likes). Using top 25% threshold (${adaptiveViews.toFixed(0)} views, ${adaptiveLikes.toFixed(0)} likes)`
+      reason: `Very low engagement account (median: ${medianViews.toFixed(0)} views, ${medianLikes.toFixed(1)} likes). Using adaptive threshold (${adaptiveViews.toFixed(0)} views, ${adaptiveLikes.toFixed(0)} likes) - learns from top 25% but caps at 50 views`
     };
   }
 
   if (hasLowEngagement) {
-    // Account has some engagement but below fixed thresholds: Use top 25% of posts
-    const adaptiveViews = Math.max(p75Views, 25);  // At least 25 views
+    // Account has some engagement but below fixed thresholds: Use top 25% OR reasonable minimum
+    // Cap at 50 views to ensure we learn from best posts even if they're low
+    const adaptiveViews = Math.min(Math.max(p75Views, 25), 50);  // Top 25% but cap at 50
     const adaptiveLikes = Math.max(p75Likes, 1);   // At least 1 like
     
     return {
       minViews: adaptiveViews,
       minLikes: adaptiveLikes,
       method: 'percentile',
-      reason: `Below-average engagement account (median: ${medianViews.toFixed(0)} views, ${medianLikes.toFixed(1)} likes). Using adaptive threshold (${adaptiveViews.toFixed(0)} views, ${adaptiveLikes.toFixed(0)} likes)`
+      reason: `Below-average engagement account (median: ${medianViews.toFixed(0)} views, ${medianLikes.toFixed(1)} likes). Using adaptive threshold (${adaptiveViews.toFixed(0)} views, ${adaptiveLikes.toFixed(0)} likes) - learns from top 25% but caps at 50 views`
     };
   }
 
