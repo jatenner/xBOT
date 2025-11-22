@@ -702,7 +702,8 @@ THREAD-SPECIFIC RULES:
     angle_type: contentData.angle_type || null,
     tone_is_singular: contentData.tone_is_singular !== false,
     tone_cluster: contentData.tone_cluster || null,
-    structural_type: contentData.structural_type || null
+    structural_type: contentData.structural_type || null,
+    vi_insights: viInsights // ✅ NEW: Store VI insights for visual enhancement
   };
 }
 
