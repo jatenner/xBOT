@@ -281,6 +281,20 @@ export class JobManager {
       0 * MINUTE   // 🔥 START IMMEDIATELY on deploy (was 5min - too slow!)
     );
 
+    // 📸 Follower snapshot job - every 30 minutes, offset 20 min
+    // Captures 2h, 24h, 48h snapshots for accurate follower attribution
+    this.scheduleStaggeredJob(
+      'follower_snapshot',
+      async () => {
+        await this.safeExecute('follower_snapshot', async () => {
+          const { followerSnapshotJob } = await import('./followerSnapshotJob');
+          await followerSnapshotJob();
+        });
+      },
+      30 * MINUTE,
+      20 * MINUTE
+    );
+
     // 🧠 Reply metrics scraper - every 30 minutes (METADATA GOATNESS: track reply performance)
     // Scrapes views/likes/followers for each reply to power learning system
     this.scheduleStaggeredJob(
@@ -648,6 +662,76 @@ export class JobManager {
       },
       10 * MINUTE, // Every 10 minutes
       3 * MINUTE   // Start after 3 minutes
+    );
+
+    // 🏥 SYSTEM HEALTH MONITOR - every 30 minutes, offset 15 min (comprehensive health tracking)
+    // 🔧 NEW: Enhanced health monitoring with error tracking and recommendations
+    this.scheduleStaggeredJob(
+      'system_health_monitor',
+      async () => {
+        await this.safeExecute('system_health_monitor', async () => {
+          const { runSystemHealthMonitor } = await import('./systemHealthMonitorJob');
+          await runSystemHealthMonitor();
+        });
+      },
+      30 * MINUTE, // Every 30 minutes
+      15 * MINUTE  // Start after 15 minutes
+    );
+
+    // 📊 ERROR ANALYSIS - every 6 hours, offset 120 min (analyze error patterns)
+    // 🔧 NEW: Comprehensive error tracking and analysis
+    this.scheduleStaggeredJob(
+      'error_analysis',
+      async () => {
+        await this.safeExecute('error_analysis', async () => {
+          const { runErrorAnalysis } = await import('./errorAnalysisJob');
+          await runErrorAnalysis();
+        });
+      },
+      360 * MINUTE, // Every 6 hours
+      120 * MINUTE  // Start after 2 hours
+    );
+
+    // 🤖 AUTONOMOUS OPTIMIZER - every 4 hours, offset 180 min (self-optimizing system)
+    // 🔧 NEW: Autonomous optimization based on performance data
+    this.scheduleStaggeredJob(
+      'autonomous_optimizer',
+      async () => {
+        await this.safeExecute('autonomous_optimizer', async () => {
+          const { runAutonomousOptimization } = await import('./autonomousOptimizerJob');
+          await runAutonomousOptimization();
+        });
+      },
+      240 * MINUTE, // Every 4 hours
+      180 * MINUTE  // Start after 3 hours
+    );
+
+    // 🔧 SELF-HEALING - every 15 minutes, offset 5 min (auto-recovery system)
+    // 🔧 NEW: Automatically detects and recovers from common failures
+    this.scheduleStaggeredJob(
+      'self_healing',
+      async () => {
+        await this.safeExecute('self_healing', async () => {
+          const { runSelfHealing } = await import('./selfHealingJob');
+          await runSelfHealing();
+        });
+      },
+      15 * MINUTE, // Every 15 minutes
+      5 * MINUTE   // Start after 5 minutes
+    );
+
+    // ⚡ PERFORMANCE OPTIMIZER - every 2 hours, offset 60 min (performance monitoring)
+    // 🔧 NEW: Monitors system performance and suggests optimizations
+    this.scheduleStaggeredJob(
+      'performance_optimizer',
+      async () => {
+        await this.safeExecute('performance_optimizer', async () => {
+          const { runPerformanceOptimization } = await import('./performanceOptimizerJob');
+          await runPerformanceOptimization();
+        });
+      },
+      120 * MINUTE, // Every 2 hours
+      60 * MINUTE   // Start after 1 hour
     );
 
     // Competitive analysis - every 24 hours, offset 270 min
