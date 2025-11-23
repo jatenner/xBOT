@@ -534,6 +534,23 @@ export async function metricsScraperJob(): Promise<void> {
               console.warn(`[METRICS_JOB] ⚠️ Failed to update generator stats:`, statsError.message);
             }
             
+            // 🔧 NEW: Update learning system with actual performance data
+            try {
+              const { learningSystem } = await import('../learning/learningSystem');
+              await learningSystem.updatePostPerformance(post.decision_id, {
+                likes: likesValue,
+                retweets: retweetsValue,
+                replies: repliesValue,
+                impressions: viewsValue,
+                engagement_rate: engagementRate,
+                followers_gained: 0 // Will be updated by follower tracking job
+              });
+              console.log(`[METRICS_JOB] 🧠 Updated learning system with performance data`);
+            } catch (learningError: any) {
+              console.warn(`[METRICS_JOB] ⚠️ Failed to update learning system:`, learningError.message);
+              // Don't fail - metrics are stored, just learning update failed
+            }
+            
             // Rate limit: wait 2 seconds between scrapes in batch
             await new Promise(resolve => setTimeout(resolve, 2000));
             
