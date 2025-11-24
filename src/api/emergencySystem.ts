@@ -5,7 +5,7 @@
  */
 
 import express from 'express';
-import { emergencyPoster } from '../posting/emergencyWorkingPoster';
+import { UltimateTwitterPoster } from '../posting/UltimateTwitterPoster';
 
 const router = express.Router();
 
@@ -28,17 +28,18 @@ router.post('/emergency-post', async (req, res) => {
 
     console.log('🚨 EMERGENCY_API: Force posting with guaranteed success...');
     
-    const result = await emergencyPoster.guaranteedPost(content);
+    const poster = new UltimateTwitterPoster();
+    const result = await poster.postTweet(content);
     const duration = Date.now() - startTime;
     
     if (result.success) {
-      console.log(`✅ EMERGENCY_API: Posted successfully via ${result.method} in ${duration}ms`);
+      console.log(`✅ EMERGENCY_API: Posted successfully in ${duration}ms`);
       
       res.json({
         success: true,
-        message: `Posted successfully via ${result.method}`,
+        message: `Posted successfully via UltimateTwitterPoster`,
         tweetId: result.tweetId,
-        method: result.method,
+        method: 'ultimate',
         performance: {
           duration: duration
         }
@@ -146,7 +147,8 @@ router.post('/emergency-system-test', async (req, res) => {
       // Step 3: Create test content if none exists
       const testContent = "Emergency system test! Research shows automated health systems improve engagement by 95%. How does your wellness optimization work? [Stanford, 2024]";
       
-      const result = await emergencyPoster.guaranteedPost(testContent);
+      const poster = new UltimateTwitterPoster();
+      const result = await poster.postTweet(testContent);
       
       res.json({
         success: true,
@@ -159,7 +161,8 @@ router.post('/emergency-system-test', async (req, res) => {
       // Step 4: Process existing queued content
       const content = queuedContent[0];
       const contentText = typeof content.content === 'string' ? content.content : String(content.content || '');
-      const result = await emergencyPoster.guaranteedPost(contentText);
+      const poster = new UltimateTwitterPoster();
+      const result = await poster.postTweet(contentText);
       
       // Mark as posted
       await supabase

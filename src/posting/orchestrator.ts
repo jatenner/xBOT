@@ -187,52 +187,32 @@ async function postToXWithRetry(decision: QueuedDecision, retries = 3): Promise<
 }
 
 async function postContent(decision: QueuedDecision): Promise<string> {
-  const { RailwayCompatiblePoster } = await import('./railwayCompatiblePoster');
-  const poster = new RailwayCompatiblePoster();
+  const { UltimateTwitterPoster } = await import('./UltimateTwitterPoster');
+  const poster = new UltimateTwitterPoster();
   
-  try {
-    const initSuccess = await poster.initialize();
-    if (!initSuccess) {
-      throw new Error('Failed to initialize poster');
-    }
-    
-    const result = await poster.postTweet(decision.content);
-    
-    if (!result.success) {
-      throw new Error(result.error || 'Unknown posting error');
-    }
-    
-    return result.tweetId || `posted_${Date.now()}`;
-    
-  } finally {
-    try {
-      await poster.cleanup();
-    } catch (e) {
-      console.warn('[POSTING_ORCHESTRATOR] ⚠️ Cleanup warning:', e);
-    }
+  const result = await poster.postTweet(decision.content);
+  
+  if (!result.success) {
+    throw new Error(result.error || 'Unknown posting error');
   }
+  
+  return result.tweetId || `posted_${Date.now()}`;
 }
 
 async function postReply(decision: QueuedDecision): Promise<string> {
   // For replies, use the same posting infrastructure
   // In production, would navigate to specific tweet and reply
-  const { RailwayCompatiblePoster } = await import('./railwayCompatiblePoster');
-  const poster = new RailwayCompatiblePoster();
+  const { UltimateTwitterPoster } = await import('./UltimateTwitterPoster');
+  const poster = new UltimateTwitterPoster();
   
-  try {
-    await poster.initialize();
-    const replyContent = `@${decision.target_username} ${decision.content}`;
-    const result = await poster.postTweet(replyContent);
-    
-    if (!result.success) {
-      throw new Error(result.error || 'Reply posting failed');
-    }
-    
-    return result.tweetId || `reply_${Date.now()}`;
-    
-  } finally {
-    await poster.cleanup();
+  const replyContent = `@${decision.target_username} ${decision.content}`;
+  const result = await poster.postTweet(replyContent);
+  
+  if (!result.success) {
+    throw new Error(result.error || 'Reply posting failed');
   }
+  
+  return result.tweetId || `reply_${Date.now()}`;
 }
 
 async function storePostedDecision(decision: QueuedDecision, tweetId: string): Promise<void> {

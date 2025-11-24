@@ -123,23 +123,42 @@ export async function withBrowserLock<T>(
   await semaphore.acquire(jobName, priority);
   
   try {
-    // 🔥 CRITICAL: Add timeout to prevent infinite hangs
+    // 🔧 FIX #4: Improved timeout handling with graceful degradation
     // If browser pool is corrupted (EAGAIN errors), operation may hang forever
     const BROWSER_OP_TIMEOUT = Number(process.env.BROWSER_LOCK_TIMEOUT_MS ?? 180000); // default 3 minutes
+    const WARNING_TIMEOUT = Math.floor(BROWSER_OP_TIMEOUT * 0.5); // Warn at 50% of timeout
+    
+    let warningLogged = false;
+    const warningTimer = setTimeout(() => {
+      if (!warningLogged) {
+        console.warn(`[BROWSER_SEM] ⏱️ WARNING: ${jobName} taking longer than expected (${WARNING_TIMEOUT/1000}s)`);
+        warningLogged = true;
+      }
+    }, WARNING_TIMEOUT);
     
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
+        clearTimeout(warningTimer);
         console.error(`[BROWSER_SEM] ⏱️ TIMEOUT: ${jobName} exceeded ${BROWSER_OP_TIMEOUT/1000}s - force releasing lock`);
         reject(new Error(`Browser operation timeout after ${BROWSER_OP_TIMEOUT/1000}s`));
       }, BROWSER_OP_TIMEOUT);
     });
     
-    return await Promise.race([
-      operation(),
-      timeoutPromise
-    ]);
+    try {
+      const result = await Promise.race([
+        operation(),
+        timeoutPromise
+      ]);
+      clearTimeout(warningTimer);
+      return result;
+    } catch (error) {
+      clearTimeout(warningTimer);
+      // ✅ GRACEFUL: Log timeout but don't crash - allow system to continue
+      console.error(`[BROWSER_SEM] ❌ Operation failed for ${jobName}:`, error instanceof Error ? error.message : String(error));
+      throw error; // Re-throw to allow caller to handle
+    }
   } finally {
-    // ALWAYS release, even on timeout
+    // ALWAYS release, even on timeout or error
     semaphore.release(jobName);
   }
 }

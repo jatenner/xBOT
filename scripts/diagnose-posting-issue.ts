@@ -1,219 +1,169 @@
 /**
- * 🔍 POSTING SYSTEM DIAGNOSTIC
- * Checks why system hasn't posted in 4-5 hours
+ * 🚨 URGENT POSTING DIAGNOSTIC SCRIPT
+ * Checks why posts aren't going out
  */
 
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load environment variables
+dotenv.config({ path: path.join(__dirname, '../.env') });
+
 import { getSupabaseClient } from '../src/db/index';
-import { getConfig, getModeFlags } from '../src/config/config';
 
 async function diagnosePostingIssue() {
-  console.log('🔍 POSTING SYSTEM DIAGNOSTIC\n');
-  console.log('═'.repeat(60));
+  console.log('🔍 DIAGNOSING POSTING ISSUE...\n');
   
   const supabase = getSupabaseClient();
-  const config = getConfig();
-  const flags = getModeFlags(config);
   
-  // 1. Check posting flags
-  console.log('\n📋 1. POSTING FLAGS:');
-  console.log(`   postingDisabled: ${flags.postingDisabled}`);
-  console.log(`   postingEnabled: ${flags.postingEnabled}`);
-  console.log(`   MODE: ${config.MODE}`);
-  console.log(`   DRY_RUN: ${process.env.DRY_RUN || 'not set'}`);
-  console.log(`   POSTING_DISABLED: ${process.env.POSTING_DISABLED || 'not set'}`);
-  
-  if (flags.postingDisabled) {
-    console.log('   ❌ POSTING IS DISABLED - This is blocking all posts!');
-  } else {
-    console.log('   ✅ Posting flags OK');
-  }
-  
-  // 2. Check plan job interval
-  console.log('\n📋 2. PLAN JOB CONFIG:');
-  console.log(`   JOBS_PLAN_INTERVAL_MIN: ${config.JOBS_PLAN_INTERVAL_MIN} minutes`);
-  console.log(`   Planner enabled: ${flags.plannerEnabled}`);
-  
-  // 3. Check last content generation
-  console.log('\n📋 3. LAST CONTENT GENERATION:');
-  const { data: lastContent, error: contentError } = await supabase
+  // 1. Check queued content
+  console.log('1️⃣ Checking queued content...');
+  const { data: queuedContent, error: queuedError } = await supabase
     .from('content_metadata')
-    .select('decision_id, created_at, decision_type, status, scheduled_at')
-    .in('decision_type', ['single', 'thread'])
-    .order('created_at', { ascending: false })
-    .limit(5);
-  
-  if (contentError) {
-    console.log(`   ❌ Error: ${contentError.message}`);
-  } else if (!lastContent || lastContent.length === 0) {
-    console.log('   ❌ NO CONTENT GENERATED - Plan job may not be running!');
-  } else {
-    const mostRecent = lastContent[0];
-    const hoursAgo = (Date.now() - new Date(String(mostRecent.created_at)).getTime()) / (1000 * 60 * 60);
-    console.log(`   Last content: ${hoursAgo.toFixed(1)} hours ago`);
-    console.log(`   Decision ID: ${mostRecent.decision_id}`);
-    console.log(`   Type: ${mostRecent.decision_type}`);
-    console.log(`   Status: ${mostRecent.status}`);
-    console.log(`   Scheduled: ${mostRecent.scheduled_at}`);
-    
-    if (hoursAgo > 4) {
-      console.log(`   ⚠️ WARNING: Last content generated ${hoursAgo.toFixed(1)}h ago (>4h)`);
-    }
-    
-    console.log(`\n   Recent content (last 5):`);
-    lastContent.forEach((c, i) => {
-      const h = (Date.now() - new Date(String(c.created_at)).getTime()) / (1000 * 60 * 60);
-      console.log(`   ${i + 1}. ${c.decision_type} - ${h.toFixed(1)}h ago - status: ${c.status}`);
-    });
-  }
-  
-  // 4. Check queued posts
-  console.log('\n📋 4. QUEUED POSTS:');
-  const { data: queuedPosts, error: queueError } = await supabase
-    .from('content_metadata')
-    .select('decision_id, decision_type, status, scheduled_at, created_at, retry_count')
+    .select('decision_id, decision_type, status, scheduled_at, created_at')
     .eq('status', 'queued')
+    .in('decision_type', ['single', 'thread'])
     .order('scheduled_at', { ascending: true })
     .limit(10);
   
-  if (queueError) {
-    console.log(`   ❌ Error: ${queueError.message}`);
-  } else if (!queuedPosts || queuedPosts.length === 0) {
-    console.log('   ⚠️ NO QUEUED POSTS - Nothing waiting to be posted');
+  if (queuedError) {
+    console.error('❌ Error checking queued content:', queuedError.message);
   } else {
-    console.log(`   ✅ Found ${queuedPosts.length} queued posts:`);
-    queuedPosts.forEach((p, i) => {
-      const scheduled = new Date(String(p.scheduled_at));
-      const now = new Date();
-      const minutesUntil = Math.round((scheduled.getTime() - now.getTime()) / (1000 * 60));
-      const status = minutesUntil <= 5 ? 'READY' : `scheduled in ${minutesUntil}min`;
-      console.log(`   ${i + 1}. ${p.decision_type} - ${status} - retries: ${p.retry_count || 0}`);
-    });
-  }
-  
-  // 5. Check recent posts
-  console.log('\n📋 5. RECENT POSTS (last 24h):');
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const { data: recentPosts, error: postsError } = await supabase
-    .from('posted_decisions')
-    .select('decision_id, posted_at, decision_type')
-    .gte('posted_at', oneDayAgo.toISOString())
-    .order('posted_at', { ascending: false })
-    .limit(10);
-  
-  if (postsError) {
-    console.log(`   ❌ Error: ${postsError.message}`);
-  } else if (!recentPosts || recentPosts.length === 0) {
-    console.log('   ⚠️ NO POSTS IN LAST 24 HOURS');
-  } else {
-    console.log(`   ✅ Found ${recentPosts.length} posts in last 24h:`);
-    recentPosts.forEach((p, i) => {
-      const hoursAgo = (Date.now() - new Date(String(p.posted_at)).getTime()) / (1000 * 60 * 60);
-      console.log(`   ${i + 1}. ${p.decision_type} - ${hoursAgo.toFixed(1)}h ago`);
-    });
-    
-    const mostRecentPost = recentPosts[0];
-    const hoursSinceLastPost = (Date.now() - new Date(String(mostRecentPost.posted_at)).getTime()) / (1000 * 60 * 60);
-    if (hoursSinceLastPost > 4) {
-      console.log(`\n   ⚠️ WARNING: Last post was ${hoursSinceLastPost.toFixed(1)}h ago (>4h)`);
+    console.log(`   Found ${queuedContent?.length || 0} queued content posts`);
+    if (queuedContent && queuedContent.length > 0) {
+      console.log('   First few:');
+      queuedContent.slice(0, 3).forEach((post: any) => {
+        const scheduled = new Date(post.scheduled_at);
+        const now = new Date();
+        const isReady = scheduled <= now;
+        console.log(`   - ${post.decision_type} ${post.decision_id.substring(0, 8)}... (scheduled: ${scheduled.toISOString()}, ready: ${isReady ? 'YES' : 'NO'})`);
+      });
     }
   }
   
-  // 6. Check rate limits
-  console.log('\n📋 6. RATE LIMITS:');
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const { data: postsThisHour } = await supabase
-    .from('posted_decisions')
-    .select('decision_id')
+  // 2. Check recent posts
+  console.log('\n2️⃣ Checking recent posts (last 24h)...');
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: recentPosts, error: recentError } = await supabase
+    .from('content_metadata')
+    .select('decision_id, decision_type, status, posted_at, created_at')
     .in('decision_type', ['single', 'thread'])
-    .gte('posted_at', oneHourAgo.toISOString());
+    .gte('created_at', oneDayAgo)
+    .order('created_at', { ascending: false })
+    .limit(10);
   
-  const { data: repliesThisHour } = await supabase
-    .from('posted_decisions')
-    .select('decision_id')
-    .eq('decision_type', 'reply')
-    .gte('posted_at', oneHourAgo.toISOString());
-  
-  const contentCount = postsThisHour?.length || 0;
-  const replyCount = repliesThisHour?.length || 0;
-  const maxContent = config.MAX_POSTS_PER_HOUR || 2;
-  const maxReplies = config.MAX_REPLIES_PER_HOUR || 4;
-  
-  console.log(`   Content posts this hour: ${contentCount}/${maxContent}`);
-  console.log(`   Replies this hour: ${replyCount}/${maxReplies}`);
-  
-  if (contentCount >= maxContent) {
-    console.log(`   ⚠️ CONTENT RATE LIMIT REACHED - Blocking new content posts`);
+  if (recentError) {
+    console.error('❌ Error checking recent posts:', recentError.message);
+  } else {
+    console.log(`   Found ${recentPosts?.length || 0} recent posts`);
+    const posted = recentPosts?.filter((p: any) => p.status === 'posted') || [];
+    const queued = recentPosts?.filter((p: any) => p.status === 'queued') || [];
+    const failed = recentPosts?.filter((p: any) => p.status === 'failed') || [];
+    const posting = recentPosts?.filter((p: any) => p.status === 'posting') || [];
+    
+    console.log(`   - Posted: ${posted.length}`);
+    console.log(`   - Queued: ${queued.length}`);
+    console.log(`   - Failed: ${failed.length}`);
+    console.log(`   - Posting (stuck?): ${posting.length}`);
+    
+    if (posted.length > 0) {
+      const lastPost = posted[0];
+      const lastPostTime = new Date(lastPost.posted_at || lastPost.created_at);
+      const hoursAgo = (Date.now() - lastPostTime.getTime()) / (1000 * 60 * 60);
+      console.log(`   ⏰ Last post: ${hoursAgo.toFixed(1)} hours ago`);
+    }
   }
-  if (replyCount >= maxReplies) {
-    console.log(`   ⚠️ REPLY RATE LIMIT REACHED - Blocking new replies`);
-  }
   
-  // 7. Check for stuck posts
-  console.log('\n📋 7. STUCK POSTS (status="posting" >30min):');
-  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
-  const { data: stuckPosts } = await supabase
+  // 3. Check stuck posts
+  console.log('\n3️⃣ Checking for stuck posts...');
+  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data: stuckPosts, error: stuckError } = await supabase
     .from('content_metadata')
     .select('decision_id, decision_type, status, created_at')
     .eq('status', 'posting')
-    .lt('created_at', thirtyMinAgo.toISOString());
+    .lt('created_at', thirtyMinAgo);
   
-  if (stuckPosts && stuckPosts.length > 0) {
-    console.log(`   ⚠️ Found ${stuckPosts.length} stuck posts (status="posting" >30min):`);
-    stuckPosts.forEach((p, i) => {
-      const minutesAgo = (Date.now() - new Date(String(p.created_at)).getTime()) / (1000 * 60);
-      console.log(`   ${i + 1}. ${p.decision_type} - stuck for ${minutesAgo.toFixed(0)}min`);
-    });
+  if (stuckError) {
+    console.error('❌ Error checking stuck posts:', stuckError.message);
   } else {
-    console.log('   ✅ No stuck posts');
-  }
-  
-  // 8. Summary
-  console.log('\n' + '═'.repeat(60));
-  console.log('📊 DIAGNOSIS SUMMARY:\n');
-  
-  const issues: string[] = [];
-  
-  if (flags.postingDisabled) {
-    issues.push('❌ Posting is DISABLED (flags.postingDisabled=true)');
-  }
-  
-  if (!lastContent || lastContent.length === 0) {
-    issues.push('❌ No content generated - Plan job may not be running');
-  } else {
-    const hoursAgo = (Date.now() - new Date(String(lastContent[0].created_at)).getTime()) / (1000 * 60 * 60);
-    if (hoursAgo > 4) {
-      issues.push(`⚠️ Last content generated ${hoursAgo.toFixed(1)}h ago (plan job may be stuck)`);
+    console.log(`   Found ${stuckPosts?.length || 0} stuck posts (status='posting' >30min)`);
+    if (stuckPosts && stuckPosts.length > 0) {
+      console.log('   ⚠️ These need to be recovered!');
+      stuckPosts.forEach((post: any) => {
+        const minutesStuck = Math.round((Date.now() - new Date(post.created_at).getTime()) / (1000 * 60));
+        console.log(`   - ${post.decision_type} ${post.decision_id.substring(0, 8)}... (stuck ${minutesStuck}min)`);
+      });
     }
   }
   
-  if (!queuedPosts || queuedPosts.length === 0) {
-    issues.push('⚠️ No queued posts - Nothing waiting to post');
-  }
+  // 4. Check plan job execution
+  console.log('\n4️⃣ Checking plan job execution...');
+  const { data: planJobs, error: planError } = await supabase
+    .from('job_heartbeats')
+    .select('job_name, status, created_at, execution_time_ms')
+    .eq('job_name', 'plan')
+    .order('created_at', { ascending: false })
+    .limit(5);
   
-  if (!recentPosts || recentPosts.length === 0) {
-    issues.push('❌ No posts in last 24 hours');
+  if (planError) {
+    console.error('❌ Error checking plan jobs:', planError.message);
   } else {
-    const hoursAgo = (Date.now() - new Date(String(recentPosts[0].posted_at)).getTime()) / (1000 * 60 * 60);
-    if (hoursAgo > 4) {
-      issues.push(`⚠️ Last post was ${hoursAgo.toFixed(1)}h ago`);
+    console.log(`   Found ${planJobs?.length || 0} plan job executions`);
+    if (planJobs && planJobs.length > 0) {
+      const lastPlan = planJobs[0];
+      const lastPlanTime = new Date(lastPlan.created_at);
+      const hoursAgo = (Date.now() - lastPlanTime.getTime()) / (1000 * 60 * 60);
+      console.log(`   ⏰ Last plan run: ${hoursAgo.toFixed(1)} hours ago (status: ${lastPlan.status})`);
+      
+      if (hoursAgo > 3) {
+        console.log('   ⚠️ Plan job hasn\'t run in >3 hours - this is the problem!');
+      }
+    } else {
+      console.log('   ⚠️ No plan job executions found - plan job may not be running!');
     }
   }
   
-  if (contentCount >= maxContent) {
-    issues.push(`⚠️ Content rate limit reached (${contentCount}/${maxContent})`);
-  }
+  // 5. Check posting queue job execution
+  console.log('\n5️⃣ Checking posting queue job execution...');
+  const { data: postingJobs, error: postingError } = await supabase
+    .from('job_heartbeats')
+    .select('job_name, status, created_at')
+    .eq('job_name', 'posting')
+    .order('created_at', { ascending: false })
+    .limit(5);
   
-  if (issues.length === 0) {
-    console.log('✅ No obvious issues found - System appears healthy');
+  if (postingError) {
+    console.error('❌ Error checking posting jobs:', postingError.message);
   } else {
-    console.log('ISSUES DETECTED:');
-    issues.forEach((issue, i) => {
-      console.log(`   ${i + 1}. ${issue}`);
-    });
+    console.log(`   Found ${postingJobs?.length || 0} posting job executions`);
+    if (postingJobs && postingJobs.length > 0) {
+      const lastPosting = postingJobs[0];
+      const lastPostingTime = new Date(lastPosting.created_at);
+      const minutesAgo = (Date.now() - lastPostingTime.getTime()) / (1000 * 60);
+      console.log(`   ⏰ Last posting run: ${minutesAgo.toFixed(1)} minutes ago (status: ${lastPosting.status})`);
+    }
   }
   
-  console.log('\n' + '═'.repeat(60));
+  // 6. Summary and recommendations
+  console.log('\n📊 SUMMARY:');
+  const hasQueuedContent = (queuedContent?.length || 0) > 0;
+  const hasStuckPosts = (stuckPosts?.length || 0) > 0;
+  const planRecent = planJobs && planJobs.length > 0 && (Date.now() - new Date(planJobs[0].created_at).getTime()) < 3 * 60 * 60 * 1000;
+  
+  if (!hasQueuedContent && !planRecent) {
+    console.log('   🚨 ISSUE: No queued content AND plan job not running recently');
+    console.log('   💡 FIX: Need to trigger plan job to generate content');
+  } else if (hasQueuedContent) {
+    console.log('   ✅ Content is queued - posting should work');
+    if (hasStuckPosts) {
+      console.log('   ⚠️ But there are stuck posts that need recovery');
+    }
+  } else if (hasStuckPosts) {
+    console.log('   ⚠️ ISSUE: Stuck posts blocking queue');
+    console.log('   💡 FIX: Need to recover stuck posts');
+  }
+  
+  console.log('\n✅ Diagnostic complete');
 }
 
 diagnosePostingIssue().catch(console.error);
-
