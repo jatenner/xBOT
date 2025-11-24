@@ -103,18 +103,18 @@ export async function processPostingQueue(): Promise<void> {
       return;
     }
     
-    // 🔄 AUTO-RECOVER STUCK POSTS: Reset posts stuck in 'posting' status >30min
+    // 🔄 AUTO-RECOVER STUCK POSTS: Reset posts stuck in 'posting' status >15min (reduced from 30min for faster recovery)
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
-    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
     const { data: stuckPosts } = await supabase
       .from('content_metadata')
       .select('decision_id, decision_type, created_at')
       .eq('status', 'posting')
-      .lt('created_at', thirtyMinAgo.toISOString());
+      .lt('created_at', fifteenMinAgo.toISOString());
     
     if (stuckPosts && stuckPosts.length > 0) {
-      console.log(`[POSTING_QUEUE] 🔄 Recovering ${stuckPosts.length} stuck posts (status='posting' >30min)...`);
+      console.log(`[POSTING_QUEUE] 🔄 Recovering ${stuckPosts.length} stuck posts (status='posting' >15min)...`);
       for (const post of stuckPosts) {
         const minutesStuck = Math.round((Date.now() - new Date(String(post.created_at)).getTime()) / (1000 * 60));
         console.log(`[POSTING_QUEUE]   - Recovering ${post.decision_type} ${post.decision_id} (stuck ${minutesStuck}min)`);
@@ -504,6 +504,10 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     console.log(`[POSTING_QUEUE] 🕒 Current time: ${now.toISOString()}`);
     console.log(`[POSTING_QUEUE] 🕒 Grace window: ${graceWindow.toISOString()}`);
     
+    // 🔧 FIX: Also check for posts scheduled exactly at current time (within 1 second tolerance)
+    // This handles edge cases where scheduled_at equals current time
+    const oneSecondAgo = new Date(Date.now() - 1000);
+    
     // CRITICAL FIX: Check what's already been posted to avoid duplicates
     const { data: alreadyPosted } = await supabase
       .from('posted_decisions')
@@ -515,12 +519,14 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     // Prioritize content posts (main tweets), then add replies
     // ✅ Include visual_format in SELECT
     // ✅ EXCLUDE 'posting' status to prevent race conditions
+    // 🔧 FIX: Use gte(oneSecondAgo) to include posts scheduled exactly at current time
     const { data: contentPosts, error: contentError } = await supabase
       .from('content_metadata')
       .select('*, visual_format')
       .eq('status', 'queued')
       .in('decision_type', ['single', 'thread'])
       .lte('scheduled_at', graceWindow.toISOString())
+      .gte('scheduled_at', oneSecondAgo.toISOString()) // Include posts scheduled up to 1 second ago
       .order('scheduled_at', { ascending: true })
       .limit(10); // Get up to 10 content posts
     
@@ -530,6 +536,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       .eq('status', 'queued')
       .eq('decision_type', 'reply')
       .lte('scheduled_at', graceWindow.toISOString())
+      .gte('scheduled_at', oneSecondAgo.toISOString()) // Include replies scheduled up to 1 second ago
       .order('scheduled_at', { ascending: true })
       .limit(10); // Get up to 10 replies
     
@@ -1046,16 +1053,39 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         return; // Skip posting
       }
     
-      // 🔍 CONTENT HASH CHECK: Also check for duplicate content
+      // 🔍 CONTENT HASH CHECK: Check for duplicate content in BOTH tables
+      // CRITICAL: Check content_metadata first (more reliable) then posted_decisions
       const contentHash = require('crypto').createHash('md5').update(decision.content).digest('hex');
+      
+      // Check 1: content_metadata for already-posted content with tweet_id
+      const { data: duplicateInMetadata } = await supabase
+        .from('content_metadata')
+        .select('decision_id, tweet_id, status, posted_at')
+        .eq('content', decision.content)
+        .not('tweet_id', 'is', null) // Must have tweet_id (actually posted)
+        .neq('decision_id', decision.id) // Exclude current decision
+        .limit(1);
+      
+      if (duplicateInMetadata && duplicateInMetadata.length > 0) {
+        const dup = duplicateInMetadata[0];
+        console.log(`[POSTING_QUEUE] 🚫 DUPLICATE CONTENT PREVENTED: Same content already posted in content_metadata as ${dup.tweet_id} (decision: ${dup.decision_id.substring(0, 8)}...)`);
+        // Revert status back to queued since we didn't actually post
+        await supabase
+          .from('content_metadata')
+          .update({ status: 'queued' })
+          .eq('decision_id', decision.id);
+        return; // Skip posting
+      }
+      
+      // Check 2: posted_decisions table (backup check)
       const { data: duplicateContent } = await supabase
         .from('posted_decisions')
-        .select('tweet_id, content')
+        .select('tweet_id, content, decision_id')
         .eq('content', decision.content)
         .limit(1);
     
       if (duplicateContent && duplicateContent.length > 0) {
-        console.log(`[POSTING_QUEUE] 🚫 DUPLICATE CONTENT PREVENTED: Same content already posted as ${duplicateContent[0].tweet_id}`);
+        console.log(`[POSTING_QUEUE] 🚫 DUPLICATE CONTENT PREVENTED: Same content already posted in posted_decisions as ${duplicateContent[0].tweet_id}`);
         // Revert status back to queued since we didn't actually post
         await supabase
           .from('content_metadata')
