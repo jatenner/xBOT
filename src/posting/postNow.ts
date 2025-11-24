@@ -31,46 +31,23 @@ export async function postNow({ text }: { text: string }): Promise<PostResult> {
   }
 
   try {
-    // Try headless X poster first (most reliable)
-    log({ op: 'post_attempt', method: 'headless' });
+    // Try UltimateTwitterPoster first (most reliable)
+    log({ op: 'post_attempt', method: 'ultimate' });
     try {
-      const { HeadlessXPoster } = await import('./headlessXPoster');
-      const poster = new HeadlessXPoster();
-      
-      await poster.initialize();
+      const { UltimateTwitterPoster } = await import('./UltimateTwitterPoster');
+      const poster = new UltimateTwitterPoster();
       const result = await poster.postTweet(text);
-      await poster.close();
       
       if (result.success) {
         const tweetId = result.tweetId || `posted_${Date.now()}`;
         const ms = Date.now() - startTime;
-        log({ op: 'post_now_complete', outcome: 'success', method: 'headless', tweet_id: tweetId, ms });
+        log({ op: 'post_now_complete', outcome: 'success', method: 'ultimate', tweet_id: tweetId, ms });
         globalThis.__xbotLastPostResult = { success: true, id: tweetId };
         return { success: true, id: tweetId };
       }
-    } catch (headlessError) {
-      log({ op: 'post_attempt', method: 'headless', outcome: 'error', error: headlessError.message });
-      // Fall through to other methods
-    }
-    
-    // Try remote browser as backup if configured
-    const useRemote = false; // Disabled for now
-    
-    if (useRemote) {
-      log({ op: 'post_attempt', method: 'remote' });
-      const { postTweetRemote } = await import('./remoteBrowserPoster');
-      const remoteResult = await postTweetRemote(text);
-      
-      if (remoteResult.success) {
-        const tweetId = remoteResult.tweetId || `posted_${Date.now()}`;
-        const ms = Date.now() - startTime;
-        log({ op: 'post_now_complete', outcome: 'success', method: 'remote', tweet_id: tweetId, ms });
-        globalThis.__xbotLastPostResult = { success: true, id: tweetId };
-        return { success: true, id: tweetId };
-      } else {
-        log({ op: 'post_attempt', method: 'remote', outcome: 'error', error: remoteResult.error });
-        // Fall through to Railway browser as backup
-      }
+    } catch (ultimateError) {
+      log({ op: 'post_attempt', method: 'ultimate', outcome: 'error', error: ultimateError.message });
+      // Fall through to Railway browser as backup
     }
 
     // Fallback to Railway browser

@@ -74,29 +74,32 @@ router.post('/test-playwright-posting', async (req, res) => {
       });
     }
 
-    console.log('🎭 TEST_API: Testing Playwright-only posting...');
+    console.log('🎭 TEST_API: Testing posting...');
     
-    const { playwrightOnlyPoster } = await import('../posting/playwrightOnlyPoster');
-    const result = await playwrightOnlyPoster.postWithPlaywright(content);
+    const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
+    const poster = new UltimateTwitterPoster();
+    const startTime = Date.now();
+    const result = await poster.postTweet(content);
+    const duration = Date.now() - startTime;
     
     if (result.success) {
-      console.log(`✅ TEST_API: Playwright posting succeeded in ${result.duration}ms`);
+      console.log(`✅ TEST_API: Posting succeeded in ${duration}ms`);
       
       res.json({
         success: true,
-        message: 'Playwright posting test successful',
+        message: 'Posting test successful',
         tweetId: result.tweetId,
-        method: result.method,
-        duration: result.duration
+        method: 'ultimate',
+        duration: duration
       });
     } else {
-      console.error(`❌ TEST_API: Playwright posting failed: ${result.error}`);
+      console.error(`❌ TEST_API: Posting failed: ${result.error}`);
       
       res.status(500).json({
         success: false,
         error: result.error,
-        method: result.method,
-        duration: result.duration
+        method: 'ultimate',
+        duration: duration
       });
     }
     

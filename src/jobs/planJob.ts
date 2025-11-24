@@ -76,14 +76,18 @@ async function generateRealContent(): Promise<void> {
     return;
   }
   
+  const config = getConfig(); // Get config here for interval check
+  
   // ═══════════════════════════════════════════════════════════
-  // 🎯 BATCH GENERATION: Generate 1 post per run (strict 2/hour limit)
+  // 🎯 BATCH GENERATION: Generate 2 posts per run (optimized for growth)
   // ═══════════════════════════════════════════════════════════
-  // CRITICAL: Generate 1 post per run to prevent over-posting
+  // OPTIMIZED: Generate 2 posts per run for faster growth
   // - Rate limits enforce 2/hour max regardless of what's generated
-  // - Plan job runs every 2 hours, so 1 post per run = ~12 posts/day max
+  // - Plan job runs every 90min (if JOBS_PLAN_INTERVAL_MIN=90), so 2 posts per run = ~32 posts/day max
   // - Posting queue will enforce strict 2/hour limit
-  const numToGenerate = 1; // Generate 1 post per run (rate limits enforce 2/hour)
+  // - With 90min interval: 2 posts every 1.5h = 1.33 posts/hour (within 2/hour limit)
+  const intervalMinutes = config.JOBS_PLAN_INTERVAL_MIN || 120;
+  const numToGenerate = intervalMinutes <= 90 ? 2 : 1; // Generate 2 if interval ≤90min, else 1
   
   log({ op: 'generate_real', num_to_generate: numToGenerate, target_rate: '2/hour' });
   

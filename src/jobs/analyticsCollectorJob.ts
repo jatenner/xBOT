@@ -100,20 +100,17 @@ async function fetchTweetMetrics(tweetId: string) {
 
 async function scrapeTweetMetrics(tweetId: string) {
   // Use Playwright to scrape tweet metrics
-  const { RailwayCompatiblePoster } = await import('../posting/railwayCompatiblePoster');
-  const poster = new RailwayCompatiblePoster();
+  // Note: UltimateTwitterPoster doesn't expose page, so we'll use browser manager directly
+  const { BrowserManager } = await import('../browser/browserManager');
+  const browserManager = BrowserManager.getInstance();
   
+  let page = null;
   try {
-    await poster.initialize();
+    page = await browserManager.getPage();
     
     // Navigate to tweet URL
     const username = 'SignalAndSynapse';
     const tweetUrl = `https://x.com/${username}/status/${tweetId}`;
-    const page = (poster as any).page;
-    
-    if (!page) {
-      throw new Error('No page available');
-    }
     
     await page.goto(tweetUrl, { waitUntil: 'networkidle', timeout: 30000 });
     await page.waitForTimeout(2000);
@@ -138,7 +135,7 @@ async function scrapeTweetMetrics(tweetId: string) {
     }
     throw error;
   } finally {
-    await poster.cleanup();
+    await browserManager.releasePage(page);
   }
 }
 
