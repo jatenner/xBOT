@@ -504,10 +504,6 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     console.log(`[POSTING_QUEUE] 🕒 Current time: ${now.toISOString()}`);
     console.log(`[POSTING_QUEUE] 🕒 Grace window: ${graceWindow.toISOString()}`);
     
-    // 🔧 FIX: Also check for posts scheduled exactly at current time (within 1 second tolerance)
-    // This handles edge cases where scheduled_at equals current time
-    const oneSecondAgo = new Date(Date.now() - 1000);
-    
     // CRITICAL FIX: Check what's already been posted to avoid duplicates
     const { data: alreadyPosted } = await supabase
       .from('posted_decisions')
@@ -519,14 +515,13 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     // Prioritize content posts (main tweets), then add replies
     // ✅ Include visual_format in SELECT
     // ✅ EXCLUDE 'posting' status to prevent race conditions
-    // 🔧 FIX: Use gte(oneSecondAgo) to include posts scheduled exactly at current time
+    // 🔧 FIX: Include ALL posts scheduled in the past OR within grace window (removed gte restriction)
     const { data: contentPosts, error: contentError } = await supabase
       .from('content_metadata')
       .select('*, visual_format')
       .eq('status', 'queued')
       .in('decision_type', ['single', 'thread'])
-      .lte('scheduled_at', graceWindow.toISOString())
-      .gte('scheduled_at', oneSecondAgo.toISOString()) // Include posts scheduled up to 1 second ago
+      .lte('scheduled_at', graceWindow.toISOString()) // Include posts scheduled in past OR near future
       .order('scheduled_at', { ascending: true })
       .limit(10); // Get up to 10 content posts
     
@@ -535,8 +530,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       .select('*, visual_format')
       .eq('status', 'queued')
       .eq('decision_type', 'reply')
-      .lte('scheduled_at', graceWindow.toISOString())
-      .gte('scheduled_at', oneSecondAgo.toISOString()) // Include replies scheduled up to 1 second ago
+      .lte('scheduled_at', graceWindow.toISOString()) // Include replies scheduled in past OR near future
       .order('scheduled_at', { ascending: true })
       .limit(10); // Get up to 10 replies
     
