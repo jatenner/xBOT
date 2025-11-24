@@ -52,8 +52,8 @@ const ConfigSchema = z.object({
   
   // Rate Limits - Environment-driven with smart defaults 🔥
   MAX_POSTS_PER_HOUR: z.number().default(
-    process.env.MAX_POSTS_PER_HOUR ? parseFloat(process.env.MAX_POSTS_PER_HOUR) : 1
-  ), // 1 post per hour = 2 posts every 2 hours (override via env var)
+    process.env.MAX_POSTS_PER_HOUR ? parseFloat(process.env.MAX_POSTS_PER_HOUR) : 2
+  ), // 2 posts per hour = 48/day (override via env var) - PERMANENT FIX: Changed default from 1 to 2
   MAX_DAILY_POSTS: z.number().default(
     process.env.MAX_DAILY_POSTS ? parseInt(process.env.MAX_DAILY_POSTS) : 24
   ), // 24 posts per day = 1/hour × 24 hours (override via env var)

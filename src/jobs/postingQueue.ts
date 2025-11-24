@@ -31,13 +31,13 @@ async function forceTwitterSessionReset(reason: string): Promise<void> {
   }
 }
 
-// 🔧 FIX #2: Circuit breaker for posting operations
+// 🔧 FIX #2: Circuit breaker for posting operations - PERMANENT FIX: More resilient defaults
 let postingCircuitBreaker = {
   failures: 0,
   lastFailure: null as Date | null,
   state: 'closed' as 'closed' | 'open' | 'half-open',
-  failureThreshold: 5,
-  resetTimeoutMs: 60000 // 1 minute
+  failureThreshold: 10, // PERMANENT FIX: Increased from 5 to 10 (less aggressive blocking)
+  resetTimeoutMs: 30000 // PERMANENT FIX: Reduced from 60s to 30s (faster recovery)
 };
 
 function checkCircuitBreaker(): boolean {
@@ -439,16 +439,11 @@ async function checkPostingRateLimits(): Promise<boolean> {
         }
       );
       
-      // ✅ GRACEFUL: Log error but don't block - allow posting to continue
-      // Database errors shouldn't stop the entire system
+      // ✅ PERMANENT FIX: Graceful degradation - allow posting on errors (don't block system)
+      // Database errors shouldn't stop the entire system - better to allow than block
       console.warn('[POSTING_QUEUE] ⚠️ Rate limit check error - allowing posting to continue (graceful degradation)');
-      // Use conservative estimate: assume we're at limit if we can't check
-      const postsThisHour = maxPostsPerHour; // Conservative: assume at limit
-      console.log(`[POSTING_QUEUE] 📊 Using conservative estimate: ${postsThisHour}/${maxPostsPerHour} posts`);
-      if (postsThisHour >= maxPostsPerHour) {
-        return false; // Only block if we're definitely at limit
-      }
-      return true; // Allow if uncertain
+      // PERMANENT FIX: On error, allow posting rather than blocking (safer default)
+      return true; // Allow posting if we can't verify rate limit
     }
     
     const postsThisHour = count || 0;
@@ -461,7 +456,7 @@ async function checkPostingRateLimits(): Promise<boolean> {
       return false;
     }
     
-    console.log(`[POSTING_QUEUE] ✅ Rate limit OK: ${postsThisHour}/${maxPostsPerHour} posts (max 1 post/hour = 2 every 2 hours)`);
+    console.log(`[POSTING_QUEUE] ✅ Rate limit OK: ${postsThisHour}/${maxPostsPerHour} posts`);
     return true;
     
   } catch (error: any) {
@@ -479,11 +474,10 @@ async function checkPostingRateLimits(): Promise<boolean> {
       }
     );
     
-    // ✅ GRACEFUL: Don't block on exceptions - allow posting with conservative limit
-    console.warn('[POSTING_QUEUE] ⚠️ Rate limit check exception - using conservative approach');
-    // Conservative: assume we're near limit, but don't completely block
-    // This prevents false blocking while maintaining safety
-    const conservativeLimit = Math.floor(maxPostsPerHour * 0.8); // 80% of limit
+    // ✅ PERMANENT FIX: Don't block on exceptions - allow posting (graceful degradation)
+    console.warn('[POSTING_QUEUE] ⚠️ Rate limit check exception - allowing posting (graceful degradation)');
+    // PERMANENT FIX: On exception, allow posting rather than blocking (safer default)
+    return true; // Allow posting if we can't verify rate limit
     console.log(`[POSTING_QUEUE] 📊 Using conservative limit: ${conservativeLimit} posts/hour`);
     // Allow posting but with reduced limit during errors
     return true; // ✅ Changed: Allow posting instead of blocking
