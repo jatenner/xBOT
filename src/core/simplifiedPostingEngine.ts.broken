@@ -5,7 +5,8 @@
  * reliable posting mechanism focused on actual engagement results.
  */
 
-import { TwitterPoster } from '../posting/postThread';
+// LEGACY: postThread.ts deleted - this file is broken/archived
+// import { TwitterPoster } from '../posting/postThread';
 import { getContentGenerator } from '../ai/generate';
 import { validateContent } from '../quality/qualityGate';
 import { scheduleMetricsTracking } from '../metrics/trackTweet';
