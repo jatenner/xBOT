@@ -478,9 +478,6 @@ async function checkPostingRateLimits(): Promise<boolean> {
     console.warn('[POSTING_QUEUE] ⚠️ Rate limit check exception - allowing posting (graceful degradation)');
     // PERMANENT FIX: On exception, allow posting rather than blocking (safer default)
     return true; // Allow posting if we can't verify rate limit
-    console.log(`[POSTING_QUEUE] 📊 Using conservative limit: ${conservativeLimit} posts/hour`);
-    // Allow posting but with reduced limit during errors
-    return true; // ✅ Changed: Allow posting instead of blocking
   }
 }
 
