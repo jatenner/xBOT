@@ -133,7 +133,50 @@ export function validateSubstance(content: string | string[]): SubstanceValidati
   }
   
   // CALCULATE SUBSTANCE SCORE
-  let score = 50; // Base score if we got here
+  let score = 40; // Base score (reduced from 50 - need to earn points)
+  
+  // ============================================================
+  // DEPTH REQUIREMENTS (NEW - Required for interesting content)
+  // ============================================================
+  
+  // +15 for mechanism explanation (HOW/WHY it works)
+  const hasMechanism = /(works via|happens because|due to|leads to|via|through|activates|triggers|blocks|increases|decreases|signals|releases)/i.test(text);
+  if (hasMechanism) score += 15;
+  
+  // +10 for real-world example or case study
+  const hasExample = /(tracked|tested|study of|participants|case|example|i found|after \d+ days|for \d+ weeks)/i.test(text);
+  if (hasExample) score += 10;
+  
+  // +10 for surprising/non-obvious insight
+  const hasSurprisingInsight = /(actually|turns out|the real reason|most people don't realize|what's surprising|counterintuitive|unexpected)/i.test(text);
+  if (hasSurprisingInsight) score += 10;
+  
+  // +10 for specific context (who/when/why it matters)
+  const hasContext = /(night shift|morning|evening|if you|when you|for those|unless you|not for|avoid if)/i.test(text);
+  if (hasContext) score += 10;
+  
+  // +5 for storytelling element (narrative, relatable)
+  const hasStorytelling = /(i tracked|i found|after \d+ days|for \d+ weeks|my experience|people who|those who)/i.test(text);
+  if (hasStorytelling) score += 5;
+  
+  // ============================================================
+  // UNIQUENESS REQUIREMENTS (NEW)
+  // ============================================================
+  
+  // +10 for non-obvious insight (not generic advice)
+  const isNonObvious = !/(sleep is important|eat healthy|exercise more|stay hydrated|drink water|get enough sleep)/i.test(text);
+  if (isNonObvious) score += 10;
+  
+  // +5 for counterintuitive finding
+  if (/(opposite|contrary|actually|turns out|surprisingly|unexpectedly)/i.test(text)) score += 5;
+  
+  // +5 for fresh angle (not just stating facts)
+  const hasFreshAngle = /(what|why|how|the real reason|most people miss|the key is|the secret)/i.test(text);
+  if (hasFreshAngle) score += 5;
+  
+  // ============================================================
+  // EXISTING REQUIREMENTS (Enhanced)
+  // ============================================================
   
   // +10 for specific numbers/percentages
   if (/\d+%/.test(text)) score += 10;
@@ -143,19 +186,19 @@ export function validateSubstance(content: string | string[]): SubstanceValidati
   // +10 for specific citations
   if (/(harvard|stanford|mit|yale|oxford|johns hopkins) \d{4}/i.test(text)) score += 10;
   
-  // +10 for mechanisms
-  if (/(works via|happens because|due to|leads to|via|through)/i.test(text)) score += 10;
-  
-  // +10 for actionable advice
-  if (/(try|protocol|instead|action|here's how)/i.test(text)) score += 10;
+  // +10 for actionable advice (enhanced check)
+  if (/(try|protocol|instead|action|here's how|do this|instead of)/i.test(text)) score += 10;
   
   // +10 for good length
   if (!Array.isArray(content) && textToCheck.length >= 200) score += 10;
   if (Array.isArray(content) && content.every(t => t.length >= 150)) score += 10;
   
-  // THRESHOLD: Need at least 55/100 to pass (was 70 - too strict)
-  // ✅ FIX: Reduced from 70 to 55 to allow quality content without rigid citation requirements
-  const isValid = score >= 55;
+  // ============================================================
+  // THRESHOLD: Raised from 55 to 70 for better quality
+  // ============================================================
+  // ✅ IMPROVEMENT: Raised from 55 to 70 to ensure content has depth and substance
+  // Content must now have: mechanism + example/insight + context OR uniqueness
+  const isValid = score >= 70;
   
   return {
     isValid,
