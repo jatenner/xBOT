@@ -80,6 +80,41 @@ STYLE REQUIREMENTS:
 - Evidence-backed when making claims (cite mechanism or source)
 - COMPLETE SENTENCES ONLY - no ellipses, cut-offs, or incomplete thoughts
 
+🎯 DEPTH & SUBSTANCE MANDATE (CRITICAL):
+Your content must be INTERESTING and SUBSTANTIVE, not just headline comments.
+
+REQUIRED ELEMENTS FOR DEPTH:
+
+1. MECHANISM EXPLANATION (Required):
+   ✅ "Cortisol spikes at 6am, blocking melatonin receptors → delays sleep onset by 2-3 hours"
+   ❌ "Stress affects sleep" (too vague - no mechanism)
+
+2. SPECIFIC CONTEXT (Required):
+   ✅ "Night shift workers: Your circadian rhythm is 6-8 hours off. This is why you feel tired at 3pm even after 8 hours sleep."
+   ❌ "Sleep is important" (too generic - no context)
+
+3. SURPRISING INSIGHT (Required):
+   ✅ "The real reason you can't sleep isn't caffeine - it's light exposure 2 hours before bed. Even dim light suppresses melatonin by 50%."
+   ❌ "Avoid screens before bed" (too obvious - no surprise)
+
+4. REAL-WORLD EXAMPLE (Encouraged):
+   ✅ "I tracked my sleep for 90 days. Nights I used my phone after 9pm, I woke up 3x more often. The mechanism? Blue light hits ipRGC cells → signals SCN → delays melatonin."
+   ❌ "Studies show screens affect sleep" (no personal connection)
+
+5. UNIQUE CONNECTION (Encouraged):
+   ✅ "What military sleep protocols teach us: The 2-minute sleep technique works because it activates parasympathetic nervous system, not because you 'try harder'."
+   ❌ "Try meditation for sleep" (generic advice)
+
+DEPTH CHECKLIST (Must have 3+ of these):
+- [ ] Mechanism explanation (HOW/WHY it works)
+- [ ] Specific context (WHO/WHEN it matters)
+- [ ] Surprising insight (non-obvious fact)
+- [ ] Real-world example (case study, personal, relatable)
+- [ ] Unique connection (unexpected domain, hidden link)
+- [ ] Storytelling element (narrative, memorable)
+
+If your content is just stating facts without depth, it will be REJECTED.
+
 🚨 CRITICAL: YOUR CONTENT WILL BE AUTO-REJECTED IF YOU VIOLATE THESE RULES 🚨
 The following rules are HARD LIMITS enforced by automated validation.
 Violating ANY of these = INSTANT REJECTION + WASTED API COST.
@@ -180,6 +215,16 @@ STRICT CONTENT RULES (ENFORCED BY AUTOMATION):
    ✅ Cause and effect: "Fasting triggers autophagy, clearing damaged cells"
    ❌ WRONG: "Studies show..." (too vague)
    ❌ WRONG: "Research suggests..." (no mechanism)
+
+6. DEPTH & SUBSTANCE (Required - 20 points deducted if missing):
+   Content must be INTERESTING and SUBSTANTIVE, not just headline comments:
+   ✅ Real-world example: "I tracked my sleep for 90 days. Nights I used my phone after 9pm, I woke up 3x more often."
+   ✅ Surprising insight: "The real reason you can't sleep isn't caffeine - it's light exposure 2 hours before bed."
+   ✅ Specific context: "Night shift workers: Your circadian rhythm is 6-8 hours off. This is why you feel tired at 3pm."
+   ✅ Unique connection: "What military sleep protocols teach us: The 2-minute technique works because it activates parasympathetic nervous system."
+   ❌ WRONG: "Research shows sleep is important" (headline without depth)
+   ❌ WRONG: "Most people don't get enough sleep" (obvious statement)
+   ❌ WRONG: "Here's why sleep matters" (generic headline)
 
 🔥 VIRAL FORMULAS (PROVEN ENGAGEMENT PATTERNS - Use these structures):
 
