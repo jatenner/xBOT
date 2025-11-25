@@ -31,13 +31,15 @@ async function forceTwitterSessionReset(reason: string): Promise<void> {
   }
 }
 
-// 🔧 FIX #2: Circuit breaker for posting operations - PERMANENT FIX: More resilient defaults
+// 🔧 FIX #2: Circuit breaker for posting operations - ENHANCED: Better auto-reset and manual reset
 let postingCircuitBreaker = {
   failures: 0,
   lastFailure: null as Date | null,
   state: 'closed' as 'closed' | 'open' | 'half-open',
-  failureThreshold: 10, // PERMANENT FIX: Increased from 5 to 10 (less aggressive blocking)
-  resetTimeoutMs: 30000 // PERMANENT FIX: Reduced from 60s to 30s (faster recovery)
+  failureThreshold: 15, // ENHANCED: Increased from 10 to 15 (less aggressive blocking)
+  resetTimeoutMs: 60000, // ENHANCED: Increased from 30s to 60s (more time to recover)
+  consecutiveSuccesses: 0, // NEW: Track consecutive successes for auto-reset
+  successThreshold: 3 // NEW: Need 3 successes in half-open to fully close
 };
 
 function checkCircuitBreaker(): boolean {
@@ -48,6 +50,7 @@ function checkCircuitBreaker(): boolean {
     
     if (timeSinceFailure > postingCircuitBreaker.resetTimeoutMs) {
       postingCircuitBreaker.state = 'half-open';
+      postingCircuitBreaker.consecutiveSuccesses = 0;
       console.log('[POSTING_QUEUE] 🔄 Circuit breaker half-open, testing...');
       return true;
     }
@@ -61,22 +64,65 @@ function checkCircuitBreaker(): boolean {
 
 function recordCircuitBreakerSuccess() {
   if (postingCircuitBreaker.state === 'half-open') {
-    postingCircuitBreaker.state = 'closed';
-    postingCircuitBreaker.failures = 0;
-    console.log('[POSTING_QUEUE] ✅ Circuit breaker closed (recovered)');
+    postingCircuitBreaker.consecutiveSuccesses++;
+    if (postingCircuitBreaker.consecutiveSuccesses >= postingCircuitBreaker.successThreshold) {
+      postingCircuitBreaker.state = 'closed';
+      postingCircuitBreaker.failures = 0;
+      postingCircuitBreaker.consecutiveSuccesses = 0;
+      console.log('[POSTING_QUEUE] ✅ Circuit breaker closed (recovered after successful tests)');
+    } else {
+      console.log(`[POSTING_QUEUE] 🔄 Circuit breaker half-open: ${postingCircuitBreaker.consecutiveSuccesses}/${postingCircuitBreaker.successThreshold} successful tests`);
+    }
   } else {
+    // Gradually reduce failure count on success (decay)
     postingCircuitBreaker.failures = Math.max(0, postingCircuitBreaker.failures - 1);
+    if (postingCircuitBreaker.failures === 0 && postingCircuitBreaker.state === 'closed') {
+      postingCircuitBreaker.lastFailure = null;
+    }
   }
 }
 
 function recordCircuitBreakerFailure() {
   postingCircuitBreaker.failures++;
   postingCircuitBreaker.lastFailure = new Date();
+  postingCircuitBreaker.consecutiveSuccesses = 0; // Reset success counter on failure
   
   if (postingCircuitBreaker.failures >= postingCircuitBreaker.failureThreshold) {
     postingCircuitBreaker.state = 'open';
     console.error(`[POSTING_QUEUE] 🚨 Circuit breaker OPENED after ${postingCircuitBreaker.failures} failures`);
   }
+}
+
+// NEW: Manual reset function for emergency recovery
+export function resetCircuitBreaker(): void {
+  postingCircuitBreaker.state = 'closed';
+  postingCircuitBreaker.failures = 0;
+  postingCircuitBreaker.lastFailure = null;
+  postingCircuitBreaker.consecutiveSuccesses = 0;
+  console.log('[POSTING_QUEUE] 🔧 Circuit breaker manually reset');
+}
+
+// NEW: Get circuit breaker status
+export function getCircuitBreakerStatus(): {
+  state: string;
+  failures: number;
+  threshold: number;
+  lastFailure: Date | null;
+  timeUntilReset?: number;
+} {
+  const status: any = {
+    state: postingCircuitBreaker.state,
+    failures: postingCircuitBreaker.failures,
+    threshold: postingCircuitBreaker.failureThreshold,
+    lastFailure: postingCircuitBreaker.lastFailure
+  };
+  
+  if (postingCircuitBreaker.state === 'open' && postingCircuitBreaker.lastFailure) {
+    const timeSinceFailure = Date.now() - postingCircuitBreaker.lastFailure.getTime();
+    status.timeUntilReset = Math.max(0, postingCircuitBreaker.resetTimeoutMs - timeSinceFailure);
+  }
+  
+  return status;
 }
 
 export async function processPostingQueue(): Promise<void> {
@@ -448,15 +494,39 @@ async function checkPostingRateLimits(): Promise<boolean> {
     
     const postsThisHour = count || 0;
     
-    console.log(`[POSTING_QUEUE] 📊 Content posts attempted this hour: ${postsThisHour}/${maxPostsPerHour}`);
+    // ENHANCED: Verify count accuracy by double-checking with detailed query
+    let verifiedCount = postsThisHour;
+    if (postsThisHour > 0) {
+      const { data: verifyPosts, error: verifyError } = await supabase
+        .from('content_metadata')
+        .select('decision_id, posted_at, tweet_id, status')
+        .in('decision_type', ['single', 'thread'])
+        .in('status', ['posted', 'failed'])
+        .not('tweet_id', 'is', null)
+        .gte('posted_at', oneHourAgo)
+        .order('posted_at', { ascending: false });
+      
+      if (!verifyError && verifyPosts) {
+        verifiedCount = verifyPosts.length;
+        if (verifiedCount !== postsThisHour) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Rate limit count mismatch: count=${postsThisHour}, verified=${verifiedCount}`);
+          // Use verified count (more accurate)
+          verifiedCount = verifyPosts.length;
+        }
+      }
+    }
     
-    if (postsThisHour >= maxPostsPerHour) {
-      console.log(`[POSTING_QUEUE] ⛔ HOURLY LIMIT REACHED: ${postsThisHour}/${maxPostsPerHour}`);
-      console.log(`[POSTING_QUEUE] ⏰ Next slot in ~${60 - Math.floor((Date.now() - new Date(oneHourAgo).getTime()) / 60000)} minutes`);
+    console.log(`[POSTING_QUEUE] 📊 Content posts attempted this hour: ${verifiedCount}/${maxPostsPerHour} (verified)`);
+    
+    if (verifiedCount >= maxPostsPerHour) {
+      const minutesElapsed = Math.floor((Date.now() - new Date(oneHourAgo).getTime()) / 60000);
+      const minutesUntilNext = 60 - minutesElapsed;
+      console.log(`[POSTING_QUEUE] ⛔ HOURLY LIMIT REACHED: ${verifiedCount}/${maxPostsPerHour}`);
+      console.log(`[POSTING_QUEUE] ⏰ Next slot in ~${minutesUntilNext} minutes`);
       return false;
     }
     
-    console.log(`[POSTING_QUEUE] ✅ Rate limit OK: ${postsThisHour}/${maxPostsPerHour} posts`);
+    console.log(`[POSTING_QUEUE] ✅ Rate limit OK: ${verifiedCount}/${maxPostsPerHour} posts`);
     return true;
     
   } catch (error: any) {
@@ -575,8 +645,11 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       console.log(`[POSTING_QUEUE] 🎯 Queue order: ${prioritizedThreads} threads → ${prioritizedReplies} replies → ${singles} singles`);
     }
     
-    // ✅ AUTO-CLEANUP: Cancel stale items to prevent queue blocking
-    // Threads get 6 hours (complex, rare), Singles get 2 hours (simple, common)
+    // ✅ ENHANCED AUTO-CLEANUP: Cancel stale items to prevent queue blocking
+    // Singles: 2 hours (simple, common)
+    // Threads: 6 hours (complex, rare)
+    // Replies: 1 hour (rate limited, can't post if >1h old)
+    const oneHourAgoCleanup = new Date(Date.now() - 1 * 60 * 60 * 1000);
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
     const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
     
@@ -596,29 +669,58 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       .eq('decision_type', 'thread')
       .lt('scheduled_at', sixHoursAgo.toISOString());
     
-    const totalStale = (staleSingles?.length || 0) + (staleThreads?.length || 0);
+    // ENHANCED: Clean up stale replies (>1 hour old - can't post due to rate limits)
+    const { data: staleReplies } = await supabase
+      .from('content_metadata')
+      .select('decision_id')
+      .eq('status', 'queued')
+      .eq('decision_type', 'reply')
+      .lt('scheduled_at', oneHourAgoCleanup.toISOString());
+    
+    const totalStale = (staleSingles?.length || 0) + (staleThreads?.length || 0) + (staleReplies?.length || 0);
     
     if (totalStale > 0) {
-      console.log(`[POSTING_QUEUE] 🧹 Auto-cleaning ${totalStale} stale items (${staleSingles?.length || 0} singles >2h, ${staleThreads?.length || 0} threads >6h)`);
+      console.log(`[POSTING_QUEUE] 🧹 Auto-cleaning ${totalStale} stale items (${staleSingles?.length || 0} singles >2h, ${staleThreads?.length || 0} threads >6h, ${staleReplies?.length || 0} replies >1h)`);
       
       // Cancel stale singles
       if (staleSingles && staleSingles.length > 0) {
-        await supabase
+        const { error } = await supabase
           .from('content_metadata')
           .update({ status: 'cancelled' })
           .eq('status', 'queued')
           .eq('decision_type', 'single')
           .lt('scheduled_at', twoHoursAgo.toISOString());
+        if (error) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Failed to cancel stale singles: ${error.message}`);
+        }
       }
       
       // Cancel stale threads
       if (staleThreads && staleThreads.length > 0) {
-        await supabase
+        const { error } = await supabase
           .from('content_metadata')
           .update({ status: 'cancelled' })
           .eq('status', 'queued')
           .eq('decision_type', 'thread')
           .lt('scheduled_at', sixHoursAgo.toISOString());
+        if (error) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Failed to cancel stale threads: ${error.message}`);
+        }
+      }
+      
+      // ENHANCED: Cancel stale replies
+      if (staleReplies && staleReplies.length > 0) {
+        const { error } = await supabase
+          .from('content_metadata')
+          .update({ status: 'cancelled' })
+          .eq('status', 'queued')
+          .eq('decision_type', 'reply')
+          .lt('scheduled_at', oneHourAgoCleanup.toISOString());
+        if (error) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Failed to cancel stale replies: ${error.message}`);
+        } else {
+          console.log(`[POSTING_QUEUE] ✅ Cancelled ${staleReplies.length} stale replies (can't post if >1h old due to rate limits)`);
+        }
       }
     }
     
@@ -2182,26 +2284,86 @@ async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?
       console.log(`[POSTING_QUEUE] 💾 Storing thread with ${tweetIds.length} tweet IDs: ${tweetIds.join(', ')}`);
     }
     
-    // 1. Update content_metadata status and tweet_id (CRITICAL!)
-    // NOTE: tweet_url column commented out until added to database schema
-    const { error: updateError } = await supabase
-      .from('content_metadata')
-      .update({
-        status: 'posted',
-        tweet_id: tweetId, // 🔥 CRITICAL: Save tweet ID for metrics scraping!
-        thread_tweet_ids: tweetIds ? JSON.stringify(tweetIds) : null, // 🆕 Store all thread IDs as JSON
-        posted_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-        // tweet_url: tweetUrl // 🔗 TODO: Add this column to database first!
-      })
-      .eq('decision_id', decisionId);  // 🔥 FIX: decisionId is UUID, query by decision_id not id!
+    // 1. Update content_metadata status and tweet_id (CRITICAL!) - WITH RETRY LOGIC
+    // ENHANCED: Retry database save up to 3 times with exponential backoff
+    const MAX_DB_RETRIES = 3;
+    let dbSaveSuccess = false;
+    let lastDbError: any = null;
     
-    if (updateError) {
-      console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Failed to save tweet_id ${tweetId} to database:`, updateError.message);
-      throw new Error(`Database save failed for tweet ${tweetId}: ${updateError.message}`);
+    for (let dbAttempt = 1; dbAttempt <= MAX_DB_RETRIES; dbAttempt++) {
+      try {
+        const { error: updateError } = await supabase
+          .from('content_metadata')
+          .update({
+            status: 'posted',
+            tweet_id: tweetId, // 🔥 CRITICAL: Save tweet ID for metrics scraping!
+            thread_tweet_ids: tweetIds ? JSON.stringify(tweetIds) : null, // 🆕 Store all thread IDs as JSON
+            posted_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+            // tweet_url: tweetUrl // 🔗 TODO: Add this column to database first!
+          })
+          .eq('decision_id', decisionId);  // 🔥 FIX: decisionId is UUID, query by decision_id not id!
+        
+        if (updateError) {
+          lastDbError = updateError;
+          throw new Error(`Database save failed: ${updateError.message}`);
+        }
+        
+        // ENHANCED: Verify save succeeded by reading back the record
+        const { data: verifyData, error: verifyError } = await supabase
+          .from('content_metadata')
+          .select('tweet_id, status')
+          .eq('decision_id', decisionId)
+          .single();
+        
+        if (verifyError || !verifyData) {
+          throw new Error(`Verification failed: ${verifyError?.message || 'No data found'}`);
+        }
+        
+        if (verifyData.tweet_id !== tweetId || verifyData.status !== 'posted') {
+          throw new Error(`Save verification failed: tweet_id=${verifyData.tweet_id}, status=${verifyData.status}`);
+        }
+        
+        dbSaveSuccess = true;
+        console.log(`[POSTING_QUEUE] ✅ Database updated (attempt ${dbAttempt}/${MAX_DB_RETRIES}): tweet_id ${tweetId} saved for decision ${decisionId}`);
+        break; // Success - exit retry loop
+        
+      } catch (dbError: any) {
+        lastDbError = dbError;
+        console.warn(`[POSTING_QUEUE] ⚠️ Database save attempt ${dbAttempt}/${MAX_DB_RETRIES} failed: ${dbError.message}`);
+        
+        if (dbAttempt < MAX_DB_RETRIES) {
+          // Exponential backoff: 1s, 2s, 4s
+          const delayMs = 1000 * Math.pow(2, dbAttempt - 1);
+          console.log(`[POSTING_QUEUE] 🔄 Retrying database save in ${delayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        } else {
+          console.error(`[POSTING_QUEUE] 🚨 CRITICAL: All ${MAX_DB_RETRIES} database save attempts failed for tweet ${tweetId}`);
+          console.error(`[POSTING_QUEUE] 🚨 Last error: ${lastDbError.message}`);
+          // Don't throw - tweet is already posted, we'll log and continue
+          // Background recovery job will fix this
+        }
+      }
     }
     
-    console.log(`[POSTING_QUEUE] ✅ Database updated: tweet_id ${tweetId} saved for decision ${decisionId}`);
+    if (!dbSaveSuccess) {
+      console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Failed to save tweet_id ${tweetId} to database after ${MAX_DB_RETRIES} attempts`);
+      console.error(`[POSTING_QUEUE] 🚨 Tweet is LIVE on Twitter but database save failed - background recovery job will fix this`);
+      // Log to error tracker for monitoring
+      await trackError(
+        'posting_queue',
+        'database_save_failed',
+        `Failed to save tweet_id ${tweetId} after ${MAX_DB_RETRIES} attempts: ${lastDbError?.message || 'Unknown error'}`,
+        'critical',
+        {
+          decision_id: decisionId,
+          tweet_id: tweetId,
+          attempts: MAX_DB_RETRIES,
+          last_error: lastDbError?.message
+        }
+      );
+      // Don't throw - allow system to continue, recovery job will fix
+    }
     
     // 2. Get the full decision details for posted_decisions archive
     const { data: decisionData, error: fetchError } = await supabase
