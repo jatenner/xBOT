@@ -274,7 +274,7 @@ async function generateRealContent(): Promise<void> {
       
       // ✅ Track generator performance
       const generatorName = 'human_content_orchestrator';
-      const qualityScore = generated.metadata?.quality_score || 0.75;
+      const qualityScore = generated.metadata?.variety_score ? generated.metadata.variety_score / 100 : 0.75;
       await generatorPerformanceTracker.recordAttempt(generatorName, true, qualityScore);
       
       // ═══════════════════════════════════════════════════════════
@@ -383,7 +383,7 @@ async function generateRealContent(): Promise<void> {
         // Learning tracking
         experiment_arm: 'human_content',
         generator_name: 'human_content_orchestrator',
-        generator_confidence: generated.confidence || 0.85,
+        generator_confidence: 0.85, // Default confidence
         systems_used: 'human_content_orchestrator',
         viral_patterns_applied: generated.style,
         learning_insights_used: 'human_like_generation'
@@ -392,11 +392,14 @@ async function generateRealContent(): Promise<void> {
       decisions.push(decision);
       
       console.log(`[UNIFIED_PLAN] ✅ Generated decision ${i + 1}/${numToGenerate}`);
-      console.log(`   Content: "${generated.content.substring(0, 60)}..."`);
-      console.log(`   Quality: ${(generated.metadata.quality_score * 100).toFixed(1)}/100`);
-      console.log(`   Viral prob: ${(generated.metadata.viral_probability * 100).toFixed(1)}%`);
-      console.log(`   Systems: ${generated.metadata.systems_active.length} active`);
-      console.log(`   Experiment: ${generated.metadata.experiment_arm}`);
+      const contentPreview = Array.isArray(generated.content) 
+        ? generated.content[0].substring(0, 60)
+        : generated.content.substring(0, 60);
+      console.log(`   Content: "${contentPreview}..."`);
+      console.log(`   Quality: ${generated.metadata.variety_score.toFixed(1)}/100`);
+      console.log(`   Style: ${generated.style}`);
+      console.log(`   Approach: ${generated.metadata.approach}`);
+      console.log(`   Human-like: ${generated.metadata.human_like}`);
       
     } catch (error: any) {
       planMetrics.calls_failed++;
