@@ -138,10 +138,10 @@ export class HumanContentOrchestrator {
     
     const config = personalityConfigs[personality];
     
+    // Note: angle and length are not supported by generateHumanContent parameters
+    // They're used internally by the personality configs but not passed as parameters
     return this.generateHumanContent({
-      mood: config.mood,
-      angle: config.angle,
-      length: config.length
+      mood: config.mood
     });
   }
   
@@ -177,8 +177,8 @@ export class HumanContentOrchestrator {
     }
     
     return this.generateHumanContent({
-      mood,
-      angle
+      mood
+      // Note: angle is not a supported parameter for generateHumanContent
     });
   }
 }
