@@ -37,7 +37,7 @@ export class PatternStorage {
           decision_id: decisionId,
           content: content,
           patterns: patterns
-        });
+        } as any); // Type assertion needed - table type not fully defined
       
       if (error) {
         console.error('Error storing patterns:', error);
@@ -68,7 +68,7 @@ export class PatternStorage {
         return [];
       }
       
-      return (data || []).map(p => p.patterns as ContentPatterns);
+      return (data || []).map((p: any) => p.patterns as ContentPatterns);
       
     } catch (error) {
       console.error('Failed to fetch recent patterns:', error);
@@ -92,7 +92,7 @@ export class PatternStorage {
         return null;
       }
       
-      return data?.patterns as ContentPatterns || null;
+      return (data as any)?.patterns as ContentPatterns || null;
       
     } catch (error) {
       console.error('Failed to fetch patterns for decision:', error);
