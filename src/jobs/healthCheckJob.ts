@@ -31,29 +31,81 @@ export async function runHealthCheck(): Promise<void> {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    // Check content generation (should have some in last 6 hours)
+    // ENHANCED: Check content generation with auto-recovery
+    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000);
     const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
-    const { count: recentGeneration } = await supabase
+    
+    // Get last content generation time
+    const { data: lastContent } = await supabase
       .from('content_metadata')
-      .select('*', { count: 'exact', head: true })
-      .gte('created_at', sixHoursAgo.toISOString());
-
-    if ((recentGeneration || 0) > 0) {
+      .select('created_at')
+      .in('decision_type', ['single', 'thread'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    const lastGenerationTime = lastContent?.created_at 
+      ? new Date(String(lastContent.created_at))
+      : null;
+    
+    const hoursSinceGeneration = lastGenerationTime
+      ? (Date.now() - lastGenerationTime.getTime()) / (1000 * 60 * 60)
+      : Infinity;
+    
+    const recentGeneration = lastGenerationTime && lastGenerationTime > sixHoursAgo ? 1 : 0;
+    
+    if (recentGeneration > 0) {
       metrics.push({
         component: 'Content Generation',
         status: 'healthy',
-        value: recentGeneration,
-        threshold: '> 0 in 6h',
-        message: `Generated ${recentGeneration} pieces in last 6h`
+        value: hoursSinceGeneration.toFixed(1),
+        threshold: '< 6h',
+        message: `Last generation: ${hoursSinceGeneration.toFixed(1)}h ago`
+      });
+    } else if (hoursSinceGeneration < 6) {
+      metrics.push({
+        component: 'Content Generation',
+        status: 'warning',
+        value: hoursSinceGeneration.toFixed(1),
+        threshold: '< 6h',
+        message: `Last generation: ${hoursSinceGeneration.toFixed(1)}h ago (approaching threshold)`
       });
     } else {
       metrics.push({
         component: 'Content Generation',
         status: 'critical',
-        value: 0,
-        threshold: '> 0 in 6h',
-        message: 'No content generated in last 6 hours!'
+        value: hoursSinceGeneration.toFixed(1),
+        threshold: '< 6h',
+        message: `No content generated in ${hoursSinceGeneration.toFixed(1)} hours!`
       });
+      
+      // ENHANCED: Auto-recovery - trigger plan job if hasn't run in >3 hours
+      if (hoursSinceGeneration > 3) {
+        console.error(`[HEALTH_CHECK] 🚨 AUTO-RECOVERY: Content generation stopped for ${hoursSinceGeneration.toFixed(1)}h`);
+        console.error(`[HEALTH_CHECK] 🔄 Attempting to trigger plan job...`);
+        
+        try {
+          // Import and trigger plan job
+          const { planContent } = await import('./planJobUnified');
+          await planContent();
+          console.log(`[HEALTH_CHECK] ✅ Plan job triggered successfully`);
+          
+          metrics.push({
+            component: 'Content Generation Recovery',
+            status: 'healthy',
+            value: 'triggered',
+            message: 'Plan job auto-triggered to recover content generation'
+          });
+        } catch (recoveryError: any) {
+          console.error(`[HEALTH_CHECK] ❌ Auto-recovery failed: ${recoveryError.message}`);
+          metrics.push({
+            component: 'Content Generation Recovery',
+            status: 'critical',
+            value: 'failed',
+            message: `Auto-recovery failed: ${recoveryError.message}`
+          });
+        }
+      }
     }
 
     // Check posting (should have posted something today)
