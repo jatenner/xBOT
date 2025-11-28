@@ -678,6 +678,20 @@ export class JobManager {
       15 * MINUTE  // Start after 15 minutes
     );
 
+    // 🤖 AUTONOMOUS HEALTH MONITOR - every 15 minutes, offset 5 min (self-healing system)
+    // 🔧 NEW: Autonomous diagnosis and self-healing
+    this.scheduleStaggeredJob(
+      'autonomous_health_monitor',
+      async () => {
+        await this.safeExecute('autonomous_health_monitor', async () => {
+          const { runAutonomousHealthCheck } = await import('./autonomousHealthMonitor');
+          await runAutonomousHealthCheck();
+        });
+      },
+      15 * MINUTE, // Every 15 minutes
+      5 * MINUTE   // Start after 5 minutes
+    );
+
     // 📊 ERROR ANALYSIS - every 6 hours, offset 120 min (analyze error patterns)
     // 🔧 NEW: Comprehensive error tracking and analysis
     this.scheduleStaggeredJob(
