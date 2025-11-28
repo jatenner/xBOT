@@ -36,6 +36,15 @@ export async function planContent(): Promise<void> {
   log({ op: 'plan_job_start', mode: config.MODE });
   
   try {
+    // Record plan job run for health monitoring
+    try {
+      const { AutonomousHealthMonitor } = await import('./autonomousHealthMonitor');
+      const monitor = AutonomousHealthMonitor.getInstance();
+      monitor.recordPlanRun();
+    } catch (e) {
+      // Non-critical, continue
+    }
+    
     if (config.MODE === 'shadow') {
       await generateSyntheticContent();
     } else {
@@ -72,7 +81,25 @@ async function generateSyntheticContent(): Promise<void> {
 async function generateRealContent(): Promise<void> {
   const llmCheck = isLLMAllowed();
   if (!llmCheck.allowed) {
-    log({ op: 'generate_real', blocked: true, reason: llmCheck.reason });
+    const reason = llmCheck.reason || 'unknown';
+    console.error(`[PLAN_JOB] 🚨 LLM BLOCKED: ${reason}`);
+    console.error(`[PLAN_JOB] 🚨 This prevents content generation. Check:`);
+    console.error(`[PLAN_JOB]    - OPENAI_API_KEY is set`);
+    console.error(`[PLAN_JOB]    - AI_QUOTA_CIRCUIT_OPEN is not 'true'`);
+    console.error(`[PLAN_JOB]    - Budget limits not exceeded`);
+    log({ op: 'generate_real', blocked: true, reason });
+    
+    // Check budget status for more details
+    try {
+      const { checkBudgetAllowed } = await import('../budget/hardGuard');
+      const budgetCheck = await checkBudgetAllowed();
+      if (!budgetCheck.allowed) {
+        console.error(`[PLAN_JOB] 🚨 Budget check: ${budgetCheck.reason}`);
+      }
+    } catch (e) {
+      // Non-critical
+    }
+    
     return;
   }
   
