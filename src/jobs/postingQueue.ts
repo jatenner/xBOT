@@ -150,24 +150,71 @@ export async function processPostingQueue(): Promise<void> {
     }
     
     // 🔄 AUTO-RECOVER STUCK POSTS: Reset posts stuck in 'posting' status >15min (reduced from 30min for faster recovery)
+    // 🔥 PRIORITY 4 FIX: Verify post before resetting (prevents duplicate posts)
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
     const { data: stuckPosts } = await supabase
       .from('content_metadata')
-      .select('decision_id, decision_type, created_at')
+      .select('decision_id, decision_type, created_at, content, thread_parts')
       .eq('status', 'posting')
       .lt('created_at', fifteenMinAgo.toISOString());
     
     if (stuckPosts && stuckPosts.length > 0) {
       console.log(`[POSTING_QUEUE] 🔄 Recovering ${stuckPosts.length} stuck posts (status='posting' >15min)...`);
+      const { getTweetIdFromBackup, checkBackupForDuplicate } = await import('../utils/tweetIdBackup');
+      
       for (const post of stuckPosts) {
         const minutesStuck = Math.round((Date.now() - new Date(String(post.created_at)).getTime()) / (1000 * 60));
-        console.log(`[POSTING_QUEUE]   - Recovering ${post.decision_type} ${post.decision_id} (stuck ${minutesStuck}min)`);
-        await supabase
-          .from('content_metadata')
-          .update({ status: 'queued' })
-          .eq('decision_id', post.decision_id);
+        console.log(`[POSTING_QUEUE]   - Checking stuck ${post.decision_type} ${post.decision_id} (stuck ${minutesStuck}min)`);
+        
+        // Check backup file first (faster than verification)
+        const backupTweetId = getTweetIdFromBackup(post.decision_id);
+        const contentToCheck = post.decision_type === 'thread' 
+          ? (post.thread_parts as string[] || []).join(' ')
+          : post.content || '';
+        
+        if (backupTweetId) {
+          // Post succeeded! Mark as posted
+          console.log(`[POSTING_QUEUE]   ✅ Found tweet_id ${backupTweetId} in backup - marking as posted`);
+          await supabase
+            .from('content_metadata')
+            .update({ 
+              status: 'posted',
+              tweet_id: backupTweetId,
+              posted_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('decision_id', post.decision_id);
+        } else if (contentToCheck) {
+          // Check if content was already posted (duplicate check)
+          const duplicateTweetId = checkBackupForDuplicate(contentToCheck);
+          if (duplicateTweetId) {
+            console.log(`[POSTING_QUEUE]   🚫 Duplicate content detected (tweet_id ${duplicateTweetId}) - marking as posted`);
+            await supabase
+              .from('content_metadata')
+              .update({ 
+                status: 'posted',
+                tweet_id: duplicateTweetId,
+                posted_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .eq('decision_id', post.decision_id);
+          } else {
+            // No backup found - reset to queued for retry
+            console.log(`[POSTING_QUEUE]   🔄 No backup found - resetting to queued for retry`);
+            await supabase
+              .from('content_metadata')
+              .update({ status: 'queued' })
+              .eq('decision_id', post.decision_id);
+          }
+        } else {
+          // No content - reset to queued
+          await supabase
+            .from('content_metadata')
+            .update({ status: 'queued' })
+            .eq('decision_id', post.decision_id);
+        }
       }
       console.log(`[POSTING_QUEUE] ✅ Recovered ${stuckPosts.length} stuck posts`);
     }
@@ -1140,9 +1187,19 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         return; // Skip posting
       }
     
-      // 🔍 CONTENT HASH CHECK: Check for duplicate content in BOTH tables
-      // CRITICAL: Check content_metadata first (more reliable) then posted_decisions
-      const contentHash = require('crypto').createHash('md5').update(decision.content).digest('hex');
+      // 🔍 CONTENT HASH CHECK: Check for duplicate content in BOTH tables AND backup file
+      // 🔥 PRIORITY 1 FIX: Check backup file FIRST (prevents duplicates even if database save failed)
+      const { checkBackupForDuplicate } = await import('../utils/tweetIdBackup');
+      const backupTweetId = checkBackupForDuplicate(decision.content);
+      if (backupTweetId) {
+        console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED (backup file): Content already posted as tweet_id ${backupTweetId}`);
+        // Revert status back to queued since we didn't actually post
+        await supabase
+          .from('content_metadata')
+          .update({ status: 'queued' })
+          .eq('decision_id', decision.id);
+        return; // Skip posting
+      }
       
       // Check 1: content_metadata for already-posted content with tweet_id
       const { data: duplicateInMetadata } = await supabase
@@ -1266,6 +1323,15 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
           if (!validation.valid) {
             throw new Error(`Invalid tweet ID returned from postContent: ${validation.error}`);
           }
+          
+          // 🔥 PRIORITY 1 FIX: Save tweet_id to backup file IMMEDIATELY after Twitter post
+          // This prevents duplicates even if database save fails
+          const { saveTweetIdToBackup } = await import('../utils/tweetIdBackup');
+          const contentToBackup = decision.decision_type === 'thread' 
+            ? (decision.thread_parts || []).join(' ')
+            : decision.content;
+          saveTweetIdToBackup(decision.id, tweetId, contentToBackup);
+          console.log(`[POSTING_QUEUE] 💾 Tweet ID saved to backup file: ${tweetId}`);
         } else if (decision.decision_type === 'reply') {
           tweetId = await postReply(decision);
         
@@ -1275,7 +1341,12 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
           if (!replyValidation.valid) {
             throw new Error(`Invalid reply ID returned from postReply: ${replyValidation.error}`);
           }
-        
+          
+          // 🔥 PRIORITY 1 FIX: Save reply tweet_id to backup file IMMEDIATELY
+          const { saveTweetIdToBackup } = await import('../utils/tweetIdBackup');
+          saveTweetIdToBackup(decision.id, tweetId, decision.content);
+          console.log(`[POSTING_QUEUE] 💾 Reply tweet ID saved to backup file: ${tweetId}`);
+          
           // For replies, construct URL (reply system doesn't return URL yet)
           tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
         } else {
@@ -1347,18 +1418,30 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         // 🔥 SUCCESS VERIFICATION: Check if tweet actually posted despite error (common with timeouts)
         const isTimeout = /timeout|exceeded/i.test(postError.message);
         if (isTimeout) {
-          console.log(`[POSTING_QUEUE] 🔍 Timeout detected - verifying if tweet actually posted...`);
+          console.log(`[POSTING_QUEUE] 🔍 Timeout detected - checking backup file and verifying...`);
           try {
-            const verifiedTweetId = await verifyTweetPosted(decision.content, decision.decision_type);
-            if (verifiedTweetId) {
-              console.log(`[POSTING_QUEUE] ✅ VERIFICATION SUCCESS: Tweet is live on Twitter! ID: ${verifiedTweetId}`);
-              // Tweet is actually posted - treat as success!
-              tweetId = verifiedTweetId;
-              tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${verifiedTweetId}`;
+            // 🔥 PRIORITY 2 FIX: Check backup file FIRST (faster than verification)
+            const { getTweetIdFromBackup } = await import('../utils/tweetIdBackup');
+            const backupTweetId = getTweetIdFromBackup(decision.id);
+            
+            if (backupTweetId) {
+              console.log(`[POSTING_QUEUE] ✅ BACKUP FILE FOUND: Tweet ID ${backupTweetId} (post succeeded, verification not needed)`);
+              tweetId = backupTweetId;
+              tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${backupTweetId}`;
               postingSucceeded = true;
               // Continue to database save (skip retry logic)
             } else {
-              console.log(`[POSTING_QUEUE] ❌ VERIFICATION FAILED: Tweet not found on Twitter`);
+              // Backup not found - try verification
+              const verifiedTweetId = await verifyTweetPosted(decision.content, decision.decision_type);
+              if (verifiedTweetId) {
+                console.log(`[POSTING_QUEUE] ✅ VERIFICATION SUCCESS: Tweet is live on Twitter! ID: ${verifiedTweetId}`);
+                tweetId = verifiedTweetId;
+                tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${verifiedTweetId}`;
+                postingSucceeded = true;
+                // Continue to database save (skip retry logic)
+              } else {
+                console.log(`[POSTING_QUEUE] ❌ VERIFICATION FAILED: Tweet not found on Twitter`);
+              }
             }
           } catch (verifyError: any) {
             console.warn(`[POSTING_QUEUE] ⚠️ Verification check failed: ${verifyError.message}`);
@@ -1391,28 +1474,36 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
             // This prevents retrying when tweet is already live
             const isTimeout = /timeout|exceeded/i.test(postError.message || '');
             if (isTimeout && retryCount > 0) {
-              console.log(`[POSTING_QUEUE] 🔍 PRE-RETRY VERIFICATION: Checking if previous attempt succeeded...`);
+              console.log(`[POSTING_QUEUE] 🔍 PRE-RETRY VERIFICATION: Checking backup file and verifying...`);
               try {
-                const preRetryCheck = await verifyTweetPosted(decision.content, decision.decision_type);
-                if (preRetryCheck && preRetryCheck !== 'verified_but_no_id' && preRetryCheck !== 'verified') {
-                  // Previous attempt succeeded! Mark as posted
-                  console.log(`[POSTING_QUEUE] ✅ PRE-RETRY VERIFICATION: Tweet is already live! ID: ${preRetryCheck}`);
-                  console.log(`[POSTING_QUEUE] 🎉 Skipping retry - marking as posted`);
+                // 🔥 PRIORITY 2 FIX: Check backup file FIRST (faster than verification)
+                const { getTweetIdFromBackup } = await import('../utils/tweetIdBackup');
+                const backupTweetId = getTweetIdFromBackup(decision.id);
                 
-                  tweetId = preRetryCheck;
-                  tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${preRetryCheck}`;
+                if (backupTweetId) {
+                  console.log(`[POSTING_QUEUE] ✅ PRE-RETRY BACKUP FOUND: Tweet ID ${backupTweetId} (previous attempt succeeded)`);
+                  console.log(`[POSTING_QUEUE] 🎉 Skipping retry - marking as posted`);
+                  tweetId = backupTweetId;
+                  tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${backupTweetId}`;
                   postingSucceeded = true;
                   // Continue to database save (skip retry logic)
-                  // Break out of retry block by returning early
-                } else if (preRetryCheck === 'verified' || preRetryCheck === 'verified_but_no_id') {
-                  // Tweet exists but no ID - still mark as posted
-                  console.log(`[POSTING_QUEUE] ✅ PRE-RETRY VERIFICATION: Tweet exists but ID extraction failed`);
-                  tweetId = `recovered_${Date.now()}`;
-                  tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}`;
-                  postingSucceeded = true;
-                  // Continue to database save
                 } else {
-                  console.log(`[POSTING_QUEUE] ❌ PRE-RETRY VERIFICATION: Tweet not found - proceeding with retry`);
+                  // Backup not found - try verification
+                  const preRetryCheck = await verifyTweetPosted(decision.content, decision.decision_type);
+                  if (preRetryCheck && preRetryCheck !== 'verified_but_no_id' && preRetryCheck !== 'verified') {
+                    console.log(`[POSTING_QUEUE] ✅ PRE-RETRY VERIFICATION: Tweet is already live! ID: ${preRetryCheck}`);
+                    console.log(`[POSTING_QUEUE] 🎉 Skipping retry - marking as posted`);
+                    tweetId = preRetryCheck;
+                    tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${preRetryCheck}`;
+                    postingSucceeded = true;
+                  } else if (preRetryCheck === 'verified' || preRetryCheck === 'verified_but_no_id') {
+                    console.log(`[POSTING_QUEUE] ✅ PRE-RETRY VERIFICATION: Tweet exists but ID extraction failed`);
+                    tweetId = `recovered_${Date.now()}`;
+                    tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}`;
+                    postingSucceeded = true;
+                  } else {
+                    console.log(`[POSTING_QUEUE] ❌ PRE-RETRY VERIFICATION: Tweet not found - proceeding with retry`);
+                  }
                 }
               } catch (preRetryError: any) {
                 console.warn(`[POSTING_QUEUE] ⚠️ Pre-retry verification failed: ${preRetryError.message}`);
@@ -1486,52 +1577,57 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         // 🔥 CRITICAL FIX: Final verification before marking as failed
         // All retries exhausted - but check ONE MORE TIME if tweet actually posted
         console.error(`[POSTING_QUEUE] ❌ All ${maxRetries} retries + ${maxRecoveryAttempts} recoveries exhausted for ${decision.decision_type}`);
-        console.log(`[POSTING_QUEUE] 🔍 FINAL VERIFICATION: Checking if tweet actually posted despite errors...`);
+        console.log(`[POSTING_QUEUE] 🔍 FINAL VERIFICATION: Checking backup file and verifying...`);
       
         try {
-          const finalVerification = await verifyTweetPosted(decision.content, decision.decision_type);
-          if (finalVerification && finalVerification !== 'verified_but_no_id' && finalVerification !== 'verified') {
-            // Tweet is actually live! Mark as posted instead of failed
-            console.log(`[POSTING_QUEUE] ✅ FINAL VERIFICATION SUCCESS: Tweet is live on Twitter! ID: ${finalVerification}`);
+          // 🔥 PRIORITY 2 FIX: Check backup file FIRST (guaranteed if post succeeded)
+          const { getTweetIdFromBackup } = await import('../utils/tweetIdBackup');
+          const backupTweetId = getTweetIdFromBackup(decision.id);
+          
+          if (backupTweetId) {
+            console.log(`[POSTING_QUEUE] ✅ FINAL BACKUP FOUND: Tweet ID ${backupTweetId} (post succeeded, recovering false failure)`);
             console.log(`[POSTING_QUEUE] 🎉 Recovering false failure - marking as posted`);
-          
-            tweetId = finalVerification;
-            tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${finalVerification}`;
+            tweetId = backupTweetId;
+            tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${backupTweetId}`;
             postingSucceeded = true;
-          
-            // Mark as posted (will continue to database save section)
-            // Don't throw error, let it fall through to database save
-          } else if (finalVerification === 'verified' || finalVerification === 'verified_but_no_id') {
-            // Tweet exists but we couldn't get ID - still mark as posted with placeholder
-            console.log(`[POSTING_QUEUE] ✅ FINAL VERIFICATION: Tweet exists but ID extraction failed`);
-            console.log(`[POSTING_QUEUE] 🎉 Recovering false failure - marking as posted with placeholder ID`);
-          
-            tweetId = `recovered_${Date.now()}`;
-            tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}`;
-            postingSucceeded = true;
-          
             // Mark as posted (will continue to database save section)
           } else {
-            // Verification confirms tweet is NOT on Twitter - safe to mark as failed
-            console.log(`[POSTING_QUEUE] ❌ FINAL VERIFICATION: Tweet not found on Twitter - marking as failed`);
-            await supabase
-              .from('content_metadata')
-              .update({
-                status: 'failed',
-                updated_at: new Date().toISOString(),
-                features: {
-                  ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
-                  retry_count: retryCount,
-                  recovery_attempts: recoveryAttempts,
-                  last_error: postError.message,
-                  last_attempt: new Date().toISOString(),
-                  last_post_error: postError.message,
-                  final_verification: 'not_found'
-                }
-              })
-              .eq('decision_id', decision.id);
-            await updatePostingMetrics('error');
-            throw postError;
+            // Backup not found - try verification
+            const finalVerification = await verifyTweetPosted(decision.content, decision.decision_type);
+            if (finalVerification && finalVerification !== 'verified_but_no_id' && finalVerification !== 'verified') {
+              console.log(`[POSTING_QUEUE] ✅ FINAL VERIFICATION SUCCESS: Tweet is live on Twitter! ID: ${finalVerification}`);
+              console.log(`[POSTING_QUEUE] 🎉 Recovering false failure - marking as posted`);
+              tweetId = finalVerification;
+              tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${finalVerification}`;
+              postingSucceeded = true;
+            } else if (finalVerification === 'verified' || finalVerification === 'verified_but_no_id') {
+              console.log(`[POSTING_QUEUE] ✅ FINAL VERIFICATION: Tweet exists but ID extraction failed`);
+              console.log(`[POSTING_QUEUE] 🎉 Recovering false failure - marking as posted with placeholder ID`);
+              tweetId = `recovered_${Date.now()}`;
+              tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}`;
+              postingSucceeded = true;
+            } else {
+              // Verification confirms tweet is NOT on Twitter - safe to mark as failed
+              console.log(`[POSTING_QUEUE] ❌ FINAL VERIFICATION: Tweet not found on Twitter - marking as failed`);
+              await supabase
+                .from('content_metadata')
+                .update({
+                  status: 'failed',
+                  updated_at: new Date().toISOString(),
+                  features: {
+                    ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),
+                    retry_count: retryCount,
+                    recovery_attempts: recoveryAttempts,
+                    last_error: postError.message,
+                    last_attempt: new Date().toISOString(),
+                    last_post_error: postError.message,
+                    final_verification: 'not_found'
+                  }
+                })
+                .eq('decision_id', decision.id);
+              await updatePostingMetrics('error');
+              throw postError;
+            }
           }
         } catch (verifyError: any) {
           // Verification itself failed - be conservative, don't mark as failed yet
@@ -1599,6 +1695,10 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
             await markDecisionPosted(decision.id, tweetId, tweetUrl, tweetIds);
             dbSaveSuccess = true;
             console.log(`[POSTING_QUEUE] ✅ Database save SUCCESS on attempt ${attempt}`);
+            
+            // 🔥 PRIORITY 1 FIX: Mark backup as verified (database save succeeded)
+            const { markBackupAsVerified } = await import('../utils/tweetIdBackup');
+            markBackupAsVerified(decision.id, tweetId);
             break;
           } catch (dbError: any) {
             console.error(`[POSTING_QUEUE] 🚨 Database save attempt ${attempt}/5 failed:`, dbError.message);

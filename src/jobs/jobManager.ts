@@ -525,6 +525,20 @@ export class JobManager {
         15 * MINUTE // Start after 15 minutes (after system is stable)
       );
 
+      // 🔥 PRIORITY 1 FIX: BACKUP FILE CLEANUP - daily at 2 AM
+      // Cleans up old backup entries (older than 30 days)
+      this.scheduleStaggeredJob(
+        'backup_cleanup',
+        async () => {
+          await this.safeExecute('backup_cleanup', async () => {
+            const { cleanupOldBackups } = await import('../utils/tweetIdBackup');
+            cleanupOldBackups();
+          });
+        },
+        1440 * MINUTE, // Daily
+        120 * MINUTE // Start at 2 AM (2 hours after startup)
+      );
+
       // 🔥 PRIORITY 4 FIX: TWEET RECONCILIATION JOB - every 24 hours, offset 120 min
       // Finds tweets posted to Twitter but missing from database
       // Auto-recovers matched tweets and processes retry queue
