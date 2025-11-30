@@ -1317,11 +1317,38 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
           tweetUrl = result.tweetUrl;
           tweetIds = result.tweetIds; // 🆕 Capture thread IDs if available
         
-          // 🔒 VALIDATION: Validate tweet ID immediately after posting
-          const { IDValidator } = await import('../validation/idValidator');
-          const validation = IDValidator.validateTweetId(tweetId);
-          if (!validation.valid) {
-            throw new Error(`Invalid tweet ID returned from postContent: ${validation.error}`);
+          // ✅ NEW: Handle placeholder IDs (tweet posted, ID extraction failed)
+          if (tweetId && tweetId.startsWith('pending_')) {
+            console.log(`[POSTING_QUEUE] ⚠️ Placeholder ID received - tweet posted but ID extraction failed`);
+            console.log(`[POSTING_QUEUE] ✅ Tweet is LIVE on Twitter - will recover ID later`);
+            postingSucceeded = true;
+            // Continue to database save with placeholder
+            // Background job will recover real ID
+          } else if (!tweetId) {
+            // No ID and not placeholder - try verification
+            console.log(`[POSTING_QUEUE] ⚠️ No ID returned - verifying tweet is posted...`);
+            const verifiedId = await verifyTweetPosted(
+              decision.decision_type === 'thread' 
+                ? (decision.thread_parts || []).join(' ')
+                : decision.content,
+              decision.decision_type
+            );
+            if (verifiedId && verifiedId !== 'verified' && verifiedId !== 'verified_but_no_id') {
+              tweetId = verifiedId;
+              postingSucceeded = true;
+              console.log(`[POSTING_QUEUE] ✅ Verified tweet is live, recovered ID: ${tweetId}`);
+            } else {
+              // Actual failure - tweet not posted
+              throw new Error('Tweet posting failed - not found on Twitter');
+            }
+          } else {
+            // Valid ID - validate it
+            const { IDValidator } = await import('../validation/idValidator');
+            const validation = IDValidator.validateTweetId(tweetId);
+            if (!validation.valid) {
+              throw new Error(`Invalid tweet ID returned from postContent: ${validation.error}`);
+            }
+            postingSucceeded = true;
           }
           
           // 🔥 PRIORITY 1 FIX: Save tweet_id to backup file IMMEDIATELY after Twitter post
