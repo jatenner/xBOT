@@ -7,6 +7,16 @@ import { DiagnosticEngine } from '../diagnostics/diagnosticEngine';
 import { getSupabaseClient } from '../db';
 import { getHeartbeat } from '../jobs/jobHeartbeat';
 import { JobManager } from '../jobs/jobManager';
+import { 
+  generateNavigation, 
+  getSharedStyles, 
+  generateErrorHTML, 
+  formatTimeAgo,
+  getTodayStats,
+  getQueueStatus,
+  getScraperCoverage,
+  TOKEN_PARAM
+} from './shared/dashboardUtils';
 
 export async function generateBusinessDashboard(): Promise<string> {
   try {
@@ -49,10 +59,7 @@ export async function generateBusinessDashboard(): Promise<string> {
       : null;
 
     // Get queued content
-    const { count: queuedCount } = await supabase
-      .from('content_metadata')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'queued');
+    const queuedCount = await getQueueStatus();
 
     // Get posts without metrics (need scraping)
     const { count: postsNeedingMetrics } = await supabase
@@ -62,34 +69,11 @@ export async function generateBusinessDashboard(): Promise<string> {
       .not('tweet_id', 'is', null)
       .is('actual_impressions', null);
 
-    // Get today's activity
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const { data: todayPosts } = await supabase
-      .from('content_metadata')
-      .select('decision_id, decision_type, actual_impressions, actual_likes, status')
-      .gte('created_at', todayStart.toISOString());
+    // Get today's stats
+    const { postedToday, repliedToday, queuedToday } = await getTodayStats();
 
-    const postedToday = todayPosts?.filter(p => p.status === 'posted' && p.decision_type === 'single').length || 0;
-    const repliedToday = todayPosts?.filter(p => p.status === 'posted' && p.decision_type === 'reply').length || 0;
-    const queuedToday = todayPosts?.filter(p => p.status === 'queued').length || 0;
-
-    // Get scraper coverage (posts with metrics vs without)
-    const { count: postsWithMetrics } = await supabase
-      .from('content_metadata')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'posted')
-      .not('actual_impressions', 'is', null);
-
-    const { count: totalPosted } = await supabase
-      .from('content_metadata')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'posted')
-      .not('tweet_id', 'is', null);
-
-    const scraperCoverage = totalPosted > 0 
-      ? Math.round((postsWithMetrics || 0) / totalPosted * 100)
-      : 100;
+    // Get scraper coverage
+    const { coverage: scraperCoverage, postsWithMetrics, totalPosted } = await getScraperCoverage();
 
     return generateBusinessDashboardHTML({
       diagnostics,
@@ -359,14 +343,7 @@ function generateBusinessDashboardHTML(data: any): string {
             <p>Real-time system activity and performance metrics</p>
         </div>
 
-        <div class="nav-tabs">
-            <a href="/dashboard/business?token=xbot-admin-2025" class="nav-tab active">💼 Business</a>
-            <a href="/dashboard/diagnostics?token=xbot-admin-2025" class="nav-tab">🤖 Diagnostics</a>
-            <a href="/dashboard/system-flow?token=xbot-admin-2025" class="nav-tab">🔍 System Flow</a>
-            <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab">🩺 Health</a>
-            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Posts</a>
-            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
-        </div>
+        ${generateNavigation('/dashboard/business')}
 
         <div class="status-banner ${systemWorking ? 'working' : diagnostics.overallStatus === 'warning' ? 'warning' : 'error'}">
             <div class="status-title">
@@ -535,59 +512,4 @@ function generateBusinessDashboardHTML(data: any): string {
 </html>`;
 }
 
-function getSharedStyles(): string {
-  return `
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        min-height: 100vh;
-        padding: 20px;
-    }
-    .container { max-width: 1800px; margin: 0 auto; }
-    .header {
-        background: white;
-        padding: 30px;
-        border-radius: 15px;
-        margin-bottom: 20px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-    }
-    .header h1 { color: #333; margin-bottom: 10px; font-size: 32px; }
-    .header p { color: #666; font-size: 16px; }
-    .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-    .nav-tab { 
-        padding: 12px 24px; 
-        background: white; 
-        border-radius: 8px; 
-        text-decoration: none; 
-        color: #333;
-        font-weight: 600;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        transition: all 0.2s;
-    }
-    .nav-tab:hover { background: #667eea; color: white; }
-    .nav-tab.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-    .footer { text-align: center; color: white; margin-top: 40px; opacity: 0.9; }
-  `;
-}
-
-function generateErrorHTML(error: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-    <title>Dashboard Error</title>
-    <style>
-        body { font-family: Arial; text-align: center; padding: 50px; background: #f5f5f5; }
-        .error-box { background: white; padding: 40px; border-radius: 10px; max-width: 600px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-    </style>
-</head>
-<body>
-    <div class="error-box">
-        <h1>🚨 Dashboard Error</h1>
-        <p style="color: #dc3545;">${error}</p>
-        <p><a href="/dashboard/business?token=xbot-admin-2025">🔄 Try Again</a></p>
-    </div>
-</body>
-</html>`;
-}
 
