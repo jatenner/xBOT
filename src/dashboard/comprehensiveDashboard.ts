@@ -407,18 +407,6 @@ function generatePostsHTML(data: any): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         ${getSharedStyles()}
-        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-        .nav-tab { 
-            padding: 12px 24px; 
-            background: white; 
-            border-radius: 8px; 
-            text-decoration: none; 
-            color: #333;
-            font-weight: 600;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .nav-tab.active { background: #667eea; color: white; }
-        .nav-tab:hover { background: #5568d3; color: white; }
     </style>
 </head>
 <body>
@@ -654,18 +642,6 @@ function generateRepliesHTML(data: any): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         ${getSharedStyles()}
-        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-        .nav-tab { 
-            padding: 12px 24px; 
-            background: white; 
-            border-radius: 8px; 
-            text-decoration: none; 
-            color: #333;
-            font-weight: 600;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .nav-tab.active { background: #667eea; color: white; }
-        .nav-tab:hover { background: #5568d3; color: white; }
     </style>
 </head>
 <body>
