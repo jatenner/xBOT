@@ -1,2172 +1,808 @@
 /**
- * 📊 COMPREHENSIVE DASHBOARD - Multi-Page Analytics
- * Page 1: Posts breakdown (topic, tone, angle, generator, structure)
- * Page 2: Replies breakdown (tier, account, conversion)
- * Page 3: Follower growth tracking
+ * 📊 COMPREHENSIVE DASHBOARD
+ * Complete view of content generation, posting, performance, learning, and system health
  */
 
-import { getSupabaseClient } from '../db/index';
-import { getSharedStyles, generateNavigation, generateErrorHTML, TOKEN_PARAM } from './shared/dashboardUtils';
+import { getSupabaseClient } from '../db';
 
-export async function generateRecentDashboard(): Promise<string> {
+export async function generateComprehensiveDashboard(): Promise<string> {
   const supabase = getSupabaseClient();
+  const now = new Date();
+  const todayStart = new Date(now.setHours(0, 0, 0, 0));
+  const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+  const last7Days = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
   
-  try {
-    // Get recent posts sorted by date (not performance)
-    const [
-      recentPosts,
-      last24hStats,
-      generatorDistribution,
-      topicDistribution
-    ] = await Promise.all([
-      getRecentPostsChronological(supabase),
-      getLast24HourStats(supabase),
-      getRecentGeneratorDistribution(supabase),
-      getRecentTopicDistribution(supabase)
-    ]);
-
-    return generateRecentHTML({
-      recentPosts,
-      last24hStats,
-      generatorDistribution,
-      topicDistribution
-    });
-
-  } catch (error: any) {
-    console.error('[RECENT_DASHBOARD] Error:', error.message);
-    return generateErrorHTML(error.message, '/dashboard/recent');
-  }
-}
-
-export async function generatePostsDashboard(): Promise<string> {
-  const supabase = getSupabaseClient();
-  
-  try {
-    // Get comprehensive post data
-    const [
-      topPosts,
-      generatorBreakdown,
-      topicBreakdown,
-      toneBreakdown,
-      angleBreakdown,
-      last24h
-    ] = await Promise.all([
-      getTopPerformingPosts(supabase),
-      getGeneratorBreakdown(supabase),
-      getTopicBreakdown(supabase),
-      getToneBreakdown(supabase),
-      getAngleBreakdown(supabase),
-      getLast24HourStats(supabase)
-    ]);
-
-    return generatePostsHTML({
-      topPosts,
-      generatorBreakdown,
-      topicBreakdown,
-      toneBreakdown,
-      angleBreakdown,
-      last24h
-    });
-
-  } catch (error: any) {
-    console.error('[POSTS_DASHBOARD] Error:', error.message);
-    return generateErrorHTML(error.message);
-  }
-}
-
-export async function generateRepliesDashboard(): Promise<string> {
-  const supabase = getSupabaseClient();
-  
-  try {
-    // Get comprehensive reply data
-    const [
-      topReplies,
-      tierBreakdown,
-      accountBreakdown,
-      generatorBreakdown,
-      conversionStats
-    ] = await Promise.all([
-      getTopPerformingReplies(supabase),
-      getReplyTierBreakdown(supabase),
-      getAccountBreakdown(supabase),
-      getReplyGeneratorBreakdown(supabase),
-      getConversionStats(supabase)
-    ]);
-
-    return generateRepliesHTML({
-      topReplies,
-      tierBreakdown,
-      accountBreakdown,
-      generatorBreakdown,
-      conversionStats
-    });
-
-  } catch (error: any) {
-    console.error('[REPLIES_DASHBOARD] Error:', error.message);
-    return generateErrorHTML(error.message);
-  }
-}
-
-// ============================================================
-// POSTS DATA FETCHERS
-// ============================================================
-
-async function getTopPerformingPosts(supabase: any) {
-  const { data } = await supabase
-    .from('content_metadata')
-    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, posted_at, decision_type')
-    .eq('status', 'posted')
-    .in('decision_type', ['single', 'thread', 'reply'])
-    // ✅ FIX: Order by posted_at (most recent first) instead of impressions
-    .order('posted_at', { ascending: false })
-    .limit(500); // Show ALL posts (up to 500)
-
-  return data || [];
-}
-
-async function getGeneratorBreakdown(supabase: any) {
-  const { data } = await supabase
-    .from('content_metadata')
-    .select('generator_name, actual_likes, actual_impressions, actual_engagement_rate')
-    .eq('status', 'posted')
-    .eq('decision_type', 'single')
-    .not('actual_likes', 'is', null);
-
-  if (!data || data.length === 0) return [];
-
-  const byGenerator = data.reduce((acc: any, post: any) => {
-    const gen = post.generator_name || 'unknown';
-    if (!acc[gen]) {
-      acc[gen] = { posts: 0, totalLikes: 0, totalViews: 0, totalER: 0 };
-    }
-    acc[gen].posts++;
-    acc[gen].totalLikes += post.actual_likes || 0;
-    acc[gen].totalViews += post.actual_impressions || 0;
-    acc[gen].totalER += post.actual_engagement_rate || 0;
-    return acc;
-  }, {});
-
-  return Object.entries(byGenerator)
-    .map(([name, stats]: [string, any]) => ({
-      name,
-      posts: stats.posts,
-      avgLikes: Math.round(stats.totalLikes / stats.posts),
-      avgViews: Math.round(stats.totalViews / stats.posts),
-      avgER: ((stats.totalER / stats.posts) * 100).toFixed(2)
-    }))
-    .sort((a, b) => parseFloat(b.avgER) - parseFloat(a.avgER));
-}
-
-async function getTopicBreakdown(supabase: any) {
-  const { data } = await supabase
-    .from('content_metadata')
-    .select('raw_topic, topic_cluster, actual_likes, actual_impressions, actual_engagement_rate')
-    .eq('status', 'posted')
-    .eq('decision_type', 'single')
-    .not('actual_likes', 'is', null);
-
-  if (!data || data.length === 0) return [];
-
-  const byTopic = data.reduce((acc: any, post: any) => {
-    // Use raw_topic if available, otherwise fall back to topic_cluster
-    let topic = post.raw_topic || post.topic_cluster || 'Uncategorized';
+  // Fetch all data in parallel
+  const [
+    todayPosts,
+    yesterdayPosts,
+    recentPosts,
+    postingAttempts,
+    queuedContent,
+    topics,
+    duplicates,
+    systemFailures
+  ] = await Promise.all([
+    // Today's posts
+    supabase.from('content_metadata')
+      .select('*')
+      .in('decision_type', ['single', 'thread'])
+      .gte('posted_at', todayStart.toISOString())
+      .order('posted_at', { ascending: false }),
     
-    // Simplify super long topics (keep first 60 chars)
-    if (topic.length > 60) {
-      topic = topic.substring(0, 60) + '...';
-    }
+    // Yesterday's posts
+    supabase.from('content_metadata')
+      .select('*')
+      .in('decision_type', ['single', 'thread'])
+      .gte('posted_at', yesterdayStart.toISOString())
+      .lt('posted_at', todayStart.toISOString())
+      .order('posted_at', { ascending: false }),
     
-    if (!acc[topic]) {
-      acc[topic] = { posts: 0, totalLikes: 0, totalViews: 0, totalER: 0 };
-    }
-    acc[topic].posts++;
-    acc[topic].totalLikes += post.actual_likes || 0;
-    acc[topic].totalViews += post.actual_impressions || 0;
-    acc[topic].totalER += post.actual_engagement_rate || 0;
-    return acc;
-  }, {});
-
-  return Object.entries(byTopic)
-    .map(([name, stats]: [string, any]) => ({
-      name,
-      posts: stats.posts,
-      avgLikes: Math.round(stats.totalLikes / stats.posts),
-      avgViews: Math.round(stats.totalViews / stats.posts),
-      avgER: ((stats.totalER / stats.posts) * 100).toFixed(2)
-    }))
-    .sort((a, b) => parseFloat(b.avgER) - parseFloat(a.avgER));
-}
-
-async function getToneBreakdown(supabase: any) {
-  const { data } = await supabase
-    .from('content_metadata')
-    .select('tone, actual_likes, actual_impressions, actual_engagement_rate')
-    .eq('status', 'posted')
-    .eq('decision_type', 'single')
-    .not('actual_likes', 'is', null)
-    .not('tone', 'is', null);
-
-  if (!data || data.length === 0) return [];
-
-  const byTone = data.reduce((acc: any, post: any) => {
-    const tone = post.tone || 'unknown';
-    if (!acc[tone]) {
-      acc[tone] = { posts: 0, totalLikes: 0, totalViews: 0, totalER: 0 };
-    }
-    acc[tone].posts++;
-    acc[tone].totalLikes += post.actual_likes || 0;
-    acc[tone].totalViews += post.actual_impressions || 0;
-    acc[tone].totalER += post.actual_engagement_rate || 0;
-    return acc;
-  }, {});
-
-  return Object.entries(byTone)
-    .map(([name, stats]: [string, any]) => ({
-      name,
-      posts: stats.posts,
-      avgLikes: Math.round(stats.totalLikes / stats.posts),
-      avgViews: Math.round(stats.totalViews / stats.posts),
-      avgER: ((stats.totalER / stats.posts) * 100).toFixed(2)
-    }))
-    .sort((a, b) => parseFloat(b.avgER) - parseFloat(a.avgER));
-}
-
-async function getAngleBreakdown(supabase: any) {
-  const { data } = await supabase
-    .from('content_metadata')
-    .select('angle, actual_likes, actual_impressions, actual_engagement_rate')
-    .eq('status', 'posted')
-    .eq('decision_type', 'single')
-    .not('actual_likes', 'is', null)
-    .not('angle', 'is', null);
-
-  if (!data || data.length === 0) return [];
-
-  const byAngle = data.reduce((acc: any, post: any) => {
-    const angle = post.angle || 'unknown';
-    if (!acc[angle]) {
-      acc[angle] = { posts: 0, totalLikes: 0, totalViews: 0, totalER: 0 };
-    }
-    acc[angle].posts++;
-    acc[angle].totalLikes += post.actual_likes || 0;
-    acc[angle].totalViews += post.actual_impressions || 0;
-    acc[angle].totalER += post.actual_engagement_rate || 0;
-    return acc;
-  }, {});
-
-  return Object.entries(byAngle)
-    .map(([name, stats]: [string, any]) => ({
-      name,
-      posts: stats.posts,
-      avgLikes: Math.round(stats.totalLikes / stats.posts),
-      avgViews: Math.round(stats.totalViews / stats.posts),
-      avgER: ((stats.totalER / stats.posts) * 100).toFixed(2)
-    }))
-    .sort((a, b) => parseFloat(b.avgER) - parseFloat(a.avgER));
-}
-
-async function getLast24HourStats(supabase: any) {
-  const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    // Recent posts (last 7 days)
+    supabase.from('content_metadata')
+      .select('*')
+      .in('decision_type', ['single', 'thread'])
+      .gte('posted_at', last7Days.toISOString())
+      .order('posted_at', { ascending: false })
+      .limit(100),
+    
+    // Posting attempts (last 24h)
+    supabase.from('posting_attempts')
+      .select('status, error_message, decision_type, created_at')
+      .gte('created_at', yesterdayStart.toISOString())
+      .order('created_at', { ascending: false }),
+    
+    // Queued content
+    supabase.from('content_metadata')
+      .select('decision_id, decision_type, raw_topic, created_at, status')
+      .eq('status', 'queued')
+      .order('created_at', { ascending: false }),
+    
+    // Topics (last 7 days)
+    supabase.from('content_metadata')
+      .select('raw_topic')
+      .in('decision_type', ['single', 'thread'])
+      .gte('created_at', last7Days.toISOString())
+      .not('raw_topic', 'is', null),
+    
+    // Check for duplicates (by content_hash or similar content)
+    supabase.from('content_metadata')
+      .select('content, content_hash, created_at')
+      .in('decision_type', ['single', 'thread'])
+      .gte('created_at', last7Days.toISOString())
+      .not('content_hash', 'is', null),
+    
+    // System failures (from posting_attempts)
+    supabase.from('posting_attempts')
+      .select('status, error_message, created_at')
+      .eq('status', 'failed')
+      .gte('created_at', yesterdayStart.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(50)
+  ]);
   
-  const { data } = await supabase
-    .from('content_metadata')
-    .select('actual_likes, actual_retweets, actual_impressions')
-    .eq('status', 'posted')
-    .eq('decision_type', 'single')
-    .gte('posted_at', last24h);
-
-  const totalLikes = data?.reduce((sum: number, p: any) => sum + (p.actual_likes || 0), 0) || 0;
-  const totalViews = data?.reduce((sum: number, p: any) => sum + (p.actual_impressions || 0), 0) || 0;
-
-  return {
-    posts: data?.length || 0,
-    likes: totalLikes,
-    views: totalViews
-  };
-}
-
-// ============================================================
-// REPLIES DATA FETCHERS
-// ============================================================
-
-async function getTopPerformingReplies(supabase: any) {
-  // 🔥 FIX: Fetch MORE replies (500) to ensure top performers aren't excluded
-  // User can sort by time/views/likes in the dashboard, but we need ALL data
-  const { data } = await supabase
-    .from('content_metadata')
-    .select('content, actual_likes, actual_impressions, actual_engagement_rate, generator_name, target_username, posted_at, tweet_id')
-    .eq('status', 'posted')
-    .eq('decision_type', 'reply')
-    .not('tweet_id', 'is', null) // ✅ Must have real tweet ID
-    .order('posted_at', { ascending: false }) // Fetch chronologically (most recent first)
-    .limit(500); // 🔥 INCREASED: 500 replies (was 50) to catch top performers
-
-  // Filter out self-replies (fake data)
-  const validReplies = (data || []).filter(reply => {
-    const username = reply.target_username?.toLowerCase();
-    return username !== 'signalandsynapse' && username !== 'signal_synapse';
+  return generateDashboardHTML({
+    todayPosts: todayPosts.data || [],
+    yesterdayPosts: yesterdayPosts.data || [],
+    recentPosts: recentPosts.data || [],
+    postingAttempts: postingAttempts.data || [],
+    queuedContent: queuedContent.data || [],
+    topics: topics.data || [],
+    duplicates: duplicates.data || [],
+    systemFailures: systemFailures.data || []
   });
-
-  return validReplies;
 }
 
-async function getReplyTierBreakdown(supabase: any) {
-  const { data: opportunities } = await supabase
-    .from('reply_opportunities')
-    .select('tier, replied_to')
-    .eq('replied_to', true);
-
-  if (!opportunities || opportunities.length === 0) return [];
-
-  const byTier = opportunities.reduce((acc: any, opp: any) => {
-    const tier = opp.tier || 'unknown';
-    acc[tier] = (acc[tier] || 0) + 1;
-    return acc;
-  }, {});
-
-  return Object.entries(byTier).map(([tier, count]) => ({ tier, count }));
-}
-
-async function getAccountBreakdown(supabase: any) {
-  const { data } = await supabase
-    .from('reply_conversions')
-    .select('target_account, followers_gained, opportunity_tier')
-    .order('followers_gained', { ascending: false })
-    .limit(20);
-
-  return data || [];
-}
-
-async function getReplyGeneratorBreakdown(supabase: any) {
-  const { data } = await supabase
-    .from('content_metadata')
-    .select('generator_name, actual_likes, actual_impressions')
-    .eq('status', 'posted')
-    .eq('decision_type', 'reply')
-    .not('actual_likes', 'is', null);
-
-  if (!data || data.length === 0) return [];
-
-  const byGenerator = data.reduce((acc: any, reply: any) => {
-    const gen = reply.generator_name || 'unknown';
-    if (!acc[gen]) {
-      acc[gen] = { replies: 0, totalLikes: 0, totalViews: 0 };
-    }
-    acc[gen].replies++;
-    acc[gen].totalLikes += reply.actual_likes || 0;
-    acc[gen].totalViews += reply.actual_impressions || 0;
-    return acc;
-  }, {});
-
-  return Object.entries(byGenerator)
-    .map(([name, stats]: [string, any]) => ({
-      name,
-      replies: stats.replies,
-      avgLikes: Math.round(stats.totalLikes / stats.replies),
-      avgViews: Math.round(stats.totalViews / stats.replies)
-    }))
-    .sort((a, b) => b.avgLikes - a.avgLikes);
-}
-
-async function getConversionStats(supabase: any) {
-  const { data } = await supabase
-    .from('reply_conversions')
-    .select('followers_gained, opportunity_tier');
-
-  if (!data || data.length === 0) {
-    return { total: 0, byTier: [] };
-  }
-
-  const totalFollowers = data.reduce((sum: number, c: any) => sum + (c.followers_gained || 0), 0);
+function generateDashboardHTML(data: any): string {
+  const {
+    todayPosts,
+    yesterdayPosts,
+    recentPosts,
+    postingAttempts,
+    queuedContent,
+    topics,
+    duplicates,
+    systemFailures
+  } = data;
   
-  const byTier = data.reduce((acc: any, c: any) => {
-    const tier = c.opportunity_tier || 'unknown';
-    if (!acc[tier]) acc[tier] = 0;
-    acc[tier] += c.followers_gained || 0;
-    return acc;
-  }, {});
-
-  return {
-    total: totalFollowers,
-    byTier: Object.entries(byTier).map(([tier, followers]) => ({ tier, followers }))
-  };
-}
-
-// ============================================================
-// HTML GENERATORS
-// ============================================================
-
-function generatePostsHTML(data: any): string {
-  const now = new Date().toLocaleString();
+  // Calculate metrics
+  const finalAttempts = postingAttempts.filter((a: any) => a.status !== 'attempting');
+  const successCount = finalAttempts.filter((a: any) => a.status === 'success').length;
+  const failedCount = finalAttempts.filter((a: any) => a.status === 'failed').length;
+  const successRate = finalAttempts.length > 0 ? (successCount / finalAttempts.length) * 100 : 0;
+  
+  // Today vs Yesterday metrics
+  const todayViews = todayPosts.reduce((sum: number, p: any) => sum + (p.actual_impressions || 0), 0);
+  const yesterdayViews = yesterdayPosts.reduce((sum: number, p: any) => sum + (p.actual_impressions || 0), 0);
+  const todayLikes = todayPosts.reduce((sum: number, p: any) => sum + (p.actual_likes || 0), 0);
+  const yesterdayLikes = yesterdayPosts.reduce((sum: number, p: any) => sum + (p.actual_likes || 0), 0);
+  const todayPostsCount = todayPosts.length;
+  const yesterdayPostsCount = yesterdayPosts.length;
+  
+  const viewsChange = yesterdayViews > 0 ? ((todayViews - yesterdayViews) / yesterdayViews * 100) : 0;
+  const likesChange = yesterdayLikes > 0 ? ((todayLikes - yesterdayLikes) / yesterdayLikes * 100) : 0;
+  
+  // Topic analysis
+  const topicCounts: Record<string, number> = {};
+  topics.forEach((t: any) => {
+    const topic = t.raw_topic || 'Unknown';
+    topicCounts[topic] = (topicCounts[topic] || 0) + 1;
+  });
+  const topTopics = Object.entries(topicCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+  
+  // Duplicate detection
+  const contentHashes: Record<string, number> = {};
+  duplicates.forEach((d: any) => {
+    const hash = d.content_hash || 'no-hash';
+    contentHashes[hash] = (contentHashes[hash] || 0) + 1;
+  });
+  const duplicateCount = Object.values(contentHashes).filter(count => count > 1).length;
+  
+  // Failure analysis
+  const failureTypes: Record<string, number> = {};
+  systemFailures.forEach((f: any) => {
+    const error = f.error_message || 'Unknown error';
+    let category = 'Other';
+    if (/timeout|exceeded/i.test(error)) category = 'Timeout';
+    else if (/session|auth/i.test(error)) category = 'Authentication';
+    else if (/rate.*limit/i.test(error)) category = 'Rate Limit';
+    else if (/network/i.test(error)) category = 'Network';
+    else if (/content|validation/i.test(error)) category = 'Content Validation';
+    failureTypes[category] = (failureTypes[category] || 0) + 1;
+  });
+  
+  // Content generation stats
+  const queuedByType: Record<string, number> = {};
+  queuedContent.forEach((q: any) => {
+    const type = q.decision_type || 'unknown';
+    queuedByType[type] = (queuedByType[type] || 0) + 1;
+  });
   
   return `<!DOCTYPE html>
 <html>
 <head>
-    <title>xBOT Posts Dashboard</title>
+    <title>xBOT Comprehensive Dashboard</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="60">
     <style>
-        ${getSharedStyles()}
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .tabs {
+            display: flex;
+            justify-content: center;
+            background: white;
+            border-bottom: 2px solid #e5e7eb;
+            padding: 0 20px;
+            flex-wrap: wrap;
+        }
+        
+        .tab {
+            background: none;
+            border: none;
+            padding: 15px 25px;
+            font-size: 1em;
+            cursor: pointer;
+            color: #666;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+        }
+        
+        .tab:hover {
+            color: #667eea;
+        }
+        
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: 600;
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 30px 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .metric-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        
+        .metric-card h3 {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        
+        .metric-value {
+            font-size: 2em;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .metric-change {
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .metric-change.positive {
+            color: #10b981;
+        }
+        
+        .metric-change.negative {
+            color: #ef4444;
+        }
+        
+        .section {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        
+        .section h2 {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: #333;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 10px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        .status-badge.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status-badge.warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .status-badge.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .topic-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .topic-tag {
+            background: #f3f4f6;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+        
+        .topic-tag .count {
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 8px;
+            font-weight: 600;
+        }
+        
+        .failure-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            background: #fef2f2;
+            border-left: 4px solid #ef4444;
+            border-radius: 4px;
+        }
+        
+        .failure-item .error-type {
+            font-weight: 600;
+            color: #991b1b;
+            margin-bottom: 5px;
+        }
+        
+        .failure-item .error-message {
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        th {
+            background: #f9fafb;
+            font-weight: 600;
+            color: #666;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e5e7eb;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s;
+        }
+        
+        .progress-fill.success {
+            background: linear-gradient(90deg, #10b981, #059669);
+        }
+        
+        .progress-fill.warning {
+            background: linear-gradient(90deg, #f59e0b, #d97706);
+        }
+        
+        .progress-fill.error {
+            background: linear-gradient(90deg, #ef4444, #dc2626);
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>📝 xBOT Posts Dashboard</h1>
-            <p>Content performance breakdown by topic, tone, angle, and generator</p>
-        </div>
-
-        <div class="nav-tabs">
-            <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
-            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab active">📊 Metrics</a>
-            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
-            <a href="/dashboard/vi?token=xbot-admin-2025" class="nav-tab">🔍 VI Collection</a>
-            <a href="/dashboard/formatting?token=xbot-admin-2025" class="nav-tab">🎨 Formatting</a>
-            <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab">🔧 System Health</a>
-        </div>
-
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-label">Last 24 Hours</div>
-                <div class="stat-value">${data.last24h.posts} posts</div>
-                <div class="stat-change">👁️ ${data.last24h.views.toLocaleString()} views • ❤️ ${data.last24h.likes} likes</div>
+    <div class="header">
+        <h1>📊 xBOT Comprehensive Dashboard</h1>
+        <p>Complete system overview: Content → Posting → Performance → Learning</p>
+    </div>
+    
+    <div class="tabs">
+        <button class="tab active" onclick="showTab('overview')">Overview</button>
+        <button class="tab" onclick="showTab('content')">Content Generation</button>
+        <button class="tab" onclick="showTab('posting')">Posting System</button>
+        <button class="tab" onclick="showTab('performance')">Performance</button>
+        <button class="tab" onclick="showTab('learning')">Learning</button>
+        <button class="tab" onclick="showTab('health')">System Health</button>
+    </div>
+    
+    <!-- Overview Tab -->
+    <div id="overview" class="tab-content active">
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <h3>Today's Posts</h3>
+                <div class="metric-value">${todayPostsCount}</div>
+                <div class="metric-change ${todayPostsCount >= yesterdayPostsCount ? 'positive' : 'negative'}">
+                    ${todayPostsCount >= yesterdayPostsCount ? '↑' : '↓'} ${Math.abs(todayPostsCount - yesterdayPostsCount)} vs yesterday
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Posts with Metrics</div>
-                <div class="stat-value">${data.topPosts.length}</div>
-                <div class="stat-change">📊 All shown below</div>
+            
+            <div class="metric-card">
+                <h3>Today's Views</h3>
+                <div class="metric-value">${formatNumber(todayViews)}</div>
+                <div class="metric-change ${viewsChange >= 0 ? 'positive' : 'negative'}">
+                    ${viewsChange >= 0 ? '↑' : '↓'} ${Math.abs(viewsChange).toFixed(1)}% vs yesterday
+                </div>
             </div>
-        </div>
-
-        <div class="section">
-            <h2>🏆 All Posts with Performance Data (${data.topPosts.length} posts)</h2>
-            <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                <button class="sort-btn" onclick="sortTable('date')">Sort by 📅 Date</button>
-                <button class="sort-btn" onclick="sortTable('likes')">Sort by ❤️ Likes</button>
-                <button class="sort-btn active" onclick="sortTable('views')">Sort by 👁️ Views</button>
-                <button class="sort-btn" onclick="sortTable('viral')">Sort by 🔥 Viral Score</button>
-                <button class="sort-btn" onclick="sortTable('er')">Sort by 📊 ER</button>
-                <span style="color: #666; font-size: 14px; margin-left: 10px;">Showing entire database of posts with scraped metrics</span>
+            
+            <div class="metric-card">
+                <h3>Today's Likes</h3>
+                <div class="metric-value">${formatNumber(todayLikes)}</div>
+                <div class="metric-change ${likesChange >= 0 ? 'positive' : 'negative'}">
+                    ${likesChange >= 0 ? '↑' : '↓'} ${Math.abs(likesChange).toFixed(1)}% vs yesterday
+                </div>
             </div>
-            <table id="postsTable">
-                <thead>
-                    <tr>
-                        <th style="width: 35%;">Content</th>
-                        <th>Generator</th>
-                        <th>Topic</th>
-                        <th>📅 Posted</th>
-                        <th class="number-col">👁️ Views</th>
-                        <th class="number-col">❤️ Likes</th>
-                        <th class="number-col">🔥 Viral</th>
-                        <th class="number-col">📊 ER</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.topPosts.map((post: any) => {
-                        const views = post.actual_impressions || 0;
-                        const likes = post.actual_likes || 0;
-                        const viralScore = views * likes;
-                        const er = ((post.actual_engagement_rate || 0) * 100).toFixed(2);
-                        const dateTimestamp = post.posted_at ? new Date(post.posted_at).getTime() : 0;
-                        
-                        return `
-                        <tr data-views="${views}" data-likes="${likes}" data-viral="${viralScore}" data-er="${er}" data-date="${dateTimestamp}">
-                            <td class="content-cell">${post.content?.substring(0, 100) || 'No content'}...</td>
-                            <td><span class="badge badge-gen">${post.generator_name || 'unknown'}</span></td>
-                            <td><span class="topic-tag" title="${post.raw_topic || post.topic_cluster || 'N/A'}">${(post.raw_topic || post.topic_cluster || 'N/A').substring(0, 40)}${(post.raw_topic || post.topic_cluster || '').length > 40 ? '...' : ''}</span></td>
-                            <td class="date-cell">${post.posted_at ? new Date(post.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}</td>
-                            <td class="number-col"><strong>${views.toLocaleString()}</strong></td>
-                            <td class="number-col"><strong style="color: #e91e63;">${likes}</strong></td>
-                            <td class="number-col"><strong style="color: #ff5722;">${viralScore.toLocaleString()}</strong></td>
-                            <td class="number-col"><strong>${er}%</strong></td>
-                        </tr>
-                    `}).join('')}
-                </tbody>
-            </table>
+            
+            <div class="metric-card">
+                <h3>Posting Success Rate</h3>
+                <div class="metric-value">${successRate.toFixed(1)}%</div>
+                <div class="progress-bar">
+                    <div class="progress-fill ${successRate >= 70 ? 'success' : successRate >= 50 ? 'warning' : 'error'}" 
+                         style="width: ${successRate}%"></div>
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Content Queue</h3>
+                <div class="metric-value">${queuedContent.length}</div>
+                <div style="font-size: 0.9em; color: #666; margin-top: 5px;">
+                    ${Object.entries(queuedByType).map(([type, count]) => `${count} ${type}s`).join(', ')}
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Unique Topics</h3>
+                <div class="metric-value">${topTopics.length}</div>
+                <div style="font-size: 0.9em; color: #666; margin-top: 5px;">
+                    Last 7 days
+                </div>
+            </div>
         </div>
         
-        <script>
-        function sortTable(sortBy) {
-            const table = document.getElementById('postsTable');
-            const tbody = table.querySelector('tbody');
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            
-            // Update button states
-            document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
-            
-            rows.sort((a, b) => {
-                const aVal = parseFloat(a.getAttribute('data-' + sortBy)) || 0;
-                const bVal = parseFloat(b.getAttribute('data-' + sortBy)) || 0;
-                return bVal - aVal; // Descending
-            });
-            
-            rows.forEach(row => tbody.appendChild(row));
-        }
-        </script>
-
         <div class="section">
-            <h2>🎭 Performance by Generator</h2>
-            <p style="color: #666; margin-bottom: 15px; font-size: 14px;">Which AI generators create the best content</p>
+            <h2>🚨 System Status</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                <div>
+                    <span class="status-badge ${successRate >= 70 ? 'success' : successRate >= 50 ? 'warning' : 'error'}">
+                        Posting: ${successRate >= 70 ? 'Healthy' : successRate >= 50 ? 'Warning' : 'Critical'}
+                    </span>
+                </div>
+                <div>
+                    <span class="status-badge ${queuedContent.length > 10 ? 'success' : queuedContent.length > 5 ? 'warning' : 'error'}">
+                        Queue: ${queuedContent.length > 10 ? 'Good' : queuedContent.length > 5 ? 'Low' : 'Empty'}
+                    </span>
+                </div>
+                <div>
+                    <span class="status-badge ${duplicateCount === 0 ? 'success' : 'warning'}">
+                        Duplicates: ${duplicateCount === 0 ? 'None' : duplicateCount}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Content Generation Tab -->
+    <div id="content" class="tab-content">
+        <div class="section">
+            <h2>📝 Content Generation</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <h3>Queued Content</h3>
+                    <div class="metric-value">${queuedContent.length}</div>
+                </div>
+                <div class="metric-card">
+                    <h3>Generated Today</h3>
+                    <div class="metric-value">${todayPostsCount}</div>
+                </div>
+                <div class="metric-card">
+                    <h3>Duplicates Detected</h3>
+                    <div class="metric-value">${duplicateCount}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>🎯 Topics (Last 7 Days)</h2>
+            <div class="topic-list">
+                ${topTopics.map(([topic, count]: [string, number]) => `
+                    <div class="topic-tag">
+                        ${topic}
+                        <span class="count">${count}</span>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>📋 Queued Content</h2>
             <table>
                 <thead>
                     <tr>
-                        <th>Generator</th>
-                        <th class="number-col">Posts</th>
-                        <th class="number-col">Avg Views</th>
-                        <th class="number-col">Avg Likes</th>
-                        <th class="number-col">Avg ER</th>
+                        <th>Type</th>
+                        <th>Topic</th>
+                        <th>Created</th>
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${data.generatorBreakdown.map((gen: any, index: number) => {
-                        const rank = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
-                        return `
+                    ${queuedContent.slice(0, 20).map((q: any) => `
                         <tr>
-                            <td><strong>${rank} ${gen.name}</strong></td>
-                            <td class="number-col">${gen.posts}</td>
-                            <td class="number-col">${gen.avgViews.toLocaleString()}</td>
-                            <td class="number-col" style="color: #e91e63;"><strong>${gen.avgLikes}</strong></td>
-                            <td class="number-col"><strong>${gen.avgER}%</strong></td>
+                            <td>${q.decision_type}</td>
+                            <td>${q.raw_topic || 'N/A'}</td>
+                            <td>${formatTimeAgo(q.created_at)}</td>
+                            <td><span class="status-badge warning">${q.status}</span></td>
                         </tr>
-                    `}).join('')}
-                    ${data.generatorBreakdown.length === 0 ? '<tr><td colspan="5" style="text-align: center; color: #999; padding: 30px;">No data yet - posts need metrics to be scraped</td></tr>' : ''}
+                    `).join('')}
                 </tbody>
             </table>
         </div>
-
+    </div>
+    
+    <!-- Posting Tab -->
+    <div id="posting" class="tab-content">
         <div class="section">
-            <h2>🎯 Performance by Topic</h2>
-            <p style="color: #666; margin-bottom: 15px; font-size: 14px;">Which topics resonate most with your audience</p>
+            <h2>📮 Posting System</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <h3>Success Rate</h3>
+                    <div class="metric-value">${successRate.toFixed(1)}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${successRate >= 70 ? 'success' : successRate >= 50 ? 'warning' : 'error'}" 
+                             style="width: ${successRate}%"></div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <h3>Successful</h3>
+                    <div class="metric-value">${successCount}</div>
+                </div>
+                <div class="metric-card">
+                    <h3>Failed</h3>
+                    <div class="metric-value">${failedCount}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>❌ Failure Types (Last 24h)</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                ${Object.entries(failureTypes).map(([type, count]: [string, number]) => `
+                    <div class="metric-card">
+                        <h3>${type}</h3>
+                        <div class="metric-value">${count}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>🔍 Recent Failures</h2>
+            ${systemFailures.slice(0, 10).map((f: any) => `
+                <div class="failure-item">
+                    <div class="error-type">${categorizeError(f.error_message || 'Unknown')}</div>
+                    <div class="error-message">${(f.error_message || 'No error message').substring(0, 200)}</div>
+                    <div style="font-size: 0.8em; color: #999; margin-top: 5px;">
+                        ${formatTimeAgo(f.created_at)}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    </div>
+    
+    <!-- Performance Tab -->
+    <div id="performance" class="tab-content">
+        <div class="section">
+            <h2>📊 Performance Metrics</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <h3>Today vs Yesterday</h3>
+                    <div style="margin-top: 15px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span>Views:</span>
+                            <span><strong>${formatNumber(todayViews)}</strong> vs ${formatNumber(yesterdayViews)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span>Likes:</span>
+                            <span><strong>${formatNumber(todayLikes)}</strong> vs ${formatNumber(yesterdayLikes)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Posts:</span>
+                            <span><strong>${todayPostsCount}</strong> vs ${yesterdayPostsCount}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <h3>Avg Views/Post</h3>
+                    <div class="metric-value">${todayPostsCount > 0 ? formatNumber(Math.round(todayViews / todayPostsCount)) : 0}</div>
+                </div>
+                <div class="metric-card">
+                    <h3>Avg Likes/Post</h3>
+                    <div class="metric-value">${todayPostsCount > 0 ? formatNumber(Math.round(todayLikes / todayPostsCount)) : 0}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>📈 Recent Posts Performance</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Posted</th>
+                        <th>Type</th>
+                        <th>Views</th>
+                        <th>Likes</th>
+                        <th>Retweets</th>
+                        <th>ER</th>
+                        <th>Topic</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${recentPosts.slice(0, 20).map((p: any) => `
+                        <tr>
+                            <td>${formatTimeAgo(p.posted_at)}</td>
+                            <td>${p.decision_type}</td>
+                            <td>${formatNumber(p.actual_impressions || 0)}</td>
+                            <td>${formatNumber(p.actual_likes || 0)}</td>
+                            <td>${formatNumber(p.actual_retweets || 0)}</td>
+                            <td>${p.actual_engagement_rate ? (p.actual_engagement_rate * 100).toFixed(2) + '%' : 'N/A'}</td>
+                            <td>${p.raw_topic || 'N/A'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Learning Tab -->
+    <div id="learning" class="tab-content">
+        <div class="section">
+            <h2>🧠 Learning System</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                The learning system analyzes performance patterns to optimize content generation.
+            </p>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <h3>Posts Analyzed</h3>
+                    <div class="metric-value">${recentPosts.length}</div>
+                </div>
+                <div class="metric-card">
+                    <h3>Topics Tracked</h3>
+                    <div class="metric-value">${topTopics.length}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>🎯 Top Performing Topics</h2>
             <table>
                 <thead>
                     <tr>
                         <th>Topic</th>
-                        <th class="number-col">Posts</th>
-                        <th class="number-col">Avg Views</th>
-                        <th class="number-col">Avg Likes</th>
-                        <th class="number-col">Avg ER</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.topicBreakdown.map((topic: any, index: number) => {
-                        const rank = index === 0 ? '🏆' : index === 1 ? '⭐' : index === 2 ? '✨' : '';
-                        return `
-                        <tr>
-                            <td><strong>${rank} ${topic.name}</strong></td>
-                            <td class="number-col">${topic.posts}</td>
-                            <td class="number-col">${topic.avgViews.toLocaleString()}</td>
-                            <td class="number-col" style="color: #e91e63;"><strong>${topic.avgLikes}</strong></td>
-                            <td class="number-col"><strong>${topic.avgER}%</strong></td>
-                        </tr>
-                    `}).join('')}
-                    ${data.topicBreakdown.length === 0 ? '<tr><td colspan="5" style="text-align: center; color: #999; padding: 30px;">No data yet - posts need metrics to be scraped</td></tr>' : ''}
-                </tbody>
-            </table>
-        </div>
-
-        ${data.toneBreakdown.length > 0 ? `
-        <div class="section">
-            <h2>🎤 Performance by Tone</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Tone</th>
                         <th>Posts</th>
                         <th>Avg Views</th>
                         <th>Avg Likes</th>
-                        <th>Avg ER</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${data.toneBreakdown.map((tone: any) => `
-                        <tr>
-                            <td><strong>${tone.name}</strong></td>
-                            <td>${tone.posts}</td>
-                            <td>${tone.avgViews.toLocaleString()}</td>
-                            <td>${tone.avgLikes}</td>
-                            <td><strong>${tone.avgER}%</strong></td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        </div>
-        ` : ''}
-
-        ${data.angleBreakdown.length > 0 ? `
-        <div class="section">
-            <h2>📐 Performance by Angle</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Angle</th>
-                        <th>Posts</th>
-                        <th>Avg Views</th>
-                        <th>Avg Likes</th>
-                        <th>Avg ER</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.angleBreakdown.map((angle: any) => `
-                        <tr>
-                            <td><strong>${angle.name}</strong></td>
-                            <td>${angle.posts}</td>
-                            <td>${angle.avgViews.toLocaleString()}</td>
-                            <td>${angle.avgLikes}</td>
-                            <td><strong>${angle.avgER}%</strong></td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        </div>
-        ` : ''}
-
-        <div class="footer">
-            <p>🤖 Last updated: ${now}</p>
-            <p>⚡ Real-time data from content_metadata table</p>
-        </div>
-    </div>
-    <script>setTimeout(() => location.reload(), 120000);</script>
-</body>
-</html>`;
-}
-
-function generateRepliesHTML(data: any): string {
-  const now = new Date().toLocaleString();
-  
-  return `<!DOCTYPE html>
-<html>
-<head>
-    <title>xBOT Replies Dashboard</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        ${getSharedStyles()}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>💬 xBOT Replies Dashboard</h1>
-            <p>Reply performance and follower conversion breakdown</p>
-        </div>
-
-        ${generateNavigation('/dashboard/replies')}
-
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-label">Total Followers from Replies</div>
-                <div class="stat-value">${data.conversionStats.total}</div>
-                <div class="stat-change">📈 Conversion tracking</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Platinum Tier</div>
-                <div class="stat-value">${data.tierBreakdown.find((t: any) => t.tier === 'Platinum' || t.tier === 'golden')?.count || 0}</div>
-                <div class="stat-change">💎 10k+ likes</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Diamond Tier</div>
-                <div class="stat-value">${data.tierBreakdown.find((t: any) => t.tier === 'Diamond')?.count || 0}</div>
-                <div class="stat-change">💎 5k+ likes</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Golden Tier</div>
-                <div class="stat-value">${data.tierBreakdown.find((t: any) => t.tier === 'Golden')?.count || 0}</div>
-                <div class="stat-change">💎 2k+ likes</div>
-            </div>
-        </div>
-
-        <div class="section">
-            <h2>💬 Recent Replies</h2>
-            <div style="background: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
-                <strong>ℹ️ Note:</strong> Showing YOUR actual replies (up to 500). Metrics update every 10 min. Page auto-refreshes every 2 min. Use sorting buttons to find top performers!
-            </div>
-            <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                <button class="sort-btn" onclick="sortRepliesTable('time')">Sort by ⏰ Time</button>
-                <button class="sort-btn active" onclick="sortRepliesTable('views')">Sort by 👁️ Views</button>
-                <button class="sort-btn" onclick="sortRepliesTable('likes')">Sort by ❤️ Likes</button>
-                <span style="color: #666; font-size: 14px; margin-left: 10px;">🔄 Auto-refresh: Every 2 minutes</span>
-            </div>
-            <table id="repliesTable">
-                <thead>
-                    <tr>
-                        <th>Content</th>
-                        <th>To @</th>
-                        <th>Generator</th>
-                        <th>📅 Posted</th>
-                        <th>👁️ Views</th>
-                        <th>❤️ Likes</th>
-                        <th>📊 ER</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.topReplies.slice(0, 50).map((reply: any) => {
-                        const views = reply.actual_impressions || 0;
-                        const likes = reply.actual_likes || 0;
-                        const postedTime = reply.posted_at ? new Date(reply.posted_at).getTime() : 0;
-                        
+                    ${topTopics.slice(0, 10).map(([topic, count]: [string, number]) => {
+                        const topicPosts = recentPosts.filter((p: any) => p.raw_topic === topic);
+                        const avgViews = topicPosts.length > 0 
+                            ? Math.round(topicPosts.reduce((sum: number, p: any) => sum + (p.actual_impressions || 0), 0) / topicPosts.length)
+                            : 0;
+                        const avgLikes = topicPosts.length > 0
+                            ? Math.round(topicPosts.reduce((sum: number, p: any) => sum + (p.actual_likes || 0), 0) / topicPosts.length)
+                            : 0;
                         return `
-                        <tr data-views="${views}" data-likes="${likes}" data-time="${postedTime}">
-                            <td style="max-width: 300px;">${reply.content?.substring(0, 80) || 'No content'}...</td>
-                            <td><strong>@${reply.target_username || 'unknown'}</strong></td>
-                            <td><span class="badge">${reply.generator_name || 'unknown'}</span></td>
-                            <td>${reply.posted_at ? new Date(reply.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A'}</td>
-                            <td><strong>${views.toLocaleString()}</strong></td>
-                            <td><strong>${likes}</strong></td>
-                            <td><strong>${((reply.actual_engagement_rate || 0) * 100).toFixed(2)}%</strong></td>
-                        </tr>
-                    `}).join('')}
-                    ${data.topReplies.length === 0 ? '<tr><td colspan="7" style="text-align: center; color: #999;">No replies yet</td></tr>' : ''}
+                            <tr>
+                                <td>${topic}</td>
+                                <td>${count}</td>
+                                <td>${formatNumber(avgViews)}</td>
+                                <td>${formatNumber(avgLikes)}</td>
+                            </tr>
+                        `;
+                    }).join('')}
                 </tbody>
             </table>
-        </div>
-        
-        <script>
-        function sortRepliesTable(sortBy) {
-            const table = document.getElementById('repliesTable');
-            const tbody = table.querySelector('tbody');
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            
-            // Update button states
-            document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
-            
-            rows.sort((a, b) => {
-                const aVal = parseFloat(a.getAttribute('data-' + sortBy)) || 0;
-                const bVal = parseFloat(b.getAttribute('data-' + sortBy)) || 0;
-                return bVal - aVal; // Descending
-            });
-            
-            rows.forEach(row => tbody.appendChild(row));
-        }
-        
-        // Auto-sort by views on load
-        window.addEventListener('DOMContentLoaded', () => {
-            sortRepliesTable('views');
-        });
-        </script>
-
-        <div class="section">
-            <h2>🎭 Performance by Generator</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Generator</th>
-                        <th>Replies</th>
-                        <th>Avg Views</th>
-                        <th>Avg Likes</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.generatorBreakdown.map((gen: any) => `
-                        <tr>
-                            <td><strong>${gen.name}</strong></td>
-                            <td>${gen.replies}</td>
-                            <td>${gen.avgViews.toLocaleString()}</td>
-                            <td>${gen.avgLikes}</td>
-                        </tr>
-                    `).join('')}
-                    ${data.generatorBreakdown.length === 0 ? '<tr><td colspan="4" style="text-align: center; color: #999;">No data yet</td></tr>' : ''}
-                </tbody>
-            </table>
-        </div>
-
-        <div class="section">
-            <h2>🎯 Top Converting Accounts</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Account</th>
-                        <th>Tier</th>
-                        <th>Followers Gained</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.accountBreakdown.slice(0, 15).map((acc: any) => `
-                        <tr>
-                            <td><strong>@${acc.target_account}</strong></td>
-                            <td><span class="badge badge-${acc.opportunity_tier?.toLowerCase() || 'golden'}">${acc.opportunity_tier || 'Unknown'}</span></td>
-                            <td><strong>${acc.followers_gained || 0}</strong></td>
-                        </tr>
-                    `).join('')}
-                    ${data.accountBreakdown.length === 0 ? '<tr><td colspan="3" style="text-align: center; color: #999;">No conversions yet</td></tr>' : ''}
-                </tbody>
-            </table>
-        </div>
-
-        <div class="footer">
-            <p>🤖 Last updated: ${now}</p>
-            <p>⚡ Real-time data from reply_conversions & content_metadata</p>
-            <p>🔄 Auto-refresh every 2 minutes to show latest metrics</p>
         </div>
     </div>
+    
+    <!-- System Health Tab -->
+    <div id="health" class="tab-content">
+        <div class="section">
+            <h2>🏥 System Health</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <h3>Posting Health</h3>
+                    <div class="metric-value">
+                        <span class="status-badge ${successRate >= 70 ? 'success' : successRate >= 50 ? 'warning' : 'error'}">
+                            ${successRate >= 70 ? 'Healthy' : successRate >= 50 ? 'Warning' : 'Critical'}
+                        </span>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <h3>Content Queue</h3>
+                    <div class="metric-value">
+                        <span class="status-badge ${queuedContent.length > 10 ? 'success' : queuedContent.length > 5 ? 'warning' : 'error'}">
+                            ${queuedContent.length > 10 ? 'Good' : queuedContent.length > 5 ? 'Low' : 'Empty'}
+                        </span>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <h3>Duplicate Detection</h3>
+                    <div class="metric-value">
+                        <span class="status-badge ${duplicateCount === 0 ? 'success' : 'warning'}">
+                            ${duplicateCount === 0 ? 'Clean' : duplicateCount + ' found'}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>⚠️ Recent System Failures</h2>
+            ${systemFailures.length > 0 ? systemFailures.slice(0, 20).map((f: any) => `
+                <div class="failure-item">
+                    <div class="error-type">${categorizeError(f.error_message || 'Unknown')}</div>
+                    <div class="error-message">${(f.error_message || 'No error message').substring(0, 300)}</div>
+                    <div style="font-size: 0.8em; color: #999; margin-top: 5px;">
+                        ${formatTimeAgo(f.created_at)}
+                    </div>
+                </div>
+            `).join('') : '<p style="color: #666;">No recent failures! System is healthy.</p>'}
+        </div>
+    </div>
+    
     <script>
-        // Auto-refresh every 2 minutes (120 seconds) to get latest scraped metrics
-        setTimeout(() => location.reload(), 120000);
-        
-        // Show countdown timer
-        let secondsLeft = 120;
-        setInterval(() => {
-            secondsLeft--;
-            if (secondsLeft <= 0) secondsLeft = 120;
-        }, 1000);
+        function showTab(tabName) {
+            const tabs = document.querySelectorAll('.tab');
+            const contents = document.querySelectorAll('.tab-content');
+            
+            tabs.forEach(tab => tab.classList.remove('active'));
+            contents.forEach(content => content.classList.remove('active'));
+            
+            event.currentTarget.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
     </script>
 </body>
 </html>`;
 }
 
-function getLegacySharedStyles(): string {
-  return `
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        min-height: 100vh;
-        padding: 20px;
-    }
-    .container { max-width: 1800px; margin: 0 auto; }
-    .header {
-        background: white;
-        padding: 30px;
-        border-radius: 15px;
-        margin-bottom: 20px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-    }
-    .header h1 { color: #333; margin-bottom: 10px; font-size: 32px; }
-    .header p { color: #666; font-size: 16px; }
-    .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 20px;
-        margin-bottom: 20px;
-    }
-    .stat-card {
-        background: white;
-        padding: 25px;
-        border-radius: 15px;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
-        transition: transform 0.2s;
-    }
-    .stat-card:hover { transform: translateY(-2px); }
-    .stat-label { color: #666; font-size: 14px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .stat-value { color: #333; font-size: 36px; font-weight: bold; }
-    .stat-change { color: #28a745; font-size: 14px; margin-top: 8px; }
-    .section {
-        background: white;
-        padding: 30px;
-        border-radius: 15px;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
-        margin-bottom: 20px;
-    }
-    .section h2 { color: #333; margin-bottom: 20px; font-size: 24px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 14px 12px; text-align: left; border-bottom: 1px solid #f0f0f0; }
-    th { 
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        font-weight: 600;
-        color: white;
-        font-size: 13px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    td { font-size: 14px; }
-    tr:hover { background: #f8f9fa; }
-    .number-col { text-align: right; font-variant-numeric: tabular-nums; }
-    .content-cell { line-height: 1.5; color: #333; }
-    .date-cell { color: #666; font-size: 13px; white-space: nowrap; }
-    .topic-tag { 
-        display: inline-block;
-        padding: 4px 10px;
-        background: #f0f0f0;
-        border-radius: 12px;
-        font-size: 12px;
-        color: #666;
-    }
-    .badge { 
-        display: inline-block;
-        padding: 5px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-        background: #e3f2fd;
-        color: #1976d2;
-    }
-    .badge-gen { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-    .badge-platinum { background: #e3f2fd; color: #1976d2; }
-    .badge-diamond { background: #f3e5f5; color: #7b1fa2; }
-    .badge-golden { background: #fff3e0; color: #f57c00; }
-    .sort-btn {
-        padding: 10px 20px;
-        background: white;
-        border: 2px solid #e0e0e0;
-        border-radius: 8px;
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 14px;
-        color: #666;
-        transition: all 0.2s;
-    }
-    .sort-btn:hover {
-        background: #f8f9fa;
-        border-color: #667eea;
-        color: #667eea;
-    }
-    .sort-btn.active {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-color: #667eea;
-        color: white;
-    }
-    .post-card {
-        background: white;
-        border: 2px solid #e0e0e0;
-        border-radius: 16px;
-        margin-bottom: 20px;
-        padding: 24px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    }
-    .post-card:hover {
-        border-color: #667eea;
-        box-shadow: 0 8px 30px rgba(102, 126, 234, 0.25);
-        transform: translateY(-4px);
-    }
-    .post-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 20px;
-    }
-    .post-preview {
-        color: #333;
-        font-size: 15px;
-        line-height: 1.6;
-        margin-top: 8px;
-    }
-    .post-stats {
-        display: flex;
-        gap: 25px;
-        min-width: 150px;
-    }
-    .post-details {
-        display: none;
-        margin-top: 20px;
-        padding-top: 20px;
-        border-top: 2px solid #f0f0f0;
-        animation: slideDown 0.3s ease;
-    }
-    .post-card.expanded .post-details {
-        display: block;
-    }
-    .post-card.expanded {
-        border-color: #667eea;
-        background: #f8f9ff;
-    }
-    .metadata-box {
-        background: white;
-        padding: 12px;
-        border-radius: 8px;
-        border: 1px solid #e0e0e0;
-    }
-    .metadata-box strong {
-        display: block;
-        margin-bottom: 6px;
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    .metadata-box div {
-        color: #333;
-        font-size: 14px;
-        line-height: 1.5;
-    }
-    @keyframes slideDown {
-        from { opacity: 0; transform: translateY(-10px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    .footer { text-align: center; color: white; margin-top: 40px; opacity: 0.9; }
-  `;
+function formatNumber(num: number): string {
+  if (!num) return '0';
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+  return num.toString();
 }
 
-function getToken(): string {
-  return typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('token') || '') : '';
+function formatTimeAgo(isoDate: string | null | undefined): string {
+  if (!isoDate) return 'N/A';
+  const date = new Date(isoDate);
+  const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+  
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
-function generateLegacyErrorHTML(error: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-    <title>Dashboard Error</title>
-    <style>
-        body { font-family: Arial; text-align: center; padding: 50px; background: #f5f5f5; }
-        .error-box { background: white; padding: 40px; border-radius: 10px; max-width: 600px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-    </style>
-</head>
-<body>
-    <div class="error-box">
-        <h1>🚨 Dashboard Error</h1>
-        <p style="color: #dc3545;">${error}</p>
-        <p><a href="/dashboard?token=xbot-admin-2025">🔄 Try Again</a></p>
-    </div>
-</body>
-</html>`;
+function categorizeError(error: string): string {
+  if (/timeout|exceeded/i.test(error)) return 'Timeout';
+  if (/session|auth/i.test(error)) return 'Authentication';
+  if (/rate.*limit/i.test(error)) return 'Rate Limit';
+  if (/network/i.test(error)) return 'Network';
+  if (/content|validation/i.test(error)) return 'Content Validation';
+  return 'Other';
 }
-
-// ============================================================
-// RECENT POSTS DATA FETCHERS (chronological, not performance)
-// ============================================================
-
-async function getRecentPostsChronological(supabase: any) {
-  const { data, error } = await supabase
-    .from('content_metadata')
-    .select('content, actual_likes, actual_retweets, actual_impressions, actual_engagement_rate, generator_name, raw_topic, topic_cluster, angle, tone, format_strategy, visual_format, posted_at, created_at, status, tweet_id')
-    .eq('decision_type', 'single')
-    .eq('status', 'posted')
-    .not('tweet_id', 'is', null) // ✅ CRITICAL: Only show posts with REAL tweet IDs
-    .order('posted_at', { ascending: false })
-    .limit(100); // Last 100 ACTUALLY POSTED tweets
-
-  if (error) {
-    console.error('[RECENT_DASHBOARD] Error fetching posts:', error);
-    return [];
-  }
-
-  if (!data || data.length === 0) {
-    console.log('[RECENT_DASHBOARD] No posted content found in content_metadata');
-    return [];
-  }
-
-  // Filter out any posts with fake/timestamp tweet IDs (just in case)
-  const realPosts = data.filter(post => {
-    const tweetId = post.tweet_id;
-    if (!tweetId) return false;
-    
-    // Real Twitter IDs are ~19 digits and start with '1'
-    // Fake timestamp IDs are 13 digits
-    if (tweetId.length < 15) return false; // Filter out timestamp IDs
-    if (!tweetId.startsWith('1')) return false; // Twitter IDs start with '1'
-    
-    return true;
-  });
-
-  console.log(`[RECENT_DASHBOARD] Found ${data.length} posted entries, ${realPosts.length} with real Twitter IDs`);
-
-  return realPosts;
-}
-
-function calculateUniquenessScore(post: any, allPosts: any[]): number {
-  if (!post.content) return 0;
-  
-  const content = post.content.toLowerCase();
-  const topic = (post.raw_topic || post.topic_cluster || '').toLowerCase();
-  const tone = (post.tone || '').toLowerCase();
-  const angle = (post.angle || '').toLowerCase();
-  
-  let uniquenessScore = 100; // Start with perfect uniqueness
-  
-  // Check content similarity with recent posts (last 20)
-  const recentPosts = allPosts.slice(0, 20);
-  for (const otherPost of recentPosts) {
-    if (otherPost.id === post.id || !otherPost.content) continue;
-    
-    const otherContent = otherPost.content.toLowerCase();
-    const similarity = calculateTextSimilarity(content, otherContent);
-    
-    if (similarity > 0.7) {
-      uniquenessScore -= 30; // High similarity penalty
-    } else if (similarity > 0.5) {
-      uniquenessScore -= 15; // Medium similarity penalty
-    } else if (similarity > 0.3) {
-      uniquenessScore -= 5; // Low similarity penalty
-    }
-  }
-  
-  // Check topic uniqueness
-  const topicCount = recentPosts.filter(p => 
-    (p.raw_topic || p.topic_cluster || '').toLowerCase() === topic
-  ).length;
-  if (topicCount > 3) {
-    uniquenessScore -= 20; // Topic overuse penalty
-  }
-  
-  // Check tone uniqueness
-  const toneCount = recentPosts.filter(p => 
-    (p.tone || '').toLowerCase() === tone
-  ).length;
-  if (toneCount > 5) {
-    uniquenessScore -= 15; // Tone overuse penalty
-  }
-  
-  // Check angle uniqueness
-  const angleCount = recentPosts.filter(p => 
-    (p.angle || '').toLowerCase() === angle
-  ).length;
-  if (angleCount > 4) {
-    uniquenessScore -= 10; // Angle overuse penalty
-  }
-  
-  return Math.max(0, Math.min(100, uniquenessScore));
-}
-
-function calculateTextSimilarity(text1: string, text2: string): number {
-  if (!text1 || !text2) return 0;
-  
-  // Simple word-based similarity
-  const words1 = text1.split(/\s+/).filter(w => w.length > 3);
-  const words2 = text2.split(/\s+/).filter(w => w.length > 3);
-  
-  if (words1.length === 0 || words2.length === 0) return 0;
-  
-  const set1 = new Set(words1);
-  const set2 = new Set(words2);
-  
-  const intersection = new Set([...set1].filter(x => set2.has(x)));
-  const union = new Set([...set1, ...set2]);
-  
-  return intersection.size / union.size;
-}
-
-async function getRecentGeneratorDistribution(supabase: any) {
-  const last7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  
-  const { data } = await supabase
-    .from('content_metadata')
-    .select('generator_name')
-    .eq('decision_type', 'single')
-    .gte('created_at', last7d);
-
-  if (!data || data.length === 0) return [];
-
-  const counts = data.reduce((acc: any, post: any) => {
-    const gen = post.generator_name || 'unknown';
-    acc[gen] = (acc[gen] || 0) + 1;
-    return acc;
-  }, {});
-
-  return Object.entries(counts)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a: any, b: any) => b.count - a.count);
-}
-
-async function getRecentTopicDistribution(supabase: any) {
-  const last7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  
-  const { data } = await supabase
-    .from('content_metadata')
-    .select('raw_topic, topic_cluster')
-    .eq('decision_type', 'single')
-    .gte('created_at', last7d);
-
-  if (!data || data.length === 0) return [];
-
-  const counts = data.reduce((acc: any, post: any) => {
-    let topic = post.raw_topic || post.topic_cluster || 'Uncategorized';
-    if (topic.length > 50) topic = topic.substring(0, 50) + '...';
-    acc[topic] = (acc[topic] || 0) + 1;
-    return acc;
-  }, {});
-
-  return Object.entries(counts)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a: any, b: any) => b.count - a.count)
-    .slice(0, 15); // Top 15 topics
-}
-
-function generateRecentHTML(data: any): string {
-  const now = new Date().toLocaleString();
-  
-  return `<!DOCTYPE html>
-<html>
-<head>
-    <title>xBOT Recent Posts</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        ${getSharedStyles()}
-        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-        .nav-tab { 
-            padding: 12px 24px; 
-            background: white; 
-            border-radius: 8px; 
-            text-decoration: none; 
-            color: #333;
-            font-weight: 600;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .nav-tab.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-        .nav-tab:hover { background: #5568d3; color: white; }
-        .simple-card {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .post-content {
-            font-size: 15px;
-            line-height: 1.6;
-            color: #333;
-            margin-bottom: 15px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #f0f0f0;
-        }
-        .meta-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 10px;
-        }
-        .meta-item {
-            padding: 8px 12px;
-            background: #f8f9fa;
-            border-radius: 6px;
-        }
-        .meta-label {
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: #666;
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-        .meta-value {
-            color: #333;
-            font-size: 13px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>📅 Recent Posts</h1>
-            <p>Your Twitter posts with topic, tone, angle, structure, visual format & generator</p>
-        </div>
-
-        ${generateNavigation('/dashboard/recent')}
-
-        <div class="stats-grid" style="margin-bottom: 30px;">
-            <div class="stat-card">
-                <div class="stat-label">Total Posts</div>
-                <div class="stat-value">${data.recentPosts.length}</div>
-                <div class="stat-change">📝 Showing recent content</div>
-            </div>
-        </div>
-
-        <div style="background: transparent; padding: 0;">
-            ${data.recentPosts.map((post: any) => {
-                const structure = post.format_strategy || 'N/A';
-                const visualFormat = post.visual_format || 'N/A';
-                const topic = post.raw_topic || post.topic_cluster || 'N/A';
-                const posted = post.posted_at ? new Date(post.posted_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A';
-                
-                return `
-                <div class="simple-card">
-                    <div class="post-content">${post.content || 'No content available'}</div>
-                    
-                    <div class="meta-grid">
-                        <div class="meta-item">
-                            <div class="meta-label">🎯 Topic</div>
-                            <div class="meta-value">${topic}</div>
-                        </div>
-                        <div class="meta-item">
-                            <div class="meta-label">📐 Angle</div>
-                            <div class="meta-value">${post.angle || 'N/A'}</div>
-                        </div>
-                        <div class="meta-item">
-                            <div class="meta-label">🎨 Structure</div>
-                            <div class="meta-value">${structure}</div>
-                        </div>
-                        <div class="meta-item">
-                            <div class="meta-label">🎭 Tone</div>
-                            <div class="meta-value">${post.tone || 'N/A'}</div>
-                        </div>
-                        <div class="meta-item">
-                            <div class="meta-label">📱 Visual Format</div>
-                            <div class="meta-value">${visualFormat}</div>
-                        </div>
-                        <div class="meta-item">
-                            <div class="meta-label">🤖 Generator</div>
-                            <div class="meta-value">${post.generator_name || 'N/A'}</div>
-                        </div>
-                        <div class="meta-item">
-                            <div class="meta-label">📅 Posted</div>
-                            <div class="meta-value">${posted}</div>
-                        </div>
-                    </div>
-                </div>
-                `;
-            }).join('')}
-        </div>
-
-        <div class="footer">
-            <p>🤖 Last updated: ${now}</p>
-            <p>⚡ Showing all recent posts</p>
-        </div>
-    </div>
-    <script>setTimeout(() => location.reload(), 120000);</script>
-</body>
-</html>`;
-}
-
-/**
- * 🧠 TEMPORAL INTELLIGENCE DASHBOARD
- */
-export async function generateTemporalDashboard(): Promise<string> {
-  const { buildSystemIntelligence } = await import('../analytics/intelligenceBuilder');
-  
-  try {
-    const intelligence = await buildSystemIntelligence();
-    
-    return generateTemporalHTML(intelligence);
-  } catch (error: any) {
-    console.error('[TEMPORAL_DASHBOARD] Error:', error.message);
-    return generateErrorHTML(error.message);
-  }
-}
-
-/**
- * 🔬 FACTOR ANALYSIS DASHBOARD
- */
-export async function generateFactorAnalysisDashboard(): Promise<string> {
-  const { getVarianceAnalyzer } = await import('../analytics/varianceAnalyzer');
-  
-  try {
-    const variance = getVarianceAnalyzer();
-    
-    const [factorImportance, visualAggregates, toneAggregates, synergies] = await Promise.all([
-      variance.calculateFactorImportance(),
-      variance.analyzeFactorAggregates('visual_format'),
-      variance.analyzeFactorAggregates('tone'),
-      variance.findSynergies(5)
-    ]);
-    
-    return generateFactorHTML({ factorImportance, visualAggregates, toneAggregates, synergies });
-  } catch (error: any) {
-    console.error('[FACTOR_DASHBOARD] Error:', error.message);
-    return generateErrorHTML(error.message);
-  }
-}
-
-/**
- * Generate follower growth dashboard
- */
-export async function generateFollowerGrowthDashboard(): Promise<string> {
-  const supabase = getSupabaseClient();
-  
-  try {
-    // Get follower snapshots for the last 30 days
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    
-    const { data: snapshots } = await supabase
-      .from('follower_snapshots')
-      .select('*')
-      .gte('timestamp', thirtyDaysAgo.toISOString())
-      .order('timestamp', { ascending: true });
-    
-    // Get top posts by follower gain
-    const { data: topPosts } = await supabase
-      .from('post_follower_tracking')
-      .select('post_id, tweet_id, follower_count, hours_after_post, collection_phase')
-      .order('follower_count', { ascending: false })
-      .limit(20);
-    
-    // Calculate daily growth stats
-    const dailyGrowth = calculateDailyGrowth(snapshots || []);
-    const currentFollowers = snapshots && snapshots.length > 0 ? Number(snapshots[snapshots.length - 1].follower_count) : 0;
-    const startFollowers = snapshots && snapshots.length > 0 ? Number(snapshots[0].follower_count) : 0;
-    const totalGrowth = currentFollowers - startFollowers;
-    const avgDailyGrowth = snapshots && snapshots.length > 1 ? totalGrowth / 30 : 0;
-    
-    return generateFollowerGrowthHTML({
-      snapshots: snapshots || [],
-      topPosts: topPosts || [],
-      dailyGrowth,
-      currentFollowers,
-      totalGrowth,
-      avgDailyGrowth
-    });
-    
-  } catch (error: any) {
-    console.error('[FOLLOWER_DASHBOARD] Error:', error.message);
-    return generateErrorHTML(error.message);
-  }
-}
-
-function calculateDailyGrowth(snapshots: any[]): any[] {
-  if (snapshots.length < 2) return [];
-  
-  const dailyMap = new Map<string, number>();
-  
-  for (let i = 1; i < snapshots.length; i++) {
-    const date = new Date(String(snapshots[i].timestamp)).toISOString().split('T')[0];
-    const growth = snapshots[i].follower_count - snapshots[i - 1].follower_count;
-    
-    if (dailyMap.has(date)) {
-      dailyMap.set(date, (dailyMap.get(date) || 0) + growth);
-    } else {
-      dailyMap.set(date, growth);
-    }
-  }
-  
-  return Array.from(dailyMap.entries()).map(([date, growth]) => ({ date, growth }));
-}
-
-/**
- * Generate temporal intelligence HTML
- */
-function generateTemporalHTML(intelligence: any): string {
-  const now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-  
-  const { accountHealth, momentum, recommendations, readiness } = intelligence;
-  
-  const statusEmoji = accountHealth.trend === 'GROWING' ? '🚀' : accountHealth.trend === 'DECLINING' ? '📉' : '➖';
-  
-  return `<!DOCTYPE html>
-<html>
-<head>
-    <title>🧠 Temporal Intelligence | xBOT</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 20px; background: #0a0a0a; color: #e0e0e0; }
-        .container { max-width: 1400px; margin: 0 auto; }
-        h1 { color: #00d9ff; margin-bottom: 5px; }
-        .subtitle { color: #888; margin-bottom: 30px; }
-        .section { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
-        .section-title { color: #00d9ff; font-size: 20px; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        .stat-card { background: #252525; border: 1px solid #444; border-radius: 6px; padding: 15px; }
-        .stat-label { color: #888; font-size: 12px; text-transform: uppercase; margin-bottom: 5px; }
-        .stat-value { color: #00d9ff; font-size: 24px; font-weight: bold; }
-        .stat-change { font-size: 14px; margin-top: 5px; }
-        .positive { color: #00ff88; }
-        .negative { color: #ff4444; }
-        .neutral { color: #888; }
-        .momentum-item { background: #252525; border-left: 4px solid; padding: 12px; margin-bottom: 10px; border-radius: 4px; }
-        .rising { border-left-color: #00ff88; }
-        .declining { border-left-color: #ff4444; }
-        .stable { border-left-color: #888; }
-        .momentum-header { font-weight: bold; margin-bottom: 5px; }
-        .momentum-stats { font-size: 14px; color: #aaa; }
-        .recommendation { background: #1e3a5f; border-left: 4px solid #00d9ff; padding: 12px; margin-bottom: 10px; border-radius: 4px; }
-        .readiness { padding: 15px; background: #1a3a1a; border: 2px solid #00ff88; border-radius: 8px; margin-bottom: 20px; }
-        .readiness.warning { background: #3a2a1a; border-color: #ffaa00; }
-        .readiness.danger { background: #3a1a1a; border-color: #ff4444; }
-        .nav { margin-bottom: 20px; }
-        .nav a { color: #00d9ff; text-decoration: none; margin-right: 20px; }
-        .nav a:hover { text-decoration: underline; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>${statusEmoji} Temporal Intelligence Dashboard</h1>
-        <div class="subtitle">Tracking trends and momentum over time</div>
-        
-        <div class="nav">
-            <a href="/dashboard/posts">📊 Posts</a>
-            <a href="/dashboard/replies">💬 Replies</a>
-            <a href="/dashboard/recent">🕐 Recent</a>
-            <a href="/dashboard/temporal">📈 Temporal (current)</a>
-            <a href="/dashboard/factors">🔬 Factors</a>
-        </div>
-
-        <div class="readiness ${readiness.status === 'READY_FOR_OPTIMIZATION' ? '' : readiness.status === 'PATTERNS_EMERGING' ? 'warning' : 'danger'}">
-            <strong>📊 Sample Size: ${readiness.totalPosts} posts</strong><br>
-            Status: ${readiness.status.replace(/_/g, ' ')}<br>
-            Confidence: ${readiness.confidence}<br>
-            ${readiness.recommendation}
-        </div>
-
-        <div class="section">
-            <div class="section-title">📈 Overall Account Growth</div>
-            <div class="stat-grid">
-                <div class="stat-card">
-                    <div class="stat-label">Total Posts</div>
-                    <div class="stat-value">${accountHealth.totalPosts}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Current Avg Views</div>
-                    <div class="stat-value">${accountHealth.currentAvgViews.toFixed(0)}</div>
-                    <div class="stat-change ${accountHealth.weekOverWeekGrowth > 0 ? 'positive' : accountHealth.weekOverWeekGrowth < 0 ? 'negative' : 'neutral'}">
-                        ${accountHealth.weekOverWeekGrowth > 0 ? '+' : ''}${accountHealth.weekOverWeekGrowth.toFixed(1)}% vs last week
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Trend</div>
-                    <div class="stat-value">${accountHealth.trend}</div>
-                    <div class="stat-change">${accountHealth.status.replace(/_/g, ' ')}</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="section">
-            <div class="section-title">🚀 Rising Patterns (Gaining Traction)</div>
-            ${momentum.visualFormats.rising.length === 0 && momentum.tones.rising.length === 0 && momentum.generators.rising.length === 0 
-              ? '<p style="color: #888;">No clear rising patterns yet - need more data</p>'
-              : ''}
-            
-            ${momentum.visualFormats.rising.map((m: any) => `
-                <div class="momentum-item rising">
-                    <div class="momentum-header">📱 ${m.value} (Visual Format)</div>
-                    <div class="momentum-stats">
-                        Growth: <span class="positive">+${m.growth.toFixed(0)}%</span> | 
-                        Status: ${m.status} | 
-                        Uses: ${m.uses} posts |
-                        Trend: ${m.weeklyAvg.map((v: number) => v.toFixed(0)).join(' → ')}
-                    </div>
-                </div>
-            `).join('')}
-            
-            ${momentum.tones.rising.map((m: any) => `
-                <div class="momentum-item rising">
-                    <div class="momentum-header">🎤 ${m.value} (Tone)</div>
-                    <div class="momentum-stats">
-                        Growth: <span class="positive">+${m.growth.toFixed(0)}%</span> | 
-                        Status: ${m.status} | 
-                        Uses: ${m.uses} posts |
-                        Trend: ${m.weeklyAvg.map((v: number) => v.toFixed(0)).join(' → ')}
-                    </div>
-                </div>
-            `).join('')}
-            
-            ${momentum.generators.rising.map((m: any) => `
-                <div class="momentum-item rising">
-                    <div class="momentum-header">🎭 ${m.value} (Generator)</div>
-                    <div class="momentum-stats">
-                        Growth: <span class="positive">+${m.growth.toFixed(0)}%</span> | 
-                        Status: ${m.status} | 
-                        Uses: ${m.uses} posts |
-                        Trend: ${m.weeklyAvg.map((v: number) => v.toFixed(0)).join(' → ')}
-                    </div>
-                </div>
-            `).join('')}
-        </div>
-
-        <div class="section">
-            <div class="section-title">📉 Declining Patterns (Losing Effectiveness)</div>
-            ${momentum.visualFormats.declining.length === 0 && momentum.tones.declining.length === 0 && momentum.generators.declining.length === 0
-              ? '<p style="color: #888;">No clear declining patterns detected</p>'
-              : ''}
-            
-            ${momentum.visualFormats.declining.map((m: any) => `
-                <div class="momentum-item declining">
-                    <div class="momentum-header">📱 ${m.value} (Visual Format)</div>
-                    <div class="momentum-stats">
-                        Decline: <span class="negative">${m.growth.toFixed(0)}%</span> | 
-                        Status: ${m.status} | 
-                        Uses: ${m.uses} posts |
-                        Trend: ${m.weeklyAvg.map((v: number) => v.toFixed(0)).join(' → ')}
-                    </div>
-                </div>
-            `).join('')}
-            
-            ${momentum.tones.declining.map((m: any) => `
-                <div class="momentum-item declining">
-                    <div class="momentum-header">🎤 ${m.value} (Tone)</div>
-                    <div class="momentum-stats">
-                        Decline: <span class="negative">${m.growth.toFixed(0)}%</span> | 
-                        Status: ${m.status} | 
-                        Uses: ${m.uses} posts |
-                        Trend: ${m.weeklyAvg.map((v: number) => v.toFixed(0)).join(' → ')}
-                    </div>
-                </div>
-            `).join('')}
-            
-            ${momentum.generators.declining.map((m: any) => `
-                <div class="momentum-item declining">
-                    <div class="momentum-header">🎭 ${m.value} (Generator)</div>
-                    <div class="momentum-stats">
-                        Decline: <span class="negative">${m.growth.toFixed(0)}%</span> | 
-                        Status: ${m.status} | 
-                        Uses: ${m.uses} posts |
-                        Trend: ${m.weeklyAvg.map((v: number) => v.toFixed(0)).join(' → ')}
-                    </div>
-                </div>
-            `).join('')}
-        </div>
-
-        <div class="section">
-            <div class="section-title">💡 Strategic Recommendations</div>
-            ${recommendations.map((rec: string) => `
-                <div class="recommendation">${rec}</div>
-            `).join('')}
-        </div>
-
-        <div class="footer">
-            <p>🤖 Generated: ${now}</p>
-            <p>⚡ Intelligence built from ${accountHealth.totalPosts} posts</p>
-        </div>
-    </div>
-    <script>setTimeout(() => location.reload(), 300000);</script>
-</body>
-</html>`;
-}
-
-/**
- * Generate factor analysis HTML
- */
-function generateFactorHTML(data: any): string {
-  const now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-  
-  return `<!DOCTYPE html>
-<html>
-<head>
-    <title>🔬 Factor Analysis | xBOT</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 20px; background: #0a0a0a; color: #e0e0e0; }
-        .container { max-width: 1400px; margin: 0 auto; }
-        h1 { color: #00d9ff; margin-bottom: 5px; }
-        .subtitle { color: #888; margin-bottom: 30px; }
-        .section { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
-        .section-title { color: #00d9ff; font-size: 20px; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-        .factor-item { background: #252525; padding: 15px; margin-bottom: 12px; border-radius: 6px; border-left: 4px solid #00d9ff; }
-        .factor-header { font-size: 18px; font-weight: bold; margin-bottom: 8px; }
-        .factor-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; font-size: 14px; color: #aaa; margin-top: 10px; }
-        .stat-item { background: #1a1a1a; padding: 8px; border-radius: 4px; }
-        .nav { margin-bottom: 20px; }
-        .nav a { color: #00d9ff; text-decoration: none; margin-right: 20px; }
-        .nav a:hover { text-decoration: underline; }
-        .importance-bar { height: 30px; background: linear-gradient(90deg, #00ff88, #00d9ff, #0088ff, #888); border-radius: 4px; margin: 10px 0; position: relative; }
-        .importance-label { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #000; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🔬 Factor Analysis Dashboard</h1>
-        <div class="subtitle">What actually matters for performance</div>
-        
-        <div class="nav">
-            <a href="/dashboard/posts">📊 Posts</a>
-            <a href="/dashboard/replies">💬 Replies</a>
-            <a href="/dashboard/recent">🕐 Recent</a>
-            <a href="/dashboard/temporal">📈 Temporal</a>
-            <a href="/dashboard/factors">🔬 Factors (current)</a>
-        </div>
-
-        <div class="section">
-            <div class="section-title">🎯 Factor Importance (What Matters Most)</div>
-            ${data.factorImportance.map((f: any, i: number) => {
-                const width = f.percentExplained;
-                const stars = '⭐'.repeat(f.impact === 'HIGH' ? 5 : f.impact === 'MEDIUM' ? 3 : 1);
-                return `
-                    <div style="margin-bottom: 15px;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                            <span><strong>${i + 1}. ${f.factor}</strong> ${stars}</span>
-                            <span>${f.percentExplained.toFixed(0)}% variance explained</span>
-                        </div>
-                        <div style="height: 25px; background: #252525; border-radius: 4px; overflow: hidden;">
-                            <div style="height: 100%; width: ${width}%; background: linear-gradient(90deg, #00ff88, #00d9ff); display: flex; align-items: center; padding-left: 10px; color: #000; font-weight: bold; font-size: 12px;">
-                                ${f.impact} IMPACT
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('')}
-            
-            <p style="color: #888; margin-top: 20px; font-size: 14px;">
-                💡 The top factor explains the most performance variance. Focus optimization efforts here.
-            </p>
-        </div>
-
-        <div class="section">
-            <div class="section-title">📱 Visual Format Aggregates (Performance Across All Combinations)</div>
-            ${data.visualAggregates.slice(0, 10).map((agg: any) => `
-                <div class="factor-item">
-                    <div class="factor-header">${agg.value}</div>
-                    <div class="factor-stats">
-                        <div class="stat-item">
-                            <strong>${agg.avgViews.toFixed(0)}</strong> avg views
-                        </div>
-                        <div class="stat-item">
-                            <strong>${agg.avgLikes.toFixed(1)}</strong> avg likes
-                        </div>
-                        <div class="stat-item">
-                            <strong>${agg.uses}</strong> uses
-                        </div>
-                        <div class="stat-item">
-                            Tested with <strong>${agg.topicsDiversity}</strong> topics
-                        </div>
-                        <div class="stat-item">
-                            Tested with <strong>${agg.tonesDiversity}</strong> tones
-                        </div>
-                        <div class="stat-item">
-                            Reliability: <strong>${agg.reliability}</strong>
-                        </div>
-                    </div>
-                </div>
-            `).join('')}
-        </div>
-
-        <div class="section">
-            <div class="section-title">🎤 Tone Aggregates</div>
-            ${data.toneAggregates.slice(0, 10).map((agg: any) => `
-                <div class="factor-item">
-                    <div class="factor-header">${agg.value}</div>
-                    <div class="factor-stats">
-                        <div class="stat-item">
-                            <strong>${agg.avgViews.toFixed(0)}</strong> avg views
-                        </div>
-                        <div class="stat-item">
-                            <strong>${agg.avgLikes.toFixed(1)}</strong> avg likes
-                        </div>
-                        <div class="stat-item">
-                            <strong>${agg.uses}</strong> uses
-                        </div>
-                        <div class="stat-item">
-                            Tested with <strong>${agg.topicsDiversity}</strong> topics
-                        </div>
-                        <div class="stat-item">
-                            Tested with <strong>${agg.formatsDiversity}</strong> formats
-                        </div>
-                        <div class="stat-item">
-                            Reliability: <strong>${agg.reliability}</strong>
-                        </div>
-                    </div>
-                </div>
-            `).join('')}
-        </div>
-
-        <div class="section">
-            <div class="section-title">🔗 Top Synergies (What Works Together)</div>
-            ${data.synergies.slice(0, 10).map((syn: any) => `
-                <div class="factor-item">
-                    <div class="factor-header">${syn.combo}</div>
-                    <div class="factor-stats">
-                        <div class="stat-item">
-                            <strong>${syn.multiplier.toFixed(2)}x</strong> multiplier
-                        </div>
-                        <div class="stat-item">
-                            <strong>${syn.avgViews.toFixed(0)}</strong> avg views
-                        </div>
-                        <div class="stat-item">
-                            <strong>${syn.uses}</strong> uses
-                        </div>
-                        <div class="stat-item">
-                            Confidence: <strong>${syn.confidence}</strong>
-                        </div>
-                    </div>
-                </div>
-            `).join('')}
-        </div>
-
-        <div class="footer">
-            <p>🤖 Generated: ${now}</p>
-        </div>
-    </div>
-    <script>setTimeout(() => location.reload(), 300000);</script>
-</body>
-</html>`;
-}
-
-/**
- * Generate follower growth HTML
- */
-function generateFollowerGrowthHTML(data: any): string {
-  const now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-  
-  return `<!DOCTYPE html>
-<html>
-<head>
-    <title>📈 Follower Growth | xBOT</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="refresh" content="300">
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 20px; background: #0a0a0a; color: #e0e0e0; }
-        .container { max-width: 1400px; margin: 0 auto; }
-        h1 { color: #00d9ff; margin-bottom: 5px; }
-        .subtitle { color: #888; margin-bottom: 30px; }
-        .nav-tabs { display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-        .nav-tab { color: #888; text-decoration: none; padding: 8px 16px; border-radius: 4px 4px 0 0; transition: all 0.2s; }
-        .nav-tab:hover { color: #00d9ff; background: #1a1a1a; }
-        .nav-tab.active { color: #00d9ff; background: #1a1a1a; border-bottom: 2px solid #00d9ff; }
-        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        .stat-card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; }
-        .stat-label { color: #888; font-size: 14px; margin-bottom: 5px; }
-        .stat-value { color: #00d9ff; font-size: 32px; font-weight: bold; }
-        .stat-change { font-size: 16px; margin-top: 5px; }
-        .positive { color: #00ff88; }
-        .negative { color: #ff4444; }
-        .section { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
-        .section-title { color: #00d9ff; font-size: 20px; margin-bottom: 15px; }
-        .chart-placeholder { background: #252525; border: 2px dashed #444; border-radius: 8px; padding: 40px; text-align: center; color: #666; }
-        .footer { text-align: center; color: #666; margin-top: 40px; font-size: 12px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>📈 Follower Growth Tracking</h1>
-        <p class="subtitle">Track how your content grows your audience over time</p>
-
-        <div class="nav-tabs">
-            <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
-            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Metrics</a>
-            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
-            <a href="/dashboard/temporal?token=xbot-admin-2025" class="nav-tab">⏱️ Temporal</a>
-            <a href="/dashboard/factors?token=xbot-admin-2025" class="nav-tab">🔬 Factors</a>
-            <a href="/dashboard/followers?token=xbot-admin-2025" class="nav-tab active">📈 Followers</a>
-        </div>
-
-        <div class="stat-grid">
-            <div class="stat-card">
-                <div class="stat-label">Current Followers</div>
-                <div class="stat-value">${data.currentFollowers.toLocaleString()}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">30-Day Growth</div>
-                <div class="stat-value ${data.totalGrowth >= 0 ? 'positive' : 'negative'}">
-                    ${data.totalGrowth >= 0 ? '+' : ''}${data.totalGrowth}
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Avg Daily Growth</div>
-                <div class="stat-value">${data.avgDailyGrowth >= 0 ? '+' : ''}${data.avgDailyGrowth.toFixed(1)}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Data Points</div>
-                <div class="stat-value">${data.snapshots.length}</div>
-            </div>
-        </div>
-
-        <div class="section">
-            <div class="section-title">📊 Growth Timeline</div>
-            ${data.snapshots.length === 0 ? 
-              '<div class="chart-placeholder">⏳ Collecting follower data... Check back in 30 minutes!</div>' :
-              `<div class="chart-placeholder">📈 ${data.snapshots.length} snapshots collected<br>Chart visualization coming soon!</div>`
-            }
-        </div>
-
-        <div class="section">
-            <div class="section-title">🎯 How This Helps</div>
-            <ul style="color: #ccc; line-height: 1.8;">
-                <li><strong>Attribution:</strong> See which posts actually drive follower growth</li>
-                <li><strong>Learning:</strong> Your AI learns what content converts viewers → followers</li>
-                <li><strong>Momentum:</strong> Track growth velocity week-over-week</li>
-                <li><strong>Optimization:</strong> Double down on what works, cut what doesn't</li>
-            </ul>
-        </div>
-
-        <div class="footer">
-            <p>🤖 Last updated: ${now}</p>
-            <p>⚡ Follower snapshots collected every 30 minutes</p>
-            <p>📊 Data retention: 30 days rolling window</p>
-        </div>
-    </div>
-</body>
-</html>`;
-}
-
-/**
- * Generate Visual Intelligence dashboard
- */
-export async function generateVisualIntelligenceDashboard(): Promise<string> {
-  const supabase = getSupabaseClient();
-  
-  try {
-    // Get VI system data
-    const [
-      viStats,
-      recentTweets,
-      topPatterns,
-      tierBreakdown
-    ] = await Promise.all([
-      getVISystemStats(supabase),
-      getRecentCollectedTweets(supabase),
-      getTopFormattingPatterns(supabase),
-      getVITierBreakdown(supabase)
-    ]);
-
-    return generateVisualIntelligenceHTML({
-      viStats,
-      recentTweets,
-      topPatterns,
-      tierBreakdown
-    });
-
-  } catch (error: any) {
-    console.error('[VI_DASHBOARD] Error:', error.message);
-    return generateErrorHTML(error.message);
-  }
-}
-
-async function getVISystemStats(supabase: any) {
-  const [targets, tweets, classified, analyzed, patterns, viralUnknowns] = await Promise.all([
-    supabase.from('vi_scrape_targets').select('*', { count: 'exact', head: true }),
-    supabase.from('vi_collected_tweets').select('*', { count: 'exact', head: true }),
-    supabase.from('vi_content_classification').select('*', { count: 'exact', head: true }),
-    supabase.from('vi_visual_formatting').select('*', { count: 'exact', head: true }),
-    supabase.from('vi_format_intelligence').select('*', { count: 'exact', head: true }),
-    supabase.from('vi_viral_unknowns').select('*', { count: 'exact', head: true })
-  ]);
-
-  return {
-    targets: targets.count || 0,
-    tweets: tweets.count || 0,
-    classified: classified.count || 0,
-    analyzed: analyzed.count || 0,
-    patterns: patterns.count || 0,
-    viralUnknowns: viralUnknowns.count || 0
-  };
-}
-
-async function getRecentCollectedTweets(supabase: any) {
-  const { data } = await supabase
-    .from('vi_collected_tweets')
-    .select('tweet_id, author_username, content, tier, tier_weight, author_followers, engagement_rate, views, likes, retweets, replies, bookmarks, quotes, is_viral, viral_multiplier, scraped_at, posted_at, is_thread, thread_length')
-    .order('scraped_at', { ascending: false })
-    .limit(50);
-
-  return data || [];
-}
-
-async function getTopFormattingPatterns(supabase: any) {
-  const { data } = await supabase
-    .from('vi_format_intelligence')
-    .select('topic, angle, tone, structure, confidence_level, based_on_count, weighted_avg_engagement, primary_tier')
-    .order('based_on_count', { ascending: false })
-    .limit(10);
-
-  return data || [];
-}
-
-async function getVITierBreakdown(supabase: any) {
-  const { data } = await supabase
-    .from('vi_collected_tweets')
-    .select('tier');
-
-  if (!data || data.length === 0) return [];
-
-  const byTier = data.reduce((acc: any, tweet: any) => {
-    const tier = tweet.tier || 'unknown';
-    acc[tier] = (acc[tier] || 0) + 1;
-    return acc;
-  }, {});
-
-  return Object.entries(byTier).map(([tier, count]) => ({ tier, count }));
-}
-
-function generateVisualIntelligenceHTML(data: any): string {
-  const now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-  
-  const progressPercent = data.viStats.tweets > 0 
-    ? Math.round((data.viStats.classified / data.viStats.tweets) * 100)
-    : 0;
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-    <title>🎨 Visual Formatting Intelligence | xBOT</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="refresh" content="60">
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 20px; background: #f5f5f5; color: #333; }
-        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        h1 { color: #333; margin-bottom: 5px; font-size: 32px; }
-        .subtitle { color: #666; margin-bottom: 30px; font-size: 14px; }
-        .nav-tabs { display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 1px solid #e0e0e0; padding-bottom: 10px; flex-wrap: wrap; }
-        .nav-tab { color: #666; text-decoration: none; padding: 10px 20px; border-radius: 6px; transition: all 0.2s; font-weight: 500; }
-        .nav-tab:hover { color: #333; background: #f0f0f0; }
-        .nav-tab.active { color: white; background: #4A90E2; }
-        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        .stat-card { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .stat-label { color: #666; font-size: 13px; margin-bottom: 8px; font-weight: 500; }
-        .stat-value { color: #4A90E2; font-size: 32px; font-weight: bold; }
-        .stat-sublabel { color: #999; font-size: 12px; margin-top: 5px; }
-        .section { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .section-title { color: #333; font-size: 18px; margin-bottom: 15px; font-weight: 600; }
-        .progress-bar { background: #e0e0e0; border-radius: 8px; height: 30px; overflow: hidden; margin: 10px 0; }
-        .progress-fill { background: linear-gradient(90deg, #4A90E2, #50C878); height: 100%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
-        .tweet-card { background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
-        .tweet-meta { color: #666; font-size: 12px; margin-bottom: 8px; }
-        .tweet-content { color: #333; line-height: 1.5; margin-bottom: 8px; }
-        .tweet-stats { display: flex; gap: 15px; font-size: 12px; color: #999; }
-        .pattern-card { background: #f8f9fa; border-left: 4px solid #4A90E2; padding: 15px; margin-bottom: 10px; border-radius: 4px; }
-        .pattern-title { color: #333; font-weight: bold; margin-bottom: 5px; }
-        .pattern-meta { color: #666; font-size: 12px; }
-        .tier-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
-        .tier-viral { background: #E91E63; color: #fff; }
-        .tier-micro { background: #50C878; color: #fff; }
-        .tier-growth { background: #4A90E2; color: #fff; }
-        .tier-established { background: #9E9E9E; color: #fff; }
-        .confidence-high { color: #50C878; font-weight: 600; }
-        .confidence-medium { color: #FF9800; font-weight: 600; }
-        .confidence-low { color: #F44336; font-weight: 600; }
-        .footer { text-align: center; color: #999; margin-top: 40px; font-size: 12px; }
-        .empty-state { background: #fafafa; border: 2px dashed #ddd; border-radius: 8px; padding: 40px; text-align: center; color: #999; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🎨 Visual Formatting Intelligence</h1>
-        <p class="subtitle">Learning what works from ${data.viStats.targets} health accounts</p>
-
-        <div class="nav-tabs">
-            <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
-            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Posts</a>
-            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
-            <a href="/dashboard/formatting?token=xbot-admin-2025" class="nav-tab active">🎨 Formatting</a>
-            <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab">🔧 System Health</a>
-        </div>
-
-        <div class="stat-grid">
-            <div class="stat-card">
-                <div class="stat-label">Monitored Accounts</div>
-                <div class="stat-value">${data.viStats.targets}</div>
-                <div class="stat-sublabel">100 seed + auto-discovered</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Tweets Collected</div>
-                <div class="stat-value">${data.viStats.tweets.toLocaleString()}</div>
-                <div class="stat-sublabel">Raw formatting data</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Classified & Analyzed</div>
-                <div class="stat-value">${data.viStats.classified.toLocaleString()}</div>
-                <div class="stat-sublabel">${progressPercent}% processed</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Patterns Learned</div>
-                <div class="stat-value">${data.viStats.patterns}</div>
-                <div class="stat-sublabel">Ready for use</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Viral Unknowns</div>
-                <div class="stat-value">${data.viStats.viralUnknowns}</div>
-                <div class="stat-sublabel">Small accounts gone viral</div>
-            </div>
-        </div>
-
-        <div class="section">
-            <div class="section-title">📊 Processing Progress</div>
-            <div class="progress-bar">
-                <div class="progress-fill" style="width: ${progressPercent}%">${progressPercent}%</div>
-            </div>
-            <p style="color: #888; font-size: 14px; margin-top: 10px;">
-                ${data.viStats.tweets - data.viStats.classified} tweets waiting to be analyzed
-            </p>
-        </div>
-
-        <div class="section">
-            <div class="section-title">🏆 Top Formatting Patterns (${data.topPatterns.length})</div>
-            ${data.topPatterns.length === 0 ? 
-              '<div class="empty-state">⏳ Building patterns... Need 50+ classified tweets to generate first pattern.</div>' :
-              data.topPatterns.map((p: any) => `
-                <div class="pattern-card">
-                    <div class="pattern-title">
-                        ${p.topic} ${p.angle ? `• ${p.angle}` : ''} ${p.tone ? `• ${p.tone}` : ''} ${p.structure ? `• ${p.structure}` : ''}
-                    </div>
-                    <div class="pattern-meta">
-                        <span class="tier-badge tier-${p.primary_tier || 'growth'}">${p.primary_tier || 'unknown'}</span>
-                        Based on <strong>${p.based_on_count}</strong> tweets
-                        • Avg ER: <strong>${((p.weighted_avg_engagement || 0) * 100).toFixed(2)}%</strong>
-                        • Confidence: <span class="confidence-${p.confidence_level}">${p.confidence_level}</span>
-                    </div>
-                </div>
-              `).join('')
-            }
-        </div>
-
-        <div class="section">
-            <div class="section-title">📱 Recently Collected Tweets (${data.recentTweets.length}) - All Engagement Data</div>
-            ${data.recentTweets.length === 0 ?
-              '<div class="empty-state">⏳ First scraping will happen in ~4 hours after deployment.<br>Check back soon!</div>' :
-              data.recentTweets.map((t: any) => `
-                <div class="tweet-card">
-                    <div class="tweet-meta">
-                        <strong>@${t.author_username}</strong>
-                        <span class="tier-badge tier-${t.tier}">${t.tier}</span>
-                        • ${new Date(t.scraped_at).toLocaleString()}
-                        ${t.is_viral ? '• 🔥 VIRAL' : ''}
-                        ${t.is_thread ? `• 🧵 Thread (${t.thread_length || 1})` : ''}
-                    </div>
-                    <div class="tweet-content">${t.content.substring(0, 280)}${t.content.length > 280 ? '...' : ''}</div>
-                    <div class="tweet-stats">
-                        <span>👁️ ${(t.views || 0).toLocaleString()} views</span>
-                        <span>❤️ ${(t.likes || 0).toLocaleString()} likes</span>
-                        <span>🔁 ${(t.retweets || 0).toLocaleString()} RTs</span>
-                        <span>💬 ${(t.replies || 0).toLocaleString()} replies</span>
-                        <span>📈 ${((t.engagement_rate || 0) * 100).toFixed(2)}% ER</span>
-                        ${t.viral_multiplier && t.viral_multiplier > 0.1 ? `<span style="color: #E91E63; font-weight: 600;">⚡ ${(t.viral_multiplier * 100).toFixed(0)}% reach</span>` : ''}
-                    </div>
-                </div>
-              `).join('')
-            }
-        </div>
-
-        <div class="section">
-            <div class="section-title">🎯 Tier Breakdown</div>
-            ${data.tierBreakdown.length === 0 ?
-              '<div class="empty-state">⏳ No tweets collected yet</div>' :
-              `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-                ${data.tierBreakdown.map((t: any) => `
-                  <div class="stat-card">
-                    <div class="stat-label">
-                      <span class="tier-badge tier-${t.tier}">${t.tier}</span>
-                    </div>
-                    <div class="stat-value">${t.count.toLocaleString()}</div>
-                    <div class="stat-sublabel">tweets</div>
-                  </div>
-                `).join('')}
-              </div>`
-            }
-        </div>
-
-        <div class="section">
-            <div class="section-title">💡 How This Works</div>
-            <ul style="color: #ccc; line-height: 2;">
-                <li><strong>Scraping:</strong> Monitors 100+ health accounts every 8 hours</li>
-                <li><strong>Classification:</strong> AI tags topic, angle, tone, structure (every 6h)</li>
-                <li><strong>Analysis:</strong> Extracts visual patterns (emojis, hooks, line breaks, etc.)</li>
-                <li><strong>Intelligence:</strong> Builds tier-weighted recommendations</li>
-                <li><strong>Application:</strong> Applies learned patterns to YOUR content (when enabled)</li>
-            </ul>
-        </div>
-
-        <div class="section">
-            <div class="section-title">📈 Data Collection Status</div>
-            <table style="width: 100%; color: #ccc; border-collapse: collapse;">
-                <tr style="border-bottom: 1px solid #333;">
-                    <td style="padding: 10px;"><strong>Monitored Accounts</strong></td>
-                    <td style="padding: 10px; text-align: right;">${data.viStats.targets} accounts</td>
-                </tr>
-                <tr style="border-bottom: 1px solid #333;">
-                    <td style="padding: 10px;"><strong>Raw Tweets</strong></td>
-                    <td style="padding: 10px; text-align: right;">${data.viStats.tweets.toLocaleString()} collected</td>
-                </tr>
-                <tr style="border-bottom: 1px solid #333;">
-                    <td style="padding: 10px;"><strong>AI Classification</strong></td>
-                    <td style="padding: 10px; text-align: right;">${data.viStats.classified.toLocaleString()} tagged</td>
-                </tr>
-                <tr style="border-bottom: 1px solid #333;">
-                    <td style="padding: 10px;"><strong>Visual Analysis</strong></td>
-                    <td style="padding: 10px; text-align: right;">${data.viStats.analyzed.toLocaleString()} analyzed</td>
-                </tr>
-                <tr>
-                    <td style="padding: 10px;"><strong>Format Intelligence</strong></td>
-                    <td style="padding: 10px; text-align: right;">${data.viStats.patterns} patterns ready</td>
-                </tr>
-            </table>
-        </div>
-
-        <div class="footer">
-            <p>🤖 Last updated: ${now}</p>
-            <p>🔄 Auto-refresh every 60 seconds</p>
-            <p>📊 Data collection: Every 6-8 hours</p>
-        </div>
-    </div>
-</body>
-</html>`;
-}
-
-export const comprehensiveDashboard = { 
-  generatePostsDashboard, 
-  generateRepliesDashboard,
-  generateRecentDashboard,
-  generateTemporalDashboard,
-  generateFactorAnalysisDashboard,
-  generateFollowerGrowthDashboard,
-  generateVisualIntelligenceDashboard
-};
-
