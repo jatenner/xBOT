@@ -357,8 +357,6 @@ async function generateRealContent(): Promise<void> {
             }
           };
           
-          };
-          
           // ✅ Track generator performance
           generatorName = selectedGenerator;
           const qualityScore = result.confidence || 0.85;
