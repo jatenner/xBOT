@@ -655,10 +655,19 @@ app.get('/dashboard', async (req: express.Request, res: express.Response) => {
       `);
     }
     
-    const { generateSimpleDashboard } = await import('./dashboard/simpleDashboard');
-    const html = await generateSimpleDashboard();
-    res.setHeader('Content-Type', 'text/html');
-    res.send(html);
+    const view = req.query.view as string || 'comprehensive';
+    
+    if (view === 'simple') {
+      const { generateSimpleDashboard } = await import('./dashboard/simpleDashboard');
+      const html = await generateSimpleDashboard();
+      res.setHeader('Content-Type', 'text/html');
+      res.send(html);
+    } else {
+      const { generateComprehensiveDashboard } = await import('./dashboard/comprehensiveDashboard');
+      const html = await generateComprehensiveDashboard();
+      res.setHeader('Content-Type', 'text/html');
+      res.send(html);
+    }
   } catch (error: any) {
     console.error('❌ DASHBOARD_ERROR:', error.message);
     res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
