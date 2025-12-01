@@ -28,10 +28,24 @@ export async function generatePostingMonitorDashboard(): Promise<string> {
       .gte('posted_at', todayStart.toISOString())
       .order('posted_at', { ascending: true });
 
-    const dailyGoal = 2;
+    // Hourly targets: 2 posts/hour, 4 replies/hour
+    const postsPerHourGoal = parseInt(process.env.MAX_POSTS_PER_HOUR || '2');
+    const repliesPerHourGoal = parseInt(process.env.REPLIES_PER_HOUR || '4');
+    
     const singlePosts = (todayPosts || []).filter((p: any) => p.decision_type === 'single');
+    const replyPosts = (todayPosts || []).filter((p: any) => p.decision_type === 'reply');
     const postedToday = singlePosts.length;
-    const onTrack = postedToday >= dailyGoal || (postedToday < dailyGoal && now.getHours() < 20);
+    const repliedToday = replyPosts.length;
+    
+    // Calculate hourly goals (posts per hour * hours elapsed today)
+    const hoursElapsed = now.getHours() + (now.getMinutes() / 60);
+    const hourlyPostsGoal = Math.floor(hoursElapsed * postsPerHourGoal);
+    const hourlyRepliesGoal = Math.floor(hoursElapsed * repliesPerHourGoal);
+    
+    // On track if we're meeting or exceeding hourly pace
+    const postsOnTrack = postedToday >= hourlyPostsGoal;
+    const repliesOnTrack = repliedToday >= hourlyRepliesGoal;
+    const onTrack = postsOnTrack && repliesOnTrack;
 
     // Build timeline for last 24 hours
     const last24Hours = [];
@@ -92,8 +106,14 @@ export async function generatePostingMonitorDashboard(): Promise<string> {
     }
 
     const monitorData = {
-      dailyGoal,
+      postsPerHourGoal,
+      repliesPerHourGoal,
+      hourlyPostsGoal,
+      hourlyRepliesGoal,
       postedToday,
+      repliedToday,
+      postsOnTrack,
+      repliesOnTrack,
       onTrack,
       timeline,
       scheduleHealth,
@@ -125,8 +145,15 @@ function generatePostingMonitorHTML(data: any): string {
   const { monitorData, todayPosts, weekPosts } = data;
 
   const singlePosts = todayPosts.filter((p: any) => p.decision_type === 'single');
-  const onTrackEmoji = monitorData.onTrack ? '✅' : '⚠️';
-  const progressPercent = Math.min(100, (monitorData.postedToday / monitorData.dailyGoal) * 100);
+  const replyPosts = todayPosts.filter((p: any) => p.decision_type === 'reply');
+  const postsOnTrackEmoji = monitorData.postsOnTrack ? '✅' : '⚠️';
+  const repliesOnTrackEmoji = monitorData.repliesOnTrack ? '✅' : '⚠️';
+  const postsProgressPercent = monitorData.hourlyPostsGoal > 0 
+    ? Math.min(100, (monitorData.postedToday / monitorData.hourlyPostsGoal) * 100)
+    : 0;
+  const repliesProgressPercent = monitorData.hourlyRepliesGoal > 0
+    ? Math.min(100, (monitorData.repliedToday / monitorData.hourlyRepliesGoal) * 100)
+    : 0;
 
   // Build hourly timeline visualization
   const hourlyTimeline = monitorData.last24Hours || [];
@@ -295,37 +322,69 @@ function generatePostingMonitorHTML(data: any): string {
     <div class="container">
         <div class="header">
             <h1>📋 Posting Monitor</h1>
-            <p>Track your hourly posting schedule and daily posting goals</p>
+            <p>Track your hourly posting schedule: ${monitorData.postsPerHourGoal} posts/hour, ${monitorData.repliesPerHourGoal} replies/hour</p>
         </div>
 
         ${generateNavigation('/dashboard/posting-monitor')}
 
+        <!-- Posts Goal Card -->
         <div class="goal-card">
             <div class="goal-header">
                 <div>
-                    <h2 style="margin: 0; color: #333;">📅 Today's Posting Goal</h2>
-                    <p style="color: #666; margin-top: 8px;">Target: ${monitorData.dailyGoal} posts per day</p>
+                    <h2 style="margin: 0; color: #333;">📝 Posts Goal (Hourly)</h2>
+                    <p style="color: #666; margin-top: 8px;">Target: ${monitorData.postsPerHourGoal} posts per hour</p>
                 </div>
                 <div style="text-align: right;">
-                    <div class="goal-status">${onTrackEmoji}</div>
-                    <div style="color: #666; font-size: 14px;">${monitorData.onTrack ? 'On Track' : 'Off Track'}</div>
+                    <div class="goal-status">${postsOnTrackEmoji}</div>
+                    <div style="color: #666; font-size: 14px;">${monitorData.postsOnTrack ? 'On Track' : 'Off Track'}</div>
                 </div>
             </div>
 
             <div class="progress-container">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
                     <span style="font-weight: 600; color: #333;">Posted Today: <span style="color: #10b981; font-size: 24px;">${monitorData.postedToday}</span></span>
-                    <span style="color: #666;">Goal: ${monitorData.dailyGoal} posts</span>
+                    <span style="color: #666;">Expected by now: ${monitorData.hourlyPostsGoal} posts (${monitorData.postsPerHourGoal}/hour × ${Math.floor((new Date().getHours() + new Date().getMinutes() / 60))} hours)</span>
                 </div>
                 <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${progressPercent}%;">
-                        ${monitorData.postedToday}/${monitorData.dailyGoal} posts
+                    <div class="progress-fill" style="width: ${postsProgressPercent}%;">
+                        ${monitorData.postedToday}/${monitorData.hourlyPostsGoal} posts
                     </div>
                 </div>
-                <div style="margin-top: 15px; padding: 15px; background: ${monitorData.onTrack ? '#f0fdf4' : '#fef3c7'}; border-radius: 8px; border-left: 4px solid ${monitorData.onTrack ? '#10b981' : '#f59e0b'};">
-                    ${monitorData.onTrack ? 
-                      `<div style="color: #065f46; font-weight: 600;">✅ Your posting schedule is on track! ${monitorData.dailyGoal - monitorData.postedToday} more posts needed to reach today's goal.` :
-                      `<div style="color: #92400e; font-weight: 600;">⚠️ Posting is behind schedule. ${monitorData.dailyGoal - monitorData.postedToday} more posts needed to reach today's goal.`}
+                <div style="margin-top: 15px; padding: 15px; background: ${monitorData.postsOnTrack ? '#f0fdf4' : '#fef3c7'}; border-radius: 8px; border-left: 4px solid ${monitorData.postsOnTrack ? '#10b981' : '#f59e0b'};">
+                    ${monitorData.postsOnTrack ? 
+                      `<div style="color: #065f46; font-weight: 600;">✅ Posts are on track! Meeting ${monitorData.postsPerHourGoal} posts/hour goal.</div>` :
+                      `<div style="color: #92400e; font-weight: 600;">⚠️ Posts are behind schedule. Need ${monitorData.hourlyPostsGoal - monitorData.postedToday} more posts to meet hourly goal (${monitorData.postsPerHourGoal}/hour).</div>`}
+                </div>
+            </div>
+        </div>
+
+        <!-- Replies Goal Card -->
+        <div class="goal-card">
+            <div class="goal-header">
+                <div>
+                    <h2 style="margin: 0; color: #333;">💬 Replies Goal (Hourly)</h2>
+                    <p style="color: #666; margin-top: 8px;">Target: ${monitorData.repliesPerHourGoal} replies per hour</p>
+                </div>
+                <div style="text-align: right;">
+                    <div class="goal-status">${repliesOnTrackEmoji}</div>
+                    <div style="color: #666; font-size: 14px;">${monitorData.repliesOnTrack ? 'On Track' : 'Off Track'}</div>
+                </div>
+            </div>
+
+            <div class="progress-container">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                    <span style="font-weight: 600; color: #333;">Replied Today: <span style="color: #10b981; font-size: 24px;">${monitorData.repliedToday}</span></span>
+                    <span style="color: #666;">Expected by now: ${monitorData.hourlyRepliesGoal} replies (${monitorData.repliesPerHourGoal}/hour × ${Math.floor((new Date().getHours() + new Date().getMinutes() / 60))} hours)</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${repliesProgressPercent}%;">
+                        ${monitorData.repliedToday}/${monitorData.hourlyRepliesGoal} replies
+                    </div>
+                </div>
+                <div style="margin-top: 15px; padding: 15px; background: ${monitorData.repliesOnTrack ? '#f0fdf4' : '#fef3c7'}; border-radius: 8px; border-left: 4px solid ${monitorData.repliesOnTrack ? '#10b981' : '#f59e0b'};">
+                    ${monitorData.repliesOnTrack ? 
+                      `<div style="color: #065f46; font-weight: 600;">✅ Replies are on track! Meeting ${monitorData.repliesPerHourGoal} replies/hour goal.</div>` :
+                      `<div style="color: #92400e; font-weight: 600;">⚠️ Replies are behind schedule. Need ${monitorData.hourlyRepliesGoal - monitorData.repliedToday} more replies to meet hourly goal (${monitorData.repliesPerHourGoal}/hour).</div>`}
                 </div>
             </div>
         </div>
@@ -460,7 +519,7 @@ function generatePostingMonitorHTML(data: any): string {
                         <span style="color: #10b981; font-weight: 600;">✅ Respected</span>
                     </div>
                     <div style="color: #666; font-size: 14px;">
-                        Posting rate limit is being respected. System won't exceed 2 posts per day.
+                        Posting rate limits are being respected. System targets ${monitorData.postsPerHourGoal} posts/hour and ${monitorData.repliesPerHourGoal} replies/hour.
                     </div>
                 </div>
 
