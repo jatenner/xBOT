@@ -12,19 +12,19 @@ export const TOKEN_PARAM = `?token=${ADMIN_TOKEN}`;
  * Standard dashboard navigation links
  */
 export const DASHBOARD_NAVIGATION = {
-  business: { label: '💼 Business', path: '/dashboard/business', icon: '💼' },
-  diagnostics: { label: '🤖 Diagnostics', path: '/dashboard/diagnostics', icon: '🤖' },
-  systemFlow: { label: '🔍 System Flow', path: '/dashboard/system-flow', icon: '🔍' },
-  health: { label: '🩺 Health', path: '/dashboard/health', icon: '🩺' },
-  posts: { label: '📝 Posts', path: '/dashboard/posts', icon: '📝' },
-  replies: { label: '💬 Replies', path: '/dashboard/replies', icon: '💬' },
-  dataValidation: { label: '🔬 Data Validation', path: '/dashboard/data-validation', icon: '🔬' },
-  postingMonitor: { label: '📋 Posting Monitor', path: '/dashboard/posting-monitor', icon: '📋' },
-  vi: { label: '🔍 VI Collection', path: '/dashboard/vi', icon: '🔍' }
+  business: { label: '💼 Business', path: '/dashboard/business', icon: '💼', description: 'Real-time system activity' },
+  diagnostics: { label: '🤖 Diagnostics', path: '/dashboard/diagnostics', icon: '🤖', description: 'System health chatbot' },
+  systemFlow: { label: '🔍 System Flow', path: '/dashboard/system-flow', icon: '🔍', description: 'End-to-end flow view' },
+  health: { label: '🩺 Health', path: '/dashboard/health', icon: '🩺', description: 'System health overview' },
+  posts: { label: '📝 Posts', path: '/dashboard/posts', icon: '📝', description: 'Posts analytics' },
+  replies: { label: '💬 Replies', path: '/dashboard/replies', icon: '💬', description: 'Replies analytics' },
+  dataValidation: { label: '🔬 Data Validation', path: '/dashboard/data-validation', icon: '🔬', description: 'Data integrity checks' },
+  postingMonitor: { label: '📋 Posting Monitor', path: '/dashboard/posting-monitor', icon: '📋', description: 'Hourly posting tracking' },
+  recent: { label: '📅 Recent', path: '/dashboard/recent', icon: '📅', description: 'Recent activity feed' }
 };
 
 /**
- * Generate navigation HTML
+ * Generate navigation HTML with all active dashboards
  */
 export function generateNavigation(activeTab: string): string {
   const navItems = [
@@ -34,6 +34,7 @@ export function generateNavigation(activeTab: string): string {
     DASHBOARD_NAVIGATION.health,
     DASHBOARD_NAVIGATION.posts,
     DASHBOARD_NAVIGATION.replies,
+    DASHBOARD_NAVIGATION.recent,
     DASHBOARD_NAVIGATION.dataValidation,
     DASHBOARD_NAVIGATION.postingMonitor
   ];
@@ -245,7 +246,28 @@ export function getContentTypeClass(decisionType: string | null): string {
 /**
  * Generate error page HTML
  */
+/**
+ * Generate user-friendly error HTML with plain English messaging
+ */
 export function generateErrorHTML(error: string, backUrl: string = '/dashboard/business'): string {
+  // Convert technical errors to plain English
+  let friendlyError = error;
+  
+  if (error.includes('ECONNREFUSED') || error.includes('connection')) {
+    friendlyError = 'Unable to connect to the database. The system may be starting up or experiencing connectivity issues.';
+  } else if (error.includes('timeout')) {
+    friendlyError = 'The request took too long to complete. Please try again in a moment.';
+  } else if (error.includes('ENOTFOUND') || error.includes('DNS')) {
+    friendlyError = 'Network connection issue detected. Please check your internet connection.';
+  } else if (error.includes('unauthorized') || error.includes('401')) {
+    friendlyError = 'Authentication required. Please add your access token to the URL.';
+  } else if (error.includes('Cannot read') || error.includes('undefined')) {
+    friendlyError = 'Some data is missing or not yet available. The system may still be initializing.';
+  } else if (error.length > 100) {
+    // For very long technical errors, provide a friendly message
+    friendlyError = 'An unexpected error occurred while loading the dashboard. Our system is automatically working to fix this.';
+  }
+  
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -253,12 +275,10 @@ export function generateErrorHTML(error: string, backUrl: string = '/dashboard/b
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+        ${getSharedStyles()}
         body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             text-align: center; 
             padding: 50px; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
         }
         .error-box { 
             background: white; 
@@ -269,7 +289,21 @@ export function generateErrorHTML(error: string, backUrl: string = '/dashboard/b
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
         }
         h1 { color: #ef4444; margin-bottom: 20px; }
-        p { color: #666; margin-bottom: 20px; line-height: 1.6; }
+        .error-message { 
+            color: #dc3545; 
+            font-weight: 600; 
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #fef2f2;
+            border-radius: 8px;
+            border-left: 4px solid #ef4444;
+        }
+        .help-text {
+            color: #666; 
+            margin-bottom: 20px; 
+            line-height: 1.6;
+            font-size: 14px;
+        }
         a {
             display: inline-block;
             padding: 12px 24px;
@@ -279,6 +313,7 @@ export function generateErrorHTML(error: string, backUrl: string = '/dashboard/b
             border-radius: 8px;
             font-weight: 600;
             transition: all 0.2s;
+            margin: 5px;
         }
         a:hover {
             background: #5568d3;
@@ -288,9 +323,15 @@ export function generateErrorHTML(error: string, backUrl: string = '/dashboard/b
 </head>
 <body>
     <div class="error-box">
-        <h1>🚨 Dashboard Error</h1>
-        <p style="color: #dc3545; font-weight: 600;">${error}</p>
+        <h1>⚠️ Something Went Wrong</h1>
+        <div class="error-message">${friendlyError}</div>
+        <div class="help-text">
+            ${error.includes('database') || error.includes('connection') 
+              ? '💡 <strong>What to do:</strong> Wait a moment and try again. The system may be restarting or updating.'
+              : '💡 <strong>What to do:</strong> Try refreshing the page. If the problem continues, check the Diagnostics dashboard for system status.'}
+        </div>
         <a href="${backUrl}${TOKEN_PARAM}">🔄 Try Again</a>
+        <a href="/dashboard/diagnostics${TOKEN_PARAM}">🤖 Check System Status</a>
     </div>
 </body>
 </html>`;
@@ -342,6 +383,71 @@ export function checkAuth(token: string | undefined, headerToken: string | undef
   const adminToken = process.env.ADMIN_TOKEN || ADMIN_TOKEN;
   const providedToken = token || headerToken?.replace('Bearer ', '');
   return providedToken === adminToken;
+}
+
+/**
+ * Generate authentication error HTML with clear instructions
+ */
+export function generateAuthErrorHTML(): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+    <title>Authentication Required</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        ${getSharedStyles()}
+        body { 
+            text-align: center; 
+            padding: 50px; 
+        }
+        .auth-box { 
+            background: white; 
+            padding: 40px; 
+            border-radius: 15px; 
+            max-width: 600px; 
+            margin: 0 auto; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 { color: #f59e0b; margin-bottom: 20px; }
+        .instruction {
+            background: #fffbeb;
+            border-left: 4px solid #f59e0b;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        code {
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #1f2937;
+        }
+        .help-text {
+            color: #666; 
+            margin-top: 20px; 
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-box">
+        <h1>🔒 Access Required</h1>
+        <p style="color: #666; margin-bottom: 20px;">You need to authenticate to view this dashboard.</p>
+        <div class="instruction">
+            <strong>How to access:</strong><br>
+            1. Add <code>?token=YOUR_TOKEN</code> to the end of the URL<br>
+            2. Replace <code>YOUR_TOKEN</code> with your access token<br>
+            3. Example: <code>/dashboard/business?token=xbot-admin-2025</code>
+        </div>
+        <div class="help-text">
+            If you don't have an access token, please contact your system administrator.
+        </div>
+    </div>
+</body>
+</html>`;
 }
 
 /**
