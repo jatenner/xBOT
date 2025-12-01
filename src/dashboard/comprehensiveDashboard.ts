@@ -6,6 +6,7 @@
  */
 
 import { getSupabaseClient } from '../db/index';
+import { getSharedStyles, generateNavigation, generateErrorHTML, TOKEN_PARAM } from './shared/dashboardUtils';
 
 export async function generateRecentDashboard(): Promise<string> {
   const supabase = getSupabaseClient();
@@ -33,7 +34,7 @@ export async function generateRecentDashboard(): Promise<string> {
 
   } catch (error: any) {
     console.error('[RECENT_DASHBOARD] Error:', error.message);
-    return generateErrorHTML(error.message);
+    return generateErrorHTML(error.message, '/dashboard/recent');
   }
 }
 
@@ -674,14 +675,7 @@ function generateRepliesHTML(data: any): string {
             <p>Reply performance and follower conversion breakdown</p>
         </div>
 
-        <div class="nav-tabs">
-            <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
-            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Metrics</a>
-            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab active">💬 Replies</a>
-            <a href="/dashboard/vi?token=xbot-admin-2025" class="nav-tab">🔍 VI Collection</a>
-            <a href="/dashboard/formatting?token=xbot-admin-2025" class="nav-tab">🎨 Formatting</a>
-            <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab">🔧 System Health</a>
-        </div>
+        ${generateNavigation('/dashboard/replies')}
 
         <div class="stats-grid">
             <div class="stat-card">
@@ -845,7 +839,7 @@ function generateRepliesHTML(data: any): string {
 </html>`;
 }
 
-function getSharedStyles(): string {
+function getLegacySharedStyles(): string {
   return `
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { 
@@ -1022,7 +1016,7 @@ function getToken(): string {
   return typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('token') || '') : '';
 }
 
-function generateErrorHTML(error: string): string {
+function generateLegacyErrorHTML(error: string): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -1271,14 +1265,7 @@ function generateRecentHTML(data: any): string {
             <p>Your Twitter posts with topic, tone, angle, structure, visual format & generator</p>
         </div>
 
-        <div class="nav-tabs">
-            <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab active">📅 Recent</a>
-            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Metrics</a>
-            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
-            <a href="/dashboard/vi?token=xbot-admin-2025" class="nav-tab">🔍 VI Collection</a>
-            <a href="/dashboard/formatting?token=xbot-admin-2025" class="nav-tab">🎨 Formatting</a>
-            <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab">🔧 System Health</a>
-        </div>
+        ${generateNavigation('/dashboard/recent')}
 
         <div class="stats-grid" style="margin-bottom: 30px;">
             <div class="stat-card">

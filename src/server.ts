@@ -641,10 +641,10 @@ app.get('/playwright/ping', async (req, res) => {
  * 📊 DASHBOARD ENDPOINTS - Multi-page analytics
  */
 
-// Main dashboard redirects to recent activity
+// Main dashboard redirects to business dashboard (primary view)
 app.get('/dashboard', async (req, res) => {
   const token = req.query.token || '';
-  res.redirect(`/dashboard/recent?token=${token}`);
+  res.redirect(`/dashboard/business?token=${token}`);
 });
 
 // Recent posts dashboard (main insight view)
