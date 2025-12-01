@@ -5,7 +5,7 @@
 
 import { kvGet, kvSet, kvDel } from './kv';
 import { timeUntilExpiry, addMinutes, isExpired } from './time';
-import { FEATURE_FLAGS } from '../config/featureFlags';
+import { flags } from '../config/featureFlags';
 
 export interface CircuitState {
   isOpen: boolean;
@@ -27,7 +27,7 @@ export async function openCircuit(key: string, minutes: number): Promise<void> {
     console.log(`🚨 CIRCUIT_BREAKER: Opened '${key}' for ${minutes} minutes (expires: ${expiryISO})`);
     
     // Send alert if webhook configured and not already alerted for this window
-    if (FEATURE_FLAGS.ALERT_WEBHOOK_URL) {
+    if (process.env.ALERT_WEBHOOK_URL) {
       const alreadyAlerted = await kvGet(alertKey);
       if (!alreadyAlerted) {
         await sendCircuitAlert(key, minutes, expiryISO);
@@ -118,7 +118,7 @@ export async function closeCircuit(key: string): Promise<void> {
  * Send webhook alert when circuit opens
  */
 async function sendCircuitAlert(key: string, minutes: number, expiryISO: string): Promise<void> {
-  const webhookUrl = FEATURE_FLAGS.ALERT_WEBHOOK_URL;
+  const webhookUrl = process.env.ALERT_WEBHOOK_URL;
   if (!webhookUrl) return;
   
   const alertPayload = {

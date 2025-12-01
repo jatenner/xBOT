@@ -4,7 +4,7 @@
  */
 
 import OpenAI from 'openai';
-import { FEATURE_FLAGS } from '../config/featureFlags';
+import { flags } from '../config/featureFlags';
 import { openCircuit, isCircuitOpen, getCircuitRemaining } from '../utils/circuitBreaker';
 import { sleep } from '../utils/time';
 
@@ -43,8 +43,8 @@ class ResilientOpenAIClient {
   constructor() {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY!,
-      organization: FEATURE_FLAGS.OPENAI_ORG,
-      project: FEATURE_FLAGS.OPENAI_PROJECT,
+      organization: process.env.OPENAI_ORG,
+      project: process.env.OPENAI_PROJECT,
     });
   }
 
@@ -71,7 +71,7 @@ class ResilientOpenAIClient {
     } = options;
 
     // Check manual circuit override
-    if (FEATURE_FLAGS.AI_QUOTA_CIRCUIT_OPEN) {
+    if (process.env.AI_QUOTA_CIRCUIT_OPEN === 'true') {
       throw new CircuitOpenError('manual_override', 0);
     }
 
@@ -199,8 +199,8 @@ class ResilientOpenAIClient {
    */
   private async handleQuotaError(requestType: string, isLastAttempt: boolean): Promise<void> {
     if (isLastAttempt) {
-      console.error(`💸 OPENAI_QUOTA_EXHAUSTED: Opening circuit breaker for ${FEATURE_FLAGS.AI_COOLDOWN_MINUTES} minutes`);
-      await openCircuit('openai_quota', FEATURE_FLAGS.AI_COOLDOWN_MINUTES);
+      console.error(`💸 OPENAI_QUOTA_EXHAUSTED: Opening circuit breaker for ${process.env.AI_COOLDOWN_MINUTES || '0'} minutes`);
+      await openCircuit('openai_quota', parseInt(process.env.AI_COOLDOWN_MINUTES || '0'));
     } else {
       console.warn(`💸 OPENAI_QUOTA_ERROR: ${requestType} (will retry)`);
     }
@@ -228,8 +228,8 @@ class ResilientOpenAIClient {
     }
 
     if (isLastAttempt) {
-      console.error(`🚨 OPENAI_RATE_LIMIT_EXHAUSTED: Opening circuit breaker for ${FEATURE_FLAGS.AI_COOLDOWN_MINUTES} minutes`);
-      await openCircuit('openai_quota', FEATURE_FLAGS.AI_COOLDOWN_MINUTES);
+      console.error(`🚨 OPENAI_RATE_LIMIT_EXHAUSTED: Opening circuit breaker for ${process.env.AI_COOLDOWN_MINUTES || '0'} minutes`);
+      await openCircuit('openai_quota', parseInt(process.env.AI_COOLDOWN_MINUTES || '0'));
     } else {
       console.warn(`🔄 OPENAI_RATE_LIMIT: Attempt ${attempt}/${this.MAX_RETRIES} backing off ${delayMs}ms (${requestType})`);
     }
@@ -260,7 +260,7 @@ class ResilientOpenAIClient {
     return {
       circuit_open,
       circuit_remaining_ms,
-      quota_override: FEATURE_FLAGS.AI_QUOTA_CIRCUIT_OPEN
+      quota_override: process.env.AI_QUOTA_CIRCUIT_OPEN === 'true'
     };
   }
 }

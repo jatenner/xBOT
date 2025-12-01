@@ -4,7 +4,7 @@
  */
 
 import { kvGet, kvSet } from '../utils/kv';
-import { FEATURE_FLAGS } from '../config/featureFlags';
+import { flags } from '../config/featureFlags';
 
 export interface LearningStatus {
   should_run: boolean;
@@ -31,7 +31,7 @@ export async function shouldRunLearning(): Promise<boolean> {
     
     const lastRun = new Date(lastRunISO);
     const timeSinceLastRun = now.getTime() - lastRun.getTime();
-    const debounceMs = FEATURE_FLAGS.LEARNING_DEBOUNCE_MINUTES * 60 * 1000;
+    const debounceMs = parseInt(process.env.LEARNING_DEBOUNCE_MINUTES || '60') * 60 * 1000;
     
     if (timeSinceLastRun >= debounceMs) {
       await updateLearningTimestamp();
@@ -54,7 +54,7 @@ export async function shouldRunLearning(): Promise<boolean> {
 export async function updateLearningTimestamp(): Promise<void> {
   try {
     const now = new Date().toISOString();
-    const ttlSeconds = FEATURE_FLAGS.LEARNING_DEBOUNCE_MINUTES * 60 * 2; // 2x TTL for safety
+    const ttlSeconds = parseInt(process.env.LEARNING_DEBOUNCE_MINUTES || '60') * 60 * 2; // 2x TTL for safety
     await kvSet(LEARNING_KEY, now, ttlSeconds);
     console.log(`🧠 LEARNING_TIMESTAMP: Updated to ${now}`);
   } catch (error) {
@@ -80,7 +80,7 @@ export async function getLearningStatus(): Promise<LearningStatus> {
     }
     
     const lastRun = new Date(lastRunISO);
-    const debounceMs = FEATURE_FLAGS.LEARNING_DEBOUNCE_MINUTES * 60 * 1000;
+    const debounceMs = parseInt(process.env.LEARNING_DEBOUNCE_MINUTES || '60') * 60 * 1000;
     const timeSinceLastRun = now.getTime() - lastRun.getTime();
     
     if (timeSinceLastRun >= debounceMs) {
