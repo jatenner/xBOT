@@ -38,9 +38,14 @@ export async function generatePostingMonitorDashboard(): Promise<string> {
     const repliedToday = replyPosts.length;
     
     // Calculate hourly goals (posts per hour * hours elapsed today)
+    // Example: At 2:17 PM = 14 hours and 17 minutes = 14.28 hours elapsed since midnight
+    // Expected: 14.28 hours × 2 posts/hour = ~28 posts (rounded down)
     const hoursElapsed = now.getHours() + (now.getMinutes() / 60);
     const hourlyPostsGoal = Math.floor(hoursElapsed * postsPerHourGoal);
     const hourlyRepliesGoal = Math.floor(hoursElapsed * repliesPerHourGoal);
+    
+    // Format hours elapsed for display (e.g., "14.3" for 14 hours 17 minutes)
+    const hoursElapsedDisplay = hoursElapsed.toFixed(1);
     
     // On track if we're meeting or exceeding hourly pace
     const postsOnTrack = postedToday >= hourlyPostsGoal;
