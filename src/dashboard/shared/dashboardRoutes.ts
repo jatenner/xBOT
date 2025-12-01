@@ -91,6 +91,14 @@ export const dashboardRoutes: DashboardRoute[] = [
       return await comprehensiveDashboard.generateRecentDashboard();
     },
     activeTab: '/dashboard/recent'
+  },
+  {
+    path: '/dashboard/system-audit',
+    handler: async () => {
+      const { generateSystemAuditDashboard } = await import('../systemAuditDashboard');
+      return await generateSystemAuditDashboard();
+    },
+    activeTab: '/dashboard/system-audit'
   }
 ];
 

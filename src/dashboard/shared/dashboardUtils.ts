@@ -21,7 +21,8 @@ export const DASHBOARD_NAVIGATION = {
   replies: { label: '💬 Replies', path: '/dashboard/replies', icon: '💬', description: 'Replies analytics' },
   dataValidation: { label: '🔬 Data Validation', path: '/dashboard/data-validation', icon: '🔬', description: 'Data integrity checks' },
   postingMonitor: { label: '📋 Posting Monitor', path: '/dashboard/posting-monitor', icon: '📋', description: 'Hourly posting tracking' },
-  recent: { label: '📅 Recent', path: '/dashboard/recent', icon: '📅', description: 'Recent activity feed' }
+  recent: { label: '📅 Recent', path: '/dashboard/recent', icon: '📅', description: 'Recent activity feed' },
+  systemAudit: { label: '🔍 System Audit', path: '/dashboard/system-audit', icon: '🔍', description: 'Comprehensive system analysis' }
 };
 
 /**
@@ -38,7 +39,8 @@ export function generateNavigation(activeTab: string): string {
     DASHBOARD_NAVIGATION.replies,
     DASHBOARD_NAVIGATION.recent,
     DASHBOARD_NAVIGATION.dataValidation,
-    DASHBOARD_NAVIGATION.postingMonitor
+    DASHBOARD_NAVIGATION.postingMonitor,
+    DASHBOARD_NAVIGATION.systemAudit
   ];
 
   return `
