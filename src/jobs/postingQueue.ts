@@ -2619,8 +2619,9 @@ async function storeInRetryQueue(
  * 🔥 PRIORITY 5 FIX: Pre-post logging
  * Logs all posting attempts BEFORE posting for recovery
  */
-async function logPostAttempt(decision: QueuedDecision, action: 'attempting' | 'success' | 'failed', tweetId?: string): Promise<void> {
+async function logPostAttempt(decision: QueuedDecision, action: 'attempting' | 'success' | 'failed', tweetId?: string, errorMessage?: string): Promise<void> {
   try {
+    // Write to log file (existing)
     const logsDir = path.join(process.cwd(), 'logs');
     if (!existsSync(logsDir)) {
       mkdirSync(logsDir, { recursive: true });
@@ -2638,6 +2639,25 @@ async function logPostAttempt(decision: QueuedDecision, action: 'attempting' | '
     };
     
     appendFileSync(logFile, JSON.stringify(logEntry) + '\n');
+    
+    // 🔧 FIX: Write to database for dashboard tracking
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      
+      await supabase.from('posting_attempts').insert({
+        decision_id: decision.id,
+        decision_type: decision.decision_type,
+        content_text: decision.content.substring(0, 500),
+        status: action === 'success' ? 'success' : action === 'failed' ? 'failed' : 'attempting',
+        tweet_id: tweetId || null,
+        error_message: errorMessage || null,
+        created_at: new Date().toISOString()
+      });
+    } catch (dbError: any) {
+      // Non-critical - don't fail posting if DB logging fails
+      console.warn(`[POSTING_QUEUE] ⚠️ Failed to log post attempt to DB: ${dbError.message}`);
+    }
   } catch (error: any) {
     // Non-critical - don't fail posting if logging fails
     console.warn(`[POSTING_QUEUE] ⚠️ Failed to log post attempt: ${error.message}`);
