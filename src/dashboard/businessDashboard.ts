@@ -93,6 +93,28 @@ export async function generateBusinessDashboard(): Promise<string> {
     // Get scraper coverage
     const { coverage: scraperCoverage, postsWithMetrics, totalPosted } = await getScraperCoverage();
 
+    // Identify specific problems from diagnostics
+    const problems: Array<{component: string, issue: string, severity: 'high' | 'medium' | 'low'}> = [];
+    
+    Object.entries(diagnostics.stages).forEach(([key, stage]: [string, any]) => {
+      if (stage.status === 'error' || stage.status === 'warning') {
+        const componentName = key === 'contentGeneration' ? 'Content Generation' :
+                             key === 'posting' ? 'Posting' :
+                             key === 'metrics' ? 'Metrics Scraper' :
+                             key === 'learning' ? 'Learning' : key;
+        
+        stage.issues.forEach((issue: any) => {
+          if (issue.type === 'error' || issue.type === 'warning') {
+            problems.push({
+              component: componentName,
+              issue: issue.message,
+              severity: issue.severity || (issue.type === 'error' ? 'high' : 'medium')
+            });
+          }
+        });
+      }
+    });
+
     return generateBusinessDashboardHTML({
       diagnostics,
       isScrapingNow,
@@ -114,7 +136,8 @@ export async function generateBusinessDashboard(): Promise<string> {
       scraperCoverage,
       totalPosted: totalPosted || 0,
       postsWithMetrics: postsWithMetrics || 0,
-      recentPosts: recentPosts || []
+      recentPosts: recentPosts || [],
+      problems
     });
   } catch (error: any) {
     console.error('[BUSINESS_DASHBOARD] Error:', error.message);
@@ -152,6 +175,32 @@ function generateBusinessDashboardHTML(data: any): string {
   const systemWorking = diagnostics.overallStatus === 'healthy';
   const statusColor = systemWorking ? '#10b981' : diagnostics.overallStatus === 'warning' ? '#f59e0b' : '#ef4444';
   const statusEmoji = systemWorking ? '✅' : '⚠️';
+
+  // Identify specific problems
+  const problems: Array<{component: string, issue: string, severity: 'high' | 'medium' | 'low'}> = [];
+  
+  Object.entries(diagnostics.stages).forEach(([key, stage]: [string, any]) => {
+    if (stage.status === 'error' || stage.status === 'warning') {
+      const componentName = key === 'contentGeneration' ? 'Content Generation' :
+                           key === 'posting' ? 'Posting' :
+                           key === 'metrics' ? 'Metrics Scraper' :
+                           key === 'learning' ? 'Learning' : key;
+      
+      stage.issues.forEach((issue: any) => {
+        if (issue.type === 'error' || issue.type === 'warning') {
+          problems.push({
+            component: componentName,
+            issue: issue.message,
+            severity: issue.severity || (issue.type === 'error' ? 'high' : 'medium')
+          });
+        }
+      });
+    }
+  });
+
+  // Determine if system is actually broken or just needs attention
+  const criticalProblems = problems.filter(p => p.severity === 'high');
+  const hasCriticalIssues = criticalProblems.length > 0;
 
   // Scraper status
   const scraperWorking = isScrapingNow || (minutesSinceLastScrape !== null && minutesSinceLastScrape < 30);
@@ -388,10 +437,28 @@ function generateBusinessDashboardHTML(data: any): string {
             <div class="status-subtitle">
                 ${systemWorking 
                   ? 'All critical systems are operational and processing content'
+                  : problems.length > 0
+                  ? `${problems.length} issue(s) detected: ${problems.slice(0, 2).map((p: any) => p.component).join(', ')}${problems.length > 2 ? '...' : ''}`
                   : diagnostics.overallStatus === 'warning'
                   ? 'Some systems need attention - see details below'
                   : 'Critical systems are down - immediate action required'}
             </div>
+            ${problems.length > 0 ? `
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(0,0,0,0.1);">
+                    <div style="font-weight: 600; margin-bottom: 10px; color: #333;">🔍 Specific Issues:</div>
+                    <div style="display: grid; gap: 8px;">
+                        ${problems.slice(0, 5).map((p: any) => `
+                            <div style="padding: 10px; background: ${p.severity === 'high' ? '#fee2e2' : '#fef3c7'}; border-radius: 6px; border-left: 3px solid ${p.severity === 'high' ? '#ef4444' : '#f59e0b'};">
+                                <div style="font-weight: 600; color: ${p.severity === 'high' ? '#991b1b' : '#92400e'}; margin-bottom: 4px;">
+                                    ${p.severity === 'high' ? '🔴' : '🟡'} ${p.component}
+                                </div>
+                                <div style="font-size: 13px; color: #666;">${p.issue}</div>
+                            </div>
+                        `).join('')}
+                        ${problems.length > 5 ? `<div style="color: #666; font-size: 13px; margin-top: 5px;">...and ${problems.length - 5} more issue(s). See System Health dashboard for details.</div>` : ''}
+                    </div>
+                </div>
+            ` : ''}
         </div>
 
         <div class="activity-grid">
@@ -500,22 +567,42 @@ function generateBusinessDashboardHTML(data: any): string {
                 </div>
                 <div style="margin-top: 15px;">
                     <div style="color: #666; font-size: 14px; margin-bottom: 15px;">
-                        Overall system status across all components
+                        Component health scores (click <a href="/dashboard/system-health${TOKEN_PARAM}" style="color: #667eea; text-decoration: underline;">System Health</a> for details)
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                        ${Object.entries(diagnostics.stages).map(([key, stage]: [string, any]) => `
-                            <div style="text-align: center; padding: 10px; background: #f9fafb; border-radius: 6px;">
-                                <div style="font-size: 20px; font-weight: bold; color: ${stage.status === 'active' ? '#10b981' : stage.status === 'warning' ? '#f59e0b' : '#ef4444'};">
-                                    ${stage.healthScore}%
+                        ${Object.entries(diagnostics.stages).map(([key, stage]: [string, any]) => {
+                          const componentName = key === 'contentGeneration' ? 'Generation' :
+                                               key === 'posting' ? 'Posting' :
+                                               key === 'metrics' ? 'Metrics' : 'Learning';
+                          const hasIssues = stage.issues && stage.issues.filter((i: any) => i.type === 'error' || i.type === 'warning').length > 0;
+                          const healthColor = stage.healthScore >= 80 ? '#10b981' : stage.healthScore >= 50 ? '#f59e0b' : '#ef4444';
+                          return `
+                            <div style="text-align: center; padding: 12px; background: ${hasIssues ? '#fee2e2' : '#f9fafb'}; border-radius: 6px; border: 2px solid ${healthColor};">
+                                <div style="font-size: 20px; font-weight: bold; color: ${healthColor};">
+                                    ${Math.round(stage.healthScore)}%
                                 </div>
-                                <div style="font-size: 11px; color: #666; margin-top: 4px;">
-                                    ${key === 'contentGeneration' ? 'Generation' :
-                                      key === 'posting' ? 'Posting' :
-                                      key === 'metrics' ? 'Metrics' : 'Learning'}
+                                <div style="font-size: 11px; color: #666; margin-top: 4px; font-weight: 600;">
+                                    ${componentName}
                                 </div>
+                                ${hasIssues ? `
+                                    <div style="font-size: 10px; color: #991b1b; margin-top: 4px;">
+                                        ${stage.issues.filter((i: any) => i.type === 'error' || i.type === 'warning').length} issue(s)
+                                    </div>
+                                ` : ''}
                             </div>
-                        `).join('')}
+                          `;
+                        }).join('')}
                     </div>
+                    ${problems.length > 0 ? `
+                        <div style="margin-top: 15px; padding: 12px; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+                            <div style="font-weight: 600; color: #92400e; margin-bottom: 5px;">
+                                ⚠️ ${criticalProblems.length > 0 ? `${criticalProblems.length} critical` : ''} ${problems.length} total issue(s) detected
+                            </div>
+                            <div style="font-size: 12px; color: #666;">
+                                Check the <a href="/dashboard/system-health${TOKEN_PARAM}" style="color: #667eea; font-weight: 600;">System Health</a> dashboard for detailed job status and error messages.
+                            </div>
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         </div>
