@@ -61,6 +61,14 @@ export const dashboardRoutes: DashboardRoute[] = [
     activeTab: '/dashboard/health'
   },
   {
+    path: '/dashboard/system-health',
+    handler: async () => {
+      const { generateSystemHealthDashboard } = await import('../systemHealthDashboard');
+      return await generateSystemHealthDashboard();
+    },
+    activeTab: '/dashboard/system-health'
+  },
+  {
     path: '/dashboard/posts',
     handler: async () => {
       const { generatePostsOverview } = await import('../postsOverview');
