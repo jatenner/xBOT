@@ -53,10 +53,16 @@ export async function getSystemDiagnostics(req: Request, res: Response): Promise
     };
     
     if (attempts && attempts.length > 0) {
-      postingStats.total = attempts.length;
-      postingStats.success = attempts.filter(a => a.status === 'success').length;
-      postingStats.failed = attempts.filter(a => a.status === 'failed').length;
-      postingStats.successRate = (postingStats.success / attempts.length) * 100;
+      // 🔥 FIX: Only count final statuses ('success' or 'failed'), not 'attempting'
+      // Every post logs: 'attempting' → 'success' OR 'failed'
+      // Counting 'attempting' inflates the denominator incorrectly
+      const finalAttempts = attempts.filter(a => a.status !== 'attempting');
+      postingStats.total = finalAttempts.length;
+      postingStats.success = finalAttempts.filter(a => a.status === 'success').length;
+      postingStats.failed = finalAttempts.filter(a => a.status === 'failed').length;
+      postingStats.successRate = finalAttempts.length > 0 
+        ? (postingStats.success / finalAttempts.length) * 100 
+        : 0;
       postingStats.recentFailures = attempts
         .filter(a => a.status === 'failed')
         .slice(0, 10)

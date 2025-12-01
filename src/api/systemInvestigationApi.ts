@@ -43,12 +43,18 @@ export async function getSystemInvestigation(req: Request, res: Response): Promi
       .order('created_at', { ascending: false });
     
     if (attempts && attempts.length > 0) {
-      const success = attempts.filter(a => a.status === 'success').length;
-      const failed = attempts.filter(a => a.status === 'failed').length;
-      const successRate = (success / attempts.length) * 100;
+      // 🔥 FIX: Only count final statuses ('success' or 'failed'), not 'attempting'
+      // Every post logs: 'attempting' → 'success' OR 'failed'
+      // Counting 'attempting' inflates the denominator incorrectly
+      const finalAttempts = attempts.filter(a => a.status !== 'attempting');
+      const success = finalAttempts.filter(a => a.status === 'success').length;
+      const failed = finalAttempts.filter(a => a.status === 'failed').length;
+      const successRate = finalAttempts.length > 0 
+        ? (success / finalAttempts.length) * 100 
+        : 0;
       
       investigation.posting.attempts = {
-        total: attempts.length,
+        total: finalAttempts.length,
         success,
         failed,
         successRate: successRate.toFixed(1),

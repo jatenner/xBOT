@@ -263,8 +263,12 @@ export class DiagnosticEngine {
       .gte('created_at', oneDayAgo);
 
     if (attempts && attempts.length > 0) {
-      const successCount = attempts.filter(a => a.status === 'success').length;
-      const successRate = successCount / attempts.length;
+      // 🔥 FIX: Only count final statuses ('success' or 'failed'), not 'attempting'
+      // Every post logs: 'attempting' → 'success' OR 'failed'
+      // Counting 'attempting' inflates the denominator incorrectly
+      const finalAttempts = attempts.filter(a => a.status !== 'attempting');
+      const successCount = finalAttempts.filter(a => a.status === 'success').length;
+      const successRate = finalAttempts.length > 0 ? successCount / finalAttempts.length : 0;
       
       if (successRate < 0.9) {
         status = successRate < 0.7 ? 'error' : 'warning';
