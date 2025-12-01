@@ -15,6 +15,8 @@ import {
   getTodayStats,
   getQueueStatus,
   getScraperCoverage,
+  getContentTypeBadge,
+  getContentTypeClass,
   TOKEN_PARAM
 } from './shared/dashboardUtils';
 
@@ -71,6 +73,22 @@ export async function generateBusinessDashboard(): Promise<string> {
 
     // Get today's stats
     const { postedToday, repliedToday, queuedToday } = await getTodayStats();
+    
+    // Get breakdown by type (today's activity)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const { data: typeBreakdown } = await supabase
+      .from('content_metadata')
+      .select('decision_type, status')
+      .gte('created_at', todayStart.toISOString());
+    
+    const singlesToday = typeBreakdown?.filter((p: any) => p.decision_type === 'single' && p.status === 'posted').length || 0;
+    const threadsToday = typeBreakdown?.filter((p: any) => p.decision_type === 'thread' && p.status === 'posted').length || 0;
+    const repliesTodayCount = typeBreakdown?.filter((p: any) => p.decision_type === 'reply' && p.status === 'posted').length || 0;
+    
+    const queuedSingles = typeBreakdown?.filter((p: any) => p.decision_type === 'single' && p.status === 'queued').length || 0;
+    const queuedThreads = typeBreakdown?.filter((p: any) => p.decision_type === 'thread' && p.status === 'queued').length || 0;
+    const queuedReplies = typeBreakdown?.filter((p: any) => p.decision_type === 'reply' && p.status === 'queued').length || 0;
 
     // Get scraper coverage
     const { coverage: scraperCoverage, postsWithMetrics, totalPosted } = await getScraperCoverage();
@@ -87,6 +105,12 @@ export async function generateBusinessDashboard(): Promise<string> {
       postedToday,
       repliedToday,
       queuedToday,
+      singlesToday,
+      threadsToday,
+      repliesTodayCount,
+      queuedSingles,
+      queuedThreads,
+      queuedReplies,
       scraperCoverage,
       totalPosted: totalPosted || 0,
       postsWithMetrics: postsWithMetrics || 0,
@@ -313,11 +337,17 @@ function generateBusinessDashboardHTML(data: any): string {
             border-radius: 8px;
             background: #f3f4f6;
         }
-        .activity-icon.post {
+        .activity-icon.single {
             background: #dbeafe;
         }
+        .activity-icon.thread {
+            background: #ede9fe;
+        }
         .activity-icon.reply {
-            background: #f3e8ff;
+            background: #d1fae5;
+        }
+        .activity-icon.post {
+            background: #dbeafe;
         }
         .activity-icon.scrape {
             background: #dcfce7;
@@ -406,14 +436,18 @@ function generateBusinessDashboardHTML(data: any): string {
                     <div style="color: #666; font-size: 14px; margin-bottom: 8px;">
                         ${postingStatusText}
                     </div>
-                    <div class="activity-metrics">
-                        <div class="metric-item">
-                            <div class="metric-value" style="color: #3b82f6;">${postedToday}</div>
-                            <div class="metric-label">Posts Today</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                        <div style="text-align: center; padding: 10px; background: rgba(59, 130, 246, 0.1); border-radius: 8px; border: 2px solid #3b82f6;">
+                            <div style="font-size: 20px; font-weight: bold; color: #3b82f6;">${singlesToday}</div>
+                            <div style="font-size: 11px; color: #666; margin-top: 4px;">📝 Singles</div>
                         </div>
-                        <div class="metric-item">
-                            <div class="metric-value" style="color: #3b82f6;">${repliedToday}</div>
-                            <div class="metric-label">Replies Today</div>
+                        <div style="text-align: center; padding: 10px; background: rgba(139, 92, 246, 0.1); border-radius: 8px; border: 2px solid #8b5cf6;">
+                            <div style="font-size: 20px; font-weight: bold; color: #8b5cf6;">${threadsToday}</div>
+                            <div style="font-size: 11px; color: #666; margin-top: 4px;">🧵 Threads</div>
+                        </div>
+                        <div style="text-align: center; padding: 10px; background: rgba(16, 185, 129, 0.1); border-radius: 8px; border: 2px solid #10b981;">
+                            <div style="font-size: 20px; font-weight: bold; color: #10b981;">${repliesTodayCount}</div>
+                            <div style="font-size: 11px; color: #666; margin-top: 4px;">💬 Replies</div>
                         </div>
                     </div>
                 </div>
@@ -428,19 +462,23 @@ function generateBusinessDashboardHTML(data: any): string {
                     </span>
                 </div>
                 <div style="margin-top: 15px;">
-                    <div style="color: #666; font-size: 14px; margin-bottom: 8px;">
+                    <div style="color: #666; font-size: 14px; margin-bottom: 12px;">
                         ${queuedCount > 0 
                           ? `${queuedCount} pieces of content ready to post`
                           : 'No content in queue - generation may be needed'}
                     </div>
-                    <div class="activity-metrics">
-                        <div class="metric-item">
-                            <div class="metric-value" style="color: #f59e0b;">${queuedToday}</div>
-                            <div class="metric-label">Created Today</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                        <div style="text-align: center; padding: 8px; background: rgba(59, 130, 246, 0.1); border-radius: 6px; border-left: 3px solid #3b82f6;">
+                            <div style="font-size: 18px; font-weight: bold; color: #3b82f6;">${queuedSingles || 0}</div>
+                            <div style="font-size: 10px; color: #666;">📝 Singles</div>
                         </div>
-                        <div class="metric-item">
-                            <div class="metric-value" style="color: #f59e0b;">${queuedCount}</div>
-                            <div class="metric-label">Total Queued</div>
+                        <div style="text-align: center; padding: 8px; background: rgba(139, 92, 246, 0.1); border-radius: 6px; border-left: 3px solid #8b5cf6;">
+                            <div style="font-size: 18px; font-weight: bold; color: #8b5cf6;">${queuedThreads || 0}</div>
+                            <div style="font-size: 10px; color: #666;">🧵 Threads</div>
+                        </div>
+                        <div style="text-align: center; padding: 8px; background: rgba(16, 185, 129, 0.1); border-radius: 6px; border-left: 3px solid #10b981;">
+                            <div style="font-size: 18px; font-weight: bold; color: #10b981;">${queuedReplies || 0}</div>
+                            <div style="font-size: 10px; color: #666;">💬 Replies</div>
                         </div>
                     </div>
                 </div>
@@ -482,15 +520,15 @@ function generateBusinessDashboardHTML(data: any): string {
                 const timeAgo = post.posted_at 
                   ? `${Math.floor((Date.now() - new Date(post.posted_at).getTime()) / (1000 * 60))}m ago`
                   : 'Just now';
-                const icon = post.decision_type === 'reply' ? '💬' : '📝';
-                const bgClass = post.decision_type === 'reply' ? 'reply' : 'post';
+                const typeClass = getContentTypeClass(post.decision_type);
+                const badge = getContentTypeBadge(post.decision_type);
                 const text = post.status === 'posted' 
-                  ? `${post.decision_type === 'reply' ? 'Replied' : 'Posted'}: ${post.content?.substring(0, 60) || 'No content'}...`
+                  ? `${post.content?.substring(0, 60) || 'No content'}...`
                   : `Queued: ${post.content?.substring(0, 60) || 'No content'}...`;
                 
                 return `
-                    <div class="activity-item">
-                        <div class="activity-icon ${bgClass}">${icon}</div>
+                    <div class="activity-item content-card ${typeClass}">
+                        <div class="activity-icon ${typeClass}">${badge}</div>
                         <div class="activity-content">
                             <div class="activity-text">${text}</div>
                             <div class="activity-time">${timeAgo} • ${post.status.toUpperCase()}</div>

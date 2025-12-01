@@ -36,7 +36,7 @@ export async function generateSystemFlowDashboard(): Promise<string> {
       .select('decision_id, content, status')
       .eq('status', 'queued')
       .limit(5);
-
+    
     const stages = [
       {
         name: 'Content Generation',
@@ -195,7 +195,7 @@ export async function generateSystemFlowDashboard(): Promise<string> {
 function generateSystemFlowHTML(data: any): string {
   const now = new Date().toLocaleString();
   const { diagnostics, flowData } = data;
-
+  
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -461,7 +461,7 @@ function generateSystemFlowHTML(data: any): string {
                         const stageDiagnostics = diagnostics.stages[stage.stage === 'content_generation' ? 'contentGeneration' : 
                                                               stage.stage === 'metrics' ? 'metrics' :
                                                               stage.stage === 'learning' ? 'learning' : 'posting'];
-                        return `
+  return `
                             <div style="text-align: center;">
                                 <div style="font-size: 32px; font-weight: bold; color: ${getHealthColor(stageDiagnostics.healthScore)};">
                                     ${stageDiagnostics.healthScore}%
@@ -469,7 +469,7 @@ function generateSystemFlowHTML(data: any): string {
                                 <div style="color: #666; font-size: 14px; margin-top: 4px;">${stage.name}</div>
                                 <div style="color: #999; font-size: 12px; margin-top: 2px;">${stage.status}</div>
                             </div>
-                        `;
+  `;
                     }).join('')}
                 </div>
             </div>
@@ -478,7 +478,7 @@ function generateSystemFlowHTML(data: any): string {
         <div class="footer">
             <p>🤖 Last updated: ${now}</p>
             <p>⚡ Auto-refresh every 60 seconds</p>
-        </div>
+    </div>
     </div>
     <script>
         setTimeout(() => location.reload(), 60000);

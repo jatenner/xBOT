@@ -2,6 +2,8 @@ import { getSupabaseClient } from '../db/index';
 import { 
   generateNavigation, 
   getSharedStyles, 
+  getContentTypeBadge,
+  getContentTypeClass,
   TOKEN_PARAM
 } from './shared/dashboardUtils';
 
@@ -208,12 +210,8 @@ export async function generatePostsOverview(): Promise<string> {
       const metrics = post.tweet_id ? metricsMap[post.tweet_id] : undefined;
       const metricsMinutes = metrics ? minutesAgo(metrics.updated_at) : null;
       const stale = metricsMinutes !== null && metricsMinutes > 60;
-      const typeBadge =
-        post.decision_type === 'thread'
-          ? '<span class="badge thread">THREAD</span>'
-          : post.decision_type === 'reply'
-          ? '<span class="badge reply">REPLY</span>'
-          : '<span class="badge single">SINGLE</span>';
+      const typeBadge = getContentTypeBadge(post.decision_type);
+      const typeClass = getContentTypeClass(post.decision_type);
       const metricsBadge = metricsMinutes === null
         ? '<span class="badge stale">No metrics yet</span>'
         : stale
@@ -242,7 +240,7 @@ export async function generatePostsOverview(): Promise<string> {
         : '—';
 
       return `
-        <tr>
+        <tr class="content-row ${typeClass}">
           <td>${typeBadge}<div class="timestamp">${formatTimestamp(post.posted_at)}</div></td>
           <td>
             <div class="content-preview">${post.content || '—'}</div>
@@ -278,20 +276,25 @@ export async function generatePostsOverview(): Promise<string> {
     ${generateNavigation('/dashboard/posts')}
 
     <div class="stats-grid">
+      <div class="stat-card type-single">
+        <div class="stat-label">📝 Singles (24h)</div>
+        <div class="stat-value">${last24h.filter((p: any) => p.decision_type === 'single').length}</div>
+        <div class="stat-detail">Regular posts to your timeline</div>
+      </div>
+      <div class="stat-card type-thread">
+        <div class="stat-label">🧵 Threads (24h)</div>
+        <div class="stat-value">${last24h.filter((p: any) => p.decision_type === 'thread').length}</div>
+        <div class="stat-detail">Multi-tweet threads</div>
+      </div>
+      <div class="stat-card type-reply">
+        <div class="stat-label">💬 Replies (24h)</div>
+        <div class="stat-value">${last24h.filter((p: any) => p.decision_type === 'reply').length}</div>
+        <div class="stat-detail">Replies to other tweets</div>
+      </div>
       <div class="stat-card">
-        <div class="stat-label">Posts (past 24h)</div>
-        <div class="stat-value">${last24h.length}</div>
+        <div class="stat-label">Total Views (24h)</div>
+        <div class="stat-value">${(last24hViews / 1000).toFixed(1)}K</div>
         <div class="stat-detail">👁️ ${last24hViews.toLocaleString()} views • ❤️ ${last24hLikes.toLocaleString()} likes</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Queued singles/threads</div>
-        <div class="stat-value">${queuedCount}</div>
-        <div class="stat-detail">${queuedCount < 3 ? '⚠️ Queue is running low' : 'Queue looks healthy'}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Data coverage</div>
-        <div class="stat-value">${posts.length}</div>
-        <div class="stat-detail">Most recent ${posts.length} posts displayed below</div>
       </div>
     </div>
 
