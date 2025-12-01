@@ -380,6 +380,67 @@ async function selectBestPerformer(recentPosts: any[]): Promise<AdaptiveDecision
 }
 
 /**
+ * ⚖️ Thompson Sampling with Content Quality Learning Guidance
+ */
+async function thompsonSamplingSelectionWithGuidance(options?: {
+  preferredGenerator?: string;
+  preferredHook?: string;
+  preferredTopic?: string;
+}): Promise<AdaptiveDecision> {
+  console.log('[THOMPSON_GUIDED] 🎯 Using learning insights to guide selection...');
+  
+  const supabase = getSupabaseClient();
+  
+  // Use preferred generator if provided, otherwise randomize
+  const allGenerators = [
+    'dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian', 
+    'coach', 'explorer', 'thoughtLeader', 'newsReporter', 'philosopher', 
+    'culturalBridge'
+  ];
+  
+  const selectedGenerator = options?.preferredGenerator && allGenerators.includes(options.preferredGenerator)
+    ? options.preferredGenerator
+    : allGenerators[Math.floor(Math.random() * allGenerators.length)];
+  
+  // Use preferred hook if provided
+  const hookPattern = options?.preferredHook || 'contrarian';
+  
+  // Use preferred topic if provided, otherwise generate
+  let selectedTopic: string;
+  if (options?.preferredTopic) {
+    selectedTopic = options.preferredTopic;
+    console.log(`[THOMPSON_GUIDED] 📚 Using learned best topic: "${selectedTopic}"`);
+  } else {
+    // Generate topic with AI
+    try {
+      const { DynamicTopicGenerator } = await import('../intelligence/dynamicTopicGenerator');
+      const { contentDiversityEngine } = await import('../ai/content/contentDiversityEngine');
+      
+      const topicGenerator = DynamicTopicGenerator.getInstance();
+      const recentTopics = contentDiversityEngine.getRecentTopics();
+      
+      const dynamicTopic = await topicGenerator.generateTopic({ recentTopics });
+      selectedTopic = dynamicTopic.topic;
+      
+      contentDiversityEngine.trackTopic(selectedTopic);
+      console.log(`[THOMPSON_GUIDED] ✨ AI generated: "${selectedTopic}"`);
+    } catch (error) {
+      console.error('[THOMPSON_GUIDED] ❌ AI generation failed, using fallback');
+      selectedTopic = 'health optimization';
+    }
+  }
+  
+  return {
+    hook_pattern: hookPattern,
+    topic: selectedTopic,
+    generator: selectedGenerator,
+    format: 'single',
+    reasoning: `Learning-guided: ${selectedGenerator} + ${hookPattern} + ${selectedTopic}`,
+    intelligence_source: 'internal'
+  };
+}
+
+/**
  * ⚖️ Thompson Sampling for balanced exploration/exploitation
  */
 async function thompsonSamplingSelection(): Promise<AdaptiveDecision> {
