@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../db/index';
 import { getMetricsHealthReport } from './metricsHealthTracker';
+import { getSharedStyles, generateNavigation, TOKEN_PARAM } from './shared/dashboardUtils';
 
 interface HealthCard {
   name: string;
@@ -8,7 +9,7 @@ interface HealthCard {
   details: string[];
 }
 
-const SHARED_STYLES = `
+const ADDITIONAL_STYLES = `
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: #f7fafc;
@@ -547,10 +548,7 @@ export async function generateSystemHealthOverview(): Promise<string> {
       <p>The command center for live system status. Last updated ${timestamp}</p>
     </div>
 
-    <div class="nav-tabs">
-      <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab active">🩺 System Health</a>
-      <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📝 Posts</a>
-      <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
+    ${generateNavigation('/dashboard/health')}
     </div>
 
     <div class="grid">
