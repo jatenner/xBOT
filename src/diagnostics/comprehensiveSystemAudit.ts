@@ -91,7 +91,8 @@ export class ComprehensiveSystemAudit {
     // Analyze data flow
     const dataFlowIssues = await this.analyzeDataFlow(supabase);
     
-    // Check configurationIssues = await this.analyzeConfiguration(config);
+    // Analyze configuration
+    const configurationIssues = await this.analyzeConfiguration(config);
     
     // Identify critical issues
     const criticalIssues = this.identifyCriticalIssues(components, dataFlowIssues, configurationIssues);
