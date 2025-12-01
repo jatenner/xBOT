@@ -639,10 +639,32 @@ app.get('/playwright/ping', async (req, res) => {
 });
 
 /**
- * 📊 DASHBOARD ENDPOINTS - Multi-page analytics
- * All dashboard routes registered through centralized registry
+ * 📊 SIMPLE DASHBOARD - Just Posts and Replies
  */
-registerDashboardRoutes(app);
+app.get('/dashboard', async (req: express.Request, res: express.Response) => {
+  try {
+    const token = req.query.token as string || '';
+    if (token !== 'xbot-admin-2025') {
+      return res.status(401).send(`
+        <html>
+          <body style="font-family: Arial; text-align: center; padding: 50px;">
+            <h1>🔒 Authentication Required</h1>
+            <p>Add <code>?token=xbot-admin-2025</code> to the URL</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    const { generateSimpleDashboard } = await import('./dashboard/simpleDashboard');
+    const html = await generateSimpleDashboard();
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error: any) {
+    console.error('❌ DASHBOARD_ERROR:', error.message);
+    res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
+      <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
+  }
+});
 
 // Legacy/external dashboards not in main registry (kept for backward compatibility)
 // These can be added to dashboardRoutes.ts if needed
