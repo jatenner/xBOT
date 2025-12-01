@@ -241,12 +241,12 @@ function generateDiagnosticsHTML(data: any): string {
                 <div class="stat-card">
                     <div class="stat-label">Posts Published</div>
                     <div class="stat-value">${stats.postedToday}</div>
-                    <div class="stat-change">Target: 2 posts/day</div>
+                    <div class="stat-change">Target: ${parseInt(process.env.MAX_POSTS_PER_HOUR || '2')} posts/hour</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">Replies Sent</div>
                     <div class="stat-value">${stats.repliedToday}</div>
-                    <div class="stat-change">Target: 3 replies/day</div>
+                    <div class="stat-change">Target: ${parseInt(process.env.REPLIES_PER_HOUR || '4')} replies/hour</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">Total Views</div>
