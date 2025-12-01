@@ -322,6 +322,7 @@ export async function generatePostsOverview(): Promise<string> {
     </div>
 
     <div class="nav-tabs">
+      <a href="/dashboard/business?token=xbot-admin-2025" class="nav-tab">💼 Business</a>
       <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab">🩺 System Health</a>
       <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab active">📝 Posts</a>
       <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
