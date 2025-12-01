@@ -195,7 +195,7 @@ export async function getSystemInvestigation(req: Request, res: Response): Promi
       metricsScraperWorking: metricsWorking,
       postingSuccessRate: successRate,
       circuitBreakerOpen: circuitBreaker.state === 'open',
-      overallAssessment: postingWorking && metricsWorking && successRate !== null && successRate > 70 && !circuitBreaker.isOpen
+      overallAssessment: postingWorking && metricsWorking && successRate !== null && successRate > 70 && circuitBreaker.state !== 'open'
         ? 'System is working normally'
         : 'System has issues that need attention'
     };
