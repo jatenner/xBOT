@@ -695,8 +695,9 @@ app.get('/dashboard/command-center', async (req, res) => {
     
     console.log('📊 RECENT_DASHBOARD: Serving recent activity...');
     
-    const { comprehensiveDashboard } = await import('./dashboard/comprehensiveDashboard');
-    const dashboardHTML = await comprehensiveDashboard.generateRecentDashboard();
+    // Redirect to main comprehensive dashboard (legacy route)
+    const { generateComprehensiveDashboard } = await import('./dashboard/comprehensiveDashboard');
+    const dashboardHTML = await generateComprehensiveDashboard();
     
     res.setHeader('Content-Type', 'text/html');
     res.send(dashboardHTML);
@@ -810,8 +811,9 @@ app.get('/dashboard/temporal', async (req, res) => {
     
     console.log('📊 TEMPORAL_DASHBOARD: Serving temporal intelligence...');
     
-    const { comprehensiveDashboard } = await import('./dashboard/comprehensiveDashboard');
-    const dashboardHTML = await comprehensiveDashboard.generateTemporalDashboard();
+    // Redirect to main comprehensive dashboard (legacy route)
+    const { generateComprehensiveDashboard } = await import('./dashboard/comprehensiveDashboard');
+    const dashboardHTML = await generateComprehensiveDashboard();
     
     res.setHeader('Content-Type', 'text/html');
     res.send(dashboardHTML);
@@ -843,8 +845,9 @@ app.get('/dashboard/followers', async (req, res) => {
 
     console.log('📈 FOLLOWER_DASHBOARD: Serving follower growth...');
     
-    const { generateFollowerGrowthDashboard } = await import('./dashboard/comprehensiveDashboard');
-    const html = await generateFollowerGrowthDashboard();
+    // Redirect to main comprehensive dashboard (legacy route)
+    const { generateComprehensiveDashboard } = await import('./dashboard/comprehensiveDashboard');
+    const html = await generateComprehensiveDashboard();
     res.header('Content-Type', 'text/html').send(html);
   } catch (error: any) {
     console.error('[SERVER] Follower dashboard error:', error.message);
@@ -871,8 +874,9 @@ app.get('/dashboard/factors', async (req, res) => {
     
     console.log('📊 FACTOR_DASHBOARD: Serving factor analysis...');
     
-    const { comprehensiveDashboard } = await import('./dashboard/comprehensiveDashboard');
-    const dashboardHTML = await comprehensiveDashboard.generateFactorAnalysisDashboard();
+    // Redirect to main comprehensive dashboard (legacy route)
+    const { generateComprehensiveDashboard } = await import('./dashboard/comprehensiveDashboard');
+    const dashboardHTML = await generateComprehensiveDashboard();
     
     res.setHeader('Content-Type', 'text/html');
     res.send(dashboardHTML);
