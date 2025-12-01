@@ -10,57 +10,6 @@ interface HealthCard {
 }
 
 const ADDITIONAL_STYLES = `
-  body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: #f7fafc;
-    color: #1a202c;
-    margin: 0;
-    padding: 40px;
-  }
-
-  .container {
-    max-width: 1200px;
-    margin: 0 auto;
-  }
-
-  .header h1 {
-    margin: 0;
-    font-size: 32px;
-    color: #2d3748;
-  }
-
-  .header p {
-    margin: 8px 0 0;
-    color: #4a5568;
-  }
-
-  .nav-tabs {
-    display: flex;
-    gap: 12px;
-    margin: 24px 0;
-    flex-wrap: wrap;
-  }
-
-  .nav-tab {
-    text-decoration: none;
-    padding: 12px 24px;
-    border-radius: 10px;
-    background: white;
-    color: #2d3748;
-    font-weight: 600;
-    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
-    transition: all 0.2s ease;
-  }
-
-  .nav-tab:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
-  }
-
-  .nav-tab.active {
-    background: #4f46e5;
-    color: white;
-  }
 
   .grid {
     display: grid;

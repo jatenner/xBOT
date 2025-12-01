@@ -62,7 +62,7 @@ export function getSharedStyles(): string {
         min-height: 100vh;
         padding: 20px;
     }
-    .container { max-width: 1800px; margin: 0 auto; }
+    .container { max-width: 1600px; margin: 0 auto; padding: 0 20px; }
     .header {
         background: white;
         padding: 30px;

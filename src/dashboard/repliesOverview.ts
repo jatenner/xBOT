@@ -35,57 +35,6 @@ interface MetricsRow {
 }
 
 const STYLES = `
-  body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: #f8fafc;
-    color: #0f172a;
-    margin: 0;
-    padding: 40px;
-  }
-
-  .container {
-    max-width: 1280px;
-    margin: 0 auto;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 32px;
-    color: #1f2937;
-  }
-
-  .header p {
-    margin-top: 8px;
-    color: #475569;
-  }
-
-  .nav-tabs {
-    display: flex;
-    gap: 12px;
-    margin: 24px 0;
-    flex-wrap: wrap;
-  }
-
-  .nav-tab {
-    text-decoration: none;
-    padding: 12px 24px;
-    border-radius: 12px;
-    background: white;
-    color: #1f2937;
-    font-weight: 600;
-    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
-    transition: all 0.2s ease;
-  }
-
-  .nav-tab:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
-  }
-
-  .nav-tab.active {
-    background: #7c3aed;
-    color: white;
-  }
 
   .stats-grid {
     display: grid;
