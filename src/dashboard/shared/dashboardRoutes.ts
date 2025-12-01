@@ -106,10 +106,10 @@ export const dashboardRoutes: DashboardRoute[] = [
  * Register all dashboard routes with Express app
  */
 export function registerDashboardRoutes(app: any): void {
-  // Main dashboard redirects to business dashboard
+  // Main dashboard redirects to overview
   app.get('/dashboard', async (req: Request, res: Response) => {
     const token = req.query.token as string || '';
-    res.redirect(`/dashboard/business?token=${token}`);
+    res.redirect(`/dashboard/overview?token=${token}`);
   });
 
   // Register all dashboard routes

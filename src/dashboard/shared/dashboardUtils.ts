@@ -12,17 +12,10 @@ export const TOKEN_PARAM = `?token=${ADMIN_TOKEN}`;
  * Standard dashboard navigation links
  */
 export const DASHBOARD_NAVIGATION = {
-  business: { label: '💼 Business', path: '/dashboard/business', icon: '💼', description: 'Real-time system activity' },
-  diagnostics: { label: '🤖 Diagnostics', path: '/dashboard/diagnostics', icon: '🤖', description: 'System health chatbot' },
-  systemFlow: { label: '🔍 System Flow', path: '/dashboard/system-flow', icon: '🔍', description: 'End-to-end flow view' },
-  health: { label: '🩺 Health', path: '/dashboard/health', icon: '🩺', description: 'System health overview' },
-  systemHealth: { label: '⚙️ System Health', path: '/dashboard/system-health', icon: '⚙️', description: 'Job status & targets' },
-  posts: { label: '📝 Posts', path: '/dashboard/posts', icon: '📝', description: 'Posts analytics' },
-  replies: { label: '💬 Replies', path: '/dashboard/replies', icon: '💬', description: 'Replies analytics' },
-  dataValidation: { label: '🔬 Data Validation', path: '/dashboard/data-validation', icon: '🔬', description: 'Data integrity checks' },
-  postingMonitor: { label: '📋 Posting Monitor', path: '/dashboard/posting-monitor', icon: '📋', description: 'Hourly posting tracking' },
-  recent: { label: '📅 Recent', path: '/dashboard/recent', icon: '📅', description: 'Recent activity feed' },
-  systemAudit: { label: '🔍 System Audit', path: '/dashboard/system-audit', icon: '🔍', description: 'Comprehensive system analysis' }
+  overview: { label: '📊 Overview', path: '/dashboard/overview', icon: '📊', description: 'Main dashboard with key metrics' },
+  systemHealth: { label: '⚙️ System Health', path: '/dashboard/system-health', icon: '⚙️', description: 'Jobs, targets, and system status' },
+  content: { label: '📝 Content', path: '/dashboard/content', icon: '📝', description: 'Posts, replies, and content analytics' },
+  analytics: { label: '📈 Analytics', path: '/dashboard/analytics', icon: '📈', description: 'Performance metrics and validation' }
 };
 
 /**
@@ -30,17 +23,10 @@ export const DASHBOARD_NAVIGATION = {
  */
 export function generateNavigation(activeTab: string): string {
   const navItems = [
-    DASHBOARD_NAVIGATION.business,
-    DASHBOARD_NAVIGATION.diagnostics,
-    DASHBOARD_NAVIGATION.systemFlow,
-    DASHBOARD_NAVIGATION.health,
+    DASHBOARD_NAVIGATION.overview,
     DASHBOARD_NAVIGATION.systemHealth,
-    DASHBOARD_NAVIGATION.posts,
-    DASHBOARD_NAVIGATION.replies,
-    DASHBOARD_NAVIGATION.recent,
-    DASHBOARD_NAVIGATION.dataValidation,
-    DASHBOARD_NAVIGATION.postingMonitor,
-    DASHBOARD_NAVIGATION.systemAudit
+    DASHBOARD_NAVIGATION.content,
+    DASHBOARD_NAVIGATION.analytics
   ];
 
   return `
