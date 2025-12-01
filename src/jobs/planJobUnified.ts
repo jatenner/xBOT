@@ -267,10 +267,30 @@ async function generateRealContent(): Promise<void> {
       
       // 🚀 FIX: Use specialized generators instead of single dynamicContentGenerator
       // This ensures content sounds different (different personalities, prompts, styles)
+      // ALL 22 GENERATORS available (matching generatorMatcher.ts)
       const availableGenerators = [
-        'dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian',
-        'coach', 'explorer', 'thoughtLeader', 'newsReporter', 'philosopher',
-        'culturalBridge'
+        'contrarian',
+        'culturalBridge',
+        'dataNerd',
+        'storyteller',
+        'coach',
+        'explorer',
+        'thoughtLeader',
+        'mythBuster',
+        'newsReporter',
+        'philosopher',
+        'provocateur',
+        'interestingContent',
+        'popCultureAnalyst', // NEW - Nov 6, 2025
+        'teacher', // NEW - Nov 6, 2025
+        'investigator', // NEW - Nov 6, 2025
+        'connector', // NEW - Nov 6, 2025
+        'pragmatist', // NEW - Nov 6, 2025
+        'historian', // NEW - Nov 6, 2025
+        'translator', // NEW - Nov 6, 2025
+        'patternFinder', // NEW - Nov 6, 2025
+        'experimenter' // NEW - Nov 6, 2025
+        // Note: 'dynamicContent' excluded (that's the fallback, not a specialized generator)
       ];
       
       // Select generator (rotate for variety, or use learning if available)
@@ -299,6 +319,7 @@ async function generateRealContent(): Promise<void> {
       }
       
       // Call specialized generator using the same pattern as planJob.ts
+      // ALL 22 GENERATORS mapped (matching planJob.ts generatorMap)
       const generatorMap: Record<string, { module: string, fn: string }> = {
         'provocateur': { module: 'provocateurGenerator', fn: 'generateProvocateurContent' },
         'dataNerd': { module: 'dataNerdGenerator', fn: 'generateDataNerdContent' },
@@ -311,6 +332,17 @@ async function generateRealContent(): Promise<void> {
         'newsReporter': { module: 'newsReporterGenerator', fn: 'generateNewsReporterContent' },
         'explorer': { module: 'explorerGenerator', fn: 'generateExplorerContent' },
         'thoughtLeader': { module: 'thoughtLeaderGenerator', fn: 'generateThoughtLeaderContent' },
+        'interestingContent': { module: 'interestingContentGenerator', fn: 'generateInterestingContent' },
+        // NEW GENERATORS (Nov 6, 2025 upgrade)
+        'popCultureAnalyst': { module: 'popCultureAnalystGenerator', fn: 'generatePopCultureContent' },
+        'teacher': { module: 'teacherGenerator', fn: 'generateTeacherContent' },
+        'investigator': { module: 'investigatorGenerator', fn: 'generateInvestigatorContent' },
+        'connector': { module: 'connectorGenerator', fn: 'generateConnectorContent' },
+        'pragmatist': { module: 'pragmatistGenerator', fn: 'generatePragmatistContent' },
+        'historian': { module: 'historianGenerator', fn: 'generateHistorianContent' },
+        'translator': { module: 'translatorGenerator', fn: 'generateTranslatorContent' },
+        'patternFinder': { module: 'patternFinderGenerator', fn: 'generatePatternFinderContent' },
+        'experimenter': { module: 'experimenterGenerator', fn: 'generateExperimenterContent' },
       };
       
       const config = generatorMap[selectedGenerator];
