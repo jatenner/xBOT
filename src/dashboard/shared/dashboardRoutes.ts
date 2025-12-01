@@ -87,8 +87,9 @@ export const dashboardRoutes: DashboardRoute[] = [
   {
     path: '/dashboard/recent',
     handler: async () => {
-      const { comprehensiveDashboard } = await import('../comprehensiveDashboard');
-      return await comprehensiveDashboard.generateRecentDashboard();
+      // Redirect to main comprehensive dashboard (legacy route)
+      const { generateComprehensiveDashboard } = await import('../comprehensiveDashboard');
+      return await generateComprehensiveDashboard();
     },
     activeTab: '/dashboard/recent'
   },
