@@ -366,9 +366,18 @@ export async function getPostingMonitor(req: Request, res: Response): Promise<vo
       .gte('posted_at', todayStart.toISOString())
       .order('posted_at', { ascending: true });
 
-    const dailyGoal = 2;
-    const postedToday = todayPosts?.filter(p => p.decision_type === 'single').length || 0;
-    const onTrack = postedToday >= dailyGoal || (postedToday < dailyGoal && now.getHours() < 20);
+    const postsPerHourGoal = parseInt(process.env.MAX_POSTS_PER_HOUR || '2');
+    const repliesPerHourGoal = parseInt(process.env.REPLIES_PER_HOUR || '4');
+    const singlePosts = todayPosts?.filter(p => p.decision_type === 'single') || [];
+    const replyPosts = todayPosts?.filter(p => p.decision_type === 'reply') || [];
+    const postedToday = singlePosts.length;
+    const repliedToday = replyPosts.length;
+    const hoursElapsed = now.getHours() + (now.getMinutes() / 60);
+    const hourlyPostsGoal = Math.floor(hoursElapsed * postsPerHourGoal);
+    const hourlyRepliesGoal = Math.floor(hoursElapsed * repliesPerHourGoal);
+    const postsOnTrack = postedToday >= hourlyPostsGoal;
+    const repliesOnTrack = repliedToday >= hourlyRepliesGoal;
+    const onTrack = postsOnTrack && repliesOnTrack;
 
     // Build timeline for last 24 hours
     const timeline = (todayPosts || [])
