@@ -539,7 +539,7 @@ export async function generateSystemHealthOverview(): Promise<string> {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>xBOT System Health Overview</title>
-  <style>${SHARED_STYLES}</style>
+  <style>${getSharedStyles()} ${ADDITIONAL_STYLES}</style>
 </head>
 <body>
   <div class="container">
