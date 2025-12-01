@@ -380,9 +380,10 @@ function generateDashboardHTML(posts: any[], replies: any[]): string {
                                 </div>
                             ` : ''}
                         </div>
+                        ${getMetricsStatusBadge(post)}
                     ` : `
-                        <div style="padding: 15px; background: #fef3c7; border-radius: 6px; color: #92400e; text-align: center;">
-                            ⏳ Metrics not yet scraped
+                        <div style="padding: 15px; background: #fee2e2; border-radius: 6px; color: #991b1b; text-align: center;">
+                            ❌ No metrics scraped yet
                         </div>
                     `}
                     
@@ -499,9 +500,10 @@ function generateDashboardHTML(posts: any[], replies: any[]): string {
                                 </div>
                             ` : ''}
                         </div>
+                        ${getMetricsStatusBadge(reply)}
                     ` : `
-                        <div style="padding: 15px; background: #fef3c7; border-radius: 6px; color: #92400e; text-align: center;">
-                            ⏳ Metrics not yet scraped
+                        <div style="padding: 15px; background: #fee2e2; border-radius: 6px; color: #991b1b; text-align: center;">
+                            ❌ No metrics scraped yet
                         </div>
                     `}
                     
@@ -580,5 +582,92 @@ function formatNumber(num: number): string {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
   return num.toString();
+}
+
+function getMetricsStatusBadge(item: any): string {
+  // Check if metrics exist
+  const hasMetrics = item.actual_impressions !== null && item.actual_impressions !== undefined && item.actual_impressions > 0;
+  
+  if (!hasMetrics) {
+    return `
+      <div style="margin-top: 10px; padding: 8px 12px; background: #fee2e2; border-radius: 6px; border-left: 3px solid #ef4444;">
+        <div style="font-size: 12px; font-weight: 600; color: #991b1b; margin-bottom: 4px;">
+          ❌ Metrics Status: Missing
+        </div>
+        <div style="font-size: 11px; color: #666;">
+          Metrics scraper runs every 20 min. Today's posts are priority.
+        </div>
+      </div>
+    `;
+  }
+  
+  // Check when metrics were last updated
+  const updatedAt = item.updated_at ? new Date(item.updated_at) : null;
+  if (!updatedAt) {
+    return `
+      <div style="margin-top: 10px; padding: 8px 12px; background: #fef3c7; border-radius: 6px; border-left: 3px solid #f59e0b;">
+        <div style="font-size: 12px; font-weight: 600; color: #92400e; margin-bottom: 4px;">
+          ⚠️ Metrics Status: Unknown
+        </div>
+        <div style="font-size: 11px; color: #666;">
+          Last scrape time unavailable
+        </div>
+      </div>
+    `;
+  }
+  
+  const hoursAgo = (Date.now() - updatedAt.getTime()) / (1000 * 60 * 60);
+  const minutesAgo = Math.floor((Date.now() - updatedAt.getTime()) / (1000 * 60));
+  
+  let statusColor: string;
+  let statusBg: string;
+  let statusBorder: string;
+  let statusText: string;
+  let statusIcon: string;
+  
+  if (hoursAgo < 1) {
+    // GREEN: Fresh (< 1 hour)
+    statusColor = '#065f46';
+    statusBg = '#d1fae5';
+    statusBorder = '#10b981';
+    statusText = 'Fresh';
+    statusIcon = '✅';
+  } else if (hoursAgo < 6) {
+    // YELLOW: Acceptable (1-6 hours)
+    statusColor = '#92400e';
+    statusBg = '#fef3c7';
+    statusBorder = '#f59e0b';
+    statusText = 'Acceptable';
+    statusIcon = '⚠️';
+  } else {
+    // RED: Stale (> 6 hours)
+    statusColor = '#991b1b';
+    statusBg = '#fee2e2';
+    statusBorder = '#ef4444';
+    statusText = 'Stale';
+    statusIcon = '❌';
+  }
+  
+  const timeDisplay = hoursAgo < 1 
+    ? `${minutesAgo} min ago`
+    : hoursAgo < 24
+    ? `${Math.floor(hoursAgo)}h ${Math.floor((hoursAgo % 1) * 60)}m ago`
+    : `${Math.floor(hoursAgo / 24)}d ${Math.floor(hoursAgo % 24)}h ago`;
+  
+  return `
+    <div style="margin-top: 10px; padding: 8px 12px; background: ${statusBg}; border-radius: 6px; border-left: 3px solid ${statusBorder};">
+      <div style="font-size: 12px; font-weight: 600; color: ${statusColor}; margin-bottom: 4px;">
+        ${statusIcon} Metrics Status: ${statusText}
+      </div>
+      <div style="font-size: 11px; color: #666;">
+        Last scraped: ${timeDisplay} (${updatedAt.toLocaleString()})
+      </div>
+      ${hoursAgo >= 6 ? `
+        <div style="font-size: 11px; color: #991b1b; margin-top: 4px;">
+          ⚠️ Older tweets scraped less frequently. Today's posts refresh every 20-40 min.
+        </div>
+      ` : ''}
+    </div>
+  `;
 }
 
