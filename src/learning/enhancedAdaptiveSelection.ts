@@ -100,9 +100,36 @@ export async function selectOptimalContentEnhanced(): Promise<AdaptiveDecision> 
   }
   
   // ═══════════════════════════════════════════════════════════
-  // ⚖️ NORMAL: Thompson Sampling
+  // ⚖️ NORMAL: Thompson Sampling with Content Quality Learning
   // ═══════════════════════════════════════════════════════════
   console.log('[ENHANCED_ADAPTIVE] ⚖️ Balanced approach - exploit + explore');
+  
+  // 🚀 NEW: Get learning insights for content quality optimization
+  try {
+    const { learningSystem } = await import('./learningSystem');
+    const insights = await learningSystem.getLearningInsights();
+    
+    // Type guard: check if insights have the new fields
+    const hasGuidance = insights && (
+      (insights as any).best_generator || 
+      (insights as any).best_hook || 
+      (insights as any).best_topic
+    );
+    
+    if (hasGuidance) {
+      console.log(`[ENHANCED_ADAPTIVE] 🎯 Learning insights: generator=${(insights as any).best_generator}, hook=${(insights as any).best_hook}, topic=${(insights as any).best_topic}`);
+      
+      // Use learning insights to guide selection
+      return await thompsonSamplingSelectionWithGuidance({
+        preferredGenerator: (insights as any).best_generator,
+        preferredHook: (insights as any).best_hook,
+        preferredTopic: (insights as any).best_topic
+      });
+    }
+  } catch (learningError: any) {
+    console.warn('[ENHANCED_ADAPTIVE] ⚠️ Learning insights unavailable:', learningError.message);
+  }
+  
   return await thompsonSamplingSelection();
 }
 

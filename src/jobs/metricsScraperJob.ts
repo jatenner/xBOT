@@ -534,7 +534,30 @@ export async function metricsScraperJob(): Promise<void> {
               console.warn(`[METRICS_JOB] ⚠️ Failed to update generator stats:`, statsError.message);
             }
             
-            // 🔧 NEW: Update learning system with actual performance data
+            // 🔧 FIX: Get follower attribution from post_follower_tracking
+            let followersGained = 0;
+            try {
+              const { data: followerTracking } = await supabase
+                .from('post_follower_tracking')
+                .select('follower_count, hours_after_post')
+                .eq('post_id', post.decision_id)
+                .in('hours_after_post', [0, 24])
+                .order('hours_after_post', { ascending: true });
+              
+              if (followerTracking && followerTracking.length >= 2) {
+                const baseline = Number(followerTracking[0].follower_count) || 0;
+                const after24h = Number(followerTracking[1].follower_count) || 0;
+                followersGained = Math.max(0, after24h - baseline);
+                console.log(`[METRICS_JOB] 👥 Follower attribution: ${baseline} → ${after24h} (+${followersGained})`);
+              } else if (followerTracking && followerTracking.length === 1) {
+                // Only baseline available, use 0 for now (will update when 24h data available)
+                console.log(`[METRICS_JOB] 👥 Follower baseline: ${followerTracking[0].follower_count} (24h data pending)`);
+              }
+            } catch (followerError: any) {
+              console.warn(`[METRICS_JOB] ⚠️ Follower attribution failed: ${followerError.message}`);
+            }
+            
+            // 🔧 NEW: Update learning system with actual performance data (including real followers!)
             try {
               const { learningSystem } = await import('../learning/learningSystem');
               await learningSystem.updatePostPerformance(post.decision_id, {
@@ -543,9 +566,9 @@ export async function metricsScraperJob(): Promise<void> {
                 replies: repliesValue,
                 impressions: viewsValue,
                 engagement_rate: engagementRate,
-                followers_gained: 0 // Will be updated by follower tracking job
+                followers_gained: followersGained // ✅ Real value from follower tracking!
               });
-              console.log(`[METRICS_JOB] 🧠 Updated learning system with performance data`);
+              console.log(`[METRICS_JOB] 🧠 Updated learning system with performance data (${followersGained} followers gained)`);
             } catch (learningError: any) {
               console.warn(`[METRICS_JOB] ⚠️ Failed to update learning system:`, learningError.message);
               // Don't fail - metrics are stored, just learning update failed
