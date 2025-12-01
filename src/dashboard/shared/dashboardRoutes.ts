@@ -9,6 +9,7 @@ import { checkAuth, generateAuthErrorHTML } from './dashboardUtils';
 
 /**
  * Dashboard route definitions
+ * All active dashboards registered here for centralized management
  */
 export const dashboardRoutes: DashboardRoute[] = [
   {
@@ -50,6 +51,38 @@ export const dashboardRoutes: DashboardRoute[] = [
       return await generatePostingMonitorDashboard();
     },
     activeTab: '/dashboard/posting-monitor'
+  },
+  {
+    path: '/dashboard/health',
+    handler: async () => {
+      const { generateSystemHealthOverview } = await import('../systemHealthOverview');
+      return await generateSystemHealthOverview();
+    },
+    activeTab: '/dashboard/health'
+  },
+  {
+    path: '/dashboard/posts',
+    handler: async () => {
+      const { generatePostsOverview } = await import('../postsOverview');
+      return await generatePostsOverview();
+    },
+    activeTab: '/dashboard/posts'
+  },
+  {
+    path: '/dashboard/replies',
+    handler: async () => {
+      const { generateRepliesOverview } = await import('../repliesOverview');
+      return await generateRepliesOverview();
+    },
+    activeTab: '/dashboard/replies'
+  },
+  {
+    path: '/dashboard/recent',
+    handler: async () => {
+      const { comprehensiveDashboard } = await import('../comprehensiveDashboard');
+      return await comprehensiveDashboard.generateRecentDashboard();
+    },
+    activeTab: '/dashboard/recent'
   }
 ];
 
@@ -70,102 +103,44 @@ export function registerDashboardRoutes(app: any): void {
     });
   }
 
-  // Legacy routes (keep for backward compatibility)
-  app.get('/dashboard/posts', async (req: Request, res: Response) => {
+  // API endpoints for diagnostics
+  app.get('/api/diagnostics/health', async (req: Request, res: Response) => {
     try {
-      const token = req.query.token as string || req.headers.authorization?.replace('Bearer ', '');
-      const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
-      
-      if (!checkAuth(token, req.headers.authorization)) {
-        return res.status(401).send(generateAuthErrorHTML());
-      }
-      
-      console.log('📊 POSTS_DASHBOARD: Serving posts analytics...');
-      
-      const { generatePostsOverview } = await import('../postsOverview');
-      const dashboardHTML = await generatePostsOverview();
-      
-      res.setHeader('Content-Type', 'text/html');
-      res.send(dashboardHTML);
-      
-      console.log('✅ POSTS_DASHBOARD: Delivered');
+      const { getDiagnosticsHealth } = await import('../../api/diagnosticsApi');
+      await getDiagnosticsHealth(req, res);
     } catch (error: any) {
-      console.error('❌ POSTS_DASHBOARD_ERROR:', error.message);
-      res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
-        <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
+      console.error('❌ DIAGNOSTICS_API_ERROR:', error.message);
+      res.status(500).json({ error: 'Unable to fetch system health data. Please try again later.' });
     }
   });
 
-  app.get('/dashboard/replies', async (req: Request, res: Response) => {
+  app.get('/api/diagnostics/flow', async (req: Request, res: Response) => {
     try {
-      const token = req.query.token as string || req.headers.authorization?.replace('Bearer ', '');
-      
-      if (!checkAuth(token, req.headers.authorization)) {
-        return res.status(401).send(generateAuthErrorHTML());
-      }
-      
-      console.log('📊 REPLIES_DASHBOARD: Serving replies analytics...');
-      
-      const { generateRepliesOverview } = await import('../repliesOverview');
-      const dashboardHTML = await generateRepliesOverview();
-      
-      res.setHeader('Content-Type', 'text/html');
-      res.send(dashboardHTML);
-      
-      console.log('✅ REPLIES_DASHBOARD: Delivered');
+      const { getDiagnosticsFlow } = await import('../../api/diagnosticsApi');
+      await getDiagnosticsFlow(req, res);
     } catch (error: any) {
-      console.error('❌ REPLIES_DASHBOARD_ERROR:', error.message);
-      res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
-        <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
+      console.error('❌ DIAGNOSTICS_FLOW_API_ERROR:', error.message);
+      res.status(500).json({ error: 'Unable to fetch system flow data. Please try again later.' });
     }
   });
 
-  app.get('/dashboard/health', async (req: Request, res: Response) => {
+  app.get('/api/diagnostics/data-validation', async (req: Request, res: Response) => {
     try {
-      const token = req.query.token as string || req.headers.authorization?.replace('Bearer ', '');
-      
-      if (!checkAuth(token, req.headers.authorization)) {
-        return res.status(401).send(generateAuthErrorHTML());
-      }
-      
-      console.log('🩺 HEALTH_DASHBOARD: Serving system health...');
-      
-      const { generateSystemHealthOverview } = await import('../systemHealthOverview');
-      const dashboardHTML = await generateSystemHealthOverview();
-      
-      res.setHeader('Content-Type', 'text/html');
-      res.send(dashboardHTML);
-      
-      console.log('✅ HEALTH_DASHBOARD: Delivered');
+      const { getDataValidation } = await import('../../api/diagnosticsApi');
+      await getDataValidation(req, res);
     } catch (error: any) {
-      console.error('❌ HEALTH_DASHBOARD_ERROR:', error.message);
-      res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
-        <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
+      console.error('❌ DATA_VALIDATION_API_ERROR:', error.message);
+      res.status(500).json({ error: 'Unable to fetch data validation results. Please try again later.' });
     }
   });
 
-  // Recent dashboard (legacy)
-  app.get('/dashboard/recent', async (req: Request, res: Response) => {
+  app.get('/api/diagnostics/posting-monitor', async (req: Request, res: Response) => {
     try {
-      const token = req.query.token as string || req.headers.authorization?.replace('Bearer ', '');
-      
-      if (!checkAuth(token, req.headers.authorization)) {
-        return res.status(401).send(generateAuthErrorHTML());
-      }
-      
-      console.log('📊 RECENT_DASHBOARD: Serving recent activity...');
-      
-      const { comprehensiveDashboard } = await import('../comprehensiveDashboard');
-      const dashboardHTML = await comprehensiveDashboard.generateRecentDashboard();
-      
-      res.setHeader('Content-Type', 'text/html');
-      res.send(dashboardHTML);
-      
-      console.log('✅ RECENT_DASHBOARD: Delivered');
+      const { getPostingMonitor } = await import('../../api/diagnosticsApi');
+      await getPostingMonitor(req, res);
     } catch (error: any) {
-      console.error('❌ RECENT_DASHBOARD_ERROR:', error.message);
-      res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
-        <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
+      console.error('❌ POSTING_MONITOR_API_ERROR:', error.message);
+      res.status(500).json({ error: 'Unable to fetch posting monitor data. Please try again later.' });
     }
   });
 }

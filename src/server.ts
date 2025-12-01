@@ -24,6 +24,7 @@ import playwrightPostingRouter from './api/playwrightPosting';
 import ratesRouter from './api/rates';
 import resourceMetricsRouter from './api/resourceMetrics';
 import adminDashboardActionsRouter from './api/adminDashboardActions';
+import { registerDashboardRoutes } from './dashboard/shared/dashboardRoutes';
 
 const app = express();
 
@@ -639,16 +640,13 @@ app.get('/playwright/ping', async (req, res) => {
 
 /**
  * 📊 DASHBOARD ENDPOINTS - Multi-page analytics
+ * All dashboard routes registered through centralized registry
  */
+registerDashboardRoutes(app);
 
-// Main dashboard redirects to business dashboard (primary view)
-app.get('/dashboard', async (req, res) => {
-  const token = req.query.token || '';
-  res.redirect(`/dashboard/business?token=${token}`);
-});
-
-// Recent posts dashboard (main insight view)
-app.get('/dashboard/recent', async (req, res) => {
+// Legacy/external dashboards not in main registry (kept for backward compatibility)
+// These can be added to dashboardRoutes.ts if needed
+app.get('/dashboard/command-center', async (req, res) => {
   try {
     const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
     const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
@@ -680,40 +678,6 @@ app.get('/dashboard/recent', async (req, res) => {
   }
 });
 
-// Posts dashboard page
-app.get('/dashboard/posts', async (req, res) => {
-  try {
-    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
-    const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
-    
-    if (token !== adminToken) {
-      return res.status(401).send(`
-        <html>
-          <body style="font-family: Arial; text-align: center; padding: 50px;">
-            <h1>🔒 Authentication Required</h1>
-            <p>Add <code>?token=YOUR_TOKEN</code> to the URL</p>
-          </body>
-        </html>
-      `);
-    }
-    
-    console.log('📊 POSTS_DASHBOARD: Serving posts analytics...');
-    
-    const { generatePostsOverview } = await import('./dashboard/postsOverview');
-    const dashboardHTML = await generatePostsOverview();
-    
-    res.setHeader('Content-Type', 'text/html');
-    res.send(dashboardHTML);
-    
-    console.log('✅ POSTS_DASHBOARD: Delivered');
-  } catch (error: any) {
-    console.error('❌ POSTS_DASHBOARD_ERROR:', error.message);
-    res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
-      <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
-  }
-});
-
-// Replies dashboard page
 app.get('/dashboard/command-center', async (req, res) => {
   const token = req.query.token as string;
   if (token !== 'xbot-admin-2025') {
@@ -730,40 +694,8 @@ app.get('/dashboard/command-center', async (req, res) => {
   }
 });
 
-app.get('/dashboard/replies', async (req, res) => {
-  try {
-    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
-    const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
-    
-    if (token !== adminToken) {
-      return res.status(401).send(`
-        <html>
-          <body style="font-family: Arial; text-align: center; padding: 50px;">
-            <h1>🔒 Authentication Required</h1>
-            <p>Add <code>?token=YOUR_TOKEN</code> to the URL</p>
-          </body>
-        </html>
-      `);
-    }
-    
-    console.log('📊 REPLIES_DASHBOARD: Serving replies analytics...');
-    
-    const { generateRepliesOverview } = await import('./dashboard/repliesOverview');
-    const dashboardHTML = await generateRepliesOverview();
-    
-    res.setHeader('Content-Type', 'text/html');
-    res.send(dashboardHTML);
-    
-    console.log('✅ REPLIES_DASHBOARD: Delivered');
-  } catch (error: any) {
-    console.error('❌ REPLIES_DASHBOARD_ERROR:', error.message);
-    res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
-      <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
-  }
-});
-
-// System health dashboard page - Enhanced real-time version
-app.get('/dashboard/health', async (req, res) => {
+// Legacy dashboards (may be deprecated - consider moving to dashboardRoutes.ts)
+app.get('/dashboard/map', async (req, res) => {
   try {
     const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
     const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
