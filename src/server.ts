@@ -940,6 +940,179 @@ app.get('/dashboard/vi', async (req, res) => {
   }
 });
 
+// Diagnostics dashboard (main chatbot-style interface)
+app.get('/dashboard/diagnostics', async (req, res) => {
+  try {
+    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
+    
+    if (token !== adminToken) {
+      return res.status(401).send(`
+        <html>
+          <body style="font-family: Arial; text-align: center; padding: 50px;">
+            <h1>🔒 Authentication Required</h1>
+            <p>Add <code>?token=YOUR_TOKEN</code> to the URL</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    console.log('🤖 DIAGNOSTICS_DASHBOARD: Serving diagnostics...');
+    
+    const { generateDiagnosticsDashboard } = await import('./dashboard/diagnosticsDashboard');
+    const dashboardHTML = await generateDiagnosticsDashboard();
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.send(dashboardHTML);
+    
+    console.log('✅ DIAGNOSTICS_DASHBOARD: Delivered');
+  } catch (error: any) {
+    console.error('❌ DIAGNOSTICS_DASHBOARD_ERROR:', error.message);
+    res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
+      <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
+  }
+});
+
+// Diagnostics API endpoints
+app.get('/api/diagnostics/health', async (req, res) => {
+  try {
+    const { getDiagnosticsHealth } = await import('./api/diagnosticsApi');
+    await getDiagnosticsHealth(req, res);
+  } catch (error: any) {
+    console.error('❌ DIAGNOSTICS_API_ERROR:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/diagnostics/flow', async (req, res) => {
+  try {
+    const { getDiagnosticsFlow } = await import('./api/diagnosticsApi');
+    await getDiagnosticsFlow(req, res);
+  } catch (error: any) {
+    console.error('❌ DIAGNOSTICS_FLOW_API_ERROR:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/diagnostics/data-validation', async (req, res) => {
+  try {
+    const { getDataValidation } = await import('./api/diagnosticsApi');
+    await getDataValidation(req, res);
+  } catch (error: any) {
+    console.error('❌ DATA_VALIDATION_API_ERROR:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/diagnostics/posting-monitor', async (req, res) => {
+  try {
+    const { getPostingMonitor } = await import('./api/diagnosticsApi');
+    await getPostingMonitor(req, res);
+  } catch (error: any) {
+    console.error('❌ POSTING_MONITOR_API_ERROR:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// System Flow Dashboard
+app.get('/dashboard/system-flow', async (req, res) => {
+  try {
+    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
+    
+    if (token !== adminToken) {
+      return res.status(401).send(`
+        <html>
+          <body style="font-family: Arial; text-align: center; padding: 50px;">
+            <h1>🔒 Authentication Required</h1>
+            <p>Add <code>?token=YOUR_TOKEN</code> to the URL</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    console.log('🔍 SYSTEM_FLOW_DASHBOARD: Serving system flow...');
+    
+    const { generateSystemFlowDashboard } = await import('./dashboard/systemFlowDashboard');
+    const dashboardHTML = await generateSystemFlowDashboard();
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.send(dashboardHTML);
+    
+    console.log('✅ SYSTEM_FLOW_DASHBOARD: Delivered');
+  } catch (error: any) {
+    console.error('❌ SYSTEM_FLOW_DASHBOARD_ERROR:', error.message);
+    res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
+      <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
+  }
+});
+
+// Data Validation Dashboard
+app.get('/dashboard/data-validation', async (req, res) => {
+  try {
+    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
+    
+    if (token !== adminToken) {
+      return res.status(401).send(`
+        <html>
+          <body style="font-family: Arial; text-align: center; padding: 50px;">
+            <h1>🔒 Authentication Required</h1>
+            <p>Add <code>?token=YOUR_TOKEN</code> to the URL</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    console.log('🔬 DATA_VALIDATION_DASHBOARD: Serving data validation...');
+    
+    const { generateDataValidationDashboard } = await import('./dashboard/dataValidationDashboard');
+    const dashboardHTML = await generateDataValidationDashboard();
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.send(dashboardHTML);
+    
+    console.log('✅ DATA_VALIDATION_DASHBOARD: Delivered');
+  } catch (error: any) {
+    console.error('❌ DATA_VALIDATION_DASHBOARD_ERROR:', error.message);
+    res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
+      <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
+  }
+});
+
+// Posting Monitor Dashboard
+app.get('/dashboard/posting-monitor', async (req, res) => {
+  try {
+    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
+    
+    if (token !== adminToken) {
+      return res.status(401).send(`
+        <html>
+          <body style="font-family: Arial; text-align: center; padding: 50px;">
+            <h1>🔒 Authentication Required</h1>
+            <p>Add <code>?token=YOUR_TOKEN</code> to the URL</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    console.log('📋 POSTING_MONITOR_DASHBOARD: Serving posting monitor...');
+    
+    const { generatePostingMonitorDashboard } = await import('./dashboard/postingMonitorDashboard');
+    const dashboardHTML = await generatePostingMonitorDashboard();
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.send(dashboardHTML);
+    
+    console.log('✅ POSTING_MONITOR_DASHBOARD: Delivered');
+  } catch (error: any) {
+    console.error('❌ POSTING_MONITOR_DASHBOARD_ERROR:', error.message);
+    res.status(500).send(`<html><body style="padding: 50px; text-align: center;">
+      <h1>🚨 Error</h1><p>${error.message}</p></body></html>`);
+  }
+});
+
 app.get('/dashboard/formatting', async (req, res) => {
   try {
     const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
