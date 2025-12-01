@@ -1131,8 +1131,9 @@ app.get('/dashboard/formatting', async (req, res) => {
     
     console.log('🎨 VI_DASHBOARD: Serving visual intelligence...');
     
-    const { comprehensiveDashboard } = await import('./dashboard/comprehensiveDashboard');
-    const dashboardHTML = await comprehensiveDashboard.generateVisualIntelligenceDashboard();
+    // Redirect to main comprehensive dashboard (legacy route)
+    const { generateComprehensiveDashboard } = await import('./dashboard/comprehensiveDashboard');
+    const dashboardHTML = await generateComprehensiveDashboard();
     
     res.setHeader('Content-Type', 'text/html');
     res.send(dashboardHTML);
