@@ -27,6 +27,9 @@ export interface FollowerPattern {
 export class LearningSystem {
   private isInitialized = false;
   private followerPatterns: Map<string, FollowerPattern> = new Map();
+  private generatorPatterns: Map<string, { avg_followers: number; sample_size: number }> = new Map();
+  private hookPatterns: Map<string, { avg_followers: number; sample_size: number }> = new Map();
+  private topicPatterns: Map<string, { avg_followers: number; sample_size: number }> = new Map();
   private postTracking: Map<string, any> = new Map();
 
   async initialize(): Promise<void> {
@@ -101,7 +104,7 @@ export class LearningSystem {
     
     console.log(`[LEARNING_SYSTEM] 📊 Post ${post_id} gained ${followers_gained} followers`);
     
-    // Update pattern learning
+    // Update pattern learning (content_type + hook_strategy)
     const patternKey = `${tracked.content_type}_${tracked.hook_strategy}`;
     const existing = this.followerPatterns.get(patternKey);
     
@@ -127,6 +130,66 @@ export class LearningSystem {
         avg_followers_gained: followers_gained,
         sample_size: 1,
         confidence: 0.05,
+      });
+    }
+    
+    // 🚀 NEW: Track generator performance for follower growth
+    const generatorName = tracked.generator_name || 'unknown';
+    const generatorKey = `${generatorName}_${tracked.topic_category || 'general'}`;
+    const generatorPattern = this.generatorPatterns.get(generatorKey);
+    
+    if (generatorPattern) {
+      const newSampleSize = generatorPattern.sample_size + 1;
+      const newAvg = (generatorPattern.avg_followers * generatorPattern.sample_size + followers_gained) / newSampleSize;
+      this.generatorPatterns.set(generatorKey, {
+        avg_followers: newAvg,
+        sample_size: newSampleSize
+      });
+      console.log(`[LEARNING_SYSTEM] 🎨 Generator ${generatorName}: ${newAvg.toFixed(1)} avg followers (n=${newSampleSize})`);
+    } else {
+      this.generatorPatterns.set(generatorKey, {
+        avg_followers: followers_gained,
+        sample_size: 1
+      });
+    }
+    
+    // 🚀 NEW: Track hook pattern performance
+    const hookPattern = tracked.hook_pattern || tracked.hook_strategy || 'unknown';
+    const hookKey = `${hookPattern}_${tracked.content_type || 'single'}`;
+    const hookPatternData = this.hookPatterns.get(hookKey);
+    
+    if (hookPatternData) {
+      const newSampleSize = hookPatternData.sample_size + 1;
+      const newAvg = (hookPatternData.avg_followers * hookPatternData.sample_size + followers_gained) / newSampleSize;
+      this.hookPatterns.set(hookKey, {
+        avg_followers: newAvg,
+        sample_size: newSampleSize
+      });
+      console.log(`[LEARNING_SYSTEM] 🎣 Hook ${hookPattern}: ${newAvg.toFixed(1)} avg followers (n=${newSampleSize})`);
+    } else {
+      this.hookPatterns.set(hookKey, {
+        avg_followers: followers_gained,
+        sample_size: 1
+      });
+    }
+    
+    // 🚀 NEW: Track topic performance
+    const topic = tracked.topic_category || tracked.raw_topic || 'unknown';
+    const topicKey = `${topic}`;
+    const topicPattern = this.topicPatterns.get(topicKey);
+    
+    if (topicPattern) {
+      const newSampleSize = topicPattern.sample_size + 1;
+      const newAvg = (topicPattern.avg_followers * topicPattern.sample_size + followers_gained) / newSampleSize;
+      this.topicPatterns.set(topicKey, {
+        avg_followers: newAvg,
+        sample_size: newSampleSize
+      });
+      console.log(`[LEARNING_SYSTEM] 📚 Topic ${topic}: ${newAvg.toFixed(1)} avg followers (n=${newSampleSize})`);
+    } else {
+      this.topicPatterns.set(topicKey, {
+        avg_followers: followers_gained,
+        sample_size: 1
       });
     }
     
