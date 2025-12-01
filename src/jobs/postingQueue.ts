@@ -1636,6 +1636,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
             } else {
               // Verification confirms tweet is NOT on Twitter - safe to mark as failed
               console.log(`[POSTING_QUEUE] ❌ FINAL VERIFICATION: Tweet not found on Twitter - marking as failed`);
+              const finalErrorMsg = 'Tweet verification failed - tweet not found on Twitter';
               await supabase
                 .from('content_metadata')
                 .update({
