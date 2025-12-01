@@ -117,7 +117,9 @@ export async function generatePostingMonitorDashboard(): Promise<string> {
       onTrack,
       timeline,
       scheduleHealth,
-      last24Hours
+      last24Hours,
+      hoursElapsed,
+      hoursElapsedDisplay
     };
 
     // Get detailed post history for display
@@ -343,7 +345,7 @@ function generatePostingMonitorHTML(data: any): string {
             <div class="progress-container">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
                     <span style="font-weight: 600; color: #333;">Posted Today: <span style="color: #10b981; font-size: 24px;">${monitorData.postedToday}</span></span>
-                    <span style="color: #666;">Expected by now: ${monitorData.hourlyPostsGoal} posts (${monitorData.postsPerHourGoal}/hour × ${Math.floor((new Date().getHours() + new Date().getMinutes() / 60))} hours)</span>
+                    <span style="color: #666; font-size: 13px;">Expected: ${monitorData.hourlyPostsGoal} posts<br/>(${monitorData.postsPerHourGoal}/hour × ${monitorData.hoursElapsedDisplay} hours since midnight)</span>
                 </div>
                 <div class="progress-bar">
                     <div class="progress-fill" style="width: ${postsProgressPercent}%;">
@@ -374,7 +376,7 @@ function generatePostingMonitorHTML(data: any): string {
             <div class="progress-container">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
                     <span style="font-weight: 600; color: #333;">Replied Today: <span style="color: #10b981; font-size: 24px;">${monitorData.repliedToday}</span></span>
-                    <span style="color: #666;">Expected by now: ${monitorData.hourlyRepliesGoal} replies (${monitorData.repliesPerHourGoal}/hour × ${Math.floor((new Date().getHours() + new Date().getMinutes() / 60))} hours)</span>
+                    <span style="color: #666; font-size: 13px;">Expected: ${monitorData.hourlyRepliesGoal} replies<br/>(${monitorData.repliesPerHourGoal}/hour × ${monitorData.hoursElapsedDisplay} hours since midnight)</span>
                 </div>
                 <div class="progress-bar">
                     <div class="progress-fill" style="width: ${repliesProgressPercent}%;">
