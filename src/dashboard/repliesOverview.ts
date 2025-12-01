@@ -253,7 +253,7 @@ export async function generateRepliesOverview(): Promise<string> {
 
       const typeBadge = getContentTypeBadge('reply');
       const typeClass = getContentTypeClass('reply');
-      
+
       return `
         <tr class="content-row ${typeClass}">
           <td>
