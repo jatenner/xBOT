@@ -259,23 +259,121 @@ async function generateRealContent(): Promise<void> {
       planMetrics.calls_total++;
       
       // ═══════════════════════════════════════════════════════════
-      // GENERATE WITH HUMAN-LIKE CONTENT (truly varied and natural)
+      // GENERATE WITH SPECIALIZED GENERATORS (truly varied personalities)
       // ═══════════════════════════════════════════════════════════
-      console.log(`[UNIFIED_PLAN] 🎭 Generating human-like content...`);
+      console.log(`[UNIFIED_PLAN] 🎭 Generating content with specialized generator...`);
       console.log(`[UNIFIED_PLAN] 🎯 Topic hint: ${adaptiveTopicHint || 'none (AI will choose)'}`);
       console.log(`[UNIFIED_PLAN] 🏷️ Topic cluster: ${adaptiveTopicCluster}`);
       
-      // Use human content orchestrator instead of rigid templates
-      // 🚫 THREADS DISABLED: Single posts only until proper thread flow design
-      const generated = await humanContentOrchestrator.generateHumanContent({
-        topic: adaptiveTopicHint,
-        forceFormat: 'single'  // Threads disabled
-      });
+      // 🚀 FIX: Use specialized generators instead of single dynamicContentGenerator
+      // This ensures content sounds different (different personalities, prompts, styles)
+      const availableGenerators = [
+        'dataNerd', 'provocateur', 'storyteller', 'mythBuster', 'contrarian',
+        'coach', 'explorer', 'thoughtLeader', 'newsReporter', 'philosopher',
+        'culturalBridge'
+      ];
       
-      // ✅ Track generator performance
-      const generatorName = 'human_content_orchestrator';
-      const qualityScore = generated.metadata?.variety_score ? generated.metadata.variety_score / 100 : 0.75;
-      await generatorPerformanceTracker.recordAttempt(generatorName, true, qualityScore);
+      // Select generator (rotate for variety, or use learning if available)
+      let selectedGenerator: string;
+      try {
+        const { learningSystem } = await import('../learning/learningSystem');
+        const insights = await learningSystem.getLearningInsights();
+        const bestGenerator = (insights as any).best_generator;
+        
+        if (bestGenerator && availableGenerators.includes(bestGenerator)) {
+          selectedGenerator = bestGenerator;
+          console.log(`[UNIFIED_PLAN] 🎯 Using learned best generator: ${selectedGenerator}`);
+        } else {
+          // Rotate through generators for variety
+          const recentGenerators = recentContent?.map(c => c.generator_name).filter(Boolean) || [];
+          const unusedGenerators = availableGenerators.filter(g => !recentGenerators.includes(g));
+          selectedGenerator = unusedGenerators.length > 0
+            ? unusedGenerators[Math.floor(Math.random() * unusedGenerators.length)]
+            : availableGenerators[Math.floor(Math.random() * availableGenerators.length)];
+          console.log(`[UNIFIED_PLAN] 🎲 Rotating to generator: ${selectedGenerator}`);
+        }
+      } catch (learningError: any) {
+        // Fallback: random selection
+        selectedGenerator = availableGenerators[Math.floor(Math.random() * availableGenerators.length)];
+        console.log(`[UNIFIED_PLAN] 🎲 Random generator selection: ${selectedGenerator}`);
+      }
+      
+      // Call specialized generator using the same pattern as planJob.ts
+      const generatorMap: Record<string, { module: string, fn: string }> = {
+        'provocateur': { module: 'provocateurGenerator', fn: 'generateProvocateurContent' },
+        'dataNerd': { module: 'dataNerdGenerator', fn: 'generateDataNerdContent' },
+        'mythBuster': { module: 'mythBusterGenerator', fn: 'generateMythBusterContent' },
+        'contrarian': { module: 'contrarianGenerator', fn: 'generateContrarianContent' },
+        'storyteller': { module: 'storytellerGenerator', fn: 'generateStorytellerContent' },
+        'coach': { module: 'coachGenerator', fn: 'generateCoachContent' },
+        'philosopher': { module: 'philosopherGenerator', fn: 'generatePhilosopherContent' },
+        'culturalBridge': { module: 'culturalBridgeGenerator', fn: 'generateCulturalBridgeContent' },
+        'newsReporter': { module: 'newsReporterGenerator', fn: 'generateNewsReporterContent' },
+        'explorer': { module: 'explorerGenerator', fn: 'generateExplorerContent' },
+        'thoughtLeader': { module: 'thoughtLeaderGenerator', fn: 'generateThoughtLeaderContent' },
+      };
+      
+      const config = generatorMap[selectedGenerator];
+      let generated: any;
+      let generatorName: string;
+      
+      if (!config) {
+        console.error(`[UNIFIED_PLAN] ❌ Generator not mapped: ${selectedGenerator}, falling back to dynamicContentGenerator`);
+        generated = await humanContentOrchestrator.generateHumanContent({
+          topic: adaptiveTopicHint,
+          forceFormat: 'single'
+        });
+        generatorName = 'human_content_orchestrator';
+        const qualityScore = generated.metadata?.variety_score ? generated.metadata.variety_score / 100 : 0.75;
+        await generatorPerformanceTracker.recordAttempt(generatorName, true, qualityScore);
+      } else {
+        try {
+          console.log(`[UNIFIED_PLAN] 🎭 Calling ${config.module}.${config.fn}()...`);
+          
+          const generatorModule = await import(`../generators/${config.module}`);
+          const generateFn = generatorModule[config.fn];
+          
+          if (typeof generateFn !== 'function') {
+            throw new Error(`Generator function ${config.fn} not found`);
+          }
+          
+          const result = await generateFn({
+            topic: adaptiveTopicHint || 'health optimization',
+            format: 'single', // Threads disabled for now
+            angle: undefined,
+            tone: undefined,
+            formatStrategy: undefined
+          });
+          
+          // Transform to expected format
+          generated = {
+            content: result.content,
+            format: 'single' as const,
+            style: selectedGenerator,
+            metadata: {
+              approach: selectedGenerator,
+              variety_score: 85, // High variety when using different generators
+              human_like: true
+            }
+          };
+          
+          };
+          
+          // ✅ Track generator performance
+          generatorName = selectedGenerator;
+          const qualityScore = result.confidence || 0.85;
+          await generatorPerformanceTracker.recordAttempt(selectedGenerator, true, qualityScore);
+        } catch (generatorError: any) {
+          console.error(`[UNIFIED_PLAN] ❌ Generator ${selectedGenerator} failed: ${generatorError.message}, falling back`);
+          generated = await humanContentOrchestrator.generateHumanContent({
+            topic: adaptiveTopicHint,
+            forceFormat: 'single'
+          });
+          generatorName = 'human_content_orchestrator';
+          const qualityScore = generated.metadata?.variety_score ? generated.metadata.variety_score / 100 : 0.75;
+          await generatorPerformanceTracker.recordAttempt(generatorName, true, qualityScore);
+        }
+      }
       
       // ═══════════════════════════════════════════════════════════
       // DUPLICATE CHECK: Ensure content is unique
