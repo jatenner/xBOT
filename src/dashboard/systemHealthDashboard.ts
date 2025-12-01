@@ -11,6 +11,7 @@ import { getSupabaseClient } from '../db';
 import { getHeartbeat } from '../jobs/jobHeartbeat';
 import { JobManager } from '../jobs/jobManager';
 import { DiagnosticEngine } from '../diagnostics/diagnosticEngine';
+import { ComprehensiveSystemAudit } from '../diagnostics/comprehensiveSystemAudit';
 import { 
   generateNavigation, 
   getSharedStyles, 
@@ -46,6 +47,8 @@ export async function generateSystemHealthDashboard(): Promise<string> {
     const supabase = getSupabaseClient();
     const engine = DiagnosticEngine.getInstance();
     const diagnostics = await engine.runDiagnostics();
+    const audit = ComprehensiveSystemAudit.getInstance();
+    const auditReport = await audit.runAudit();
     const jobManager = JobManager.getInstance();
 
     // Get all job heartbeats
@@ -65,8 +68,8 @@ export async function generateSystemHealthDashboard(): Promise<string> {
     const jobStatuses: JobStatus[] = await Promise.all(
       jobNames.map(async (name) => {
         const heartbeat = await getHeartbeat(name);
-        const now = new Date();
-        
+    const now = new Date();
+    
         // Expected intervals (minutes)
         const intervals: Record<string, number> = {
           plan: parseInt(process.env.JOBS_PLAN_INTERVAL_MIN || '120'),
@@ -104,8 +107,8 @@ export async function generateSystemHealthDashboard(): Promise<string> {
         const nextRunEstimate = lastSuccess 
           ? new Date(lastSuccess.getTime() + expectedInterval * 60 * 1000)
           : null;
-
-        return {
+  
+  return {
           name,
           displayName: name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
           status,
@@ -132,7 +135,7 @@ export async function generateSystemHealthDashboard(): Promise<string> {
     const expectedReplies = Math.floor(hoursElapsed * repliesPerHourGoal);
 
     const { data: todayPosts } = await supabase
-      .from('content_metadata')
+    .from('content_metadata')
       .select('decision_type, posted_at, status')
       .gte('created_at', todayStart.toISOString());
 
@@ -201,7 +204,7 @@ export async function generateSystemHealthDashboard(): Promise<string> {
         .select('event_type, event_data, created_at, severity')
         .eq('severity', 'critical')
         .order('created_at', { ascending: false })
-        .limit(10);
+    .limit(10);
       recentErrors = data;
     } catch (error) {
       // Table might not exist, ignore
@@ -232,7 +235,7 @@ function generateSystemHealthHTML(data: any): string {
 
   const overallHealth = activeFailures.length === 0 && targetMisses.length === 0 ? 'healthy' :
                         activeFailures.length > 0 ? 'critical' : 'warning';
-
+  
   return `<!DOCTYPE html>
 <html>
 <head>
