@@ -9,8 +9,7 @@ import { getRealMetricsConfig } from '../config/realMetrics';
 import { budgetedOpenAI } from '../services/openaiBudgetedClient';
 import { getOpenAIHealth } from '../llm/openaiClient';
 import { getLearningStatus } from '../ai/learningScheduler';
-import { FEATURE_FLAGS } from '../config/featureFlags';
-import { handleLearningStatusRequest } from './learningStatus';
+import { flags } from '../config/featureFlags';
 
 export interface SystemStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -90,7 +89,12 @@ export async function getSystemStatus(): Promise<SystemStatus> {
   const learningStatus = await getLearningStatus();
   
   // Real metrics status
-  const realMetricsStatus = getRealMetricsConfig();
+  const realMetricsConfig = getRealMetricsConfig();
+  const realMetricsStatus = {
+    enabled: realMetricsConfig.enabled,
+    browser_required: realMetricsConfig.browserRequired,
+    reason: realMetricsConfig.reason
+  };
   
   // Posting status
   const postingStatus = getPostingStatus();
@@ -118,7 +122,15 @@ export async function getSystemStatus(): Promise<SystemStatus> {
     timestamp: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
     database: dbStatus,
-    budget: budgetStatus,
+    budget: {
+      enabled: true,
+      daily_spent: (budgetStatus as any).usedTodayUSD || (budgetStatus as any).spent || 0,
+      daily_limit: (budgetStatus as any).dailyLimitUSD || (budgetStatus as any).limit || 5,
+      hourly_generations: 0,
+      hourly_limit: parseInt(process.env.MAX_GENERATIONS_PER_HOUR || '0'),
+      posting_disabled: (budgetStatus as any).postingDisabled || false,
+      dry_run: process.env.DRY_RUN === 'true'
+    },
     circuit_breaker: circuitStatus,
     learning: learningStatus,
     posting: postingStatus,
@@ -126,9 +138,9 @@ export async function getSystemStatus(): Promise<SystemStatus> {
     environment: {
       node_env: process.env.NODE_ENV || 'production',
       posting_disabled: process.env.POSTING_DISABLED === 'true',
-      posting_enabled: FEATURE_FLAGS.POSTING_ENABLED,
-      ai_cooldown_minutes: FEATURE_FLAGS.AI_COOLDOWN_MINUTES,
-      learning_debounce_minutes: FEATURE_FLAGS.LEARNING_DEBOUNCE_MINUTES,
+      posting_enabled: flags.postingEnabled,
+      ai_cooldown_minutes: parseInt(process.env.AI_COOLDOWN_MINUTES || '0'),
+      learning_debounce_minutes: parseInt(process.env.LEARNING_DEBOUNCE_MINUTES || '60'),
       dry_run: process.env.DRY_RUN === 'true',
       budget_enforcer_enabled: process.env.BUDGET_ENFORCER_ENABLED === 'true',
       real_metrics_enabled: process.env.REAL_METRICS_ENABLED === 'true'
