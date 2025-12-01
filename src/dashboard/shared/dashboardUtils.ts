@@ -151,7 +151,95 @@ export function getSharedStyles(): string {
         font-size: 14px; 
         margin-top: 8px; 
     }
+    
+    /* Content Type Visual Indicators */
+    .content-type-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .content-type-badge.single {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+    }
+    .content-type-badge.thread {
+        background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+        color: white;
+        box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+    }
+    .content-type-badge.reply {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+    }
+    
+    /* Content Type Cards/Borders */
+    .content-card.single {
+        border-left: 5px solid #3b82f6;
+        background: linear-gradient(90deg, rgba(59, 130, 246, 0.05) 0%, white 10%);
+    }
+    .content-card.thread {
+        border-left: 5px solid #8b5cf6;
+        background: linear-gradient(90deg, rgba(139, 92, 246, 0.05) 0%, white 10%);
+    }
+    .content-card.reply {
+        border-left: 5px solid #10b981;
+        background: linear-gradient(90deg, rgba(16, 185, 129, 0.05) 0%, white 10%);
+    }
+    
+    /* Stats Cards by Type */
+    .stat-card.type-single {
+        border-top: 4px solid #3b82f6;
+    }
+    .stat-card.type-thread {
+        border-top: 4px solid #8b5cf6;
+    }
+    .stat-card.type-reply {
+        border-top: 4px solid #10b981;
+    }
+    
+    /* Table Row Styling */
+    tr.content-row.single {
+        border-left: 4px solid #3b82f6;
+    }
+    tr.content-row.thread {
+        border-left: 4px solid #8b5cf6;
+    }
+    tr.content-row.reply {
+        border-left: 4px solid #10b981;
+    }
   `;
+}
+
+/**
+ * Get content type badge HTML
+ */
+export function getContentTypeBadge(decisionType: string | null): string {
+  if (!decisionType) return '<span class="content-type-badge single">📝 Single</span>';
+  
+  const type = decisionType.toLowerCase();
+  if (type === 'reply') {
+    return '<span class="content-type-badge reply">💬 Reply</span>';
+  } else if (type === 'thread') {
+    return '<span class="content-type-badge thread">🧵 Thread</span>';
+  } else {
+    return '<span class="content-type-badge single">📝 Single</span>';
+  }
+}
+
+/**
+ * Get content type card class
+ */
+export function getContentTypeClass(decisionType: string | null): string {
+  if (!decisionType) return 'single';
+  return decisionType.toLowerCase();
 }
 
 /**

@@ -2,6 +2,8 @@ import { getSupabaseClient } from '../db/index';
 import { 
   generateNavigation, 
   getSharedStyles, 
+  getContentTypeBadge,
+  getContentTypeClass,
   TOKEN_PARAM
 } from './shared/dashboardUtils';
 
@@ -249,8 +251,11 @@ export async function generateRepliesOverview(): Promise<string> {
         ? `<a href="https://x.com/${reply.target_username}/status/${reply.target_tweet_id}" target="_blank">Target tweet</a>`
         : '—';
 
+      const typeBadge = getContentTypeBadge('reply');
+      const typeClass = getContentTypeClass('reply');
+      
       return `
-        <tr>
+        <tr class="content-row ${typeClass}">
           <td>
             <div>${formatTimestamp(reply.posted_at)}</div>
             ${tierBadge}
