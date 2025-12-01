@@ -6,6 +6,14 @@
 import { DiagnosticEngine } from '../diagnostics/diagnosticEngine';
 import { getSupabaseClient } from '../db';
 import { JobManager } from '../jobs/jobManager';
+import { 
+  generateNavigation, 
+  getSharedStyles, 
+  generateErrorHTML, 
+  formatTimeAgo,
+  getTodayStats,
+  TOKEN_PARAM
+} from './shared/dashboardUtils';
 
 export async function generateDiagnosticsDashboard(): Promise<string> {
   try {
@@ -23,18 +31,7 @@ export async function generateDiagnosticsDashboard(): Promise<string> {
       .limit(10);
 
     // Get today's stats
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const { data: todayPosts } = await supabase
-      .from('content_metadata')
-      .select('decision_id, decision_type, actual_impressions, actual_likes')
-      .eq('status', 'posted')
-      .gte('posted_at', todayStart.toISOString());
-
-    const postedToday = todayPosts?.filter(p => p.decision_type === 'single').length || 0;
-    const repliedToday = todayPosts?.filter(p => p.decision_type === 'reply').length || 0;
-    const totalViews = todayPosts?.reduce((sum, p) => sum + (p.actual_impressions || 0), 0) || 0;
-    const totalLikes = todayPosts?.reduce((sum, p) => sum + (p.actual_likes || 0), 0) || 0;
+    const { postedToday, repliedToday, totalViews, totalLikes } = await getTodayStats();
 
     return generateDiagnosticsHTML({
       diagnostics,
@@ -215,14 +212,7 @@ function generateDiagnosticsHTML(data: any): string {
             <p>Intelligent diagnostics and system monitoring</p>
         </div>
 
-        <div class="nav-tabs">
-            <a href="/dashboard/diagnostics?token=xbot-admin-2025" class="nav-tab active">🤖 Diagnostics</a>
-            <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
-            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Metrics</a>
-            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
-            <a href="/dashboard/system-flow?token=xbot-admin-2025" class="nav-tab">🔍 System Flow</a>
-            <a href="/dashboard/data-validation?token=xbot-admin-2025" class="nav-tab">🔬 Data Validation</a>
-        </div>
+        ${generateNavigation('/dashboard/diagnostics')}
 
         <div class="section">
             <div style="display: flex; align-items: center; margin-bottom: 20px;">
@@ -356,105 +346,9 @@ function generateDiagnosticsHTML(data: any): string {
 </html>`;
 }
 
-function formatTimeAgo(dateString: string): string {
-  if (!dateString) return 'Unknown';
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
-  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-  return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-}
-
 function getHealthColor(score: number): string {
   if (score >= 80) return '#10b981';
   if (score >= 60) return '#f59e0b';
   return '#ef4444';
-}
-
-function getSharedStyles(): string {
-  return `
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        min-height: 100vh;
-        padding: 20px;
-    }
-    .container { max-width: 1800px; margin: 0 auto; }
-    .header {
-        background: white;
-        padding: 30px;
-        border-radius: 15px;
-        margin-bottom: 20px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-    }
-    .header h1 { color: #333; margin-bottom: 10px; font-size: 32px; }
-    .header p { color: #666; font-size: 16px; }
-    .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-    .nav-tab { 
-        padding: 12px 24px; 
-        background: white; 
-        border-radius: 8px; 
-        text-decoration: none; 
-        color: #333;
-        font-weight: 600;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        transition: all 0.2s;
-    }
-    .nav-tab:hover { background: #667eea; color: white; }
-    .nav-tab.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-    .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 20px;
-        margin-bottom: 20px;
-    }
-    .stat-card {
-        background: white;
-        padding: 25px;
-        border-radius: 15px;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
-        transition: transform 0.2s;
-    }
-    .stat-card:hover { transform: translateY(-2px); }
-    .stat-label { color: #666; font-size: 14px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .stat-value { color: #333; font-size: 36px; font-weight: bold; }
-    .stat-change { color: #28a745; font-size: 14px; margin-top: 8px; }
-    .section {
-        background: white;
-        padding: 30px;
-        border-radius: 15px;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
-        margin-bottom: 20px;
-    }
-    .section h2 { color: #333; margin-bottom: 20px; font-size: 24px; }
-    .footer { text-align: center; color: white; margin-top: 40px; opacity: 0.9; }
-  `;
-}
-
-function generateErrorHTML(error: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-    <title>Dashboard Error</title>
-    <style>
-        body { font-family: Arial; text-align: center; padding: 50px; background: #f5f5f5; }
-        .error-box { background: white; padding: 40px; border-radius: 10px; max-width: 600px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-    </style>
-</head>
-<body>
-    <div class="error-box">
-        <h1>🚨 Dashboard Error</h1>
-        <p style="color: #dc3545;">${error}</p>
-        <p><a href="/dashboard/diagnostics?token=xbot-admin-2025">🔄 Try Again</a></p>
-    </div>
-</body>
-</html>`;
 }
 

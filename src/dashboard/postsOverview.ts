@@ -1,4 +1,9 @@
 import { getSupabaseClient } from '../db/index';
+import { 
+  generateNavigation, 
+  getSharedStyles, 
+  TOKEN_PARAM
+} from './shared/dashboardUtils';
 
 interface PostRow {
   decision_type: string | null;
@@ -312,7 +317,7 @@ export async function generatePostsOverview(): Promise<string> {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>xBOT Posts Overview</title>
-  <style>${STYLES}</style>
+  <style>${getSharedStyles()} ${STYLES}</style>
 </head>
 <body>
   <div class="container">
@@ -321,13 +326,7 @@ export async function generatePostsOverview(): Promise<string> {
       <p>Latest posts with metadata and live metrics. Last updated ${timestamp}</p>
     </div>
 
-    <div class="nav-tabs">
-      <a href="/dashboard/business?token=xbot-admin-2025" class="nav-tab">💼 Business</a>
-      <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab">🩺 System Health</a>
-      <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab active">📝 Posts</a>
-      <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
-      <a href="/dashboard/vi?token=xbot-admin-2025" class="nav-tab">🔍 VI Collection</a>
-    </div>
+    ${generateNavigation('/dashboard/posts')}
 
     <div class="stats-grid">
       <div class="stat-card">
