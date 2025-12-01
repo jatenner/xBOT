@@ -151,5 +151,15 @@ export function registerDashboardRoutes(app: any): void {
       res.status(500).json({ error: 'Unable to fetch posting monitor data. Please try again later.' });
     }
   });
+
+  app.get('/api/system-diagnostics', async (req: Request, res: Response) => {
+    try {
+      const { getSystemDiagnostics } = await import('../../api/systemDiagnosticsApi');
+      await getSystemDiagnostics(req, res);
+    } catch (error: any) {
+      console.error('❌ SYSTEM_DIAGNOSTICS_API_ERROR:', error.message);
+      res.status(500).json({ error: 'Unable to fetch system diagnostics. Please try again later.' });
+    }
+  });
 }
 
