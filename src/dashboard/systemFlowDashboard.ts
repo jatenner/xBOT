@@ -6,6 +6,14 @@
 import { DiagnosticEngine } from '../diagnostics/diagnosticEngine';
 import { getSupabaseClient } from '../db';
 import { getHeartbeat } from '../jobs/jobHeartbeat';
+import { 
+  generateNavigation, 
+  getSharedStyles, 
+  generateErrorHTML, 
+  formatTimeAgo,
+  getHealthColor,
+  TOKEN_PARAM
+} from './shared/dashboardUtils';
 
 export async function generateSystemFlowDashboard(): Promise<string> {
   try {
@@ -350,15 +358,7 @@ function generateSystemFlowHTML(data: any): string {
             <p>End-to-end visibility of your xBOT system from content generation to learning</p>
         </div>
 
-        <div class="nav-tabs">
-            <a href="/dashboard/diagnostics?token=xbot-admin-2025" class="nav-tab">🤖 Diagnostics</a>
-            <a href="/dashboard/system-flow?token=xbot-admin-2025" class="nav-tab active">🔍 System Flow</a>
-            <a href="/dashboard/recent?token=xbot-admin-2025" class="nav-tab">📅 Recent</a>
-            <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📊 Metrics</a>
-            <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab">💬 Replies</a>
-            <a href="/dashboard/data-validation?token=xbot-admin-2025" class="nav-tab">🔬 Data Validation</a>
-            <a href="/dashboard/posting-monitor?token=xbot-admin-2025" class="nav-tab">📋 Posting Monitor</a>
-        </div>
+        ${generateNavigation('/dashboard/system-flow')}
 
         <div class="flow-container">
             ${flowData.stages.map((stage: any, index: number) => {
@@ -487,20 +487,6 @@ function generateSystemFlowHTML(data: any): string {
 </html>`;
 }
 
-function formatTimeAgo(dateString: string): string {
-  if (!dateString) return 'Never';
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  return `${diffDays}d ago`;
-}
 
 function getTimeUntil(dateString: string): string {
   if (!dateString) return 'unknown';
@@ -515,72 +501,3 @@ function getTimeUntil(dateString: string): string {
   return `${diffHours} hours`;
 }
 
-function getHealthColor(score: number): string {
-  if (score >= 80) return '#10b981';
-  if (score >= 60) return '#f59e0b';
-  return '#ef4444';
-}
-
-function getSharedStyles(): string {
-  return `
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        min-height: 100vh;
-        padding: 20px;
-    }
-    .container { max-width: 1800px; margin: 0 auto; }
-    .header {
-        background: white;
-        padding: 30px;
-        border-radius: 15px;
-        margin-bottom: 20px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-    }
-    .header h1 { color: #333; margin-bottom: 10px; font-size: 32px; }
-    .header p { color: #666; font-size: 16px; }
-    .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-    .nav-tab { 
-        padding: 12px 24px; 
-        background: white; 
-        border-radius: 8px; 
-        text-decoration: none; 
-        color: #333;
-        font-weight: 600;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        transition: all 0.2s;
-    }
-    .nav-tab:hover { background: #667eea; color: white; }
-    .nav-tab.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-    .section {
-        background: white;
-        padding: 30px;
-        border-radius: 15px;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
-        margin-bottom: 20px;
-    }
-    .section h2 { color: #333; margin-bottom: 20px; font-size: 24px; }
-    .footer { text-align: center; color: white; margin-top: 40px; opacity: 0.9; }
-  `;
-}
-
-function generateErrorHTML(error: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-    <title>Dashboard Error</title>
-    <style>
-        body { font-family: Arial; text-align: center; padding: 50px; background: #f5f5f5; }
-        .error-box { background: white; padding: 40px; border-radius: 10px; max-width: 600px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-    </style>
-</head>
-<body>
-    <div class="error-box">
-        <h1>🚨 Dashboard Error</h1>
-        <p style="color: #dc3545;">${error}</p>
-        <p><a href="/dashboard/system-flow?token=xbot-admin-2025">🔄 Try Again</a></p>
-    </div>
-</body>
-</html>`;
-}

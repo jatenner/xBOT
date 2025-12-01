@@ -1,4 +1,9 @@
 import { getSupabaseClient } from '../db/index';
+import { 
+  generateNavigation, 
+  getSharedStyles, 
+  TOKEN_PARAM
+} from './shared/dashboardUtils';
 
 interface ReplyRow {
   tweet_id: string | null;
@@ -333,7 +338,7 @@ export async function generateRepliesOverview(): Promise<string> {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>xBOT Replies Overview</title>
-  <style>${STYLES}</style>
+  <style>${getSharedStyles()} ${STYLES}</style>
 </head>
 <body>
   <div class="container">
@@ -342,13 +347,7 @@ export async function generateRepliesOverview(): Promise<string> {
       <p>Recent replies with tone, angle, tier and live metrics. Last updated ${timestamp}</p>
     </div>
 
-    <div class="nav-tabs">
-      <a href="/dashboard/business?token=xbot-admin-2025" class="nav-tab">💼 Business</a>
-      <a href="/dashboard/health?token=xbot-admin-2025" class="nav-tab">🩺 System Health</a>
-      <a href="/dashboard/posts?token=xbot-admin-2025" class="nav-tab">📝 Posts</a>
-      <a href="/dashboard/replies?token=xbot-admin-2025" class="nav-tab active">💬 Replies</a>
-      <a href="/dashboard/vi?token=xbot-admin-2025" class="nav-tab">🔍 VI Collection</a>
-    </div>
+    ${generateNavigation('/dashboard/replies')}
 
     <div class="stats-grid">
       <div class="stat-card">
