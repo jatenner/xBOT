@@ -169,5 +169,15 @@ export function registerDashboardRoutes(app: any): void {
       res.status(500).json({ error: 'Unable to fetch system diagnostics. Please try again later.' });
     }
   });
+
+  app.get('/api/system-investigation', async (req: Request, res: Response) => {
+    try {
+      const { getSystemInvestigation } = await import('../../api/systemInvestigationApi');
+      await getSystemInvestigation(req, res);
+    } catch (error: any) {
+      console.error('❌ SYSTEM_INVESTIGATION_API_ERROR:', error.message);
+      res.status(500).json({ error: 'Unable to investigate system status. Please try again later.' });
+    }
+  });
 }
 

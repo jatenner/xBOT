@@ -153,6 +153,13 @@ function generateOverviewHTML(data: any): string {
 
         ${generateNavigation('/dashboard/overview')}
 
+        <!-- Investigation Link -->
+        <div style="margin-bottom: 20px; text-align: center;">
+            <a href="/dashboard/system-investigation${TOKEN_PARAM}" style="display: inline-block; padding: 12px 24px; background: #667eea; color: white; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                🔍 Investigate System Status
+            </a>
+        </div>
+
         <!-- Status Banner -->
         <div class="status-banner">
             <div style="font-size: 48px; margin-bottom: 10px;">${statusEmoji}</div>
