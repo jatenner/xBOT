@@ -194,13 +194,19 @@ export async function generateSystemHealthDashboard(): Promise<string> {
     );
 
     // Get recent errors from system_events if available
-    const { data: recentErrors } = await supabase
-      .from('system_events')
-      .select('event_type, event_data, created_at, severity')
-      .eq('severity', 'critical')
-      .order('created_at', { ascending: false })
-      .limit(10)
-      .catch(() => ({ data: null }));
+    let recentErrors = null;
+    try {
+      const { data } = await supabase
+        .from('system_events')
+        .select('event_type, event_data, created_at, severity')
+        .eq('severity', 'critical')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      recentErrors = data;
+    } catch (error) {
+      // Table might not exist, ignore
+      recentErrors = [];
+    }
 
     return generateSystemHealthHTML({
       jobStatuses,
