@@ -441,7 +441,12 @@ export async function getPostingMonitor(req: Request, res: Response): Promise<vo
     }
 
     res.json({
-      dailyGoal,
+      postsPerHourGoal,
+      repliesPerHourGoal,
+      hourlyPostsGoal,
+      hourlyRepliesGoal,
+      postsOnTrack,
+      repliesOnTrack,
       postedToday,
       onTrack,
       timeline,
