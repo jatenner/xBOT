@@ -123,8 +123,19 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   if (poolSize < MIN_POOL_SIZE) {
     queriesToRun.push(...fallbackQueries);
   }
-  const maxSearchesPerRun = Number(process.env.HARVESTER_MAX_SEARCHES_PER_RUN ?? 3);
-  const maxCriticalSearches = Number(process.env.HARVESTER_MAX_CRITICAL_SEARCHES_PER_RUN ?? 6);
+  // 🔧 PERMANENT FIX #1: Support degraded mode operation
+  const isDegradedMode = process.env.HARVESTER_DEGRADED_MODE === 'true';
+  const baseMaxSearches = Number(process.env.HARVESTER_MAX_SEARCHES_PER_RUN ?? 3);
+  const baseMaxCriticalSearches = Number(process.env.HARVESTER_MAX_CRITICAL_SEARCHES_PER_RUN ?? 6);
+  
+  // In degraded mode, reduce search count but still operate
+  const maxSearchesPerRun = isDegradedMode ? Math.max(1, Math.floor(baseMaxSearches / 2)) : baseMaxSearches;
+  const maxCriticalSearches = isDegradedMode ? Math.max(2, Math.floor(baseMaxCriticalSearches / 2)) : baseMaxCriticalSearches;
+  
+  if (isDegradedMode) {
+    console.warn('[HARVESTER] ⚠️ DEGRADED MODE: Reduced search count for stability');
+  }
+  
   const searchLimit = poolWasCritical ? maxCriticalSearches : maxSearchesPerRun;
   if (queriesToRun.length > searchLimit) {
     console.log(`[HARVESTER] ⏳ Limiting to ${searchLimit} searches this cycle (remaining will run next loop)`);
