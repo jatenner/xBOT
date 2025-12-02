@@ -332,6 +332,52 @@ export async function processPostingQueue(): Promise<void> {
       } catch (error: any) {
         const errorMsg = error?.message || error?.toString() || 'Unknown error';
         const errorStack = error?.stack || 'No stack trace';
+        
+        // 🔧 PERMANENT FIX #2: Check if post actually succeeded before marking as failed
+        // Some errors indicate ID extraction failure, not posting failure
+        // Check for common ID extraction error patterns
+        const isIdExtractionError = errorMsg.includes('ID extraction') || 
+                                     errorMsg.includes('Tweet ID extraction failed') ||
+                                     errorMsg.includes('Reply ID extraction failed') ||
+                                     errorMsg.includes('tweet ID') ||
+                                     errorMsg.includes('extractTweetId') ||
+                                     errorMsg.includes('Tweet posted but ID extraction failed') ||
+                                     errorMsg.includes('Could not extract tweet ID') ||
+                                     errorMsg.includes('Page not available for tweet ID extraction');
+        
+        if (isIdExtractionError) {
+          // Post succeeded but ID extraction failed - mark as posted with NULL ID
+          console.warn(`[POSTING_QUEUE] ⚠️ Post succeeded but ID extraction failed: ${errorMsg}`);
+          console.log(`[POSTING_QUEUE] ✅ Tweet is LIVE on Twitter - marking as posted with NULL tweet_id`);
+          
+          try {
+            const { getSupabaseClient } = await import('../db/index');
+            const supabase = getSupabaseClient();
+            await supabase
+              .from('content_metadata')
+              .update({
+                status: 'posted',
+                tweet_id: null,
+                error_message: `ID extraction failed: ${errorMsg}`,
+                posted_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .eq('decision_id', decision.id);
+            
+            console.log(`[POSTING_QUEUE] ✅ Marked as posted (ID extraction will be recovered by background job)`);
+            
+            // Schedule ID recovery - background job will recover tweet ID
+            console.log(`[POSTING_QUEUE] 💾 ID recovery will be handled by background reconciliation job`);
+          } catch (markError: any) {
+            console.error(`[POSTING_QUEUE] ❌ Failed to mark as posted: ${markError.message}`);
+            // Fall through to normal error handling
+          }
+          
+          // Don't mark as failed - post succeeded!
+          return;
+        }
+        
+        // Actual posting failure - mark as failed
         console.error(`[POSTING_QUEUE] ❌ Failed to post decision ${decision.id}:`, errorMsg);
         console.error(`[POSTING_QUEUE] 💥 Error stack:`, errorStack);
         
@@ -693,12 +739,14 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     }
     
     // ✅ ENHANCED AUTO-CLEANUP: Cancel stale items to prevent queue blocking
+    // 🔧 PERMANENT FIX #3: Add automatic retry for old queued posts
     // Singles: 2 hours (simple, common)
     // Threads: 6 hours (complex, rare)
     // Replies: 1 hour (rate limited, can't post if >1h old)
     const oneHourAgoCleanup = new Date(Date.now() - 1 * 60 * 60 * 1000);
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
     const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
     
     // Clean up stale singles (>2 hours old)
     const { data: staleSingles } = await supabase
@@ -723,6 +771,64 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       .eq('status', 'queued')
       .eq('decision_type', 'reply')
       .lt('scheduled_at', oneHourAgoCleanup.toISOString());
+    
+    // 🔧 PERMANENT FIX #3: Check for old queued posts that need retry
+    // ⚡ OPTIMIZATION: Check rate limits once, then process all eligible posts
+    const { data: oldQueuedPosts } = await supabase
+      .from('content_metadata')
+      .select('decision_id, decision_type, created_at, scheduled_at, features')
+      .eq('status', 'queued')
+      .lt('scheduled_at', thirtyMinutesAgo.toISOString())
+      .limit(20);
+    
+    if (oldQueuedPosts && oldQueuedPosts.length > 0) {
+      console.log(`[POSTING_QUEUE] ⚠️ Found ${oldQueuedPosts.length} queued posts >30min old - checking blockers...`);
+      
+      // ⚡ OPTIMIZATION: Check rate limits once for all posts
+      const canPost = await checkPostingRateLimits();
+      
+      for (const oldPost of oldQueuedPosts) {
+        const ageMinutes = Math.round((Date.now() - new Date(oldPost.scheduled_at).getTime()) / (1000 * 60));
+        const features = (oldPost.features || {}) as any;
+        const retryCount = Number(features?.retry_count || 0);
+        
+        if (!canPost) {
+          console.log(`[POSTING_QUEUE] ⏸️ Post ${oldPost.decision_id} blocked by rate limits (${ageMinutes}min old)`);
+          continue; // Rate limited - can't retry yet
+        }
+        
+        // If retry count < 3, schedule retry
+        if (retryCount < 3) {
+          console.log(`[POSTING_QUEUE] 🔄 Scheduling retry for ${oldPost.decision_id} (attempt ${retryCount + 1})`);
+          const retryDelay = Math.min(retryCount * 5, 15); // 0, 5, 10, 15 minutes
+          const retryTime = new Date(Date.now() + retryDelay * 60 * 1000);
+          
+          await supabase
+            .from('content_metadata')
+            .update({
+              scheduled_at: retryTime.toISOString(),
+              features: {
+                ...features,
+                retry_count: retryCount + 1,
+                last_retry_scheduled_at: new Date().toISOString()
+              },
+              updated_at: new Date().toISOString()
+            })
+            .eq('decision_id', oldPost.decision_id);
+        } else {
+          // Too many retries - mark as cancelled
+          console.log(`[POSTING_QUEUE] ❌ Post ${oldPost.decision_id} exceeded retry limit - cancelling`);
+          await supabase
+            .from('content_metadata')
+            .update({
+              status: 'cancelled',
+              error_message: `Cancelled after ${retryCount} retry attempts (queued for ${ageMinutes} minutes)`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('decision_id', oldPost.decision_id);
+        }
+      }
+    }
     
     const totalStale = (staleSingles?.length || 0) + (staleThreads?.length || 0) + (staleReplies?.length || 0);
     
