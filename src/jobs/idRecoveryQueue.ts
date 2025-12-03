@@ -41,7 +41,7 @@ export async function idRecoveryQueueJob(): Promise<void> {
     
     if (!existsSync(backupFile)) {
       console.log('[ID_RECOVERY_QUEUE] ✅ No backup file found - nothing to recover');
-      recordJobSuccess('id_recovery_queue', { recovered: 0, processed: 0 });
+      await recordJobSuccess('id_recovery_queue');
       return;
     }
     
@@ -51,7 +51,7 @@ export async function idRecoveryQueueJob(): Promise<void> {
     
     if (lines.length === 0) {
       console.log('[ID_RECOVERY_QUEUE] ✅ Backup file is empty');
-      recordJobSuccess('id_recovery_queue', { recovered: 0, processed: 0 });
+      await recordJobSuccess('id_recovery_queue');
       return;
     }
     
@@ -80,7 +80,7 @@ export async function idRecoveryQueueJob(): Promise<void> {
     
     if (backups.length === 0) {
       console.log('[ID_RECOVERY_QUEUE] ✅ No unverified backups found');
-      recordJobSuccess('id_recovery_queue', { recovered: 0, processed: 0 });
+      await recordJobSuccess('id_recovery_queue');
       return;
     }
     
@@ -194,7 +194,8 @@ export async function idRecoveryQueueJob(): Promise<void> {
                   updated_at: new Date().toISOString()
                 })
                 .eq('decision_id', bestMatch.decision_id)
-                .is('tweet_id', null); // 🔥 RACE CONDITION: Only update if still NULL
+                .is('tweet_id', null) // 🔥 RACE CONDITION: Only update if still NULL
+                .select('decision_id'); // Select to get updated rows
               
               if (updateError) {
                 console.error(`[ID_RECOVERY_QUEUE] ❌ Failed to update matched post: ${updateError.message}`);
@@ -203,7 +204,7 @@ export async function idRecoveryQueueJob(): Promise<void> {
               }
               
               // Check if update actually succeeded (race condition check)
-              if (!updated || updated.length === 0) {
+              if (!updated || (Array.isArray(updated) && updated.length === 0)) {
                 console.log(`[ID_RECOVERY_QUEUE] ⚠️ Post ${bestMatch.decision_id} already updated by another process (race condition)`);
                 // Mark as verified anyway (another job handled it)
                 backup.verified = true;
@@ -259,12 +260,7 @@ export async function idRecoveryQueueJob(): Promise<void> {
     const duration = Date.now() - startTime;
     console.log(`[ID_RECOVERY_QUEUE] ✅ Recovery complete: ${recovered} recovered, ${failed} failed (${Math.round(duration)}ms)`);
     
-    recordJobSuccess('id_recovery_queue', {
-      recovered,
-      failed,
-      processed: backups.length,
-      duration_ms: duration
-    });
+    await recordJobSuccess('id_recovery_queue');
     
   } catch (error: any) {
     console.error(`[ID_RECOVERY_QUEUE] ❌ Fatal error: ${error.message}`);
