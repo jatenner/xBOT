@@ -31,32 +31,120 @@ async function forceTwitterSessionReset(reason: string): Promise<void> {
   }
 }
 
-// 🔧 FIX #2: Circuit breaker for posting operations - ENHANCED: Better auto-reset and manual reset
+// 🔧 FIX #2: Circuit breaker for posting operations - ENHANCED: Exponential backoff + auto-recovery
 let postingCircuitBreaker = {
   failures: 0,
   lastFailure: null as Date | null,
   state: 'closed' as 'closed' | 'open' | 'half-open',
   failureThreshold: 15, // ENHANCED: Increased from 10 to 15 (less aggressive blocking)
-  resetTimeoutMs: 60000, // ENHANCED: Increased from 30s to 60s (more time to recover)
+  resetTimeoutMs: 60000, // Base reset timeout (will increase exponentially)
   consecutiveSuccesses: 0, // NEW: Track consecutive successes for auto-reset
-  successThreshold: 3 // NEW: Need 3 successes in half-open to fully close
+  successThreshold: 3, // NEW: Need 3 successes in half-open to fully close
+  resetAttempts: 0, // NEW: Track reset attempts for exponential backoff
+  maxResetAttempts: 5 // NEW: Alert after 5 resets (requires manual intervention)
 };
 
-function checkCircuitBreaker(): boolean {
+// 🔥 ENHANCEMENT: Exponential backoff reset timeout
+function getResetTimeout(): number {
+  const baseTimeout = 60000; // 60s base
+  const exponentialMultiplier = Math.min(Math.pow(2, postingCircuitBreaker.resetAttempts), 8); // Max 8x (480s)
+  return baseTimeout * exponentialMultiplier;
+}
+
+// 🔥 ENHANCEMENT: Health check before reset
+async function checkSystemHealth(): Promise<boolean> {
+  try {
+    // Check 1: Database connectivity
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    const { error: dbError } = await supabase.from('content_metadata').select('decision_id').limit(1);
+    if (dbError) {
+      console.warn('[POSTING_QUEUE] ⚠️ Health check failed: Database not accessible');
+      return false;
+    }
+    
+    // Check 2: Browser pool health
+    const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+    const pool = UnifiedBrowserPool.getInstance();
+    const health = pool.getHealth();
+    
+    if (health.status === 'degraded' && health.circuitBreaker?.isOpen) {
+      console.warn('[POSTING_QUEUE] ⚠️ Health check failed: Browser pool circuit breaker open');
+      // 🔥 AUTO-RECOVERY: Reset browser pool if circuit breaker stuck
+      if (postingCircuitBreaker.resetAttempts >= 3) {
+        console.log('[POSTING_QUEUE] 🔧 Auto-recovering browser pool (circuit breaker stuck)...');
+        try {
+          await pool.resetPool();
+          console.log('[POSTING_QUEUE] ✅ Browser pool reset complete');
+        } catch (resetError: any) {
+          console.error('[POSTING_QUEUE] ❌ Browser pool reset failed:', resetError.message);
+          return false;
+        }
+      } else {
+        return false;
+      }
+    }
+    
+    return true;
+  } catch (error: any) {
+    console.warn('[POSTING_QUEUE] ⚠️ Health check failed:', error.message);
+    return false;
+  }
+}
+
+async function checkCircuitBreaker(): Promise<boolean> {
   if (postingCircuitBreaker.state === 'open') {
     const timeSinceFailure = postingCircuitBreaker.lastFailure 
       ? Date.now() - postingCircuitBreaker.lastFailure.getTime() 
       : Infinity;
     
-    if (timeSinceFailure > postingCircuitBreaker.resetTimeoutMs) {
+    const resetTimeout = getResetTimeout();
+    
+    if (timeSinceFailure > resetTimeout) {
+      // 🔥 ENHANCEMENT: Health check before reset
+      const isHealthy = await checkSystemHealth();
+      
+      if (!isHealthy) {
+        // System not ready, increase reset timeout (exponential backoff)
+        postingCircuitBreaker.resetAttempts++;
+        console.warn(`[POSTING_QUEUE] ⚠️ System not healthy, delaying reset (attempt ${postingCircuitBreaker.resetAttempts}/${postingCircuitBreaker.maxResetAttempts})`);
+        
+        // Alert if too many reset attempts
+        if (postingCircuitBreaker.resetAttempts >= postingCircuitBreaker.maxResetAttempts) {
+          console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Circuit breaker stuck after ${postingCircuitBreaker.resetAttempts} reset attempts!`);
+          console.error(`[POSTING_QUEUE] 🚨 Manual intervention may be required.`);
+          
+          // Log to system_events
+          try {
+            const { getSupabaseClient } = await import('../db/index');
+            const supabase = getSupabaseClient();
+            await supabase.from('system_events').insert({
+              event_type: 'circuit_breaker_stuck',
+              severity: 'critical',
+              event_data: {
+                reset_attempts: postingCircuitBreaker.resetAttempts,
+                last_failure: postingCircuitBreaker.lastFailure?.toISOString(),
+                failures: postingCircuitBreaker.failures
+              },
+              created_at: new Date().toISOString()
+            });
+          } catch (dbError) {
+            // Non-critical
+          }
+        }
+        
+        return false;
+      }
+      
+      // System healthy, proceed with reset
       postingCircuitBreaker.state = 'half-open';
       postingCircuitBreaker.consecutiveSuccesses = 0;
-      console.log('[POSTING_QUEUE] 🔄 Circuit breaker half-open, testing...');
+      console.log(`[POSTING_QUEUE] 🔄 Circuit breaker half-open, testing... (reset attempt ${postingCircuitBreaker.resetAttempts + 1})`);
       return true;
     }
     
-    const remainingMs = postingCircuitBreaker.resetTimeoutMs - timeSinceFailure;
-    console.warn(`[POSTING_QUEUE] ⚠️ Circuit breaker OPEN (${Math.ceil(remainingMs/1000)}s remaining)`);
+    const remainingMs = resetTimeout - timeSinceFailure;
+    console.warn(`[POSTING_QUEUE] ⚠️ Circuit breaker OPEN (${Math.ceil(remainingMs/1000)}s remaining, attempt ${postingCircuitBreaker.resetAttempts + 1})`);
     return false;
   }
   return true;
@@ -69,6 +157,7 @@ function recordCircuitBreakerSuccess() {
       postingCircuitBreaker.state = 'closed';
       postingCircuitBreaker.failures = 0;
       postingCircuitBreaker.consecutiveSuccesses = 0;
+      postingCircuitBreaker.resetAttempts = 0; // 🔥 ENHANCEMENT: Reset attempt counter on success
       console.log('[POSTING_QUEUE] ✅ Circuit breaker closed (recovered after successful tests)');
     } else {
       console.log(`[POSTING_QUEUE] 🔄 Circuit breaker half-open: ${postingCircuitBreaker.consecutiveSuccesses}/${postingCircuitBreaker.successThreshold} successful tests`);
@@ -78,6 +167,7 @@ function recordCircuitBreakerSuccess() {
     postingCircuitBreaker.failures = Math.max(0, postingCircuitBreaker.failures - 1);
     if (postingCircuitBreaker.failures === 0 && postingCircuitBreaker.state === 'closed') {
       postingCircuitBreaker.lastFailure = null;
+      postingCircuitBreaker.resetAttempts = 0; // 🔥 ENHANCEMENT: Reset attempt counter on full recovery
     }
   }
 }
@@ -131,8 +221,9 @@ export async function processPostingQueue(): Promise<void> {
   
   log({ op: 'posting_queue_start' });
   
-  // 🔧 FIX #2: Check circuit breaker before processing
-  if (!checkCircuitBreaker()) {
+  // 🔧 FIX #2: Check circuit breaker before processing (now async with health checks)
+  const circuitBreakerOpen = !(await checkCircuitBreaker());
+  if (circuitBreakerOpen) {
     console.warn('[POSTING_QUEUE] ⏸️ Skipping queue processing (circuit breaker open)');
     log({ op: 'posting_queue', status: 'circuit_breaker_open' });
     return;

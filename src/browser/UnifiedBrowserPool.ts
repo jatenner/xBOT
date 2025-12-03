@@ -196,7 +196,9 @@ export class UnifiedBrowserPool {
     
     console.log(`[BROWSER_POOL] 📝 Request: ${operationName} (queue: ${this.queue.length}, active: ${this.getActiveCount()}, priority: ${priority})`);
 
-    if (this.isCircuitBreakerOpen()) {
+    // 🔥 ENHANCEMENT: Async circuit breaker check
+    const breakerOpen = await this.isCircuitBreakerOpen();
+    if (breakerOpen) {
       const breakerReason = this.circuitBreaker.reason || 'circuit_breaker';
       throw new Error(`Browser pool circuit breaker open (${breakerReason})`);
     }
@@ -286,7 +288,8 @@ export class UnifiedBrowserPool {
     try {
       while (this.queue.length > 0) {
         
-        if (this.isCircuitBreakerOpen()) {
+        const breakerOpen = await this.isCircuitBreakerOpen();
+        if (breakerOpen) {
           const breakerReason = this.circuitBreaker.reason || 'circuit_breaker';
           console.warn(`[BROWSER_POOL] 🚫 Circuit breaker (${breakerReason}) open - draining queue of ${this.queue.length} operations`);
           while (this.queue.length > 0) {
@@ -903,14 +906,41 @@ export class UnifiedBrowserPool {
 
   /**
    * Check if circuit breaker allows operation
+   * 🔥 ENHANCEMENT: Auto-recovery with health checks
    */
-  public isCircuitBreakerOpen(): boolean {
+  public async isCircuitBreakerOpen(): Promise<boolean> {
     if (!this.circuitBreaker.isOpen) {
       return false;
     }
     
     if (Date.now() > this.circuitBreaker.openUntil) {
       const reason = this.circuitBreaker.reason || 'failures';
+      
+      // 🔥 ENHANCEMENT: Health check before reset
+      const isHealthy = await this.checkBrowserHealth();
+      
+      if (!isHealthy) {
+        // System not ready, extend cooldown
+        const extendedCooldown = this.CIRCUIT_BREAKER_TIMEOUT * 2; // Double the timeout
+        this.circuitBreaker.openUntil = Date.now() + extendedCooldown;
+        console.warn(`[BROWSER_POOL] ⚠️ Browser not healthy, extending cooldown by ${extendedCooldown/1000}s`);
+        return true;
+      }
+      
+      // 🔥 AUTO-RECOVERY: Reset browser pool if circuit breaker stuck
+      if (reason.includes('resource') || reason.includes('failure_threshold')) {
+        console.log(`[BROWSER_POOL] 🔧 Auto-recovering browser pool (circuit breaker cooldown elapsed)...`);
+        try {
+          await this.resetPool();
+          console.log(`[BROWSER_POOL] ✅ Browser pool reset complete`);
+        } catch (resetError: any) {
+          console.error(`[BROWSER_POOL] ❌ Browser pool reset failed:`, resetError.message);
+          // Extend cooldown if reset fails
+          this.circuitBreaker.openUntil = Date.now() + this.CIRCUIT_BREAKER_TIMEOUT;
+          return true;
+        }
+      }
+      
       console.log(`[BROWSER_POOL] 🔄 Circuit breaker cooldown elapsed (reason=${reason}) - allowing retries`);
       this.circuitBreaker.isOpen = false;
       this.circuitBreaker.reason = null;
@@ -919,6 +949,30 @@ export class UnifiedBrowserPool {
     }
     
     return true;
+  }
+  
+  /**
+   * 🔥 NEW: Check browser health before reset
+   */
+  private async checkBrowserHealth(): Promise<boolean> {
+    try {
+      // Check if browser exists and is connected
+      if (!this.browser || !this.browser.isConnected()) {
+        return false;
+      }
+      
+      // Check if we have at least one context available
+      const availableContexts = Array.from(this.contexts.values()).filter(ctx => !ctx.inUse);
+      if (availableContexts.length === 0 && this.contexts.size > 0) {
+        // All contexts in use, but browser is healthy
+        return true;
+      }
+      
+      return true;
+    } catch (error: any) {
+      console.warn(`[BROWSER_POOL] ⚠️ Health check failed:`, error.message);
+      return false;
+    }
   }
 
   /**

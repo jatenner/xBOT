@@ -1207,6 +1207,95 @@ export class JobManager {
     this.timers.set('status', setInterval(() => {
       this.printHourlyStatus();
     }, 60 * 60 * 1000)); // 1 hour
+    
+    // 🔥 NEW: Job watchdog - monitors job execution and auto-restarts stopped jobs
+    this.timers.set('watchdog', setInterval(() => {
+      this.watchdogCheck().catch(err => {
+        console.error('[JOB_MANAGER] ❌ Watchdog check failed:', err.message);
+      });
+    }, 10 * 60 * 1000)); // Every 10 minutes
+  }
+  
+  /**
+   * 🔥 NEW: Watchdog to monitor job execution and auto-restart stopped jobs
+   */
+  private async watchdogCheck(): Promise<void> {
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      
+      // Check critical jobs: plan, posting
+      const criticalJobs = ['plan', 'posting'];
+      const now = new Date();
+      
+      for (const jobName of criticalJobs) {
+        // Check job heartbeats
+        const { data: heartbeat } = await supabase
+          .from('job_heartbeats')
+          .select('last_success, last_failure, consecutive_failures, updated_at')
+          .eq('job_name', jobName)
+          .single();
+        
+        if (!heartbeat) {
+          console.warn(`[WATCHDOG] ⚠️ No heartbeat found for ${jobName} - job may not be running`);
+          continue;
+        }
+        
+        const lastSuccess = heartbeat.last_success ? new Date(String(heartbeat.last_success)) : null;
+        const lastFailure = heartbeat.last_failure ? new Date(String(heartbeat.last_failure)) : null;
+        const consecutiveFailures = heartbeat.consecutive_failures || 0;
+        
+        // If job hasn't succeeded in 2 hours and has consecutive failures, trigger it
+        if (lastSuccess) {
+          const hoursSinceSuccess = (now.getTime() - lastSuccess.getTime()) / (1000 * 60 * 60);
+          
+          if (hoursSinceSuccess > 2 && consecutiveFailures >= 3) {
+            console.warn(`[WATCHDOG] 🚨 ${jobName} hasn't succeeded in ${hoursSinceSuccess.toFixed(1)}h (${consecutiveFailures} failures) - triggering now`);
+            
+            // Trigger job immediately
+            await this.runJobNow(jobName as 'plan' | 'posting');
+          }
+        } else if (lastFailure && consecutiveFailures >= 5) {
+          // No success recorded, but many failures - trigger recovery
+          console.warn(`[WATCHDOG] 🚨 ${jobName} has ${consecutiveFailures} consecutive failures - triggering recovery`);
+          await this.runJobNow(jobName as 'plan' | 'posting');
+        }
+      }
+      
+      // Check circuit breaker status
+      try {
+        const { getCircuitBreakerStatus } = await import('./postingQueue');
+        const cbStatus = getCircuitBreakerStatus();
+        
+        if (cbStatus.state === 'open') {
+          const timeSinceFailure = cbStatus.lastFailure 
+            ? (now.getTime() - cbStatus.lastFailure.getTime()) / 1000 
+            : Infinity;
+          
+          // If circuit breaker open for >10 minutes, log warning
+          if (timeSinceFailure > 600) {
+            console.warn(`[WATCHDOG] ⚠️ Posting circuit breaker open for ${Math.round(timeSinceFailure/60)}min`);
+            
+            // Log to system_events
+            await supabase.from('system_events').insert({
+              event_type: 'circuit_breaker_watchdog_alert',
+              severity: 'warning',
+              event_data: {
+                state: cbStatus.state,
+                failures: cbStatus.failures,
+                time_open_seconds: timeSinceFailure
+              },
+              created_at: now.toISOString()
+            });
+          }
+        }
+      } catch (cbError) {
+        // Non-critical
+      }
+      
+    } catch (error: any) {
+      console.error(`[WATCHDOG] ❌ Watchdog check failed:`, error.message);
+    }
   }
 
   /**

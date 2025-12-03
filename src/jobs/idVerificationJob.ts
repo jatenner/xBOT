@@ -43,7 +43,7 @@ export async function idVerificationJob(): Promise<void> {
     
     if (!postsNeedingVerification || postsNeedingVerification.length === 0) {
       console.log('[ID_VERIFICATION] ✅ No posts need verification');
-      recordJobSuccess('id_verification', { verified: 0, recovered: 0, failed: 0 });
+      await recordJobSuccess('id_verification');
       return;
     }
     
@@ -141,13 +141,7 @@ export async function idVerificationJob(): Promise<void> {
       const duration = Date.now() - startTime;
       console.log(`[ID_VERIFICATION] 📊 Verification complete: ${recovered} recovered, ${failed} failed, ${alerts} alerts (${Math.round(duration)}ms)`);
       
-      recordJobSuccess('id_verification', {
-        verified: postsNeedingVerification.length,
-        recovered,
-        failed,
-        alerts,
-        duration_ms: duration
-      });
+      await recordJobSuccess('id_verification');
       
     } finally {
       await pool.releasePage(page);
