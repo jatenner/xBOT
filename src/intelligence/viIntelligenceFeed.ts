@@ -23,6 +23,9 @@ interface VisualIntelligence {
   confidence_note: string;
   based_on_count: number;
   examples?: any[];
+  expert_insights?: any; // ✅ NEW: Expert strategic insights
+  strategic_recommendations?: string[]; // ✅ NEW: Strategic recommendations
+  content_strategy?: string; // ✅ NEW: Content strategy advice
 }
 
 export class VIIntelligenceFeed {
@@ -73,11 +76,27 @@ export class VIIntelligenceFeed {
     // Enrich with actual tweet examples (including generator-specific if provided)
     const enriched = await this.enrichWithExamples(intelligence, params.generator);
     
+    // ✅ NEW: Get expert insights if available
+    if (enriched && params.angle && params.tone && params.structure) {
+      const expertInsights = await this.getExpertInsightsForCombination({
+        topic: params.topic || '',
+        angle: params.angle,
+        tone: params.tone,
+        structure: params.structure
+      });
+      if (expertInsights && expertInsights.expert_insights) {
+        enriched.expert_insights = expertInsights.expert_insights;
+        enriched.strategic_recommendations = expertInsights.strategic_recommendations;
+        enriched.content_strategy = expertInsights.content_strategy;
+      }
+    }
+    
     log({ 
       op: 'vi_intelligence_found', 
       primary_tier: enriched.primary_tier,
       confidence: enriched.confidence_level,
-      based_on: enriched.based_on_count
+      based_on: enriched.based_on_count,
+      has_expert_insights: !!enriched.expert_insights
     });
     
     return enriched;
@@ -181,6 +200,77 @@ export class VIIntelligenceFeed {
   /**
    * Fallback intelligence (general Twitter best practices)
    */
+  /**
+   * ✅ NEW: Get expert insights for angle/tone/structure combination
+   */
+  private async getExpertInsightsForCombination(params: {
+    topic: string;
+    angle?: string;
+    tone?: string;
+    structure?: string;
+  }): Promise<{
+    expert_insights: any | null;
+    strategic_recommendations: string[] | null;
+    content_strategy: string | null;
+  }> {
+    log({ op: 'vi_expert_insights_query', params });
+
+    const queryKey = [params.topic, params.angle, params.tone, params.structure]
+      .filter(v => v !== null && v !== undefined)
+      .join('|');
+
+    // Try to get aggregated expert insights from vi_format_intelligence first
+    const { data: aggregatedInsights, error: aggError } = await this.supabase
+      .from('vi_format_intelligence')
+      .select('expert_insights, strategic_recommendations, content_strategy')
+      .eq('query_key', queryKey)
+      .maybeSingle();
+
+    if (aggError) {
+      log({ op: 'vi_expert_agg_error', error: aggError.message });
+    }
+
+    if (aggregatedInsights?.expert_insights) {
+      log({ op: 'vi_expert_agg_found', query_key: queryKey });
+      return {
+        expert_insights: aggregatedInsights.expert_insights,
+        strategic_recommendations: aggregatedInsights.strategic_recommendations,
+        content_strategy: aggregatedInsights.content_strategy,
+      };
+    }
+
+    // Fallback: If no aggregated insights, try to get recent high-confidence raw expert analyses
+    const { data: rawExpertAnalysis, error: rawError } = await this.supabase
+      .from('expert_tweet_analysis')
+      .select('analysis')
+      .eq('topic', params.topic)
+      .gte('confidence', 0.7) // Only high-confidence analyses
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (rawError) {
+      log({ op: 'vi_expert_raw_error', error: rawError.message });
+    }
+
+    if (rawExpertAnalysis?.analysis) {
+      log({ op: 'vi_expert_raw_found', topic: params.topic });
+      const analysis = rawExpertAnalysis.analysis;
+      return {
+        expert_insights: analysis,
+        strategic_recommendations: analysis.actionable_recommendations?.content_strategy || [],
+        content_strategy: analysis.strategic_analysis?.engagement_strategy || null,
+      };
+    }
+
+    log({ op: 'vi_expert_insights_fallback', params });
+    return {
+      expert_insights: null,
+      strategic_recommendations: null,
+      content_strategy: null,
+    };
+  }
+
   private getFallback(): VisualIntelligence {
     return {
       recommended_format: {

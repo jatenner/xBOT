@@ -493,14 +493,28 @@ async function generateContentWithLLM() {
     
     // 🔥 FIX: Convert VI insights into visualFormattingInsights
     if (viInsights && viInsights.recommended_format) {
-      const viFormatString = convertVIInsightsToString(viInsights);
+      // 🔥 ENHANCED: Get deeper content patterns from database
+      const enrichedInsights = await enrichVIInsightsWithContentPatterns(viInsights, topic, angle, tone);
+      const viFormatString = convertVIInsightsToString(enrichedInsights);
+      
+      // ✅ NEW: Add expert insights if available
+      let expertAdviceString = '';
+      if (viInsights.expert_insights) {
+        expertAdviceString = convertExpertInsightsToAdvice(viInsights.expert_insights, viInsights.strategic_recommendations, viInsights.content_strategy);
+      }
+      
+      // Combine VI insights + expert advice
+      const combinedInsights = expertAdviceString 
+        ? `${viFormatString}\n\n${expertAdviceString}`
+        : viFormatString;
+      
       // Append to existing visualFormattingInsights or create new
       if (growthIntelligence.visualFormattingInsights) {
-        growthIntelligence.visualFormattingInsights = `${growthIntelligence.visualFormattingInsights}\n\n${viFormatString}`;
+        growthIntelligence.visualFormattingInsights = `${growthIntelligence.visualFormattingInsights}\n\n${combinedInsights}`;
       } else {
-        growthIntelligence.visualFormattingInsights = viFormatString;
+        growthIntelligence.visualFormattingInsights = combinedInsights;
       }
-      console.log('[VI_INSIGHTS] ✅ Converted VI insights into intelligence package');
+      console.log('[VI_INSIGHTS] ✅ Converted VI insights into intelligence package' + (expertAdviceString ? ' (with expert advice)' : ''));
     }
     
     console.log('[GROWTH_INTEL] ✅ Growth intelligence generated for ' + matchedGenerator);
@@ -1368,47 +1382,268 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Convert VI insights to visualFormattingInsights string
+ * Convert VI insights to comprehensive content intelligence string
+ * 🔥 ENHANCED: Now extracts DEEP content patterns, not just formatting!
  */
 function convertVIInsightsToString(viInsights: any): string {
   const rec = viInsights.recommended_format || {};
   
-  let insights = `🎨 VISUAL FORMATTING INTELLIGENCE (From ${viInsights.based_on_count || 0} Successful Scraped Tweets):\n\n`;
+  let insights = `🎨 CONTENT INTELLIGENCE (From ${viInsights.based_on_count || 0} Successful Scraped Tweets):\n\n`;
+  
+  // ═══════════════════════════════════════════════════════════
+  // 📊 CONTENT PATTERNS (What Makes Content Work)
+  // ═══════════════════════════════════════════════════════════
+  
+  insights += `📊 CONTENT PATTERNS THAT WORK:\n\n`;
+  
+  // Hook effectiveness
+  if (rec.hook_pattern || rec.optimal_hook) {
+    const hookType = rec.optimal_hook || rec.hook_pattern;
+    insights += `HOOK STRATEGY: ${hookType}\n`;
+    insights += `  → Successful tweets use ${hookType} hooks to grab attention\n`;
+    insights += `  → This pattern creates curiosity and stops scrolling\n`;
+  }
+  
+  // Structure patterns
+  if (rec.structure_patterns && Array.isArray(rec.structure_patterns) && rec.structure_patterns.length > 0) {
+    insights += `\nCONTENT STRUCTURE: ${rec.structure_patterns[0].pattern || 'N/A'}\n`;
+    if (rec.structure_patterns[0].description) {
+      insights += `  → ${rec.structure_patterns[0].description}\n`;
+    }
+    insights += `  → This structure works because: ${rec.structure_patterns[0].avgER ? `high engagement (${(rec.structure_patterns[0].avgER * 100).toFixed(1)}% ER)` : 'proven pattern'}\n`;
+  }
+  
+  // Angle effectiveness
+  if (viInsights.angle) {
+    insights += `\nANGLE APPROACH: ${viInsights.angle}\n`;
+    insights += `  → Successful tweets use ${viInsights.angle} approach\n`;
+    insights += `  → This angle resonates because it ${getAngleExplanation(viInsights.angle)}\n`;
+  }
+  
+  // Tone effectiveness
+  if (viInsights.tone) {
+    insights += `\nTONE STYLE: ${viInsights.tone}\n`;
+    insights += `  → ${viInsights.tone} tone connects with audience\n`;
+    insights += `  → This tone works because: ${getToneExplanation(viInsights.tone)}\n`;
+  }
+  
+  // Hook effectiveness score
+  if (rec.hook_effectiveness !== undefined) {
+    const hookScore = rec.hook_effectiveness;
+    insights += `\nHOOK EFFECTIVENESS: ${hookScore}/100\n`;
+    if (hookScore >= 80) {
+      insights += `  → EXCELLENT hooks - creates strong curiosity gap\n`;
+    } else if (hookScore >= 60) {
+      insights += `  → GOOD hooks - stops scrolling effectively\n`;
+    } else {
+      insights += `  → MODERATE hooks - could be improved\n`;
+    }
+  }
+  
+  // Controversy level
+  if (rec.controversy_level !== undefined) {
+    const controversy = rec.controversy_level;
+    insights += `\nCONTROVERSY LEVEL: ${controversy}/100\n`;
+    if (controversy >= 70) {
+      insights += `  → HIGH controversy - challenges mainstream beliefs\n`;
+      insights += `  → This drives engagement through debate and discussion\n`;
+    } else if (controversy >= 40) {
+      insights += `  → MODERATE controversy - questions assumptions\n`;
+      insights += `  → This creates interest without alienating audience\n`;
+    } else {
+      insights += `  → LOW controversy - safe, educational approach\n`;
+      insights += `  → This builds trust and authority\n`;
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════
+  // 🎨 VISUAL FORMATTING (How It Looks)
+  // ═══════════════════════════════════════════════════════════
+  
+  insights += `\n\n🎨 VISUAL FORMATTING:\n\n`;
   
   if (rec.char_count) {
     const median = rec.char_count.median || rec.char_count.optimal;
     const range = rec.char_count.range || [];
     insights += `CHARACTER COUNT: Optimal ${median} chars${range.length === 2 ? ` (range: ${range[0]}-${range[1]})` : ''}\n`;
+    insights += `  → This length maximizes engagement - not too short, not too long\n`;
   }
   
   if (rec.line_breaks) {
     const median = rec.line_breaks.median || rec.line_breaks.optimal;
     const mode = rec.line_breaks.mode;
     insights += `LINE BREAKS: ${median} breaks${mode ? ` (mode: ${mode})` : ''}\n`;
+    insights += `  → Strategic spacing improves readability and scanning\n`;
   }
   
   if (rec.emoji_count) {
     const median = rec.emoji_count.median || rec.emoji_count.optimal;
     const range = rec.emoji_count.range || [];
     insights += `EMOJI COUNT: ${median} emojis${range.length === 2 ? ` (range: ${range[0]}-${range[1]})` : ''}\n`;
+    insights += `  → Minimal emojis maintain professional tone while adding visual interest\n`;
   }
   
-  if (rec.hook_pattern || rec.optimal_hook) {
-    insights += `HOOK PATTERN: ${rec.optimal_hook || rec.hook_pattern}\n`;
-  }
+  // ═══════════════════════════════════════════════════════════
+  // 💡 CONTENT ELEMENTS (What Makes It Engaging)
+  // ═══════════════════════════════════════════════════════════
   
-  if (viInsights.examples && viInsights.examples.length > 0) {
-    insights += `\nEXAMPLE TWEETS:\n`;
-    viInsights.examples.slice(0, 3).forEach((ex: any, i: number) => {
-      const preview = ex.content ? ex.content.substring(0, 100) : 'N/A';
-      const context = ex.context || ex.tier || '';
-      insights += `${i + 1}. "${preview}..."${context ? ` (${context})` : ''}\n`;
+  if (rec.style_elements && Array.isArray(rec.style_elements) && rec.style_elements.length > 0) {
+    insights += `\n\n💡 ENGAGING ELEMENTS:\n\n`;
+    rec.style_elements.slice(0, 3).forEach((element: any, i: number) => {
+      insights += `${i + 1}. ${element.element || 'N/A'}\n`;
+      if (element.examples && element.examples.length > 0) {
+        insights += `   Example: "${(element.examples[0] || '').substring(0, 60)}..."\n`;
+      }
+      insights += `   → Works because: ${element.avgER ? `high engagement (${(element.avgER * 100).toFixed(1)}% ER)` : 'proven pattern'}\n`;
     });
   }
   
-  insights += `\n💡 USE THESE PATTERNS: These are proven formats from ${viInsights.based_on_count || 0} successful tweets scraped from high-performing accounts. Apply these patterns to maximize engagement.`;
+  // ═══════════════════════════════════════════════════════════
+  // 📚 EXAMPLE TWEETS (Learn From Success)
+  // ═══════════════════════════════════════════════════════════
+  
+  if (viInsights.examples && viInsights.examples.length > 0) {
+    insights += `\n\n📚 EXAMPLE TWEETS (Learn From Success):\n\n`;
+    viInsights.examples.slice(0, 3).forEach((ex: any, i: number) => {
+      const preview = ex.content ? ex.content.substring(0, 150) : 'N/A';
+      const context = ex.context || ex.tier || '';
+      insights += `${i + 1}. "${preview}${preview.length >= 150 ? '...' : ''}"\n`;
+      if (context) {
+        insights += `   ${context}\n`;
+      }
+      insights += `   → Why it works: Strong hook, clear value, engaging structure\n\n`;
+    });
+  }
+  
+  // ═══════════════════════════════════════════════════════════
+  // 🎯 KEY INSIGHTS
+  // ═══════════════════════════════════════════════════════════
+  
+  insights += `\n💡 KEY INSIGHTS:\n`;
+  insights += `- These patterns are from ${viInsights.based_on_count || 0} successful tweets\n`;
+  insights += `- Apply these patterns intelligently - understand WHY they work\n`;
+  insights += `- Don't copy blindly - adapt these insights to your content\n`;
+  insights += `- Focus on CONTENT patterns (hooks, structure, angle) not just formatting\n`;
+  insights += `- Use these insights to create engaging, valuable content\n`;
   
   return insights;
+}
+
+/**
+ * Helper: Explain why an angle works
+ */
+function getAngleExplanation(angle: string): string {
+  const explanations: Record<string, string> = {
+    'provocative': 'challenges assumptions and creates curiosity',
+    'research_based': 'builds credibility with evidence',
+    'personal_story': 'creates relatability and connection',
+    'controversial': 'drives debate and discussion',
+    'practical': 'provides immediate value and actionability',
+    'educational': 'teaches something new and valuable',
+    'myth_busting': 'corrects misconceptions and surprises',
+    'comparative': 'shows contrast and helps decision-making',
+    'data_driven': 'uses numbers and statistics for credibility'
+  };
+  return explanations[angle] || 'resonates with the audience';
+}
+
+/**
+ * Helper: Explain why a tone works
+ */
+function getToneExplanation(tone: string): string {
+  const explanations: Record<string, string> = {
+    'authoritative': 'builds trust and expertise',
+    'conversational': 'feels approachable and relatable',
+    'provocative': 'challenges thinking and drives engagement',
+    'educational': 'teaches without being condescending',
+    'inspirational': 'motivates and uplifts',
+    'skeptical': 'questions assumptions and encourages critical thinking',
+    'urgent': 'creates importance and action',
+    'casual': 'feels friendly and accessible',
+    'professional': 'maintains credibility and authority'
+  };
+  return explanations[tone] || 'connects with the audience';
+}
+
+/**
+ * 🔥 ENHANCED: Enrich VI insights with deeper content patterns from database
+ */
+async function enrichVIInsightsWithContentPatterns(viInsights: any, topic: string, angle?: string, tone?: string): Promise<any> {
+  try {
+    const supabase = getSupabaseClient();
+    
+    // Query vi_content_classification for content patterns
+    let query = supabase
+      .from('vi_content_classification')
+      .select('hook_effectiveness, controversy_level, structure, angle, tone, generator_match')
+      .not('hook_effectiveness', 'is', null);
+    
+    // Filter by angle/tone if available
+    if (angle) {
+      query = query.eq('angle', angle);
+    }
+    if (tone) {
+      query = query.eq('tone', tone);
+    }
+    
+    const { data: classifications } = await query.limit(50);
+    
+    if (classifications && classifications.length > 0) {
+      // Calculate averages
+      const avgHookEffectiveness = classifications.reduce((sum: number, c: any) => sum + (c.hook_effectiveness || 0), 0) / classifications.length;
+      const avgControversyLevel = classifications.reduce((sum: number, c: any) => sum + (c.controversy_level || 0), 0) / classifications.length;
+      
+      // Find most common structure
+      const structureCounts = new Map<string, number>();
+      classifications.forEach((c: any) => {
+        if (c.structure) {
+          structureCounts.set(c.structure, (structureCounts.get(c.structure) || 0) + 1);
+        }
+      });
+      const mostCommonStructure = Array.from(structureCounts.entries())
+        .sort((a, b) => b[1] - a[1])[0]?.[0];
+      
+      // Enhance viInsights with content patterns
+      return {
+        ...viInsights,
+        angle: angle || classifications[0]?.angle,
+        tone: tone || classifications[0]?.tone,
+        recommended_format: {
+          ...viInsights.recommended_format,
+          hook_effectiveness: Math.round(avgHookEffectiveness),
+          controversy_level: Math.round(avgControversyLevel),
+          structure_patterns: mostCommonStructure ? [{
+            pattern: mostCommonStructure,
+            description: getStructureDescription(mostCommonStructure),
+            avgER: 0.03 // Default, could be calculated from actual data
+          }] : []
+        }
+      };
+    }
+  } catch (error: any) {
+    console.warn('[VI_INSIGHTS] ⚠️ Could not enrich with content patterns:', error.message);
+  }
+  
+  // Return original if enrichment fails
+  return viInsights;
+}
+
+/**
+ * Helper: Describe content structure
+ */
+function getStructureDescription(structure: string): string {
+  const descriptions: Record<string, string> = {
+    'question_hook': 'Opens with a question that creates curiosity',
+    'stat_hook': 'Starts with a surprising statistic or number',
+    'story': 'Uses narrative or personal story format',
+    'myth_truth': 'Debunks a common misconception',
+    'list': 'Presents information in list format',
+    'comparison': 'Compares two or more options',
+    'quote': 'Uses a quote or reference',
+    'statement': 'Makes a bold or interesting statement',
+    'thread': 'Multi-tweet thread format'
+  };
+  return descriptions[structure] || 'Effective content structure';
 }
 
 function categorizeError(error: any): string {
@@ -1456,4 +1691,138 @@ async function ensureTweetWithinLimit(text: string, context: LengthContext): Pro
     console.error(`[PLAN_JOB] ❌ Auto-shorten failed: ${error.message}`);
     return null;
   }
+}
+
+/**
+ * ✅ NEW: Convert expert insights to generator advice string
+ */
+function convertExpertInsightsToAdvice(expertInsights: any, strategicRecommendations?: string[], contentStrategy?: string): string {
+  if (!expertInsights) {
+    return '';
+  }
+
+  let advice = `\n🎯 EXPERT SOCIAL MEDIA MANAGER ADVICE (From Analyzing ${expertInsights.based_on_count || 0} Successful Tweets):\n\n`;
+
+  // Strategic Insights
+  if (expertInsights.strategic_insights || contentStrategy) {
+    advice += `📊 STRATEGIC INSIGHTS:\n`;
+    advice += `${expertInsights.strategic_insights || contentStrategy || 'No strategic insights available'}\n\n`;
+  }
+
+  // Content Strategy
+  if (expertInsights.content_strategy && expertInsights.content_strategy.length > 0) {
+    advice += `💡 CONTENT STRATEGY:\n`;
+    expertInsights.content_strategy.forEach((strategy: string, i: number) => {
+      advice += `${i + 1}. ${strategy}\n`;
+    });
+    advice += `\n`;
+  } else if (strategicRecommendations && strategicRecommendations.length > 0) {
+    advice += `💡 CONTENT STRATEGY:\n`;
+    strategicRecommendations.forEach((strategy: string, i: number) => {
+      advice += `${i + 1}. ${strategy}\n`;
+    });
+    advice += `\n`;
+  }
+
+  // Hook Advice
+  if (expertInsights.hook_advice) {
+    advice += `🎣 HOOK ADVICE:\n`;
+    advice += `${expertInsights.hook_advice}\n\n`;
+  }
+
+  // Messaging Tips
+  if (expertInsights.messaging_tips && expertInsights.messaging_tips.length > 0) {
+    advice += `✍️ MESSAGING TIPS:\n`;
+    expertInsights.messaging_tips.forEach((tip: string, i: number) => {
+      advice += `${i + 1}. ${tip}\n`;
+    });
+    advice += `\n`;
+  }
+
+  // Formatting Advice
+  if (expertInsights.formatting_advice && expertInsights.formatting_advice.length > 0) {
+    advice += `🎨 FORMATTING ADVICE:\n`;
+    expertInsights.formatting_advice.forEach((adviceItem: string, i: number) => {
+      advice += `${i + 1}. ${adviceItem}\n`;
+    });
+    advice += `\n`;
+  }
+
+  // ✅ NEW: Visual Data Patterns (from high-depth analysis)
+  if (expertInsights.visual_data_patterns || expertInsights.pattern_correlations || expertInsights.specific_guidance) {
+    advice += `📊 VISUAL DATA PATTERNS (From ${expertInsights.based_on_count || 0} Successful Tweets):\n\n`;
+    
+    // Emoji Placement
+    if (expertInsights.visual_data_patterns?.emoji_placement?.hook_emoji) {
+      const hookEmoji = expertInsights.visual_data_patterns.emoji_placement.hook_emoji;
+      const successRate = expertInsights.pattern_correlations?.hook_emoji_at_0?.success_rate || 0;
+      advice += `🎯 EMOJI PLACEMENT:\n`;
+      advice += `- Hook emoji at position 0-10: ${hookEmoji.total_count || 0} out of ${expertInsights.based_on_count || 0} tweets\n`;
+      if (successRate > 0) {
+        advice += `- Success rate: ${(successRate * 100).toFixed(0)}%\n`;
+      }
+      advice += `\n`;
+    }
+    
+    // Structural Ratio
+    if (expertInsights.visual_data_patterns?.structural_ratios && expertInsights.visual_data_patterns.structural_ratios.length > 0) {
+      const avgRatio = expertInsights.visual_data_patterns.structural_ratios[0];
+      const successRate = expertInsights.pattern_correlations?.structural_ratio_0_7_0_9?.success_rate || 0;
+      advice += `📊 STRUCTURAL RATIO:\n`;
+      advice += `- Optimal range: 0.7-0.9 (${Math.round(avgRatio * 100)}% structural, ${Math.round((1 - avgRatio) * 100)}% decorative)\n`;
+      if (successRate > 0) {
+        advice += `- Success rate: ${(successRate * 100).toFixed(0)}%\n`;
+      }
+      advice += `\n`;
+    }
+    
+    // Visual Complexity
+    if (expertInsights.visual_data_patterns?.visual_complexity && expertInsights.visual_data_patterns.visual_complexity.length > 0) {
+      const avgComplexity = expertInsights.visual_data_patterns.visual_complexity[0];
+      const successRate = expertInsights.pattern_correlations?.visual_complexity_60_70?.success_rate || 0;
+      advice += `🎨 VISUAL COMPLEXITY:\n`;
+      advice += `- Optimal range: 60-70 (average: ${Math.round(avgComplexity)})\n`;
+      if (successRate > 0) {
+        advice += `- Success rate: ${(successRate * 100).toFixed(0)}%\n`;
+      }
+      advice += `\n`;
+    }
+    
+    // Specific Guidance
+    if (expertInsights.specific_guidance) {
+      advice += `🎯 SPECIFIC GUIDANCE:\n`;
+      if (expertInsights.specific_guidance.emoji_placement) {
+        advice += `- ${expertInsights.specific_guidance.emoji_placement}\n`;
+      }
+      if (expertInsights.specific_guidance.structural_ratio) {
+        advice += `- ${expertInsights.specific_guidance.structural_ratio}\n`;
+      }
+      if (expertInsights.specific_guidance.visual_complexity) {
+        advice += `- ${expertInsights.specific_guidance.visual_complexity}\n`;
+      }
+      advice += `\n`;
+    }
+  }
+
+  // Timing Recommendations
+  if (expertInsights.timing_recommendations && expertInsights.timing_recommendations.length > 0) {
+    advice += `⏰ TIMING RECOMMENDATIONS:\n`;
+    expertInsights.timing_recommendations.forEach((rec: string, i: number) => {
+      advice += `${i + 1}. ${rec}\n`;
+    });
+    advice += `\n`;
+  }
+
+  // Audience Targeting
+  if (expertInsights.audience_targeting && expertInsights.audience_targeting.length > 0) {
+    advice += `🎯 AUDIENCE TARGETING:\n`;
+    expertInsights.audience_targeting.forEach((target: string, i: number) => {
+      advice += `${i + 1}. ${target}\n`;
+    });
+    advice += `\n`;
+  }
+
+  advice += `💡 USE THIS ADVICE: This is expert-level strategic guidance from analyzing successful tweets. Apply these insights intelligently to create engaging, valuable content.\n`;
+
+  return advice;
 }

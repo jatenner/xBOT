@@ -339,6 +339,34 @@ export class JobManager {
       220 * MINUTE  // Offset ~3.7 hours
     );
 
+    // ✅ NEW: Expert Analysis - every 6 hours, offset 240 min
+    // Analyzes successful tweets with GPT-4o as expert social media manager
+    this.scheduleStaggeredJob(
+      'expert_analysis',
+      async () => {
+        await this.safeExecute('expert_analysis', async () => {
+          const { expertAnalysisJob } = await import('./expertAnalysisJob');
+          await expertAnalysisJob();
+        });
+      },
+      360 * MINUTE, // Every 6 hours
+      240 * MINUTE  // Offset 4 hours
+    );
+
+    // ✅ NEW: Expert Insights Aggregator - every 12 hours, offset 480 min
+    // Synthesizes expert analyses into strategic recommendations
+    this.scheduleStaggeredJob(
+      'expert_insights_aggregator',
+      async () => {
+        await this.safeExecute('expert_insights_aggregator', async () => {
+          const { expertInsightsAggregatorJob } = await import('./expertInsightsAggregatorJob');
+          await expertInsightsAggregatorJob();
+        });
+      },
+      720 * MINUTE, // Every 12 hours
+      480 * MINUTE  // Offset 8 hours
+    );
+
     // Learn job - every 60 min, offset 45 min (no browser)
     if (flags.learnEnabled) {
       this.scheduleStaggeredJob(
