@@ -49,6 +49,7 @@ export async function selectOptimalContent(): Promise<AdaptiveDecision> {
         const { data: recentPosts } = await supabase
           .from('content_with_outcomes')
           .select('*')
+          .in('decision_type', ['single', 'thread'])  // ✅ Filter out replies - only learn from posts
           .order('posted_at', { ascending: false })
           .limit(20);
         
@@ -73,6 +74,7 @@ export async function selectOptimalContent(): Promise<AdaptiveDecision> {
     const { data: recentPosts } = await supabase
       .from('content_with_outcomes')
       .select('*')
+      .in('decision_type', ['single', 'thread'])  // ✅ Filter out replies - only learn from posts
       .order('posted_at', { ascending: false })
       .limit(10);
     

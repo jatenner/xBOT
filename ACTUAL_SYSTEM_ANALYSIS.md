@@ -212,3 +212,4 @@ The system **DOES** use learning, but the **learning insights are too generic**.
 3. **Show Failed Patterns** - Include flops and why they failed
 4. **Strengthen Intelligence Context** - Make it more prominent and specific
 
+

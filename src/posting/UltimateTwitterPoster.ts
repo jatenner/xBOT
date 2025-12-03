@@ -153,13 +153,13 @@ export class UltimateTwitterPoster {
       const operationName = this.purpose === 'reply' ? 'reply_posting' : 'tweet_posting';
       console.log(`ULTIMATE_POSTER: Acquiring page from UnifiedBrowserPool (operation: ${operationName})...`);
       
-      // Use HIGH PRIORITY (2) so posting always gets precedence over background jobs like VI scraping
+      // 🔥 OPTIMIZATION: Use PRIORITY 0 (highest) so posting never waits
       this.page = await browserPool.withContext(
         operationName,
         async (context) => {
           return await context.newPage();
         },
-        2 // High priority (lower number) - ensures posting never waits for VI scraper
+        0 // 🔥 HIGHEST PRIORITY - posting is critical, should never wait
       );
       
       // Set up error handling
@@ -595,10 +595,26 @@ export class UltimateTwitterPoster {
     // ✅ NEW: Simplified extraction flow with clear priority
     console.log('ULTIMATE_POSTER: 🔍 Extracting tweet ID (priority order)...');
 
+    // 🔥 ENHANCEMENT: Progressive network capture with multiple checkpoints
     // Priority 1: Network interception (99% reliable, instant)
     if (this.capturedTweetId) {
       console.log(`✅ ID from network: ${this.capturedTweetId}`);
       return { success: true, tweetId: this.capturedTweetId };
+    }
+
+    // 🔥 ENHANCEMENT: Progressive wait for network capture (2s, 5s, 10s, 20s)
+    console.log('ULTIMATE_POSTER: Waiting for network capture (progressive checks)...');
+    const networkWaitCheckpoints = [2000, 5000, 10000, 20000]; // Progressive waits
+    let lastWaitTime = 0;
+    for (const waitMs of networkWaitCheckpoints) {
+      const waitDuration = waitMs - lastWaitTime;
+      await this.page?.waitForTimeout(waitDuration);
+      lastWaitTime = waitMs;
+      if (this.capturedTweetId) {
+        console.log(`✅ ID from network capture (after ${waitMs}ms): ${this.capturedTweetId}`);
+        return { success: true, tweetId: this.capturedTweetId };
+      }
+      console.log(`ULTIMATE_POSTER: Network check at ${waitMs}ms - no ID yet, continuing...`);
     }
 
     // Priority 2: URL redirect (95% reliable, fast - 1-2 seconds)

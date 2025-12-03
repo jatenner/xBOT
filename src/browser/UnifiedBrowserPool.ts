@@ -194,12 +194,23 @@ export class UnifiedBrowserPool {
   ): Promise<T> {
     const operationId = `${operationName}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    console.log(`[BROWSER_POOL] 📝 Request: ${operationName} (queue: ${this.queue.length}, active: ${this.getActiveCount()})`);
+    console.log(`[BROWSER_POOL] 📝 Request: ${operationName} (queue: ${this.queue.length}, active: ${this.getActiveCount()}, priority: ${priority})`);
 
     if (this.isCircuitBreakerOpen()) {
       const breakerReason = this.circuitBreaker.reason || 'circuit_breaker';
       throw new Error(`Browser pool circuit breaker open (${breakerReason})`);
     }
+    
+    // 🔥 OPTIMIZATION: Longer timeout for critical operations (posting, replies, ID extraction)
+    // Posting operations are critical - they should wait longer than background jobs
+    // ID extraction operations need extra time (progressive waits can take up to 67s)
+    const isCriticalOperation = priority <= 1; // Priority 0 or 1 (replies, posting)
+    const isIdExtractionOperation = operationName.includes('id_recovery') || 
+                                    operationName.includes('extract') || 
+                                    operationName.includes('recovery');
+    const timeoutMs = isCriticalOperation || isIdExtractionOperation
+      ? Math.max(this.QUEUE_WAIT_TIMEOUT * 5, 300000) // 🔥 ENHANCEMENT: 5x timeout or 5min min for critical/ID extraction ops
+      : this.QUEUE_WAIT_TIMEOUT; // Normal timeout for background jobs
     
     // Update metrics
     this.metrics.totalOperations++;
@@ -212,10 +223,12 @@ export class UnifiedBrowserPool {
       const queuedAt = Date.now();
       
       // 🔥 QUEUE TIMEOUT: Reject if waiting too long (prevents infinite waits)
+      // 🔥 OPTIMIZATION: Critical operations get longer timeout
       const queueTimeoutTimer = setTimeout(() => {
         const waitTime = Date.now() - queuedAt;
-        console.error(`[BROWSER_POOL] ⏱️ QUEUE TIMEOUT: ${operationName} waited ${Math.round(waitTime/1000)}s`);
+        console.error(`[BROWSER_POOL] ⏱️ QUEUE TIMEOUT: ${operationName} waited ${Math.round(waitTime/1000)}s (timeout: ${timeoutMs/1000}s)`);
         console.error(`[BROWSER_POOL] 📊 Current: ${this.queue.length} queued, ${this.getActiveCount()} active`);
+        console.error(`[BROWSER_POOL] 🚨 Priority: ${priority} (${isCriticalOperation ? 'CRITICAL' : 'background'})`);
         
         // Remove from queue
         const index = this.queue.findIndex(op => op.id === operationId);
@@ -224,8 +237,8 @@ export class UnifiedBrowserPool {
           this.metrics.queuedOperations--;
         }
         
-        reject(new Error(`Queue timeout after ${Math.round(waitTime/1000)}s - pool overloaded`));
-      }, this.QUEUE_WAIT_TIMEOUT);
+        reject(new Error(`Queue timeout after ${Math.round(waitTime/1000)}s - pool overloaded (priority: ${priority}, timeout: ${timeoutMs/1000}s)`));
+      }, timeoutMs);
       
       // Wrap operation to clear timeout when it starts
       const wrappedOperation = async (ctx: BrowserContext) => {

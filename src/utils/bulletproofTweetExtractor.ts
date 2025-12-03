@@ -47,8 +47,9 @@ export interface TweetExtractionResult {
 }
 
 export class BulletproofTweetExtractor {
-  private static readonly MAX_RETRIES = 7;  // Increased from 3 to 7 (ultra-reliable)
-  private static readonly RETRY_DELAY = 3000;  // Increased from 2s to 3s
+  private static readonly MAX_RETRIES = 10;  // 🔥 ENHANCEMENT: Increased from 7 to 10 (ultra-reliable)
+  // 🔥 ENHANCEMENT: Progressive retry delays (3s, 8s, 13s, 18s, 25s) instead of fixed 3s
+  private static readonly PROGRESSIVE_DELAYS = [3000, 8000, 13000, 18000, 25000]; // Progressive waits for Twitter indexing
 
   /**
    * 🎯 MAIN METHOD: Extract tweet ID with full verification
@@ -338,8 +339,11 @@ export class BulletproofTweetExtractor {
       }
 
       if (attempt < this.MAX_RETRIES) {
-        console.log(`[BULLETPROOF_EXTRACTOR] ⚠️ Attempt ${attempt} failed, retrying in ${this.RETRY_DELAY}ms...`);
-        await page.waitForTimeout(this.RETRY_DELAY);
+        // 🔥 ENHANCEMENT: Progressive delays - longer waits as attempts increase
+        const delayIndex = Math.min(attempt - 1, this.PROGRESSIVE_DELAYS.length - 1);
+        const delayMs = this.PROGRESSIVE_DELAYS[delayIndex] || this.PROGRESSIVE_DELAYS[this.PROGRESSIVE_DELAYS.length - 1];
+        console.log(`[BULLETPROOF_EXTRACTOR] ⚠️ Attempt ${attempt} failed, retrying in ${delayMs}ms (progressive delay)...`);
+        await page.waitForTimeout(delayMs);
       }
     }
 

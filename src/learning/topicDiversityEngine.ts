@@ -392,6 +392,7 @@ export class TopicDiversityEngine {
       const { data } = await supabase
         .from('content_with_outcomes')  // ✅ ROOT CAUSE FIX: Use table with actual data
         .select('metadata, followers_gained, engagement_rate, posted_at')
+        .in('decision_type', ['single', 'thread'])  // ✅ Filter out replies - only learn from posts
         .order('posted_at', { ascending: false })
         .limit(50);
       
@@ -637,6 +638,7 @@ ${params.successful.map(t => `- "${t.topic}" (${t.avg_followers.toFixed(1)} foll
       const { data } = await supabase
         .from('content_with_outcomes')  // ✅ ROOT CAUSE FIX: Use table with actual data
         .select('engagement_rate')
+        .in('decision_type', ['single', 'thread'])  // ✅ Filter out replies - only learn from posts
         .order('posted_at', { ascending: false })
         .limit(10);
       

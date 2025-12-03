@@ -826,6 +826,34 @@ export class JobManager {
       10 * MINUTE,
       4 * MINUTE  // Run 4 minutes after startup (recovers IDs quickly)
     );
+    
+    // 🔥 NEW: ID Recovery Queue - Process file backups every 5 minutes
+    // Ensures rapid recovery of tweet IDs from file backups
+    this.scheduleStaggeredJob(
+      'id_recovery_queue',
+      async () => {
+        await this.safeExecute('id_recovery_queue', async () => {
+          const { idRecoveryQueueJob } = await import('./idRecoveryQueue');
+          await idRecoveryQueueJob();
+        });
+      },
+      5 * MINUTE, // Every 5 minutes (rapid recovery)
+      2 * MINUTE  // Start after 2 minutes
+    );
+    
+    // 🔥 NEW: ID Verification - Check for missing IDs every 10 minutes
+    // Recovers IDs using content matching and alerts if recovery fails
+    this.scheduleStaggeredJob(
+      'id_verification',
+      async () => {
+        await this.safeExecute('id_verification', async () => {
+          const { idVerificationJob } = await import('./idVerificationJob');
+          await idVerificationJob();
+        });
+      },
+      10 * MINUTE, // Every 10 minutes
+      3 * MINUTE   // Start after 3 minutes
+    );
 
     // Watchdog - every 5 minutes to enforce SLAs
     this.scheduleStaggeredJob(

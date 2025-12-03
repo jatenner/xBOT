@@ -24,3 +24,4 @@ echo "   To trigger plan job: railway run node -e \"require('./dist/jobs/planJob
 echo "   To restart service: railway restart"
 echo "   To check variables: railway variables"
 
+

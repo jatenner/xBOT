@@ -168,7 +168,7 @@ export async function withBrowserLock<T>(
  */
 export const BrowserPriority = {
   REPLIES: 0,        // 🔥 ABSOLUTE HIGHEST - reply posting never waits (4/hour guarantee)
-  POSTING: 1,        // High - main content posting
+  POSTING: 0,        // 🔥 OPTIMIZATION: Equal priority to replies - content posting is critical
   METRICS: 2,        // High - critical for dashboard/learning data
   HARVESTING: 3,     // Third - feeds reply system
   FOLLOWER_TRACK: 4, // Medium - important but not urgent

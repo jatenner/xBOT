@@ -200,6 +200,7 @@ export async function buildGrowthIntelligencePackage(
         .select('content, raw_topic, angle, actual_engagement_rate, actual_impressions, actual_likes, actual_retweets, visual_format')
         .eq('generator_name', generatorName)
         .eq('status', 'posted')
+        .in('decision_type', ['single', 'thread'])  // ✅ Filter out replies - only learn from posts
         .not('actual_engagement_rate', 'is', null)
         .gte('actual_impressions', 200) // 🎯 Learn from HIGH-PERFORMERS (aspirational goals)
         .order('actual_impressions', { ascending: false }) // Sort by views, not date!
@@ -213,6 +214,7 @@ export async function buildGrowthIntelligencePackage(
           .select('content, raw_topic, angle, actual_engagement_rate, actual_impressions, actual_likes, actual_retweets, visual_format')
           .eq('generator_name', generatorName)
           .eq('status', 'posted')
+          .in('decision_type', ['single', 'thread'])  // ✅ Filter out replies - only learn from posts
           .not('actual_engagement_rate', 'is', null)
           .gte('actual_impressions', 100)
           .lt('actual_impressions', 200)

@@ -163,3 +163,4 @@ const { getSupabaseClient } = require('./dist/db/index');
 
 **Run these commands in order to diagnose and fix the issue.**
 
+

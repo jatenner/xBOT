@@ -194,13 +194,13 @@ export class BulletproofThreadComposer {
     const pool = UnifiedBrowserPool.getInstance();
     
     // ✅ FIX: Use the same authenticated browser pool as single posts!
-    // Use HIGH PRIORITY (2) so thread posting always gets precedence over background jobs
+    // 🔥 OPTIMIZATION: Use PRIORITY 0 (highest) so thread posting never waits
     const page = await pool.withContext(
       'thread_posting',
       async (context) => {
         return await context.newPage();
       },
-      2 // High priority (lower number) - ensures posting never waits for VI scraper
+      0 // 🔥 HIGHEST PRIORITY - thread posting is critical, should never wait
     );
     
     try {

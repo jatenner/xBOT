@@ -69,3 +69,4 @@ railway variables --set MODE=live
 **Blocker:** ❌ 6 phantom posts (run SQL above)  
 **Action:** Run SQL fix → System starts posting
 
+

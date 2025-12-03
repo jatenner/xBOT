@@ -333,6 +333,87 @@ export async function processPostingQueue(): Promise<void> {
         const errorMsg = error?.message || error?.toString() || 'Unknown error';
         const errorStack = error?.stack || 'No stack trace';
         
+        // 🔥 FIX: Check for browser queue timeout errors
+        const isQueueTimeout = errorMsg.includes('Queue timeout') || 
+                               errorMsg.includes('pool overloaded') ||
+                               errorMsg.includes('Browser operation timeout');
+        
+        if (isQueueTimeout) {
+          // Browser queue timeout - this is a critical failure that should be visible
+          console.error(`[POSTING_QUEUE] 🚨 BROWSER QUEUE TIMEOUT: ${decision.id}`);
+          console.error(`[POSTING_QUEUE] 🚨 Error: ${errorMsg}`);
+          console.error(`[POSTING_QUEUE] 🚨 This indicates browser pool is overloaded - post will be retried`);
+          
+          // 🔥 FIX: Update job_heartbeats to track this failure
+          try {
+            const { getSupabaseClient } = await import('../db/index');
+            const supabase = getSupabaseClient();
+            await supabase
+              .from('job_heartbeats')
+              .upsert({
+                job_name: 'posting',
+                last_run_status: 'failed',
+                last_error: `Browser queue timeout: ${errorMsg}`,
+                consecutive_failures: 1,
+                updated_at: new Date().toISOString()
+              }, {
+                onConflict: 'job_name'
+              });
+          } catch (heartbeatError: any) {
+            console.warn(`[POSTING_QUEUE] ⚠️ Failed to update job_heartbeats: ${heartbeatError.message}`);
+          }
+          
+          // Reset status to queued for retry (don't mark as failed - will retry)
+          try {
+            const { getSupabaseClient } = await import('../db/index');
+            const supabase = getSupabaseClient();
+            const features = (decision.features || {}) as any;
+            const retryCount = Number(features?.retry_count || 0);
+            
+            if (retryCount < 3) {
+              // Schedule retry in 5 minutes
+              const retryTime = new Date(Date.now() + 5 * 60 * 1000);
+              await supabase
+                .from('content_metadata')
+                .update({
+                  status: 'queued',
+                  scheduled_at: retryTime.toISOString(),
+                  features: {
+                    ...features,
+                    retry_count: retryCount + 1,
+                    last_retry_reason: 'browser_queue_timeout',
+                    last_retry_scheduled_at: new Date().toISOString()
+                  },
+                  updated_at: new Date().toISOString()
+                })
+                .eq('decision_id', decision.id);
+              
+              console.log(`[POSTING_QUEUE] 🔄 Scheduled retry for ${decision.id} (attempt ${retryCount + 1}/3) in 5 minutes`);
+            } else {
+              // Too many retries - mark as failed
+              await markDecisionFailed(decision.id, `Browser queue timeout after ${retryCount} retries: ${errorMsg}`);
+            }
+          } catch (retryError: any) {
+            console.error(`[POSTING_QUEUE] ❌ Failed to schedule retry: ${retryError.message}`);
+            await markDecisionFailed(decision.id, errorMsg);
+          }
+          
+          // Track error
+          await trackError(
+            'posting_queue',
+            'browser_queue_timeout',
+            errorMsg,
+            'error',
+            {
+              decision_id: decision.id,
+              decision_type: decision.decision_type,
+              retry_count: (decision.features as any)?.retry_count || 0
+            }
+          );
+          
+          return; // Don't continue - will retry on next cycle
+        }
+        
         // 🔧 PERMANENT FIX #2: Check if post actually succeeded before marking as failed
         // Some errors indicate ID extraction failure, not posting failure
         // Check for common ID extraction error patterns
@@ -381,6 +462,35 @@ export async function processPostingQueue(): Promise<void> {
         console.error(`[POSTING_QUEUE] ❌ Failed to post decision ${decision.id}:`, errorMsg);
         console.error(`[POSTING_QUEUE] 💥 Error stack:`, errorStack);
         
+        // 🔥 FIX: Update job_heartbeats to track posting failures
+        try {
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          const { data: currentHeartbeat } = await supabase
+            .from('job_heartbeats')
+            .select('consecutive_failures')
+            .eq('job_name', 'posting')
+            .maybeSingle();
+          
+          const consecutiveFailures = (currentHeartbeat?.consecutive_failures || 0) + 1;
+          
+          await supabase
+            .from('job_heartbeats')
+            .upsert({
+              job_name: 'posting',
+              last_run_status: 'failed',
+              last_error: errorMsg.substring(0, 500), // Limit error message length
+              consecutive_failures: consecutiveFailures,
+              updated_at: new Date().toISOString()
+            }, {
+              onConflict: 'job_name'
+            });
+          
+          console.log(`[POSTING_QUEUE] 📊 Updated job_heartbeats: consecutive_failures=${consecutiveFailures}`);
+        } catch (heartbeatError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Failed to update job_heartbeats: ${heartbeatError.message}`);
+        }
+        
         // 🔧 ENHANCED ERROR TRACKING: Track all posting failures
         await trackError(
           'posting_queue',
@@ -421,6 +531,28 @@ export async function processPostingQueue(): Promise<void> {
     
     // 🔧 FIX #2: Record success for circuit breaker
     recordCircuitBreakerSuccess();
+    
+    // 🔥 FIX: Update job_heartbeats to track success
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase
+        .from('job_heartbeats')
+        .upsert({
+          job_name: 'posting',
+          last_run_status: 'success',
+          last_success: new Date().toISOString(),
+          consecutive_failures: 0,
+          last_error: null,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'job_name'
+        });
+      
+      console.log(`[POSTING_QUEUE] 📊 Updated job_heartbeats: success (${successCount} posts)`);
+    } catch (heartbeatError: any) {
+      console.warn(`[POSTING_QUEUE] ⚠️ Failed to update job_heartbeats: ${heartbeatError.message}`);
+    }
     
   } catch (error: any) {
     const errorMsg = error?.message || error?.toString() || 'Unknown error';
