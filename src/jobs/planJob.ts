@@ -490,6 +490,19 @@ async function generateContentWithLLM() {
     
     const { buildGrowthIntelligencePackage } = await import('../learning/growthIntelligence');
     growthIntelligence = await buildGrowthIntelligencePackage(matchedGenerator);
+    
+    // 🔥 FIX: Convert VI insights into visualFormattingInsights
+    if (viInsights && viInsights.recommended_format) {
+      const viFormatString = convertVIInsightsToString(viInsights);
+      // Append to existing visualFormattingInsights or create new
+      if (growthIntelligence.visualFormattingInsights) {
+        growthIntelligence.visualFormattingInsights = `${growthIntelligence.visualFormattingInsights}\n\n${viFormatString}`;
+      } else {
+        growthIntelligence.visualFormattingInsights = viFormatString;
+      }
+      console.log('[VI_INSIGHTS] ✅ Converted VI insights into intelligence package');
+    }
+    
     console.log('[GROWTH_INTEL] ✅ Growth intelligence generated for ' + matchedGenerator);
   } catch (error: any) {
     console.warn('[GROWTH_INTEL] ⚠️ Intelligence unavailable:', error.message);
@@ -1352,6 +1365,50 @@ function calculateQuality(text: string): number {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Convert VI insights to visualFormattingInsights string
+ */
+function convertVIInsightsToString(viInsights: any): string {
+  const rec = viInsights.recommended_format || {};
+  
+  let insights = `🎨 VISUAL FORMATTING INTELLIGENCE (From ${viInsights.based_on_count || 0} Successful Scraped Tweets):\n\n`;
+  
+  if (rec.char_count) {
+    const median = rec.char_count.median || rec.char_count.optimal;
+    const range = rec.char_count.range || [];
+    insights += `CHARACTER COUNT: Optimal ${median} chars${range.length === 2 ? ` (range: ${range[0]}-${range[1]})` : ''}\n`;
+  }
+  
+  if (rec.line_breaks) {
+    const median = rec.line_breaks.median || rec.line_breaks.optimal;
+    const mode = rec.line_breaks.mode;
+    insights += `LINE BREAKS: ${median} breaks${mode ? ` (mode: ${mode})` : ''}\n`;
+  }
+  
+  if (rec.emoji_count) {
+    const median = rec.emoji_count.median || rec.emoji_count.optimal;
+    const range = rec.emoji_count.range || [];
+    insights += `EMOJI COUNT: ${median} emojis${range.length === 2 ? ` (range: ${range[0]}-${range[1]})` : ''}\n`;
+  }
+  
+  if (rec.hook_pattern || rec.optimal_hook) {
+    insights += `HOOK PATTERN: ${rec.optimal_hook || rec.hook_pattern}\n`;
+  }
+  
+  if (viInsights.examples && viInsights.examples.length > 0) {
+    insights += `\nEXAMPLE TWEETS:\n`;
+    viInsights.examples.slice(0, 3).forEach((ex: any, i: number) => {
+      const preview = ex.content ? ex.content.substring(0, 100) : 'N/A';
+      const context = ex.context || ex.tier || '';
+      insights += `${i + 1}. "${preview}..."${context ? ` (${context})` : ''}\n`;
+    });
+  }
+  
+  insights += `\n💡 USE THESE PATTERNS: These are proven formats from ${viInsights.based_on_count || 0} successful tweets scraped from high-performing accounts. Apply these patterns to maximize engagement.`;
+  
+  return insights;
 }
 
 function categorizeError(error: any): string {
