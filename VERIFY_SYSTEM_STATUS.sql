@@ -181,3 +181,4 @@ WHERE status = 'posted'
   AND tweet_id IS NULL
   AND posted_at >= NOW() - INTERVAL '24 hours';
 
+

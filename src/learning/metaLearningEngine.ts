@@ -30,6 +30,7 @@ export async function runMetaLearningAnalysis(): Promise<void> {
   const { data: posts, error } = await supabase
     .from('content_with_outcomes')  // ✅ ROOT CAUSE FIX: Use table with actual data
     .select('*')
+    .in('decision_type', ['single', 'thread'])  // ✅ Filter out replies - only learn from posts
     .gte('posted_at', thirtyDaysAgo.toISOString())
     .not('followers_gained', 'is', null);
   

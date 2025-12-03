@@ -34,3 +34,4 @@ COMMENT ON COLUMN content_metadata.followers_gained_24h IS 'Followers gained wit
 COMMENT ON COLUMN content_metadata.followers_gained_48h IS 'Followers gained within 48 hours (long-term tracking)';
 COMMENT ON COLUMN content_metadata.attribution_confidence IS 'Confidence level: high (2h gains), medium (24h gains), low (48h gains or no gains)';
 
+

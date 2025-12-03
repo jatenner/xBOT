@@ -38,6 +38,7 @@ export async function discoverPatterns(): Promise<DiscoveredPattern[]> {
   const { data: posts, error } = await supabase
     .from('content_with_outcomes')
     .select('*')
+    .in('decision_type', ['single', 'thread'])  // ✅ Filter out replies - only learn from posts
     .not('raw_topic', 'is', null)
     .not('generator_name', 'is', null)
     .not('actual_impressions', 'is', null);

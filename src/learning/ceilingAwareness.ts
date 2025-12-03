@@ -32,6 +32,7 @@ export async function evaluateIfSettling(): Promise<CeilingStatus> {
   const { data: recent, error } = await supabase
     .from('content_with_outcomes')
     .select('actual_impressions, posted_at')
+    .in('decision_type', ['single', 'thread'])  // ✅ Filter out replies - only learn from posts
     .gte('posted_at', sevenDaysAgo.toISOString())
     .not('actual_impressions', 'is', null)
     .order('posted_at', { ascending: false });

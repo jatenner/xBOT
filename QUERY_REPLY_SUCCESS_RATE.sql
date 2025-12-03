@@ -57,3 +57,4 @@ SELECT
    WHERE decision_type = 'reply' 
    AND status = 'queued') as replies_queued;
 
+
