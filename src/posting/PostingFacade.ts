@@ -197,14 +197,14 @@ export class PostingFacade {
   }
 
   /**
-   * 🌐 GET browser page for ThreadComposer
+   * 🌐 GET browser page for ThreadComposer (using UnifiedBrowserPool)
    */
   private static async getBrowserPage(): Promise<any> {
-    const { default: browserManager } = await import('../core/BrowserManager');
+    const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+    const pool = UnifiedBrowserPool.getInstance();
     
-    return await browserManager.withContext(async (context: any) => {
-      return await context.newPage();
-    });
+    // UnifiedBrowserPool.acquirePage returns a Page directly
+    return await pool.acquirePage('posting_facade');
   }
 
   /**

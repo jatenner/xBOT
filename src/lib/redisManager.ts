@@ -53,6 +53,9 @@ interface HealthMetrics {
 class RedisManager {
   private static instance: RedisManager;
   private client: Redis | null = null;
+  private pool: Redis[] = []; // Connection pool
+  private readonly MAX_POOL_SIZE = 5;
+  private readonly POOL_TIMEOUT_MS = 30000; // 30 seconds
   private isConnected: boolean = false;
   private fallbackMode: boolean = false;
   private connectionAttempts: number = 0;
@@ -61,6 +64,80 @@ class RedisManager {
 
   private constructor() {
     this.initializeRedis();
+  }
+  
+  /**
+   * Get connection from pool (or create new if pool not full)
+   */
+  async getConnection(): Promise<Redis> {
+    // Return available connection from pool
+    for (const conn of this.pool) {
+      if (conn.status === 'ready') {
+        return conn;
+      }
+    }
+    
+    // Pool not full, create new connection
+    if (this.pool.length < this.MAX_POOL_SIZE) {
+      const newConn = await this.createConnection();
+      this.pool.push(newConn);
+      return newConn;
+    }
+    
+    // Pool full, wait for available connection
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Redis connection pool timeout'));
+      }, this.POOL_TIMEOUT_MS);
+      
+      const checkPool = setInterval(() => {
+        for (const conn of this.pool) {
+          if (conn.status === 'ready') {
+            clearInterval(checkPool);
+            clearTimeout(timeout);
+            resolve(conn);
+            return;
+          }
+        }
+      }, 100);
+    });
+  }
+  
+  /**
+   * Release connection back to pool (actually just marks as available)
+   */
+  async releaseConnection(conn: Redis): Promise<void> {
+    // Connection stays in pool, just mark as available
+    // Pool manages lifecycle automatically
+  }
+  
+  /**
+   * Create new Redis connection
+   */
+  private async createConnection(): Promise<Redis> {
+    if (!process.env.REDIS_URL) {
+      throw new Error('REDIS_URL not configured');
+    }
+    
+    const config: RedisConfig = {
+      url: process.env.REDIS_URL,
+      maxRetriesPerRequest: 3,
+      retryDelayOnFailover: 100,
+      connectTimeout: 10000,
+      commandTimeout: 5000,
+      maxMemoryPolicy: 'allkeys-lru'
+    };
+    
+    const conn = new Redis(config.url, {
+      maxRetriesPerRequest: config.maxRetriesPerRequest,
+      connectTimeout: config.connectTimeout,
+      commandTimeout: config.commandTimeout,
+      lazyConnect: true,
+      keepAlive: 30000
+    });
+    
+    await conn.connect();
+    return conn;
   }
 
   public static getInstance(): RedisManager {
