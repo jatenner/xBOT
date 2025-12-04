@@ -481,6 +481,29 @@ async function generateContentWithLLM() {
   }
   
   // ═══════════════════════════════════════════════════════════
+  // 🚀 STEP 5.45: GET REPLY INSIGHTS - Learn from successful replies!
+  // ═══════════════════════════════════════════════════════════
+  
+  let replyInsights = null;
+  try {
+    console.log('[REPLY_INSIGHTS] 🚀 Retrieving successful reply patterns...');
+    
+    const { replyLearningSystem } = await import('../learning/replyLearningSystem');
+    replyInsights = await replyLearningSystem.getSuccessfulPatterns();
+    
+    if (replyInsights && replyInsights.topPerformingReplies.length > 0) {
+      console.log(`[REPLY_INSIGHTS] ✅ Found ${replyInsights.topPerformingReplies.length} high-performing reply examples`);
+      console.log(`[REPLY_INSIGHTS] 📊 Best generators: ${replyInsights.bestGenerators.join(', ')}`);
+      console.log(`[REPLY_INSIGHTS] 📊 Best topics: ${replyInsights.bestTopics.slice(0, 3).join(', ')}`);
+    } else {
+      console.log('[REPLY_INSIGHTS] ⚠️ No reply insights yet (will build as replies perform)');
+    }
+  } catch (error: any) {
+    console.warn('[REPLY_INSIGHTS] ⚠️ Reply insights unavailable:', error.message);
+    replyInsights = null;
+  }
+  
+  // ═══════════════════════════════════════════════════════════
   // 🧠 STEP 5.5: BUILD GROWTH INTELLIGENCE - ACTIVATED!
   // ═══════════════════════════════════════════════════════════
   
@@ -515,6 +538,27 @@ async function generateContentWithLLM() {
         growthIntelligence.visualFormattingInsights = combinedInsights;
       }
       console.log('[VI_INSIGHTS] ✅ Converted VI insights into intelligence package' + (expertAdviceString ? ' (with expert advice)' : ''));
+    }
+    
+    // 🚀 NEW: Add reply insights to intelligence package
+    if (replyInsights && replyInsights.topPerformingReplies.length > 0) {
+      const replyInsightsString = convertReplyInsightsToGuidance(replyInsights);
+      
+      if (growthIntelligence.visualFormattingInsights) {
+        growthIntelligence.visualFormattingInsights = `${growthIntelligence.visualFormattingInsights}\n\n${replyInsightsString}`;
+      } else {
+        growthIntelligence.visualFormattingInsights = replyInsightsString;
+      }
+      
+      // Also add as structured data for generators
+      (growthIntelligence as any).replyPatterns = {
+        bestGenerators: replyInsights.bestGenerators,
+        bestTopics: replyInsights.bestTopics,
+        avgEngagement: replyInsights.avgEngagement,
+        examples: replyInsights.topPerformingReplies.slice(0, 3) // Top 3 examples
+      };
+      
+      console.log('[REPLY_INSIGHTS] ✅ Added reply patterns to intelligence package');
     }
     
     console.log('[GROWTH_INTEL] ✅ Growth intelligence generated for ' + matchedGenerator);
@@ -1825,4 +1869,50 @@ function convertExpertInsightsToAdvice(expertInsights: any, strategicRecommendat
   advice += `💡 USE THIS ADVICE: This is expert-level strategic guidance from analyzing successful tweets. Apply these insights intelligently to create engaging, valuable content.\n`;
 
   return advice;
+}
+
+/**
+ * 🚀 NEW: Convert reply insights to content guidance
+ * Successful reply patterns should inform post content too
+ */
+function convertReplyInsightsToGuidance(replyInsights: {
+  bestGenerators: string[];
+  bestTopics: string[];
+  bestHours: number[];
+  avgEngagement: number;
+  topPerformingReplies: Array<{
+    content: string;
+    views: number;
+    likes: number;
+    follows: number;
+  }>;
+  recommendations: string[];
+}): string {
+  let guidance = `\n🚀 REPLY PERFORMANCE INSIGHTS (From Your Most Successful Replies):\n\n`;
+  
+  // What's working in replies
+  guidance += `📊 WHAT'S WORKING:\n`;
+  guidance += `- Best performing generators: ${replyInsights.bestGenerators.slice(0, 3).join(', ')}\n`;
+  guidance += `- Topics that resonate: ${replyInsights.bestTopics.slice(0, 3).join(', ')}\n`;
+  guidance += `- Average engagement rate: ${(replyInsights.avgEngagement * 100).toFixed(2)}%\n\n`;
+  
+  // Top performing examples
+  if (replyInsights.topPerformingReplies.length > 0) {
+    guidance += `🔥 TOP PERFORMING REPLY EXAMPLES:\n`;
+    replyInsights.topPerformingReplies.slice(0, 3).forEach((reply, i) => {
+      guidance += `\n${i + 1}. "${reply.content.substring(0, 150)}${reply.content.length > 150 ? '...' : ''}"\n`;
+      guidance += `   Views: ${reply.views.toLocaleString()} | Likes: ${reply.likes} | Follows: ${reply.follows}\n`;
+    });
+    guidance += `\n`;
+  }
+  
+  // Key takeaway
+  guidance += `💡 KEY INSIGHT: Your replies are getting 10-100x more views than posts. `;
+  guidance += `Apply the same patterns that work in replies (concise, specific, valuable) to your posts.\n`;
+  guidance += `\n📝 APPLY THESE PATTERNS:\n`;
+  guidance += `- Be specific and data-driven like your top replies\n`;
+  guidance += `- Match the topics that get engagement\n`;
+  guidance += `- Use the same conversational tone that works in replies\n`;
+  
+  return guidance;
 }

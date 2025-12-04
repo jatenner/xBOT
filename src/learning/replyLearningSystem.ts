@@ -449,6 +449,107 @@ export class ReplyLearningSystem {
     
     return hours.length > 0 ? hours : [7, 8, 18, 19]; // Default best hours
   }
+
+  /**
+   * 🚀 NEW: Export all successful patterns for content generation
+   * This allows reply insights to inform post content
+   */
+  async getSuccessfulPatterns(): Promise<{
+    bestGenerators: string[];
+    bestTopics: string[];
+    bestHours: number[];
+    avgEngagement: number;
+    topPerformingReplies: Array<{
+      content: string;
+      views: number;
+      likes: number;
+      follows: number;
+    }>;
+    recommendations: string[];
+  }> {
+    console.log('[REPLY_LEARNING] 📤 Exporting successful patterns for content generation...');
+    
+    const supabase = getSupabaseClient();
+    
+    // Get all high-confidence insights
+    const { data: insights } = await supabase
+      .from('reply_learning_insights')
+      .select('*')
+      .gte('confidence', 0.60)
+      .order('discovered_at', { ascending: false })
+      .limit(50);
+    
+    // Get top performing replies from last 7 days
+    const { data: topReplies } = await supabase
+      .from('content_metadata')
+      .select('content, actual_impressions, actual_likes, features')
+      .eq('decision_type', 'reply')
+      .eq('status', 'posted')
+      .gte('posted_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order('actual_impressions', { ascending: false })
+      .limit(10);
+    
+    // Extract patterns
+    const bestGenerators: string[] = [];
+    const bestTopics: string[] = [];
+    const bestHours: number[] = [];
+    const recommendations: string[] = [];
+    
+    for (const insight of (insights || [])) {
+      const value = String(insight.value || '');
+      
+      if (insight.insight_type === 'generator' && insight.key === 'best_performer') {
+        const generator = value.split(' ')[0];
+        if (generator && !bestGenerators.includes(generator)) {
+          bestGenerators.push(generator);
+        }
+      }
+      
+      if (insight.insight_type === 'timing') {
+        const match = value.match(/Hour (\d+)/);
+        if (match) {
+          const hour = parseInt(match[1]);
+          if (!bestHours.includes(hour)) {
+            bestHours.push(hour);
+          }
+        }
+      }
+      
+      if (insight.insight_type === 'topic') {
+        const topic = value.split(':')[0]?.trim();
+        if (topic && !bestTopics.includes(topic)) {
+          bestTopics.push(topic);
+        }
+      }
+      
+      if (insight.confidence >= 0.75) {
+        recommendations.push(value);
+      }
+    }
+    
+    // Calculate average engagement from top replies
+    const avgEngagement = topReplies && topReplies.length > 0
+      ? topReplies.reduce((sum, r) => sum + ((r.actual_likes || 0) / Math.max(r.actual_impressions || 1, 1)), 0) / topReplies.length
+      : 0;
+    
+    const topPerformingReplies = (topReplies || []).map(r => ({
+      content: String(r.content || '').substring(0, 200),
+      views: r.actual_impressions || 0,
+      likes: r.actual_likes || 0,
+      follows: (r.features as any)?.followers_gained || 0
+    }));
+    
+    console.log(`[REPLY_LEARNING] ✅ Exported: ${bestGenerators.length} generators, ${bestTopics.length} topics, ${bestHours.length} hours, ${topPerformingReplies.length} examples`);
+    
+    return {
+      bestGenerators: bestGenerators.length > 0 ? bestGenerators : ['dataNerd', 'contrarian'],
+      bestTopics: bestTopics.length > 0 ? bestTopics : ['sleep', 'metabolism', 'longevity'],
+      bestHours: bestHours.length > 0 ? bestHours : [7, 8, 18, 19],
+      avgEngagement,
+      topPerformingReplies,
+      recommendations
+    };
+  }
 }
 
 // Singleton export

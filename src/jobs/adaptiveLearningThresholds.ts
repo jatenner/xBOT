@@ -116,6 +116,7 @@ export async function calculateAdaptiveThresholds(
 
 /**
  * Check if a post passes the learning threshold
+ * UPDATED: Use OR instead of AND - learn from ANY engagement signal
  */
 export function passesLearningThreshold(
   impressions: number | null | undefined,
@@ -125,6 +126,22 @@ export function passesLearningThreshold(
   const views = impressions || 0;
   const likesCount = likes || 0;
   
-  return views >= thresholds.minViews && likesCount >= thresholds.minLikes;
+  // UPDATED: Learn from ANY engagement signal
+  // A post with 50 views but 0 likes still has signal
+  // A post with 5 views but 2 likes is high-engagement content
+  if (views >= thresholds.minViews || likesCount >= thresholds.minLikes) {
+    return true;
+  }
+  
+  // Also pass if engagement RATE is high (likes/views > 5%)
+  if (views > 0 && likesCount > 0) {
+    const engagementRate = likesCount / views;
+    if (engagementRate >= 0.05) { // 5% ER is excellent
+      return true;
+    }
+  }
+  
+  // Only skip if truly no engagement
+  return views >= 5 || likesCount >= 1;
 }
 

@@ -84,20 +84,23 @@ export class LearningSystem {
     }
     
     // ═══════════════════════════════════════════════════════════
-    // 🚨 LEARNING GATE: Don't learn from low-engagement posts
+    // 🚨 LEARNING GATE: Adaptive thresholds for growing accounts
     // ═══════════════════════════════════════════════════════════
     const views = actualPerformance.impressions || 0;
     const likes = actualPerformance.likes || 0;
     
-    // USER REQUIREMENT: Don't learn from posts with <100 views or <5 likes
-    if (views < 100 || likes < 5) {
-      console.log(`[LEARNING_SYSTEM] ⏭️ SKIP LEARNING: Post has only ${views} views, ${likes} likes (below learning threshold)`);
-      console.log(`[LEARNING_SYSTEM] ℹ️ Minimum: 100 views + 5 likes to be considered meaningful data`);
-      this.postTracking.delete(post_id); // Remove from tracking
-      return; // Don't learn from noise
+    // UPDATED: Lower thresholds for small/growing accounts
+    // Learn from ANY engagement - even 1 like is signal
+    // Only skip if truly zero engagement (likely bot/spam)
+    if (views < 5 && likes < 1) {
+      console.log(`[LEARNING_SYSTEM] ⏭️ SKIP LEARNING: Post has ${views} views, ${likes} likes (zero engagement)`);
+      this.postTracking.delete(post_id);
+      return;
     }
     
-    console.log(`[LEARNING_SYSTEM] ✅ LEARNING GATE PASSED: ${views} views, ${likes} likes (above threshold)`);
+    // Weight learning by engagement level
+    const engagementWeight = Math.min(1, (views + likes * 10) / 100); // 0.1-1.0 weight
+    console.log(`[LEARNING_SYSTEM] ✅ LEARNING: ${views} views, ${likes} likes (weight: ${engagementWeight.toFixed(2)})`);
     
     // Support both naming conventions
     const followers_gained = actualPerformance.followers_gained || actualPerformance.follower_growth || 0;
