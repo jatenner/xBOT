@@ -771,7 +771,7 @@ async function checkPostingRateLimits(): Promise<boolean> {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
     // ✅ FIX #1: Only count posts with valid tweet_ids (excludes NULL posts)
-    const { count, error } = await supabase
+    const { count, error } = await unifiedDatabase
       .from('content_metadata')
       .select('*', { count: 'exact', head: true })
       .in('decision_type', ['single', 'thread'])
