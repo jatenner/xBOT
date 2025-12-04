@@ -99,16 +99,19 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   // 3. Returns ONLY health-relevant viral tweets
   // 
   // Result: 10-50x MORE health opportunities discovered!
+  // 🚀 OPTIMIZED: Prioritize health-focused searches for better targeting
   const searchQueries = [
-    { label: 'FRESH (500+)', minLikes: 500, maxReplies: 80, maxAgeHours: 12, query: 'min_faves:500 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino -nfl -nba' },
-    { label: 'FRESH+ (1K+)', minLikes: 1000, maxReplies: 120, maxAgeHours: 12, query: 'min_faves:1000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino -nfl' },
-    { label: 'TRENDING (2K+)', minLikes: 2000, maxReplies: 200, maxAgeHours: 24, query: 'min_faves:2000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino -nfl' },
-    { label: 'TRENDING+ (5K+)', minLikes: 5000, maxReplies: 250, maxAgeHours: 24, query: 'min_faves:5000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' },
+    // HEALTH-FIRST STRATEGY: These queries target health/wellness content directly
+    { label: 'HEALTH HOT (500+)', minLikes: 500, maxReplies: 150, maxAgeHours: 24, query: '("sleep" OR "cortisol" OR "glucose" OR "metabolic" OR "insulin" OR "fasting" OR "longevity") min_faves:500 -filter:replies lang:en -crypto -nft -betting' },
+    { label: 'HEALTH VIRAL (1K+)', minLikes: 1000, maxReplies: 200, maxAgeHours: 24, query: '("health" OR "wellness" OR "fitness" OR "nutrition" OR "workout" OR "diet") min_faves:1000 -filter:replies lang:en -crypto -nft -betting' },
+    { label: 'BIOHACK (500+)', minLikes: 500, maxReplies: 150, maxAgeHours: 48, query: '("biohack" OR "peptide" OR "sauna" OR "cold plunge" OR "hrv" OR "ozempic" OR "testosterone") min_faves:500 -filter:replies lang:en -crypto -nft' },
+    { label: 'MENTAL HEALTH (500+)', minLikes: 500, maxReplies: 150, maxAgeHours: 24, query: '("mental health" OR "anxiety" OR "depression" OR "therapy" OR "meditation" OR "stress") min_faves:500 -filter:replies lang:en -crypto -nft' },
+    // GENERAL VIRAL: Cast a wider net, rely on AI filtering
+    { label: 'FRESH (1K+)', minLikes: 1000, maxReplies: 120, maxAgeHours: 12, query: 'min_faves:1000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino -nfl -nba' },
+    { label: 'TRENDING (5K+)', minLikes: 5000, maxReplies: 250, maxAgeHours: 24, query: 'min_faves:5000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' },
     { label: 'VIRAL (10K+)', minLikes: 10000, maxReplies: 400, maxAgeHours: 48, query: 'min_faves:10000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' },
-    { label: 'VIRAL+ (25K+)', minLikes: 25000, maxReplies: 600, maxAgeHours: 48, query: 'min_faves:25000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' },
-    { label: 'MEGA (50K+)', minLikes: 50000, maxReplies: 900, maxAgeHours: 72, query: 'min_faves:50000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' },
-    { label: 'MEGA+ (100K+)', minLikes: 100000, maxReplies: 1500, maxAgeHours: 72, query: 'min_faves:100000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' },
-    { label: 'HEALTH HOT (300+)', minLikes: 300, maxReplies: 120, maxAgeHours: 24, query: '("sleep" OR "circadian" OR "glucose" OR "metabolic health" OR "insulin" OR "peptide" OR "rapamycin" OR "sauna" OR "hrv" OR "testosterone") min_faves:300 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' }
+    { label: 'MEGA (25K+)', minLikes: 25000, maxReplies: 600, maxAgeHours: 48, query: 'min_faves:25000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' },
+    { label: 'ULTRA (50K+)', minLikes: 50000, maxReplies: 900, maxAgeHours: 72, query: 'min_faves:50000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' }
   ];
 
   const fallbackQueries = [
