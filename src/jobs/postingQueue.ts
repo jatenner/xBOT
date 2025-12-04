@@ -54,11 +54,10 @@ function getResetTimeout(): number {
 // 🔥 ENHANCEMENT: Health check before reset
 async function checkSystemHealth(): Promise<boolean> {
   try {
-    // Check 1: Database connectivity
-    const { getSupabaseClient } = await import('../db/index');
-    const supabase = getSupabaseClient();
-    const { error: dbError } = await supabase.from('content_metadata').select('decision_id').limit(1);
-    if (dbError) {
+    // Check 1: Database connectivity (using UnifiedDatabase)
+    const { unifiedDatabase } = await import('../db/unifiedDatabase');
+    const isHealthy = await unifiedDatabase.healthCheck();
+    if (!isHealthy) {
       console.warn('[POSTING_QUEUE] ⚠️ Health check failed: Database not accessible');
       return false;
     }
@@ -116,9 +115,8 @@ async function checkCircuitBreaker(): Promise<boolean> {
           
           // Log to system_events
           try {
-            const { getSupabaseClient } = await import('../db/index');
-            const supabase = getSupabaseClient();
-            await supabase.from('system_events').insert({
+            const { unifiedDatabase } = await import('../db/unifiedDatabase');
+            await unifiedDatabase.from('system_events').insert({
               event_type: 'circuit_breaker_stuck',
               severity: 'critical',
               event_data: {
@@ -242,10 +240,9 @@ export async function processPostingQueue(): Promise<void> {
     
     // 🔄 AUTO-RECOVER STUCK POSTS: Reset posts stuck in 'posting' status >15min (reduced from 30min for faster recovery)
     // 🔥 PRIORITY 4 FIX: Verify post before resetting (prevents duplicate posts)
-    const { getSupabaseClient } = await import('../db/index');
-    const supabase = getSupabaseClient();
+    const { unifiedDatabase } = await import('../db/unifiedDatabase');
     const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
-    const { data: stuckPosts } = await supabase
+    const { data: stuckPosts } = await unifiedDatabase
       .from('content_metadata')
       .select('decision_id, decision_type, created_at, content, thread_parts')
       .eq('status', 'posting')
@@ -265,10 +262,12 @@ export async function processPostingQueue(): Promise<void> {
           ? (post.thread_parts as string[] || []).join(' ')
           : post.content || '';
         
+        const { unifiedDatabase } = await import('../db/unifiedDatabase');
+        
         if (backupTweetId) {
           // Post succeeded! Mark as posted
           console.log(`[POSTING_QUEUE]   ✅ Found tweet_id ${backupTweetId} in backup - marking as posted`);
-          await supabase
+          await unifiedDatabase
             .from('content_metadata')
             .update({ 
               status: 'posted',
@@ -282,7 +281,7 @@ export async function processPostingQueue(): Promise<void> {
           const duplicateTweetId = checkBackupForDuplicate(contentToCheck);
           if (duplicateTweetId) {
             console.log(`[POSTING_QUEUE]   🚫 Duplicate content detected (tweet_id ${duplicateTweetId}) - marking as posted`);
-            await supabase
+            await unifiedDatabase
               .from('content_metadata')
               .update({ 
                 status: 'posted',
@@ -294,14 +293,14 @@ export async function processPostingQueue(): Promise<void> {
           } else {
             // No backup found - reset to queued for retry
             console.log(`[POSTING_QUEUE]   🔄 No backup found - resetting to queued for retry`);
-            await supabase
+            await unifiedDatabase
               .from('content_metadata')
               .update({ status: 'queued' })
               .eq('decision_id', post.decision_id);
           }
         } else {
           // No content - reset to queued
-          await supabase
+          await unifiedDatabase
             .from('content_metadata')
             .update({ status: 'queued' })
             .eq('decision_id', post.decision_id);
@@ -351,8 +350,7 @@ export async function processPostingQueue(): Promise<void> {
         const isContent = decision.decision_type === 'single' || decision.decision_type === 'thread';
         
         // Check current hour's posting count from database
-        const { getSupabaseClient } = await import('../db/index');
-        const supabase = getSupabaseClient();
+        const { unifiedDatabase } = await import('../db/unifiedDatabase');
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
         
         if (isContent) {
@@ -360,7 +358,7 @@ export async function processPostingQueue(): Promise<void> {
           // A thread is ONE POST on Twitter, regardless of how many parts it has
           
           // Query recent posts
-          const { data: recentContent } = await supabase
+          const { data: recentContent } = await unifiedDatabase
             .from('content_metadata')
             .select('decision_type')
             .in('decision_type', ['single', 'thread'])
@@ -395,7 +393,8 @@ export async function processPostingQueue(): Promise<void> {
         
         if (isReply) {
           // 🚨 FIX: Query content_metadata TABLE directly
-          const { count: replyCount } = await supabase
+          const { unifiedDatabase } = await import('../db/unifiedDatabase');
+          const { count: replyCount } = await unifiedDatabase
             .from('content_metadata')
             .select('*', { count: 'exact', head: true })
             .eq('decision_type', 'reply')
@@ -437,9 +436,8 @@ export async function processPostingQueue(): Promise<void> {
           
           // 🔥 FIX: Update job_heartbeats to track this failure
           try {
-            const { getSupabaseClient } = await import('../db/index');
-            const supabase = getSupabaseClient();
-            await supabase
+            const { unifiedDatabase } = await import('../db/unifiedDatabase');
+            await unifiedDatabase
               .from('job_heartbeats')
               .upsert({
                 job_name: 'posting',
@@ -456,15 +454,14 @@ export async function processPostingQueue(): Promise<void> {
           
           // Reset status to queued for retry (don't mark as failed - will retry)
           try {
-            const { getSupabaseClient } = await import('../db/index');
-            const supabase = getSupabaseClient();
+            const { unifiedDatabase } = await import('../db/unifiedDatabase');
             const features = (decision.features || {}) as any;
             const retryCount = Number(features?.retry_count || 0);
             
             if (retryCount < 3) {
               // Schedule retry in 5 minutes
               const retryTime = new Date(Date.now() + 5 * 60 * 1000);
-              await supabase
+              await unifiedDatabase
                 .from('content_metadata')
                 .update({
                   status: 'queued',
@@ -523,9 +520,8 @@ export async function processPostingQueue(): Promise<void> {
           console.log(`[POSTING_QUEUE] ✅ Tweet is LIVE on Twitter - marking as posted with NULL tweet_id`);
           
           try {
-            const { getSupabaseClient } = await import('../db/index');
-            const supabase = getSupabaseClient();
-            await supabase
+            const { unifiedDatabase } = await import('../db/unifiedDatabase');
+            await unifiedDatabase
               .from('content_metadata')
               .update({
                 status: 'posted',
@@ -555,9 +551,8 @@ export async function processPostingQueue(): Promise<void> {
         
         // 🔥 FIX: Update job_heartbeats to track posting failures
         try {
-          const { getSupabaseClient } = await import('../db/index');
-          const supabase = getSupabaseClient();
-          const { data: currentHeartbeat } = await supabase
+          const { unifiedDatabase } = await import('../db/unifiedDatabase');
+          const { data: currentHeartbeat } = await unifiedDatabase
             .from('job_heartbeats')
             .select('consecutive_failures')
             .eq('job_name', 'posting')
@@ -565,7 +560,7 @@ export async function processPostingQueue(): Promise<void> {
           
           const consecutiveFailures = (currentHeartbeat?.consecutive_failures || 0) + 1;
           
-          await supabase
+          await unifiedDatabase
             .from('job_heartbeats')
             .upsert({
               job_name: 'posting',
@@ -625,9 +620,8 @@ export async function processPostingQueue(): Promise<void> {
     
     // 🔥 FIX: Update job_heartbeats to track success
     try {
-      const { getSupabaseClient } = await import('../db/index');
-      const supabase = getSupabaseClient();
-      await supabase
+      const { unifiedDatabase } = await import('../db/unifiedDatabase');
+      await unifiedDatabase
         .from('job_heartbeats')
         .upsert({
           job_name: 'posting',
@@ -733,13 +727,12 @@ async function checkPostingRateLimits(): Promise<boolean> {
   const maxPostsPerHour = Number.isFinite(maxPostsPerHourRaw) ? maxPostsPerHourRaw : 1;
   
   try {
-    const { getSupabaseClient } = await import('../db/index');
-    const supabase = getSupabaseClient();
+    const { unifiedDatabase } = await import('../db/unifiedDatabase');
     
     // 🔧 FIX #1: GRACEFUL NULL TWEET_ID HANDLING
     // Instead of blocking entire system, only exclude NULL posts from rate limit count
     // Background recovery job will fix NULL IDs, but we don't block new posts
-    const { data: pendingIdPosts, error: pendingError } = await supabase
+    const { data: pendingIdPosts, error: pendingError } = await unifiedDatabase
       .from('content_metadata')
       .select('decision_id, content, posted_at')
       .in('decision_type', ['single', 'thread'])
@@ -813,7 +806,8 @@ async function checkPostingRateLimits(): Promise<boolean> {
     // ENHANCED: Verify count accuracy by double-checking with detailed query
     let verifiedCount = postsThisHour;
     if (postsThisHour > 0) {
-      const { data: verifyPosts, error: verifyError } = await supabase
+      const { unifiedDatabase } = await import('../db/unifiedDatabase');
+      const { data: verifyPosts, error: verifyError } = await unifiedDatabase
         .from('content_metadata')
         .select('decision_id, posted_at, tweet_id, status')
         .in('decision_type', ['single', 'thread'])

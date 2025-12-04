@@ -4,11 +4,12 @@
  */
 
 import { log } from '../lib/logger';
-import { chromium, Browser, BrowserContext, Page } from 'playwright';
+import { Page } from 'playwright';
 import Redis from 'ioredis';
 import fs from 'fs/promises';
 import path from 'path';
 import { BulletproofBrowserManager } from './bulletproofBrowserManager';
+import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 
 // Modern selectors for resilient posting
 const replyButtonSelectors = [
@@ -118,9 +119,8 @@ export interface ComposerTestResult {
 
 export class BulletproofPoster {
   private redis: Redis;
-  private browser: Browser | null = null;
-  private context: BrowserContext | null = null;
-  private page: Page | null = null;
+  private browserPool: UnifiedBrowserPool;
+  private currentPage: Page | null = null;
 
   // Configuration from environment
   private readonly THREAD_REPLY_DELAY_SEC = parseInt(process.env.THREAD_REPLY_DELAY_SEC || '3', 10);
@@ -130,6 +130,7 @@ export class BulletproofPoster {
 
   constructor() {
     this.redis = new Redis(process.env.REDIS_URL!);
+    this.browserPool = UnifiedBrowserPool.getInstance();
   }
 
   /**
@@ -143,7 +144,7 @@ export class BulletproofPoster {
 
     try {
       await this.ensureBrowserReady();
-      const page = this.page!;
+      const page = this.currentPage!;
       
       await page.bringToFront();
       await page.goto('https://x.com/compose/tweet', { waitUntil: 'domcontentloaded' });
@@ -329,7 +330,7 @@ export class BulletproofPoster {
    */
   private async postReplyToTweet(parentTweetId: string, content: string): Promise<string> {
     // Use the module-level function but return just the ID
-    await postReplyToTweet(this.page!, `https://x.com/i/web/status/${parentTweetId}`, content);
+    await postReplyToTweet(this.currentPage!, `https://x.com/i/web/status/${parentTweetId}`, content);
     return `reply_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
@@ -367,7 +368,7 @@ export class BulletproofPoster {
    * Post a single tweet with robust composer handling
    */
   private async postSingleTweet(content: string): Promise<string> {
-    if (!this.page) {
+    if (!this.currentPage) {
       throw new Error('Browser page not ready');
     }
 
@@ -401,13 +402,13 @@ export class BulletproofPoster {
       await this.ensureBrowserReady();
       
       // Test session validity
-      await this.page!.goto('https://x.com/home', { 
+      await this.currentPage!.goto('https://x.com/home', { 
         waitUntil: 'domcontentloaded', 
         timeout: this.PLAYWRIGHT_NAV_TIMEOUT_MS 
       });
       
       // Check if we're logged in (not redirected to login)
-      const currentUrl = this.page!.url();
+      const currentUrl = this.currentPage!.url();
       sessionValid = !currentUrl.includes('/login') && !currentUrl.includes('/i/flow/login');
       
       if (!sessionValid) {
@@ -450,41 +451,15 @@ export class BulletproofPoster {
   }
 
   /**
-   * Ensure browser and page are ready
+   * Ensure browser and page are ready (using UnifiedBrowserPool)
    */
   private async ensureBrowserReady(): Promise<void> {
-    if (!this.browser) {
-      console.log('🌐 BROWSER_LAUNCH: Starting Playwright browser...');
-      this.browser = await chromium.launch({
-        headless: process.env.HEADLESS !== 'false',
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
-    }
-
-    if (!this.context) {
-      console.log('🔐 CONTEXT_CREATE: Creating browser context...');
-      
-      // Load session state if available
-      let storageState;
-      if (process.env.TWITTER_SESSION_B64) {
-        try {
-          storageState = JSON.parse(
-            Buffer.from(process.env.TWITTER_SESSION_B64, 'base64').toString()
-          );
-        } catch (error) {
-          console.warn('⚠️ Could not parse TWITTER_SESSION_B64');
-        }
-      }
-      
-      this.context = await this.browser.newContext({ storageState });
-    }
-
-    if (!this.page) {
-      console.log('📄 PAGE_CREATE: Creating new page...');
-      this.page = await this.context.newPage();
+    if (!this.currentPage) {
+      console.log('🌐 BROWSER_POOL: Acquiring page from UnifiedBrowserPool...');
+      this.currentPage = await this.browserPool.acquirePage('bulletproof_poster');
       
       // Set up screenshot on failure
-      this.page.on('pageerror', async (error) => {
+      this.currentPage.on('pageerror', async (error) => {
         console.error('📸 PAGE_ERROR:', error.message);
         await this.takeScreenshot('page_error');
       });
@@ -492,22 +467,15 @@ export class BulletproofPoster {
   }
 
   /**
-   * Reset browser on error
+   * Reset browser on error (using UnifiedBrowserPool)
    */
   private async resetBrowser(): Promise<void> {
     try {
-      if (this.page) {
-        await this.page.close();
-        this.page = null;
+      if (this.currentPage) {
+        await this.currentPage.close();
+        this.currentPage = null;
       }
-      if (this.context) {
-        await this.context.close();
-        this.context = null;
-      }
-      if (this.browser) {
-        await this.browser.close();
-        this.browser = null;
-      }
+      // UnifiedBrowserPool handles context cleanup automatically
     } catch (error) {
       console.warn('⚠️ Error during browser reset:', error);
     }
@@ -517,14 +485,14 @@ export class BulletproofPoster {
    * Ensure we're on a page where we can compose
    */
   private async ensureComposePage(): Promise<void> {
-    if (!this.page) return;
+    if (!this.currentPage) return;
 
-    const currentUrl = this.page.url();
+    const currentUrl = this.currentPage.url();
     
     // If not on a composable page, go to home
     if (!currentUrl.includes('x.com') || currentUrl.includes('/login')) {
       console.log('🏠 NAVIGATE_HOME: Going to Twitter home...');
-      await this.page.goto('https://x.com/home', { 
+      await this.currentPage.goto('https://x.com/home', { 
         waitUntil: 'domcontentloaded', 
         timeout: this.PLAYWRIGHT_NAV_TIMEOUT_MS 
       });
@@ -535,9 +503,9 @@ export class BulletproofPoster {
    * Focus the composer with bulletproof handling
    */
   private async focusComposer(): Promise<void> {
-    if (!this.page) return;
+    if (!this.currentPage) return;
 
-    const browserManager = new BulletproofBrowserManager(this.page);
+    const browserManager = new BulletproofBrowserManager(this.currentPage);
     const focusResult = await browserManager.focusComposer();
     
     if (!focusResult.success) {
@@ -552,7 +520,7 @@ export class BulletproofPoster {
    * Close modal overlays that might block interaction
    */
   private async closeOverlays(): Promise<void> {
-    if (!this.page) return;
+    if (!this.currentPage) return;
 
     const overlaySelectors = [
       '[role="dialog"] [data-testid="app-bar-close"]',
@@ -564,7 +532,7 @@ export class BulletproofPoster {
 
     for (const selector of overlaySelectors) {
       try {
-        const overlay = await this.page.$(selector);
+        const overlay = await this.currentPage.$(selector);
         if (overlay) {
           console.log(`🚫 CLOSING_OVERLAY: Found overlay with selector ${selector}`);
           await overlay.click();
@@ -580,7 +548,7 @@ export class BulletproofPoster {
    * Check if page is stale and needs refresh
    */
   private async isPageStale(): Promise<boolean> {
-    if (!this.page) return true;
+    if (!this.currentPage) return true;
 
     try {
       // Try to find any basic Twitter elements
@@ -591,7 +559,7 @@ export class BulletproofPoster {
       ];
 
       for (const selector of basicSelectors) {
-        const element = await this.page.$(selector);
+        const element = await this.currentPage.$(selector);
         if (element) {
           return false; // Found basic element, page is not stale
         }
@@ -607,20 +575,20 @@ export class BulletproofPoster {
    * Type content into the composer
    */
   private async typeContent(content: string): Promise<void> {
-    if (!this.page) return;
+    if (!this.currentPage) return;
 
     console.log(`⌨️ TYPING_CONTENT: ${content.length} characters`);
     
     // Clear any existing content first
-    await this.page.keyboard.press('ControlOrMeta+KeyA');
+    await this.currentPage.keyboard.press('ControlOrMeta+KeyA');
     await this.delay(100);
     
     // Type content with realistic delays
-    await this.page.keyboard.type(content, { delay: 50 });
+    await this.currentPage.keyboard.type(content, { delay: 50 });
     
     // Verify content was typed
     await this.delay(500);
-    const typedContent = await this.page.evaluate(() => {
+    const typedContent = await this.currentPage.evaluate(() => {
       const composer = document.querySelector('[data-testid="tweetTextarea_0"]') as HTMLElement;
       return composer?.textContent || '';
     });
@@ -636,7 +604,7 @@ export class BulletproofPoster {
    * Submit the post and get tweet ID
    */
   private async submitPost(): Promise<string> {
-    if (!this.page) throw new Error('Page not ready');
+    if (!this.currentPage) throw new Error('Page not ready');
 
     console.log('📤 SUBMITTING_POST: Clicking post button...');
     
@@ -649,7 +617,7 @@ export class BulletproofPoster {
 
     let postButton;
     for (const selector of postButtonSelectors) {
-      postButton = await this.page.$(selector);
+      postButton = await this.currentPage.$(selector);
       if (postButton) break;
     }
 
@@ -671,14 +639,14 @@ export class BulletproofPoster {
     
     try {
       // Wait for URL change indicating successful post
-      await this.page.waitForFunction(
+      await this.currentPage.waitForFunction(
         () => window.location.pathname.includes('/status/') || 
               window.location.search.includes('post_success'),
         { timeout: 10000 }
       );
       
       // Extract tweet ID from URL
-      const url = this.page.url();
+      const url = this.currentPage.url();
       const tweetIdMatch = url.match(/status\/(\d+)/);
       
       if (tweetIdMatch) {
@@ -699,7 +667,7 @@ export class BulletproofPoster {
    * Take screenshot for debugging
    */
   private async takeScreenshot(reason: string): Promise<void> {
-    if (!this.page) return;
+    if (!this.currentPage) return;
 
     try {
       const screenshotDir = './tmp/playwright_screens';
@@ -709,7 +677,7 @@ export class BulletproofPoster {
       const filename = `${reason}_${timestamp}.png`;
       const filepath = path.join(screenshotDir, filename);
       
-      await this.page.screenshot({ path: filepath, fullPage: true });
+      await this.currentPage.screenshot({ path: filepath, fullPage: true });
       console.log(`📸 SCREENSHOT_SAVED: ${filepath}`);
     } catch (error) {
       console.warn('⚠️ Could not save screenshot:', error);

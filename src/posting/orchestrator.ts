@@ -296,17 +296,17 @@ async function trackBaselineFollowers(postId: string, tweetId: string): Promise<
   try {
     console.log(`[POSTING_ORCHESTRATOR] 👥 Tracking baseline followers for ${postId}...`);
     
-    const { BrowserManager } = await import('../browser/browserManager');
+    const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
     const { getBulletproofScraper } = await import('../scrapers/bulletproofTwitterScraper');
     const { getKVStore } = await import('../utils/kv');
     
-    const browserManager = BrowserManager.getInstance();
+    const pool = UnifiedBrowserPool.getInstance();
     const scraper = getBulletproofScraper();
     const kv = getKVStore();
     const supabase = getSupabaseClient();
     
-    // Get page
-    const page = await browserManager.getPage();
+    // Get page from UnifiedBrowserPool
+    const page = await pool.acquirePage(`baseline_followers_${postId}`);
     
     try {
       // Scrape current follower count
@@ -335,7 +335,7 @@ async function trackBaselineFollowers(postId: string, tweetId: string): Promise<
       await kv.set(`follower:baseline:${postId}`, String(followerCount), 172800); // 48h TTL
       
     } finally {
-      await browserManager.releasePage(page);
+      await page.close(); // UnifiedBrowserPool handles context cleanup
     }
     
   } catch (error: any) {
