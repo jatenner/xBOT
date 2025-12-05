@@ -1615,12 +1615,12 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     
       console.log(`${logPrefix} 🔍 DEBUG: About to call postContent`);
       
-      // 🔒 VALIDATION: Check character limits before posting
+      // 🔒 VALIDATION: Check character limits before posting (Twitter allows 280 chars)
       if (decision.decision_type === 'thread' && decision.thread_parts) {
         const parts = Array.isArray(decision.thread_parts) ? decision.thread_parts : [];
         for (let i = 0; i < parts.length; i++) {
-          if (parts[i].length > 200) {
-            throw new Error(`Thread part ${i + 1} exceeds 200 chars (${parts[i].length} chars). Max limit: 200 chars for optimal engagement.`);
+          if (parts[i].length > 280) {
+            throw new Error(`Thread part ${i + 1} exceeds 280 chars (${parts[i].length} chars). Max limit: 280 chars.`);
           }
         }
         console.log(`${logPrefix} ✅ Character limit validation passed for ${parts.length} thread parts`);
