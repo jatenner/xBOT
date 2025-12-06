@@ -989,29 +989,37 @@ export class UnifiedBrowserPool {
     if (Date.now() > this.circuitBreaker.openUntil) {
       const reason = this.circuitBreaker.reason || 'failures';
       
-      // 🔥 ENHANCEMENT: Health check before reset
+      // 🔧 FIX: Don't block recovery on health check - just try to reset
+      // Health check is now more lenient and won't block recovery
       const isHealthy = await this.checkBrowserHealth();
-      
-      if (!isHealthy) {
-        // System not ready, extend cooldown
-        const extendedCooldown = this.CIRCUIT_BREAKER_TIMEOUT * 2; // Double the timeout
-        this.circuitBreaker.openUntil = Date.now() + extendedCooldown;
-        console.warn(`[BROWSER_POOL] ⚠️ Browser not healthy, extending cooldown by ${extendedCooldown/1000}s`);
-        return true;
-      }
       
       // 🔥 AUTO-RECOVERY: Reset browser pool if circuit breaker stuck
       if (reason.includes('resource') || reason.includes('failure_threshold')) {
         console.log(`[BROWSER_POOL] 🔧 Auto-recovering browser pool (circuit breaker cooldown elapsed)...`);
         try {
+          // 🔧 FIX: Force close circuit breaker first, then reset pool
+          // This prevents the reset from immediately failing due to circuit breaker
+          this.circuitBreaker.isOpen = false;
+          this.circuitBreaker.failures = 0;
+          this.circuitBreaker.reason = null;
+          
+          // Now reset the pool
           await this.resetPool();
           console.log(`[BROWSER_POOL] ✅ Browser pool reset complete`);
         } catch (resetError: any) {
           console.error(`[BROWSER_POOL] ❌ Browser pool reset failed:`, resetError.message);
-          // Extend cooldown if reset fails
-          this.circuitBreaker.openUntil = Date.now() + this.CIRCUIT_BREAKER_TIMEOUT;
-          return true;
+          // 🔧 FIX: Even if reset fails, close circuit breaker to allow retries
+          console.log(`[BROWSER_POOL] 🔧 Force-closing circuit breaker despite reset failure`);
+          this.circuitBreaker.isOpen = false;
+          this.circuitBreaker.failures = 0;
+          this.circuitBreaker.reason = null;
+          return false; // Allow operations to proceed
         }
+      }
+      
+      // 🔧 FIX: Always close circuit breaker after timeout, even if health check fails
+      if (!isHealthy) {
+        console.warn(`[BROWSER_POOL] ⚠️ Browser health check failed, but closing circuit breaker anyway to allow retry`);
       }
       
       console.log(`[BROWSER_POOL] 🔄 Circuit breaker cooldown elapsed (reason=${reason}) - allowing retries`);
@@ -1026,25 +1034,29 @@ export class UnifiedBrowserPool {
   
   /**
    * 🔥 NEW: Check browser health before reset
+   * 🔧 FIX: More lenient health check - don't block recovery if browser just needs restart
    */
   private async checkBrowserHealth(): Promise<boolean> {
     try {
-      // Check if browser exists and is connected
-      if (!this.browser || !this.browser.isConnected()) {
-        return false;
+      // 🔧 FIX: If browser doesn't exist, that's OK - we can create it
+      // Only fail health check if browser exists but is disconnected
+      if (this.browser && !this.browser.isConnected()) {
+        console.warn(`[BROWSER_POOL] ⚠️ Browser exists but disconnected - will restart`);
+        return false; // Browser needs restart
       }
       
-      // Check if we have at least one context available
-      const availableContexts = Array.from(this.contexts.values()).filter(ctx => !ctx.inUse);
-      if (availableContexts.length === 0 && this.contexts.size > 0) {
-        // All contexts in use, but browser is healthy
-        return true;
+      // If no browser, we can create one - that's healthy enough
+      if (!this.browser) {
+        console.log(`[BROWSER_POOL] ℹ️ No browser yet - will create on next operation`);
+        return true; // Can create browser = healthy
       }
       
+      // Browser exists and is connected - healthy
       return true;
     } catch (error: any) {
-      console.warn(`[BROWSER_POOL] ⚠️ Health check failed:`, error.message);
-      return false;
+      console.warn(`[BROWSER_POOL] ⚠️ Health check error (allowing recovery):`, error.message);
+      // 🔧 FIX: Don't block recovery on health check errors - let it try
+      return true; // Allow recovery even if health check errors
     }
   }
 
