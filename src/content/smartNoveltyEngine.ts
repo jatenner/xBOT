@@ -9,7 +9,7 @@ import AdvancedPromptEngine from '../ai/advancedPrompts';
 export class SmartNoveltyEngine {
   private static instance: SmartNoveltyEngine;
   private recentTopics: string[] = [];
-  private maxRecentTopics = 20; // Track recent topics to avoid repetition
+  private maxRecentTopics = 10; // ✅ MEMORY OPTIMIZATION: Reduced from 20 to 10 (prevents cache growth)
 
   static getInstance(): SmartNoveltyEngine {
     if (!this.instance) {

@@ -399,27 +399,51 @@ async function boot() {
   console.log('   • Critical job timeout: 30 minutes');
   console.log('   • Auto-restart if no successful jobs in 30 minutes');
 
-  // 🧠 MEMORY MONITOR: Check memory every minute and auto-cleanup
+  // 🧠 MEMORY MONITOR: Check memory every 5 minutes and BACKGROUND cleanup
+  // ✅ OPTIMIZED: Cleanup runs in background - never blocks operations
   (async () => {
     const { MemoryMonitor } = await import('./utils/memoryMonitor');
+    const { scheduleBackgroundMemoryCleanup, scheduleBackgroundBrowserCleanup } = await import('./utils/backgroundCleanup');
     
     setInterval(() => {
       const memory = MemoryMonitor.checkMemory();
       
-      if (memory.status === 'critical') {
-        console.error(`🧠 [MEMORY_MONITOR] ${MemoryMonitor.getStatusMessage()} - performing emergency cleanup`);
-        MemoryMonitor.emergencyCleanup().catch(err => {
-          console.error(`🧠 [MEMORY_MONITOR] Emergency cleanup failed:`, err);
+      // 🔥 BACKGROUND CLEANUP: Schedule cleanup to run in background (non-blocking)
+      // Operations continue normally - cleanup happens independently
+      if (memory.rssMB > 350) {
+        console.log(`🧹 [BACKGROUND_CLEANUP] Scheduling memory cleanup: ${memory.rssMB}MB (${Math.round(memory.rssMB/512*100)}% of limit)`);
+        
+        // Schedule cleanup in background (fire and forget - never blocks)
+        scheduleBackgroundMemoryCleanup().catch(err => {
+          console.error(`🧹 [BACKGROUND_CLEANUP] Failed to schedule cleanup:`, err.message);
+        });
+        
+        // Also schedule browser cleanup if memory is high
+        if (memory.rssMB > 400) {
+          scheduleBackgroundBrowserCleanup(memory.rssMB > 450).catch(err => {
+            console.error(`🧹 [BACKGROUND_CLEANUP] Failed to schedule browser cleanup:`, err.message);
+          });
+        }
+      } else if (memory.status === 'critical') {
+        console.error(`🧠 [MEMORY_MONITOR] ${MemoryMonitor.getStatusMessage()} - scheduling emergency cleanup in background`);
+        // Schedule critical cleanup in background (non-blocking)
+        scheduleBackgroundMemoryCleanup().catch(err => {
+          console.error(`🧠 [MEMORY_MONITOR] Emergency cleanup scheduling failed:`, err);
+        });
+        scheduleBackgroundBrowserCleanup(true).catch(err => {
+          console.error(`🧠 [MEMORY_MONITOR] Emergency browser cleanup scheduling failed:`, err);
         });
       } else if (memory.status === 'warning') {
         console.warn(`🧠 [MEMORY_MONITOR] ${MemoryMonitor.getStatusMessage()}`);
       }
-    }, 60000); // Every minute
+    }, 5 * 60 * 1000); // ✅ OPTIMIZED: Every 5 minutes
     
-    console.log('✅ MEMORY_MONITOR: Started (checks every 60 seconds)');
-    console.log('   • Warning threshold: 400MB');
-    console.log('   • Critical threshold: 450MB');
-    console.log('   • Auto-cleanup when critical');
+    console.log('✅ MEMORY_MONITOR: Started (checks every 5 minutes)');
+    console.log('   • Background cleanup: Runs independently, never blocks operations');
+    console.log('   • Proactive cleanup threshold: 350MB (68% of limit)');
+    console.log('   • Warning threshold: 400MB (78% of limit)');
+    console.log('   • Critical threshold: 450MB (88% of limit)');
+    console.log('   • Cleanup happens in background - operations continue normally');
   })();
 
   // 🔐 SESSION MONITOR: Check Twitter session every 10 minutes and auto-refresh if expired

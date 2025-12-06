@@ -1364,9 +1364,17 @@ export class JobManager {
     const maxRetries = isCritical ? 3 : 1;
     
     // 🧠 MEMORY CHECK: Ensure we have enough memory before starting job
+    // ✅ OPTIMIZED: Skip non-critical operations if memory > 400MB
     try {
       const { MemoryMonitor } = await import('../utils/memoryMonitor');
       const memory = MemoryMonitor.checkMemory();
+      
+      // ✅ NEW: Skip non-critical operations if memory is high (prevents spikes)
+      if (!isCritical && memory.rssMB > 400) {
+        console.warn(`🧠 [JOB_${jobName.toUpperCase()}] Memory high (${memory.rssMB}MB) - skipping non-critical job to prevent spikes`);
+        await recordJobSkip(jobName, `memory_high_${memory.rssMB}mb`);
+        return;
+      }
       
       if (memory.status === 'critical') {
         console.error(`🧠 [JOB_${jobName.toUpperCase()}] Memory critical (${memory.rssMB}MB) - performing aggressive emergency cleanup`);
@@ -1378,10 +1386,10 @@ export class JobManager {
         // 🔥 FIX: If memory is STILL critical after cleanup, force restart for critical jobs
         if (afterCleanup.status === 'critical') {
           // For non-critical jobs, just skip them
-          if (jobName !== 'plan' && jobName !== 'posting') {
-          console.error(`🧠 [JOB_${jobName.toUpperCase()}] Memory still critical after cleanup (${afterCleanup.rssMB}MB) - skipping job`);
-          await recordJobSkip(jobName, `memory_critical_${afterCleanup.rssMB}mb`);
-          return;
+          if (!isCritical) {
+            console.error(`🧠 [JOB_${jobName.toUpperCase()}] Memory still critical after cleanup (${afterCleanup.rssMB}MB) - skipping job`);
+            await recordJobSkip(jobName, `memory_critical_${afterCleanup.rssMB}mb`);
+            return;
           }
           
           // For critical jobs (plan, posting), log warning but allow them to proceed

@@ -499,24 +499,50 @@ async function generateRealReplies(): Promise<void> {
   // 🚀 SMART OPPORTUNITY SELECTION (tier-based, not replied to, not expired)
   console.log('[REPLY_JOB] 🔍 Selecting best reply opportunities (tier-based prioritization)...');
   
-  // Query ALL active opportunities (not replied to, not expired)
-  const { data: allOpportunities, error: oppError } = await supabaseClient
-    .from('reply_opportunities')
-    .select('*')
-    .eq('replied_to', false)
-    .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
-    .order('created_at', { ascending: false })
-    .limit(100); // Get pool of 100 to filter from
+  // ✅ MEMORY OPTIMIZATION: Process opportunities in batches (prevents memory spikes)
+  const { paginatedQuery, clearArrays } = await import('../utils/memoryOptimization');
   
-  if (oppError) {
-    console.error('[REPLY_JOB] ❌ Failed to query opportunities:', oppError.message);
-    return;
+  // Process opportunities in batches of 20 (memory-efficient)
+  const allOpportunities: any[] = [];
+  const batchSize = 20;
+  let offset = 0;
+  
+  while (true) {
+    const { data: batch, error: oppError } = await supabaseClient
+      .from('reply_opportunities')
+      .select('*')
+      .eq('replied_to', false)
+      .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .range(offset, offset + batchSize - 1);
+    
+    if (oppError) {
+      console.error('[REPLY_JOB] ❌ Failed to query opportunities:', oppError.message);
+      break;
+    }
+    
+    if (!batch || batch.length === 0) {
+      break; // No more opportunities
+    }
+    
+    allOpportunities.push(...batch);
+    offset += batchSize;
+    
+    // If we got fewer than batchSize, we're done
+    if (batch.length < batchSize) {
+      break;
+    }
+    
+    // Small delay for GC
+    await new Promise(r => setTimeout(r, 10));
   }
   
-  if (!allOpportunities || allOpportunities.length === 0) {
+  if (allOpportunities.length === 0) {
     console.log('[REPLY_JOB] ⚠️ No opportunities in pool, waiting for harvester...');
     return;
   }
+  
+  console.log(`[REPLY_JOB] 📊 Loaded ${allOpportunities.length} opportunities in batches`);
   
   const normalizeTierCounts = (opps: Array<{ tier?: string | null }>) =>
     opps.reduce<Record<string, number>>((acc, opp) => {
@@ -602,6 +628,10 @@ async function generateRealReplies(): Promise<void> {
   const priorityPool = Array.from(new Set([...freshHot, ...highVirality, ...sortedOpportunities]));
 
   const candidateOpportunities = priorityPool.slice(0, 40);
+  
+  // ✅ MEMORY OPTIMIZATION: Clear intermediate arrays after use
+  // These arrays are no longer needed after creating candidateOpportunities
+  clearArrays(highVirality, freshHot, sortedOpportunities, priorityPool);
 
   // 🚨 CRITICAL FIX: Check for TWEET IDs we've already replied to (not just usernames!)
   // This prevents multiple replies to the same tweet

@@ -50,7 +50,7 @@ interface DatabasePost {
 export class StructuralDiversityEngine {
   private static instance: StructuralDiversityEngine;
   private recentContent: { content: string; structure: ContentStructure; timestamp: number }[] = [];
-  private maxHistorySize = 20; // For fallback mode
+  private maxHistorySize = 10; // ✅ MEMORY OPTIMIZATION: Reduced from 20 to 10 (prevents cache growth)
   private databaseCache: {
     lastUpdated: number;
     allTimeAnalysis: StructuralAnalysis | null;
@@ -643,49 +643,93 @@ NEVER USE HASHTAGS - Hashtags are banned in all content.
    */
   private async fetchAllDatabasePosts(): Promise<any[]> {
     try {
-      // Import admin client for database access
+      // ✅ MEMORY OPTIMIZATION: Process in batches (prevents loading all posts at once)
       const { admin } = await import('../lib/supabaseClients');
-      
       const allPosts: any[] = [];
+      const batchSize = 50; // Process in batches of 50
+      const maxPosts = 200; // Limit total posts to prevent memory spikes
       
-      // Fetch from learning_posts table
+      // Fetch from learning_posts table in batches
       try {
-        const { data: learningPosts, error: learningError } = await admin
-          .from('learning_posts')
-          .select('content, created_at, likes_count, retweets_count, replies_count, engagement_score')
-          .order('created_at', { ascending: false });
+        let offset = 0;
+        while (allPosts.length < maxPosts) {
+          const { data: learningPosts, error: learningError } = await admin
+            .from('learning_posts')
+            .select('content, created_at, likes_count, retweets_count, replies_count, engagement_score')
+            .order('created_at', { ascending: false })
+            .range(offset, offset + batchSize - 1);
+            
+          if (learningError) {
+            console.warn('⚠️ Learning posts fetch failed:', learningError);
+            break;
+          }
           
-        if (learningError) {
-          console.warn('⚠️ Learning posts fetch failed:', learningError);
-        } else if (learningPosts) {
+          if (!learningPosts || learningPosts.length === 0) {
+            break; // No more posts
+          }
+          
           allPosts.push(...learningPosts);
-          console.log(`📊 DATABASE_LOADED: ${learningPosts.length} unique posts from learning_posts`);
+          offset += batchSize;
+          
+          if (learningPosts.length < batchSize) {
+            break; // Got fewer than batchSize, we're done
+          }
+          
+          // Small delay for GC
+          await new Promise(r => setTimeout(r, 10));
         }
+        
+        console.log(`📊 DATABASE_LOADED: ${allPosts.length} posts from learning_posts (batched)`);
       } catch (error) {
         console.warn('⚠️ Learning posts fetch failed:', error);
       }
       
-      // Fetch from tweets table
-      try {
-        const { data: tweets, error: tweetsError } = await admin
-          .from('tweets')
-          .select('content, created_at, likes_count, retweets_count, replies_count, engagement_score')
-          .order('created_at', { ascending: false });
-          
-        if (tweetsError) {
-          console.warn('⚠️ Tweets fetch failed:', tweetsError);
-        } else if (tweets) {
-          // Deduplicate by content
+      // Fetch from tweets table in batches (only if we haven't hit max)
+      if (allPosts.length < maxPosts) {
+        try {
           const existingContent = new Set(allPosts.map(p => p.content));
-          const newTweets = tweets.filter(t => !existingContent.has(t.content));
-          allPosts.push(...newTweets);
-          console.log(`📊 DATABASE_LOADED: ${tweets.length} posts from tweets (${newTweets.length} unique)`);
+          let offset = 0;
+          
+          while (allPosts.length < maxPosts) {
+            const { data: tweets, error: tweetsError } = await admin
+              .from('tweets')
+              .select('content, created_at, likes_count, retweets_count, replies_count, engagement_score')
+              .order('created_at', { ascending: false })
+              .range(offset, offset + batchSize - 1);
+              
+            if (tweetsError) {
+              console.warn('⚠️ Tweets fetch failed:', tweetsError);
+              break;
+            }
+            
+            if (!tweets || tweets.length === 0) {
+              break; // No more tweets
+            }
+            
+            // Deduplicate by content
+            const newTweets = tweets.filter(t => !existingContent.has(t.content));
+            allPosts.push(...newTweets);
+            
+            // Update existing content set
+            newTweets.forEach(t => existingContent.add(t.content));
+            
+            offset += batchSize;
+            
+            if (tweets.length < batchSize) {
+              break; // Got fewer than batchSize, we're done
+            }
+            
+            // Small delay for GC
+            await new Promise(r => setTimeout(r, 10));
+          }
+          
+          console.log(`📊 DATABASE_LOADED: ${allPosts.length} total posts (batched)`);
+        } catch (error) {
+          console.warn('⚠️ Tweets fetch failed:', error);
         }
-      } catch (error) {
-        console.warn('⚠️ Tweets fetch failed:', error);
       }
       
-      console.log(`📊 DATABASE_LOADED: ${allPosts.length} unique posts from database`);
+      console.log(`📊 DATABASE_LOADED: ${allPosts.length} unique posts from database (memory-optimized)`);
       return allPosts;
       
     } catch (error) {
