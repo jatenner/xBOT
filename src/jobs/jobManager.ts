@@ -1363,38 +1363,22 @@ export class JobManager {
     const isCritical = jobName === 'plan' || jobName === 'posting' || jobName === 'peer_scraper';
     const maxRetries = isCritical ? 3 : 1;
     
-    // ✅ DEPENDENCY HEALTH CHECK: Check if critical dependencies failed recently
-    try {
-      // Check if posting depends on plan (plan must have run recently)
-      if (jobName === 'posting') {
-        const planFailures = this.criticalJobFailures.get('plan') || 0;
-        if (planFailures >= 3) {
-          console.warn(`[JOB_POSTING] ⚠️ Skipping - plan job has ${planFailures} consecutive failures (dependency unhealthy)`);
-          await recordJobSkip(jobName, `dependency_unhealthy_plan_${planFailures}_failures`);
-          return;
-        }
-      }
-      
-      // Check if reply depends on harvester (harvester must have run recently)
-      if (jobName === 'reply' || jobName === 'reply_posting') {
-        const harvesterFailures = this.criticalJobFailures.get('mega_viral_harvester') || 0;
-        if (harvesterFailures >= 3) {
-          const jobDisplayName = jobName === 'reply' ? 'REPLY' : 'REPLY_POSTING';
-          console.warn(`[JOB_${jobDisplayName}] ⚠️ Skipping - harvester has ${harvesterFailures} consecutive failures (dependency unhealthy)`);
-          await recordJobSkip(jobName, `dependency_unhealthy_harvester_${harvesterFailures}_failures`);
-          return;
-        }
-      }
-    } catch (depError: any) {
-      // Don't block jobs if dependency check fails
-      console.warn(`[JOB_${jobName.toUpperCase()}] ⚠️ Dependency check failed:`, depError?.message || depError);
-    }
-    
     // 🧠 MEMORY CHECK: Ensure we have enough memory before starting job
     // ✅ OPTIMIZED: Skip non-critical operations if memory > 400MB
     try {
+      // ✅ MEMORY OPTIMIZATION: Check memory before starting job
       const { MemoryMonitor } = await import('../utils/memoryMonitor');
+      const { isMemorySafeForOperation } = await import('../utils/memoryOptimization');
+      
       const memory = MemoryMonitor.checkMemory();
+      
+      // Check if memory is safe for this job
+      const memoryCheck = await isMemorySafeForOperation(100, 400);
+      if (!memoryCheck.safe) {
+        console.warn(`🧠 [JOB_${jobName.toUpperCase()}] ⚠️ Low memory (${memoryCheck.currentMB}MB), skipping this run`);
+        await recordJobSkip(jobName, `low_memory_${memoryCheck.currentMB}MB`);
+        return;
+      }
       
       // ✅ NEW: Skip non-critical operations if memory is high (prevents spikes)
       if (!isCritical && memory.rssMB > 400) {
@@ -1473,12 +1457,12 @@ export class JobManager {
             console.error(`🚨 CRITICAL: ${jobName.toUpperCase()} job completely failed! System may not post content.`);
             console.error(`   Consecutive failures: ${consecutiveFailures}`);
             
-            // After 5 consecutive failures, log emergency event AND trigger auto-recovery
+            // After 5 consecutive failures, log emergency event
             if (consecutiveFailures >= 5) {
               console.error(`═══════════════════════════════════════════════════════`);
               console.error(`🚨 EMERGENCY: ${jobName.toUpperCase()} failed ${consecutiveFailures} times consecutively!`);
               console.error(`   This indicates a persistent system issue.`);
-              console.error(`   Triggering auto-recovery in 60 seconds...`);
+              console.error(`   The watchdog will attempt recovery.`);
               console.error(`═══════════════════════════════════════════════════════`);
               
               // Log to system_events for monitoring
@@ -1499,18 +1483,6 @@ export class JobManager {
                 // Don't block on DB errors
                 console.error(`⚠️ Failed to log critical job failure to DB:`, dbError);
               }
-              
-              // ✅ AUTO-RECOVERY: Trigger job recovery after 60 seconds (gives system time to stabilize)
-              setTimeout(async () => {
-                try {
-                  console.log(`🔄 [AUTO_RECOVERY] Attempting recovery for ${jobName} after ${consecutiveFailures} consecutive failures...`);
-                  await this.runJobNow(jobName as any);
-                  console.log(`✅ [AUTO_RECOVERY] Recovery attempt completed for ${jobName}`);
-                } catch (recoveryError: any) {
-                  console.error(`❌ [AUTO_RECOVERY] Recovery failed for ${jobName}:`, recoveryError.message);
-                  // Will retry on next scheduled run or next consecutive failure
-                }
-              }, 60000); // Wait 60 seconds before recovery attempt
             }
           }
         }

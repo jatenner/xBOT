@@ -5,6 +5,7 @@
  * - Database pagination helpers
  * - Array clearing utilities
  * - Cache size management
+ * - Memory safety checks
  */
 
 import { getSupabaseClient } from '../db';
@@ -147,8 +148,9 @@ export async function isMemorySafeForOperation(
 
 /**
  * Paginated database query helper
+ * Processes queries in batches to prevent memory spikes
  */
-export async function paginatedQuery<T = any>(
+export async function paginatedQuery<T>(
   table: string,
   options: {
     select?: string;
@@ -167,6 +169,15 @@ export async function paginatedQuery<T = any>(
     batchSize = 20,
     maxBatches
   } = options;
+  
+  // Check memory before starting
+  const memoryCheck = await isMemorySafeForOperation(batchSize * 2, 400);
+  if (!memoryCheck.safe) {
+    console.warn(`[MEMORY_OPT] ⚠️ Low memory (${memoryCheck.currentMB}MB), reducing batch size from ${batchSize} to ${Math.floor(batchSize / 2)}`);
+    // Reduce batch size if memory is tight
+    const adjustedBatchSize = Math.max(5, Math.floor(batchSize / 2));
+    return paginatedQuery(table, { ...options, batchSize: adjustedBatchSize, maxBatches });
+  }
   
   const supabase = getSupabaseClient();
   const results: T[] = [];
@@ -205,7 +216,7 @@ export async function paginatedQuery<T = any>(
       break;
     }
     
-    // Type assertion for data array
+    // Type assertion: data is T[] after error check
     results.push(...(data as T[]));
     
     // Clear batch from memory after processing
@@ -219,8 +230,80 @@ export async function paginatedQuery<T = any>(
     
     // Small delay for GC
     await new Promise(r => setTimeout(r, 10));
+    
+    // Periodic memory check - if memory gets tight, stop early
+    if (batchCount % 5 === 0) {
+      const periodicCheck = await isMemorySafeForOperation(50, 450);
+      if (!periodicCheck.safe) {
+        console.warn(`[MEMORY_OPT] ⚠️ Memory getting tight (${periodicCheck.currentMB}MB), stopping pagination early`);
+        break;
+      }
+    }
   }
   
   return results;
+}
+
+/**
+ * Process large arrays in chunks to prevent memory spikes
+ */
+export async function processArrayInChunks<T, R>(
+  items: T[],
+  processor: (chunk: T[]) => Promise<R[]>,
+  chunkSize: number = 20
+): Promise<R[]> {
+  const results: R[] = [];
+  
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const chunk = items.slice(i, i + chunkSize);
+    const chunkResults = await processor(chunk);
+    results.push(...chunkResults);
+    
+    // Clear chunk from memory (cast to any[] for clearArray)
+    clearArray(chunk as any[]);
+    
+    // Small delay for GC
+    await new Promise(r => setTimeout(r, 10));
+  }
+  
+  return results;
+}
+
+/**
+ * Memory-aware batch processor with automatic memory checks
+ */
+export async function* memoryAwareBatchProcessor<T>(
+  items: T[],
+  batchSize: number = 20
+): AsyncGenerator<T[], void, unknown> {
+  let currentBatch: T[] = [];
+  
+  for (const item of items) {
+    currentBatch.push(item);
+    
+    if (currentBatch.length >= batchSize) {
+      // Check memory before yielding
+      const memoryCheck = await isMemorySafeForOperation(50, 400);
+      if (!memoryCheck.safe) {
+        console.warn(`[MEMORY_OPT] ⚠️ Memory pressure (${memoryCheck.currentMB}MB), yielding batch early`);
+        yield currentBatch;
+        currentBatch = [];
+        // Wait a bit longer for GC
+        await new Promise(r => setTimeout(r, 50));
+        continue;
+      }
+      
+      yield currentBatch;
+      currentBatch = [];
+      
+      // Small delay for GC
+      await new Promise(r => setTimeout(r, 10));
+    }
+  }
+  
+  // Yield remaining items
+  if (currentBatch.length > 0) {
+    yield currentBatch;
+  }
 }
 

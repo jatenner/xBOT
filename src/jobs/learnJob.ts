@@ -67,20 +67,33 @@ async function collectTrainingData(config?: any): Promise<any[]> {
   console.log('[LEARN_JOB] 📊 Collecting training data from decisions and outcomes...');
   
   try {
+    // ✅ MEMORY OPTIMIZATION: Check memory before loading data
+    const { isMemorySafeForOperation, paginatedQuery, clearArrays } = await import('../utils/memoryOptimization');
+    const memoryCheck = await isMemorySafeForOperation(50, 400);
+    if (!memoryCheck.safe) {
+      console.warn(`[LEARN_JOB] ⚠️ Low memory (${memoryCheck.currentMB}MB), reducing training data size`);
+      // Continue with smaller dataset
+    }
+    
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
     // In live mode, ONLY use real outcomes (simulated=false); in shadow mode, use simulated
     const simulatedFilter = config.MODE === 'shadow';
     
-    // Get recent outcomes for training
-    const { data: outcomes, error } = await supabase
-      .from('outcomes')
-      .select('*')
-      .eq('simulated', simulatedFilter)
-      .gte('collected_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-      .order('collected_at', { ascending: false })
-      .limit(50);
+    // ✅ MEMORY OPTIMIZATION: Use pagination instead of loading all 50 at once
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const outcomes = await paginatedQuery<any>('outcomes', {
+      select: '*',
+      filters: { simulated: simulatedFilter },
+      orderBy: 'collected_at',
+      ascending: false,
+      batchSize: 20,
+      maxBatches: 3 // Max 60 items (reduced from 50 if memory is tight)
+    });
+    
+    // Legacy code compatibility - check if we got data
+    const error = outcomes.length === 0 ? { message: 'No outcomes found' } : null;
 
     if (error || !outcomes || outcomes.length === 0) {
       // In LIVE mode, never use mock data - only train on real outcomes
@@ -98,6 +111,17 @@ async function collectTrainingData(config?: any): Promise<any[]> {
       console.log(`[LEARN_JOB] ⚠️ Training skipped: insufficient real outcomes (have ${outcomes.length}, need 5)`);
       return [];
     }
+    
+    // ✅ MEMORY OPTIMIZATION: Filter outcomes by date after pagination
+    const filteredOutcomes = outcomes.filter((outcome: any) => {
+      if (!outcome.collected_at) return false;
+      const collectedDate = new Date(outcome.collected_at);
+      const sevenDaysAgoDate = new Date(sevenDaysAgo);
+      return collectedDate >= sevenDaysAgoDate;
+    });
+    
+    // Use filtered outcomes for rest of function
+    const outcomesToUse = filteredOutcomes.length > 0 ? filteredOutcomes : outcomes;
 
     // 🔥 FIX: Get engagement rate from multiple sources
     // engagement_rate is populated in 39% of outcomes, er_calculated is NULL for all
@@ -130,13 +154,13 @@ async function collectTrainingData(config?: any): Promise<any[]> {
     // If account has low engagement (e.g., 50 views is best), use percentile-based thresholds
     // If account has decent engagement, use fixed thresholds (100 views, 5 likes)
     const { calculateAdaptiveThresholds, passesLearningThreshold } = await import('./adaptiveLearningThresholds');
-    const thresholds = await calculateAdaptiveThresholds(outcomes);
+    const thresholds = await calculateAdaptiveThresholds(outcomesToUse);
     
     console.log(`[LEARN_JOB] 🎯 Learning thresholds: ${thresholds.minViews} views, ${thresholds.minLikes} likes (${thresholds.method})`);
     console.log(`[LEARN_JOB] 📊 ${thresholds.reason}`);
     
     // Convert outcomes to training format
-    const trainingData = outcomes
+    const trainingData = outcomesToUse
       .map(outcome => {
         const actual_er = getEngagementRate(outcome);
         const impressions = outcome.impressions || 0;
@@ -169,10 +193,13 @@ async function collectTrainingData(config?: any): Promise<any[]> {
                passesLearningThreshold(sample.actual_impressions, sample.actual_likes, thresholds);
       });
     
-    const skipped = outcomes.length - trainingData.length;
+    const skipped = outcomesToUse.length - trainingData.length;
     if (skipped > 0) {
       console.log(`[LEARN_JOB] ⏭️ Skipped ${skipped} low-engagement outcomes (<${thresholds.minViews} views OR <${thresholds.minLikes} likes)`);
-      console.log(`[LEARN_JOB] ✅ Using ${trainingData.length} outcomes with meaningful engagement data (${((trainingData.length / outcomes.length) * 100).toFixed(1)}%)`);
+      console.log(`[LEARN_JOB] ✅ Using ${trainingData.length} outcomes with meaningful engagement data (${((trainingData.length / outcomesToUse.length) * 100).toFixed(1)}%)`);
+    
+    // ✅ MEMORY OPTIMIZATION: Clear large arrays after processing
+    clearArrays(outcomes, filteredOutcomes, outcomesToUse);
     }
 
     console.log(`[LEARN_JOB] 📋 Collected ${trainingData.length} training samples (real: ${!simulatedFilter})`);
