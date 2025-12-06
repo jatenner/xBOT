@@ -774,6 +774,31 @@ export function startHealthServer(): Promise<void> {
     });
 
     // Admin-only DB insert test
+    // 🔧 ADMIN: Force close browser pool circuit breaker
+    app.post('/admin/reset-browser-circuit-breaker', async (req, res) => {
+      try {
+        const { UnifiedBrowserPool } = await import('./browser/UnifiedBrowserPool');
+        const pool = UnifiedBrowserPool.getInstance();
+        
+        pool.forceCloseCircuitBreaker();
+        
+        const status = await pool.getStatus();
+        
+        res.json({
+          success: true,
+          message: 'Browser circuit breaker force-closed',
+          circuitBreaker: status.circuitBreaker,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error: any) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
     app.post('/db/admin-test', async (req, res) => {
       try {
         const adminKey = req.headers['x-admin-key'];

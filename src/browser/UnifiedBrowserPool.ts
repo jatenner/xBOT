@@ -466,33 +466,6 @@ export class UnifiedBrowserPool {
               const duration = Date.now() - startTime;
               const isTimeout = error.message.includes('[TIMEOUT]');
               
-              // ✅ AUTO-RECOVERY: Detect auth failures and trigger session refresh
-              const errorMsg = error?.message || String(error);
-              const isAuthError = errorMsg.includes('not logged in') ||
-                                 errorMsg.includes('session expired') ||
-                                 errorMsg.includes('authentication') ||
-                                 errorMsg.includes('logged out') ||
-                                 errorMsg.includes('NOT AUTHENTICATED') ||
-                                 errorMsg.includes('not authenticated');
-              
-              if (isAuthError) {
-                console.error(`[BROWSER_POOL]   🔐 ${op.id}: AUTH FAILURE detected - triggering session refresh...`);
-                // Trigger session refresh in background (non-blocking)
-                setImmediate(async () => {
-                  try {
-                    const { SessionMonitor } = await import('../utils/sessionMonitor');
-                    const refreshResult = await SessionMonitor.refreshSession();
-                    if (refreshResult.success) {
-                      console.log(`[BROWSER_POOL]   ✅ Session refreshed successfully after auth failure`);
-                    } else {
-                      console.error(`[BROWSER_POOL]   ❌ Session refresh failed:`, refreshResult.error);
-                    }
-                  } catch (refreshError: any) {
-                    console.error(`[BROWSER_POOL]   ❌ Session refresh error:`, refreshError.message);
-                  }
-                });
-              }
-              
               if (isTimeout) {
                 console.error(`[BROWSER_POOL]   ⏰ ${op.id}: TIMEOUT after ${duration}ms`);
                 console.warn(`[BROWSER_POOL]   🔨 Recycling stuck context...`);
@@ -1277,6 +1250,8 @@ export class UnifiedBrowserPool {
       this.metrics.failedOperations = 0;
       this.circuitBreaker.failures = 0;
       this.circuitBreaker.isOpen = false;
+      this.circuitBreaker.reason = null;
+      this.circuitBreaker.openUntil = 0;
       
       // Restart cleanup timer
       this.startCleanupTimer();
@@ -1286,6 +1261,19 @@ export class UnifiedBrowserPool {
       console.error('[BROWSER_POOL] ❌ Reset failed:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * 🔧 FORCE CLOSE CIRCUIT BREAKER (Emergency recovery)
+   * Use when circuit breaker is stuck open and blocking operations
+   */
+  public forceCloseCircuitBreaker(): void {
+    console.warn('[BROWSER_POOL] 🔧 FORCE CLOSING circuit breaker...');
+    this.circuitBreaker.isOpen = false;
+    this.circuitBreaker.failures = 0;
+    this.circuitBreaker.reason = null;
+    this.circuitBreaker.openUntil = 0;
+    console.log('[BROWSER_POOL] ✅ Circuit breaker force-closed - operations can proceed');
   }
 }
 
