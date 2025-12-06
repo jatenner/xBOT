@@ -1242,12 +1242,37 @@ async function checkUniqueness(text: string | string[]): Promise<boolean> {
   // Handle both single tweets and threads
   const textToCheck = Array.isArray(text) ? text.join(' ') : text;
   
-  // Get recent posts from last 7 days
-  const { data: recentPosts } = await supabase
-    .from('content_metadata')
-    .select('content')
-    .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-    .limit(100);
+  // ✅ MEMORY OPTIMIZATION: Process recent posts in batches (prevents memory spikes)
+  const { clearArrays } = await import('../utils/memoryOptimization');
+  
+  // Process in batches of 20 instead of loading all 100 at once
+  const recentPosts: any[] = [];
+  const batchSize = 20;
+  let offset = 0;
+  
+  while (recentPosts.length < 100) { // Still get up to 100, but in batches
+    const { data: batch } = await supabase
+      .from('content_metadata')
+      .select('content')
+      .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false })
+      .range(offset, offset + batchSize - 1);
+    
+    if (!batch || batch.length === 0) {
+      break; // No more posts
+    }
+    
+    recentPosts.push(...batch);
+    offset += batchSize;
+    
+    // If we got fewer than batchSize, we're done
+    if (batch.length < batchSize) {
+      break;
+    }
+    
+    // Small delay for GC
+    await new Promise(r => setTimeout(r, 10));
+  }
 
   if (!recentPosts || recentPosts.length === 0) return true;
 

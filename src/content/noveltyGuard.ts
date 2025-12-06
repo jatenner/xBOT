@@ -113,7 +113,8 @@ export class NoveltyGuard {
     this.recentOpenings.add(opening.toLowerCase());
     
     // Keep only last 200 posts in memory
-    if (this.recentContent.length > 200) {
+    // ✅ MEMORY OPTIMIZATION: Limit cache size to 100 (was 200)
+    if (this.recentContent.length > 100) {
       const removed = this.recentContent.pop();
       if (removed) {
         this.recentOpenings.delete(removed.opening_words.toLowerCase());
@@ -244,7 +245,7 @@ export class NoveltyGuard {
         .from('content_fingerprints')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(200);
+        .limit(100); // ✅ MEMORY OPTIMIZATION: Reduced from 200 to 100
 
       if (error) throw error;
 
