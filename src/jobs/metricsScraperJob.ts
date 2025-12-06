@@ -44,6 +44,20 @@ export async function metricsScraperJob(): Promise<void> {
     process.env.USE_ANALYTICS_PAGE = 'false';
   }
   
+  // ✅ MEMORY OPTIMIZATION: Check memory before starting
+  try {
+    const { isMemorySafeForOperation } = await import('../utils/memoryOptimization');
+    const memoryCheck = await isMemorySafeForOperation(100, 400);
+    if (!memoryCheck.safe) {
+      console.warn(`[METRICS_JOB] ⚠️ Low memory (${memoryCheck.currentMB}MB), skipping this run`);
+      log({ op: 'metrics_scraper_skipped', reason: 'low_memory', memoryMB: memoryCheck.currentMB });
+      return;
+    }
+  } catch (error) {
+    // If memory check fails, continue anyway (don't block operations)
+    console.warn('[METRICS_JOB] ⚠️ Memory check failed, continuing:', error);
+  }
+  
   // Start Sentry span for performance tracking
   return await Sentry.startSpan(
     {
