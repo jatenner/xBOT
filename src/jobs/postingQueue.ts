@@ -423,6 +423,46 @@ export async function processPostingQueue(): Promise<void> {
         const errorMsg = error?.message || error?.toString() || 'Unknown error';
         const errorStack = error?.stack || 'No stack trace';
         
+        // ✅ RATE LIMIT DETECTION: Detect 429 errors and implement exponential backoff
+        const isRateLimit = errorMsg.includes('429') || 
+                           errorMsg.includes('rate limit') || 
+                           errorMsg.includes('RATE_LIMIT') ||
+                           errorMsg.includes('Too Many Requests');
+        
+        if (isRateLimit) {
+          console.error(`[POSTING_QUEUE] 🚨 RATE LIMIT DETECTED (429): ${errorMsg.substring(0, 200)}`);
+          
+          // Record rate limit in circuit breaker
+          recordCircuitBreakerFailure();
+          
+          // Calculate exponential backoff: 2^attempts minutes (max 60 min)
+          const rateLimitBackoffMinutes = Math.min(Math.pow(2, postingCircuitBreaker.failures), 60);
+          console.warn(`[POSTING_QUEUE] ⏸️ Rate limited - backing off for ${rateLimitBackoffMinutes} minutes`);
+          
+          // Log to system_events
+          try {
+            const { unifiedDatabase } = await import('../db/unifiedDatabase');
+            await unifiedDatabase
+              .from('system_events')
+              .insert({
+                event_type: 'rate_limit_detected',
+                severity: 'warning',
+                event_data: {
+                  error: errorMsg.substring(0, 500),
+                  backoff_minutes: rateLimitBackoffMinutes,
+                  failures: postingCircuitBreaker.failures
+                },
+                created_at: new Date().toISOString()
+              });
+          } catch (dbError) {
+            // Non-critical
+          }
+          
+          // Skip remaining posts (will retry after backoff)
+          console.warn(`[POSTING_QUEUE] ⏸️ Skipping remaining posts due to rate limit`);
+          return;
+        }
+        
         // 🔥 FIX: Check for browser queue timeout errors
         const isQueueTimeout = errorMsg.includes('Queue timeout') || 
                                errorMsg.includes('pool overloaded') ||

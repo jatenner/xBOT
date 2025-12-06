@@ -289,21 +289,21 @@ async function boot() {
         console.error(`⚠️ System will rely on scheduled plan jobs (every 2 hours)`);
       }
       
-      // Schedule health check every 30 minutes
-      console.log('🏥 HEALTH_CHECK: Starting content pipeline health monitor (30min intervals)');
+      // ✅ OPTIMIZED: Schedule health check every 5 minutes (was 30 min) - faster failure detection
+      console.log('🏥 HEALTH_CHECK: Starting content pipeline health monitor (5min intervals)');
       setInterval(() => {
         jobManager.checkContentPipelineHealth().catch(err => {
           console.error('❌ HEALTH_CHECK: Health check failed:', err.message);
         });
-      }, 30 * 60 * 1000); // 30 minutes
+      }, 5 * 60 * 1000); // ✅ OPTIMIZED: 5 minutes (was 30 minutes)
       
-      // Run first health check after 10 minutes (give system time to settle)
+      // Run first health check after 2 minutes (give system time to settle)
       setTimeout(() => {
         console.log('🏥 HEALTH_CHECK: Running first health check...');
         jobManager.checkContentPipelineHealth().catch(err => {
           console.error('❌ HEALTH_CHECK: First health check failed:', err.message);
         });
-      }, 10 * 60 * 1000);
+      }, 2 * 60 * 1000); // ✅ OPTIMIZED: 2 minutes (was 10 minutes)
       
     } catch (error) {
       // 🚨 FATAL ERROR: Job manager startup itself failed
