@@ -95,6 +95,10 @@ export class UnifiedBrowserPool {
   };
   private resourceFailureCount = 0;
   
+  // 🔥 MEMORY OPTIMIZATION: Track operations for browser restart cycle
+  private totalOperationCount = 0; // Track total operations across all contexts
+  private readonly BROWSER_RESTART_INTERVAL = 100; // Restart browser every 100 operations to free memory
+  
   // Circuit breaker state
   private circuitBreaker = {
     failures: 0,
@@ -394,11 +398,100 @@ export class UnifiedBrowserPool {
               
               op.resolve(result);
               this.metrics.successfulOperations++;
+              
+              // 🔥 MEMORY OPTIMIZATION: Track operations for browser restart cycle
+              this.totalOperationCount++;
+              
+              // ✅ BACKGROUND RESTART: Schedule browser restart in background (never blocks)
+              // Operations continue normally - restart happens independently
+              if (this.totalOperationCount >= this.BROWSER_RESTART_INTERVAL) {
+                console.log(`[BROWSER_POOL] 🔄 Browser restart scheduled after ${this.totalOperationCount} operations (will restart in background)`);
+                
+                // Schedule restart in background (fire and forget - never blocks operations)
+                setImmediate(async () => {
+                  try {
+                    // Wait for operations to complete (but don't block new operations)
+                    // Check periodically if safe to restart
+                    const maxWaitTime = 30000; // Max 30 seconds wait
+                    const checkInterval = 2000; // Check every 2 seconds
+                    let waited = 0;
+                    
+                    while (this.getActiveCount() > 0 || this.queue.length > 0) {
+                      if (waited >= maxWaitTime) {
+                        console.log(`[BROWSER_POOL] ⏸️ Browser restart deferred - operations still active after ${waited}ms (will retry later)`);
+                        return; // Will retry on next operation completion
+                      }
+                      
+                      await new Promise(r => setTimeout(r, checkInterval));
+                      waited += checkInterval;
+                    }
+                    
+                    // Safe to restart - operations complete
+                    console.log(`[BROWSER_POOL] 🔄 Restarting browser in background (no operations active)...`);
+                    
+                    // Close all contexts first
+                    const contextsToClose = Array.from(this.contexts.keys());
+                    for (const id of contextsToClose) {
+                      const handle = this.contexts.get(id);
+                      if (handle && !handle.inUse) {
+                        try {
+                          await handle.context.close();
+                        } catch (e) {
+                          // Ignore errors
+                        }
+                        this.contexts.delete(id);
+                      }
+                    }
+                    
+                    // Close browser
+                    if (this.browser) {
+                      await this.browser.close().catch(() => {});
+                      this.browser = null;
+                    }
+                    
+                    // Reset counters
+                    this.totalOperationCount = 0;
+                    this.sessionLoaded = false; // Will reload session on next use
+                    
+                    console.log(`[BROWSER_POOL] ✅ Browser restarted in background - memory should be freed`);
+                  } catch (restartError: any) {
+                    console.error(`[BROWSER_POOL] ⚠️ Browser restart failed:`, restartError.message);
+                    // Continue anyway - browser will restart on next operation
+                  }
+                });
+              }
               this.recordSuccess();
               
             } catch (error: any) {
               const duration = Date.now() - startTime;
               const isTimeout = error.message.includes('[TIMEOUT]');
+              
+              // ✅ AUTO-RECOVERY: Detect auth failures and trigger session refresh
+              const errorMsg = error?.message || String(error);
+              const isAuthError = errorMsg.includes('not logged in') ||
+                                 errorMsg.includes('session expired') ||
+                                 errorMsg.includes('authentication') ||
+                                 errorMsg.includes('logged out') ||
+                                 errorMsg.includes('NOT AUTHENTICATED') ||
+                                 errorMsg.includes('not authenticated');
+              
+              if (isAuthError) {
+                console.error(`[BROWSER_POOL]   🔐 ${op.id}: AUTH FAILURE detected - triggering session refresh...`);
+                // Trigger session refresh in background (non-blocking)
+                setImmediate(async () => {
+                  try {
+                    const { SessionMonitor } = await import('../utils/sessionMonitor');
+                    const refreshResult = await SessionMonitor.refreshSession();
+                    if (refreshResult.success) {
+                      console.log(`[BROWSER_POOL]   ✅ Session refreshed successfully after auth failure`);
+                    } else {
+                      console.error(`[BROWSER_POOL]   ❌ Session refresh failed:`, refreshResult.error);
+                    }
+                  } catch (refreshError: any) {
+                    console.error(`[BROWSER_POOL]   ❌ Session refresh error:`, refreshError.message);
+                  }
+                });
+              }
               
               if (isTimeout) {
                 console.error(`[BROWSER_POOL]   ⏰ ${op.id}: TIMEOUT after ${duration}ms`);
@@ -776,10 +869,17 @@ export class UnifiedBrowserPool {
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage', // Important for Railway memory limits
+          '--single-process',        // ✅ CRITICAL: Saves ~80MB (no zygote overhead, fixes zygote errors)
+          '--no-zygote',            // ✅ CRITICAL: Prevents zygote communication failures
           '--disable-gpu',
           '--disable-web-security',
           '--memory-pressure-off',
-          '--max_old_space_size=2048', // Limit to 2GB
+          '--max_old_space_size=256', // ✅ FIXED: 256MB instead of 2048MB (Railway-appropriate)
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-extensions',
+          '--disable-plugins',
           // Force new headless mode (fixes zygote crash)
           '--headless=new'
         ]
@@ -1009,6 +1109,13 @@ export class UnifiedBrowserPool {
     };
   }
 
+  /**
+   * Get queue length (for cleanup deferral)
+   */
+  public getQueueLength(): number {
+    return this.queue.length;
+  }
+
   public async reloadSessionState(): Promise<void> {
     this.cachedStorageState = null;
     await this.ensureStorageState(true);
@@ -1068,13 +1175,12 @@ export class UnifiedBrowserPool {
         }
       }
       
-      // Clear all queued operations
+      // ✅ OPTIMIZED: Don't cancel queued operations in aggressive mode
+      // Instead, mark browser for restart and let operations complete
+      // Operations will get new browser instance when they start
       if (this.queue.length > 0) {
-        console.log(`[BROWSER_POOL] 🚨 Clearing ${this.queue.length} queued operations due to emergency`);
-        for (const op of this.queue) {
-          op.reject(new Error('Emergency cleanup: Operation cancelled due to memory pressure'));
-        }
-        this.queue = [];
+        console.log(`[BROWSER_POOL] ⚠️ ${this.queue.length} operations queued during aggressive cleanup - they will use new browser instance`);
+        // Don't cancel - let them complete with new browser
       }
       
       // Optionally close and restart browser if still critical
