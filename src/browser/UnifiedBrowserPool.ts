@@ -1285,7 +1285,28 @@ export class UnifiedBrowserPool {
     this.circuitBreaker.failures = 0;
     this.circuitBreaker.reason = null;
     this.circuitBreaker.openUntil = 0;
+    this.circuitBreaker.lastFailure = 0;
     console.log('[BROWSER_POOL] ✅ Circuit breaker force-closed - operations can proceed');
+  }
+
+  /**
+   * 🔧 EMERGENCY: Force reset everything (nuclear option)
+   * Use when circuit breaker is completely stuck
+   */
+  public async emergencyReset(): Promise<void> {
+    console.warn('[BROWSER_POOL] 🚨 EMERGENCY RESET: Force-closing circuit breaker and resetting pool...');
+    
+    // Force close circuit breaker first
+    this.forceCloseCircuitBreaker();
+    
+    // Then reset the pool
+    try {
+      await this.resetPool();
+      console.log('[BROWSER_POOL] ✅ Emergency reset complete');
+    } catch (error: any) {
+      console.error('[BROWSER_POOL] ⚠️ Pool reset failed, but circuit breaker is closed:', error.message);
+      // Circuit breaker is already closed, so operations can proceed
+    }
   }
 }
 
