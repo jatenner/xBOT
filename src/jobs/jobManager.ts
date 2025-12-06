@@ -1364,31 +1364,30 @@ export class JobManager {
     const maxRetries = isCritical ? 3 : 1;
     
     // ✅ DEPENDENCY HEALTH CHECK: Check if critical dependencies failed recently
-    if (isCritical) {
-      try {
-        // Check if posting depends on plan (plan must have run recently)
-        if (jobName === 'posting') {
-          const planFailures = this.criticalJobFailures.get('plan') || 0;
-          if (planFailures >= 3) {
-            console.warn(`[JOB_${jobName.toUpperCase()}] ⚠️ Skipping - plan job has ${planFailures} consecutive failures (dependency unhealthy)`);
-            await recordJobSkip(jobName, `dependency_unhealthy_plan_${planFailures}_failures`);
-            return;
-          }
+    try {
+      // Check if posting depends on plan (plan must have run recently)
+      if (jobName === 'posting') {
+        const planFailures = this.criticalJobFailures.get('plan') || 0;
+        if (planFailures >= 3) {
+          console.warn(`[JOB_POSTING] ⚠️ Skipping - plan job has ${planFailures} consecutive failures (dependency unhealthy)`);
+          await recordJobSkip(jobName, `dependency_unhealthy_plan_${planFailures}_failures`);
+          return;
         }
-        
-        // Check if reply depends on harvester (harvester must have run recently)
-        if (jobName === 'reply' || jobName === 'reply_posting') {
-          const harvesterFailures = this.criticalJobFailures.get('mega_viral_harvester') || 0;
-          if (harvesterFailures >= 3) {
-            console.warn(`[JOB_${jobName.toUpperCase()}] ⚠️ Skipping - harvester has ${harvesterFailures} consecutive failures (dependency unhealthy)`);
-            await recordJobSkip(jobName, `dependency_unhealthy_harvester_${harvesterFailures}_failures`);
-            return;
-          }
-        }
-      } catch (depError) {
-        // Don't block jobs if dependency check fails
-        console.warn(`[JOB_${jobName.toUpperCase()}] ⚠️ Dependency check failed:`, depError);
       }
+      
+      // Check if reply depends on harvester (harvester must have run recently)
+      if (jobName === 'reply' || jobName === 'reply_posting') {
+        const harvesterFailures = this.criticalJobFailures.get('mega_viral_harvester') || 0;
+        if (harvesterFailures >= 3) {
+          const jobDisplayName = jobName === 'reply' ? 'REPLY' : 'REPLY_POSTING';
+          console.warn(`[JOB_${jobDisplayName}] ⚠️ Skipping - harvester has ${harvesterFailures} consecutive failures (dependency unhealthy)`);
+          await recordJobSkip(jobName, `dependency_unhealthy_harvester_${harvesterFailures}_failures`);
+          return;
+        }
+      }
+    } catch (depError: any) {
+      // Don't block jobs if dependency check fails
+      console.warn(`[JOB_${jobName.toUpperCase()}] ⚠️ Dependency check failed:`, depError?.message || depError);
     }
     
     // 🧠 MEMORY CHECK: Ensure we have enough memory before starting job
