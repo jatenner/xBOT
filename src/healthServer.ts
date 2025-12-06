@@ -780,13 +780,14 @@ export function startHealthServer(): Promise<void> {
         const { UnifiedBrowserPool } = await import('./browser/UnifiedBrowserPool');
         const pool = UnifiedBrowserPool.getInstance();
         
-        pool.forceCloseCircuitBreaker();
+        // Try emergency reset first (more thorough)
+        await pool.emergencyReset();
         
         const status = await pool.getStatus();
         
         res.json({
           success: true,
-          message: 'Browser circuit breaker force-closed',
+          message: 'Browser circuit breaker emergency reset complete',
           circuitBreaker: status.circuitBreaker,
           timestamp: new Date().toISOString()
         });
