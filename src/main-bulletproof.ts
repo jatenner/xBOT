@@ -170,6 +170,9 @@ async function boot() {
   printConfigSummary(config);
   printDeprecationWarnings();
   
+  // 🔥 PERMANENT FIX: Validate posting configuration on startup
+  validatePostingConfiguration(config);
+  
   // Log shadow prod activation
   if (config.MODE === 'shadow') {
     console.log('🎭 SHADOW_PROD ACTIVE: Zero-cost learning loop with synthetic outcomes');
@@ -256,13 +259,56 @@ async function boot() {
     }
   })();
 
-  // Initialize job manager (background)
+  // Initialize job manager (background) - 🔥 PERMANENT FIX: With retry logic
   (async () => {
     const jobManager = JobManager.getInstance();
+    const maxRetries = 3;
+    let started = false;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🕒 JOB_MANAGER: Initializing job timers... (attempt ${attempt}/${maxRetries})`);
+        await jobManager.startJobs();
+        console.log('✅ JOB_MANAGER: All timers started successfully');
+        started = true;
+        break;
+      } catch (error: any) {
+        console.error(`❌ JOB_MANAGER: Attempt ${attempt}/${maxRetries} failed:`, error.message);
+        if (attempt < maxRetries) {
+          const delay = 5000 * attempt; // Exponential backoff: 5s, 10s, 15s
+          console.log(`🔄 Retrying in ${delay/1000}s...`);
+          await new Promise(r => setTimeout(r, delay));
+        }
+      }
+    }
+    
+    if (!started) {
+      // 🔥 PERMANENT FIX: Log critical error before exit
+      try {
+        const { getSupabaseClient } = await import('./db');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'job_manager_startup_failed',
+          severity: 'critical',
+          event_data: {
+            retries: maxRetries,
+            error: 'All retry attempts failed'
+          },
+          created_at: new Date().toISOString()
+        });
+      } catch (dbError) {
+        // Non-critical - continue to exit
+      }
+      
+      // 🚨 FATAL ERROR: Job manager startup itself failed
+      console.error(`❌ FATAL: JOB_MANAGER failed to start after ${maxRetries} retries!`);
+      console.error(`❌ System cannot function without job manager!`);
+      console.error(`❌ ❌ ❌ JOB MANAGER STARTUP FAILED ❌ ❌ ❌`);
+      // Exit with error code to force Railway restart
+      process.exit(1);
+    }
+    
     try {
-      console.log('🕒 JOB_MANAGER: Initializing job timers...');
-      await jobManager.startJobs();
-      console.log('✅ JOB_MANAGER: All timers started successfully');
       
       // 🔥 CRITICAL: Run plan job IMMEDIATELY with retry logic
       console.log('🚀 STARTUP: Running immediate plan job to populate queue...');
@@ -289,30 +335,42 @@ async function boot() {
         console.error(`⚠️ System will rely on scheduled plan jobs (every 2 hours)`);
       }
       
-      // ✅ OPTIMIZED: Schedule health check every 5 minutes (was 30 min) - faster failure detection
-      console.log('🏥 HEALTH_CHECK: Starting content pipeline health monitor (5min intervals)');
+      // Schedule health check every 30 minutes
+      console.log('🏥 HEALTH_CHECK: Starting content pipeline health monitor (30min intervals)');
       setInterval(() => {
         jobManager.checkContentPipelineHealth().catch(err => {
           console.error('❌ HEALTH_CHECK: Health check failed:', err.message);
         });
-      }, 5 * 60 * 1000); // ✅ OPTIMIZED: 5 minutes (was 30 minutes)
+      }, 30 * 60 * 1000); // 30 minutes
       
-      // Run first health check after 2 minutes (give system time to settle)
+      // Run first health check after 10 minutes (give system time to settle)
       setTimeout(() => {
         console.log('🏥 HEALTH_CHECK: Running first health check...');
         jobManager.checkContentPipelineHealth().catch(err => {
           console.error('❌ HEALTH_CHECK: First health check failed:', err.message);
         });
-      }, 2 * 60 * 1000); // ✅ OPTIMIZED: 2 minutes (was 10 minutes)
+      }, 10 * 60 * 1000);
       
-    } catch (error) {
-      // 🚨 FATAL ERROR: Job manager startup itself failed
-      console.error(`❌ FATAL: JOB_MANAGER failed to start: ${error.message}`);
+    } catch (error: any) {
+      // This should not happen if retry logic above works, but keep as safety net
+      console.error(`❌ JOB_MANAGER: Unexpected error after startup: ${error.message}`);
       console.error(`Stack: ${error.stack}`);
-      console.error(`❌ System cannot function without job manager!`);
-      console.error(`❌ ❌ ❌ JOB MANAGER STARTUP FAILED ❌ ❌ ❌`);
-      // Exit with error code to force Railway restart
-      process.exit(1);
+      // Don't exit here - system is already running, just log the error
+      try {
+        const { getSupabaseClient } = await import('./db');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'job_manager_runtime_error',
+          severity: 'error',
+          event_data: {
+            error: error.message,
+            stack: error.stack
+          },
+          created_at: new Date().toISOString()
+        });
+      } catch (dbError) {
+        // Non-critical
+      }
     }
   })();
   

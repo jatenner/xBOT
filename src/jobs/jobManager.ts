@@ -1457,6 +1457,30 @@ export class JobManager {
             console.error(`🚨 CRITICAL: ${jobName.toUpperCase()} job completely failed! System may not post content.`);
             console.error(`   Consecutive failures: ${consecutiveFailures}`);
             
+            // 🔥 PERMANENT FIX: Alert after 3 consecutive failures (reduced from 5)
+            if (consecutiveFailures >= 3) {
+              console.error(`🚨 CRITICAL: ${jobName.toUpperCase()} has failed ${consecutiveFailures} times consecutively!`);
+              
+              // Log to database
+              try {
+                const { getSupabaseClient } = await import('../db/index');
+                const supabase = getSupabaseClient();
+                await supabase.from('system_events').insert({
+                  event_type: `${jobName}_consecutive_failures`,
+                  severity: 'critical',
+                  event_data: {
+                    job_name: jobName,
+                    consecutive_failures: consecutiveFailures,
+                    max_retries: maxRetries,
+                    last_error: errorMsg
+                  },
+                  created_at: new Date().toISOString()
+                });
+              } catch (dbError) {
+                // Non-critical - continue
+              }
+            }
+            
             // After 5 consecutive failures, log emergency event
             if (consecutiveFailures >= 5) {
               console.error(`═══════════════════════════════════════════════════════`);

@@ -222,15 +222,28 @@ async function getDatabaseStatus(): Promise<SystemStatus['database']> {
 function getPostingStatus(): SystemStatus['posting'] {
   const postingDisabled = process.env.POSTING_DISABLED === 'true';
   const dryRun = process.env.DRY_RUN === 'true';
+  const disablePosting = process.env.DISABLE_POSTING === 'true';
   
+  // 🔥 PERMANENT FIX: Check MODE configuration
+  const mode = process.env.MODE || 'live';
+  const isShadow = mode === 'shadow';
+
+  if (isShadow) {
+    return { enabled: false, reason: 'MODE=shadow disables posting' };
+  }
+
   if (postingDisabled) {
     return { enabled: false, reason: 'POSTING_DISABLED=true' };
   }
-  
+
   if (dryRun) {
     return { enabled: false, reason: 'DRY_RUN=true' };
   }
-  
+
+  if (disablePosting) {
+    return { enabled: false, reason: 'DISABLE_POSTING=true' };
+  }
+
   return { enabled: true };
 }
 
