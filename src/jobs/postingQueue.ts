@@ -41,7 +41,8 @@ let postingCircuitBreaker = {
   consecutiveSuccesses: 0, // NEW: Track consecutive successes for auto-reset
   successThreshold: 3, // NEW: Need 3 successes in half-open to fully close
   resetAttempts: 0, // NEW: Track reset attempts for exponential backoff
-  maxResetAttempts: 5 // NEW: Alert after 5 resets (requires manual intervention)
+  maxResetAttempts: 5, // NEW: Alert after 5 resets (requires manual intervention)
+  maxResetTimeoutMs: 60 * 60 * 1000 // 🔥 NEW: Maximum 1 hour - force reset after this
 };
 
 // 🔥 ENHANCEMENT: Exponential backoff reset timeout
@@ -54,10 +55,11 @@ function getResetTimeout(): number {
 // 🔥 ENHANCEMENT: Health check before reset
 async function checkSystemHealth(): Promise<boolean> {
   try {
-    // Check 1: Database connectivity (using UnifiedDatabase)
-    const { unifiedDatabase } = await import('../db/unifiedDatabase');
-    const isHealthy = await unifiedDatabase.healthCheck();
-    if (!isHealthy) {
+    // Check 1: Database connectivity
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    const { error: dbError } = await supabase.from('content_metadata').select('decision_id').limit(1);
+    if (dbError) {
       console.warn('[POSTING_QUEUE] ⚠️ Health check failed: Database not accessible');
       return false;
     }
@@ -97,6 +99,35 @@ async function checkCircuitBreaker(): Promise<boolean> {
       ? Date.now() - postingCircuitBreaker.lastFailure.getTime() 
       : Infinity;
     
+    // 🔥 PERMANENT FIX: Force reset after maximum timeout (1 hour)
+    if (timeSinceFailure > postingCircuitBreaker.maxResetTimeoutMs) {
+      console.log(`[POSTING_QUEUE] 🔧 FORCING circuit breaker reset (max timeout ${Math.round(postingCircuitBreaker.maxResetTimeoutMs / 60000)}min exceeded)`);
+      postingCircuitBreaker.state = 'half-open';
+      postingCircuitBreaker.failures = 0;
+      postingCircuitBreaker.consecutiveSuccesses = 0;
+      postingCircuitBreaker.resetAttempts = 0;
+      postingCircuitBreaker.lastFailure = null;
+      
+      // Log forced reset
+      try {
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'circuit_breaker_forced_reset',
+          severity: 'warning',
+          event_data: {
+            time_since_failure_minutes: Math.round(timeSinceFailure / 60000),
+            max_timeout_minutes: Math.round(postingCircuitBreaker.maxResetTimeoutMs / 60000)
+          },
+          created_at: new Date().toISOString()
+        });
+      } catch (dbError) {
+        // Non-critical
+      }
+      
+      return true; // Allow posting to proceed
+    }
+    
     const resetTimeout = getResetTimeout();
     
     if (timeSinceFailure > resetTimeout) {
@@ -111,18 +142,20 @@ async function checkCircuitBreaker(): Promise<boolean> {
         // Alert if too many reset attempts
         if (postingCircuitBreaker.resetAttempts >= postingCircuitBreaker.maxResetAttempts) {
           console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Circuit breaker stuck after ${postingCircuitBreaker.resetAttempts} reset attempts!`);
-          console.error(`[POSTING_QUEUE] 🚨 Manual intervention may be required.`);
+          console.error(`[POSTING_QUEUE] 🚨 Will force reset after ${Math.round(postingCircuitBreaker.maxResetTimeoutMs / 60000)}min total timeout`);
           
           // Log to system_events
           try {
-            const { unifiedDatabase } = await import('../db/unifiedDatabase');
-            await unifiedDatabase.from('system_events').insert({
+            const { getSupabaseClient } = await import('../db/index');
+            const supabase = getSupabaseClient();
+            await supabase.from('system_events').insert({
               event_type: 'circuit_breaker_stuck',
               severity: 'critical',
               event_data: {
                 reset_attempts: postingCircuitBreaker.resetAttempts,
                 last_failure: postingCircuitBreaker.lastFailure?.toISOString(),
-                failures: postingCircuitBreaker.failures
+                failures: postingCircuitBreaker.failures,
+                will_force_reset_after_minutes: Math.round(postingCircuitBreaker.maxResetTimeoutMs / 60000)
               },
               created_at: new Date().toISOString()
             });
@@ -240,9 +273,10 @@ export async function processPostingQueue(): Promise<void> {
     
     // 🔄 AUTO-RECOVER STUCK POSTS: Reset posts stuck in 'posting' status >15min (reduced from 30min for faster recovery)
     // 🔥 PRIORITY 4 FIX: Verify post before resetting (prevents duplicate posts)
-    const { unifiedDatabase } = await import('../db/unifiedDatabase');
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
     const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
-    const { data: stuckPosts } = await unifiedDatabase
+    const { data: stuckPosts } = await supabase
       .from('content_metadata')
       .select('decision_id, decision_type, created_at, content, thread_parts')
       .eq('status', 'posting')
@@ -262,12 +296,10 @@ export async function processPostingQueue(): Promise<void> {
           ? (post.thread_parts as string[] || []).join(' ')
           : post.content || '';
         
-        const { unifiedDatabase } = await import('../db/unifiedDatabase');
-        
         if (backupTweetId) {
           // Post succeeded! Mark as posted
           console.log(`[POSTING_QUEUE]   ✅ Found tweet_id ${backupTweetId} in backup - marking as posted`);
-          await unifiedDatabase
+          await supabase
             .from('content_metadata')
             .update({ 
               status: 'posted',
@@ -281,7 +313,7 @@ export async function processPostingQueue(): Promise<void> {
           const duplicateTweetId = checkBackupForDuplicate(contentToCheck);
           if (duplicateTweetId) {
             console.log(`[POSTING_QUEUE]   🚫 Duplicate content detected (tweet_id ${duplicateTweetId}) - marking as posted`);
-            await unifiedDatabase
+            await supabase
               .from('content_metadata')
               .update({ 
                 status: 'posted',
@@ -293,14 +325,14 @@ export async function processPostingQueue(): Promise<void> {
           } else {
             // No backup found - reset to queued for retry
             console.log(`[POSTING_QUEUE]   🔄 No backup found - resetting to queued for retry`);
-            await unifiedDatabase
+            await supabase
               .from('content_metadata')
               .update({ status: 'queued' })
               .eq('decision_id', post.decision_id);
           }
         } else {
           // No content - reset to queued
-          await unifiedDatabase
+          await supabase
             .from('content_metadata')
             .update({ status: 'queued' })
             .eq('decision_id', post.decision_id);
@@ -350,7 +382,8 @@ export async function processPostingQueue(): Promise<void> {
         const isContent = decision.decision_type === 'single' || decision.decision_type === 'thread';
         
         // Check current hour's posting count from database
-        const { unifiedDatabase } = await import('../db/unifiedDatabase');
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
         
         if (isContent) {
@@ -358,7 +391,7 @@ export async function processPostingQueue(): Promise<void> {
           // A thread is ONE POST on Twitter, regardless of how many parts it has
           
           // Query recent posts
-          const { data: recentContent } = await unifiedDatabase
+          const { data: recentContent } = await supabase
             .from('content_metadata')
             .select('decision_type')
             .in('decision_type', ['single', 'thread'])
@@ -393,8 +426,7 @@ export async function processPostingQueue(): Promise<void> {
         
         if (isReply) {
           // 🚨 FIX: Query content_metadata TABLE directly
-          const { unifiedDatabase } = await import('../db/unifiedDatabase');
-          const { count: replyCount } = await unifiedDatabase
+          const { count: replyCount } = await supabase
             .from('content_metadata')
             .select('*', { count: 'exact', head: true })
             .eq('decision_type', 'reply')
@@ -423,46 +455,6 @@ export async function processPostingQueue(): Promise<void> {
         const errorMsg = error?.message || error?.toString() || 'Unknown error';
         const errorStack = error?.stack || 'No stack trace';
         
-        // ✅ RATE LIMIT DETECTION: Detect 429 errors and implement exponential backoff
-        const isRateLimit = errorMsg.includes('429') || 
-                           errorMsg.includes('rate limit') || 
-                           errorMsg.includes('RATE_LIMIT') ||
-                           errorMsg.includes('Too Many Requests');
-        
-        if (isRateLimit) {
-          console.error(`[POSTING_QUEUE] 🚨 RATE LIMIT DETECTED (429): ${errorMsg.substring(0, 200)}`);
-          
-          // Record rate limit in circuit breaker
-          recordCircuitBreakerFailure();
-          
-          // Calculate exponential backoff: 2^attempts minutes (max 60 min)
-          const rateLimitBackoffMinutes = Math.min(Math.pow(2, postingCircuitBreaker.failures), 60);
-          console.warn(`[POSTING_QUEUE] ⏸️ Rate limited - backing off for ${rateLimitBackoffMinutes} minutes`);
-          
-          // Log to system_events
-          try {
-            const { unifiedDatabase } = await import('../db/unifiedDatabase');
-            await unifiedDatabase
-              .from('system_events')
-              .insert({
-                event_type: 'rate_limit_detected',
-                severity: 'warning',
-                event_data: {
-                  error: errorMsg.substring(0, 500),
-                  backoff_minutes: rateLimitBackoffMinutes,
-                  failures: postingCircuitBreaker.failures
-                },
-                created_at: new Date().toISOString()
-              });
-          } catch (dbError) {
-            // Non-critical
-          }
-          
-          // Skip remaining posts (will retry after backoff)
-          console.warn(`[POSTING_QUEUE] ⏸️ Skipping remaining posts due to rate limit`);
-          return;
-        }
-        
         // 🔥 FIX: Check for browser queue timeout errors
         const isQueueTimeout = errorMsg.includes('Queue timeout') || 
                                errorMsg.includes('pool overloaded') ||
@@ -476,8 +468,9 @@ export async function processPostingQueue(): Promise<void> {
           
           // 🔥 FIX: Update job_heartbeats to track this failure
           try {
-            const { unifiedDatabase } = await import('../db/unifiedDatabase');
-            await unifiedDatabase
+            const { getSupabaseClient } = await import('../db/index');
+            const supabase = getSupabaseClient();
+            await supabase
               .from('job_heartbeats')
               .upsert({
                 job_name: 'posting',
@@ -494,14 +487,15 @@ export async function processPostingQueue(): Promise<void> {
           
           // Reset status to queued for retry (don't mark as failed - will retry)
           try {
-            const { unifiedDatabase } = await import('../db/unifiedDatabase');
+            const { getSupabaseClient } = await import('../db/index');
+            const supabase = getSupabaseClient();
             const features = (decision.features || {}) as any;
             const retryCount = Number(features?.retry_count || 0);
             
             if (retryCount < 3) {
               // Schedule retry in 5 minutes
               const retryTime = new Date(Date.now() + 5 * 60 * 1000);
-              await unifiedDatabase
+              await supabase
                 .from('content_metadata')
                 .update({
                   status: 'queued',
@@ -560,8 +554,9 @@ export async function processPostingQueue(): Promise<void> {
           console.log(`[POSTING_QUEUE] ✅ Tweet is LIVE on Twitter - marking as posted with NULL tweet_id`);
           
           try {
-            const { unifiedDatabase } = await import('../db/unifiedDatabase');
-            await unifiedDatabase
+            const { getSupabaseClient } = await import('../db/index');
+            const supabase = getSupabaseClient();
+            await supabase
               .from('content_metadata')
               .update({
                 status: 'posted',
@@ -591,8 +586,9 @@ export async function processPostingQueue(): Promise<void> {
         
         // 🔥 FIX: Update job_heartbeats to track posting failures
         try {
-          const { unifiedDatabase } = await import('../db/unifiedDatabase');
-          const { data: currentHeartbeat } = await unifiedDatabase
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          const { data: currentHeartbeat } = await supabase
             .from('job_heartbeats')
             .select('consecutive_failures')
             .eq('job_name', 'posting')
@@ -600,7 +596,7 @@ export async function processPostingQueue(): Promise<void> {
           
           const consecutiveFailures = (currentHeartbeat?.consecutive_failures || 0) + 1;
           
-          await unifiedDatabase
+          await supabase
             .from('job_heartbeats')
             .upsert({
               job_name: 'posting',
@@ -660,8 +656,9 @@ export async function processPostingQueue(): Promise<void> {
     
     // 🔥 FIX: Update job_heartbeats to track success
     try {
-      const { unifiedDatabase } = await import('../db/unifiedDatabase');
-      await unifiedDatabase
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase
         .from('job_heartbeats')
         .upsert({
           job_name: 'posting',
@@ -767,12 +764,13 @@ async function checkPostingRateLimits(): Promise<boolean> {
   const maxPostsPerHour = Number.isFinite(maxPostsPerHourRaw) ? maxPostsPerHourRaw : 1;
   
   try {
-    const { unifiedDatabase } = await import('../db/unifiedDatabase');
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
     
     // 🔧 FIX #1: GRACEFUL NULL TWEET_ID HANDLING
     // Instead of blocking entire system, only exclude NULL posts from rate limit count
     // Background recovery job will fix NULL IDs, but we don't block new posts
-    const { data: pendingIdPosts, error: pendingError } = await unifiedDatabase
+    const { data: pendingIdPosts, error: pendingError } = await supabase
       .from('content_metadata')
       .select('decision_id, content, posted_at')
       .in('decision_type', ['single', 'thread'])
@@ -811,7 +809,7 @@ async function checkPostingRateLimits(): Promise<boolean> {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
     // ✅ FIX #1: Only count posts with valid tweet_ids (excludes NULL posts)
-    const { count, error } = await unifiedDatabase
+    const { count, error } = await supabase
       .from('content_metadata')
       .select('*', { count: 'exact', head: true })
       .in('decision_type', ['single', 'thread'])
@@ -846,8 +844,7 @@ async function checkPostingRateLimits(): Promise<boolean> {
     // ENHANCED: Verify count accuracy by double-checking with detailed query
     let verifiedCount = postsThisHour;
     if (postsThisHour > 0) {
-      const { unifiedDatabase } = await import('../db/unifiedDatabase');
-      const { data: verifyPosts, error: verifyError } = await unifiedDatabase
+      const { data: verifyPosts, error: verifyError } = await supabase
         .from('content_metadata')
         .select('decision_id, posted_at, tweet_id, status')
         .in('decision_type', ['single', 'thread'])
@@ -1655,12 +1652,12 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
     
       console.log(`${logPrefix} 🔍 DEBUG: About to call postContent`);
       
-      // 🔒 VALIDATION: Check character limits before posting (Twitter allows 280 chars)
+      // 🔒 VALIDATION: Check character limits before posting
       if (decision.decision_type === 'thread' && decision.thread_parts) {
         const parts = Array.isArray(decision.thread_parts) ? decision.thread_parts : [];
         for (let i = 0; i < parts.length; i++) {
-          if (parts[i].length > 280) {
-            throw new Error(`Thread part ${i + 1} exceeds 280 chars (${parts[i].length} chars). Max limit: 280 chars.`);
+          if (parts[i].length > 200) {
+            throw new Error(`Thread part ${i + 1} exceeds 200 chars (${parts[i].length} chars). Max limit: 200 chars for optimal engagement.`);
           }
         }
         console.log(`${logPrefix} ✅ Character limit validation passed for ${parts.length} thread parts`);
