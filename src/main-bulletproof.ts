@@ -69,6 +69,80 @@ function getStartupSummary() {
   return config;
 }
 
+// 🔥 PERMANENT FIX: Validate posting configuration and warn/error if disabled
+function validatePostingConfiguration(config: any): void {
+  const flags = getModeFlags(config);
+  const issues: string[] = [];
+  
+  if (flags.postingDisabled) {
+    issues.push('Posting is DISABLED');
+    if (config.MODE === 'shadow') {
+      issues.push('  - MODE=shadow disables posting');
+    }
+    if (process.env.POSTING_DISABLED === 'true') {
+      issues.push('  - POSTING_DISABLED=true');
+    }
+    if (process.env.DRY_RUN === 'true') {
+      issues.push('  - DRY_RUN=true');
+    }
+    if (process.env.DISABLE_POSTING === 'true') {
+      issues.push('  - DISABLE_POSTING=true');
+    }
+  }
+  
+  if (issues.length > 0) {
+    console.error('═══════════════════════════════════════════════════════');
+    console.error('🚨 POSTING CONFIGURATION ERROR');
+    console.error('═══════════════════════════════════════════════════════');
+    issues.forEach(issue => console.error(`  ❌ ${issue}`));
+    console.error('');
+    console.error('  To enable posting:');
+    if (config.MODE === 'shadow') {
+      console.error('    1. Set MODE=live in Railway environment variables');
+    }
+    if (process.env.POSTING_DISABLED === 'true') {
+      console.error('    1. Remove POSTING_DISABLED or set POSTING_DISABLED=false');
+    }
+    if (process.env.DRY_RUN === 'true') {
+      console.error('    1. Remove DRY_RUN or set DRY_RUN=false');
+    }
+    if (process.env.DISABLE_POSTING === 'true') {
+      console.error('    1. Remove DISABLE_POSTING or set DISABLE_POSTING=false');
+    }
+    console.error('    2. Restart Railway service');
+    console.error('═══════════════════════════════════════════════════════');
+    
+    // Log to database for tracking
+    (async () => {
+      try {
+        const { getSupabaseClient } = await import('./db');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'posting_configuration_error',
+          severity: 'critical',
+          event_data: {
+            mode: config.MODE,
+            posting_disabled: flags.postingDisabled,
+            dry_run: flags.dryRun,
+            issues: issues
+          },
+          created_at: new Date().toISOString()
+        });
+      } catch (e) {
+        // Non-critical - continue startup
+      }
+    })();
+    
+    // In production, exit with error to force Railway alert
+    if (isProduction) {
+      console.error('🚨 FATAL: Posting disabled in production - exiting to trigger Railway alert');
+      process.exit(1);
+    }
+  } else {
+    console.log('✅ POSTING_CONFIGURATION: Valid - posting is enabled');
+  }
+}
+
 // Run a script and capture result
 async function runScript(scriptPath: string, args: string[] = []): Promise<boolean> {
   return new Promise((resolve) => {
