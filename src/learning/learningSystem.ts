@@ -22,14 +22,15 @@ export interface FollowerPattern {
   avg_followers_gained: number;
   sample_size: number;
   confidence: number;
+  decay_factor?: number; // 🎯 v2: Time decay factor for this pattern
 }
 
 export class LearningSystem {
   private isInitialized = false;
   private followerPatterns: Map<string, FollowerPattern> = new Map();
-  private generatorPatterns: Map<string, { avg_followers: number; sample_size: number }> = new Map();
-  private hookPatterns: Map<string, { avg_followers: number; sample_size: number }> = new Map();
-  private topicPatterns: Map<string, { avg_followers: number; sample_size: number }> = new Map();
+  private generatorPatterns: Map<string, { avg_followers: number; sample_size: number; decay_factor?: number }> = new Map();
+  private hookPatterns: Map<string, { avg_followers: number; sample_size: number; decay_factor?: number }> = new Map();
+  private topicPatterns: Map<string, { avg_followers: number; sample_size: number; decay_factor?: number }> = new Map();
   private postTracking: Map<string, any> = new Map();
 
   async initialize(): Promise<void> {
@@ -105,94 +106,138 @@ export class LearningSystem {
     // Support both naming conventions
     const followers_gained = actualPerformance.followers_gained || actualPerformance.follower_growth || 0;
     
-    console.log(`[LEARNING_SYSTEM] 📊 Post ${post_id} gained ${followers_gained} followers`);
+    // 🎯 v2 UPGRADE: Use primary_objective_score if available, otherwise calculate from engagement
+    const primary_score = actualPerformance.primary_objective_score ?? 
+      (actualPerformance.engagement_rate ? actualPerformance.engagement_rate * 0.4 + (followers_gained / 50) * 0.6 : 0);
     
-    // Update pattern learning (content_type + hook_strategy)
+    // 🎯 v2 UPGRADE: Calculate age for time decay
+    const postedAt = tracked.posted_at ? new Date(tracked.posted_at) : new Date();
+    const { calculateAgeDays, calculateDecayedScore, getDecayConfig } = await import('../utils/timeDecayLearning');
+    const ageDays = calculateAgeDays(postedAt);
+    const decayConfig = getDecayConfig('hook'); // Hook patterns change quickly
+    const decayed = calculateDecayedScore(primary_score, ageDays, decayConfig);
+    
+    console.log(`[LEARNING_SYSTEM] 📊 Post ${post_id}: ${followers_gained} followers, primary_score=${primary_score.toFixed(4)}, age=${ageDays.toFixed(1)}d, decay=${decayed.decayFactor.toFixed(3)}, effective=${decayed.effectiveScore.toFixed(4)}`);
+    
+    // Update pattern learning (content_type + hook_strategy) with time-decayed score
     const patternKey = `${tracked.content_type}_${tracked.hook_strategy}`;
     const existing = this.followerPatterns.get(patternKey);
     
     if (existing) {
-      // Update running average
-      const newSampleSize = existing.sample_size + 1;
-      const newAvg = (existing.avg_followers_gained * existing.sample_size + followers_gained) / newSampleSize;
+      // 🎯 v2 UPGRADE: Use effective_score (time-decayed) for learning
+      // Weighted average: (old_avg * old_weight + new_effective * new_weight) / total_weight
+      const oldWeight = existing.sample_size * (existing.decay_factor || 1.0);
+      const newWeight = decayed.decayFactor;
+      const totalWeight = oldWeight + newWeight;
+      const newAvg = totalWeight > 0 
+        ? (existing.avg_followers_gained * oldWeight + decayed.effectiveScore * newWeight) / totalWeight
+        : existing.avg_followers_gained;
       
       this.followerPatterns.set(patternKey, {
         ...existing,
         avg_followers_gained: newAvg,
-        sample_size: newSampleSize,
-        confidence: Math.min(0.95, newSampleSize / 20), // Confidence grows with sample size
+        sample_size: existing.sample_size + 1,
+        confidence: Math.min(0.95, (existing.sample_size + 1) / 20),
+        decay_factor: decayed.decayFactor, // Store decay factor for reference
       });
       
-      console.log(`[LEARNING_SYSTEM] 📈 Pattern ${patternKey}: ${newAvg.toFixed(1)} avg followers (n=${newSampleSize})`);
+      console.log(`[LEARNING_SYSTEM] 📈 Pattern ${patternKey}: ${newAvg.toFixed(4)} effective avg (n=${existing.sample_size + 1}, decay=${decayed.decayFactor.toFixed(3)})`);
     } else {
-      // Create new pattern
+      // Create new pattern with effective score
       this.followerPatterns.set(patternKey, {
         content_type: tracked.content_type,
         hook_strategy: tracked.hook_strategy,
         topic_category: tracked.topic_category,
-        avg_followers_gained: followers_gained,
+        avg_followers_gained: decayed.effectiveScore, // Use effective score
         sample_size: 1,
         confidence: 0.05,
+        decay_factor: decayed.decayFactor,
       });
     }
     
-    // 🚀 NEW: Track generator performance for follower growth
+    // 🚀 NEW: Track generator performance for follower growth (with time decay)
     const generatorName = tracked.generator_name || 'unknown';
     const generatorKey = `${generatorName}_${tracked.topic_category || 'general'}`;
     const generatorPattern = this.generatorPatterns.get(generatorKey);
+    const generatorDecayConfig = getDecayConfig('generator'); // Generators change slowly
+    const generatorDecayed = calculateDecayedScore(primary_score, ageDays, generatorDecayConfig);
     
     if (generatorPattern) {
-      const newSampleSize = generatorPattern.sample_size + 1;
-      const newAvg = (generatorPattern.avg_followers * generatorPattern.sample_size + followers_gained) / newSampleSize;
+      const oldWeight = generatorPattern.sample_size * (generatorPattern.decay_factor || 1.0);
+      const newWeight = generatorDecayed.decayFactor;
+      const totalWeight = oldWeight + newWeight;
+      const newAvg = totalWeight > 0
+        ? (generatorPattern.avg_followers * oldWeight + generatorDecayed.effectiveScore * newWeight) / totalWeight
+        : generatorPattern.avg_followers;
+      
       this.generatorPatterns.set(generatorKey, {
         avg_followers: newAvg,
-        sample_size: newSampleSize
+        sample_size: generatorPattern.sample_size + 1,
+        decay_factor: generatorDecayed.decayFactor,
       });
-      console.log(`[LEARNING_SYSTEM] 🎨 Generator ${generatorName}: ${newAvg.toFixed(1)} avg followers (n=${newSampleSize})`);
+      console.log(`[LEARNING_SYSTEM] 🎨 Generator ${generatorName}: ${newAvg.toFixed(4)} effective avg (n=${generatorPattern.sample_size + 1}, decay=${generatorDecayed.decayFactor.toFixed(3)})`);
     } else {
       this.generatorPatterns.set(generatorKey, {
-        avg_followers: followers_gained,
-        sample_size: 1
+        avg_followers: generatorDecayed.effectiveScore,
+        sample_size: 1,
+        decay_factor: generatorDecayed.decayFactor,
       });
     }
     
-    // 🚀 NEW: Track hook pattern performance
+    // 🚀 NEW: Track hook pattern performance (with time decay)
     const hookPattern = tracked.hook_pattern || tracked.hook_strategy || 'unknown';
     const hookKey = `${hookPattern}_${tracked.content_type || 'single'}`;
     const hookPatternData = this.hookPatterns.get(hookKey);
+    const hookDecayed = decayed; // Reuse hook decay config
     
     if (hookPatternData) {
-      const newSampleSize = hookPatternData.sample_size + 1;
-      const newAvg = (hookPatternData.avg_followers * hookPatternData.sample_size + followers_gained) / newSampleSize;
+      const oldWeight = hookPatternData.sample_size * (hookPatternData.decay_factor || 1.0);
+      const newWeight = hookDecayed.decayFactor;
+      const totalWeight = oldWeight + newWeight;
+      const newAvg = totalWeight > 0
+        ? (hookPatternData.avg_followers * oldWeight + hookDecayed.effectiveScore * newWeight) / totalWeight
+        : hookPatternData.avg_followers;
+      
       this.hookPatterns.set(hookKey, {
         avg_followers: newAvg,
-        sample_size: newSampleSize
+        sample_size: hookPatternData.sample_size + 1,
+        decay_factor: hookDecayed.decayFactor,
       });
-      console.log(`[LEARNING_SYSTEM] 🎣 Hook ${hookPattern}: ${newAvg.toFixed(1)} avg followers (n=${newSampleSize})`);
+      console.log(`[LEARNING_SYSTEM] 🎣 Hook ${hookPattern}: ${newAvg.toFixed(4)} effective avg (n=${hookPatternData.sample_size + 1}, decay=${hookDecayed.decayFactor.toFixed(3)})`);
     } else {
       this.hookPatterns.set(hookKey, {
-        avg_followers: followers_gained,
-        sample_size: 1
+        avg_followers: hookDecayed.effectiveScore,
+        sample_size: 1,
+        decay_factor: hookDecayed.decayFactor,
       });
     }
     
-    // 🚀 NEW: Track topic performance
+    // 🚀 NEW: Track topic performance (with time decay)
     const topic = tracked.topic_category || tracked.raw_topic || 'unknown';
     const topicKey = `${topic}`;
     const topicPattern = this.topicPatterns.get(topicKey);
+    const topicDecayConfig = getDecayConfig('topic'); // Topics can trend quickly
+    const topicDecayed = calculateDecayedScore(primary_score, ageDays, topicDecayConfig);
     
     if (topicPattern) {
-      const newSampleSize = topicPattern.sample_size + 1;
-      const newAvg = (topicPattern.avg_followers * topicPattern.sample_size + followers_gained) / newSampleSize;
+      const oldWeight = topicPattern.sample_size * (topicPattern.decay_factor || 1.0);
+      const newWeight = topicDecayed.decayFactor;
+      const totalWeight = oldWeight + newWeight;
+      const newAvg = totalWeight > 0
+        ? (topicPattern.avg_followers * oldWeight + topicDecayed.effectiveScore * newWeight) / totalWeight
+        : topicPattern.avg_followers;
+      
       this.topicPatterns.set(topicKey, {
         avg_followers: newAvg,
-        sample_size: newSampleSize
+        sample_size: topicPattern.sample_size + 1,
+        decay_factor: topicDecayed.decayFactor,
       });
-      console.log(`[LEARNING_SYSTEM] 📚 Topic ${topic}: ${newAvg.toFixed(1)} avg followers (n=${newSampleSize})`);
+      console.log(`[LEARNING_SYSTEM] 📚 Topic ${topic}: ${newAvg.toFixed(4)} effective avg (n=${topicPattern.sample_size + 1}, decay=${topicDecayed.decayFactor.toFixed(3)})`);
     } else {
       this.topicPatterns.set(topicKey, {
-        avg_followers: followers_gained,
-        sample_size: 1
+        avg_followers: topicDecayed.effectiveScore,
+        sample_size: 1,
+        decay_factor: topicDecayed.decayFactor,
       });
     }
     

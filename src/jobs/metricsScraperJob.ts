@@ -11,6 +11,12 @@ import { BulletproofTwitterScraper } from '../scrapers/bulletproofTwitterScraper
 import { ScrapingOrchestrator } from '../metrics/scrapingOrchestrator';
 import { Sentry } from '../observability/instrument';
 import { validatePostsForScraping, validateTweetIdForScraping } from './metricsScraperValidation';
+import { 
+  calculateV2ObjectiveMetrics, 
+  extractContentStructureTypes,
+  type FollowerAttributionData,
+  type EngagementMetrics 
+} from '../utils/v2ObjectiveScoreCalculator';
 
 const parseMetricValue = (value: unknown): number | null => {
   if (value === null || value === undefined) {
@@ -246,7 +252,7 @@ export async function metricsScraperJob(): Promise<void> {
             // Use the shared page from the batch session
             // PHASE 4: Use orchestrator (includes validation, quality tracking, caching)
             const postedAt = new Date(String(post.posted_at));  // ✅ FIXED: Use posted_at, not created_at
-            const hoursSincePost = (Date.now() - postedAt.getTime()) / (1000 * 60 * 60);
+            const hoursSincePostScrape = (Date.now() - postedAt.getTime()) / (1000 * 60 * 60);
             
             let scrapeAttempt = 0;
             let lastError: string | undefined;
@@ -313,7 +319,7 @@ export async function metricsScraperJob(): Promise<void> {
             const repliesNullable = parseMetricValue(metrics.replies);
             const quoteTweetsNullable = parseMetricValue(metrics.quote_tweets);
             const bookmarksNullable = parseMetricValue(metrics.bookmarks);
-            const isFirstHour = hoursSincePost <= 1;
+            const isFirstHour = hoursSincePostScrape <= 1;
             
             // 🔍 CONTENT VERIFICATION: Check if scraped content matches database content
             const scrapedContent = result.content || metrics.content;
@@ -387,7 +393,138 @@ export async function metricsScraperJob(): Promise<void> {
               console.log(`[METRICS_JOB] 📊 Quality: confidence=${result.validationResult.confidence.toFixed(2)}, valid=${result.validationResult.isValid}`);
             }
             
-            // Update outcomes table (for backward compatibility with existing systems)
+            // Calculate engagement rate (needed for v2 metrics)
+            const engagementRate = viewsValue > 0 
+              ? ((likesValue + retweetsValue + repliesValue) / viewsValue) 
+              : 0;
+            
+            // 🎯 v2 UPGRADE: Get follower attribution BEFORE outcomes upsert
+            let followersGained = 0;
+            let followersBefore: number | undefined;
+            let followers24hAfter: number | undefined;
+            let followers2hAfter: number | undefined;
+            let followers48hAfter: number | undefined;
+            let hoursSincePostAttribution: number | undefined;
+            
+            try {
+              const { data: followerTracking } = await supabase
+                .from('post_follower_tracking')
+                .select('follower_count, hours_after_post')
+                .eq('post_id', post.decision_id)
+                .in('hours_after_post', [0, 2, 24, 48])
+                .order('hours_after_post', { ascending: true });
+              
+              if (followerTracking && followerTracking.length > 0) {
+                // Extract follower counts by time window
+                for (const tracking of followerTracking) {
+                  const hours = Number(tracking.hours_after_post) || 0;
+                  const count = Number(tracking.follower_count) || 0;
+                  
+                  if (hours === 0) {
+                    followersBefore = count;
+                  } else if (hours === 2) {
+                    followers2hAfter = count;
+                  } else if (hours === 24) {
+                    followers24hAfter = count;
+                  } else if (hours === 48) {
+                    followers48hAfter = count;
+                  }
+                }
+                
+                // Calculate followers gained (prefer 24h, fall back to 48h or 2h)
+                if (followersBefore !== undefined && followers24hAfter !== undefined) {
+                  followersGained = Math.max(0, followers24hAfter - followersBefore);
+                  hoursSincePostAttribution = 24;
+                  console.log(`[METRICS_JOB] 👥 Follower attribution (24h): ${followersBefore} → ${followers24hAfter} (+${followersGained})`);
+                } else if (followersBefore !== undefined && followers48hAfter !== undefined) {
+                  followersGained = Math.max(0, followers48hAfter - followersBefore);
+                  hoursSincePostAttribution = 48;
+                  console.log(`[METRICS_JOB] 👥 Follower attribution (48h): ${followersBefore} → ${followers48hAfter} (+${followersGained})`);
+                } else if (followersBefore !== undefined && followers2hAfter !== undefined) {
+                  followersGained = Math.max(0, followers2hAfter - followersBefore);
+                  hoursSincePostAttribution = 2;
+                  console.log(`[METRICS_JOB] 👥 Follower attribution (2h): ${followersBefore} → ${followers2hAfter} (+${followersGained})`);
+                } else if (followersBefore !== undefined) {
+                  console.log(`[METRICS_JOB] 👥 Follower baseline: ${followersBefore} (time window data pending)`);
+                }
+                
+                // Calculate hours since post if we have posted_at
+                if (!hoursSincePostAttribution && post.posted_at) {
+                  const postedAt = new Date(post.posted_at);
+                  const now = new Date();
+                  hoursSincePostAttribution = (now.getTime() - postedAt.getTime()) / (1000 * 60 * 60);
+                }
+              }
+            } catch (followerError: any) {
+              console.warn(`[METRICS_JOB] ⚠️ Follower attribution failed: ${followerError.message}`);
+            }
+            
+            // 🎯 v2 UPGRADE: Calculate v2 objective metrics
+            let v2Metrics: {
+              followers_gained_weighted: number | null;
+              primary_objective_score: number | null;
+              hook_type?: string;
+              cta_type?: string;
+              structure_type?: string;
+            } = {
+              followers_gained_weighted: null,
+              primary_objective_score: null
+            };
+
+            try {
+              // Calculate v2 metrics if we have engagement and follower data
+              if (engagementRate >= 0 && (followersGained > 0 || followersBefore !== undefined)) {
+                const attributionData: FollowerAttributionData = {
+                  followers_gained: followersGained,
+                  followers_before: followersBefore,
+                  followers_24h_after: followers24hAfter,
+                  followers_48h_after: followers48hAfter,
+                  followers_2h_after: followers2hAfter,
+                  hours_since_post: hoursSincePostAttribution
+                };
+
+                const engagementData: EngagementMetrics = {
+                  engagement_rate: engagementRate,
+                  impressions: viewsValue,
+                  likes: likesValue,
+                  retweets: retweetsValue,
+                  replies: repliesValue
+                };
+
+                const v2Result = calculateV2ObjectiveMetrics(attributionData, engagementData);
+                v2Metrics.followers_gained_weighted = v2Result.followers_gained_weighted;
+                v2Metrics.primary_objective_score = v2Result.primary_objective_score;
+
+                console.log(`[METRICS_JOB] 🎯 v2 Metrics: weighted_followers=${v2Result.followers_gained_weighted.toFixed(2)}, primary_score=${v2Result.primary_objective_score.toFixed(4)}`);
+
+                // Extract content structure types if we have content
+                try {
+                  const { data: contentData } = await supabase
+                    .from('content_metadata')
+                    .select('content, decision_type')
+                    .eq('decision_id', post.decision_id)
+                    .single();
+
+                  if (contentData?.content) {
+                    const structureTypes = extractContentStructureTypes(
+                      contentData.content,
+                      contentData.decision_type
+                    );
+                    v2Metrics.hook_type = structureTypes.hook_type;
+                    v2Metrics.cta_type = structureTypes.cta_type;
+                    v2Metrics.structure_type = structureTypes.structure_type;
+                  }
+                } catch (contentError: any) {
+                  // Non-critical - continue without structure types
+                  console.warn(`[METRICS_JOB] ⚠️ Failed to extract content structure: ${contentError.message}`);
+                }
+              }
+            } catch (v2Error: any) {
+              console.warn(`[METRICS_JOB] ⚠️ v2 metrics calculation failed: ${v2Error.message}`);
+              // Don't fail - continue with basic metrics
+            }
+            
+            // Update outcomes table (for backward compatibility with existing systems + v2 fields)
             const { data: outcomeData, error: outcomeError } = await supabase.from('outcomes').upsert({
               decision_id: post.decision_id,  // 🔥 FIX: Use decision_id (UUID), not integer id
               tweet_id: post.tweet_id,
@@ -400,9 +537,18 @@ export async function metricsScraperJob(): Promise<void> {
               impressions: viewsNullable, // Map views to impressions
               profile_clicks: profileClicksValue, // 📊 Save Profile visits from analytics page
               first_hour_engagement: isFirstHour ? totalEngagement : null,
+              followers_gained: followersGained, // ✅ Store raw followers_gained
+              followers_before: followersBefore,
+              followers_after: followers24hAfter || followers48hAfter || followers2hAfter,
               collected_at: new Date().toISOString(),
               data_source: 'orchestrator_v2',
-              simulated: false
+              simulated: false,
+              // 🎯 v2 FIELDS:
+              followers_gained_weighted: v2Metrics.followers_gained_weighted,
+              primary_objective_score: v2Metrics.primary_objective_score,
+              hook_type: v2Metrics.hook_type,
+              cta_type: v2Metrics.cta_type,
+              structure_type: v2Metrics.structure_type
             }, { onConflict: 'decision_id' });
             
             if (outcomeError) {
@@ -462,9 +608,7 @@ export async function metricsScraperJob(): Promise<void> {
             
             // 🔥 CRITICAL FIX: Update content_metadata table (used by dashboard!)
             // Dashboard reads actual_impressions, actual_likes, actual_retweets from content_metadata
-            const engagementRate = viewsValue > 0 
-              ? ((likesValue + retweetsValue + repliesValue) / viewsValue) 
-              : 0;
+            // Note: engagementRate already calculated above for v2 metrics
             
             const { error: contentMetadataError } = await supabase
               .from('content_metadata')
@@ -548,30 +692,8 @@ export async function metricsScraperJob(): Promise<void> {
               console.warn(`[METRICS_JOB] ⚠️ Failed to update generator stats:`, statsError.message);
             }
             
-            // 🔧 FIX: Get follower attribution from post_follower_tracking
-            let followersGained = 0;
-            try {
-              const { data: followerTracking } = await supabase
-                .from('post_follower_tracking')
-                .select('follower_count, hours_after_post')
-                .eq('post_id', post.decision_id)
-                .in('hours_after_post', [0, 24])
-                .order('hours_after_post', { ascending: true });
-              
-              if (followerTracking && followerTracking.length >= 2) {
-                const baseline = Number(followerTracking[0].follower_count) || 0;
-                const after24h = Number(followerTracking[1].follower_count) || 0;
-                followersGained = Math.max(0, after24h - baseline);
-                console.log(`[METRICS_JOB] 👥 Follower attribution: ${baseline} → ${after24h} (+${followersGained})`);
-              } else if (followerTracking && followerTracking.length === 1) {
-                // Only baseline available, use 0 for now (will update when 24h data available)
-                console.log(`[METRICS_JOB] 👥 Follower baseline: ${followerTracking[0].follower_count} (24h data pending)`);
-              }
-            } catch (followerError: any) {
-              console.warn(`[METRICS_JOB] ⚠️ Follower attribution failed: ${followerError.message}`);
-            }
-            
             // 🔧 NEW: Update learning system with actual performance data (including real followers!)
+            // Note: followersGained and engagementRate already calculated above for v2 metrics
             try {
               const { learningSystem } = await import('../learning/learningSystem');
               await learningSystem.updatePostPerformance(post.decision_id, {

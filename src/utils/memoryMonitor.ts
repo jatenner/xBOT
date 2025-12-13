@@ -81,6 +81,38 @@ export class MemoryMonitor {
       
       console.log(`🧠 [MEMORY_MONITOR] Emergency cleanup: ${before.rssMB}MB → ${after.rssMB}MB (freed ${freedMB}MB)`);
       
+      // 🔥 CRITICAL FIX: If cleanup freed 0MB and memory still critical, force browser restart
+      // This is the only way to actually free browser memory (browser contexts don't release memory)
+      if (freedMB === 0 && after.rssMB > this.CRITICAL_THRESHOLD) {
+        console.error(`🧠 [MEMORY_MONITOR] 🚨 Cleanup freed 0MB but memory still critical (${after.rssMB}MB) - forcing browser restart...`);
+        try {
+          const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+          const pool = UnifiedBrowserPool.getInstance();
+          
+          // Use emergency cleanup with aggressive mode to force browser restart
+          // This will close all contexts and browser, freeing memory
+          await pool.emergencyCleanup(true); // Aggressive mode = closes browser
+          
+          // Check memory after browser restart
+          await new Promise(r => setTimeout(r, 2000)); // Give OS time to reclaim memory
+          const afterRestart = this.checkMemory();
+          const restartFreedMB = after.rssMB - afterRestart.rssMB;
+          
+          if (restartFreedMB > 0) {
+            console.log(`🧠 [MEMORY_MONITOR] ✅ Browser restart freed ${restartFreedMB}MB: ${after.rssMB}MB → ${afterRestart.rssMB}MB`);
+          } else {
+            console.warn(`🧠 [MEMORY_MONITOR] ⚠️ Browser restart didn't free memory immediately (may take time to reflect)`);
+          }
+          
+          return {
+            freedMB: Math.max(0, freedMB + Math.max(0, restartFreedMB)),
+            success: true
+          };
+        } catch (restartError: any) {
+          console.error(`🧠 [MEMORY_MONITOR] ⚠️ Browser restart failed:`, restartError.message);
+        }
+      }
+      
       return {
         freedMB: Math.max(0, freedMB),
         success: true

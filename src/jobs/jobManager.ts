@@ -396,6 +396,20 @@ export class JobManager {
         120 * MINUTE, // Every 2 hours (needs time to accumulate data)
         90 * MINUTE   // Offset 1.5 hours (after main learning)
       );
+      
+      // 🎯 v2: Offline Weight Map Job - every 6 hours
+      // Computes weight maps from vw_learning for content generation guidance
+      this.scheduleStaggeredJob(
+        'offline_weight_map',
+        async () => {
+          await this.safeExecute('offline_weight_map', async () => {
+            const { offlineWeightMapJob } = await import('./offlineWeightMapJob');
+            await offlineWeightMapJob();
+          });
+        },
+        360 * MINUTE, // Every 6 hours (needs enough data to compute meaningful weights)
+        300 * MINUTE  // Offset 5 hours (after learning cycles have run)
+      );
     }
 
     // News scraping - every 12 hours, offset 240 min (OPTIMIZED: reduced from 60min)

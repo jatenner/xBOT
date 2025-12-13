@@ -169,13 +169,47 @@ async function generateRealContent(): Promise<void> {
         const gateResult = await runGateChain(content.text, content.decision_id);
         if (!gateResult.passed) {
           console.log(`[GATE_CHAIN] ⛔ Post ${slot + 1} blocked (${gateResult.gate}): ${gateResult.reason}`);
-          if (attempt < MAX_GENERATION_RETRIES) {
+          
+          // 🛡️ v2: If gate chain returned rewritten content, use it
+          if ((gateResult as any).rewrittenContent) {
+            console.log(`[MEDICAL_SAFETY] 🔄 Using safety-rewritten content for post ${slot + 1}`);
+            const rewritten = (gateResult as any).rewrittenContent;
+            // Update content text (handle both single and thread formats)
+            if (Array.isArray(content.text)) {
+              // Thread: split rewritten content back into array if needed
+              content.text = rewritten.split('\n\n--- THREAD BREAK ---\n\n').filter((t: string) => t.trim());
+            } else {
+              content.text = rewritten;
+            }
+            // Rewritten content passed safety - continue to next steps
+          } else if (gateResult.gate === 'medical_safety' && (gateResult as any).safetyResult?.rewrittenContent) {
+            // Fallback: check safetyResult for rewritten content
+            console.log(`[MEDICAL_SAFETY] 🔄 Using safety-rewritten content from safetyResult for post ${slot + 1}`);
+            const rewritten = (gateResult as any).safetyResult.rewrittenContent;
+            if (Array.isArray(content.text)) {
+              content.text = rewritten.split('\n\n--- THREAD BREAK ---\n\n').filter((t: string) => t.trim());
+            } else {
+              content.text = rewritten;
+            }
+            // Re-run gate chain with rewritten content
+            const rewrittenGateResult = await runGateChain(content.text, content.decision_id);
+            if (!rewrittenGateResult.passed) {
+              console.log(`[GATE_CHAIN] ⛔ Rewritten content still blocked: ${rewrittenGateResult.reason}`);
+              if (attempt < MAX_GENERATION_RETRIES) {
+                await sleep(GENERATION_RETRY_BACKOFF_MS * attempt);
+                continue;
+              }
+              break;
+            }
+            // Rewritten content passed - continue
+          } else if (attempt < MAX_GENERATION_RETRIES) {
             console.log(`[GATE_CHAIN] 🔁 Retrying post ${slot + 1} after gate failure`);
             await sleep(GENERATION_RETRY_BACKOFF_MS * attempt);
             continue;
+          } else {
+            console.log(`[GATE_CHAIN] ⛔ Exhausted retries for post ${slot + 1} due to gate failure`);
+            break;
           }
-          console.log(`[GATE_CHAIN] ⛔ Exhausted retries for post ${slot + 1} due to gate failure`);
-          break;
         }
 
         batchMetrics.topics.add(content.raw_topic);
@@ -374,6 +408,35 @@ async function generateContentWithLLM() {
   // STEP 0: Show current diversity status
   await diversityEnforcer.getDiversitySummary();
   
+  // 🎯 v2 UPGRADE: STEP 0.5 - Select content slot (micro content calendar)
+  const contentSlotModule = await import('../utils/contentSlotManager');
+  const { 
+    getContentSlotsForToday, 
+    selectContentSlot, 
+    getSlotConfig
+  } = contentSlotModule;
+  
+  // Get recent content slots for diversity
+  const supabase = getSupabaseClient();
+  const { data: recentSlots } = await supabase
+    .from('content_metadata')
+    .select('content_slot')
+    .not('content_slot', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(5);
+  
+  const recentSlotTypes = (recentSlots || [])
+    .map(row => row.content_slot)
+    .filter((slot): slot is string => slot !== null && typeof slot === 'string') as any;
+  
+  const availableSlots = getContentSlotsForToday();
+  const selectedSlot = selectContentSlot(availableSlots, recentSlotTypes.length > 0 ? recentSlotTypes : undefined);
+  const slotConfig = getSlotConfig(selectedSlot);
+  
+  console.log(`\n📅 CONTENT SLOT: ${selectedSlot}`);
+  console.log(`   Description: ${slotConfig.description}`);
+  console.log(`   Available today: ${availableSlots.join(', ')}`);
+  
   // STEP 1: Generate TOPIC (avoiding last 10)
   // 🎯 TRENDING TOPIC INTEGRATION: 35% of posts use trending topics from harvester
   const useTrendingTopic = Math.random() < 0.35; // 35% chance
@@ -422,21 +485,44 @@ async function generateContentWithLLM() {
   console.log(`   Dimension: ${dynamicTopic.dimension}`);
   console.log(`   Viral potential: ${dynamicTopic.viral_potential}`);
   
-  // STEP 2: Generate ANGLE (avoiding last 10)
+  // STEP 2: Generate ANGLE (avoiding last 10, biased by content slot)
   const angleGenerator = getAngleGenerator();
   const angle = await angleGenerator.generateAngle(topic);
   
+  // If slot has preferred angles, try to align (soft bias, not strict)
+  const preferredAngles = slotConfig.preferredAngles || [];
+  if (preferredAngles.length > 0 && Math.random() < 0.3) {
+    // 30% chance to use slot-preferred angle as inspiration
+    console.log(`[CONTENT_SLOT] 💡 Slot suggests angles: ${preferredAngles.join(', ')}`);
+  }
+  
   console.log(`\n📐 ANGLE: "${angle}"`);
   
-  // STEP 3: Generate TONE (avoiding last 10)
+  // STEP 3: Generate TONE (avoiding last 10, biased by content slot)
   const toneGenerator = getToneGenerator();
   const tone = await toneGenerator.generateTone();
   
+  // If slot has preferred tones, try to align (soft bias)
+  const preferredTones = slotConfig.preferredTones || [];
+  if (preferredTones.length > 0 && Math.random() < 0.3) {
+    console.log(`[CONTENT_SLOT] 💡 Slot suggests tones: ${preferredTones.join(', ')}`);
+  }
+  
   console.log(`\n🎤 TONE: "${tone}"`);
   
-  // STEP 4: Match GENERATOR (pure random - 11 generators, 9% each)
+  // STEP 4: Match GENERATOR (weighted by slot preferences + weight maps)
   const generatorMatcher = getGeneratorMatcher();
-  const matchedGenerator = generatorMatcher.matchGenerator(angle, tone);
+  // 🎯 v2 UPGRADE: matchGenerator is now async (uses weight maps)
+  let matchedGenerator = await generatorMatcher.matchGenerator(angle, tone);
+  
+  // 🎯 v2: If slot has preferred generators, bias selection (30% chance to override)
+  const preferredGenerators = slotConfig.preferredGenerators || [];
+  if (preferredGenerators.length > 0 && Math.random() < 0.3) {
+    // 30% chance to use slot-preferred generator
+    const slotGenerator = preferredGenerators[Math.floor(Math.random() * preferredGenerators.length)];
+    console.log(`[CONTENT_SLOT] 🎯 Slot-biased generator selection: ${slotGenerator} (preferred: ${preferredGenerators.join(', ')})`);
+    matchedGenerator = slotGenerator as any; // Type assertion needed
+  }
   
   console.log(`\n🎭 GENERATOR: ${matchedGenerator}`);
   
@@ -791,6 +877,7 @@ THREAD-SPECIFIC RULES:
     topic_cluster: dynamicTopic.dimension || 'health',
     style: tone, // Map tone to style for compatibility
     format: format,
+    content_slot: selectedSlot, // 🎯 v2: Store content slot from micro calendar
     quality_score: calculateQuality(Array.isArray(contentData.text) ? contentData.text.join(' ') : contentData.text),
     predicted_er: 0.03,
     timing_slot: scheduledAt.getHours(),
@@ -914,6 +1001,7 @@ async function queueContent(content: any): Promise<void> {
     decision_id: content.decision_id,
     content: contentText,
     generation_source: 'real',
+    content_slot: content.content_slot || null, // 🎯 v2: Store content slot
     status: 'queued',
     decision_type: content.format === 'thread' ? 'thread' : 'single',
     scheduled_at: content.scheduled_at,
@@ -972,6 +1060,58 @@ async function runGateChain(text: string, decision_id: string) {
   const quality = calculateQuality(text);
   if (quality < flags.MIN_QUALITY_SCORE) {
     return { passed: false, gate: 'quality', reason: 'below_threshold' };
+  }
+  
+  // 🛡️ v2 UPGRADE: Medical Safety Gate
+  try {
+    const { analyzeMedicalSafety } = await import('../utils/medicalSafetyGuard');
+    
+    // Quick check first (fast, no AI call)
+    const { quickSafetyCheck } = await import('../utils/medicalSafetyGuard');
+    const quickCheck = quickSafetyCheck(Array.isArray(text) ? text.join(' ') : text);
+    
+    if (quickCheck.hasObviousIssues) {
+      console.log(`[MEDICAL_SAFETY] ⚠️ Quick check found issues: ${quickCheck.issues.join(', ')}`);
+      // Continue to full AI check
+    }
+    
+    // Full AI safety check
+    const safetyResult = await analyzeMedicalSafety(
+      Array.isArray(text) ? text.join(' ') : text,
+      {
+        maxRetries: 2, // Allow 2 rewrite attempts
+        strictMode: false, // Normal mode (not overly strict)
+        requireDisclaimers: true // Always add disclaimers
+      }
+    );
+    
+    if (!safetyResult.isSafe) {
+      console.log(`[MEDICAL_SAFETY] ⛔ Content rejected: ${safetyResult.riskLevel} risk`);
+      console.log(`[MEDICAL_SAFETY]    Issues: ${safetyResult.issues.join('; ')}`);
+      
+      return {
+        passed: false,
+        gate: 'medical_safety',
+        reason: `risk_level_${safetyResult.riskLevel}`,
+        safetyResult: safetyResult // Include result for potential retry with rewritten content
+      } as any; // Type assertion needed for safetyResult field
+    }
+    
+    // If content was rewritten and is safe, return it in the result
+    if (safetyResult.rewrittenContent && safetyResult.rewrittenContent !== text) {
+      console.log(`[MEDICAL_SAFETY] ✅ Content made safe (rewritten)`);
+      // Store rewritten content in result for caller to use
+      return {
+        passed: true,
+        rewrittenContent: safetyResult.rewrittenContent
+      } as any;
+    } else {
+      console.log(`[MEDICAL_SAFETY] ✅ Content passed safety check`);
+    }
+    
+  } catch (error: any) {
+    console.warn(`[MEDICAL_SAFETY] ⚠️ Safety check failed: ${error.message}, allowing content (fail-open)`);
+    // Fail-open: if safety check fails, allow content (don't block on technical errors)
   }
   
   // Uniqueness gate (simplified for now)
