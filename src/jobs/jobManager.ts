@@ -397,6 +397,20 @@ export class JobManager {
         90 * MINUTE   // Offset 1.5 hours (after main learning)
       );
       
+      // 🎯 Phase 3: Reply Priority Learning - every 90 minutes
+      // Updates discovered_accounts.priority_score based on v2 reply metrics
+      this.scheduleStaggeredJob(
+        'reply_priority_learning',
+        async () => {
+          await this.safeExecute('reply_priority_learning', async () => {
+            const { replyLearningJob } = await import('./replyLearningJob');
+            await replyLearningJob();
+          });
+        },
+        90 * MINUTE, // Every 90 minutes (faster than main reply learning for priority updates)
+        100 * MINUTE  // Offset 100 minutes (stagger from main reply learning)
+      );
+      
       // 🎯 v2: Offline Weight Map Job - every 6 hours
       // Computes weight maps from vw_learning for content generation guidance
       this.scheduleStaggeredJob(
