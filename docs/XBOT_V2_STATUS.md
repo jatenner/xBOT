@@ -404,9 +404,10 @@ This document tracks the v2 upgrade implementation as specified in the **xBOT EN
    - Creates indexes for efficient querying
    - **Status:** Ready to apply
 
-5. **`YYYYMMDD_add_priority_score.sql`** (Phase 3.1)
-   - Adds `priority_score` to `discovered_accounts`
-   - Status: ❌ Not created
+5. **`20251205_add_priority_score_to_discovered_accounts.sql`** (Phase 3.1) ✅ CREATED & APPLIED
+   - Adds `priority_score`, `last_successful_reply_at`, `reply_performance_score` to `discovered_accounts`
+   - Creates indexes for efficient querying
+   - **Status:** ✅ Applied to production
 
 6. **`YYYYMMDD_create_ai_usage.sql`** (Phase 5.1)
    - Creates AI usage tracking table
@@ -459,9 +460,9 @@ All Phase 1 components are implemented:
 
 ### Future Phases (Phase 3+)
 
-- ✅ Phase 1: Data & Learning Foundation (COMPLETE)
-- ✅ Phase 2: Content Enhancements (COMPLETE)
-- Phase 3: Reply System Enhancements (priority scores)
+- ✅ Phase 1: Data & Learning Foundation (COMPLETE & DEPLOYED)
+- ✅ Phase 2: Content Enhancements (COMPLETE & DEPLOYED)
+- ✅ Phase 3: Reply System Enhancements (COMPLETE & DEPLOYED - December 5, 2025)
 - Phase 4: AI Layer Simplification (orchestrator consolidation)
 - Phase 5: Infrastructure & Operations (budget tiers, job config, incidents)
 
