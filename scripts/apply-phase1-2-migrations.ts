@@ -58,7 +58,7 @@ async function main() {
   const migrationsDir = join(__dirname, '../supabase/migrations');
   const migrations = [
     '20251205_add_v2_outcomes_fields.sql',
-    '20251205_add_content_slot.sql', // Must be before vw_learning (which references it)
+    '20251205_add_content_slot_fixed.sql', // Fixed version for view-based schema
     '20251205_create_vw_learning.sql',
     '20251205_create_learning_model_weights.sql'
   ];

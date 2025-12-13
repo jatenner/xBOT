@@ -123,9 +123,9 @@ WHERE cm.status = 'posted'
 -- Create indexes on underlying tables for view performance
 -- (These should already exist, but ensure they're present)
 
--- Index on content_metadata for filtering
-CREATE INDEX IF NOT EXISTS idx_content_metadata_status_posted_at 
-  ON content_metadata(status, posted_at DESC) 
+-- Index on content_generation_metadata_comprehensive for filtering (underlying table)
+CREATE INDEX IF NOT EXISTS idx_cgmc_status_posted_at 
+  ON content_generation_metadata_comprehensive(status, posted_at DESC) 
   WHERE status = 'posted';
 
 -- Index on outcomes decision_id (should already exist)
