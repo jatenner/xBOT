@@ -77,63 +77,109 @@ export class GeneratorMatcher {
   /**
    * Select generator for content creation
    * 
-   * 🎲 CURRENT MODE: PURE RANDOM (Data Collection Phase)
-   * - All generators have equal ~4.5% chance (1/22)
-   * - No bias, no assumptions
-   * - Collects unbiased performance data
-   * 
-   * 🔮 FUTURE MODE: LEARNED WEIGHTS (Optimization Phase)
-   * - Will use performance data to weight selection
-   * - High-performing combinations get higher probability
-   * - Activated after 50-100 posts with data
+   * 🎯 v2 UPGRADE: Uses offline weight maps from learning_model_weights
+   * - Reads active weight map from database
+   * - Uses weighted selection with exploration (80% exploit, 20% explore)
+   * - Falls back to random if no weight map available
    * 
    * @param angle - The content angle/perspective
    * @param tone - The content tone/voice
-   * @returns Randomly selected generator name
+   * @returns Selected generator name (weighted or random)
    */
-  matchGenerator(angle: string, tone: string): GeneratorType {
-    console.log(`[GENERATOR_MATCH] 🎲 Selecting generator (RANDOM MODE - data collection):`);
+  async matchGenerator(angle: string, tone: string): Promise<GeneratorType> {
+    console.log(`[GENERATOR_MATCH] 🎯 Selecting generator (v2 weight map mode):`);
     console.log(`   Angle: "${angle}"`);
     console.log(`   Tone: "${tone}"`);
     
-    // 🎲 PURE RANDOM SELECTION - No bias!
-    // All generators have equal 10% chance
+    // 🎯 v2: Try to load active weight map
+    try {
+      const { getSupabaseClient } = await import('../db');
+      const supabase = getSupabaseClient();
+      
+      const { data: weightMap, error } = await supabase
+        .from('learning_model_weights')
+        .select('weights, version, sample_size')
+        .eq('is_active', true)
+        .order('computed_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (!error && weightMap?.weights?.generator_name) {
+        const generatorWeights = weightMap.weights.generator_name as Record<string, number>;
+        const allGenerators = this.getAllGenerators();
+        
+        // Filter to only generators that exist in our system
+        const validWeights: Record<string, number> = {};
+        let totalWeight = 0;
+        
+        for (const gen of allGenerators) {
+          if (generatorWeights[gen] !== undefined) {
+            validWeights[gen] = generatorWeights[gen];
+            totalWeight += generatorWeights[gen];
+          }
+        }
+        
+        if (Object.keys(validWeights).length > 0 && totalWeight > 0) {
+          // 🎯 v2: Weighted selection with exploration (80% exploit, 20% explore)
+          const explorationRate = 0.2; // 20% exploration
+          const useExploration = Math.random() < explorationRate;
+          
+          if (useExploration) {
+            // 20%: Pure random exploration
+            const randomIndex = Math.floor(Math.random() * allGenerators.length);
+            const selected = allGenerators[randomIndex];
+            console.log(`   → Exploration mode: ${selected} (random)`);
+            return selected;
+          } else {
+            // 80%: Weighted selection (exploit)
+            const selected = this.selectWeightedGenerator(validWeights, totalWeight);
+            const weight = validWeights[selected] || 0;
+            console.log(`   → Exploitation mode: ${selected} (weight: ${(weight * 100).toFixed(1)}%, map v${weightMap.version}, n=${weightMap.sample_size})`);
+            return selected as GeneratorType;
+          }
+        }
+      }
+    } catch (error: any) {
+      console.warn(`[GENERATOR_MATCH] ⚠️ Failed to load weight map: ${error.message}, falling back to random`);
+    }
+    
+    // Fallback: Pure random selection (if no weight map available)
     const allGenerators = this.getAllGenerators();
     const randomIndex = Math.floor(Math.random() * allGenerators.length);
     const selected = allGenerators[randomIndex];
     
-    console.log(`   → Randomly selected: ${selected} (1/${allGenerators.length} chance)`);
-    console.log(`   → Learning mode: OFF (collecting unbiased data first)`);
+    console.log(`   → Random fallback: ${selected} (1/${allGenerators.length} chance, no weight map)`);
     
     return selected;
   }
   
   /**
-   * 🔮 FUTURE: Learned weights-based selection
-   * 
-   * This will be activated later when we have enough performance data.
-   * For now, it just reports data but doesn't influence decisions.
-   * 
-   * To activate: Change LEARNING_MODE_ACTIVE to true
+   * Select generator using weighted probabilities
    */
-  private LEARNING_MODE_ACTIVE = false; // ← Set to true when ready to use learned weights
+  private selectWeightedGenerator(weights: Record<string, number>, totalWeight: number): string {
+    const random = Math.random() * totalWeight;
+    let cumulative = 0;
+    
+    for (const [generator, weight] of Object.entries(weights)) {
+      cumulative += weight;
+      if (random <= cumulative) {
+        return generator;
+      }
+    }
+    
+    // Fallback to first generator if rounding errors
+    return Object.keys(weights)[0] || 'dataNerd';
+  }
   
+  /**
+   * 🎯 v2: Legacy method - now integrated into matchGenerator()
+   * Kept for backward compatibility
+   */
   async matchGeneratorWithLearning(
     angle: string,
     tone: string
   ): Promise<GeneratorType> {
-    
-    if (!this.LEARNING_MODE_ACTIVE) {
-      console.log('[GENERATOR_MATCH] 📊 Learning data available but not active yet');
-      return this.matchGenerator(angle, tone); // Use random for now
-    }
-    
-    // TODO: Implement weighted selection based on performance data
-    // This will query content_performance_learning table
-    // And weight generators by their success rate
-    
-    console.log('[GENERATOR_MATCH] 🧠 LEARNING MODE: Using performance data');
-    return this.matchGenerator(angle, tone); // Placeholder
+    return this.matchGenerator(angle, tone);
   }
   
   /**
