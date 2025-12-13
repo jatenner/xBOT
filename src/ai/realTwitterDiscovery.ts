@@ -993,6 +993,7 @@ export class RealTwitterDiscovery {
 
   /**
    * Store reply opportunities in database
+   * Phase 3 Enhancement: Boosts opportunity_score based on discovered_accounts.priority_score
    */
   async storeOpportunities(opportunities: ReplyOpportunity[]): Promise<void> {
     if (opportunities.length === 0) return;
@@ -1068,8 +1069,26 @@ export class RealTwitterDiscovery {
       }
     }
     
+    // 🎯 Phase 3: Look up priority scores for all target usernames
+    const uniqueUsernames = [...new Set(opportunities.map(opp => opp.tweet_author.toLowerCase().trim()))];
+    const priorityMap = new Map<string, number>();
+    
+    if (uniqueUsernames.length > 0) {
+      const { data: accountData } = await supabase
+        .from('discovered_accounts')
+        .select('username, priority_score')
+        .in('username', uniqueUsernames);
+      
+      if (accountData) {
+        accountData.forEach(acc => {
+          priorityMap.set(acc.username.toLowerCase(), Number(acc.priority_score || 0));
+        });
+      }
+    }
+    
     let successCount = 0;
     let failCount = 0;
+    let boostedCount = 0;
     
     for (const opp of opportunities) {
       const targetId = String(opp.tweet_id);
@@ -1087,6 +1106,21 @@ export class RealTwitterDiscovery {
       }
       
       try {
+        // 🎯 Phase 3: Boost opportunity_score based on priority_score
+        // Formula: final_score = base_score * (1 + priority_score * boost_factor)
+        // boost_factor = 0.5 means high priority (1.0) gets 50% boost
+        const baseScore = Number(opp.opportunity_score || 0);
+        const username = opp.tweet_author.toLowerCase().trim();
+        const priorityScore = priorityMap.get(username) || 0;
+        const BOOST_FACTOR = 0.5; // 50% boost for max priority
+        
+        let finalScore = baseScore;
+        if (priorityScore > 0) {
+          finalScore = baseScore * (1 + priorityScore * BOOST_FACTOR);
+          boostedCount++;
+          console.log(`[REAL_DISCOVERY] 🎯 Boosted @${opp.tweet_author}: ${baseScore.toFixed(2)} → ${finalScore.toFixed(2)} (priority: ${priorityScore.toFixed(3)})`);
+        }
+        
         // Calculate tweet_posted_at from posted_minutes_ago
         const tweetPostedAt = opp.posted_minutes_ago 
           ? new Date(Date.now() - opp.posted_minutes_ago * 60 * 1000).toISOString()
@@ -1104,7 +1138,7 @@ export class RealTwitterDiscovery {
             reply_count: opp.reply_count,
             like_count: opp.like_count,
             posted_minutes_ago: opp.posted_minutes_ago,
-            opportunity_score: opp.opportunity_score,
+            opportunity_score: finalScore, // ✅ Use boosted score
             tweet_posted_at: tweetPostedAt,
             status: 'pending',
             // NEW: Engagement rate & tiering
@@ -1137,6 +1171,9 @@ export class RealTwitterDiscovery {
     }
     
     console.log(`[REAL_DISCOVERY] 💾 Storage complete: ${successCount} succeeded, ${failCount} failed`);
+    if (boostedCount > 0) {
+      console.log(`[REAL_DISCOVERY] 🎯 Phase 3: Boosted ${boostedCount} opportunities based on priority_score`);
+    }
     
     // Log tier breakdown
     const golden = opportunities.filter((o: any) => o.tier === 'golden').length;

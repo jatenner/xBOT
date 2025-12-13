@@ -507,13 +507,14 @@ async function generateRealReplies(): Promise<void> {
   const batchSize = 20;
   let offset = 0;
   
+  // 🎯 Phase 3: Join with discovered_accounts to get priority_score for sorting
   while (true) {
     const { data: batch, error: oppError } = await supabaseClient
       .from('reply_opportunities')
       .select('*')
       .eq('replied_to', false)
       .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
-      .order('created_at', { ascending: false })
+      .order('opportunity_score', { ascending: false }) // ✅ Phase 3: Sort by boosted opportunity_score
       .range(offset, offset + batchSize - 1);
     
     if (oppError) {
@@ -596,19 +597,53 @@ async function generateRealReplies(): Promise<void> {
     return index === -1 ? tierPriority.length : index;
   };
 
+  // 🎯 Phase 3: Enhanced sorting with priority_score
+  // First, fetch priority scores for all target usernames
+  const uniqueUsernames = [...new Set(allOpportunities.map(opp => String(opp.target_username || '').toLowerCase().trim()))];
+  const priorityMap = new Map<string, number>();
+  
+  if (uniqueUsernames.length > 0) {
+    const { data: accountData } = await supabaseClient
+      .from('discovered_accounts')
+      .select('username, priority_score')
+      .in('username', uniqueUsernames);
+    
+    if (accountData) {
+      accountData.forEach(acc => {
+        priorityMap.set(acc.username.toLowerCase(), Number(acc.priority_score || 0));
+      });
+    }
+  }
+  
   const sortedOpportunities = [...allOpportunities].sort((a, b) => {
+    // First: Tier priority (MEGA > VIRAL > TRENDING > FRESH)
     const aRank = tierRank(a.tier);
     const bRank = tierRank(b.tier);
     if (aRank !== bRank) return aRank - bRank;
 
+    // Second: Priority score (from discovered_accounts) - higher priority gets preference
+    const aUsername = String(a.target_username || '').toLowerCase().trim();
+    const bUsername = String(b.target_username || '').toLowerCase().trim();
+    const aPriority = priorityMap.get(aUsername) || 0;
+    const bPriority = priorityMap.get(bUsername) || 0;
+    if (aPriority !== bPriority) return bPriority - aPriority; // Higher priority first
+
+    // Third: Opportunity score (already boosted by harvester)
+    const aOppScore = Number(a.opportunity_score || 0);
+    const bOppScore = Number(b.opportunity_score || 0);
+    if (aOppScore !== bOppScore) return bOppScore - aOppScore;
+
+    // Fourth: Likes (engagement)
     const aLikes = Number(a.like_count) || 0;
     const bLikes = Number(b.like_count) || 0;
     if (aLikes !== bLikes) return bLikes - aLikes;
 
+    // Fifth: Comments (engagement)
     const aComments = Number(a.reply_count) || 0;
     const bComments = Number(b.reply_count) || 0;
     if (aComments !== bComments) return aComments - bComments;
 
+    // Last: Engagement rate
     return (Number(b.engagement_rate) || 0) - (Number(a.engagement_rate) || 0);
   });
 

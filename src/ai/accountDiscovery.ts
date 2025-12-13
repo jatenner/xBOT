@@ -344,6 +344,7 @@ Format your response as JSON with array of accounts.`
     }
     
     // Upsert accounts
+    // Phase 3: Initialize priority_score to 0.0 for new accounts (will be updated by reply learning job)
     for (const account of accounts) {
       await supabase
         .from('discovered_accounts')
@@ -356,6 +357,7 @@ Format your response as JSON with array of accounts.`
           verified: account.verified,
           discovery_method: account.discovery_method,
           discovery_date: account.discovery_date,
+          priority_score: 0.0, // Phase 3: Initialize to 0 (will be updated by reply learning job)
           last_updated: new Date().toISOString()
         }, {
           onConflict: 'username'
