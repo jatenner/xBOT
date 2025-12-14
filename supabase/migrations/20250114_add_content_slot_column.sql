@@ -1,24 +1,17 @@
 -- =====================================================================================
--- ADD VISUAL_FORMAT COLUMN TO CONTENT_METADATA
+-- ADD CONTENT_SLOT COLUMN TO CONTENT_METADATA
 -- Purpose: Fix database schema mismatch preventing content insertion
 -- Date: 2025-01-14
--- Issue: Plan job failing with "Could not find the 'visual_format' column"
--- Note: content_metadata is a VIEW, so we add to underlying table and recreate view
+-- Issue: Plan job failing with "Could not find the 'content_slot' column"
 -- =====================================================================================
 
 BEGIN;
 
--- Add visual_format column to underlying table
--- (content_metadata is a VIEW of content_generation_metadata_comprehensive)
+-- Add content_slot column to underlying table
 ALTER TABLE content_generation_metadata_comprehensive 
-ADD COLUMN IF NOT EXISTS visual_format TEXT;
+ADD COLUMN IF NOT EXISTS content_slot TEXT;
 
--- Add index for analytics queries
-CREATE INDEX IF NOT EXISTS idx_content_visual_format 
-ON content_generation_metadata_comprehensive(visual_format) 
-WHERE visual_format IS NOT NULL;
-
--- Recreate the VIEW to include new column
+-- Recreate VIEW to include content_slot
 DROP VIEW IF EXISTS content_metadata CASCADE;
 
 CREATE VIEW content_metadata AS
@@ -77,12 +70,9 @@ SELECT
   raw_topic,
   tone,
   format_strategy,
-  visual_format  -- ✅ NEW COLUMN
+  visual_format,
+  content_slot
 FROM content_generation_metadata_comprehensive;
-
--- Add comment
-COMMENT ON COLUMN content_generation_metadata_comprehensive.visual_format IS 
-'Description of visual formatting used (e.g., "bullet_points", "minimal_spacing", "question_hook"). Tracks which formatting approaches perform best.';
 
 COMMIT;
 
