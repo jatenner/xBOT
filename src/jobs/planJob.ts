@@ -1001,7 +1001,8 @@ async function queueContent(content: any): Promise<void> {
     decision_id: content.decision_id,
     content: contentText,
     generation_source: 'real',
-    content_slot: content.content_slot || null, // 🎯 v2: Store content slot
+    // 🔧 TEMPORARY: Comment out content_slot until PostgREST cache refreshes
+    // content_slot: content.content_slot || null, // 🎯 v2: Store content slot
     status: 'queued',
     decision_type: content.format === 'thread' ? 'thread' : 'single',
     scheduled_at: content.scheduled_at,
