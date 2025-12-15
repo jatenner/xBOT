@@ -1,8 +1,7 @@
 /**
  * Phase 4 AI Routing Configuration
  * 
- * Part 1: Foundation only - always returns GPT-4o-mini
- * Part 2: Will add intelligent routing based on content_slot and priority_score
+ * Part 2: Real routing rules based on content_slot and priority_score
  */
 
 export type DecisionType = 'single' | 'thread' | 'reply';
@@ -23,22 +22,34 @@ export type ContentSlotType =
 
 export interface AIRoutingRule {
   model: 'gpt-4o-mini' | 'gpt-4o';
-  useExpert: boolean; // Part 1: Always false, Part 2: Will be true for high-value content
+  useExpert: boolean;
   maxTokens: number;
   experimentationEnabled: boolean;
+  minPriorityForExpert?: number; // Minimum priority_score to use expert (for replies)
+  isHighValueSlot?: boolean; // Whether this slot is considered high-value
+  forceCoreOnly?: boolean; // Never use expert for this slot
 }
+
+/**
+ * High-value content slots that can use GPT-4o
+ */
+const HIGH_VALUE_SLOTS: ContentSlotType[] = [
+  'deep_dive',
+  'framework', // High-value when thread format
+  'research' // High-value when thread format
+];
 
 /**
  * Get AI routing rule for a decision type and content slot
  * 
- * Part 1: Always returns GPT-4o-mini with sensible defaults
- * Part 2: Will implement intelligent routing based on slot value and learning signals
+ * Part 2: Implements intelligent routing based on slot value and priority_score
  */
 export function getAiRoutingRule(
   decisionType: DecisionType,
-  contentSlot: ContentSlotType
+  contentSlot?: ContentSlotType | null,
+  priorityScore?: number | null
 ): AIRoutingRule {
-  // Part 1: Simple defaults - always GPT-4o-mini
+  // Base defaults per decision type
   const defaults: Record<DecisionType, { maxTokens: number }> = {
     single: { maxTokens: 512 },
     thread: { maxTokens: 2000 },
@@ -46,12 +57,57 @@ export function getAiRoutingRule(
   };
 
   const defaultForType = defaults[decisionType] || defaults.single;
+  const slot = contentSlot || 'practical_tip'; // Default slot
 
+  // High-value routing rules
+  const isHighValueSlot = HIGH_VALUE_SLOTS.includes(slot);
+  const isThreadFormat = decisionType === 'thread';
+  
+  // Rule 1: High-value threads get GPT-4o
+  if (isThreadFormat && isHighValueSlot) {
+    return {
+      model: 'gpt-4o',
+      useExpert: true,
+      maxTokens: defaultForType.maxTokens,
+      experimentationEnabled: false,
+      isHighValueSlot: true
+    };
+  }
+
+  // Rule 2: High-priority replies get GPT-4o (if priority_score >= 0.8)
+  if (decisionType === 'reply' && priorityScore !== null && priorityScore !== undefined) {
+    const minPriority = 0.8;
+    if (priorityScore >= minPriority) {
+      return {
+        model: 'gpt-4o',
+        useExpert: true,
+        maxTokens: defaultForType.maxTokens,
+        experimentationEnabled: false,
+        minPriorityForExpert: minPriority,
+        isHighValueSlot: true
+      };
+    }
+  }
+
+  // Rule 3: Deep dive singles can use GPT-4o (but less frequently)
+  if (decisionType === 'single' && slot === 'deep_dive' && Math.random() < 0.3) {
+    // 30% chance for deep_dive singles to use GPT-4o
+    return {
+      model: 'gpt-4o',
+      useExpert: true,
+      maxTokens: defaultForType.maxTokens,
+      experimentationEnabled: false,
+      isHighValueSlot: true
+    };
+  }
+
+  // Default: GPT-4o-mini for everything else
   return {
-    model: 'gpt-4o-mini', // Part 1: Always GPT-4o-mini
-    useExpert: false, // Part 1: Never use expert orchestrator
+    model: 'gpt-4o-mini',
+    useExpert: false,
     maxTokens: defaultForType.maxTokens,
-    experimentationEnabled: false // Part 1: No experiments
+    experimentationEnabled: false,
+    forceCoreOnly: false
   };
 }
 

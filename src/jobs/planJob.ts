@@ -678,6 +678,7 @@ async function generateContentWithLLM() {
       tone,
       formatStrategy: typeof formatStrategy === 'string' ? formatStrategy : JSON.stringify(formatStrategy),
       generator_name: matchedGenerator, // Pass pre-matched generator for identical behavior
+      priority_score: null, // Regular posts don't have priority_score
       dynamicTopic,
       growthIntelligence,
       viInsights,
