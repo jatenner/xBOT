@@ -81,10 +81,11 @@ AND column_name IN ('content_slot', 'experiment_group', 'hook_variant');
 ## 3. Feature Flags & Infrastructure
 
 ### Railway Environment Variables
-- **ENABLE_PHASE4_ROUTING:** `true` ✅ (set via Railway CLI)
-- **ENABLE_PHASE4_EXPERIMENTS:** `false` ✅ (set via Railway CLI)
+- **ENABLE_PHASE4_ROUTING:** `true` ✅ (set via Railway CLI: `railway variables --set "ENABLE_PHASE4_ROUTING=true"`)
+- **ENABLE_PHASE4_EXPERIMENTS:** `false` ✅ (set via Railway CLI: `railway variables --set "ENABLE_PHASE4_EXPERIMENTS=false"`)
 - **Connection Method:** `DATABASE_URL` environment variable
 - **Railway Project:** XBOT (production environment)
+- **Railway Service:** xBOT
 
 ### Railway Memory
 - **Status:** ⚠️ Not verifiable via CLI
