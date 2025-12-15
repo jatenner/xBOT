@@ -396,10 +396,12 @@ async function generateSyntheticReplies(): Promise<void> {
   const decision_id = uuidv4();
   
   const supabase = getSupabaseClient();
+  // 🎯 v2: Set content_slot for replies
   await supabase.from('content_metadata').insert([{
     decision_id,
     decision_type: 'reply',
     content: "Great point about nutrition! Here's an additional insight based on recent research...",
+    content_slot: 'reply', // 🎯 v2: Store content slot for replies
     generation_source: 'synthetic',
     status: 'queued',
     scheduled_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
@@ -1097,10 +1099,14 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
   // Calculate scheduled time with stagger delay
   const scheduledAt = new Date(Date.now() + delayMinutes * 60 * 1000);
   
-  const { data, error } = await supabase.from('content_metadata').insert([{
+      // 🎯 v2: Set content_slot for replies (replies use 'reply' slot type)
+      const replyContentSlot = 'reply';
+      
+      const { data, error } = await supabase.from('content_metadata').insert([{
     decision_id: reply.decision_id,
     decision_type: 'reply',
     content: reply.content,
+    content_slot: replyContentSlot, // 🎯 v2: Store content slot for replies
     generation_source: 'strategic_multi_generator',
     status: 'queued',
     scheduled_at: scheduledAt.toISOString(), // Use calculated time

@@ -130,9 +130,16 @@ export async function replyLearningJob(): Promise<void> {
     
     console.log(`[REPLY_LEARNING] 📊 Aggregated stats for ${accountStatsMap.size} accounts`);
     
+    // Log first 20 usernames we intend to update
+    const usernamesToUpdate = Array.from(accountStatsMap.keys())
+      .filter(u => accountStatsMap.get(u)!.reply_count >= MIN_SAMPLES_FOR_SCORE)
+      .slice(0, 20);
+    console.log(`[REPLY_LEARNING] 📝 First 20 usernames to update:`, usernamesToUpdate);
+    
     // Step 3: Calculate priority scores and update discovered_accounts
     let updatedCount = 0;
     let skippedCount = 0;
+    let failedCount = 0;
     
     for (const [username, stats] of accountStatsMap.entries()) {
       // Skip accounts with too few samples
@@ -183,22 +190,68 @@ export async function replyLearningJob(): Promise<void> {
         normalizedScore = 0.5;
       }
       
-      // Update discovered_accounts
-      const { error: updateError } = await supabase
-        .from('discovered_accounts')
-        .update({
-          priority_score: normalizedScore,
-          reply_performance_score: stats.weighted_score,
-          last_successful_reply_at: stats.latest_reply_at?.toISOString() || null,
-          last_updated: new Date().toISOString()
-        })
-        .eq('username', username);
+      // Update or create discovered_accounts entry
+      // Normalize username (remove @ prefix, lowercase for matching)
+      const normalizedUsername = username.replace(/^@/, '').toLowerCase();
       
-      if (updateError) {
-        console.warn(`[REPLY_LEARNING] ⚠️ Failed to update ${username}:`, updateError.message);
+      // Try to find existing account (case-insensitive)
+      const { data: existingAccount } = await supabase
+        .from('discovered_accounts')
+        .select('id, username')
+        .ilike('username', normalizedUsername)
+        .limit(1)
+        .maybeSingle();
+      
+      const updatePayload = {
+        priority_score: normalizedScore,
+        reply_performance_score: stats.weighted_score,
+        last_successful_reply_at: stats.latest_reply_at?.toISOString() || null,
+        last_updated: new Date().toISOString()
+      };
+      
+      let updateSuccess = false;
+      let rowsAffected = 0;
+      
+      if (existingAccount) {
+        // Update existing account using its actual username (preserve case)
+        const { data: updateData, error: updateError } = await supabase
+          .from('discovered_accounts')
+          .update(updatePayload)
+          .eq('id', existingAccount.id)
+          .select('id');
+        
+        if (updateError) {
+          console.warn(`[REPLY_LEARNING] ⚠️ Failed to update ${existingAccount.username} (id=${existingAccount.id}):`, updateError.message);
+          failedCount++;
+        } else if (updateData && updateData.length > 0) {
+          updateSuccess = true;
+          rowsAffected = updateData.length;
+          updatedCount++;
+          console.log(`[REPLY_LEARNING] ✅ Updated ${existingAccount.username}: priority_score=${normalizedScore.toFixed(3)}, replies=${stats.reply_count}, weighted=${stats.weighted_score.toFixed(3)}, rows_affected=${rowsAffected}`);
+        }
       } else {
-        updatedCount++;
-        console.log(`[REPLY_LEARNING] ✅ Updated ${username}: priority_score=${normalizedScore.toFixed(3)}, replies=${stats.reply_count}, weighted=${stats.weighted_score.toFixed(3)}`);
+        // Create new account entry
+        const { data: insertData, error: insertError } = await supabase
+          .from('discovered_accounts')
+          .insert({
+            username: normalizedUsername, // Store lowercase
+            priority_score: normalizedScore,
+            reply_performance_score: stats.weighted_score,
+            last_successful_reply_at: stats.latest_reply_at?.toISOString() || null,
+            last_updated: new Date().toISOString(),
+            created_at: new Date().toISOString()
+          })
+          .select('id');
+        
+        if (insertError) {
+          console.warn(`[REPLY_LEARNING] ⚠️ Failed to create ${normalizedUsername}:`, insertError.message);
+          failedCount++;
+        } else if (insertData && insertData.length > 0) {
+          updateSuccess = true;
+          rowsAffected = insertData.length;
+          updatedCount++;
+          console.log(`[REPLY_LEARNING] ✅ Created ${normalizedUsername}: priority_score=${normalizedScore.toFixed(3)}, replies=${stats.reply_count}, weighted=${stats.weighted_score.toFixed(3)}, rows_affected=${rowsAffected}`);
+        }
       }
     }
     
@@ -233,6 +286,7 @@ export async function replyLearningJob(): Promise<void> {
     console.log(`[REPLY_LEARNING] ✅ Learning cycle complete:`);
     console.log(`  📊 Accounts updated: ${updatedCount}`);
     console.log(`  ⏭️ Accounts skipped (insufficient samples): ${skippedCount}`);
+    console.log(`  ❌ Accounts failed to update: ${failedCount}`);
     console.log(`  📈 Total accounts analyzed: ${accountStatsMap.size}`);
     
     // Log summary stats
