@@ -1404,14 +1404,14 @@ export class JobManager {
       // They should attempt cleanup but proceed to ensure system keeps running
       if (isCritical) {
         // For critical jobs, try cleanup if memory is tight but always proceed
-        if (memory.status === 'critical' || memory.rssMB > 400) {
+        if (memory.status === 'critical' || memory.rssMB > 1600) {
           console.warn(`🧠 [JOB_${jobName.toUpperCase()}] Memory pressure (${memory.rssMB}MB) - performing emergency cleanup for critical job`);
           const cleanupResult = await MemoryMonitor.emergencyCleanup();
           const afterCleanup = MemoryMonitor.checkMemory();
           console.log(`🧠 [JOB_${jobName.toUpperCase()}] After cleanup: ${afterCleanup.rssMB}MB (freed ${cleanupResult.freedMB}MB)`);
           
-          // Only skip if memory is truly exhausted (>500MB on 512MB Railway limit)
-          if (afterCleanup.rssMB > 500) {
+          // Only skip if memory is truly exhausted (>1800MB on 2GB Railway Pro limit)
+          if (afterCleanup.rssMB > 1800) {
             console.error(`🧠 [JOB_${jobName.toUpperCase()}] 🚨 Memory exhausted (${afterCleanup.rssMB}MB > 500MB) - CRITICAL JOB BLOCKED`);
             await recordJobSkip(jobName, `memory_exhausted_${afterCleanup.rssMB}mb`);
             return;
@@ -1432,7 +1432,7 @@ export class JobManager {
         }
         
         // Skip non-critical operations if memory is high (prevents spikes)
-        if (memory.rssMB > 400) {
+        if (memory.rssMB > 1600) {
           console.warn(`🧠 [JOB_${jobName.toUpperCase()}] Memory high (${memory.rssMB}MB) - skipping non-critical job to prevent spikes`);
           await recordJobSkip(jobName, `memory_high_${memory.rssMB}mb`);
           return;

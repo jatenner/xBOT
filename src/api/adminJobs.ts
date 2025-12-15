@@ -76,6 +76,24 @@ async function executeJob(jobName: string, params: Record<string, any>): Promise
       await processPostingQueue();
       return { message: 'Posting queue processed' };
       
+    case 'metrics':
+    case 'metricsScraper':
+      const { metricsScraperJob } = await import('../jobs/metricsScraperJob');
+      await metricsScraperJob();
+      return { message: 'Metrics scraping completed' };
+      
+    case 'weights':
+    case 'offlineWeightMap':
+      const { offlineWeightMapJob } = await import('../jobs/offlineWeightMapJob');
+      await offlineWeightMapJob();
+      return { message: 'Weight map generation completed' };
+      
+    case 'replyLearning':
+    case 'replyPriorityLearning':
+      const { replyLearningJob } = await import('../jobs/replyLearningJob');
+      await replyLearningJob();
+      return { message: 'Reply learning completed' };
+      
     case 'backfillEmbeddings':
       const count = parseInt(params.count) || 100;
       const result = await backfillEmbeddings(count);
@@ -88,7 +106,7 @@ async function executeJob(jobName: string, params: Record<string, any>): Promise
       return { message: 'Viral tweet harvesting completed' };
       
     default:
-      throw new Error(`Unknown job: ${jobName}. Available jobs: analyticsCollector, learn, plan, reply, posting, backfillEmbeddings, harvester`);
+      throw new Error(`Unknown job: ${jobName}. Available jobs: analyticsCollector, learn, plan, reply, posting, metrics, weights, replyLearning, backfillEmbeddings, harvester`);
   }
 }
 

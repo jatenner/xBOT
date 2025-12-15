@@ -14,9 +14,10 @@ export interface MemoryStatus {
 }
 
 export class MemoryMonitor {
-  private static readonly WARNING_THRESHOLD = 400; // MB - Start monitoring closely
-  private static readonly CRITICAL_THRESHOLD = 450; // MB - Emergency cleanup needed
-  private static readonly EMERGENCY_THRESHOLD = 480; // MB - Force cleanup or restart
+  // 🔧 UPDATED for 2GB Railway Pro plan (was 512MB)
+  private static readonly WARNING_THRESHOLD = 1200; // MB - Start monitoring closely (60% of 2GB)
+  private static readonly CRITICAL_THRESHOLD = 1600; // MB - Emergency cleanup needed (80% of 2GB)
+  private static readonly EMERGENCY_THRESHOLD = 1800; // MB - Force cleanup or restart (90% of 2GB)
   
   /**
    * Check current memory usage
