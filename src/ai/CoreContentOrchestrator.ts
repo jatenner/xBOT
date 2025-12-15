@@ -12,6 +12,7 @@ import type { DecisionType, ContentSlotType } from '../config/aiRoutingConfig';
 export interface CoreContentRequest {
   decision_type: DecisionType;
   content_slot: ContentSlotType;
+  model?: 'gpt-4o-mini' | 'gpt-4o'; // Explicit model selection (Part 3)
   topic?: string;
   angle?: string;
   tone?: string;
@@ -81,20 +82,25 @@ export class CoreContentOrchestrator {
       console.log(`[PHASE4][CoreContentOrchestrator] Selected generator: ${matchedGenerator}`);
     }
 
-    // Call dedicated generator (same as planJob.callDedicatedGenerator)
-    const result = await this.callDedicatedGenerator(matchedGenerator, {
+    // Format selection (same logic as planJob)
+    const selectedFormat: 'single' | 'thread' = Math.random() < 0.40 ? 'thread' : 'single';
+    console.log(`[PHASE4][CoreContentOrchestrator] 📊 Format selected: ${selectedFormat}`);
+
+    // Use explicit model from request, or default to gpt-4o-mini
+    const model = request.model || 'gpt-4o-mini';
+    console.log(`[PHASE4][CoreContentOrchestrator] Using model: ${model}`);
+
+    // Call generator with explicit model via helper
+    const { callGeneratorWithModel } = await import('./generatorCallHelper');
+    const result = await callGeneratorWithModel(matchedGenerator, {
       topic: request.topic || 'health optimization',
       angle: request.angle,
       tone: request.tone,
       formatStrategy: request.formatStrategy,
-      dynamicTopic: request.dynamicTopic,
+      format: selectedFormat,
       growthIntelligence: request.growthIntelligence,
-      viInsights: request.viInsights,
-      angle_type: request.angle_type,
-      tone_is_singular: request.tone_is_singular,
-      tone_cluster: request.tone_cluster,
-      structural_type: request.structural_type
-    });
+      viInsights: request.viInsights
+    }, model);
 
     return {
       text: result.text,
@@ -104,92 +110,12 @@ export class CoreContentOrchestrator {
       tone: result.tone,
       visual_format: result.visual_format,
       generator_used: matchedGenerator,
-      angle_type: result.angle_type,
-      tone_is_singular: result.tone_is_singular,
-      tone_cluster: result.tone_cluster,
-      structural_type: result.structural_type
+      angle_type: request.angle_type || result.angle_type,
+      tone_is_singular: request.tone_is_singular || result.tone_is_singular,
+      tone_cluster: request.tone_cluster || result.tone_cluster,
+      structural_type: request.structural_type || result.structural_type
     };
   }
 
-  /**
-   * Call dedicated generator (same logic as planJob.callDedicatedGenerator)
-   */
-  private static async callDedicatedGenerator(generatorName: string, context: any) {
-    const { topic, angle, tone, formatStrategy, dynamicTopic, growthIntelligence, viInsights } = context;
-
-    // Map generator names to their module files and function names
-    const generatorMap: Record<string, { module: string, fn: string }> = {
-      'provocateur': { module: 'provocateurGenerator', fn: 'generateProvocateurContent' },
-      'dataNerd': { module: 'dataNerdGenerator', fn: 'generateDataNerdContent' },
-      'mythBuster': { module: 'mythBusterGenerator', fn: 'generateMythBusterContent' },
-      'contrarian': { module: 'contrarianGenerator', fn: 'generateContrarianContent' },
-      'storyteller': { module: 'storytellerGenerator', fn: 'generateStorytellerContent' },
-      'coach': { module: 'coachGenerator', fn: 'generateCoachContent' },
-      'philosopher': { module: 'philosopherGenerator', fn: 'generatePhilosopherContent' },
-      'culturalBridge': { module: 'culturalBridgeGenerator', fn: 'generateCulturalBridgeContent' },
-      'newsReporter': { module: 'newsReporterGenerator', fn: 'generateNewsReporterContent' },
-      'explorer': { module: 'explorerGenerator', fn: 'generateExplorerContent' },
-      'thoughtLeader': { module: 'thoughtLeaderGenerator', fn: 'generateThoughtLeaderContent' },
-      'interestingContent': { module: 'interestingContentGenerator', fn: 'generateInterestingContent' },
-      'dynamicContent': { module: 'dynamicContentGenerator', fn: 'generateDynamicContent' },
-      'popCultureAnalyst': { module: 'popCultureAnalystGenerator', fn: 'generatePopCultureContent' },
-      'teacher': { module: 'teacherGenerator', fn: 'generateTeacherContent' },
-      'investigator': { module: 'investigatorGenerator', fn: 'generateInvestigatorContent' },
-      'connector': { module: 'connectorGenerator', fn: 'generateConnectorContent' },
-      'pragmatist': { module: 'pragmatistGenerator', fn: 'generatePragmatistContent' },
-      'historian': { module: 'historianGenerator', fn: 'generateHistorianContent' },
-      'translator': { module: 'translatorGenerator', fn: 'generateTranslatorContent' },
-      'patternFinder': { module: 'patternFinderGenerator', fn: 'generatePatternFinderContent' },
-      'experimenter': { module: 'experimenterGenerator', fn: 'generateExperimenterContent' },
-    };
-
-    const config = generatorMap[generatorName];
-    if (!config) {
-      console.error(`[PHASE4][CoreContentOrchestrator] ❌ Generator not mapped: ${generatorName}`);
-      throw new Error(`Unknown generator: ${generatorName}`);
-    }
-
-    try {
-      console.log(`[PHASE4][CoreContentOrchestrator] 🎭 Calling ${config.module}.${config.fn}()...`);
-
-      const generatorModule = await import(`../generators/${config.module}`);
-      const generateFn = generatorModule[config.fn];
-
-      if (typeof generateFn !== 'function') {
-        console.error(`[PHASE4][CoreContentOrchestrator] ❌ Function ${config.fn} not found in ${config.module}`);
-        throw new Error(`Generator function ${config.fn} not found`);
-      }
-
-      // Format selection (same logic as planJob)
-      const selectedFormat: 'single' | 'thread' = Math.random() < 0.40 ? 'thread' : 'single';
-      console.log(`[PHASE4][CoreContentOrchestrator] 📊 Format selected: ${selectedFormat}`);
-
-      const result = await generateFn({
-        topic,
-        angle,
-        tone,
-        formatStrategy,
-        format: selectedFormat,
-        intelligence: growthIntelligence,
-        viInsights: viInsights || null
-      });
-
-      return {
-        text: result.content,
-        format: selectedFormat as 'single' | 'thread',
-        topic,
-        angle,
-        tone,
-        visual_format: result.visualFormat,
-        angle_type: context.angle_type,
-        tone_is_singular: context.tone_is_singular,
-        tone_cluster: context.tone_cluster,
-        structural_type: context.structural_type
-      };
-    } catch (error: any) {
-      console.error(`[PHASE4][CoreContentOrchestrator] ❌ Error calling ${config.module}:`, error.message);
-      throw error;
-    }
-  }
 }
 

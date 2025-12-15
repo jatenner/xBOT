@@ -1041,6 +1041,27 @@ async function queueContent(content: any): Promise<void> {
     ? content.text.join('\n\n--- THREAD BREAK ---\n\n') // Store threads with separators
     : content.text;
   
+  // ═══════════════════════════════════════════════════════════
+  // 🧪 PHASE 4 EXPERIMENTS: Assign experiment metadata
+  // ═══════════════════════════════════════════════════════════
+  let experimentAssignment: { experiment_group: string | null; hook_variant: string | null } = {
+    experiment_group: null,
+    hook_variant: null
+  };
+  
+  // Check if Phase 4 routing is enabled for experiments
+  const { shouldUsePhase4Routing } = await import('../ai/orchestratorRouter');
+  const phase4Enabled = shouldUsePhase4Routing();
+  
+  if (phase4Enabled) {
+    try {
+      const { assignExperiment } = await import('../experiments/experimentAssigner');
+      experimentAssignment = assignExperiment(content.content_slot || 'practical_tip');
+    } catch (error: any) {
+      console.warn(`[PHASE4][Experiment] Failed to assign experiment:`, error.message);
+    }
+  }
+
   // 🔧 Build insert payload with optional meta-awareness fields
   // (Supabase schema cache may not have refreshed yet)
   const insertPayload: any = {
@@ -1065,11 +1086,20 @@ async function queueContent(content: any): Promise<void> {
     // Legacy fields for compatibility
     bandit_arm: content.style || 'varied',
     timing_arm: `slot_${content.timing_slot}`,
-    thread_parts: Array.isArray(content.text) ? content.text : null
+    thread_parts: Array.isArray(content.text) ? content.text : null,
+    
+    // 🧪 Phase 4: Experiment metadata
+    experiment_group: experimentAssignment.experiment_group,
+    hook_variant: experimentAssignment.hook_variant
   };
   
   // 🎯 v2: Log content_slot being stored
   console.log(`[PLAN_JOB] 📅 Content slot: ${insertPayload.content_slot || 'NULL'} for decision ${content.decision_id}`);
+  
+  // 🧪 Phase 4: Log experiment assignment
+  if (experimentAssignment.experiment_group) {
+    console.log(`[PHASE4][Experiment] Assigned experiment_group=${experimentAssignment.experiment_group} hook_variant=${experimentAssignment.hook_variant} to decision_id=${content.decision_id}`);
+  }
   
   // 🧵 THREAD TRACKING: Log when threads are queued
   if (insertPayload.decision_type === 'thread') {
