@@ -1,0 +1,365 @@
+======================================================================
+FAILURE MODES REPORT
+======================================================================
+
+Total failures: 1000
+(Posts with engagement_rate < 0.001 OR followers_gained_weighted < 0)
+
+COMMON TOPICS IN FAILURES:
+  unknown: 598 (59.8%)
+  The Potential Benefits of Walter Cruttenden's 'Capture Universe' Hypothesis on Gut Health Immune Axis: 1 (0.1%)
+  Harnessing GSJET for Elite Body Composition: Unlocking the Premier Recovery Metric: 1 (0.1%)
+  Tailoring Your Gut Microbiome for Enhanced GABA Production: A Deep Dive into Gut-Brain Anxiety: 1 (0.1%)
+  Spotting Conjugated Linoleic Acid (CLA) Deception: The Nutrition Squeeze: 1 (0.1%)
+  Unleashing Irisin: The Brown Adipose-tissue Hormone Transformed into a Weight-loss Player: 1 (0.1%)
+  The􏰫 Vagus Nerve Influence on Mitochondrial Function: Celery Juice as a Non-Traditional Energy Drink for Marathoners: 1 (0.1%)
+  Leveraging Apigenin: A Flavonoid Slayer Against Oral Cancer and Its Discovery Delta in Dietary Sources: 1 (0.1%)
+  Targeted UBIQUITY Reset via Circulating Magic Bullet Peptides: Exploring Optimal Amino Synergies: 1 (0.1%)
+  The Mysteries of Fasting and Lipid Metabolism: Can Math During Intervals Alter Gene Expression?: 1 (0.1%)
+
+COMMON GENERATORS IN FAILURES:
+  coach: 211 (21.1%)
+  data_nerd: 187 (18.7%)
+  thought_leader: 168 (16.8%)
+  provocateur: 52 (5.2%)
+  mythBuster: 48 (4.8%)
+  newsReporter: 45 (4.5%)
+  interestingContent: 40 (4.0%)
+  contrarian: 38 (3.8%)
+  dataNerd: 36 (3.6%)
+  philosopher: 34 (3.4%)
+
+CORRELATIONS:
+  Generators with high failure rate: thought_leader, coach, data_nerd
+  Topics with high failure rate: unknown
+
+======================================================================
+EXAMPLE FAILURES (20 worst):
+----------------------------------------------------------------------
+
+1. [ec69e6ab...]
+   Generator: contrarian
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Think inflammation is always bad? It's your body's 911 call! 30% of immune cells activate to fight invaders. Yet, chronic inflammation silently fuels 70% of diseases. Attack the root, not just symptom..."
+
+2. [0f4c5774...]
+   Generator: storyteller
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Chronic inflammation spikes heart disease risk by 50%! Ditching processed foods slashes inflammation by 40% in just 3 months. Imagine cutting down on heart attacks by changing your diet!..."
+
+3. [fb317de0...]
+   Generator: storyteller
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Inflammation isn't just a nuisance; it's a silent epidemic affecting 60% of adults. Forget endless meds: Try turmeric, ginger, and omega-3s. Balance naturally. 🌿..."
+
+4. [25cc92c4...]
+   Generator: storyteller
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Olive oil can cut heart disease by 30%! A 2010 study with 1,700 participants revealed that a Mediterranean diet rich in olive oil slashed heart disease risk by 30% in 5 years. The secret? Monounsatura..."
+
+5. [350509cc...]
+   Generator: dataNerd
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Sleeping less than 6 hours? You're risking a 50% higher chance of stroke! 31,000 adults studied: lack of sleep = inflammation = dangerous vascular damage. It's more than feeling tired; it's endangerin..."
+
+6. [347869b8...]
+   Generator: storyteller
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Ever wonder why 70% of people feel 'off'? It's not you—it's modern chaos. Ditch the pill. Reclaim your mind. Reconnect with life...."
+
+7. [62271c3b...]
+   Generator: storyteller
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Sugar isn't just a sweet treat; it's a silent epidemic. 80% of processed foods contain added sugar. Cut your daily intake by 50% and watch your energy soar. Share if you're ready to challenge the suga..."
+
+8. [ba62941f...]
+   Generator: provocateur
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Think meditation is the only stress-buster? Think again. Exercise slashes cortisol by 15% in just 30 minutes and floods your brain with feel-good endorphins. Ditch the zen for a jog and boost your emo..."
+
+9. [510a4ee9...]
+   Generator: storyteller
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "A 60-year-old slashed inflammation by 40% in 12 weeks—no meds, just Mediterranean diet! Omega-3s and antioxidants aren't just buzzwords; they crushed oxidative stress. Food is your best defense agains..."
+
+10. [dc9e6758...]
+   Generator: contrarian
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Think fats cause inflammation? Surprise: Sugar's the real villain. Consuming 25% of daily calories from sugar spikes inflammation by 90%! It's sugar, not fats, that fuels the fire. 🍬🔥..."
+
+11. [dd933a85...]
+   Generator: storyteller
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Mindfulness slashes teen anxiety by 30%! It's not magic, it's science: Boosting prefrontal cortex activity. Mental resilience isn't luck; it's a skill you can master...."
+
+12. [d9e9e362...]
+   Generator: provocateur
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Why chase genetics for longevity? 70% of health is lifestyle-driven. Diet, exercise, and stress control reshape your DNA for life extension. Skip the lab, start with your plate...."
+
+13. [23032ed1...]
+   Generator: contrarian
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Willpower is overrated. 75% of habits are sparked by where and when—not motivation. Picture this: Starbucks at 8 AM, gym at 6 PM. Design beats willpower. Rethink habit formation...."
+
+14. [7980ef94...]
+   Generator: contrarian
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Think 8 hours of sleep is ideal? Think again. A 2019 study revealed 6 hours of deep sleep boosts brain power more than 9 hours of tossing and turning. Quality over quantity is key. Upgrade your sleep ..."
+
+15. [eccf628d...]
+   Generator: dataNerd
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Working 55+ hours weekly boosts stroke risk by 33%! Chronic stress isn't just tiring—it's a ticking time bomb. Quality beats quantity every time. Protect your health...."
+
+16. [31cd2e82...]
+   Generator: provocateur
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Why pop a pill for sleep when blue light's the real culprit? Screens suppress melatonin by 23%, delaying sleep. Ditch evening screens, not your body's signals...."
+
+17. [293a6b24...]
+   Generator: provocateur
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Why chase weight loss? Exercise is a mental health powerhouse—boosts endorphins, slashes anxiety by 43%! Focus on mood and cognition, transform your well-being...."
+
+18. [249bd7d9...]
+   Generator: contrarian
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "Why do 40% of new habits fail in 30 days? It's not consistency; it's the emotional spark behind them. A 2010 study showed emotion-driven cues stick. Ditch the frequency myth—focus on what truly connec..."
+
+19. [713ff2bb...]
+   Generator: contrarian
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "You've been lied to: Habit formation takes 21 days? Nope, try 66 (18-254 range). It's not about days—it's about relentless consistency. Why settle for myths when science reveals the truth?..."
+
+20. [be456d30...]
+   Generator: storyteller
+   Topic: N/A
+   Engagement rate: 0.000000
+   Followers gained: N/A
+   Content: "66 days to a new habit? Most fail at day 21. Don't quit—early dopamine rushes set you up for success. Consistency, not speed, transforms behavior...."
+
+======================================================================
+JSON OUTPUT:
+----------------------------------------------------------------------
+{
+  "total_failures": 1000,
+  "common_topics": [
+    {
+      "topic": "unknown",
+      "count": 598
+    },
+    {
+      "topic": "The Potential Benefits of Walter Cruttenden's 'Capture Universe' Hypothesis on Gut Health Immune Axis",
+      "count": 1
+    },
+    {
+      "topic": "Harnessing GSJET for Elite Body Composition: Unlocking the Premier Recovery Metric",
+      "count": 1
+    },
+    {
+      "topic": "Tailoring Your Gut Microbiome for Enhanced GABA Production: A Deep Dive into Gut-Brain Anxiety",
+      "count": 1
+    },
+    {
+      "topic": "Spotting Conjugated Linoleic Acid (CLA) Deception: The Nutrition Squeeze",
+      "count": 1
+    },
+    {
+      "topic": "Unleashing Irisin: The Brown Adipose-tissue Hormone Transformed into a Weight-loss Player",
+      "count": 1
+    },
+    {
+      "topic": "The􏰫 Vagus Nerve Influence on Mitochondrial Function: Celery Juice as a Non-Traditional Energy Drink for Marathoners",
+      "count": 1
+    },
+    {
+      "topic": "Leveraging Apigenin: A Flavonoid Slayer Against Oral Cancer and Its Discovery Delta in Dietary Sources",
+      "count": 1
+    },
+    {
+      "topic": "Targeted UBIQUITY Reset via Circulating Magic Bullet Peptides: Exploring Optimal Amino Synergies",
+      "count": 1
+    },
+    {
+      "topic": "The Mysteries of Fasting and Lipid Metabolism: Can Math During Intervals Alter Gene Expression?",
+      "count": 1
+    }
+  ],
+  "common_generators": [
+    {
+      "generator": "coach",
+      "count": 211
+    },
+    {
+      "generator": "data_nerd",
+      "count": 187
+    },
+    {
+      "generator": "thought_leader",
+      "count": 168
+    },
+    {
+      "generator": "provocateur",
+      "count": 52
+    },
+    {
+      "generator": "mythBuster",
+      "count": 48
+    },
+    {
+      "generator": "newsReporter",
+      "count": 45
+    },
+    {
+      "generator": "interestingContent",
+      "count": 40
+    },
+    {
+      "generator": "contrarian",
+      "count": 38
+    },
+    {
+      "generator": "dataNerd",
+      "count": 36
+    },
+    {
+      "generator": "philosopher",
+      "count": 34
+    }
+  ],
+  "examples": [
+    {
+      "decision_id": "ec69e6ab-89be-426b-85de-a25ecc1c89c1",
+      "content": "Think inflammation is always bad? It's your body's 911 call! 30% of immune cells activate to fight invaders. Yet, chronic inflammation silently fuels 70% of diseases. Attack the root, not just symptom",
+      "engagement_rate": 0,
+      "followers_gained_weighted": null,
+      "generator_name": "contrarian",
+      "topic": null
+    },
+    {
+      "decision_id": "0f4c5774-5f7f-46cd-bc33-cc76f07d8cb2",
+      "content": "Chronic inflammation spikes heart disease risk by 50%! Ditching processed foods slashes inflammation by 40% in just 3 months. Imagine cutting down on heart attacks by changing your diet!",
+      "engagement_rate": 0,
+      "followers_gained_weighted": null,
+      "generator_name": "storyteller",
+      "topic": null
+    },
+    {
+      "decision_id": "fb317de0-a36e-462e-ae54-658e253c430e",
+      "content": "Inflammation isn't just a nuisance; it's a silent epidemic affecting 60% of adults. Forget endless meds: Try turmeric, ginger, and omega-3s. Balance naturally. 🌿",
+      "engagement_rate": 0,
+      "followers_gained_weighted": null,
+      "generator_name": "storyteller",
+      "topic": null
+    },
+    {
+      "decision_id": "25cc92c4-ff4d-4353-a974-85aec7e85cb9",
+      "content": "Olive oil can cut heart disease by 30%! A 2010 study with 1,700 participants revealed that a Mediterranean diet rich in olive oil slashed heart disease risk by 30% in 5 years. The secret? Monounsatura",
+      "engagement_rate": 0,
+      "followers_gained_weighted": null,
+      "generator_name": "storyteller",
+      "topic": null
+    },
+    {
+      "decision_id": "350509cc-bc7d-4d9e-8b27-6e06b69076ba",
+      "content": "Sleeping less than 6 hours? You're risking a 50% higher chance of stroke! 31,000 adults studied: lack of sleep = inflammation = dangerous vascular damage. It's more than feeling tired; it's endangerin",
+      "engagement_rate": 0,
+      "followers_gained_weighted": null,
+      "generator_name": "dataNerd",
+      "topic": null
+    },
+    {
+      "decision_id": "347869b8-f0a6-4559-8c1d-d3da60a5523a",
+      "content": "Ever wonder why 70% of people feel 'off'? It's not you—it's modern chaos. Ditch the pill. Reclaim your mind. Reconnect with life.",
+      "engagement_rate": 0,
+      "followers_gained_weighted": null,
+      "generator_name": "storyteller",
+      "topic": null
+    },
+    {
+      "decision_id": "62271c3b-9186-4838-a7df-1f29ed6652fe",
+      "content": "Sugar isn't just a sweet treat; it's a silent epidemic. 80% of processed foods contain added sugar. Cut your daily intake by 50% and watch your energy soar. Share if you're ready to challenge the suga",
+      "engagement_rate": 0,
+      "followers_gained_weighted": null,
+      "generator_name": "storyteller",
+      "topic": null
+    },
+    {
+      "decision_id": "ba62941f-3e92-473b-8ffe-389372d77815",
+      "content": "Think meditation is the only stress-buster? Think again. Exercise slashes cortisol by 15% in just 30 minutes and floods your brain with feel-good endorphins. Ditch the zen for a jog and boost your emo",
+      "engagement_rate": 0,
+      "followers_gained_weighted": null,
+      "generator_name": "provocateur",
+      "topic": null
+    },
+    {
+      "decision_id": "510a4ee9-2687-4267-9457-9fe65e07f3e8",
+      "content": "A 60-year-old slashed inflammation by 40% in 12 weeks—no meds, just Mediterranean diet! Omega-3s and antioxidants aren't just buzzwords; they crushed oxidative stress. Food is your best defense agains",
+      "engagement_rate": 0,
+      "followers_gained_weighted": null,
+      "generator_name": "storyteller",
+      "topic": null
+    },
+    {
+      "decision_id": "dc9e6758-f2f2-423c-95f7-6a0f80c1583f",
+      "content": "Think fats cause inflammation? Surprise: Sugar's the real villain. Consuming 25% of daily calories from sugar spikes inflammation by 90%! It's sugar, not fats, that fuels the fire. 🍬🔥",
+      "engagement_rate": 0,
+      "followers_gained_weighted": null,
+      "generator_name": "contrarian",
+      "topic": null
+    }
+  ],
+  "correlations": {
+    "low_engagement_generators": [
+      "thought_leader",
+      "coach",
+      "data_nerd"
+    ],
+    "low_followers_topics": [
+      "unknown"
+    ]
+  }
+}
+
+======================================================================
+REPORT COMPLETE
+======================================================================

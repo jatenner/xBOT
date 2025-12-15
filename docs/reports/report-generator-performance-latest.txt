@@ -1,0 +1,271 @@
+======================================================================
+GENERATOR PERFORMANCE REPORT
+======================================================================
+
+TEXT SUMMARY:
+----------------------------------------------------------------------
+
+[data_nerd]
+  Uses: 218
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0091
+  Avg primary_objective_score: N/A
+
+[coach]
+  Uses: 217
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0118
+  Avg primary_objective_score: N/A
+
+[thought_leader]
+  Uses: 189
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0124
+  Avg primary_objective_score: N/A
+
+[provocateur]
+  Uses: 58
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0066
+  Avg primary_objective_score: N/A
+
+[contrarian]
+  Uses: 41
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0027
+  Avg primary_objective_score: N/A
+
+[newsReporter]
+  Uses: 39
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0025
+  Avg primary_objective_score: N/A
+
+[mythBuster]
+  Uses: 38
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0043
+  Avg primary_objective_score: N/A
+
+[storyteller]
+  Uses: 35
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0010
+  Avg primary_objective_score: N/A
+
+[dataNerd]
+  Uses: 33
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0015
+  Avg primary_objective_score: N/A
+
+[philosopher]
+  Uses: 30
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0079
+  Avg primary_objective_score: N/A
+
+[thoughtLeader]
+  Uses: 29
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0054
+  Avg primary_objective_score: N/A
+
+[culturalBridge]
+  Uses: 25
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0048
+  Avg primary_objective_score: N/A
+
+[explorer]
+  Uses: 16
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0017
+  Avg primary_objective_score: N/A
+
+[dynamicContent]
+  Uses: 15
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0006
+  Avg primary_objective_score: N/A
+
+[interestingContent]
+  Uses: 14
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0000
+  Avg primary_objective_score: N/A
+
+[human_content_orchestrator]
+  Uses: 2
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: 0.0000
+  Avg primary_objective_score: N/A
+
+[Explorer]
+  Uses: 1
+  Avg followers_gained_weighted: N/A
+  Avg engagement_rate: N/A
+  Avg primary_objective_score: N/A
+
+======================================================================
+JSON OUTPUT:
+----------------------------------------------------------------------
+[
+  {
+    "generator_name": "data_nerd",
+    "uses": 218,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.009083259945438425,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "coach",
+    "uses": 217,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.011814761438450578,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "thought_leader",
+    "uses": 189,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.012352502218069888,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "provocateur",
+    "uses": 58,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.0065853427103398175,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "contrarian",
+    "uses": 41,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.002704281083142639,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "newsReporter",
+    "uses": 39,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.0024725274725274724,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "mythBuster",
+    "uses": 38,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.004291492496857899,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "storyteller",
+    "uses": 35,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.00101010101010101,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "dataNerd",
+    "uses": 33,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.0015012254901960785,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "philosopher",
+    "uses": 30,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.007883597883597883,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "thoughtLeader",
+    "uses": 29,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.005365140590863966,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "culturalBridge",
+    "uses": 25,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.004823348694316436,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "explorer",
+    "uses": 16,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.0016891891891891893,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "dynamicContent",
+    "uses": 15,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0.0005509641873278238,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "interestingContent",
+    "uses": 14,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "human_content_orchestrator",
+    "uses": 2,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": 0,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  },
+  {
+    "generator_name": "Explorer",
+    "uses": 1,
+    "avg_followers_gained_weighted": null,
+    "avg_engagement_rate": null,
+    "avg_primary_objective_score": null,
+    "top_posts": [],
+    "worst_posts": []
+  }
+]
+
+======================================================================
+REPORT COMPLETE
+======================================================================

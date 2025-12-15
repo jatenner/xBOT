@@ -161,6 +161,9 @@ export async function metricsScraperJob(): Promise<void> {
     let updated = 0;
     let skipped = 0;
     let failed = 0;
+    let v2CalculatedCount = 0;
+    let verificationFailedCount = 0;
+    let scrapeFailedCount = 0;
     
     // PHASE 4: Use ScrapingOrchestrator instead of direct scraper
     const orchestrator = ScrapingOrchestrator.getInstance();
@@ -301,6 +304,7 @@ export async function metricsScraperJob(): Promise<void> {
             if (!result.success) {
               const errorMessage = result.error || lastError || 'unknown_error';
               console.warn(`[METRICS_JOB] ⚠️ Scraping failed for ${post.tweet_id}: ${errorMessage}`);
+              scrapeFailedCount++;
               failed++;
               continue;
             }
@@ -322,6 +326,8 @@ export async function metricsScraperJob(): Promise<void> {
             const isFirstHour = hoursSincePostScrape <= 1;
             
             // 🔍 CONTENT VERIFICATION: Check if scraped content matches database content
+            let verificationFailed = false;
+            let verificationReason = '';
             const scrapedContent = result.content || metrics.content;
             if (scrapedContent && typeof scrapedContent === 'string') {
               try {
@@ -344,6 +350,8 @@ export async function metricsScraperJob(): Promise<void> {
                       : verifyContentMatch(expectedContent, scrapedContent, 0.7);
                     
                     if (!verification.isValid) {
+                      verificationFailed = true;
+                      verificationReason = `content_mismatch (similarity: ${(verification.similarity * 100).toFixed(1)}%)`;
                       console.error(`[METRICS_JOB] 🚨 MISATTRIBUTION DETECTED!`);
                       console.error(`[METRICS_JOB] Tweet ID: ${post.tweet_id}`);
                       console.error(`[METRICS_JOB] Decision ID: ${post.decision_id}`);
@@ -353,19 +361,38 @@ export async function metricsScraperJob(): Promise<void> {
                       console.error(`[METRICS_JOB] ⚠️ SKIPPING metrics update - content mismatch!`);
                       console.error(`[METRICS_JOB] 💡 This indicates the tweet_id in database is WRONG!`);
                       console.error(`[METRICS_JOB] 💡 Manual investigation required - tweet_id may belong to different post`);
+                      verificationFailedCount++;
                       failed++;
                       continue; // Skip this tweet - don't store wrong metrics
                     } else {
                       console.log(`[METRICS_JOB] ✅ CONTENT VERIFICATION: Match ${(verification.similarity * 100).toFixed(1)}% - proceeding`);
                     }
+                  } else {
+                    verificationFailed = true;
+                    verificationReason = 'no_expected_content_in_db';
+                    console.warn(`[METRICS_JOB] ⚠️ No expected content found in database for decision_id: ${post.decision_id}`);
                   }
+                } else {
+                  verificationFailed = true;
+                  verificationReason = 'metadata_not_found';
+                  console.warn(`[METRICS_JOB] ⚠️ No metadata found for decision_id: ${post.decision_id}`);
                 }
               } catch (verifyError: any) {
+                verificationFailed = true;
+                verificationReason = `verification_error: ${verifyError.message}`;
                 console.warn(`[METRICS_JOB] ⚠️ Content verification failed: ${verifyError.message}`);
                 // Continue anyway - verification failure shouldn't block metrics collection
               }
             } else {
+              verificationFailed = true;
+              verificationReason = 'no_content_extracted';
               console.warn(`[METRICS_JOB] ⚠️ No content extracted for verification (tweet_id: ${post.tweet_id})`);
+            }
+            
+            // If verification failed, we still want to log it but may continue with metrics
+            // (For now, we skip on verification failure to avoid misattribution)
+            if (verificationFailed && !verificationReason.includes('verification_error')) {
+              // Already handled above with continue statement
             }
             
             const totalEngagement =
@@ -394,9 +421,19 @@ export async function metricsScraperJob(): Promise<void> {
             }
             
             // Calculate engagement rate (needed for v2 metrics)
-            const engagementRate = viewsValue > 0 
-              ? ((likesValue + retweetsValue + repliesValue) / viewsValue) 
-              : 0;
+            // 🔧 FIX: Distinguish between "no data" (NULL) and "zero engagement" (0)
+            // If we successfully scraped (viewsNullable !== null), engagement_rate should be 0 if no engagement
+            // NULL should only mean "we truly could not scrape this tweet"
+            let engagementRate: number | null;
+            if (viewsNullable !== null && viewsNullable !== undefined) {
+              // We have view data - calculate engagement_rate (will be 0 if no engagement)
+              engagementRate = viewsValue > 0
+                ? ((likesValue + retweetsValue + repliesValue) / viewsValue)
+                : 0; // If views is 0 but we scraped, engagement_rate is 0 (not NULL)
+            } else {
+              // No view data available - engagement_rate is NULL (scraping failed)
+              engagementRate = null;
+            }
             
             // 🎯 v2 UPGRADE: Get follower attribution BEFORE outcomes upsert
             let followersGained = 0;
@@ -472,13 +509,15 @@ export async function metricsScraperJob(): Promise<void> {
             };
 
             try {
-              // 🎯 FIX: Always calculate v2 metrics if we have engagement data (views/impressions)
-              // v2 metrics can be calculated with just engagement_rate (followers_gained_weighted will be 0)
-              // This ensures all tweets get v2 metrics populated, not just those with follower tracking
-              const hasEngagementData = viewsValue > 0 || likesValue > 0 || retweetsValue > 0 || repliesValue > 0;
+              // 🎯 FIX: Calculate v2 metrics if we have ANY engagement data OR follower tracking
+              // This ensures v2 metrics are populated even with zero engagement (for learning)
+              // NULL should only mean "we truly could not scrape this tweet"
+              const hasEngagementData = viewsNullable !== null || likesNullable !== null || retweetsNullable !== null || repliesNullable !== null;
+              const hasFollowerTracking = followersBefore !== undefined;
               
-              if (hasEngagementData) {
+              if (hasEngagementData || hasFollowerTracking) {
                 // Use engagement_rate if available, otherwise calculate from engagement
+                // If views is 0 but we have data, engagement_rate should be 0 (not NULL)
                 const effectiveEngagementRate = engagementRate !== null && engagementRate !== undefined 
                   ? engagementRate 
                   : (viewsValue > 0 ? ((likesValue + retweetsValue + repliesValue) / viewsValue) : 0);
@@ -504,7 +543,15 @@ export async function metricsScraperJob(): Promise<void> {
                 v2Metrics.followers_gained_weighted = v2Result.followers_gained_weighted;
                 v2Metrics.primary_objective_score = v2Result.primary_objective_score;
 
-                console.log(`[METRICS_JOB] 🎯 v2 Metrics calculated: weighted_followers=${v2Result.followers_gained_weighted.toFixed(2)}, primary_score=${v2Result.primary_objective_score.toFixed(4)}, engagement_rate=${effectiveEngagementRate.toFixed(4)}`);
+                v2CalculatedCount++;
+                console.log(`[METRICS_JOB][V2] Calculated v2 metrics for ${post.tweet_id}:`, {
+                  followers_gained_weighted: v2Metrics.followers_gained_weighted,
+                  primary_objective_score: v2Metrics.primary_objective_score,
+                  hasEngagementData,
+                  hasFollowerTracking,
+                  engagement_rate: effectiveEngagementRate,
+                  followers_gained: followersGained || 0
+                });
 
                 // Extract content structure types if we have content
                 try {
@@ -530,7 +577,14 @@ export async function metricsScraperJob(): Promise<void> {
                   console.warn(`[METRICS_JOB] ⚠️ Failed to extract content structure: ${contentError.message}`);
                 }
               } else {
-                console.log(`[METRICS_JOB] ⚠️ Skipping v2 metrics: no engagement data (views=${viewsValue}, likes=${likesValue})`);
+                console.log(`[METRICS_JOB][V2] Skipping v2 metrics for ${post.tweet_id}:`, {
+                  reason: 'no engagement and no follower tracking',
+                  viewsNullable,
+                  likesNullable,
+                  retweetsNullable,
+                  repliesNullable,
+                  followersBefore
+                });
               }
             } catch (v2Error: any) {
               console.error(`[METRICS_JOB] ❌ v2 metrics calculation failed: ${v2Error.message}`);
@@ -757,6 +811,15 @@ export async function metricsScraperJob(): Promise<void> {
     });
     
     console.log(`[METRICS_JOB] ✅ Metrics collection complete: ${updated} updated, ${skipped} skipped, ${failed} failed`);
+    console.log(`[METRICS_JOB][SUMMARY]`, {
+      totalProcessed: posts.length,
+      updated,
+      skipped,
+      failed,
+      v2CalculatedCount,
+      verificationFailedCount,
+      scrapeFailedCount
+    });
     
     // Record success metrics in Sentry
     span.setAttributes({

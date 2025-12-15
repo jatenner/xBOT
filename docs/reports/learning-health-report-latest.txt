@@ -1,0 +1,44 @@
+[LEARNING_HEALTH] 🔍 Generating health report...
+
+======================================================================
+xBOT LEARNING HEALTH REPORT (LAST 7 DAYS)
+======================================================================
+
+[V2 OUTCOMES]
+  Total outcomes: 718
+  With v2 fields: 52
+  Coverage: 52/718 = 7.2%
+
+[CONTENT SLOTS]
+  Total rows: 1000
+  With content_slot: 11
+  Coverage: 11/1000 = 1.1%
+  By slot:
+    reply: 6
+    framework: 2
+    test_slot: 1
+    test_slot_client: 1
+    research: 1
+
+[VW_LEARNING]
+  Rows (last 7 days): 317
+
+[WEIGHT MAPS]
+  Rows (last 7 days): 1
+
+[REPLY PRIORITIES]
+  Total accounts: 1000
+  Non-zero priority: 38
+  Coverage: 38/1000 = 3.8%
+
+[EXPERIMENTS]
+  Status: Experiments currently OFF or no experiment data in last 7 days
+
+[PHASE 4 ROUTING]
+  Core vs Expert usage: not tracked in DB (log-only)
+
+======================================================================
+REPORT COMPLETE
+======================================================================
+
+[LEARNING_HEALTH] ✅ Report generated successfully

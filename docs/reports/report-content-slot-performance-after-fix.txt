@@ -1,0 +1,87 @@
+======================================================================
+CONTENT SLOT PERFORMANCE REPORT
+======================================================================
+
+TEXT SUMMARY:
+----------------------------------------------------------------------
+
+[reply]
+  Count: 2
+  Avg engagement_rate: N/A
+  Avg followers_gained_weighted: N/A
+
+[framework]
+  Count: 1
+  Avg engagement_rate: 0.0000
+  Avg followers_gained_weighted: 0.000
+  Top post: score=0.0455
+    "Want to supercharge your workouts? Try a handful of mixed nuts! They provide healthy fats, protein, and fiber to sustain energy. Before your next workout, grab a small bag. You'll feel the difference ..."
+  Worst post: score=0.0455
+    "Want to supercharge your workouts? Try a handful of mixed nuts! They provide healthy fats, protein, and fiber to sustain energy. Before your next workout, grab a small bag. You'll feel the difference ..."
+
+[research]
+  Count: 1
+  Avg engagement_rate: 0.0000
+  Avg followers_gained_weighted: 0.000
+  Top post: score=0.0455
+    "Did you know snacking on seaweed can boost energy levels by 14%? A Journal of Food Science study (Harvard 2023) found 1-2 grams daily enhances thyroid function, crucial for metabolism. Low iodine caus..."
+  Worst post: score=0.0455
+    "Did you know snacking on seaweed can boost energy levels by 14%? A Journal of Food Science study (Harvard 2023) found 1-2 grams daily enhances thyroid function, crucial for metabolism. Low iodine caus..."
+
+======================================================================
+JSON OUTPUT:
+----------------------------------------------------------------------
+[
+  {
+    "content_slot": "reply",
+    "count": 2,
+    "avg_engagement_rate": null,
+    "avg_followers_gained_weighted": null,
+    "top_post": null,
+    "worst_post": null
+  },
+  {
+    "content_slot": "framework",
+    "count": 1,
+    "avg_engagement_rate": 0,
+    "avg_followers_gained_weighted": 0,
+    "top_post": {
+      "decision_id": "79d19366-6e88-45a9-9ba6-60650d0b26a3",
+      "content": "Want to supercharge your workouts? Try a handful of mixed nuts! They provide healthy fats, protein, and fiber to sustain energy. Before your next workout, grab a small bag. You'll feel the difference ",
+      "followers_gained_weighted": 0,
+      "primary_objective_score": 0.045515,
+      "engagement_rate": 0
+    },
+    "worst_post": {
+      "decision_id": "79d19366-6e88-45a9-9ba6-60650d0b26a3",
+      "content": "Want to supercharge your workouts? Try a handful of mixed nuts! They provide healthy fats, protein, and fiber to sustain energy. Before your next workout, grab a small bag. You'll feel the difference ",
+      "followers_gained_weighted": 0,
+      "primary_objective_score": 0.045515,
+      "engagement_rate": 0
+    }
+  },
+  {
+    "content_slot": "research",
+    "count": 1,
+    "avg_engagement_rate": 0,
+    "avg_followers_gained_weighted": 0,
+    "top_post": {
+      "decision_id": "0ae11a4f-2425-4032-83f6-bbafccaad7a9",
+      "content": "Did you know snacking on seaweed can boost energy levels by 14%? A Journal of Food Science study (Harvard 2023) found 1-2 grams daily enhances thyroid function, crucial for metabolism. Low iodine caus",
+      "followers_gained_weighted": 0,
+      "primary_objective_score": 0.045515,
+      "engagement_rate": 0
+    },
+    "worst_post": {
+      "decision_id": "0ae11a4f-2425-4032-83f6-bbafccaad7a9",
+      "content": "Did you know snacking on seaweed can boost energy levels by 14%? A Journal of Food Science study (Harvard 2023) found 1-2 grams daily enhances thyroid function, crucial for metabolism. Low iodine caus",
+      "followers_gained_weighted": 0,
+      "primary_objective_score": 0.045515,
+      "engagement_rate": 0
+    }
+  }
+]
+
+======================================================================
+REPORT COMPLETE
+======================================================================

@@ -1,0 +1,5 @@
+======================================================================
+VOICE EXTRACTION REPORT
+======================================================================
+
+❌ Error fetching posts: column vw_learning.sentiment does not exist
