@@ -41,11 +41,13 @@ AND column_name IN ('content_slot', 'experiment_group', 'hook_variant');
 ```
 
 ### VIEW: `vw_learning`
-- **Status:** ❌ Does not exist
-- **Issue:** Migration `20250115_restore_content_slot_and_vw_learning.sql` may not have been applied
-- **Impact:** Slot performance scores unavailable (routing works with defaults)
-- **Priority:** Low (does not block Phase A rollout)
-- **Action:** Apply migration if needed, or let it populate over time
+- **Status:** ✅ Created and populated
+- **Migration Applied:** `20250115_restore_content_slot_and_vw_learning.sql`
+- **Command:** `pnpm tsx scripts/apply-vw-learning-migration.ts`
+- **Rows (last 7 days):** 316
+- **Total rows:** 2,717
+- **Impact:** Slot performance scores now available for learning-aware routing
+- **Verification:** View is queryable and contains historical data
 
 ---
 
@@ -73,8 +75,10 @@ AND column_name IN ('content_slot', 'experiment_group', 'hook_variant');
 - **Status:** ✅ Working (will increase over time)
 
 ### vw_learning
-- **Rows (last 3 days):** N/A (view does not exist)
-- **Status:** ❌ View missing (low priority)
+- **Rows (last 7 days):** 316
+- **Total rows:** 2,717
+- **Status:** ✅ View created and queryable
+- **Migration Applied:** `20250115_restore_content_slot_and_vw_learning.sql` via `scripts/apply-vw-learning-migration.ts`
 
 ---
 
