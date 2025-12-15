@@ -658,15 +658,60 @@ async function generateContentWithLLM() {
   
   llmMetrics.calls_total++;
   
-  const generatedContent = await callDedicatedGenerator(matchedGenerator, {
-    topic,
-    angle,
-    tone,
-    formatStrategy,
-    dynamicTopic,
-    growthIntelligence, // ✅ Now passed to generator!
-    viInsights // ✅ NEW: Pass VI insights to generator
-  });
+  // ═══════════════════════════════════════════════════════════
+  // 🚀 PHASE 4 ROUTING: Conditionally use orchestratorRouter
+  // ═══════════════════════════════════════════════════════════
+  const { shouldUsePhase4Routing, routeContentGeneration } = await import('../ai/orchestratorRouter');
+  const usePhase4Routing = shouldUsePhase4Routing();
+  
+  let generatedContent: any;
+  
+  if (usePhase4Routing) {
+    // Phase 4: Use orchestratorRouter
+    console.log('[PHASE4] 🚀 Using Phase 4 orchestratorRouter');
+    
+    const routerResponse = await routeContentGeneration({
+      decision_type: (formatStrategy && typeof formatStrategy === 'object' && (formatStrategy as any).format_type === 'thread') ? 'thread' : 'single',
+      content_slot: selectedSlot,
+      topic,
+      angle,
+      tone,
+      formatStrategy: typeof formatStrategy === 'string' ? formatStrategy : JSON.stringify(formatStrategy),
+      generator_name: matchedGenerator, // Pass pre-matched generator for identical behavior
+      dynamicTopic,
+      growthIntelligence,
+      viInsights,
+      angle_type: (dynamicTopic as any)?.angle_type,
+      tone_is_singular: (dynamicTopic as any)?.tone_is_singular,
+      tone_cluster: (dynamicTopic as any)?.tone_cluster,
+      structural_type: (dynamicTopic as any)?.structural_type
+    });
+    
+    // Convert router response to same format as callDedicatedGenerator
+    generatedContent = {
+      text: routerResponse.text,
+      format: routerResponse.format,
+      topic: routerResponse.topic,
+      angle: routerResponse.angle,
+      tone: routerResponse.tone,
+      visual_format: routerResponse.visual_format,
+      angle_type: routerResponse.angle_type,
+      tone_is_singular: routerResponse.tone_is_singular,
+      tone_cluster: routerResponse.tone_cluster,
+      structural_type: routerResponse.structural_type
+    };
+  } else {
+    // Legacy: Use existing callDedicatedGenerator
+    generatedContent = await callDedicatedGenerator(matchedGenerator, {
+      topic,
+      angle,
+      tone,
+      formatStrategy,
+      dynamicTopic,
+      growthIntelligence, // ✅ Now passed to generator!
+      viInsights // ✅ NEW: Pass VI insights to generator
+    });
+  }
   
   if (!generatedContent) {
     llmMetrics.errors++;
