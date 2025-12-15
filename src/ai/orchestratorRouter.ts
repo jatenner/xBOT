@@ -26,8 +26,24 @@ export async function routeContentGeneration(
 ): Promise<CoreContentResponse> {
   const { decision_type, content_slot, priority_score } = request;
 
-  // Get routing rule based on decision type, slot, and priority
-  const routingRule = getAiRoutingRule(decision_type, content_slot || null, priority_score || null);
+  // Get slot performance score for learning-aware routing
+  let slotPerformanceScore: number | null = null;
+  if (content_slot) {
+    try {
+      const { getSlotPerformanceScore } = await import('../learning/slotPerformanceTracker');
+      slotPerformanceScore = await getSlotPerformanceScore(content_slot);
+    } catch (error: any) {
+      console.warn(`[PHASE4][Router] Failed to get slot performance:`, error.message);
+    }
+  }
+
+  // Get routing rule based on decision type, slot, priority, and learning signals
+  const routingRule = await getAiRoutingRule(
+    decision_type, 
+    content_slot || null, 
+    priority_score || null,
+    slotPerformanceScore
+  );
 
   // Check if expert usage is allowed (budget + rules)
   const allowExpert = await shouldUseExpertModel(routingRule);
@@ -40,23 +56,29 @@ export async function routeContentGeneration(
     upgradeReason = 'high_priority_reply';
   }
 
-  // Log routing decision
-  console.log(`[PHASE4][Router] decisionType=${decision_type}, slot=${content_slot || 'unknown'}, priority=${priority_score || 'N/A'}, rule.model=${routingRule.model}, expertAllowed=${allowExpert}, reason=${upgradeReason || 'none'}`);
+  // Log routing decision with learning signals
+  const slotScoreStr = slotPerformanceScore !== null ? slotPerformanceScore.toFixed(3) : 'N/A';
+  console.log(`[PHASE4][Router] decisionType=${decision_type}, slot=${content_slot || 'unknown'}, priority=${priority_score || 'N/A'}, slotScore=${slotScoreStr}, rule.model=${routingRule.model}, expertAllowed=${allowExpert}, reason=${upgradeReason || 'none'}`);
 
-  // Route to appropriate orchestrator
+  // Route to appropriate orchestrator with explicit model
   if (allowExpert && routingRule.useExpert) {
     // Use ExpertOrchestrator (GPT-4o)
     const expertRequest: ExpertContentRequest = {
       ...request,
+      model: routingRule.model, // Explicit model from routing rule
       upgrade_reason: upgradeReason
     };
     return ExpertOrchestrator.generate(expertRequest);
   } else {
-    // Use CoreContentOrchestrator (GPT-4o-mini)
+    // Use CoreContentOrchestrator (GPT-4o-mini or downgraded GPT-4o)
     if (routingRule.useExpert && !allowExpert) {
       console.log(`[PHASE4][Router] ⚠️ Downgraded to core model due to budget constraints`);
     }
-    return CoreContentOrchestrator.generate(request);
+    const coreRequest: CoreContentRequest = {
+      ...request,
+      model: routingRule.model // Explicit model from routing rule (may be downgraded)
+    };
+    return CoreContentOrchestrator.generate(coreRequest);
   }
 }
 

@@ -42,13 +42,14 @@ const HIGH_VALUE_SLOTS: ContentSlotType[] = [
 /**
  * Get AI routing rule for a decision type and content slot
  * 
- * Part 2: Implements intelligent routing based on slot value and priority_score
+ * Part 3: Implements intelligent routing based on slot value, priority_score, and learning signals
  */
-export function getAiRoutingRule(
+export async function getAiRoutingRule(
   decisionType: DecisionType,
   contentSlot?: ContentSlotType | null,
-  priorityScore?: number | null
-): AIRoutingRule {
+  priorityScore?: number | null,
+  slotPerformanceScore?: number | null
+): Promise<AIRoutingRule> {
   // Base defaults per decision type
   const defaults: Record<DecisionType, { maxTokens: number }> = {
     single: { maxTokens: 512 },
@@ -63,8 +64,29 @@ export function getAiRoutingRule(
   const isHighValueSlot = HIGH_VALUE_SLOTS.includes(slot);
   const isThreadFormat = decisionType === 'thread';
   
-  // Rule 1: High-value threads get GPT-4o
+  // Part 3: Learning-aware routing
+  // If slot performance is available, use it to adjust routing decisions
+  const slotScore = slotPerformanceScore !== null && slotPerformanceScore !== undefined 
+    ? slotPerformanceScore 
+    : null;
+  
+  const SLOT_SCORE_THRESHOLD = 0.5; // Minimum slot performance to consider Expert
+  const SLOT_SCORE_BOOST_THRESHOLD = 0.7; // High-performing slots get Expert preference
+
+  // Rule 1: High-value threads get GPT-4o (if slot performance allows)
   if (isThreadFormat && isHighValueSlot) {
+    // If slot performance is low, downgrade to Core
+    if (slotScore !== null && slotScore < SLOT_SCORE_THRESHOLD) {
+      console.log(`[PHASE4][Router] Downgraded slot=${slot} to Core due to low slotPerformanceScore=${slotScore.toFixed(3)}`);
+      return {
+        model: 'gpt-4o-mini',
+        useExpert: false,
+        maxTokens: defaultForType.maxTokens,
+        experimentationEnabled: false,
+        isHighValueSlot: false // Downgraded
+      };
+    }
+    
     return {
       model: 'gpt-4o',
       useExpert: true,
@@ -89,16 +111,37 @@ export function getAiRoutingRule(
     }
   }
 
-  // Rule 3: Deep dive singles can use GPT-4o (but less frequently)
-  if (decisionType === 'single' && slot === 'deep_dive' && Math.random() < 0.3) {
-    // 30% chance for deep_dive singles to use GPT-4o
-    return {
-      model: 'gpt-4o',
-      useExpert: true,
-      maxTokens: defaultForType.maxTokens,
-      experimentationEnabled: false,
-      isHighValueSlot: true
-    };
+  // Rule 3: Deep dive singles can use GPT-4o (if slot performance is good)
+  if (decisionType === 'single' && slot === 'deep_dive') {
+    // If slot performance is high, increase chance of Expert
+    const expertChance = slotScore !== null && slotScore >= SLOT_SCORE_BOOST_THRESHOLD 
+      ? 0.5 // 50% chance if high-performing
+      : 0.3; // 30% chance otherwise
+    
+    if (Math.random() < expertChance) {
+      return {
+        model: 'gpt-4o',
+        useExpert: true,
+        maxTokens: defaultForType.maxTokens,
+        experimentationEnabled: false,
+        isHighValueSlot: true
+      };
+    }
+  }
+
+  // Rule 4: High-performing slots (even if not "high value") can get Expert occasionally
+  if (slotScore !== null && slotScore >= SLOT_SCORE_BOOST_THRESHOLD && decisionType === 'thread') {
+    // 20% chance for high-performing thread slots
+    if (Math.random() < 0.2) {
+      console.log(`[PHASE4][Router] Upgraded slot=${slot} to Expert due to high slotPerformanceScore=${slotScore.toFixed(3)}`);
+      return {
+        model: 'gpt-4o',
+        useExpert: true,
+        maxTokens: defaultForType.maxTokens,
+        experimentationEnabled: false,
+        isHighValueSlot: true
+      };
+    }
   }
 
   // Default: GPT-4o-mini for everything else
