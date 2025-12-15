@@ -473,7 +473,8 @@ export async function metricsScraperJob(): Promise<void> {
 
             try {
               // Calculate v2 metrics if we have engagement and follower data
-              if (engagementRate >= 0 && (followersGained > 0 || followersBefore !== undefined)) {
+              // Allow calculation even if engagementRate is 0 (no views yet) as long as we have follower data
+              if (engagementRate !== null && engagementRate !== undefined && engagementRate >= 0 && (followersGained > 0 || followersBefore !== undefined)) {
                 const attributionData: FollowerAttributionData = {
                   followers_gained: followersGained,
                   followers_before: followersBefore,
@@ -535,6 +536,7 @@ export async function metricsScraperJob(): Promise<void> {
               views: viewsNullable,
               bookmarks: bookmarksNullable,
               impressions: viewsNullable, // Map views to impressions
+              engagement_rate: engagementRate, // ✅ Store engagement_rate for v2 calculations
               profile_clicks: profileClicksValue, // 📊 Save Profile visits from analytics page
               first_hour_engagement: isFirstHour ? totalEngagement : null,
               followers_gained: followersGained, // ✅ Store raw followers_gained
