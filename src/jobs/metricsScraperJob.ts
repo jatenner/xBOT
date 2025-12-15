@@ -472,9 +472,11 @@ export async function metricsScraperJob(): Promise<void> {
             };
 
             try {
-              // Calculate v2 metrics if we have engagement and follower data
-              // Allow calculation even if engagementRate is 0 (no views yet) as long as we have follower data
-              if (engagementRate !== null && engagementRate !== undefined && engagementRate >= 0 && (followersGained > 0 || followersBefore !== undefined)) {
+              // Calculate v2 metrics if we have follower data (engagement_rate can be 0 or null)
+              // Primary goal is follower growth, so we can calculate even without engagement_rate
+              if (followersGained > 0 || followersBefore !== undefined) {
+                // Use engagement_rate if available, otherwise 0
+                const effectiveEngagementRate = engagementRate !== null && engagementRate !== undefined ? engagementRate : 0;
                 const attributionData: FollowerAttributionData = {
                   followers_gained: followersGained,
                   followers_before: followersBefore,
@@ -485,7 +487,7 @@ export async function metricsScraperJob(): Promise<void> {
                 };
 
                 const engagementData: EngagementMetrics = {
-                  engagement_rate: engagementRate,
+                  engagement_rate: effectiveEngagementRate,
                   impressions: viewsValue,
                   likes: likesValue,
                   retweets: retweetsValue,
