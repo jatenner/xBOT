@@ -800,6 +800,33 @@ async function generateRealReplies(): Promise<void> {
       const replyGenerator = selectReplyGenerator(target.account.category, target.account.username);
       console.log(`[REPLY_JOB] 🎭 Using ${replyGenerator} for reply to @${target.account.username} (${target.account.category})`);
       
+      // ═══════════════════════════════════════════════════════════
+      // 🚀 PHASE 4 ROUTING: Conditionally use orchestratorRouter for replies
+      // ═══════════════════════════════════════════════════════════
+      const { shouldUsePhase4Routing, routeContentGeneration } = await import('../ai/orchestratorRouter');
+      const usePhase4Routing = shouldUsePhase4Routing();
+      
+      // Get priority_score from discovered_accounts if available
+      let priorityScore: number | null = null;
+      if (usePhase4Routing && target.account.username) {
+        try {
+          const { getSupabaseClient } = await import('../db');
+          const supabase = getSupabaseClient();
+          const { data: account } = await supabase
+            .from('discovered_accounts')
+            .select('priority_score')
+            .eq('username', target.account.username.toLowerCase())
+            .maybeSingle();
+          
+          if (account && account.priority_score !== null) {
+            priorityScore = account.priority_score;
+            console.log(`[PHASE4][REPLY_JOB] Found priority_score=${priorityScore} for @${target.account.username}`);
+          }
+        } catch (error: any) {
+          console.warn(`[PHASE4][REPLY_JOB] Failed to fetch priority_score:`, error.message);
+        }
+      }
+      
       // 🔥 NEW: Generate reply using ACTUAL selected generator (with fallback)
       // 🎯 ENHANCED: Try relationship reply system first (follower-focused), then generator, then strategic
       let strategicReply;
