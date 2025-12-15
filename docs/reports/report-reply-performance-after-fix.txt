@@ -1,0 +1,113 @@
+======================================================================
+REPLY PERFORMANCE REPORT
+======================================================================
+
+Total replies analyzed: 2
+
+AGGREGATE STATS:
+  Avg followers_gained_weighted: 0.000
+  Avg engagement_rate: 0.0000
+  Avg priority_score: 0.000
+
+BEST 5 REPLIES:
+----------------------------------------------------------------------
+
+1. @doctor_rahmeh
+   Priority: N/A
+   Followers gained: N/A
+   Engagement rate: N/A
+   Primary score: N/A
+   Generator: coach
+   Content: "Relocating can impact mental health due to changes in environment and support systems. Studies show social connections are key to resilience in new locations. Have you considered joining local clubs or groups to build a new support network?..."
+
+2. @amerix
+   Priority: N/A
+   Followers gained: N/A
+   Engagement rate: N/A
+   Primary score: N/A
+   Generator: coach
+   Content: "It's interesting to consider the social dynamics at play. Research shows that relationship satisfaction often hinges on shared values and emotional maturity, not just age. Many older partners bring valuable life experiences that can enrich a relationship. What qualities do you va..."
+
+======================================================================
+WORST 5 REPLIES:
+----------------------------------------------------------------------
+
+1. @amerix
+   Priority: N/A
+   Followers gained: N/A
+   Engagement rate: N/A
+   Primary score: N/A
+   Generator: coach
+   Content: "It's interesting to consider the social dynamics at play. Research shows that relationship satisfaction often hinges on shared values and emotional maturity, not just age. Many older partners bring valuable life experiences that can enrich a relationship. What qualities do you va..."
+
+2. @doctor_rahmeh
+   Priority: N/A
+   Followers gained: N/A
+   Engagement rate: N/A
+   Primary score: N/A
+   Generator: coach
+   Content: "Relocating can impact mental health due to changes in environment and support systems. Studies show social connections are key to resilience in new locations. Have you considered joining local clubs or groups to build a new support network?..."
+
+======================================================================
+JSON OUTPUT:
+----------------------------------------------------------------------
+{
+  "total_replies": 2,
+  "aggregate_stats": {
+    "avg_followers_gained_weighted": 0,
+    "avg_engagement_rate": 0,
+    "avg_priority_score": 0
+  },
+  "best_5": [
+    {
+      "target_username": "doctor_rahmeh",
+      "priority_score": null,
+      "followers_gained": null,
+      "engagement_rate": null,
+      "primary_objective_score": null,
+      "reply_type": "reply",
+      "generator_used": "coach",
+      "decision_id": "7cb9d1b2-e8e0-4b76-b2b1-791a39096378",
+      "content": "Relocating can impact mental health due to changes in environment and support systems. Studies show social connections are key to resilience in new locations. Have you considered joining local clubs or groups to build a new support network?"
+    },
+    {
+      "target_username": "amerix",
+      "priority_score": null,
+      "followers_gained": null,
+      "engagement_rate": null,
+      "primary_objective_score": null,
+      "reply_type": "reply",
+      "generator_used": "coach",
+      "decision_id": "54f38214-1db8-4acb-aaff-9ebd1a5d8374",
+      "content": "It's interesting to consider the social dynamics at play. Research shows that relationship satisfaction often hinges on shared values and emotional maturity, not just age. Many older partners bring valuable life experiences that can enrich a relationship. What qualities do you va"
+    }
+  ],
+  "worst_5": [
+    {
+      "target_username": "amerix",
+      "priority_score": null,
+      "followers_gained": null,
+      "engagement_rate": null,
+      "primary_objective_score": null,
+      "reply_type": "reply",
+      "generator_used": "coach",
+      "decision_id": "54f38214-1db8-4acb-aaff-9ebd1a5d8374",
+      "content": "It's interesting to consider the social dynamics at play. Research shows that relationship satisfaction often hinges on shared values and emotional maturity, not just age. Many older partners bring valuable life experiences that can enrich a relationship. What qualities do you va"
+    },
+    {
+      "target_username": "doctor_rahmeh",
+      "priority_score": null,
+      "followers_gained": null,
+      "engagement_rate": null,
+      "primary_objective_score": null,
+      "reply_type": "reply",
+      "generator_used": "coach",
+      "decision_id": "7cb9d1b2-e8e0-4b76-b2b1-791a39096378",
+      "content": "Relocating can impact mental health due to changes in environment and support systems. Studies show social connections are key to resilience in new locations. Have you considered joining local clubs or groups to build a new support network?"
+    }
+  ]
+}
+
+======================================================================
+REPORT COMPLETE
+======================================================================

@@ -1,0 +1,38 @@
+📊 Analyzing backfill needs for content_slot, raw_topic, and v2 metrics...
+
+📋 CONTENT_METADATA ANALYSIS:
+   Total rows: 1000
+   Rows with NULL content_slot: 1000 (100.0%)
+   Rows with NULL raw_topic: 638 (63.8%)
+   Replies with NULL content_slot: 508
+   Posts with NULL content_slot: 492
+
+📊 OUTCOMES V2 METRICS ANALYSIS:
+   Total outcomes rows: 1000
+   Rows with NULL followers_gained_weighted: 1000 (100.0%)
+   Rows with NULL primary_objective_score: 1000 (100.0%)
+   Rows with NULL engagement_rate: 894 (89.4%)
+   Rows with BOTH v2 metrics NULL: 1000 (100.0%)
+
+📅 RECENT (LAST 7 DAYS) ANALYSIS:
+   Content rows: 3
+   Recent content with NULL content_slot: 3 (100.0%)
+   Recent content with NULL raw_topic: 3 (100.0%)
+   Outcomes rows: 0
+   Recent outcomes with NULL v2 metrics: 0 (0%)
+
+💡 BACKFILL RECOMMENDATIONS:
+   ⚠️  3 recent content rows missing content_slot - investigate why new content isn't getting slots
+   ⚠️  3 recent content rows missing raw_topic - investigate topic generation failures
+   ✅ Recent outcomes have v2 metrics coverage
+
+📝 NEXT STEPS:
+   1. If recent content has gaps, fix the generation/scraping logic first
+   2. For historical backfill, use this script as a template to add UPDATE statements
+   3. Backfill strategy:
+      - Replies: Set content_slot = 'reply' for all decision_type = 'reply'
+      - Posts: Infer content_slot from generator_name or decision_type
+      - Topics: Extract from existing content or set to 'health_general'
+      - v2 metrics: Recalculate using existing engagement data (if available)
+
+✅ Analysis complete. This script is read-only. To enable backfilling, add UPDATE statements.

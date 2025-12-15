@@ -1076,7 +1076,8 @@ async function queueContent(content: any): Promise<void> {
     predicted_er: content.predicted_er,
     
     // Core diversity fields (always present)
-    raw_topic: content.raw_topic,
+    // 🔧 FIX: Ensure raw_topic is never NULL - use fallback chain
+    raw_topic: content.raw_topic || (content as any).topic || 'health_general',
     angle: content.angle,
     tone: content.tone,
     generator_name: content.generator_used,
