@@ -29,8 +29,8 @@ async function testPlanJob() {
   
   try {
     // Import and run planJob
-    const { generateRealContent } = await import('../src/jobs/planJob');
-    await generateRealContent();
+    const { planContent } = await import('../src/jobs/planJob');
+    await planContent();
     console.log('✅ planJob completed successfully');
   } catch (error: any) {
     console.error('❌ planJob failed:', error.message);
@@ -47,8 +47,8 @@ async function testReplyJob() {
   
   try {
     // Import and run replyJob
-    const { generateRealReplies } = await import('../src/jobs/replyJob');
-    await generateRealReplies();
+    const { generateReplies } = await import('../src/jobs/replyJob');
+    await generateReplies();
     console.log('✅ replyJob completed successfully');
   } catch (error: any) {
     console.error('❌ replyJob failed:', error.message);
