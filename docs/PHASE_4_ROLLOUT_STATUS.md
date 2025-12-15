@@ -198,6 +198,77 @@ ENABLE_PHASE4_EXPERIMENTS=true  # Enable after cache stabilizes
 
 ---
 
+## 6. Learning Health Report Script
+
+### Script: `scripts/learning-health-report.ts`
+
+A read-only diagnostic script that reports on learning system health for the last 7 days.
+
+**Usage:**
+```bash
+pnpm tsx scripts/learning-health-report.ts
+```
+
+**What it reports:**
+- V2 outcomes coverage (total, with v2 fields, percentage)
+- Content slot coverage (total, with slot, percentage, breakdown by slot)
+- vw_learning activity (row count)
+- Weight maps (row count)
+- Reply priorities (total accounts, non-zero priority, percentage)
+- Experiments (total, breakdown by group and variant)
+- Phase 4 routing (Core vs Expert usage - log-only, not tracked in DB)
+
+**Output format:**
+```
+======================================================================
+xBOT LEARNING HEALTH REPORT (LAST 7 DAYS)
+======================================================================
+
+[V2 OUTCOMES]
+  Total outcomes: 483
+  With v2 fields: 51
+  Coverage: 51/483 = 10.6%
+
+[CONTENT SLOTS]
+  Total rows: 363
+  With content_slot: 14
+  Coverage: 14/363 = 3.9%
+  By slot:
+    reply: 8
+    research: 3
+    practical_tip: 2
+    ...
+
+[VW_LEARNING]
+  Rows (last 7 days): 316
+
+[WEIGHT MAPS]
+  Rows (last 7 days): 1
+
+[REPLY PRIORITIES]
+  Total accounts: 1000
+  Non-zero priority: 38
+  Coverage: 38/1000 = 3.8%
+
+[EXPERIMENTS]
+  Status: Experiments currently OFF or no experiment data in last 7 days
+
+[PHASE 4 ROUTING]
+  Core vs Expert usage: not tracked in DB (log-only)
+
+======================================================================
+REPORT COMPLETE
+======================================================================
+```
+
+**Important:**
+- This script is **read-only** - it does not mutate any data
+- Exits with code 0 on success, 1 on fatal errors
+- Uses existing Supabase client pattern from `src/db/index.ts`
+- Can be run locally or in Railway environment
+
+---
+
 ## Summary
 
 **Migration:** ✅ Applied  
