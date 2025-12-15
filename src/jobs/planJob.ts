@@ -1001,8 +1001,7 @@ async function queueContent(content: any): Promise<void> {
     decision_id: content.decision_id,
     content: contentText,
     generation_source: 'real',
-    // 🔧 TEMPORARY: Comment out content_slot until PostgREST cache refreshes
-    // content_slot: content.content_slot || null, // 🎯 v2: Store content slot
+    content_slot: content.content_slot || null, // 🎯 v2: Store content slot
     status: 'queued',
     decision_type: content.format === 'thread' ? 'thread' : 'single',
     scheduled_at: content.scheduled_at,
@@ -1022,6 +1021,9 @@ async function queueContent(content: any): Promise<void> {
     timing_arm: `slot_${content.timing_slot}`,
     thread_parts: Array.isArray(content.text) ? content.text : null
   };
+  
+  // 🎯 v2: Log content_slot being stored
+  console.log(`[PLAN_JOB] 📅 Content slot: ${insertPayload.content_slot || 'NULL'} for decision ${content.decision_id}`);
   
   // 🧵 THREAD TRACKING: Log when threads are queued
   if (insertPayload.decision_type === 'thread') {

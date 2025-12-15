@@ -472,13 +472,19 @@ export async function metricsScraperJob(): Promise<void> {
             };
 
             try {
-              // Calculate v2 metrics if we have follower data (engagement_rate can be 0 or null)
-              // Primary goal is follower growth, so we can calculate even without engagement_rate
-              if (followersGained > 0 || followersBefore !== undefined) {
-                // Use engagement_rate if available, otherwise 0
-                const effectiveEngagementRate = engagementRate !== null && engagementRate !== undefined ? engagementRate : 0;
+              // 🎯 FIX: Always calculate v2 metrics if we have engagement data (views/impressions)
+              // v2 metrics can be calculated with just engagement_rate (followers_gained_weighted will be 0)
+              // This ensures all tweets get v2 metrics populated, not just those with follower tracking
+              const hasEngagementData = viewsValue > 0 || likesValue > 0 || retweetsValue > 0 || repliesValue > 0;
+              
+              if (hasEngagementData) {
+                // Use engagement_rate if available, otherwise calculate from engagement
+                const effectiveEngagementRate = engagementRate !== null && engagementRate !== undefined 
+                  ? engagementRate 
+                  : (viewsValue > 0 ? ((likesValue + retweetsValue + repliesValue) / viewsValue) : 0);
+                
                 const attributionData: FollowerAttributionData = {
-                  followers_gained: followersGained,
+                  followers_gained: followersGained || 0, // Default to 0 if no follower data
                   followers_before: followersBefore,
                   followers_24h_after: followers24hAfter,
                   followers_48h_after: followers48hAfter,
@@ -498,7 +504,7 @@ export async function metricsScraperJob(): Promise<void> {
                 v2Metrics.followers_gained_weighted = v2Result.followers_gained_weighted;
                 v2Metrics.primary_objective_score = v2Result.primary_objective_score;
 
-                console.log(`[METRICS_JOB] 🎯 v2 Metrics: weighted_followers=${v2Result.followers_gained_weighted.toFixed(2)}, primary_score=${v2Result.primary_objective_score.toFixed(4)}`);
+                console.log(`[METRICS_JOB] 🎯 v2 Metrics calculated: weighted_followers=${v2Result.followers_gained_weighted.toFixed(2)}, primary_score=${v2Result.primary_objective_score.toFixed(4)}, engagement_rate=${effectiveEngagementRate.toFixed(4)}`);
 
                 // Extract content structure types if we have content
                 try {
@@ -516,19 +522,24 @@ export async function metricsScraperJob(): Promise<void> {
                     v2Metrics.hook_type = structureTypes.hook_type;
                     v2Metrics.cta_type = structureTypes.cta_type;
                     v2Metrics.structure_type = structureTypes.structure_type;
+                    
+                    console.log(`[METRICS_JOB] 📝 Content structure: hook=${structureTypes.hook_type}, cta=${structureTypes.cta_type}, structure=${structureTypes.structure_type}`);
                   }
                 } catch (contentError: any) {
                   // Non-critical - continue without structure types
                   console.warn(`[METRICS_JOB] ⚠️ Failed to extract content structure: ${contentError.message}`);
                 }
+              } else {
+                console.log(`[METRICS_JOB] ⚠️ Skipping v2 metrics: no engagement data (views=${viewsValue}, likes=${likesValue})`);
               }
             } catch (v2Error: any) {
-              console.warn(`[METRICS_JOB] ⚠️ v2 metrics calculation failed: ${v2Error.message}`);
+              console.error(`[METRICS_JOB] ❌ v2 metrics calculation failed: ${v2Error.message}`);
+              console.error(`[METRICS_JOB] Stack: ${v2Error.stack}`);
               // Don't fail - continue with basic metrics
             }
             
             // Update outcomes table (for backward compatibility with existing systems + v2 fields)
-            const { data: outcomeData, error: outcomeError } = await supabase.from('outcomes').upsert({
+            const outcomesPayload = {
               decision_id: post.decision_id,  // 🔥 FIX: Use decision_id (UUID), not integer id
               tweet_id: post.tweet_id,
               likes: likesNullable,
@@ -553,12 +564,29 @@ export async function metricsScraperJob(): Promise<void> {
               hook_type: v2Metrics.hook_type,
               cta_type: v2Metrics.cta_type,
               structure_type: v2Metrics.structure_type
-            }, { onConflict: 'decision_id' });
+            };
+            
+            // 🔍 DEBUG: Log v2 fields being written
+            console.log(`[METRICS_JOB] 📝 Writing outcomes for ${post.tweet_id}:`);
+            console.log(`[METRICS_JOB]   - followers_gained_weighted: ${v2Metrics.followers_gained_weighted}`);
+            console.log(`[METRICS_JOB]   - primary_objective_score: ${v2Metrics.primary_objective_score}`);
+            console.log(`[METRICS_JOB]   - hook_type: ${v2Metrics.hook_type || 'null'}`);
+            console.log(`[METRICS_JOB]   - cta_type: ${v2Metrics.cta_type || 'null'}`);
+            console.log(`[METRICS_JOB]   - structure_type: ${v2Metrics.structure_type || 'null'}`);
+            
+            const { data: outcomeData, error: outcomeError } = await supabase.from('outcomes').upsert(
+              outcomesPayload,
+              { onConflict: 'decision_id' }
+            );
             
             if (outcomeError) {
               console.error(`[METRICS_JOB] ❌ Failed to write outcomes for ${post.tweet_id}:`, outcomeError.message);
+              console.error(`[METRICS_JOB] ❌ Error code: ${outcomeError.code}, details: ${outcomeError.details}, hint: ${outcomeError.hint}`);
+              console.error(`[METRICS_JOB] ❌ Payload:`, JSON.stringify(outcomesPayload, null, 2));
               failed++;
               continue;
+            } else {
+              console.log(`[METRICS_JOB] ✅ Outcomes written successfully for ${post.tweet_id}`);
             }
             
             // CRITICAL: Also update learning_posts table (used by 30+ learning systems!)
