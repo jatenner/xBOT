@@ -174,98 +174,142 @@ export class UltimateTwitterPoster {
   private async attemptPost(content: string): Promise<PostResult> {
     if (!this.page) throw new Error('Page not initialized');
 
-    console.log('ULTIMATE_POSTER: Navigating to Twitter...');
-    
-    // Navigate with domcontentloaded instead of networkidle
-    await this.page.goto('https://x.com/home', { 
-      waitUntil: 'domcontentloaded', 
-      timeout: 45000 
-    });
+    const stageStartTimes: Record<string, number> = {};
+    const logStage = (stage: string, action: () => Promise<void>): Promise<void> => {
+      stageStartTimes[stage] = Date.now();
+      console.log(`[ULTIMATE_POSTER] 🎯 Stage: ${stage} - Starting`);
+      return action().then(
+        () => {
+          const duration = Date.now() - stageStartTimes[stage];
+          console.log(`[ULTIMATE_POSTER] ✅ Stage: ${stage} - Completed in ${duration}ms`);
+        },
+        (error) => {
+          const duration = Date.now() - stageStartTimes[stage];
+          console.error(`[ULTIMATE_POSTER] ❌ Stage: ${stage} - Failed after ${duration}ms: ${error.message}`);
+          throw error;
+        }
+      );
+    };
 
-    // Wait for navigation to complete and UI to be ready
-    console.log('ULTIMATE_POSTER: Waiting for UI to be ready...');
-    
-    // 🔧 IMPROVED TIMEOUT: Try multiple selectors with longer timeout
-    const navigationSelectors = [
-      'nav[role="navigation"]',
-      '[data-testid="primaryColumn"]',
-      '[data-testid="SideNav_AccountSwitcher_Button"]',
-      'main[role="main"]'
-    ];
-    
-    let navigationFound = false;
-    for (const selector of navigationSelectors) {
-      try {
-        await this.page.waitForSelector(selector, { 
-          state: 'visible', 
-          timeout: 30000 // Increased from 20s to 30s
-        });
-        console.log(`ULTIMATE_POSTER: Found navigation via ${selector}`);
-        navigationFound = true;
-        break;
-      } catch (error) {
-        console.log(`ULTIMATE_POSTER: ${selector} not found, trying next...`);
+    // 🔍 BROWSER HEALTH CHECK: Verify page responsiveness
+    try {
+      await this.page.evaluate(() => true); // Test if page is responsive
+      console.log('[ULTIMATE_POSTER] ✅ Browser health check passed');
+    } catch (healthError: any) {
+      console.warn(`[ULTIMATE_POSTER] ⚠️ Browser health check failed: ${healthError.message}`);
+      throw new Error(`Browser not responsive: ${healthError.message}`);
+    }
+
+    // Stage 1: Navigation
+    await logStage('navigation', async () => {
+      console.log('ULTIMATE_POSTER: Navigating to Twitter...');
+      
+      // Navigate with domcontentloaded instead of networkidle
+      await this.page!.goto('https://x.com/home', { 
+        waitUntil: 'domcontentloaded', 
+        timeout: 45000 
+      });
+
+      // Wait for navigation to complete and UI to be ready
+      console.log('ULTIMATE_POSTER: Waiting for UI to be ready...');
+      
+      // 🔧 IMPROVED TIMEOUT: Try multiple selectors with longer timeout
+      const navigationSelectors = [
+        'nav[role="navigation"]',
+        '[data-testid="primaryColumn"]',
+        '[data-testid="SideNav_AccountSwitcher_Button"]',
+        'main[role="main"]'
+      ];
+      
+      let navigationFound = false;
+      for (const selector of navigationSelectors) {
+        try {
+          await this.page!.waitForSelector(selector, { 
+            state: 'visible', 
+            timeout: 30000 // Increased from 20s to 30s
+          });
+          console.log(`ULTIMATE_POSTER: Found navigation via ${selector}`);
+          navigationFound = true;
+          break;
+        } catch (error) {
+          console.log(`ULTIMATE_POSTER: ${selector} not found, trying next...`);
+        }
       }
-    }
-    
-    if (!navigationFound) {
-      throw new Error('Navigation elements not found - page may not have loaded properly');
-    }
+      
+      if (!navigationFound) {
+        throw new Error('Navigation elements not found - page may not have loaded properly');
+      }
 
-    // Check if we're logged in
-    const isLoggedOut = await this.checkIfLoggedOut();
-    if (isLoggedOut) {
-      throw new Error('Not logged in to Twitter - session may have expired');
-    }
+      // Check if we're logged in
+      const isLoggedOut = await this.checkIfLoggedOut();
+      if (isLoggedOut) {
+        throw new Error('Not logged in to Twitter - session may have expired');
+      }
 
-    console.log('ULTIMATE_POSTER: Successfully authenticated');
+      console.log('ULTIMATE_POSTER: Successfully authenticated');
+    });
 
     // Close any modals/overlays that might interfere
     await this.closeAnyModal();
 
-    // Find and interact with composer
-    const composer = await this.getComposer();
-    
-    console.log('ULTIMATE_POSTER: Inserting content...');
-    await composer.click({ delay: 60 });
-    await this.page!.waitForTimeout(500);
-    
-    // 🆕 IMPROVED: Clear any existing content with better handling
-    try {
-      await composer.fill(''); // Clear first
-      await this.page!.waitForTimeout(300); // Increased wait time
-    } catch (clearError: any) {
-      console.warn(`ULTIMATE_POSTER: Clear failed (non-critical): ${clearError.message}`);
-      // Continue anyway - content might be empty
-    }
-    
-    // For long content (>300 chars), use fill() to avoid timeout
-    // For shorter content, use typing for more natural behavior
-    if (content.length > 300) {
-      console.log(`ULTIMATE_POSTER: Using fill() for ${content.length} char content`);
+    // Stage 2: Typing
+    await logStage('typing', async () => {
+      // Find and interact with composer
+      const composer = await this.getComposer();
       
-      // Use fill() - works with contenteditable in headless mode
-      await composer.fill(content);
+      console.log('ULTIMATE_POSTER: Inserting content...');
+      await composer.click({ delay: 60 });
       await this.page!.waitForTimeout(500);
       
-      // Verify content was inserted
-      const text = await composer.textContent();
-      if (!text || !text.includes(content.substring(0, 50))) {
-        throw new Error('Content fill verification failed');
+      // 🆕 IMPROVED: Clear any existing content with better handling
+      try {
+        await composer.fill(''); // Clear first
+        await this.page!.waitForTimeout(300); // Increased wait time
+      } catch (clearError: any) {
+        console.warn(`ULTIMATE_POSTER: Clear failed (non-critical): ${clearError.message}`);
+        // Continue anyway - content might be empty
       }
       
-      console.log('ULTIMATE_POSTER: Content filled successfully');
-    } else {
-      // Type quickly but not instant (Twitter might detect instant paste)
-      await composer.type(content, { delay: 5 }); // 5ms = very fast but not suspicious
-      console.log('ULTIMATE_POSTER: Content typed');
-    }
+      // For long content (>300 chars), use fill() to avoid timeout
+      // For shorter content, use typing for more natural behavior
+      if (content.length > 300) {
+        console.log(`ULTIMATE_POSTER: Using fill() for ${content.length} char content`);
+        
+        // Use fill() - works with contenteditable in headless mode
+        await composer.fill(content);
+        await this.page!.waitForTimeout(500);
+        
+        // Verify content was inserted
+        const text = await composer.textContent();
+        if (!text || !text.includes(content.substring(0, 50))) {
+          throw new Error('Content fill verification failed');
+        }
+        
+        console.log('ULTIMATE_POSTER: Content filled successfully');
+      } else {
+        // Type quickly but not instant (Twitter might detect instant paste)
+        await composer.type(content, { delay: 5 }); // 5ms = very fast but not suspicious
+        console.log('ULTIMATE_POSTER: Content typed');
+      }
+    });
 
     // Close modals again before posting (in case typing triggered something)
     await this.closeAnyModal();
 
-    // Post with network verification
-    const result = await this.postWithNetworkVerification();
+    // Stage 3: Submit
+    let result: PostResult;
+    const submitStartTime = Date.now();
+    console.log(`[ULTIMATE_POSTER] 🎯 Stage: submit - Starting`);
+    try {
+      // Post with network verification
+      result = await this.postWithNetworkVerification();
+      const submitDuration = Date.now() - submitStartTime;
+      console.log(`[ULTIMATE_POSTER] ✅ Stage: submit - Completed in ${submitDuration}ms`);
+    } catch (submitError: any) {
+      const submitDuration = Date.now() - submitStartTime;
+      console.error(`[ULTIMATE_POSTER] ❌ Stage: submit - Failed after ${submitDuration}ms: ${submitError.message}`);
+      throw submitError;
+    }
     
     console.log('ULTIMATE_POSTER: Post completed successfully');
     return result;
