@@ -135,22 +135,25 @@ ORDER BY ordinal_position;
 ### Log Analysis (After Migration):
 
 **Schema Errors:**
-```
-❌ No more "Could not find the 'structure_type' column" errors found
-```
+- ⚠️ Old errors still visible in logs (from before migration)
+- ⏳ Waiting for next planJob cycle to confirm errors cleared
 
 **Plan Job Activity:**
 - ✅ planJob running
-- ✅ Content queue inserts should now succeed (monitoring)
+- ⏳ Next cycle will test queue inserts (schema cache may need refresh)
 
 **Posting Queue Activity:**
 - ✅ Posting queue running
-- ⏳ Monitoring for queued decisions
+- ⏳ Finding 0 decisions ready (waiting for new content to be queued)
 
 **Posting Activity:**
-- ⏳ Monitoring for successful posts
+- ⏳ Last post: 4.5 hours ago (before migration)
+- ⏳ Monitoring for new posts after next planJob cycle
 
-**Status:** ⏳ **MONITORING** - Migration applied, waiting for next planJob cycle
+**Status:** ⏳ **MONITORING** - Migration applied successfully, waiting for:
+1. Schema cache refresh (may require service restart or next query)
+2. Next planJob cycle to queue content
+3. Posting queue to process queued items
 
 ---
 
@@ -158,13 +161,25 @@ ORDER BY ordinal_position;
 
 **Command:** `railway run --service xBOT -- pnpm tsx scripts/health-check.ts`
 
-**Output:** (Run after next planJob cycle completes)
+**Output:**
+```
+📋 PLAN JOB: ⚠️ No heartbeat found
+📦 QUEUE DEPTH: 2 items (overdue)
+📅 LAST POST: 4.5h ago (2025-12-15T23:15:49.798Z)
+❌ RECENT ERRORS: column content_metadata.error_message does not exist
+🏥 SYSTEM HEALTH: 🚨 CRITICAL - No posts in 4+ hours but queue has items
+```
 
-**Expected:**
+**Analysis:**
+- ⚠️ Queue has 2 items (old test items from before migration)
+- ⏳ Waiting for next planJob cycle to generate new content
+- ⚠️ Health check script has minor issue (error_message column query)
+
+**Expected After Next Cycle:**
 - ✅ Last planJob run: Recent
 - ✅ Queue depth: Non-zero, then draining
 - ✅ Last post time: Recent
-- ✅ No fatal errors
+- ✅ No schema cache errors
 
 ---
 
@@ -253,6 +268,8 @@ railway run --service xBOT -- pnpm db:migrate:critical
 - ⏳ Pipeline recovery in progress (monitoring logs)
 
 **Estimated Full Recovery:** Within 15-30 minutes (next planJob cycle)
+
+**Note:** Schema cache may need to refresh. If errors persist after next planJob cycle, may need to restart Railway service to clear Supabase client schema cache.
 
 ---
 
