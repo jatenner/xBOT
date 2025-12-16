@@ -264,7 +264,7 @@ railway run --service xBOT -- pnpm db:migrate:critical
 - ✅ Root cause identified (SSL config issue with connectionString)
 - ✅ Solution implemented (parse URL, use individual params)
 - ✅ Migration applied successfully
-- ✅ Schema verified
+- ✅ Schema verified (hook_type and structure_type columns exist)
 - ⏳ Pipeline recovery in progress (monitoring logs)
 
 **Estimated Full Recovery:** Within 15-30 minutes (next planJob cycle)
@@ -273,7 +273,51 @@ railway run --service xBOT -- pnpm db:migrate:critical
 
 ---
 
+## Proof Output
+
+### Migration Application:
+```
+[MIGRATION] ✅ Migration applied successfully
+[MIGRATION] ✅ Schema verification passed
+  hook_type: ✅ EXISTS
+  structure_type: ✅ EXISTS
+```
+
+### Schema Verification Query Result:
+Both columns confirmed in `content_metadata` view via `information_schema.columns`.
+
+### Repeatable Commands:
+
+**Apply Migration:**
+```bash
+railway run --service xBOT -- pnpm db:migrate:critical
+```
+
+**Verify Schema:**
+```bash
+railway run --service xBOT -- pnpm tsx -e "
+import { Pool } from 'pg';
+import * as dotenv from 'dotenv';
+dotenv.config();
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+const client = await pool.connect();
+const { rows } = await client.query(\`
+  SELECT column_name FROM information_schema.columns
+  WHERE table_name = 'content_metadata'
+  AND column_name IN ('hook_type', 'structure_type')
+\`);
+console.log('Columns:', rows.map(r => r.column_name));
+client.release();
+await pool.end();
+"
+```
+
+---
+
 **Report Generated:** 2025-12-16T05:30:00Z  
 **Migration Applied:** 2025-12-16T05:30:00Z  
-**Status:** ✅ **SUCCESS**
+**Status:** ✅ **SUCCESS** - Migration applied, schema verified, pipeline recovery in progress
 
