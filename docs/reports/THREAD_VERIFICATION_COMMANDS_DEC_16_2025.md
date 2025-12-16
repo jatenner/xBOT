@@ -37,9 +37,9 @@ grep -nE "thread_timeout_.*\.(png|html)|\[THREAD_COMPOSER\]\[AUTOPSY\]" /tmp/xbo
 grep -nE "Thread posted|Native composer SUCCESS|TWEET POSTED SUCCESSFULLY|✅ thread POSTED SUCCESSFULLY|Tweet IDs:|thread_tweet_ids|Database save SUCCESS|POST COMPLETE|marked as posted|Tweet URL" /tmp/xbot_thread_verify.txt | tail -n 120
 ```
 
-### G) Extract decision_ids for analysis:
+### G) Extract decision_ids for analysis (THREAD_COMPOSER + QUEUE_CONTENT only):
 ```bash
-grep -nE "decision_id=|decisionId=" /tmp/xbot_thread_verify.txt | grep -E "THREAD|thread" | tail -n 100
+grep -nE "\[QUEUE_CONTENT\].*decision_id=|\[THREAD_COMPOSER\].*decisionId=|\[THREAD_COMPOSER\].*decision_id=" /tmp/xbot_thread_verify.txt | tail -n 120
 ```
 
 ---
@@ -114,17 +114,29 @@ YES/NO
 
 ## 3) Top 3 decision_ids observed
 
-| decision_id | attempt_count | final_outcome | stall_stage |
-|-------------|----------------|---------------|-------------|
-| [uuid-1] | [X] | [success/timeout] | [typing/submit/extraction/unknown] |
-| [uuid-2] | [X] | [success/timeout] | [typing/submit/extraction/unknown] |
-| [uuid-3] | [X] | [success/timeout] | [typing/submit/extraction/unknown] |
+**Selection rule:** Pick the 3 most recent unique decision_ids that appear in either:
+- `[QUEUE_CONTENT] THREAD QUEUED` (from Command B)
+- `[THREAD_COMPOSER][TIMEOUT]` (from Command D)
+
+Do NOT pick ids from unrelated logs.
+
+| decision_id | attempt_count | final_outcome | stall_stage | stage_duration_summary |
+|-------------|---------------|---------------|-------------|------------------------|
+| [uuid-1] | [X] | [success/timeout] | [typing/submit/extraction/unknown] | nav=[ms] typing=[ms/NA] submit=[ms/NA] extract=[ms/NA] timeout=[240/300/360/none] |
+| [uuid-2] | [X] | [success/timeout] | [typing/submit/extraction/unknown] | nav=[ms] typing=[ms/NA] submit=[ms/NA] extract=[ms/NA] timeout=[240/300/360/none] |
+| [uuid-3] | [X] | [success/timeout] | [typing/submit/extraction/unknown] | nav=[ms] typing=[ms/NA] submit=[ms/NA] extract=[ms/NA] timeout=[240/300/360/none] |
 
 **How to extract:**
-- Run Command G to find decision_ids
+- Run Command G to find decision_ids (only from QUEUE_CONTENT or THREAD_COMPOSER logs)
 - For each decision_id, count attempts from Command D (`[THREAD_COMPOSER][TIMEOUT]` logs)
 - Determine outcome from Command F (success) or Command D (timeout)
 - Determine stall stage from Command C (last completed stage)
+- Extract stage durations from Command C:
+  - nav: `[THREAD_COMPOSER][STAGE] ✅ Stage: navigation - Done ([X]ms)`
+  - typing: Sum of all `[THREAD_COMPOSER][STAGE] ✅ Stage: typing tweet X/Y - Done ([X]ms)` OR "NA" if incomplete
+  - submit: `[THREAD_COMPOSER][STAGE] ✅ Stage: submit - Done ([X]ms)` OR "NA" if incomplete
+  - extract: `[THREAD_COMPOSER][STAGE] ✅ Stage: tweet_id_extraction - Done ([X]ms)` OR "NA" if incomplete
+  - timeout: From Command D `[THREAD_COMPOSER][TIMEOUT] 🎯 Posting attempt X/3 - Using adaptive timeout: [240/300/360]s` OR "none" if success
 
 ## 4) If NO: where did it stall?
 [typing / submit / tweet_id_extraction / unknown]
