@@ -1062,8 +1062,9 @@ async function queueContent(content: any): Promise<void> {
     : content.text;
   
   // ═══════════════════════════════════════════════════════════
-  // 🧪 PHASE 4 EXPERIMENTS: Assign experiment metadata
+  // 🧪 PHASE 4 EXPERIMENTS: Assign experiment metadata (only if experiments enabled)
   // ═══════════════════════════════════════════════════════════
+  const enableExperiments = process.env.ENABLE_PHASE4_EXPERIMENTS === 'true';
   let experimentAssignment: { experiment_group: string | null; hook_variant: string | null } = {
     experiment_group: null,
     hook_variant: null
@@ -1073,7 +1074,7 @@ async function queueContent(content: any): Promise<void> {
   const { shouldUsePhase4Routing } = await import('../ai/orchestratorRouter');
   const phase4Enabled = shouldUsePhase4Routing();
   
-  if (phase4Enabled) {
+  if (enableExperiments && phase4Enabled) {
     try {
       const { assignExperiment } = await import('../experiments/experimentAssigner');
       experimentAssignment = assignExperiment(content.content_slot || 'practical_tip');
@@ -1137,10 +1138,16 @@ async function queueContent(content: any): Promise<void> {
     timing_arm: `slot_${content.timing_slot}`,
     thread_parts: Array.isArray(content.text) ? content.text : null,
     
-    // 🧪 Phase 4: Experiment metadata
-    experiment_group: experimentAssignment.experiment_group,
-    hook_variant: experimentAssignment.hook_variant
+    // 🧪 Phase 4: Experiment metadata (only include if experiments enabled)
+    // Note: These columns may not exist in schema if experiments migration not applied
+    // We'll conditionally include them only if experiments are enabled
   };
+  
+  // Only add experiment fields if experiments are enabled (columns may not exist)
+  if (enableExperiments && experimentAssignment.experiment_group) {
+    insertPayload.experiment_group = experimentAssignment.experiment_group;
+    insertPayload.hook_variant = experimentAssignment.hook_variant;
+  }
   
   // 🎯 v2: Log content_slot being stored
   console.log(`[PLAN_JOB] 📅 Content slot: ${insertPayload.content_slot || 'NULL'} for decision ${content.decision_id}`);
