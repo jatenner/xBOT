@@ -933,6 +933,19 @@ export class JobManager {
       2 * MINUTE
     );
 
+    // 🧵 THREAD CANARY: Ensures threads are posted periodically for reliability verification
+    this.scheduleStaggeredJob(
+      'thread_canary',
+      async () => {
+        await this.safeExecute('thread_canary', async () => {
+          const { runThreadCanary } = await import('./threadCanaryJob');
+          await runThreadCanary();
+        });
+      },
+      60 * MINUTE, // Every 60 minutes
+      10 * MINUTE  // Start after 10 minutes
+    );
+
     // Viral thread - every 24 hours if enabled
     if (flags.live) {
       const viralThreadIntervalMin = config.JOBS_VIRAL_THREAD_INTERVAL_MIN || 1440;
