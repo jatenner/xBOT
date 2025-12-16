@@ -2444,9 +2444,33 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         const { BulletproofThreadComposer } = await import('../posting/BulletproofThreadComposer');
         const { withTimeout } = await import('../utils/operationTimeout');
         
-        // 🛡️ TIMEOUT PROTECTION: Prevent thread posting from hanging (180 second max)
-        // 🔥 FIX: Increased from 120s to 180s - Threads take longer (multiple tweets + verification)
-        const THREAD_POST_TIMEOUT_MS = 180000; // 180 seconds max for threads (longer due to multiple tweets)
+        // 🔧 ADAPTIVE TIMEOUT: Progressive timeout per retry attempt
+        // attempt 1 → 180s, attempt 2 → 240s, attempt 3 → 300s
+        const retryCount = Number((decision.features as any)?.retry_count || 0);
+        const adaptiveTimeouts = [180000, 240000, 300000]; // Progressive: 180s, 240s, 300s
+        const THREAD_POST_TIMEOUT_MS = adaptiveTimeouts[Math.min(retryCount, adaptiveTimeouts.length - 1)];
+        
+        console.log(`[POSTING_QUEUE] ⏱️ Using adaptive timeout: ${THREAD_POST_TIMEOUT_MS}ms (attempt ${retryCount + 1}, retry_count=${retryCount})`);
+        
+        // 🔍 BROWSER HEALTH CHECK: Verify browser/page responsiveness before posting
+        try {
+          const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+          const pool = UnifiedBrowserPool.getInstance();
+          const health = pool.getHealth();
+          
+          if (health.status === 'degraded' || health.circuitBreaker?.isOpen) {
+            console.warn(`[POSTING_QUEUE] ⚠️ Browser pool health check failed: status=${health.status}, circuitBreaker=${health.circuitBreaker?.isOpen}`);
+            console.log(`[POSTING_QUEUE] 🔄 Resetting browser pool before posting...`);
+            await pool.resetPool();
+            console.log(`[POSTING_QUEUE] ✅ Browser pool reset complete`);
+          } else {
+            console.log(`[POSTING_QUEUE] ✅ Browser pool health check passed: status=${health.status}`);
+          }
+        } catch (healthError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Browser health check failed (non-blocking): ${healthError.message}`);
+        }
+        
+        // 🛡️ TIMEOUT PROTECTION: Adaptive timeout based on retry count
         const result = await withTimeout(
           () => BulletproofThreadComposer.post(formattedThreadParts),
           { 
@@ -2499,18 +2523,42 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
           console.log(`[POSTING_QUEUE] 💡 No visual format specified, using content as-is`);
         }
         
+        // 🔧 ADAPTIVE TIMEOUT: Progressive timeout per retry attempt
+        // attempt 1 → 120s, attempt 2 → 180s, attempt 3 → 240s
+        const retryCount = Number((decision.features as any)?.retry_count || 0);
+        const adaptiveTimeouts = [120000, 180000, 240000]; // Progressive: 120s, 180s, 240s
+        const SINGLE_POST_TIMEOUT_MS = adaptiveTimeouts[Math.min(retryCount, adaptiveTimeouts.length - 1)];
+        
+        console.log(`[POSTING_QUEUE] ⏱️ Using adaptive timeout: ${SINGLE_POST_TIMEOUT_MS}ms (attempt ${retryCount + 1}, retry_count=${retryCount})`);
+        
+        // 🔍 BROWSER HEALTH CHECK: Verify browser/page responsiveness before posting
+        try {
+          const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+          const pool = UnifiedBrowserPool.getInstance();
+          const health = pool.getHealth();
+          
+          if (health.status === 'degraded' || health.circuitBreaker?.isOpen) {
+            console.warn(`[POSTING_QUEUE] ⚠️ Browser pool health check failed: status=${health.status}, circuitBreaker=${health.circuitBreaker?.isOpen}`);
+            console.log(`[POSTING_QUEUE] 🔄 Resetting browser pool before posting...`);
+            await pool.resetPool();
+            console.log(`[POSTING_QUEUE] ✅ Browser pool reset complete`);
+          } else {
+            console.log(`[POSTING_QUEUE] ✅ Browser pool health check passed: status=${health.status}`);
+          }
+        } catch (healthError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Browser health check failed (non-blocking): ${healthError.message}`);
+        }
+        
         const poster = new UltimateTwitterPoster();
         
-        // 🛡️ TIMEOUT PROTECTION: Prevent hanging operations (120 second max)
-        // 🔥 FIX: Increased from 90s to 120s - Twitter can take 55-90s to complete posting
-        const SINGLE_POST_TIMEOUT_MS = 120000; // 120 seconds max for single post
+        // 🛡️ TIMEOUT PROTECTION: Adaptive timeout based on retry count
         const result = await withTimeout(
           () => poster.postTweet(contentToPost),
           { 
             timeoutMs: SINGLE_POST_TIMEOUT_MS, 
             operationName: 'single_post',
             onTimeout: async () => {
-              console.error(`[POSTING_QUEUE] ⏱️ Single post timeout after ${SINGLE_POST_TIMEOUT_MS}ms - cleaning up`);
+              console.error(`[POSTING_QUEUE] ⏱️ Single post timeout after ${SINGLE_POST_TIMEOUT_MS}ms (attempt ${retryCount + 1}) - cleaning up`);
               try {
                 await poster.dispose();
               } catch (e) {
