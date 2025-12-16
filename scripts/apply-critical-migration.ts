@@ -11,7 +11,11 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
-const MIGRATION_FILE = path.join(__dirname, '../supabase/migrations/20251216_fix_phase5_schema_columns.sql');
+// Apply both migrations in order
+const MIGRATION_FILES = [
+  path.join(__dirname, '../supabase/migrations/20251216_fix_phase5_schema_columns.sql'),
+  path.join(__dirname, '../supabase/migrations/20251216_fix_complete_view_columns.sql')
+];
 
 async function applyMigration(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
@@ -21,15 +25,19 @@ async function applyMigration(): Promise<void> {
     process.exit(1);
   }
 
-  console.log('[MIGRATION] 📋 Reading migration file...');
-  let sql: string;
-  try {
-    sql = fs.readFileSync(MIGRATION_FILE, 'utf8');
-    console.log('[MIGRATION] ✅ Migration file loaded');
-  } catch (error: any) {
-    console.error(`[MIGRATION] ❌ Failed to read migration file: ${error.message}`);
-    process.exit(1);
+  console.log('[MIGRATION] 📋 Reading migration files...');
+  const sqlFiles: string[] = [];
+  for (const file of MIGRATION_FILES) {
+    try {
+      const content = fs.readFileSync(file, 'utf8');
+      sqlFiles.push(content);
+      console.log(`[MIGRATION] ✅ Loaded: ${path.basename(file)}`);
+    } catch (error: any) {
+      console.error(`[MIGRATION] ❌ Failed to read ${file}: ${error.message}`);
+      process.exit(1);
+    }
   }
+  const sql = sqlFiles.join('\n\n-- =====================================================================================\n-- Next Migration\n-- =====================================================================================\n\n');
 
   console.log('[MIGRATION] 🔌 Connecting to database...');
   
@@ -92,19 +100,22 @@ async function applyMigration(): Promise<void> {
       SELECT column_name
       FROM information_schema.columns
       WHERE table_name = 'content_metadata'
-      AND column_name IN ('hook_type', 'structure_type')
+      AND column_name IN ('hook_type', 'structure_type', 'visual_format', 'features', 'error_message', 'skip_reason', 'experiment_arm', 'experiment_group', 'hook_variant')
       ORDER BY column_name
     `);
     
-    const hasHookType = rows.some(r => r.column_name === 'hook_type');
-    const hasStructureType = rows.some(r => r.column_name === 'structure_type');
+    const requiredColumns = ['hook_type', 'structure_type', 'visual_format', 'features', 'error_message', 'skip_reason'];
+    const existingColumns = rows.map(r => r.column_name);
+    const missing = requiredColumns.filter(col => !existingColumns.includes(col));
     
     console.log('[MIGRATION] 📊 Verification results:');
-    console.log(`  hook_type: ${hasHookType ? '✅ EXISTS' : '❌ MISSING'}`);
-    console.log(`  structure_type: ${hasStructureType ? '✅ EXISTS' : '❌ MISSING'}`);
+    requiredColumns.forEach(col => {
+      const exists = existingColumns.includes(col);
+      console.log(`  ${col}: ${exists ? '✅ EXISTS' : '❌ MISSING'}`);
+    });
     
-    if (!hasHookType || !hasStructureType) {
-      console.error('[MIGRATION] ❌ Verification failed - columns missing');
+    if (missing.length > 0) {
+      console.error(`[MIGRATION] ❌ Verification failed - missing columns: ${missing.join(', ')}`);
       process.exit(1);
     }
     
