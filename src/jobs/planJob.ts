@@ -1198,9 +1198,11 @@ async function queueContent(content: any): Promise<void> {
   
   // 🧵 THREAD TRACKING: Log when threads are queued
   if (insertPayload.decision_type === 'thread') {
-    console.log(`[QUEUE_CONTENT] 🧵 THREAD QUEUED: ${insertPayload.id}`);
+    const decisionId = content.decision_id || insertPayload.decision_id || 'unknown';
+    const threadPartsCount = insertPayload.thread_parts?.length || 0;
+    console.log(`[QUEUE_CONTENT] 🧵 THREAD QUEUED: decision_id=${decisionId} parts=${threadPartsCount}`);
     console.log(`[QUEUE_CONTENT] 🧵   Scheduled: ${insertPayload.scheduled_at}`);
-    console.log(`[QUEUE_CONTENT] 🧵   Parts: ${insertPayload.thread_parts?.length} tweets`);
+    console.log(`[QUEUE_CONTENT] 🧵   Parts: ${threadPartsCount} tweets`);
   }
   
   // ✅ REMOVED: metadata field doesn't exist in schema

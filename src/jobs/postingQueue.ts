@@ -2477,7 +2477,7 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         
         // 🛡️ TIMEOUT PROTECTION: Adaptive timeout based on retry count
         const result = await withTimeout(
-          () => BulletproofThreadComposer.post(formattedThreadParts),
+          () => BulletproofThreadComposer.post(formattedThreadParts, decision.id),
           { 
             timeoutMs: THREAD_POST_TIMEOUT_MS, 
             operationName: `thread_post_${thread_parts.length}_tweets`

@@ -22,8 +22,8 @@ export class BulletproofThreadComposer {
   
   // 🔥 ADAPTIVE TIMEOUT: Progressive timeout based on retry attempt
   private static getThreadTimeoutMs(retryCount: number): number {
-    // attempt 1: 180s, attempt 2: 240s, attempt 3: 300s
-    const timeouts = [180000, 240000, 300000];
+    // attempt 1: 240s (was 180s), attempt 2: 300s (was 240s), attempt 3: 360s (was 300s)
+    const timeouts = [240000, 300000, 360000];
     return timeouts[Math.min(retryCount, timeouts.length - 1)];
   }
 
@@ -99,7 +99,7 @@ export class BulletproofThreadComposer {
   /**
    * 🎯 MAIN METHOD: Post segments as connected thread
    */
-  static async post(segments: string[]): Promise<ThreadPostResult> {
+  static async post(segments: string[], decisionId?: string): Promise<ThreadPostResult> {
     log({ op: 'thread_post_start', mode: 'composer', segments: segments.length });
     
     const isThread = segments.length > 1;
@@ -123,24 +123,41 @@ export class BulletproofThreadComposer {
 
     // 🔥 ADAPTIVE TIMEOUT: Progressive timeout based on retry attempt
     const maxRetries = 3;
+    const threadDecisionId = decisionId || 'unknown';
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      let page: Page | null = null;
       try {
         const timeoutMs = this.getThreadTimeoutMs(attempt - 1);
         console.log(`[THREAD_COMPOSER][TIMEOUT] 🎯 Posting attempt ${attempt}/${maxRetries} - Using adaptive timeout: ${timeoutMs/1000}s`);
         
         const result = await Promise.race([
-          this.postWithContext(segments, attempt),
-          this.createTimeoutPromise(timeoutMs)
+          this.postWithContext(segments, attempt, threadDecisionId).then(r => {
+            // Store page reference for autopsy if needed
+            return r;
+          }),
+          this.createTimeoutPromise(timeoutMs).then(() => {
+            throw new Error('Thread posting timeout');
+          })
         ]);
         
         console.log(`[THREAD_COMPOSER] ✅ Success on attempt ${attempt}`);
         return result as ThreadPostResult;
         
       } catch (error: any) {
+        // Store page reference for autopsy
+        if (error.page) {
+          page = error.page;
+        }
+        
         if (error.message === 'Thread posting timeout') {
           const timeoutMs = this.getThreadTimeoutMs(attempt - 1);
           console.error(`[THREAD_COMPOSER][TIMEOUT] ⏱️ Timeout on attempt ${attempt}/${maxRetries} (exceeded ${timeoutMs/1000}s)`);
+          
+          // 🔍 TIMEOUT AUTOPSY: Capture screenshot and HTML
+          if (page) {
+            await this.captureTimeoutAutopsy(page, threadDecisionId, attempt);
+          }
           
           if (attempt === maxRetries) {
             return {
@@ -159,6 +176,11 @@ export class BulletproofThreadComposer {
         console.error(`[THREAD_COMPOSER] ❌ Attempt ${attempt} error: ${errorMsg}`);
         console.error(`[THREAD_COMPOSER] ❌ Error type: ${error.name || typeof error}`);
         console.error(`[THREAD_COMPOSER] ❌ Stack trace: ${error.stack?.substring(0, 200) || 'No stack'}`);
+        
+        // 🔍 ERROR AUTOPSY: Capture screenshot and HTML on any error
+        if (page) {
+          await this.captureTimeoutAutopsy(page, threadDecisionId, attempt);
+        }
         
         if (attempt === maxRetries) {
           return {
@@ -193,9 +215,43 @@ export class BulletproofThreadComposer {
   }
 
   /**
+   * 🔍 TIMEOUT AUTOPSY: Capture screenshot and HTML on timeout/error
+   */
+  private static async captureTimeoutAutopsy(page: Page, decisionId: string, attempt: number): Promise<void> {
+    try {
+      const screenshotPath = `/tmp/thread_timeout_${decisionId}_${attempt}.png`;
+      const htmlPath = `/tmp/thread_timeout_${decisionId}_${attempt}.html`;
+      const currentUrl = page.url();
+      
+      // Capture screenshot
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`[THREAD_COMPOSER][AUTOPSY] 📸 Screenshot saved: ${screenshotPath}`);
+      
+      // Capture HTML
+      const html = await page.content();
+      const fs = await import('fs');
+      fs.writeFileSync(htmlPath, html);
+      console.log(`[THREAD_COMPOSER][AUTOPSY] 📄 HTML saved: ${htmlPath}`);
+      
+      // Check for rate limit / error banners
+      const rateLimitBanner = await page.locator('text=/rate limit|too many|try again/i').count();
+      const errorBanner = await page.locator('text=/error|failed|something went wrong/i').count();
+      const composerVisible = await page.locator('[data-testid="tweetTextarea_0"]').count();
+      
+      console.log(`[THREAD_COMPOSER][AUTOPSY] 🔍 Current URL: ${currentUrl}`);
+      console.log(`[THREAD_COMPOSER][AUTOPSY] 🔍 Rate limit banner: ${rateLimitBanner > 0 ? 'YES' : 'NO'}`);
+      console.log(`[THREAD_COMPOSER][AUTOPSY] 🔍 Error banner: ${errorBanner > 0 ? 'YES' : 'NO'}`);
+      console.log(`[THREAD_COMPOSER][AUTOPSY] 🔍 Composer visible: ${composerVisible > 0 ? 'YES' : 'NO'}`);
+      
+    } catch (autopsyError: any) {
+      console.error(`[THREAD_COMPOSER][AUTOPSY] ❌ Failed to capture autopsy: ${autopsyError.message}`);
+    }
+  }
+
+  /**
    * 🔥 FIXED: Use UnifiedBrowserPool (same as single posts - AUTHENTICATED!)
    */
-  private static async postWithContext(segments: string[], attempt: number): Promise<ThreadPostResult> {
+  private static async postWithContext(segments: string[], attempt: number, decisionId?: string | null): Promise<ThreadPostResult> {
     const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
     const pool = UnifiedBrowserPool.getInstance();
     
@@ -250,12 +306,20 @@ export class BulletproofThreadComposer {
             
             const extractStartTime = Date.now();
             console.log('[THREAD_COMPOSER][STAGE] 🎯 Stage: tweet_id_extraction - Starting...');
-            const rootUrl = await this.captureRootUrl(page);
-            
-            // Capture all tweet IDs from composer mode
-            const tweetIds = await this.captureThreadIds(page, segments.length);
-            const extractDuration = Date.now() - extractStartTime;
-            console.log(`[THREAD_COMPOSER][STAGE] ✅ Stage: tweet_id_extraction - Completed in ${extractDuration}ms`);
+            let rootUrl: string;
+            let tweetIds: string[];
+            try {
+              rootUrl = await this.captureRootUrl(page);
+              
+              // Capture all tweet IDs from composer mode
+              tweetIds = await this.captureThreadIds(page, segments.length);
+              const extractDuration = Date.now() - extractStartTime;
+              console.log(`[THREAD_COMPOSER][STAGE] ✅ Stage: tweet_id_extraction - Done (${extractDuration}ms)`);
+            } catch (extractError: any) {
+              const extractDuration = Date.now() - extractStartTime;
+              console.error(`[THREAD_COMPOSER][STAGE] ❌ Stage: tweet_id_extraction - Failed after ${extractDuration}ms: ${extractError.message}`);
+              throw extractError;
+            }
             
             // ✅ IMPORTANT: Release page back to pool
             await pool.releasePage(page);
@@ -361,7 +425,7 @@ export class BulletproofThreadComposer {
     
     // Type first segment
     const typingStartTime = Date.now();
-    console.log(`[THREAD_COMPOSER][STAGE] 🎯 Stage: typing - Starting tweet 1/${segments.length} (${segments[0].length} chars)...`);
+    console.log(`[THREAD_COMPOSER][STAGE] 🎯 Stage: typing tweet 1/${segments.length} - Starting (${segments[0].length} chars)...`);
     const tb0 = await this.getComposeBox(page, 0);
     await tb0.click(); // Ensure focus
     await page.waitForTimeout(300); // Allow UI to update
@@ -371,25 +435,61 @@ export class BulletproofThreadComposer {
     await page.keyboard.press('Backspace');
     await page.waitForTimeout(200);
     
-    await tb0.type(segments[0], { delay: 10 });
+    // 🚀 OPTIMIZATION: Try clipboard paste first (much faster than typing)
+    try {
+      await page.evaluate((text) => {
+        const textarea = document.querySelector('[data-testid="tweetTextarea_0"]') as HTMLTextAreaElement;
+        if (textarea) {
+          textarea.value = text;
+          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }, segments[0]);
+      await page.waitForTimeout(100); // Brief wait for input event
+      console.log(`[THREAD_COMPOSER][STAGE] ✅ Used clipboard paste for tweet 1`);
+    } catch (pasteError) {
+      // Fallback to typing if paste fails
+      console.log(`[THREAD_COMPOSER][STAGE] ⚠️ Paste failed, falling back to typing`);
+      await tb0.type(segments[0], { delay: 5 }); // Reduced delay from 10ms to 5ms
+    }
+    
     await this.verifyTextBoxHas(page, 0, segments[0]);
     const typingDuration = Date.now() - typingStartTime;
-    console.log(`[THREAD_COMPOSER][STAGE] ✅ Stage: typing - Completed tweet 1 in ${typingDuration}ms`);
+    console.log(`[THREAD_COMPOSER][STAGE] ✅ Stage: typing tweet 1/${segments.length} - Done (${typingDuration}ms)`);
     
     // Add additional cards for multi-segment
     if (segments.length > 1) {
       console.log(`🎨 THREAD_COMPOSER: Step 3/5 - Adding ${segments.length - 1} more tweets...`);
       for (let i = 1; i < segments.length; i++) {
+        const tweetTypingStartTime = Date.now();
+        console.log(`[THREAD_COMPOSER][STAGE] 🎯 Stage: typing tweet ${i + 1}/${segments.length} - Starting (${segments[i].length} chars)...`);
         console.log(`   ➕ Adding tweet ${i + 1}/${segments.length}...`);
         await this.addAnotherPost(page);
-        await page.waitForTimeout(500); // Wait for new compose box to appear
+        await page.waitForTimeout(300); // Reduced from 500ms - wait for new compose box to appear
         
         const tb = await this.getComposeBox(page, i);
         await tb.click();
-        await page.waitForTimeout(200); // Allow focus
-        await tb.type(segments[i], { delay: 10 });
+        await page.waitForTimeout(100); // Reduced from 200ms - allow focus
+        
+        // 🚀 OPTIMIZATION: Try clipboard paste first (much faster than typing)
+        try {
+          await page.evaluate((args: { text: string; index: number }) => {
+            const textarea = document.querySelector(`[data-testid="tweetTextarea_${args.index}"]`) as HTMLTextAreaElement;
+            if (textarea) {
+              textarea.value = args.text;
+              textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          }, { text: segments[i], index: i });
+          await page.waitForTimeout(100); // Brief wait for input event
+          console.log(`[THREAD_COMPOSER][STAGE] ✅ Used clipboard paste for tweet ${i + 1}`);
+        } catch (pasteError) {
+          // Fallback to typing if paste fails
+          console.log(`[THREAD_COMPOSER][STAGE] ⚠️ Paste failed, falling back to typing`);
+          await tb.type(segments[i], { delay: 5 }); // Reduced delay from 10ms to 5ms
+        }
+        
         await this.verifyTextBoxHas(page, i, segments[i]);
-        console.log(`   ✅ Tweet ${i + 1}/${segments.length} added (${segments[i].length} chars)`);
+        const tweetTypingDuration = Date.now() - tweetTypingStartTime;
+        console.log(`[THREAD_COMPOSER][STAGE] ✅ Stage: typing tweet ${i + 1}/${segments.length} - Done (${tweetTypingDuration}ms)`);
       }
     }
     
@@ -419,9 +519,15 @@ export class BulletproofThreadComposer {
     // Post all
     const submitStartTime = Date.now();
     console.log('[THREAD_COMPOSER][STAGE] 🎯 Stage: submit - Starting...');
-    await this.postAll(page);
-    const submitDuration = Date.now() - submitStartTime;
-    console.log(`[THREAD_COMPOSER][STAGE] ✅ Stage: submit - Completed in ${submitDuration}ms`);
+    try {
+      await this.postAll(page);
+      const submitDuration = Date.now() - submitStartTime;
+      console.log(`[THREAD_COMPOSER][STAGE] ✅ Stage: submit - Done (${submitDuration}ms)`);
+    } catch (submitError: any) {
+      const submitDuration = Date.now() - submitStartTime;
+      console.error(`[THREAD_COMPOSER][STAGE] ❌ Stage: submit - Failed after ${submitDuration}ms: ${submitError.message}`);
+      throw submitError;
+    }
     
     console.log('✅ THREAD_COMPOSER: Native composer SUCCESS - Thread posted!');
   }
