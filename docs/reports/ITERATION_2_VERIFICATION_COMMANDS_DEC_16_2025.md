@@ -29,7 +29,7 @@ cat package.json | grep -n "\"plan"
 
 **Expected output:** Should show `"plan:run:once": "tsx scripts/plan-run-once.ts"` (already verified in package.json)
 
-**After trigger:** Proceed to Step 2 readiness gate (repeatedly fetch logs until evidence appears)
+**After trigger:** Proceed to Step 2 readiness gate (bounded: up to 8 attempts)
 
 ---
 
@@ -48,12 +48,13 @@ echo "Lines: $(wc -l < /tmp/xbot_thread_verify.txt)"
 
 **C) Readiness check (must show at least ONE line before proceeding):**
 ```bash
-grep -nE "\[PLAN_JOB\]|\[QUEUE_CONTENT\].*THREAD QUEUED|\[THREAD_COMPOSER\]" /tmp/xbot_thread_verify.txt | tail -n 80
+grep -nE "\[PLAN_JOB\]|\[THREAD_BOOST\]|\[QUEUE_CONTENT\].*THREAD QUEUED|\[THREAD_COMPOSER\]" /tmp/xbot_thread_verify.txt | tail -n 80
 ```
 
 **Readiness gate logic:**
-- If C shows nothing relevant: Re-run B (capture fresh logs) and re-run C until it does
-- Once C shows evidence (at least ONE line), proceed with Step 2 D/E/F
+- Re-run capture + readiness check up to 8 attempts
+- If still nothing after 8 attempts, stop and output: "No PLAN_JOB / THREAD QUEUED / THREAD_COMPOSER evidence in last 5000 lines after 8 attempts" and include the last 80 lines of readiness output
+- Once C shows evidence (at least ONE line), proceed with Step 2 D/E/F/G
 
 **D) Confirm BOOT commit line:**
 ```bash
@@ -237,12 +238,16 @@ railway logs --service xBOT --lines 2000 | grep -E "\[THREAD_COMPOSER\]\[STAGE\]
    echo "Lines: $(wc -l < /tmp/xbot_thread_verify.txt)"
    ```
 
-3. **C) Readiness check (repeat B+C until at least ONE line appears):**
+3. **C) Readiness check (re-run B+C up to 8 attempts):**
    ```bash
-   grep -nE "\[PLAN_JOB\]|\[QUEUE_CONTENT\].*THREAD QUEUED|\[THREAD_COMPOSER\]" /tmp/xbot_thread_verify.txt | tail -n 80
+   grep -nE "\[PLAN_JOB\]|\[THREAD_BOOST\]|\[QUEUE_CONTENT\].*THREAD QUEUED|\[THREAD_COMPOSER\]" /tmp/xbot_thread_verify.txt | tail -n 80
    ```
    
-   **If C shows nothing:** Re-run B, then re-run C. Repeat until C shows evidence.
+   **Readiness gate logic:**
+   - If C shows nothing: Re-run B, then re-run C
+   - Maximum 8 attempts total
+   - If still nothing after 8 attempts: Stop and output "No PLAN_JOB / THREAD QUEUED / THREAD_COMPOSER evidence in last 5000 lines after 8 attempts" + last 80 lines of readiness output
+   - Once C shows evidence (at least ONE line), proceed to D
 
 4. **D) Confirm BOOT commit line:**
    ```bash
