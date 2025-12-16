@@ -196,7 +196,18 @@
     "railway:logs:errors": "node railway-logs.js --errors",
     "railway:diagnostic": "node railway-diagnostic.js",
     "railway:fix": "node fix_railway_connection.js",
-    "railway:open": "railway open"
+    "railway:open": "railway open",
+    "phase:flags": "railway run pnpm tsx scripts/print-phase-flags.ts",
+    "phase5:enable": "railway variables --set \"ENABLE_PHASE4_ROUTING=true\" && railway variables --set \"ENABLE_PHASE4_EXPERIMENTS=false\" && railway variables --set \"ENABLE_PHASE5_GENERATOR_POLICY=true\" && railway variables --set \"ENABLE_PHASE5_SLOT_POLICY=true\"",
+    "phase5:disable": "railway variables --set \"ENABLE_PHASE4_ROUTING=false\" && railway variables --set \"ENABLE_PHASE4_EXPERIMENTS=false\" && railway variables --set \"ENABLE_PHASE5_GENERATOR_POLICY=false\" && railway variables --set \"ENABLE_PHASE5_SLOT_POLICY=false\"",
+    "phase5:generators:on": "railway variables --set \"ENABLE_PHASE5_GENERATOR_POLICY=true\"",
+    "phase5:generators:off": "railway variables --set \"ENABLE_PHASE5_GENERATOR_POLICY=false\"",
+    "phase5:slots:on": "railway variables --set \"ENABLE_PHASE5_SLOT_POLICY=true\"",
+    "phase5:slots:off": "railway variables --set \"ENABLE_PHASE5_SLOT_POLICY=false\"",
+    "phase4:experiments:on": "railway variables --set \"ENABLE_PHASE4_EXPERIMENTS=true\"",
+    "phase4:experiments:off": "railway variables --set \"ENABLE_PHASE4_EXPERIMENTS=false\"",
+    "phase5:check": "pnpm tsx scripts/check-phase5-activation.ts",
+    "phase5:check:quick": "bash scripts/check-phase5-activation.sh"
   },
   "keywords": [
     "twitter",
