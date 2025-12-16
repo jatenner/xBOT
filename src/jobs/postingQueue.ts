@@ -1656,8 +1656,13 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       if (decision.decision_type === 'thread' && decision.thread_parts) {
         const parts = Array.isArray(decision.thread_parts) ? decision.thread_parts : [];
         for (let i = 0; i < parts.length; i++) {
-          if (parts[i].length > 200) {
-            throw new Error(`Thread part ${i + 1} exceeds 200 chars (${parts[i].length} chars). Max limit: 200 chars for optimal engagement.`);
+          const partLength = parts[i].length;
+          if (partLength > 280) {
+            // Hard limit: Twitter's actual character limit
+            throw new Error(`Thread part ${i + 1} exceeds 280 chars (${partLength} chars). Max limit: 280 chars (Twitter hard limit).`);
+          } else if (partLength > 200) {
+            // Soft warning: Optimal engagement threshold (don't fail, just warn)
+            console.warn(`[THREAD_VALIDATION] ⚠️ Warning: Thread part ${i + 1} exceeds optimal length (${partLength} chars). Optimal: ≤200 chars, Max: 280 chars. Continuing anyway.`);
           }
         }
         console.log(`${logPrefix} ✅ Character limit validation passed for ${parts.length} thread parts`);
