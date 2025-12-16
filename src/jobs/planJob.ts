@@ -550,7 +550,32 @@ async function generateContentWithLLM() {
   // ✨ STEP 5: Generate FORMAT STRATEGY (avoiding last 4)
   // ═══════════════════════════════════════════════════════════
   const formatStrategyGen = getFormatStrategyGenerator();
-  const formatStrategy = await formatStrategyGen.generateStrategy(topic, angle, tone, matchedGenerator);
+  let formatStrategy = await formatStrategyGen.generateStrategy(topic, angle, tone, matchedGenerator);
+  
+  // 🚀 THREAD BOOST: Feature flag to force thread generation for verification
+  const threadBoostEnabled = process.env.ENABLE_THREAD_BOOST === 'true';
+  const threadBoostRate = parseFloat(process.env.THREAD_BOOST_RATE || '0.5');
+  const eligibleSlots = ['framework', 'deep_dive', 'research', 'educational'];
+  const isEligibleSlot = eligibleSlots.includes(selectedSlot);
+  
+  if (threadBoostEnabled && isEligibleSlot) {
+    const shouldBoost = Math.random() < threadBoostRate;
+    if (shouldBoost) {
+      // Force thread format
+      if (typeof formatStrategy === 'string') {
+        formatStrategy = { format_type: 'thread', strategy: formatStrategy } as any;
+      } else if (formatStrategy && typeof formatStrategy === 'object') {
+        formatStrategy = { ...(formatStrategy as any), format_type: 'thread' } as any;
+      } else {
+        formatStrategy = { format_type: 'thread' } as any;
+      }
+      console.log(`[THREAD_BOOST] ✅ enabled=true rate=${threadBoostRate} selected=true decisionType=thread slot=${selectedSlot}`);
+    } else {
+      console.log(`[THREAD_BOOST] ⏭️ enabled=true rate=${threadBoostRate} selected=false decisionType=single slot=${selectedSlot}`);
+    }
+  } else if (threadBoostEnabled && !isEligibleSlot) {
+    console.log(`[THREAD_BOOST] ⏭️ enabled=true but slot=${selectedSlot} not eligible (eligible: ${eligibleSlots.join(', ')})`);
+  }
   
   console.log(`\n🎨 FORMAT: "${formatStrategy}"`);
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');

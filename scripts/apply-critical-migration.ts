@@ -101,11 +101,11 @@ async function applyMigration(): Promise<void> {
       SELECT column_name
       FROM information_schema.columns
       WHERE table_name = 'content_metadata'
-      AND column_name IN ('hook_type', 'structure_type', 'visual_format', 'features', 'error_message', 'skip_reason', 'experiment_arm', 'experiment_group', 'hook_variant')
+      AND column_name IN ('hook_type', 'structure_type', 'visual_format', 'features', 'error_message', 'skip_reason', 'thread_tweet_ids')
       ORDER BY column_name
     `);
     
-    const requiredColumns = ['hook_type', 'structure_type', 'visual_format', 'features', 'error_message', 'skip_reason'];
+    const requiredColumns = ['hook_type', 'structure_type', 'visual_format', 'features', 'error_message', 'skip_reason', 'thread_tweet_ids'];
     const existingColumns = rows.map(r => r.column_name);
     const missing = requiredColumns.filter(col => !existingColumns.includes(col));
     
