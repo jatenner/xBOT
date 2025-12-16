@@ -60,20 +60,26 @@ function checkActivation(logLines: string[]): ActivationStatus {
   for (const line of logLines) {
     const entry = parseLogLine(line);
     
-    // Check for SLOT_POLICY
-    if (line.includes('[SLOT_POLICY]')) {
+    // Check for SLOT_POLICY (including debug logs)
+    if (line.includes('[SLOT_POLICY]') || 
+        line.includes('selectContentSlot() called') ||
+        line.includes('initializeSlotPolicy() called')) {
       status.slotPolicy.found = true;
       status.slotPolicy.evidence.push(entry);
     }
     
-    // Check for GEN_POLICY
-    if (line.includes('[GEN_POLICY]')) {
+    // Check for GEN_POLICY (including debug logs)
+    if (line.includes('[GEN_POLICY]') || 
+        line.includes('matchGenerator() called') ||
+        line.includes('initializeGeneratorPolicy() called') ||
+        line.includes('Using policy+learning weights')) {
       status.genPolicy.found = true;
       status.genPolicy.evidence.push(entry);
     }
     
-    // Check for VOICE_GUIDE
-    if (line.includes('[VOICE_GUIDE]')) {
+    // Check for VOICE_GUIDE (including debug logs)
+    if (line.includes('[VOICE_GUIDE]') || 
+        line.includes('chooseVoiceForContent')) {
       status.voiceGuide.found = true;
       status.voiceGuide.evidence.push(entry);
     }
