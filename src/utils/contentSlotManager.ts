@@ -59,7 +59,7 @@ const CONTENT_SLOT_DEFINITIONS: Record<ContentSlotType, ContentSlotConfig> = {
   research: {
     slot: 'research',
     description: 'Sharing research findings and studies',
-    preferredGenerators: ['dataNerd', 'investigator', 'researcher'],
+    preferredGenerators: ['dataNerd', 'investigator'], // 'researcher' mapped to 'dataNerd' (not a valid generator)
     preferredAngles: ['study findings', 'research-backed', 'evidence-based'],
     preferredTones: ['scientific', 'data-driven', 'analytical']
   },
@@ -176,12 +176,126 @@ export function getContentSlotsForDate(date: Date): ContentSlotType[] {
 }
 
 /**
- * Select a content slot from available slots (with bias toward preferred slots)
+ * 🎯 Phase 5A: Slot policy weights cache (lazy initialized)
  */
-export function selectContentSlot(
+let currentSlotWeights: Record<string, number> | null = null;
+let slotPolicyInitialized: boolean = false;
+
+/**
+ * 🎯 Phase 5A: Initialize slot policy weights (if enabled)
+ * Called lazily on first use when ENABLE_PHASE5_SLOT_POLICY=true
+ */
+async function initializeSlotPolicy(): Promise<void> {
+  console.log('[SLOT_POLICY] 🎯 initializeSlotPolicy() called');
+  console.log('[SLOT_POLICY] env flag ENABLE_PHASE5_SLOT_POLICY =', process.env.ENABLE_PHASE5_SLOT_POLICY);
+  console.log('[SLOT_POLICY] slotPolicyInitialized =', slotPolicyInitialized);
+  
+  if (slotPolicyInitialized) {
+    console.log('[SLOT_POLICY] Already initialized, skipping');
+    return; // Already initialized
+  }
+
+  const enablePolicy = process.env.ENABLE_PHASE5_SLOT_POLICY === 'true';
+  console.log('[SLOT_POLICY] enablePolicy (parsed) =', enablePolicy);
+  
+  if (!enablePolicy) {
+    console.log('[SLOT_POLICY] Policy disabled, marking as initialized (disabled)');
+    slotPolicyInitialized = true; // Mark as initialized (disabled)
+    return;
+  }
+
+  try {
+    console.log('[SLOT_POLICY] 🎯 Initializing slot policy...');
+    
+    // Fetch performance data
+    const { fetchSlotPerformanceSummary } = await import('../learning/contentSlotPerformanceFetcher');
+    const performanceData = await fetchSlotPerformanceSummary();
+    
+    // Compute weights from policy + learning
+    const { 
+      SLOT_POLICY_BASE_WEIGHTS,
+      computeSlotWeightsFromPolicyAndLearning,
+      validateSlotWeights
+    } = await import('../learning/contentSlotPolicy');
+    
+    const computedWeights = computeSlotWeightsFromPolicyAndLearning({
+      baseWeights: SLOT_POLICY_BASE_WEIGHTS,
+      performanceBySlot: performanceData,
+      minPostsForAdjustment: 10,
+      learningStrength: 0.3
+    });
+    
+    // Validate weights
+    if (!validateSlotWeights(computedWeights)) {
+      console.error('[SLOT_POLICY] ❌ Invalid weights computed, falling back to base weights');
+      currentSlotWeights = null;
+      slotPolicyInitialized = true;
+      return;
+    }
+    
+    currentSlotWeights = computedWeights;
+    slotPolicyInitialized = true;
+    
+    console.log('[SLOT_POLICY] ✅ Initialized slot weights:', JSON.stringify(computedWeights, null, 2));
+    
+  } catch (error: any) {
+    console.error('[SLOT_POLICY] ❌ Failed to initialize slot policy:', error);
+    console.error(`[SLOT_POLICY] Error message: ${error.message}`);
+    console.error(`[SLOT_POLICY] Error stack: ${error.stack}`);
+    console.error('[SLOT_POLICY] ⚠️ Falling back to original behavior');
+    currentSlotWeights = null;
+    slotPolicyInitialized = true;
+  }
+}
+
+/**
+ * Select a weighted slot from available slots using policy weights (if enabled)
+ */
+function selectWeightedSlot(
+  availableSlots: ContentSlotType[],
+  weights: Record<string, number>
+): ContentSlotType {
+  // Filter weights to only available slots
+  const availableWeights: Record<string, number> = {};
+  let totalWeight = 0;
+  
+  for (const slot of availableSlots) {
+    if (weights[slot] !== undefined && weights[slot] > 0) {
+      availableWeights[slot] = weights[slot];
+      totalWeight += weights[slot];
+    }
+  }
+  
+  if (Object.keys(availableWeights).length === 0 || totalWeight === 0) {
+    // Fallback to uniform random if no valid weights
+    const randomIndex = Math.floor(Math.random() * availableSlots.length);
+    return availableSlots[randomIndex];
+  }
+  
+  // Weighted random selection
+  const random = Math.random() * totalWeight;
+  let cumulative = 0;
+  
+  for (const [slot, weight] of Object.entries(availableWeights)) {
+    cumulative += weight;
+    if (random <= cumulative) {
+      return slot as ContentSlotType;
+    }
+  }
+  
+  // Fallback to first slot if rounding errors
+  return availableSlots[0];
+}
+
+/**
+ * Select a content slot from available slots (with bias toward preferred slots)
+ * 
+ * 🎯 Phase 5A: Can use policy weights when ENABLE_PHASE5_SLOT_POLICY=true
+ */
+export async function selectContentSlot(
   availableSlots: ContentSlotType[],
   recentSlots?: ContentSlotType[] // Last N slots used (for diversity)
-): ContentSlotType {
+): Promise<ContentSlotType> {
   if (availableSlots.length === 0) {
     return 'practical_tip'; // Default fallback
   }
@@ -190,7 +304,40 @@ export function selectContentSlot(
     return availableSlots[0];
   }
   
-  // If we have recent slots, avoid repeating the last one
+  // 🎯 Phase 5A: Initialize policy weights if enabled (lazy init)
+  const enablePolicy = process.env.ENABLE_PHASE5_SLOT_POLICY === 'true';
+  console.log('[SLOT_POLICY] selectContentSlot() called. Flag =', enablePolicy);
+  console.log('[SLOT_POLICY] slotPolicyInitialized =', slotPolicyInitialized);
+  
+  if (enablePolicy && !slotPolicyInitialized) {
+    console.log('[SLOT_POLICY] About to call initializeSlotPolicy(), slotPolicyInitialized =', slotPolicyInitialized);
+    await initializeSlotPolicy();
+    console.log('[SLOT_POLICY] initializeSlotPolicy() completed, slotPolicyInitialized =', slotPolicyInitialized);
+  }
+  
+  // 🎯 Phase 5A: Use policy weights if enabled and available
+  if (enablePolicy && currentSlotWeights) {
+    try {
+      // If we have recent slots, avoid repeating the last one (apply diversity constraint)
+      let slotsToConsider = availableSlots;
+      if (recentSlots && recentSlots.length > 0) {
+        const lastSlot = recentSlots[recentSlots.length - 1];
+        const filtered = availableSlots.filter(slot => slot !== lastSlot);
+        if (filtered.length > 0) {
+          slotsToConsider = filtered;
+        }
+      }
+      
+      const selected = selectWeightedSlot(slotsToConsider, currentSlotWeights);
+      const weight = currentSlotWeights[selected] || 0;
+      console.log(`[SLOT_POLICY] Selected slot=${selected} weight=${(weight * 100).toFixed(1)}% (policy+learning)`);
+      return selected;
+    } catch (error: any) {
+      console.warn(`[SLOT_POLICY] ⚠️ Failed to use policy weights: ${error.message}, falling back`);
+    }
+  }
+  
+  // Original behavior: If we have recent slots, avoid repeating the last one
   if (recentSlots && recentSlots.length > 0) {
     const lastSlot = recentSlots[recentSlots.length - 1];
     const filtered = availableSlots.filter(slot => slot !== lastSlot);

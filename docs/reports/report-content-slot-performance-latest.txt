@@ -5,6 +5,11 @@ CONTENT SLOT PERFORMANCE REPORT
 TEXT SUMMARY:
 ----------------------------------------------------------------------
 
+[reply]
+  Count: 4
+  Avg engagement_rate: 0.0000
+  Avg followers_gained_weighted: N/A
+
 [framework]
   Count: 1
   Avg engagement_rate: 0.0000
@@ -13,11 +18,6 @@ TEXT SUMMARY:
     "Want to supercharge your workouts? Try a handful of mixed nuts! They provide healthy fats, protein, and fiber to sustain energy. Before your next workout, grab a small bag. You'll feel the difference ..."
   Worst post: score=0.0455
     "Want to supercharge your workouts? Try a handful of mixed nuts! They provide healthy fats, protein, and fiber to sustain energy. Before your next workout, grab a small bag. You'll feel the difference ..."
-
-[reply]
-  Count: 1
-  Avg engagement_rate: N/A
-  Avg followers_gained_weighted: N/A
 
 [research]
   Count: 1
@@ -32,6 +32,14 @@ TEXT SUMMARY:
 JSON OUTPUT:
 ----------------------------------------------------------------------
 [
+  {
+    "content_slot": "reply",
+    "count": 4,
+    "avg_engagement_rate": 0,
+    "avg_followers_gained_weighted": null,
+    "top_post": null,
+    "worst_post": null
+  },
   {
     "content_slot": "framework",
     "count": 1,
@@ -51,14 +59,6 @@ JSON OUTPUT:
       "primary_objective_score": 0.045515,
       "engagement_rate": 0
     }
-  },
-  {
-    "content_slot": "reply",
-    "count": 1,
-    "avg_engagement_rate": null,
-    "avg_followers_gained_weighted": null,
-    "top_post": null,
-    "worst_post": null
   },
   {
     "content_slot": "research",

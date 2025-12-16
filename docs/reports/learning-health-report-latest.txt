@@ -5,23 +5,23 @@ xBOT LEARNING HEALTH REPORT (LAST 7 DAYS)
 ======================================================================
 
 [V2 OUTCOMES]
-  Total outcomes: 718
+  Total outcomes: 723
   With v2 fields: 52
-  Coverage: 52/718 = 7.2%
+  Coverage: 52/723 = 7.2%
 
 [CONTENT SLOTS]
   Total rows: 1000
-  With content_slot: 11
-  Coverage: 11/1000 = 1.1%
+  With content_slot: 10
+  Coverage: 10/1000 = 1.0%
   By slot:
     reply: 6
-    framework: 2
+    framework: 1
     test_slot: 1
     test_slot_client: 1
     research: 1
 
 [VW_LEARNING]
-  Rows (last 7 days): 317
+  Rows (last 7 days): 321
 
 [WEIGHT MAPS]
   Rows (last 7 days): 1

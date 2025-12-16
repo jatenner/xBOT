@@ -69,10 +69,30 @@ export async function callGeneratorWithModel(
     'experimenter': { module: 'experimenterGenerator', fn: 'generateExperimenterContent' },
   };
 
-  const config = generatorMap[generatorName];
-  if (!config) {
-    throw new Error(`Unknown generator: ${generatorName}`);
+  // 🛡️ Safe fallback for unknown generators (e.g., "researcher" -> "dataNerd")
+  let normalizedGeneratorName = generatorName;
+  const generatorAliases: Record<string, string> = {
+    'researcher': 'dataNerd', // Map "researcher" to "dataNerd" (closest match)
+    'research': 'dataNerd'
+  };
+  
+  if (generatorAliases[generatorName]) {
+    normalizedGeneratorName = generatorAliases[generatorName];
+    console.warn(`[GENERATOR_MATCH] ⚠️ Unknown generator "${generatorName}" mapped to "${normalizedGeneratorName}"`);
   }
+  
+  let config = generatorMap[normalizedGeneratorName];
+  if (!config) {
+    console.error(`[GENERATOR_MATCH] ❌ Unknown generator: ${normalizedGeneratorName} — falling back to thoughtLeader`);
+    normalizedGeneratorName = 'thoughtLeader'; // Safe fallback
+    config = generatorMap[normalizedGeneratorName];
+    if (!config) {
+      throw new Error(`Critical: Fallback generator "thoughtLeader" not found in generatorMap`);
+    }
+  }
+  
+  // Use normalized name for rest of function
+  generatorName = normalizedGeneratorName;
 
   const generatorModule = await import(`../generators/${config.module}`);
   const generateFn = generatorModule[config.fn];
