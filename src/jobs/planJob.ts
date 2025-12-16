@@ -1120,7 +1120,6 @@ async function queueContent(content: any): Promise<void> {
     const threadBoostEnabled = process.env.ENABLE_THREAD_BOOST === 'true';
     const threadBoostRate = parseFloat(process.env.THREAD_BOOST_RATE || '0.5');
     const rng = Math.random();
-    const selectedSlot = content.content_slot || null;
     const eligibleSlots = ['framework', 'deep_dive', 'research', 'educational'];
     const isEligibleSlot = selectedSlot && eligibleSlots.includes(selectedSlot);
     const wasBoosted = threadBoostEnabled && isEligibleSlot && rng < threadBoostRate;
