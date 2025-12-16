@@ -1180,14 +1180,15 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
       // 🎯 v2: Set content_slot for replies (replies use 'reply' slot type)
       const replyContentSlot = 'reply';
       
-      // 🧪 Phase 4: Assign experiment metadata for replies (if enabled)
+      // 🧪 Phase 4: Assign experiment metadata for replies (only if experiments enabled)
       let experimentAssignment: { experiment_group: string | null; hook_variant: string | null } = {
         experiment_group: null,
         hook_variant: null
       };
       
+      const enableExperiments = process.env.ENABLE_PHASE4_EXPERIMENTS === 'true';
       const { shouldUsePhase4Routing } = await import('../ai/orchestratorRouter');
-      if (shouldUsePhase4Routing()) {
+      if (enableExperiments && shouldUsePhase4Routing()) {
         try {
           const { assignExperiment } = await import('../experiments/experimentAssigner');
           // Replies use 'reply' slot type
@@ -1218,36 +1219,43 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
         // Continue without voice decision - will use defaults
       }
 
-      const { data, error } = await supabase.from('content_metadata').insert([{
-    decision_id: reply.decision_id,
-    decision_type: 'reply',
-    content: reply.content,
-    content_slot: replyContentSlot, // 🎯 v2: Store content slot for replies
-    generation_source: 'strategic_multi_generator',
-    status: 'queued',
-    scheduled_at: scheduledAt.toISOString(), // Use calculated time
-    quality_score: reply.quality_score || 0.85,
-    predicted_er: reply.predicted_er || 0.028,
-    topic_cluster: reply.topic || 'health',
-    
-    // 🎤 PHASE 5: Voice Guide metadata (if available)
-    hook_type: voiceDecision?.hookType || 'none', // Replies typically don't use hooks
-    structure_type: voiceDecision?.structure || 'reply', // Always 'reply' for replies
-    // Note: tone is stored separately if needed
-    target_tweet_id: reply.target_tweet_id,
-    target_username: reply.target_username,
-    generator_name: reply.generator_used || 'unknown',
-    bandit_arm: `strategic_reply_${reply.generator_used || 'unknown'}`,
-    experiment_group: experimentAssignment.experiment_group, // 🧪 Phase 4: Experiment metadata
-    hook_variant: experimentAssignment.hook_variant, // 🧪 Phase 4: Hook variant
-    created_at: new Date().toISOString(),
-    features: {
-      generator: reply.generator_used || 'unknown',
-      tweet_url: reply.tweet_url || null,
-      parent_tweet_id: reply.target_tweet_id,
-      parent_username: reply.target_username
-    }
-  }]);
+      // Build insert payload (conditionally exclude experiment fields if experiments disabled)
+      const replyInsertPayload: any = {
+        decision_id: reply.decision_id,
+        decision_type: 'reply',
+        content: reply.content,
+        content_slot: replyContentSlot, // 🎯 v2: Store content slot for replies
+        generation_source: 'strategic_multi_generator',
+        status: 'queued',
+        scheduled_at: scheduledAt.toISOString(), // Use calculated time
+        quality_score: reply.quality_score || 0.85,
+        predicted_er: reply.predicted_er || 0.028,
+        topic_cluster: reply.topic || 'health',
+        
+        // 🎤 PHASE 5: Voice Guide metadata (if available)
+        hook_type: voiceDecision?.hookType || 'none', // Replies typically don't use hooks
+        structure_type: voiceDecision?.structure || 'reply', // Always 'reply' for replies
+        // Note: tone is stored separately if needed
+        target_tweet_id: reply.target_tweet_id,
+        target_username: reply.target_username,
+        generator_name: reply.generator_used || 'unknown',
+        bandit_arm: `strategic_reply_${reply.generator_used || 'unknown'}`,
+        created_at: new Date().toISOString(),
+        features: {
+          generator: reply.generator_used || 'unknown',
+          tweet_url: reply.tweet_url || null,
+          parent_tweet_id: reply.target_tweet_id,
+          parent_username: reply.target_username
+        }
+      };
+      
+      // Only add experiment fields if experiments are enabled (columns may not exist in schema)
+      if (enableExperiments && experimentAssignment.experiment_group) {
+        replyInsertPayload.experiment_group = experimentAssignment.experiment_group;
+        replyInsertPayload.hook_variant = experimentAssignment.hook_variant;
+      }
+      
+      const { data, error } = await supabase.from('content_metadata').insert([replyInsertPayload]);
   
   if (error) {
     console.error('[REPLY_JOB] ❌ Failed to queue reply:', error.message);
