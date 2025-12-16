@@ -1221,7 +1221,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
         await supabase
           .from('content_metadata')
           .update({
-            status: 'failed',
+            status: process.env.ENABLE_DEAD_LETTER_HANDLING === 'true' ? 'failed_permanent' : 'failed',
             updated_at: new Date().toISOString(),
             error_message: 'Exceeded retry limit'
           })
@@ -2024,7 +2024,9 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
           await supabase
             .from('content_metadata')
             .update({
-              status: 'failed',
+              status: process.env.ENABLE_DEAD_LETTER_HANDLING === 'true' && retryCount >= Number(process.env.POSTING_MAX_RETRIES || '5')
+                ? 'failed_permanent'
+                : 'failed',
               updated_at: new Date().toISOString(),
               features: {
                 ...(typeof metadata?.features === 'object' && metadata?.features !== null ? metadata.features : {}),

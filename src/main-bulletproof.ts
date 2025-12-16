@@ -8,6 +8,7 @@ import { ENV, isProduction } from './config/env';
 import { log } from './lib/logger';
 import { getConfig, printConfigSummary, printDeprecationWarnings, getModeFlags } from './config/config';
 import { JobManager } from './jobs/jobManager';
+import { startWatchdog } from './jobs/watchdogJob';
 import { validateEnvironmentVariables } from './config/envValidation';
 
 // CRITICAL: Process-level error handlers to prevent crashes
@@ -344,6 +345,12 @@ async function boot() {
         console.log(`🕒 JOB_MANAGER: Initializing job timers... (attempt ${attempt}/${maxRetries})`);
         await jobManager.startJobs();
         console.log('✅ JOB_MANAGER: All timers started successfully');
+        
+        // Start watchdog job if enabled
+        if (process.env.ENABLE_WATCHDOG_JOB === 'true') {
+          await startWatchdog();
+        }
+        
         started = true;
         break;
       } catch (error: any) {

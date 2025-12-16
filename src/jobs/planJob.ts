@@ -1116,8 +1116,11 @@ async function queueContent(content: any): Promise<void> {
     status: 'queued',
     decision_type: content.format === 'thread' ? 'thread' : 'single',
     scheduled_at: content.scheduled_at,
-    quality_score: content.quality_score,
-    predicted_er: content.predicted_er,
+    // 🛡️ Clamp quality_score to valid DECIMAL(5,4) range (0-9.9999)
+    // If quality_score is 0-100 scale, convert to 0-1.0 scale
+    quality_score: content.quality_score != null ? Math.min(9.9999, Math.max(0, content.quality_score > 1 ? content.quality_score / 100 : content.quality_score)) : null,
+    // 🛡️ Clamp predicted_er to valid DECIMAL(5,4) range (0-9.9999)
+    predicted_er: content.predicted_er != null ? Math.min(9.9999, Math.max(0, content.predicted_er)) : null,
     
     // Core diversity fields (always present)
     // 🔧 FIX: Ensure raw_topic is never NULL - use fallback chain
