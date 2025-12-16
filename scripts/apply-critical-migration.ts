@@ -14,7 +14,8 @@ dotenv.config();
 // Apply both migrations in order
 const MIGRATION_FILES = [
   path.join(__dirname, '../supabase/migrations/20251216_fix_phase5_schema_columns.sql'),
-  path.join(__dirname, '../supabase/migrations/20251216_fix_complete_view_columns.sql')
+  path.join(__dirname, '../supabase/migrations/20251216_fix_complete_view_columns.sql'),
+  path.join(__dirname, '../supabase/migrations/20251216_add_thread_tweet_ids_to_view.sql')
 ];
 
 async function applyMigration(): Promise<void> {

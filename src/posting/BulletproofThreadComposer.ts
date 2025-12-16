@@ -20,8 +20,12 @@ export class BulletproofThreadComposer {
   // ❌ REMOVED: private static browserPage: Page | null = null;
   // This caused context lifecycle issues - context cleaned up while page still referenced!
   
-  // 🔥 NEW: Overall timeout for thread posting
-  private static readonly THREAD_TIMEOUT_MS = 180000; // 180 seconds (3 minutes) - increased for reliability
+  // 🔥 ADAPTIVE TIMEOUT: Progressive timeout based on retry attempt
+  private static getThreadTimeoutMs(retryCount: number): number {
+    // attempt 1: 180s, attempt 2: 240s, attempt 3: 300s
+    const timeouts = [180000, 240000, 300000];
+    return timeouts[Math.min(retryCount, timeouts.length - 1)];
+  }
 
   // Modern selectors for resilient reply flow
   private static readonly replyButtonSelectors = [
@@ -117,16 +121,17 @@ export class BulletproofThreadComposer {
       };
     }
 
-    // 🔥 FIXED: Wrap entire operation in timeout + retry logic for reliability
-    const maxRetries = 2;
+    // 🔥 ADAPTIVE TIMEOUT: Progressive timeout based on retry attempt
+    const maxRetries = 3;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`[THREAD_COMPOSER] 🎯 Posting attempt ${attempt}/${maxRetries}`);
+        const timeoutMs = this.getThreadTimeoutMs(attempt - 1);
+        console.log(`[THREAD_COMPOSER][TIMEOUT] 🎯 Posting attempt ${attempt}/${maxRetries} - Using adaptive timeout: ${timeoutMs/1000}s`);
         
         const result = await Promise.race([
-          this.postWithContext(segments),
-          this.createTimeoutPromise()
+          this.postWithContext(segments, attempt),
+          this.createTimeoutPromise(timeoutMs)
         ]);
         
         console.log(`[THREAD_COMPOSER] ✅ Success on attempt ${attempt}`);
@@ -134,13 +139,14 @@ export class BulletproofThreadComposer {
         
       } catch (error: any) {
         if (error.message === 'Thread posting timeout') {
-          console.error(`[THREAD_COMPOSER] ⏱️ Timeout on attempt ${attempt}/${maxRetries} (exceeded ${this.THREAD_TIMEOUT_MS/1000}s)`);
+          const timeoutMs = this.getThreadTimeoutMs(attempt - 1);
+          console.error(`[THREAD_COMPOSER][TIMEOUT] ⏱️ Timeout on attempt ${attempt}/${maxRetries} (exceeded ${timeoutMs/1000}s)`);
           
           if (attempt === maxRetries) {
             return {
               success: false,
               mode: 'composer',
-              error: `Thread posting timeout after ${maxRetries} attempts (${this.THREAD_TIMEOUT_MS/1000}s each)`
+              error: `Thread posting timeout after ${maxRetries} attempts`
             };
           }
           
@@ -176,22 +182,37 @@ export class BulletproofThreadComposer {
   }
 
   /**
-   * 🔥 NEW: Create timeout promise
+   * 🔥 ADAPTIVE TIMEOUT: Create timeout promise with configurable duration
    */
-  private static createTimeoutPromise(): Promise<never> {
+  private static createTimeoutPromise(timeoutMs: number): Promise<never> {
     return new Promise((_, reject) => {
       setTimeout(() => {
         reject(new Error('Thread posting timeout'));
-      }, this.THREAD_TIMEOUT_MS);
+      }, timeoutMs);
     });
   }
 
   /**
    * 🔥 FIXED: Use UnifiedBrowserPool (same as single posts - AUTHENTICATED!)
    */
-  private static async postWithContext(segments: string[]): Promise<ThreadPostResult> {
+  private static async postWithContext(segments: string[], attempt: number): Promise<ThreadPostResult> {
     const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
     const pool = UnifiedBrowserPool.getInstance();
+    
+    // 🔍 BROWSER HEALTH CHECK: Check pool health before posting
+    const health = pool.getHealth();
+    console.log(`[BROWSER_POOL] 🔍 Browser pool health check: status=${health.status}, circuitBreaker=${health.circuitBreaker.isOpen ? 'open' : 'closed'}`);
+    
+    if (health.status === 'degraded' || health.circuitBreaker.isOpen) {
+      console.warn(`[BROWSER_POOL] ⚠️ Browser pool is degraded or circuit breaker is open - resetting pool...`);
+      try {
+        await pool.resetPool();
+        console.log(`[BROWSER_POOL] ✅ Browser pool reset complete`);
+      } catch (resetError: any) {
+        console.error(`[BROWSER_POOL] ❌ Browser pool reset failed: ${resetError.message}`);
+        // Continue anyway - pool might still work
+      }
+    }
     
     // ✅ FIX: Use the same authenticated browser pool as single posts!
     // 🔥 OPTIMIZATION: Use PRIORITY 0 (highest) so thread posting never waits
@@ -205,13 +226,15 @@ export class BulletproofThreadComposer {
     
     try {
       // ✅ Navigate to Twitter compose page
-      console.log('[THREAD_COMPOSER] 🌐 Navigating to compose page...');
+      const navStartTime = Date.now();
+      console.log('[THREAD_COMPOSER][STAGE] 🎯 Stage: navigation - Starting...');
       await page.goto('https://x.com/compose/tweet', {
         waitUntil: 'domcontentloaded',
         timeout: 30000
       });
       await page.waitForTimeout(2000); // Let page stabilize
-      console.log('[THREAD_COMPOSER] ✅ Compose page loaded');
+      const navDuration = Date.now() - navStartTime;
+      console.log(`[THREAD_COMPOSER][STAGE] ✅ Stage: navigation - Completed in ${navDuration}ms`);
       
       try {
         const maxRetries = 2;
@@ -225,10 +248,14 @@ export class BulletproofThreadComposer {
             await this.postViaComposer(page, segments);
             console.log('THREAD_PUBLISH_OK mode=composer');
             
+            const extractStartTime = Date.now();
+            console.log('[THREAD_COMPOSER][STAGE] 🎯 Stage: tweet_id_extraction - Starting...');
             const rootUrl = await this.captureRootUrl(page);
             
             // Capture all tweet IDs from composer mode
             const tweetIds = await this.captureThreadIds(page, segments.length);
+            const extractDuration = Date.now() - extractStartTime;
+            console.log(`[THREAD_COMPOSER][STAGE] ✅ Stage: tweet_id_extraction - Completed in ${extractDuration}ms`);
             
             // ✅ IMPORTANT: Release page back to pool
             await pool.releasePage(page);
@@ -333,7 +360,8 @@ export class BulletproofThreadComposer {
     console.log('✅ THREAD_COMPOSER: Composer focused');
     
     // Type first segment
-    console.log(`🎨 THREAD_COMPOSER: Step 2/5 - Typing tweet 1/${segments.length} (${segments[0].length} chars)...`);
+    const typingStartTime = Date.now();
+    console.log(`[THREAD_COMPOSER][STAGE] 🎯 Stage: typing - Starting tweet 1/${segments.length} (${segments[0].length} chars)...`);
     const tb0 = await this.getComposeBox(page, 0);
     await tb0.click(); // Ensure focus
     await page.waitForTimeout(300); // Allow UI to update
@@ -345,7 +373,8 @@ export class BulletproofThreadComposer {
     
     await tb0.type(segments[0], { delay: 10 });
     await this.verifyTextBoxHas(page, 0, segments[0]);
-    console.log(`✅ THREAD_COMPOSER: Tweet 1 typed successfully`);
+    const typingDuration = Date.now() - typingStartTime;
+    console.log(`[THREAD_COMPOSER][STAGE] ✅ Stage: typing - Completed tweet 1 in ${typingDuration}ms`);
     
     // Add additional cards for multi-segment
     if (segments.length > 1) {
@@ -388,8 +417,11 @@ export class BulletproofThreadComposer {
     }
     
     // Post all
-    console.log('🎨 THREAD_COMPOSER: Step 5/5 - Posting thread...');
+    const submitStartTime = Date.now();
+    console.log('[THREAD_COMPOSER][STAGE] 🎯 Stage: submit - Starting...');
     await this.postAll(page);
+    const submitDuration = Date.now() - submitStartTime;
+    console.log(`[THREAD_COMPOSER][STAGE] ✅ Stage: submit - Completed in ${submitDuration}ms`);
     
     console.log('✅ THREAD_COMPOSER: Native composer SUCCESS - Thread posted!');
   }
