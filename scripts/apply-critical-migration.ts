@@ -1,120 +1,127 @@
 /**
- * Apply Critical Migration: Add generation_metadata column
- * 
- * This fixes the "Could not find 'generation_metadata' column" error
- * that's preventing content from being saved.
+ * 🔧 CRITICAL MIGRATION RUNNER
+ * Applies 20251216_fix_phase5_schema_columns.sql using Node.js pg client
+ * Works in any environment with DATABASE_URL
  */
 
-import { getSupabaseClient } from '../src/db';
+import { Pool } from 'pg';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as dotenv from 'dotenv';
 
-async function applyCriticalMigration() {
-  console.log('🔧 Applying critical migration: generation_metadata column...\n');
+dotenv.config();
 
-  const supabase = getSupabaseClient();
+const MIGRATION_FILE = path.join(__dirname, '../supabase/migrations/20251216_fix_phase5_schema_columns.sql');
 
-  const sql = `
-DO $$ 
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_name = 'content_metadata' 
-    AND column_name = 'generation_metadata'
-  ) THEN
-    ALTER TABLE content_metadata 
-    ADD COLUMN generation_metadata JSONB;
-    
-    COMMENT ON COLUMN content_metadata.generation_metadata IS 
-      'Stores content_type_id, content_type_name, viral_formula, hook_used for learning';
-      
-    -- Add index for performance
-    CREATE INDEX idx_content_metadata_generation_metadata_gin 
-      ON content_metadata USING GIN (generation_metadata);
-      
-    RAISE NOTICE 'Successfully added generation_metadata column';
-  ELSE
-    RAISE NOTICE 'Column generation_metadata already exists';
-  END IF;
-END $$;
-  `;
-
-  try {
-    console.log('Executing SQL...');
-    
-    // Use raw SQL execution via Supabase RPC
-    const { data, error } = await supabase.rpc('exec_sql', { sql_query: sql });
-
-    if (error) {
-      // Try direct approach if RPC doesn't exist
-      console.log('RPC approach failed, trying direct SQL...');
-      
-      // Direct SQL execution using from().insert() won't work for DDL
-      // So we need to use the REST API directly
-      const response = await fetch(
-        `${process.env.SUPABASE_URL}/rest/v1/rpc/exec_sql`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-            'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
-          },
-          body: JSON.stringify({ sql_query: sql })
-        }
-      );
-
-      if (!response.ok) {
-        // Last resort: use pg client directly
-        console.log('REST API failed, using direct PostgreSQL connection...');
-        
-        const { Client } = await import('pg');
-        const client = new Client({
-          connectionString: process.env.DATABASE_URL,
-          ssl: {
-            rejectUnauthorized: false
-          }
-        });
-
-        await client.connect();
-        console.log('✅ Connected to database');
-
-        const result = await client.query(sql);
-        console.log('✅ Migration executed successfully');
-        console.log(result);
-
-        await client.end();
-        
-        console.log('\n✅ MIGRATION COMPLETE!');
-        console.log('The generation_metadata column has been added.');
-        console.log('\nNext steps:');
-        console.log('1. Restart your Railway deployment (or wait for next plan job)');
-        console.log('2. Content will now save properly');
-        console.log('3. Posts will appear on Twitter');
-        console.log('4. Bulletproof scraper will collect real data');
-        
-        return;
-      }
-
-      console.log('✅ Migration executed via REST API');
-    } else {
-      console.log('✅ Migration executed via RPC');
-      console.log(data);
-    }
-
-    console.log('\n✅ MIGRATION COMPLETE!');
-    console.log('The generation_metadata column has been added.');
-    console.log('\nYour system should now:');
-    console.log('- Save generated content to database');
-    console.log('- Fill posting queue');
-    console.log('- Post to Twitter');
-    console.log('- Collect real metrics');
-    console.log('- Enable learning system');
-
-  } catch (error: any) {
-    console.error('❌ Migration failed:', error.message);
-    console.error(error);
+async function applyMigration(): Promise<void> {
+  const databaseUrl = process.env.DATABASE_URL;
+  
+  if (!databaseUrl) {
+    console.error('[MIGRATION] ❌ DATABASE_URL not found in environment');
     process.exit(1);
+  }
+
+  console.log('[MIGRATION] 📋 Reading migration file...');
+  let sql: string;
+  try {
+    sql = fs.readFileSync(MIGRATION_FILE, 'utf8');
+    console.log('[MIGRATION] ✅ Migration file loaded');
+  } catch (error: any) {
+    console.error(`[MIGRATION] ❌ Failed to read migration file: ${error.message}`);
+    process.exit(1);
+  }
+
+  console.log('[MIGRATION] 🔌 Connecting to database...');
+  
+  // Parse connection string to handle SSL properly
+  // Convert postgresql:// to postgres:// for URL parsing
+  const normalizedUrl = databaseUrl.replace(/^postgresql:\/\//, 'postgres://');
+  const url = new URL(normalizedUrl);
+  
+  // Build connection config with explicit SSL handling
+  const connectionConfig: any = {
+    host: url.hostname,
+    port: parseInt(url.port || '5432'),
+    database: url.pathname.slice(1) || 'postgres',
+    user: url.username,
+    password: url.password,
+  };
+  
+  // Parse query params
+  const params = new URLSearchParams(url.search);
+  const sslMode = params.get('sslmode');
+  
+  // Set SSL config - always use relaxed for Supabase pooler
+  const isSupabase = url.hostname.includes('supabase.com') || url.hostname.includes('pooler.supabase.com');
+  if (isSupabase || sslMode === 'require') {
+    connectionConfig.ssl = { rejectUnauthorized: false };
+    console.log('[MIGRATION] ⚠️ Using relaxed SSL (rejectUnauthorized: false) for Supabase connection');
+  } else if (sslMode === 'disable') {
+    connectionConfig.ssl = false;
+  } else {
+    connectionConfig.ssl = true;
+  }
+  
+  const pool = new Pool(connectionConfig);
+  
+  // Test connection
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('SELECT 1');
+    console.log('[MIGRATION] ✅ Database connection successful');
+  } catch (connError: any) {
+    console.error(`[MIGRATION] ❌ Database connection failed: ${connError.message}`);
+    if (connError.code) console.error(`[MIGRATION] Error code: ${connError.code}`);
+    await pool.end();
+    process.exit(1);
+  } finally {
+    if (client) client.release();
+  }
+
+  const migrationClient = await pool.connect();
+  
+  try {
+    console.log('[MIGRATION] 🚀 Applying migration...');
+    await migrationClient.query(sql);
+    console.log('[MIGRATION] ✅ Migration applied successfully');
+    
+    // Verify columns exist
+    console.log('[MIGRATION] 🔍 Verifying schema...');
+    const { rows } = await migrationClient.query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'content_metadata'
+      AND column_name IN ('hook_type', 'structure_type')
+      ORDER BY column_name
+    `);
+    
+    const hasHookType = rows.some(r => r.column_name === 'hook_type');
+    const hasStructureType = rows.some(r => r.column_name === 'structure_type');
+    
+    console.log('[MIGRATION] 📊 Verification results:');
+    console.log(`  hook_type: ${hasHookType ? '✅ EXISTS' : '❌ MISSING'}`);
+    console.log(`  structure_type: ${hasStructureType ? '✅ EXISTS' : '❌ MISSING'}`);
+    
+    if (!hasHookType || !hasStructureType) {
+      console.error('[MIGRATION] ❌ Verification failed - columns missing');
+      process.exit(1);
+    }
+    
+    console.log('[MIGRATION] ✅ Schema verification passed');
+    
+  } catch (error: any) {
+    console.error(`[MIGRATION] ❌ Migration failed: ${error.message}`);
+    if (error.code) console.error(`[MIGRATION] Error code: ${error.code}`);
+    if (error.detail) console.error(`[MIGRATION] Detail: ${error.detail}`);
+    process.exit(1);
+  } finally {
+    migrationClient.release();
+    await pool.end();
   }
 }
 
-applyCriticalMigration();
-
+applyMigration().catch((error) => {
+  console.error('[MIGRATION] ❌ Fatal error:', error);
+  process.exit(1);
+});
