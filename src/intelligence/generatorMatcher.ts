@@ -65,6 +65,10 @@ export type GeneratorType =
 export class GeneratorMatcher {
   private static instance: GeneratorMatcher;
   
+  // 🎯 Phase 5A: Generator policy weights (cached in memory)
+  private currentGeneratorWeights: Record<string, number> | null = null;
+  private policyInitialized: boolean = false;
+  
   private constructor() {}
   
   public static getInstance(): GeneratorMatcher {
@@ -75,23 +79,103 @@ export class GeneratorMatcher {
   }
   
   /**
+   * 🎯 Phase 5A: Initialize generator policy weights (if enabled)
+   * Called lazily on first use when ENABLE_PHASE5_GENERATOR_POLICY=true
+   */
+  private async initializeGeneratorPolicy(): Promise<void> {
+    console.log('[GEN_POLICY] 🎯 initializeGeneratorPolicy() called');
+    console.log('[GEN_POLICY] env flag ENABLE_PHASE5_GENERATOR_POLICY =', process.env.ENABLE_PHASE5_GENERATOR_POLICY);
+    console.log('[GEN_POLICY] policyInitialized =', this.policyInitialized);
+    
+    if (this.policyInitialized) {
+      console.log('[GEN_POLICY] Already initialized, skipping');
+      return; // Already initialized
+    }
+
+    const enablePolicy = process.env.ENABLE_PHASE5_GENERATOR_POLICY === 'true';
+    console.log('[GEN_POLICY] enablePolicy (parsed) =', enablePolicy);
+    
+    if (!enablePolicy) {
+      console.log('[GEN_POLICY] Policy disabled, marking as initialized (disabled)');
+      this.policyInitialized = true; // Mark as initialized (disabled)
+      return;
+    }
+
+    try {
+      console.log('[GEN_POLICY] 🎯 Initializing generator policy...');
+      
+      // Fetch performance data
+      const { fetchGeneratorPerformanceSummary } = await import('../learning/generatorPerformanceFetcher');
+      const performanceData = await fetchGeneratorPerformanceSummary();
+      
+      // Compute weights from policy + learning
+      const { 
+        GENERATOR_POLICY_BASE_WEIGHTS,
+        computeGeneratorWeightsFromPolicyAndLearning,
+        validateGeneratorWeights
+      } = await import('../learning/generatorPolicy');
+      
+      const computedWeights = computeGeneratorWeightsFromPolicyAndLearning({
+        baseWeights: GENERATOR_POLICY_BASE_WEIGHTS,
+        performanceByGenerator: performanceData,
+        minPostsForAdjustment: 10,
+        learningStrength: 0.3
+      });
+      
+      // Validate weights
+      if (!validateGeneratorWeights(computedWeights)) {
+        console.error('[GEN_POLICY] ❌ Invalid weights computed, falling back to base weights');
+        this.currentGeneratorWeights = null;
+        this.policyInitialized = true;
+        return;
+      }
+      
+      this.currentGeneratorWeights = computedWeights;
+      this.policyInitialized = true;
+      
+      console.log('[GEN_POLICY] ✅ Initialized generator weights:', JSON.stringify(computedWeights, null, 2));
+      
+    } catch (error: any) {
+      console.error('[GEN_POLICY] ❌ Failed to initialize generator policy:', error);
+      console.error(`[GEN_POLICY] Error message: ${error.message}`);
+      console.error(`[GEN_POLICY] Error stack: ${error.stack}`);
+      console.error('[GEN_POLICY] ⚠️ Falling back to original behavior');
+      this.currentGeneratorWeights = null;
+      this.policyInitialized = true;
+    }
+  }
+  
+  /**
    * Select generator for content creation
    * 
    * 🎯 v2 UPGRADE: Uses offline weight maps from learning_model_weights
-   * - Reads active weight map from database
+   * 🎯 Phase 5A: Can use generator policy weights when ENABLE_PHASE5_GENERATOR_POLICY=true
+   * - Reads active weight map from database (priority 1)
+   * - Uses Phase 5A policy weights if enabled (priority 2)
+   * - Falls back to random if no weight map/policy available
    * - Uses weighted selection with exploration (80% exploit, 20% explore)
-   * - Falls back to random if no weight map available
    * 
    * @param angle - The content angle/perspective
    * @param tone - The content tone/voice
    * @returns Selected generator name (weighted or random)
    */
   async matchGenerator(angle: string, tone: string): Promise<GeneratorType> {
-    console.log(`[GENERATOR_MATCH] 🎯 Selecting generator (v2 weight map mode):`);
+    console.log(`[GENERATOR_MATCH] 🎯 Selecting generator:`);
     console.log(`   Angle: "${angle}"`);
     console.log(`   Tone: "${tone}"`);
     
-    // 🎯 v2: Try to load active weight map
+    // 🎯 Phase 5A: Initialize policy weights if enabled (lazy init)
+    const enablePolicy = process.env.ENABLE_PHASE5_GENERATOR_POLICY === 'true';
+    console.log('[GEN_POLICY] matchGenerator() called. Flag =', enablePolicy);
+    console.log('[GEN_POLICY] policyInitialized =', this.policyInitialized);
+    
+    if (enablePolicy && !this.policyInitialized) {
+      console.log('[GEN_POLICY] About to call initializeGeneratorPolicy(), policyInitialized =', this.policyInitialized);
+      await this.initializeGeneratorPolicy();
+      console.log('[GEN_POLICY] initializeGeneratorPolicy() completed, policyInitialized =', this.policyInitialized);
+    }
+    
+    // 🎯 v2: Try to load active weight map (priority 1)
     try {
       const { getSupabaseClient } = await import('../db');
       const supabase = getSupabaseClient();
@@ -140,15 +224,56 @@ export class GeneratorMatcher {
         }
       }
     } catch (error: any) {
-      console.warn(`[GENERATOR_MATCH] ⚠️ Failed to load weight map: ${error.message}, falling back to random`);
+      console.warn(`[GENERATOR_MATCH] ⚠️ Failed to load weight map: ${error.message}`);
     }
     
-    // Fallback: Pure random selection (if no weight map available)
+    // 🎯 Phase 5A: Use policy weights if enabled and available (priority 2)
+    if (enablePolicy && this.currentGeneratorWeights) {
+      try {
+        const allGenerators = this.getAllGenerators();
+        
+        // Filter policy weights to only generators that exist
+        const validPolicyWeights: Record<string, number> = {};
+        let totalPolicyWeight = 0;
+        
+        for (const gen of allGenerators) {
+          if (this.currentGeneratorWeights[gen] !== undefined && this.currentGeneratorWeights[gen] > 0) {
+            validPolicyWeights[gen] = this.currentGeneratorWeights[gen];
+            totalPolicyWeight += this.currentGeneratorWeights[gen];
+          }
+        }
+        
+        if (Object.keys(validPolicyWeights).length > 0 && totalPolicyWeight > 0) {
+          console.log('[GEN_POLICY] Using policy+learning weights for generator selection');
+          // Weighted selection with exploration (80% exploit, 20% explore)
+          const explorationRate = 0.2;
+          const useExploration = Math.random() < explorationRate;
+          
+          if (useExploration) {
+            // 20%: Pure random exploration
+            const randomIndex = Math.floor(Math.random() * allGenerators.length);
+            const selected = allGenerators[randomIndex];
+            console.log(`   → Exploration mode: ${selected} (random)`);
+            return selected;
+          } else {
+            // 80%: Policy-weighted selection
+            const selected = this.selectWeightedGenerator(validPolicyWeights, totalPolicyWeight);
+            const weight = validPolicyWeights[selected] || 0;
+            console.log(`[GEN_POLICY] Selected generator=${selected} weight=${(weight * 100).toFixed(1)}% (policy+learning)`);
+            return selected as GeneratorType;
+          }
+        }
+      } catch (error: any) {
+        console.warn(`[GEN_POLICY] ⚠️ Failed to use policy weights: ${error.message}, falling back`);
+      }
+    }
+    
+    // Fallback: Pure random selection (if no weight map or policy available)
     const allGenerators = this.getAllGenerators();
     const randomIndex = Math.floor(Math.random() * allGenerators.length);
     const selected = allGenerators[randomIndex];
     
-    console.log(`   → Random fallback: ${selected} (1/${allGenerators.length} chance, no weight map)`);
+    console.log(`   → Random fallback: ${selected} (1/${allGenerators.length} chance, no weight map/policy)`);
     
     return selected;
   }

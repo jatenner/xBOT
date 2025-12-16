@@ -327,11 +327,30 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
     'experimenter': { module: 'experimenterGenerator', fn: 'generateExperimenterContent' },
   };
   
-  const config = generatorMap[generatorName];
-  if (!config) {
-    console.error(`[SYSTEM_B] ❌ Generator not mapped: ${generatorName}`);
-    throw new Error(`Unknown generator: ${generatorName}`);
+  // 🛡️ Safe fallback for unknown generators (e.g., "researcher" -> "dataNerd")
+  let normalizedGeneratorName = generatorName;
+  const generatorAliases: Record<string, string> = {
+    'researcher': 'dataNerd', // Map "researcher" to "dataNerd" (closest match)
+    'research': 'dataNerd'
+  };
+  
+  if (generatorAliases[generatorName]) {
+    normalizedGeneratorName = generatorAliases[generatorName];
+    console.warn(`[GENERATOR_MATCH] ⚠️ Unknown generator "${generatorName}" mapped to "${normalizedGeneratorName}"`);
   }
+  
+  let config = generatorMap[normalizedGeneratorName];
+  if (!config) {
+    console.error(`[GENERATOR_MATCH] ❌ Unknown generator: ${normalizedGeneratorName} — falling back to thoughtLeader`);
+    normalizedGeneratorName = 'thoughtLeader'; // Safe fallback
+    config = generatorMap[normalizedGeneratorName];
+    if (!config) {
+      throw new Error(`Critical: Fallback generator "thoughtLeader" not found in generatorMap`);
+    }
+  }
+  
+  // Use normalized name for rest of function
+  generatorName = normalizedGeneratorName;
   
   try {
     console.log(`[SYSTEM_B] 🎭 Calling ${config.module}.${config.fn}()...`);
@@ -430,7 +449,8 @@ async function generateContentWithLLM() {
     .filter((slot): slot is string => slot !== null && typeof slot === 'string') as any;
   
   const availableSlots = getContentSlotsForToday();
-  const selectedSlot = selectContentSlot(availableSlots, recentSlotTypes.length > 0 ? recentSlotTypes : undefined);
+  // 🎯 Phase 5A: selectContentSlot is now async (returns Promise) when policy is enabled
+  const selectedSlot = await selectContentSlot(availableSlots, recentSlotTypes.length > 0 ? recentSlotTypes : undefined);
   const slotConfig = getSlotConfig(selectedSlot);
   
   console.log(`\n📅 CONTENT SLOT: ${selectedSlot}`);
@@ -1062,6 +1082,29 @@ async function queueContent(content: any): Promise<void> {
     }
   }
 
+  // 🎤 PHASE 5: Voice Guide - Choose voice characteristics
+  let voiceDecision: any = null;
+  try {
+    const { chooseVoiceForContent } = await import('../ai/voiceGuide');
+    const selectedSlot = content.content_slot || null;
+    const generatorName = content.generator_used || 'unknown';
+    const decisionType = content.format === 'thread' ? 'thread' : 'single';
+    console.log(`[VOICE_GUIDE] planJob: slot=${selectedSlot} generator=${generatorName} decisionType=${decisionType}`);
+    
+    voiceDecision = chooseVoiceForContent({
+      slot: selectedSlot,
+      generatorName: generatorName,
+      decisionType: decisionType,
+      topic: content.raw_topic || (content as any).topic || null
+    });
+    
+    console.log(`[VOICE_GUIDE] planJob decision: hook=${voiceDecision.hookType} tone=${voiceDecision.tone} structure=${voiceDecision.structure}`);
+  } catch (error: any) {
+    console.error(`[VOICE_GUIDE] ❌ Error in planJob: ${error.message}`);
+    console.error(`[VOICE_GUIDE] Error stack: ${error.stack}`);
+    // Continue without voice decision - will use defaults
+  }
+
   // 🔧 Build insert payload with optional meta-awareness fields
   // (Supabase schema cache may not have refreshed yet)
   const insertPayload: any = {
@@ -1083,6 +1126,11 @@ async function queueContent(content: any): Promise<void> {
     generator_name: content.generator_used,
     format_strategy: content.format_strategy,
     visual_format: content.visual_format || null,
+    
+    // 🎤 PHASE 5: Voice Guide metadata (if available)
+    hook_type: voiceDecision?.hookType || null, // Store hook type for v2 learning
+    structure_type: voiceDecision?.structure || null, // Store structure type for v2 learning
+    // Note: tone is already stored above, but voiceDecision.tone could override if needed
     
     // Legacy fields for compatibility
     bandit_arm: content.style || 'varied',

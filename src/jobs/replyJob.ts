@@ -1197,6 +1197,27 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
         }
       }
       
+      // 🎤 PHASE 5: Voice Guide - Choose voice characteristics for reply
+      let voiceDecision: any = null;
+      try {
+        const { chooseVoiceForContent } = await import('../ai/voiceGuide');
+        const generatorName = reply.generator_used || 'unknown';
+        console.log(`[VOICE_GUIDE] replyJob: slot=reply generator=${generatorName} decisionType=reply`);
+        
+        voiceDecision = chooseVoiceForContent({
+          slot: 'reply',
+          generatorName: generatorName,
+          decisionType: 'reply',
+          topic: reply.topic || null
+        });
+        
+        console.log(`[VOICE_GUIDE] replyJob decision: hook=${voiceDecision.hookType} tone=${voiceDecision.tone} structure=${voiceDecision.structure}`);
+      } catch (error: any) {
+        console.error(`[VOICE_GUIDE] ❌ Error in replyJob: ${error.message}`);
+        console.error(`[VOICE_GUIDE] Error stack: ${error.stack}`);
+        // Continue without voice decision - will use defaults
+      }
+
       const { data, error } = await supabase.from('content_metadata').insert([{
     decision_id: reply.decision_id,
     decision_type: 'reply',
@@ -1208,6 +1229,11 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
     quality_score: reply.quality_score || 0.85,
     predicted_er: reply.predicted_er || 0.028,
     topic_cluster: reply.topic || 'health',
+    
+    // 🎤 PHASE 5: Voice Guide metadata (if available)
+    hook_type: voiceDecision?.hookType || 'none', // Replies typically don't use hooks
+    structure_type: voiceDecision?.structure || 'reply', // Always 'reply' for replies
+    // Note: tone is stored separately if needed
     target_tweet_id: reply.target_tweet_id,
     target_username: reply.target_username,
     generator_name: reply.generator_used || 'unknown',
