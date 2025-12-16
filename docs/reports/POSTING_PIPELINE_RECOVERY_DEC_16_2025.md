@@ -225,11 +225,11 @@ railway variables | grep ENABLE_WATCHDOG
 Schema cache errors preventing content from being queued. Migration must be applied manually via Supabase SQL Editor.
 
 **Next Steps:**
-1. **Apply migration manually** via Supabase SQL Editor (SQL provided above)
-2. **Verify schema** with query (provided above)
-3. **Monitor logs** for disappearance of schema errors
-4. **Enable reliability guards** once posting resumes
-5. **Run health check** to confirm recovery
+1. ✅ **Apply migration manually** via Supabase SQL Editor (SQL provided above)
+2. ✅ **Verify schema** with query (provided above)
+3. ✅ **Monitor logs** for disappearance of schema errors
+4. ✅ **Reliability guards enabled** (ENABLE_DEAD_LETTER_HANDLING=true, ENABLE_WATCHDOG_JOB=true)
+5. ⏳ **Run health check** via Railway after migration: `railway run pnpm health:check`
 
 **Expected Outcome After Migration:**
 - ✅ Schema errors disappear
@@ -247,8 +247,11 @@ Schema cache errors preventing content from being queued. Migration must be appl
 - **2025-12-16 04:00 UTC:** Fixes implemented (code + migration)
 - **2025-12-16 04:30 UTC:** Migration application attempted (CLI failed)
 - **2025-12-16 05:00 UTC:** Manual migration instructions provided
+- **2025-12-16 05:15 UTC:** Reliability guards enabled (ENABLE_DEAD_LETTER_HANDLING, ENABLE_WATCHDOG_JOB)
 
 **Estimated Recovery:** Within 15 minutes of manual migration application
+
+**Blocking Issue:** Migration must be applied manually via Supabase SQL Editor (CLI methods failed)
 
 ---
 
