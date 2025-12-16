@@ -240,6 +240,12 @@ async function runBackgroundMigrations() {
 async function boot() {
   console.log('🔄 XBOT_BOOT: Starting bulletproof production runtime...');
   
+  // 🚀 PHASE 1: Log commit SHA and Node version for deployment verification
+  const commitSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || process.env.COMMIT_SHA || 'unknown';
+  const nodeVersion = process.version;
+  console.log(`[BOOT] commit=${commitSha} node=${nodeVersion}`);
+  log({ op: 'boot_start', commit_sha: commitSha, node_version: nodeVersion });
+  
   // Load and display unified configuration
   const config = getConfig();
   printConfigSummary(config);
