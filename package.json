@@ -209,7 +209,8 @@
     "phase5:check": "pnpm tsx scripts/check-phase5-activation.ts",
     "phase5:check:quick": "bash scripts/check-phase5-activation.sh",
     "health:check": "tsx scripts/health-check.ts",
-    "db:migrate:critical": "tsx scripts/apply-critical-migration.ts"
+    "db:migrate:critical": "tsx scripts/apply-critical-migration.ts",
+    "restart:once": "tsx scripts/restart-once.ts"
   },
   "keywords": [
     "twitter",
