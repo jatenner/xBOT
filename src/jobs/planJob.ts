@@ -1115,6 +1115,18 @@ async function queueContent(content: any): Promise<void> {
     const selectedSlot = content.content_slot || null;
     const generatorName = content.generator_used || 'unknown';
     const decisionType = content.format === 'thread' ? 'thread' : 'single';
+    
+    // 🚀 THREAD_BOOST DEBUG: Log final decision type after all processing
+    const threadBoostEnabled = process.env.ENABLE_THREAD_BOOST === 'true';
+    const threadBoostRate = parseFloat(process.env.THREAD_BOOST_RATE || '0.5');
+    const rng = Math.random();
+    const selectedSlot = content.content_slot || null;
+    const eligibleSlots = ['framework', 'deep_dive', 'research', 'educational'];
+    const isEligibleSlot = selectedSlot && eligibleSlots.includes(selectedSlot);
+    const wasBoosted = threadBoostEnabled && isEligibleSlot && rng < threadBoostRate;
+    
+    console.log(`[THREAD_BOOST][DEBUG] enabled=${threadBoostEnabled} rate=${threadBoostRate} rng=${rng.toFixed(3)} selected=${wasBoosted} chosenDecisionType=${decisionType} slot=${selectedSlot}`);
+    
     console.log(`[VOICE_GUIDE] planJob: slot=${selectedSlot} generator=${generatorName} decisionType=${decisionType}`);
     
     voiceDecision = chooseVoiceForContent({
