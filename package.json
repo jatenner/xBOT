@@ -211,8 +211,8 @@
     "health:check": "tsx scripts/health-check.ts",
     "db:migrate:critical": "tsx scripts/apply-critical-migration.ts",
     "restart:once": "tsx scripts/restart-once.ts",
-    "thread:boost:on": "railway variables set ENABLE_THREAD_BOOST=true THREAD_BOOST_RATE=0.5 --service xBOT",
-    "thread:boost:off": "railway variables set ENABLE_THREAD_BOOST=false --service xBOT"
+    "thread:boost:on": "railway variables --set ENABLE_THREAD_BOOST=true --set THREAD_BOOST_RATE=0.5 --service xBOT",
+    "thread:boost:off": "railway variables --set ENABLE_THREAD_BOOST=false --service xBOT"
   },
   "keywords": [
     "twitter",
