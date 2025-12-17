@@ -214,7 +214,8 @@
     "thread:boost:on": "railway variables --set ENABLE_THREAD_BOOST=true --set THREAD_BOOST_RATE=0.5 --service xBOT",
     "thread:boost:off": "railway variables --set ENABLE_THREAD_BOOST=false --service xBOT",
     "plan:run:once": "tsx scripts/plan-run-once.ts",
-    "thread:verify": "railway run --service xBOT -- pnpm plan:run:once && sleep 10 && railway logs --service xBOT --lines 3000 | grep -E 'THREAD_VERIFY|QUEUE_CONTENT.*THREAD QUEUED|THREAD_COMPOSER|THREAD_COMPOSER\\]\\[TIMEOUT|THREAD_COMPOSER\\]\\[AUTOPSY' | tail -n 200"
+    "thread:verify": "railway run --service xBOT -- pnpm plan:run:once && sleep 10 && railway logs --service xBOT --lines 3000 | grep -E 'THREAD_VERIFY|QUEUE_CONTENT.*THREAD QUEUED|THREAD_COMPOSER|THREAD_COMPOSER\\]\\[TIMEOUT|THREAD_COMPOSER\\]\\[AUTOPSY' | tail -n 200",
+    "verify:posting:signals": "railway logs --service xBOT --lines 5000 2>&1 | grep -E '\\[BROWSER_POOL\\]\\[RECOVER\\]|\\[POSTING_QUEUE\\]\\[SUCCESS\\]|Target page, context or browser has been closed|browserContext.newPage.*closed' | tail -n 150"
   },
   "keywords": [
     "twitter",
