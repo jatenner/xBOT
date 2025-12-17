@@ -249,11 +249,199 @@ export class BulletproofThreadComposer {
   }
 
   /**
+   * 🔍 PAGE LIVENESS: Check if page is closed or browser context is gone
+   */
+  private static isPageClosed(page?: Page | null): boolean {
+    if (!page) return true;
+    try {
+      if (page.isClosed()) return true;
+      const context = page.context();
+      if (!context) return true;
+      const browser = context.browser();
+      if (!browser || !browser.isConnected()) return true;
+      return false;
+    } catch {
+      return true; // If we can't check, assume closed
+    }
+  }
+
+  /**
+   * 🔄 RECOVER: Ensure page is live, recreate if closed
+   */
+  private static async ensureLivePage(
+    page: Page | null,
+    pool: any,
+    decisionId: string,
+    attempt: number
+  ): Promise<Page> {
+    if (!this.isPageClosed(page)) {
+      return page!;
+    }
+
+    console.log(`[THREAD_COMPOSER][RECOVER] page was closed -> recreating page (decisionId=${decisionId}, attempt=${attempt})`);
+    
+    // Release old page if it exists
+    if (page) {
+      try {
+        await pool.releasePage(page);
+      } catch {
+        // Ignore release errors
+      }
+    }
+
+    // Create fresh page using existing pool logic
+    const newPage = await pool.withContext(
+      'thread_posting_recovery',
+      async (context) => {
+        return await context.newPage();
+      },
+      0 // Highest priority
+    );
+
+    return newPage;
+  }
+
+  /**
+   * ⏱️ SAFE WAIT: Wait with page liveness checks and recovery
+   */
+  private static async safeWait(
+    page: Page,
+    ms: number,
+    meta: { decisionId: string; attempt: number; stage: string },
+    pool: any
+  ): Promise<void> {
+    // Ensure page is live before waiting
+    const livePage = await this.ensureLivePage(page, pool, meta.decisionId, meta.attempt);
+    if (livePage !== page) {
+      // Page was recreated, update reference
+      Object.assign(page, livePage);
+    }
+
+    try {
+      await page.waitForTimeout(ms);
+    } catch (error: any) {
+      const errorMsg = error.message || error.toString();
+      if (errorMsg.includes('Target page, context or browser has been closed')) {
+        console.log(`[THREAD_COMPOSER][RECOVER] waitForTimeout failed (page closed) -> recreating page (decisionId=${meta.decisionId}, attempt=${meta.attempt}, stage=${meta.stage})`);
+        
+        // Recreate page
+        const recoveredPage = await this.ensureLivePage(page, pool, meta.decisionId, meta.attempt);
+        Object.assign(page, recoveredPage);
+        
+        // Retry with shorter wait just to yield
+        try {
+          await recoveredPage.waitForTimeout(250);
+        } catch {
+          // Ignore retry errors - we've done our best
+        }
+      } else {
+        throw error; // Re-throw non-closure errors
+      }
+    }
+  }
+
+  /**
+   * ✅ VERIFY PASTE: Verify paste succeeded, fallback to typing if empty
+   */
+  private static async verifyPasteAndFallback(
+    page: Page,
+    text: string,
+    index: number,
+    total: number,
+    decisionId: string,
+    attempt: number,
+    pool: any
+  ): Promise<void> {
+    // Read back textarea/editor text
+    const readText = await page.evaluate((idx: number) => {
+      const textarea = document.querySelector(`[data-testid="tweetTextarea_${idx}"]`) as HTMLTextAreaElement;
+      if (textarea) {
+        return textarea.value || textarea.textContent || '';
+      }
+      const contenteditable = document.querySelector(`div[contenteditable="true"][role="textbox"]`) as HTMLElement;
+      if (contenteditable) {
+        return contenteditable.textContent || contenteditable.innerText || '';
+      }
+      return '';
+    }, index);
+
+    const charCount = readText.trim().length;
+    console.log(`[THREAD_COMPOSER][VERIFY] tweet ${index + 1}/${total} composer_len=${charCount}`);
+
+    if (charCount === 0 || readText.trim().length === 0) {
+      console.log(`[THREAD_COMPOSER][VERIFY] paste produced empty text -> retrying (decisionId=${decisionId}, tweetIndex=${index + 1}, attempt=${attempt})`);
+      
+      // Retry paste once
+      try {
+        await page.evaluate((args: { text: string; index: number }) => {
+          const textarea = document.querySelector(`[data-testid="tweetTextarea_${args.index}"]`) as HTMLTextAreaElement;
+          if (textarea) {
+            textarea.value = args.text;
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        }, { text, index });
+        await this.safeWait(page, 100, { decisionId, attempt, stage: 'paste_retry' }, pool);
+        
+        // Verify again
+        const retryText = await page.evaluate((idx: number) => {
+          const textarea = document.querySelector(`[data-testid="tweetTextarea_${idx}"]`) as HTMLTextAreaElement;
+          if (textarea) {
+            return textarea.value || textarea.textContent || '';
+          }
+          return '';
+        }, index);
+        
+        if (retryText.trim().length === 0) {
+          console.log(`[THREAD_COMPOSER][VERIFY] paste still empty -> fallback to typing (decisionId=${decisionId}, tweetIndex=${index + 1}, attempt=${attempt})`);
+          
+          // Fallback to typing
+          const tb = await this.getComposeBox(page, index);
+          await tb.click();
+          await this.safeWait(page, 100, { decisionId, attempt, stage: 'typing_fallback' }, pool);
+          await tb.type(text, { delay: 5 });
+          await this.safeWait(page, 200, { decisionId, attempt, stage: 'typing_fallback_wait' }, pool);
+          
+          // Final verification
+          const typedText = await page.evaluate((idx: number) => {
+            const textarea = document.querySelector(`[data-testid="tweetTextarea_${idx}"]`) as HTMLTextAreaElement;
+            if (textarea) {
+              return textarea.value || textarea.textContent || '';
+            }
+            return '';
+          }, index);
+          
+          if (typedText.trim().length === 0) {
+            throw new Error(`ComposerTextEmptyAfterPasteAndType: decisionId=${decisionId}, tweetIndex=${index + 1}`);
+          }
+          
+          const finalCharCount = typedText.trim().length;
+          console.log(`[THREAD_COMPOSER][VERIFY] tweet ${index + 1}/${total} composer_len=${finalCharCount} (after typing fallback)`);
+        } else {
+          const retryCharCount = retryText.trim().length;
+          console.log(`[THREAD_COMPOSER][VERIFY] tweet ${index + 1}/${total} composer_len=${retryCharCount} (after paste retry)`);
+        }
+      } catch (fallbackError: any) {
+        if (fallbackError.message.includes('ComposerTextEmptyAfterPasteAndType')) {
+          throw fallbackError;
+        }
+        // If fallback also fails, try typing
+        console.log(`[THREAD_COMPOSER][VERIFY] paste retry failed -> fallback to typing (decisionId=${decisionId}, tweetIndex=${index + 1}, attempt=${attempt})`);
+        const tb = await this.getComposeBox(page, index);
+        await tb.click();
+        await this.safeWait(page, 100, { decisionId, attempt, stage: 'typing_fallback' }, pool);
+        await tb.type(text, { delay: 5 });
+        await this.safeWait(page, 200, { decisionId, attempt, stage: 'typing_fallback_wait' }, pool);
+      }
+    }
+  }
+
+  /**
    * 🔥 FIXED: Use UnifiedBrowserPool (same as single posts - AUTHENTICATED!)
    */
   private static async postWithContext(segments: string[], attempt: number, decisionId?: string | null): Promise<ThreadPostResult> {
     const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
     const pool = UnifiedBrowserPool.getInstance();
+    const threadDecisionId = decisionId || 'unknown';
     
     // 🔍 BROWSER HEALTH CHECK: Check pool health before posting
     const health = pool.getHealth();
@@ -288,7 +476,7 @@ export class BulletproofThreadComposer {
         waitUntil: 'domcontentloaded',
         timeout: 30000
       });
-      await page.waitForTimeout(2000); // Let page stabilize
+      await this.safeWait(page, 2000, { decisionId: threadDecisionId, attempt, stage: 'navigation_stabilize' }, pool); // Let page stabilize
       const navDuration = Date.now() - navStartTime;
       console.log(`[THREAD_COMPOSER][STAGE] ✅ Stage: navigation - Completed in ${navDuration}ms`);
       
@@ -301,7 +489,7 @@ export class BulletproofThreadComposer {
             
             // 🎨 PREFER NATIVE COMPOSER - Better visual presentation, proper thread UI
             console.log('🎨 Using NATIVE COMPOSER mode (optimal visual appeal)');
-            await this.postViaComposer(page, segments);
+            await this.postViaComposer(page, segments, threadDecisionId, attempt, pool);
             console.log('THREAD_PUBLISH_OK mode=composer');
             
             const extractStartTime = Date.now();
@@ -338,7 +526,7 @@ export class BulletproofThreadComposer {
             // FALLBACK: Try reply chain if native composer fails
             try {
               console.log('⚠️ Native composer failed, trying reply chain as fallback...');
-              const replyResult = await this.postViaReplies(page, segments);
+              const replyResult = await this.postViaReplies(page, segments, pool);
               console.log('THREAD_PUBLISH_OK mode=reply_chain');
               
               // ✅ IMPORTANT: Release page back to pool
@@ -356,7 +544,7 @@ export class BulletproofThreadComposer {
               if (attempt < maxRetries - 1) {
                 const backoffMs = 2000 * Math.pow(2, attempt);
                 console.log(`⏰ THREAD_BACKOFF: Waiting ${backoffMs}ms before retry ${attempt + 2}`);
-                await page.waitForTimeout(backoffMs);
+                await this.safeWait(page, backoffMs, { decisionId: threadDecisionId, attempt: attempt + 1, stage: 'backoff' }, pool);
                 await page.reload({ waitUntil: 'load', timeout: 10000 });
               } else {
                 console.error(`THREAD_POST_FAIL: All ${maxRetries} attempts exhausted`);
@@ -412,7 +600,7 @@ export class BulletproofThreadComposer {
   /**
    * 🎨 POST via Twitter's native composer (preferred)
    */
-  private static async postViaComposer(page: Page, segments: string[]): Promise<void> {
+  private static async postViaComposer(page: Page, segments: string[], decisionId: string, attempt: number, pool: any): Promise<void> {
     console.log(`🎨 THREAD_COMPOSER: Attempting native composer mode for ${segments.length} tweets...`);
     
     // Focus composer with multiple strategies
@@ -428,12 +616,12 @@ export class BulletproofThreadComposer {
     console.log(`[THREAD_COMPOSER][STAGE] 🎯 Stage: typing tweet 1/${segments.length} - Starting (${segments[0].length} chars)...`);
     const tb0 = await this.getComposeBox(page, 0);
     await tb0.click(); // Ensure focus
-    await page.waitForTimeout(300); // Allow UI to update
+    await this.safeWait(page, 300, { decisionId, attempt, stage: 'typing_focus' }, pool); // Allow UI to update
     
     // 🔥 FIX: Clear contenteditable properly (select all + delete)
     await page.keyboard.press('Meta+A'); // Select all (Command+A on Mac, Ctrl+A on Windows)
     await page.keyboard.press('Backspace');
-    await page.waitForTimeout(200);
+    await this.safeWait(page, 200, { decisionId, attempt, stage: 'typing_clear' }, pool);
     
     // 🚀 OPTIMIZATION: Try clipboard paste first (much faster than typing)
     try {
@@ -444,12 +632,17 @@ export class BulletproofThreadComposer {
           textarea.dispatchEvent(new Event('input', { bubbles: true }));
         }
       }, segments[0]);
-      await page.waitForTimeout(100); // Brief wait for input event
+      await this.safeWait(page, 100, { decisionId, attempt, stage: 'paste_wait' }, pool); // Brief wait for input event
+      
+      // ✅ VERIFY PASTE: Check if paste succeeded, fallback to typing if empty
+      await this.verifyPasteAndFallback(page, segments[0], 0, segments.length, decisionId, attempt, pool);
+      
       console.log(`[THREAD_COMPOSER][STAGE] ✅ Used clipboard paste for tweet 1`);
     } catch (pasteError) {
       // Fallback to typing if paste fails
       console.log(`[THREAD_COMPOSER][STAGE] ⚠️ Paste failed, falling back to typing`);
       await tb0.type(segments[0], { delay: 5 }); // Reduced delay from 10ms to 5ms
+      await this.safeWait(page, 200, { decisionId, attempt, stage: 'typing_fallback_wait' }, pool);
     }
     
     await this.verifyTextBoxHas(page, 0, segments[0]);
@@ -464,11 +657,11 @@ export class BulletproofThreadComposer {
         console.log(`[THREAD_COMPOSER][STAGE] 🎯 Stage: typing tweet ${i + 1}/${segments.length} - Starting (${segments[i].length} chars)...`);
         console.log(`   ➕ Adding tweet ${i + 1}/${segments.length}...`);
         await this.addAnotherPost(page);
-        await page.waitForTimeout(300); // Reduced from 500ms - wait for new compose box to appear
+        await this.safeWait(page, 300, { decisionId, attempt, stage: 'add_post_wait' }, pool); // Reduced from 500ms - wait for new compose box to appear
         
         const tb = await this.getComposeBox(page, i);
         await tb.click();
-        await page.waitForTimeout(100); // Reduced from 200ms - allow focus
+        await this.safeWait(page, 100, { decisionId, attempt, stage: 'typing_focus' }, pool); // Reduced from 200ms - allow focus
         
         // 🚀 OPTIMIZATION: Try clipboard paste first (much faster than typing)
         try {
@@ -479,12 +672,17 @@ export class BulletproofThreadComposer {
               textarea.dispatchEvent(new Event('input', { bubbles: true }));
             }
           }, { text: segments[i], index: i });
-          await page.waitForTimeout(100); // Brief wait for input event
+          await this.safeWait(page, 100, { decisionId, attempt, stage: 'paste_wait' }, pool); // Brief wait for input event
+          
+          // ✅ VERIFY PASTE: Check if paste succeeded, fallback to typing if empty
+          await this.verifyPasteAndFallback(page, segments[i], i, segments.length, decisionId, attempt, pool);
+          
           console.log(`[THREAD_COMPOSER][STAGE] ✅ Used clipboard paste for tweet ${i + 1}`);
         } catch (pasteError) {
           // Fallback to typing if paste fails
           console.log(`[THREAD_COMPOSER][STAGE] ⚠️ Paste failed, falling back to typing`);
           await tb.type(segments[i], { delay: 5 }); // Reduced delay from 10ms to 5ms
+          await this.safeWait(page, 200, { decisionId, attempt, stage: 'typing_fallback_wait' }, pool);
         }
         
         await this.verifyTextBoxHas(page, i, segments[i]);
@@ -535,7 +733,7 @@ export class BulletproofThreadComposer {
   /**
    * 🔗 POST via reply chain (fallback)
    */
-  private static async postViaReplies(page: Page, segments: string[]): Promise<{ rootUrl: string; tweetIds: string[] }> {
+  private static async postViaReplies(page: Page, segments: string[], pool: any): Promise<{ rootUrl: string; tweetIds: string[] }> {
     console.log('🔗 THREAD_REPLY_CHAIN: Starting reply chain fallback...');
     
     const tweetIds: string[] = [];
@@ -548,12 +746,12 @@ export class BulletproofThreadComposer {
     }
     const rootBox = await this.getComposeBox(page, 0);
     await rootBox.click(); // Ensure focus
-    await page.waitForTimeout(300); // Allow UI to update
+    await this.safeWait(page, 300, { decisionId: 'reply_chain', attempt: 0, stage: 'reply_focus' }, pool); // Allow UI to update
     
     // 🔥 FIX: Clear contenteditable properly (select all + delete)
     await page.keyboard.press('Meta+A'); // Select all
     await page.keyboard.press('Backspace');
-    await page.waitForTimeout(200);
+    await this.safeWait(page, 200, { decisionId: 'reply_chain', attempt: 0, stage: 'reply_clear' }, pool);
     
     await rootBox.type(segments[0], { delay: 10 });
     await this.verifyTextBoxHas(page, 0, segments[0]);
@@ -567,7 +765,7 @@ export class BulletproofThreadComposer {
     // 🔥 FIXED: Use bounded wait instead of networkidle
     await Promise.race([
       page.waitForLoadState('networkidle'),
-      page.waitForTimeout(10000)
+      this.safeWait(page, 10000, { decisionId: 'reply_chain', attempt: 0, stage: 'reply_post_wait' }, pool)
     ]);
     
     // Capture root URL and ID
@@ -599,7 +797,7 @@ export class BulletproofThreadComposer {
       // Resilient reply flow with multiple selectors + kb fallback
       await page.bringToFront();
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(300);
+      await this.safeWait(page, 300, { decisionId: 'reply_chain', attempt: i, stage: 'reply_nav_wait' }, pool);
 
       // Use resilient composer focus helper for reply
       const replyFocusResult = await ensureComposerFocused(page, { mode: 'reply' });
@@ -610,12 +808,12 @@ export class BulletproofThreadComposer {
       // Use the focused element from the helper
       // 🔥 FIX: Use type() instead of fill() for contenteditable
       await replyFocusResult.element!.click();
-      await page.waitForTimeout(200);
+      await this.safeWait(page, 200, { decisionId: 'reply_chain', attempt: i, stage: 'reply_focus' }, pool);
       
       // Clear any existing content
       await page.keyboard.press('Meta+A');
       await page.keyboard.press('Backspace');
-      await page.waitForTimeout(200);
+      await this.safeWait(page, 200, { decisionId: 'reply_chain', attempt: i, stage: 'reply_clear' }, pool);
       
       await replyFocusResult.element!.type(segments[i], { delay: 10 });
       await this.verifyTextBoxHas(page, 0, segments[i]);
@@ -638,12 +836,12 @@ export class BulletproofThreadComposer {
       // 🔥 FIXED: Use bounded wait
       await Promise.race([
         page.waitForLoadState('networkidle'),
-        page.waitForTimeout(10000)
+        this.safeWait(page, 10000, { decisionId: 'reply_chain', attempt: i, stage: 'reply_post_wait' }, pool)
       ]);
       
       // 🆕 CAPTURE REPLY TWEET ID AND URL
       try {
-        await page.waitForTimeout(2000); // Wait for tweet to be posted
+        await this.safeWait(page, 2000, { decisionId: 'reply_chain', attempt: i, stage: 'reply_capture_wait' }, pool); // Wait for tweet to be posted
         const newUrl = page.url();
         const replyId = newUrl.match(/status\/(\d+)/)?.[1];
         if (replyId && replyId !== rootId) {
@@ -664,7 +862,7 @@ export class BulletproofThreadComposer {
       
       // Delay between replies
       const delayMs = (Number(process.env.THREAD_REPLY_DELAY_SEC) || 2) * 1000;
-      await page.waitForTimeout(delayMs);
+      await this.safeWait(page, delayMs, { decisionId: 'reply_chain', attempt: i, stage: 'reply_delay' }, pool);
     }
     
     console.log(`🔗 THREAD_COMPLETE: Captured ${tweetIds.length}/${segments.length} tweet IDs`);
@@ -715,7 +913,15 @@ export class BulletproofThreadComposer {
       .or(page.locator('button[aria-label*="Add post"]'));
 
     await addButton.first().click({ timeout: 7000 });
-    await page.waitForTimeout(700); // Allow card to appear
+    // Note: safeWait requires pool, but we don't have it here. Use regular wait with try/catch
+    try {
+      await page.waitForTimeout(700); // Allow card to appear
+    } catch (error: any) {
+      if (error.message?.includes('Target page, context or browser has been closed')) {
+        throw new Error('Page closed during addAnotherPost');
+      }
+      throw error;
+    }
     
     console.log('➕ THREAD_COMPOSER: Added another post card');
   }
@@ -766,9 +972,19 @@ export class BulletproofThreadComposer {
     
     // Wait for posting to complete
     console.log('⏳ THREAD_COMPOSER: Waiting for post to complete...');
+    // Note: safeWait requires pool, but we don't have it here. Use regular wait with try/catch
     await Promise.race([
       page.waitForLoadState('networkidle'),
-      page.waitForTimeout(15000) // Increased to 15s for threads
+      (async () => {
+        try {
+          await page.waitForTimeout(15000); // Increased to 15s for threads
+        } catch (error: any) {
+          if (error.message?.includes('Target page, context or browser has been closed')) {
+            throw new Error('Page closed during postAll wait');
+          }
+          throw error;
+        }
+      })()
     ]);
     
     console.log('🚀 THREAD_COMPOSER: Thread posted successfully!');
@@ -802,7 +1018,16 @@ export class BulletproofThreadComposer {
       console.log(`🔍 THREAD_IDS: Attempting to capture ${expectedCount} tweet IDs...`);
       
       // Wait for page to settle after posting
-      await page.waitForTimeout(3000);
+      // Note: safeWait requires pool, but we don't have it here. Use regular wait with try/catch
+      try {
+        await page.waitForTimeout(3000);
+      } catch (error: any) {
+        if (error.message?.includes('Target page, context or browser has been closed')) {
+          console.warn(`⚠️ THREAD_IDS: Page closed during capture wait, continuing anyway`);
+        } else {
+          throw error;
+        }
+      }
       
       // Try to find all status links on the page
       const statusLinks = await page.locator('a[href*="/status/"]').all();
