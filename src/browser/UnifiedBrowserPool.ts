@@ -385,8 +385,6 @@ export class UnifiedBrowserPool {
         
         console.log(`[BROWSER_POOL] ⚡ Executing batch of ${batch.length} operations (${this.queue.length} remaining in queue)`);
         
-        const OPERATION_TIMEOUT = 60000; // 60 second timeout
-        
         // Execute all operations in parallel using Promise.allSettled
         // This ensures one failure doesn't stop others
         const results = await Promise.allSettled(
@@ -396,16 +394,21 @@ export class UnifiedBrowserPool {
             let usedRetryContext = false;
             let retryContextHandle: ContextHandle | null = null;
             
+            // ✅ Extract operation label from operation ID (format: "operationName-timestamp-random")
+            const operationLabel = op.id.split('-')[0];
+            const timeoutMs = this.getOpTimeoutMs(operationLabel);
+            console.log(`[BROWSER_POOL][TIMEOUT] label=${operationLabel} timeoutMs=${timeoutMs}`);
+            
             try {
               console.log(`[BROWSER_POOL]   → ${op.id}: Starting...`);
               await this.ensureContextSession(context);
               
-              // ✅ CRITICAL FIX: Race against timeout
+              // ✅ CRITICAL FIX: Race against timeout (per-label timeout)
               let result: any;
               try {
                 result = await Promise.race([
                   op.operation(context.context),
-                  this.timeoutAfter(OPERATION_TIMEOUT, op.id)
+                  this.timeoutAfter(timeoutMs, op.id)
                 ]);
               } catch (operationError: any) {
                 // ✅ DEBUG: Log error details for diagnosis
@@ -437,9 +440,10 @@ export class UnifiedBrowserPool {
                   
                   try {
                     await this.ensureContextSession(retryContextHandle);
+                    // ✅ Use same timeout for retry (already logged above)
                     result = await Promise.race([
                       op.operation(retryContextHandle.context),
-                      this.timeoutAfter(OPERATION_TIMEOUT, `${op.id}-retry`)
+                      this.timeoutAfter(timeoutMs, `${op.id}-retry`)
                     ]);
                   } catch (retryError: any) {
                     throw retryError; // Rethrow if retry also fails
@@ -565,6 +569,18 @@ export class UnifiedBrowserPool {
     } finally {
       this.isProcessingQueue = false;
     }
+  }
+
+  /**
+   * ⏰ Get operation timeout based on label (posting operations get longer timeouts)
+   */
+  private getOpTimeoutMs(label?: string): number {
+    const l = (label || '').toLowerCase();
+    if (l.includes('thread_posting')) return 360_000; // 6 min
+    if (l.includes('reply_posting')) return 300_000; // 5 min
+    if (l.includes('tweet_posting')) return 300_000; // 5 min
+    if (l.includes('posting_recovery')) return 360_000; // 6 min
+    return 180_000; // default unchanged for everything else (was 60s, increased to 180s to match BrowserSemaphore)
   }
 
   /**
