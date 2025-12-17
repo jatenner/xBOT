@@ -444,12 +444,14 @@ export async function processPostingQueue(): Promise<void> {
         }
         
         // Proceed with posting
-        await processDecision(decision);
-        successCount++;
-        
-        // Track what we posted this cycle
-        if (isContent) contentPostedThisCycle++;
-        if (isReply) repliesPostedThisCycle++;
+        const success = await processDecision(decision);
+        if (success) {
+          successCount++;
+          
+          // Track what we posted this cycle
+          if (isContent) contentPostedThisCycle++;
+          if (isReply) repliesPostedThisCycle++;
+        }
         
       } catch (error: any) {
         const errorMsg = error?.message || error?.toString() || 'Unknown error';
@@ -1367,7 +1369,7 @@ async function verifyTweetPosted(content: string, decisionType: string): Promise
   }
 }
 
-async function processDecision(decision: QueuedDecision): Promise<void> {
+async function processDecision(decision: QueuedDecision): Promise<boolean> {
   const isThread = decision.decision_type === 'thread';
   const logPrefix = isThread ? '[POSTING_QUEUE] 🧵' : '[POSTING_QUEUE] 📝';
   
@@ -1450,7 +1452,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
                 updated_at: new Date().toISOString()
               })
               .eq('decision_id', decision.id);
-            return; // Exit early - post is already live
+            return false; // Exit early - post is already live (not a new success)
           }
         
           console.error(`${logPrefix} ❌ Thread ${decision.id} exceeded max retries (${retryCount}/${MAX_THREAD_RETRIES})`);
@@ -1475,7 +1477,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       const canPost = await checkPostingRateLimits();
       if (!canPost) {
         console.log(`[POSTING_QUEUE] ⛔ HARD STOP: Rate limit reached, skipping ${decision.id}`);
-        return; // Don't process this decision
+        return false; // Don't process this decision
       }
   }
   
@@ -1516,12 +1518,12 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       
         if (currentStatus?.status === 'posted' || currentStatus?.tweet_id) {
           console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED: ${decision.id} already posted (status: ${currentStatus.status}, tweet_id: ${currentStatus.tweet_id})`);
-          return; // Skip posting
+          return false; // Skip posting
         }
       
         if (currentStatus?.status === 'posting') {
           console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED: ${decision.id} already being posted by another process`);
-          return; // Skip posting
+          return false; // Skip posting
         }
       
         console.warn(`[POSTING_QUEUE] ⚠️ Failed to claim decision ${decision.id}: ${claimError?.message || 'Unknown error'}`);
@@ -1558,9 +1560,9 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
           .from('content_metadata')
           .update({ status: 'queued' })
           .eq('decision_id', decision.id);
-        return; // Skip posting
+        return false; // Skip posting
       }
-      
+    
       // Check 1: content_metadata for already-posted content with tweet_id
       const { data: duplicateInMetadata } = await supabase
         .from('content_metadata')
@@ -1578,7 +1580,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
           .from('content_metadata')
           .update({ status: 'queued' })
           .eq('decision_id', decision.id);
-        return; // Skip posting
+        return false; // Skip posting
       }
       
       // Check 2: posted_decisions table (backup check)
@@ -1595,7 +1597,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
           .from('content_metadata')
           .update({ status: 'queued' })
           .eq('decision_id', decision.id);
-        return; // Skip posting
+        return false; // Skip posting
       }
     
       // 📊 INTELLIGENCE LAYER: Capture follower count BEFORE posting
@@ -1937,7 +1939,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
                 .eq('decision_id', decision.id);
             
               await updatePostingMetrics('error');
-              return; // Don't mark as failed, will retry
+              return false; // Don't mark as failed, will retry
             }
           }
         }
@@ -1963,7 +1965,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
             })
             .eq('decision_id', decision.id);
           await updatePostingMetrics('error');
-          return;
+          return false;
         }
       
         // 🔥 CRITICAL FIX: Final verification before marking as failed
@@ -2099,9 +2101,15 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
             // 🔥 PRIORITY 1 FIX: Mark backup as verified (database save succeeded)
             const { markBackupAsVerified } = await import('../utils/tweetIdBackup');
             markBackupAsVerified(decision.id, tweetId);
-            break;
+            
+            // ✅ Return true ONLY after DB save succeeds and success log is emitted
+            return true;
           } catch (dbError: any) {
             console.error(`[POSTING_QUEUE] 🚨 Database save attempt ${attempt}/5 failed:`, dbError.message);
+            
+            // ✅ EXPLICIT DB SAVE FAILURE LOG
+            const decisionType = decision.decision_type || 'single';
+            console.log(`[POSTING_QUEUE][DB_SAVE_FAIL] decision_id=${decision.id} type=${decisionType} err=${dbError.message}`);
             
             // 🔧 ENHANCED ERROR TRACKING: Track database save failures
             await trackError(
@@ -2155,6 +2163,9 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
                   }
                 );
               }
+              
+              // ✅ DB save failed after all retries - return false
+              return false;
             }
           }
         }
@@ -2164,6 +2175,10 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
           console.error(`[POSTING_QUEUE] 🔗 Tweet URL: ${tweetUrl}`);
           console.error(`[POSTING_QUEUE] 📝 Content: ${decision.content.substring(0, 100)}`);
           console.error(`[POSTING_QUEUE] 🚨 THIS MAKES US LOOK LIKE A BOT - EMERGENCY FIX REQUIRED!`);
+          
+          // ✅ EXPLICIT DB SAVE FAILURE LOG
+          const decisionType = decision.decision_type || 'single';
+          console.log(`[POSTING_QUEUE][DB_SAVE_FAIL] decision_id=${decision.id} type=${decisionType} err=All 5 DB save attempts failed`);
         
           // 🔥 EMERGENCY FALLBACK: Try multiple simple update strategies
           const { getSupabaseClient } = await import('../db/index');
@@ -2362,7 +2377,20 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
         }
       
       console.log(`[POSTING_QUEUE] 🎉 POST COMPLETE: Tweet is live on Twitter, all tracking initiated!`);
+      
+      // ✅ If we reach here but dbSaveSuccess is false, return false
+      if (!dbSaveSuccess) {
+        return false;
+      }
     }
+    
+    // ✅ If posting didn't succeed or no tweet_id, return false
+    if (!postingSucceeded || !tweetId) {
+      return false;
+    }
+    
+    // ✅ Should not reach here if success path returned true
+    return false;
   } catch (topLevelError: any) {
       // Catch any errors that weren't handled by inner try-catch blocks
       const errorMsg = topLevelError?.message || topLevelError?.toString() || 'Unknown error';
@@ -2372,7 +2400,7 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
       } catch (markError: any) {
         console.error(`${logPrefix} 🚨 Failed to mark decision as failed:`, markError.message);
       }
-      throw topLevelError;
+      return false; // Return false on error instead of throwing
     }
 }
 
