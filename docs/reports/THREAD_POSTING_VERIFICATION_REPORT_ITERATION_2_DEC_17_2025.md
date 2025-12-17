@@ -176,4 +176,67 @@ if (!page.isClosed()) {
 
 ---
 
-**Status:** ⚠️ YELLOW - Iteration 2 instrumentation working correctly, but browser/page closure errors preventing successful posting. Threads in retry state.
+## 10) Reliability Fixes Applied (Dec 17, 2025)
+
+### Changes Made
+
+**File:** `src/posting/BulletproofThreadComposer.ts`
+
+**Fixes Implemented:**
+
+1. **Page Liveness Checks:**
+   - Added `isPageClosed()` helper to detect closed pages/browser contexts
+   - Added `ensureLivePage()` helper to recreate pages when closed
+   - Added `safeWait()` helper that wraps `waitForTimeout()` with page health checks and recovery
+
+2. **Paste Verification:**
+   - Added `verifyPasteAndFallback()` method that:
+     - Reads back textarea/editor text after paste
+     - Retries paste once if empty
+     - Falls back to typing if paste still empty
+     - Verifies final text length and logs char count
+   - Integrated into all paste operations (first tweet + additional tweets)
+
+3. **Safe Wait Replacement:**
+   - Replaced all `page.waitForTimeout()` calls with `safeWait()` in:
+     - Navigation stabilization
+     - Typing focus/clear waits
+     - Paste wait operations
+     - Add post waits
+     - Backoff delays
+   - Added try/catch wrappers for remaining waits where pool is not available
+
+**New Log Patterns:**
+
+- `[THREAD_COMPOSER][RECOVER]` - Page recovery logs
+- `[THREAD_COMPOSER][VERIFY]` - Paste verification logs with char counts
+
+**Verification Commands:**
+
+```bash
+# Check for recovery logs
+railway logs --service xBOT --lines 5000 | grep -E "\[THREAD_COMPOSER\]\[RECOVER\]" | tail -n 50
+
+# Check for paste verification logs
+railway logs --service xBOT --lines 5000 | grep -E "\[THREAD_COMPOSER\]\[VERIFY\]" | tail -n 100
+
+# Check for successful thread posting (should see non-zero composer_len)
+railway logs --service xBOT --lines 5000 | grep -E "\[THREAD_COMPOSER\]\[VERIFY\].*composer_len=" | tail -n 50
+
+# Check for page closure recovery
+railway logs --service xBOT --lines 5000 | grep -E "\[THREAD_COMPOSER\]\[RECOVER\].*page was closed" | tail -n 30
+
+# Full thread posting flow verification
+railway logs --service xBOT --lines 5000 | grep -E "\[THREAD_COMPOSER\]\[(RECOVER|VERIFY|STAGE|TIMEOUT)\]" | tail -n 200
+```
+
+**Expected Behavior:**
+
+- When page closes: `[THREAD_COMPOSER][RECOVER] page was closed -> recreating page`
+- After paste: `[THREAD_COMPOSER][VERIFY] tweet i/N composer_len=###` (should be > 0)
+- If paste empty: `[THREAD_COMPOSER][VERIFY] paste produced empty text -> retrying`
+- If paste still empty: `[THREAD_COMPOSER][VERIFY] paste still empty -> fallback to typing`
+
+---
+
+**Status:** ✅ FIXES DEPLOYED - Page liveness checks and paste verification added. Monitor next thread posting cycle for recovery logs and successful posting.
