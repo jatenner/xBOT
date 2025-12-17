@@ -44,6 +44,14 @@ const RESOURCE_ERROR_PATTERNS = [
   'pthread_create'
 ];
 
+const DISCONNECTED_ERROR_PATTERNS = [
+  'Target page, context or browser has been closed',
+  'Browser has been closed',
+  'Protocol error',
+  'Execution context was destroyed',
+  'browserContext.newPage: Target page, context or browser has been closed'
+];
+
 interface ContextHandle {
   context: BrowserContext;
   inUse: boolean;
@@ -199,6 +207,9 @@ export class UnifiedBrowserPool {
     const operationId = `${operationName}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     console.log(`[BROWSER_POOL] 📝 Request: ${operationName} (queue: ${this.queue.length}, active: ${this.getActiveCount()}, priority: ${priority})`);
+
+    // ✅ RECOVER: Ensure browser/context are live before proceeding
+    await this.ensureLiveContext(operationName);
 
     // 🔥 ENHANCEMENT: Async circuit breaker check
     const breakerOpen = await this.isCircuitBreakerOpen();
@@ -382,16 +393,53 @@ export class UnifiedBrowserPool {
           batch.map(async ({ op, context }) => {
             const startTime = Date.now();
             let contextClosed = false;
+            let usedRetryContext = false;
+            let retryContextHandle: ContextHandle | null = null;
             
             try {
               console.log(`[BROWSER_POOL]   → ${op.id}: Starting...`);
               await this.ensureContextSession(context);
               
               // ✅ CRITICAL FIX: Race against timeout
-              const result = await Promise.race([
-                op.operation(context.context),
-                this.timeoutAfter(OPERATION_TIMEOUT, op.id)
-              ]);
+              let result: any;
+              try {
+                result = await Promise.race([
+                  op.operation(context.context),
+                  this.timeoutAfter(OPERATION_TIMEOUT, op.id)
+                ]);
+              } catch (operationError: any) {
+                // ✅ RECOVER: Catch disconnected errors and retry once
+                if (this.isDisconnectedError(operationError)) {
+                  console.log(`[BROWSER_POOL][RECOVER] disconnected during ${op.id}, resetting pool`);
+                  console.log(`[BROWSER_POOL][RECOVER] retry=1 label=${op.id}`);
+                  
+                  // Mark original context as closed (resetPool will close it)
+                  contextClosed = true;
+                  
+                  // Reset pool and retry operation once
+                  await this.resetPool();
+                  await this.ensureLiveContext(op.id);
+                  
+                  // Re-acquire context for retry
+                  retryContextHandle = await this.acquireContext();
+                  if (!retryContextHandle) {
+                    throw new Error(`Failed to acquire context for retry after disconnect`);
+                  }
+                  usedRetryContext = true;
+                  
+                  try {
+                    await this.ensureContextSession(retryContextHandle);
+                    result = await Promise.race([
+                      op.operation(retryContextHandle.context),
+                      this.timeoutAfter(OPERATION_TIMEOUT, `${op.id}-retry`)
+                    ]);
+                  } catch (retryError: any) {
+                    throw retryError; // Rethrow if retry also fails
+                  }
+                } else {
+                  throw operationError; // Rethrow non-disconnected errors
+                }
+              }
               
               const duration = Date.now() - startTime;
               console.log(`[BROWSER_POOL]   ✅ ${op.id}: Completed (${duration}ms)`);
@@ -484,8 +532,12 @@ export class UnifiedBrowserPool {
               this.recordFailure(failureReason);
               
             } finally {
-              // Release context back to pool (unless it was force-closed)
-              if (!contextClosed) {
+              // Release context back to pool
+              if (usedRetryContext && retryContextHandle) {
+                // Release retry context if we used it
+                this.releaseContext(retryContextHandle);
+              } else if (!contextClosed) {
+                // Release original context if it wasn't closed
                 this.releaseContext(context);
               }
             }
@@ -524,6 +576,33 @@ export class UnifiedBrowserPool {
       return false;
     }
     return RESOURCE_ERROR_PATTERNS.some(pattern => error.message.toLowerCase().includes(pattern.toLowerCase()));
+  }
+
+  /**
+   * 🔍 Check if error indicates browser/context/page disconnection
+   */
+  private isDisconnectedError(err: unknown): boolean {
+    if (!err) return false;
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    if (!errorMsg) return false;
+    const lowerMsg = errorMsg.toLowerCase();
+    return DISCONNECTED_ERROR_PATTERNS.some(pattern => lowerMsg.includes(pattern.toLowerCase()));
+  }
+
+  /**
+   * 🔄 Ensure browser and context are live, recreate if disconnected
+   */
+  private async ensureLiveContext(label?: string): Promise<void> {
+    // Check browser connection
+    if (!this.browser || !this.browser.isConnected()) {
+      console.log(`[BROWSER_POOL][RECOVER] reason=browser_disconnected action=reset${label ? ` label=${label}` : ''}`);
+      await this.resetPool();
+      return;
+    }
+
+    // Check if we can still create pages (context health check)
+    // If browser is connected but contexts are dead, we'll detect it during createNewContext
+    // For now, just ensure browser is connected
   }
 
   private openCircuitBreaker(reason: string, cooldownMs: number = this.CIRCUIT_BREAKER_TIMEOUT): void {
@@ -768,6 +847,9 @@ export class UnifiedBrowserPool {
    * Create a new context in the pool
    */
   private async createNewContext(): Promise<ContextHandle> {
+    // ✅ RECOVER: Ensure browser is live before creating context
+    await this.ensureLiveContext('createNewContext');
+    
     // Ensure browser exists
     if (!this.browser || !this.browser.isConnected()) {
       try {
@@ -797,10 +879,35 @@ export class UnifiedBrowserPool {
     try {
       context = await this.browser!.newContext(contextOptions);
     } catch (error: any) {
-      if (this.isResourceExhaustionError(error)) {
+      // ✅ RECOVER: If disconnected error, reset pool and retry once
+      if (this.isDisconnectedError(error)) {
+        console.log(`[BROWSER_POOL][RECOVER] reason=context_creation_failed action=reset label=createNewContext`);
+        console.log(`[BROWSER_POOL][RECOVER] retry=1 label=createNewContext`);
+        
+        await this.resetPool();
+        await this.ensureLiveContext('createNewContext-retry');
+        
+        // Retry context creation
+        if (!this.browser || !this.browser.isConnected()) {
+          await this.initializeBrowser();
+        }
+        
+        const retryStorageState = await this.ensureStorageState();
+        const retryContextOptions: BrowserContextOptions = {
+          userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          viewport: { width: 1280, height: 720 }
+        };
+        if (retryStorageState) {
+          retryContextOptions.storageState = retryStorageState;
+        }
+        
+        context = await this.browser!.newContext(retryContextOptions);
+      } else if (this.isResourceExhaustionError(error)) {
         await this.handleResourceExhaustion(error);
+        throw error;
+      } else {
+        throw error;
       }
-      throw error;
     }
 
     const handle: ContextHandle = {
