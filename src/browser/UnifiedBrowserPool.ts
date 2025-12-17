@@ -408,10 +408,18 @@ export class UnifiedBrowserPool {
                   this.timeoutAfter(OPERATION_TIMEOUT, op.id)
                 ]);
               } catch (operationError: any) {
+                // ✅ DEBUG: Log error details for diagnosis
+                const errorName = operationError?.name || 'Unknown';
+                const errorMsg = operationError?.message || String(operationError) || 'No message';
+                const operationLabel = op.id.split('-')[0]; // Extract operation name (e.g., "thread_posting")
+                console.log(`[BROWSER_POOL][DEBUG] caught_error op=${op.id} label=${operationLabel} name=${errorName} msg=${errorMsg.substring(0, 200)}`);
+                
                 // ✅ RECOVER: Catch disconnected errors and retry once
-                if (this.isDisconnectedError(operationError)) {
-                  console.log(`[BROWSER_POOL][RECOVER] disconnected during ${op.id}, resetting pool`);
-                  console.log(`[BROWSER_POOL][RECOVER] retry=1 label=${op.id}`);
+                const isDisconnected = this.isDisconnectedError(operationError);
+                console.log(`[BROWSER_POOL][DEBUG] disconnected_match=${isDisconnected} op=${op.id} label=${operationLabel}`);
+                
+                if (isDisconnected) {
+                  console.log(`[BROWSER_POOL][RECOVER] reason=browser_disconnected action=reset op=${op.id} label=${operationLabel} retry=1`);
                   
                   // Mark original context as closed (resetPool will close it)
                   contextClosed = true;
@@ -583,10 +591,34 @@ export class UnifiedBrowserPool {
    */
   private isDisconnectedError(err: unknown): boolean {
     if (!err) return false;
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    
+    // Extract error message from various sources
+    let errorMsg = '';
+    if (err instanceof Error) {
+      errorMsg = err.message || '';
+      // Also check cause and stack (using type-safe access)
+      const errAny = err as any;
+      if (errAny.cause && typeof errAny.cause === 'object' && 'message' in errAny.cause) {
+        errorMsg += ' ' + String(errAny.cause.message);
+      }
+      if (err.stack) {
+        errorMsg += ' ' + err.stack;
+      }
+    } else {
+      errorMsg = String(err);
+    }
+    
     if (!errorMsg) return false;
+    
     const lowerMsg = errorMsg.toLowerCase();
-    return DISCONNECTED_ERROR_PATTERNS.some(pattern => lowerMsg.includes(pattern.toLowerCase()));
+    
+    // Check all patterns (case-insensitive)
+    return DISCONNECTED_ERROR_PATTERNS.some(pattern => {
+      const patternLower = pattern.toLowerCase();
+      return lowerMsg.includes(patternLower) || 
+             lowerMsg.includes('browsercontext.newpage') ||
+             lowerMsg.includes('has been closed');
+    });
   }
 
   /**

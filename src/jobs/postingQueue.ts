@@ -2091,6 +2091,11 @@ async function processDecision(decision: QueuedDecision): Promise<void> {
             dbSaveSuccess = true;
             console.log(`[POSTING_QUEUE] ✅ Database save SUCCESS on attempt ${attempt}`);
             
+            // ✅ EXPLICIT SUCCESS LOG: Log after DB save confirms post is complete
+            const decisionType = decision.decision_type || 'single';
+            const finalTweetUrl = tweetUrl || `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
+            console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decision.id} type=${decisionType} tweet_id=${tweetId} url=${finalTweetUrl}`);
+            
             // 🔥 PRIORITY 1 FIX: Mark backup as verified (database save succeeded)
             const { markBackupAsVerified } = await import('../utils/tweetIdBackup');
             markBackupAsVerified(decision.id, tweetId);
@@ -2869,6 +2874,11 @@ async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?
         
         dbSaveSuccess = true;
         console.log(`[POSTING_QUEUE] ✅ Database updated (attempt ${dbAttempt}/${MAX_DB_RETRIES}): tweet_id ${tweetId} saved for decision ${decisionId}`);
+        
+        // ✅ EXPLICIT SUCCESS LOG: Log after DB save confirms post is complete
+        const finalTweetUrl = tweetUrl || `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
+        console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decisionId} type=unknown tweet_id=${tweetId} url=${finalTweetUrl}`);
+        
         break; // Success - exit retry loop
         
       } catch (dbError: any) {
