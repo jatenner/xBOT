@@ -552,13 +552,27 @@ async function generateContentWithLLM() {
   const formatStrategyGen = getFormatStrategyGenerator();
   let formatStrategy = await formatStrategyGen.generateStrategy(topic, angle, tone, matchedGenerator);
   
+  // 🔬 THREAD VERIFICATION OVERRIDE: Deterministic force for Iteration 2 verification
+  const forceThreadVerification = process.env.FORCE_THREAD_VERIFICATION === 'true';
+  if (forceThreadVerification) {
+    // Force thread format regardless of slot eligibility
+    if (typeof formatStrategy === 'string') {
+      formatStrategy = { format_type: 'thread', strategy: formatStrategy } as any;
+    } else if (formatStrategy && typeof formatStrategy === 'object') {
+      formatStrategy = { ...(formatStrategy as any), format_type: 'thread' } as any;
+    } else {
+      formatStrategy = { format_type: 'thread' } as any;
+    }
+    console.log(`[THREAD_VERIFY] 🔬 forcing thread for verification (slot=${selectedSlot})`);
+  }
+  
   // 🚀 THREAD BOOST: Feature flag to force thread generation for verification
   const threadBoostEnabled = process.env.ENABLE_THREAD_BOOST === 'true';
   const threadBoostRate = parseFloat(process.env.THREAD_BOOST_RATE || '0.5');
   const eligibleSlots = ['framework', 'deep_dive', 'research', 'educational'];
   const isEligibleSlot = eligibleSlots.includes(selectedSlot);
   
-  if (threadBoostEnabled && isEligibleSlot) {
+  if (!forceThreadVerification && threadBoostEnabled && isEligibleSlot) {
     const shouldBoost = Math.random() < threadBoostRate;
     if (shouldBoost) {
       // Force thread format
@@ -573,7 +587,7 @@ async function generateContentWithLLM() {
     } else {
       console.log(`[THREAD_BOOST] ⏭️ enabled=true rate=${threadBoostRate} selected=false decisionType=single slot=${selectedSlot}`);
     }
-  } else if (threadBoostEnabled && !isEligibleSlot) {
+  } else if (!forceThreadVerification && threadBoostEnabled && !isEligibleSlot) {
     console.log(`[THREAD_BOOST] ⏭️ enabled=true but slot=${selectedSlot} not eligible (eligible: ${eligibleSlots.join(', ')})`);
   }
   

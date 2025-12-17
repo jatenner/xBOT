@@ -213,7 +213,8 @@
     "restart:once": "tsx scripts/restart-once.ts",
     "thread:boost:on": "railway variables --set ENABLE_THREAD_BOOST=true --set THREAD_BOOST_RATE=0.5 --service xBOT",
     "thread:boost:off": "railway variables --set ENABLE_THREAD_BOOST=false --service xBOT",
-    "plan:run:once": "tsx scripts/plan-run-once.ts"
+    "plan:run:once": "tsx scripts/plan-run-once.ts",
+    "thread:verify": "railway run --service xBOT -- pnpm plan:run:once && sleep 10 && railway logs --service xBOT --lines 3000 | grep -E 'THREAD_VERIFY|QUEUE_CONTENT.*THREAD QUEUED|THREAD_COMPOSER|THREAD_COMPOSER\\]\\[TIMEOUT|THREAD_COMPOSER\\]\\[AUTOPSY' | tail -n 200"
   },
   "keywords": [
     "twitter",
