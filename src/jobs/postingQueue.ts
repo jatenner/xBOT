@@ -1602,50 +1602,55 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
     
       // 📊 INTELLIGENCE LAYER: Capture follower count BEFORE posting
       // 🎯 ENHANCED: Use MultiPointFollowerTracker for accurate attribution
-      try {
-        console.log(`${logPrefix} 🔍 Capturing follower baseline`);
-        const { MultiPointFollowerTracker } = await import('../tracking/multiPointFollowerTracker');
-        const tracker = MultiPointFollowerTracker.getInstance();
+      // 🚨 POSTING PRIORITY: Skip follower baseline if disabled via env flag
+      if (process.env.DISABLE_FOLLOWER_BASELINE !== 'true') {
+        try {
+          console.log(`${logPrefix} 🔍 Capturing follower baseline`);
+          const { MultiPointFollowerTracker } = await import('../tracking/multiPointFollowerTracker');
+          const tracker = MultiPointFollowerTracker.getInstance();
 
-        let baselineTimedOut = false;
-        let baselineTimeoutHandle: NodeJS.Timeout | null = null;
+          let baselineTimedOut = false;
+          let baselineTimeoutHandle: NodeJS.Timeout | null = null;
 
-        const baselinePromise = tracker.captureBaseline(decision.id);
+          const baselinePromise = tracker.captureBaseline(decision.id);
 
-        const timeoutPromise = new Promise<void>((resolve) => {
-          baselineTimeoutHandle = setTimeout(() => {
-            baselineTimedOut = true;
-            baselineTimeoutHandle = null;
-            console.warn(`[POSTING_QUEUE] ⚠️ Follower baseline capture timed out after ${FOLLOWER_BASELINE_TIMEOUT_MS}ms (decision ${decision.id})`);
-            resolve();
-          }, FOLLOWER_BASELINE_TIMEOUT_MS);
-        });
+          const timeoutPromise = new Promise<void>((resolve) => {
+            baselineTimeoutHandle = setTimeout(() => {
+              baselineTimedOut = true;
+              baselineTimeoutHandle = null;
+              console.warn(`[POSTING_QUEUE] ⚠️ Follower baseline capture timed out after ${FOLLOWER_BASELINE_TIMEOUT_MS}ms (decision ${decision.id})`);
+              resolve();
+            }, FOLLOWER_BASELINE_TIMEOUT_MS);
+          });
 
-        await Promise.race([
-          baselinePromise.then(
-            () => {
-              if (baselineTimeoutHandle) {
-                clearTimeout(baselineTimeoutHandle);
-                baselineTimeoutHandle = null;
+          await Promise.race([
+            baselinePromise.then(
+              () => {
+                if (baselineTimeoutHandle) {
+                  clearTimeout(baselineTimeoutHandle);
+                  baselineTimeoutHandle = null;
+                }
+                if (!baselineTimedOut) {
+                  console.log(`${logPrefix} 🔍 DEBUG: Follower baseline captured`);
+                }
+              },
+              (error: any) => {
+                if (baselineTimeoutHandle) {
+                  clearTimeout(baselineTimeoutHandle);
+                  baselineTimeoutHandle = null;
+                }
+                if (!baselineTimedOut) {
+                  console.warn(`[POSTING_QUEUE] ⚠️ Follower baseline capture failed: ${error.message}`);
+                }
               }
-              if (!baselineTimedOut) {
-                console.log(`${logPrefix} 🔍 DEBUG: Follower baseline captured`);
-              }
-            },
-            (error: any) => {
-              if (baselineTimeoutHandle) {
-                clearTimeout(baselineTimeoutHandle);
-                baselineTimeoutHandle = null;
-              }
-              if (!baselineTimedOut) {
-                console.warn(`[POSTING_QUEUE] ⚠️ Follower baseline capture failed: ${error.message}`);
-              }
-            }
-          ),
-          timeoutPromise
-        ]);
-      } catch (attrError: any) {
-        console.warn(`[POSTING_QUEUE] ⚠️ Follower capture failed: ${attrError.message}`);
+            ),
+            timeoutPromise
+          ]);
+        } catch (attrError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Follower capture failed: ${attrError.message}`);
+        }
+      } else {
+        console.log(`[FOLLOWER_TRACKER] ⏭️ Baseline disabled via env (DISABLE_FOLLOWER_BASELINE=true)`);
       }
     
       // ═══════════════════════════════════════════════════════════

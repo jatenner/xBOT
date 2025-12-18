@@ -267,6 +267,12 @@ export class JobManager {
     this.scheduleStaggeredJob(
       'metrics_scraper',
       async () => {
+          // 🚨 POSTING PRIORITY: Skip metrics scraping if disabled via env flag
+          if (process.env.DISABLE_METRICS_JOB === 'true') {
+            console.log('[METRICS_SCRAPER] ⏭️ Skipped (DISABLE_METRICS_JOB=true)');
+            await (await import('./jobHeartbeat')).recordJobSkip('metrics_scraper', 'disabled_via_env');
+            return;
+          }
           const { shouldRunLowPriority } = await import('../browser/BrowserHealthGate');
           if (!(await shouldRunLowPriority())) {
             await (await import('./jobHeartbeat')).recordJobSkip('metrics_scraper', 'browser_degraded');
@@ -478,6 +484,12 @@ export class JobManager {
     this.scheduleStaggeredJob(
       'peer_scraper',
       async () => {
+        // 🚨 POSTING PRIORITY: Skip VI scraping if disabled via env flag
+        if (process.env.DISABLE_VI_SCRAPE === 'true') {
+          console.log('[PEER_SCRAPER] ⏭️ Skipped (DISABLE_VI_SCRAPE=true)');
+          await (await import('./jobHeartbeat')).recordJobSkip('peer_scraper', 'disabled_via_env');
+          return;
+        }
         // VI collection is critical - ensure it runs with retries
         await this.safeExecute('peer_scraper', async () => {
           const { peerScraperJob } = await import('./peerScraperJob');

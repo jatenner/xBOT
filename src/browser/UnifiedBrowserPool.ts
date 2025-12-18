@@ -229,6 +229,17 @@ export class UnifiedBrowserPool {
       ? Math.max(this.QUEUE_WAIT_TIMEOUT * 5, 300000) // 🔥 ENHANCEMENT: 5x timeout or 5min min for critical/ID extraction ops
       : this.QUEUE_WAIT_TIMEOUT; // Normal timeout for background jobs
     
+    // 🚨 POSTING PRIORITY GUARD: Drop background operations when queue is deep and posting is waiting
+    const POSTING_PRIORITY_THRESHOLD = 3; // Drop background ops if queue depth exceeds this
+    const isBackgroundOperation = priority > 1; // Priority > 1 means background (metrics, vi_scrape, etc.)
+    const hasPostingWaiting = this.queue.some(op => op.priority <= 1); // Check if any posting/reply ops are waiting
+    
+    if (isBackgroundOperation && this.queue.length >= POSTING_PRIORITY_THRESHOLD && hasPostingWaiting) {
+      console.log(`[BROWSER_POOL][GUARD] posting_priority queueDepth=${this.queue.length} dropped label=${operationName}`);
+      this.metrics.totalOperations++; // Count as attempted but dropped
+      return Promise.reject(new Error(`Background operation dropped due to posting priority (queue depth: ${this.queue.length})`));
+    }
+
     // Update metrics
     this.metrics.totalOperations++;
     this.metrics.queuedOperations++;
@@ -407,7 +418,7 @@ export class UnifiedBrowserPool {
               let result: any;
               try {
                 result = await Promise.race([
-                  op.operation(context.context),
+                op.operation(context.context),
                   this.timeoutAfter(timeoutMs, op.id)
                 ]);
               } catch (operationError: any) {
@@ -444,7 +455,7 @@ export class UnifiedBrowserPool {
                     result = await Promise.race([
                       op.operation(retryContextHandle.context),
                       this.timeoutAfter(timeoutMs, `${op.id}-retry`)
-                    ]);
+              ]);
                   } catch (retryError: any) {
                     throw retryError; // Rethrow if retry also fails
                   }
@@ -954,7 +965,7 @@ export class UnifiedBrowserPool {
         await this.handleResourceExhaustion(error);
         throw error;
       } else {
-        throw error;
+      throw error;
       }
     }
 
