@@ -1,15 +1,15 @@
 # Truth Audit: Last 24 Hours
 
-**Date:** 2025-12-18T21:07:50.130Z
+**Date:** 2025-12-18T21:14:51.953Z
 
 ---
 
 ## Totals
 
-- **Posted Singles:** 12
+- **Posted Singles:** 13
 - **Posted Threads:** 1
 - **Posted Replies:** 30
-- **Total Posted:** 43
+- **Total Posted:** 44
 - **Failed/Retrying:** 9
 
 ## Log Summary
@@ -25,10 +25,11 @@
 
 ## Missing Logs (DB posted but no SUCCESS log)
 
-Found 43 posted decisions without SUCCESS logs:
+Found 44 posted decisions without SUCCESS logs:
 
 | decision_id | status | posted_at | reason |
 |-------------|--------|-----------|--------|
+| b59dc489... | posted | 2025-12-18T21:08:30.569+00:00 | service_restart_or_crash |
 | 1a489eb0... | posted | 2025-12-18T20:56:36.114+00:00 | service_restart_or_crash |
 | 62e2fe70... | posted | 2025-12-18T07:30:14.631+00:00 | likely_log_rotation |
 | e7d07a4e... | posted | 2025-12-18T07:47:06.332+00:00 | likely_log_rotation |
@@ -48,7 +49,6 @@ Found 43 posted decisions without SUCCESS logs:
 | 2e82eca7... | posted | 2025-12-18T19:01:13.904+00:00 | service_restart_or_crash |
 | 9b2b597b... | posted | 2025-12-18T19:07:45.422+00:00 | service_restart_or_crash |
 | 75e4997b... | posted | 2025-12-18T19:44:17.808+00:00 | service_restart_or_crash |
-| 8752a141... | posted | 2025-12-18T19:57:22.807+00:00 | service_restart_or_crash |
 
 ## Missing DB (SUCCESS log but no DB entry)
 
@@ -60,6 +60,43 @@ Found 43 posted decisions without SUCCESS logs:
 |-------------|-----------------|--------|-----------|-----|
 | 179d3815... | 1 | native-composer | 2025-12-18T10:50:18.841+00:00 | https://x.com/SignalAndSynapse/status/2001605259228061907 |
 
+## Thread Proof (DB-only)
+
+Last 20 decisions where decision_type='thread' OR thread_tweet_ids IS NOT NULL:
+
+| decision_id | decision_type | status | tweet_id | thread_tweet_ids_length | posted_at |
+|-------------|----------------|--------|----------|------------------------|-----------|
+| c623aa57... | thread | queued | N/A | 0 | N/A |
+| b23bf642... | thread | posting | N/A | 0 | N/A |
+| bd027e89... | thread | queued | N/A | 0 | N/A |
+| 92aa84ef... | thread | failed | N/A | 0 | N/A |
+| d8cd69b1... | thread | queued | N/A | 0 | N/A |
+| a14852ff... | thread | queued | N/A | 0 | N/A |
+| aec74372... | thread | queued | N/A | 0 | N/A |
+| ab5a7238... | thread | failed_permanent | N/A | 0 | N/A |
+| 51c7aa65... | thread | queued | N/A | 0 | N/A |
+| 54d5367b... | thread | queued | N/A | 0 | N/A |
+| 3320a25a... | thread | queued | N/A | 0 | N/A |
+| 0d304149... | thread | queued | N/A | 0 | N/A |
+| ad98133e... | thread | queued | N/A | 0 | N/A |
+| a30e848b... | thread | archived | N/A | 0 | N/A |
+| 046a9a68... | thread | failed_permanent | N/A | 0 | N/A |
+| 43e05053... | thread | failed_permanent | N/A | 0 | N/A |
+| 52d3785e... | thread | failed_permanent | N/A | 0 | N/A |
+| 080f0a44... | thread | failed_permanent | N/A | 0 | N/A |
+| 7d96448f... | thread | failed_permanent | N/A | 0 | N/A |
+| 07eec120... | thread | failed_permanent | N/A | 0 | N/A |
+
+## Warnings (decision_type='thread' but thread_tweet_ids length < 2)
+
+Found 3 warnings:
+
+| decision_id | decision_type | thread_tweet_ids_length | reason |
+|-------------|---------------|-------------------------|--------|
+| 92aa84ef... | thread | 0 | decision_type='thread' but thread_tweet_ids length=0 < 2 (missing thread IDs) |
+| 179d3815... | thread | 1 | decision_type='thread' but thread_tweet_ids length=1 < 2 (missing thread IDs) |
+| 3fa67116... | thread | 0 | decision_type='thread' but thread_tweet_ids length=0 < 2 (missing thread IDs) |
+
 ---
 
-**Report Generated:** 2025-12-18T21:07:50.130Z
+**Report Generated:** 2025-12-18T21:14:51.953Z
