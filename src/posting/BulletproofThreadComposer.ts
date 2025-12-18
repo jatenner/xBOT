@@ -346,6 +346,7 @@ export class BulletproofThreadComposer {
 
   /**
    * ✅ VERIFY PASTE: Verify paste succeeded, fallback to typing if empty
+   * 🔥 ENHANCED: Robust paste verification with multiple fallback strategies
    */
   private static async verifyPasteAndFallback(
     page: Page,
@@ -356,86 +357,156 @@ export class BulletproofThreadComposer {
     attempt: number,
     pool: any
   ): Promise<Page> {
-    // Read back textarea/editor text
-    const readText = await page.evaluate((idx: number) => {
-      const textarea = document.querySelector(`[data-testid="tweetTextarea_${idx}"]`) as HTMLTextAreaElement;
-      if (textarea) {
-        return textarea.value || textarea.textContent || '';
-      }
-      const contenteditable = document.querySelector(`div[contenteditable="true"][role="textbox"]`) as HTMLElement;
-      if (contenteditable) {
-        return contenteditable.textContent || contenteditable.innerText || '';
-      }
-      return '';
-    }, index);
-
-    const charCount = readText.trim().length;
-    console.log(`[THREAD_COMPOSER][VERIFY] part ${index + 1}/${total} composer_len=${charCount} (decisionId=${decisionId}, attempt=${attempt})`);
-
-    if (charCount === 0 || readText.trim().length === 0) {
-      console.log(`[THREAD_COMPOSER][VERIFY] paste empty -> retry paste (decisionId=${decisionId}, i=${index + 1}, attempt=${attempt})`);
-      
-      // Retry paste once
-      try {
-        await page.evaluate((args: { text: string; index: number }) => {
-          const textarea = document.querySelector(`[data-testid="tweetTextarea_${args.index}"]`) as HTMLTextAreaElement;
-          if (textarea) {
-            textarea.value = args.text;
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        }, { text, index });
-        page = await this.safeWait(page, 100, { decisionId, attempt, stage: 'paste_retry' }, pool);
+    // 🎯 STEP 1: Wait for composer to be ready
+    await page.waitForSelector(`[data-testid="tweetTextarea_${index}"], div[contenteditable="true"][role="textbox"]`, { timeout: 5000 }).catch(() => {
+      // Continue if selector not found - will be handled in getComposeBox
+    });
+    
+    // 🎯 STEP 2: Ensure compose textarea exists, visible, enabled
+    const composeBox = await this.getComposeBox(page, index);
+    await composeBox.click(); // Ensure focus
+    page = await this.safeWait(page, 200, { decisionId, attempt, stage: 'composer_focus' }, pool);
+    
+    // 🎯 STEP 3: Attempt paste (clipboard)
+    const pasteMethod = 'paste';
+    try {
+      await page.evaluate((args: { text: string; index: number }) => {
+        const textarea = document.querySelector(`[data-testid="tweetTextarea_${args.index}"]`) as HTMLTextAreaElement;
+        const contenteditable = document.querySelector(`div[contenteditable="true"][role="textbox"]`) as HTMLElement;
         
-        // Verify again
-        const retryText = await page.evaluate((idx: number) => {
+        if (textarea) {
+          textarea.value = args.text;
+          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        } else if (contenteditable) {
+          contenteditable.textContent = args.text;
+          contenteditable.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }, { text, index });
+      
+      page = await this.safeWait(page, 300, { decisionId, attempt, stage: 'paste_wait' }, pool);
+    } catch (pasteError: any) {
+      console.log(`[THREAD_COMPOSER][VERIFY] paste attempt failed: ${pasteError.message}`);
+    }
+    
+    // 🎯 STEP 4: Wait for textarea value with timeout (minLen=20, timeout=3000ms)
+    const waitForTextareaValue = async (minLen: number, timeoutMs: number): Promise<string> => {
+      return await page.waitForFunction(
+        (args: { index: number; minLen: number }) => {
+          const textarea = document.querySelector(`[data-testid="tweetTextarea_${args.index}"]`) as HTMLTextAreaElement;
+          const contenteditable = document.querySelector(`div[contenteditable="true"][role="textbox"]`) as HTMLElement;
+          
+          let value = '';
+          if (textarea) {
+            value = textarea.value || textarea.textContent || '';
+          } else if (contenteditable) {
+            value = contenteditable.textContent || contenteditable.innerText || '';
+          }
+          
+          return value.trim().length >= args.minLen ? value : null;
+        },
+        { index, minLen },
+        { timeout: timeoutMs }
+      ).then(() => {
+        // Value found, read it back
+        return page.evaluate((idx: number) => {
           const textarea = document.querySelector(`[data-testid="tweetTextarea_${idx}"]`) as HTMLTextAreaElement;
+          const contenteditable = document.querySelector(`div[contenteditable="true"][role="textbox"]`) as HTMLElement;
+          
           if (textarea) {
             return textarea.value || textarea.textContent || '';
+          } else if (contenteditable) {
+            return contenteditable.textContent || contenteditable.innerText || '';
           }
           return '';
         }, index);
+      }).catch(() => {
+        // Timeout - return empty string
+        return '';
+      });
+    };
+    
+    let readText = await waitForTextareaValue(20, 3000);
+    
+    // If still empty, retry paste once (focus again)
+    if (readText.trim().length === 0) {
+      console.log(`[THREAD_COMPOSER][VERIFY] part ${index + 1}/${total} paste empty -> retry paste (decisionId=${decisionId}, attempt=${attempt})`);
+      
+      // Re-focus and retry paste
+      await composeBox.click();
+      page = await this.safeWait(page, 200, { decisionId, attempt, stage: 'paste_retry_focus' }, pool);
+      
+      await page.evaluate((args: { text: string; index: number }) => {
+        const textarea = document.querySelector(`[data-testid="tweetTextarea_${args.index}"]`) as HTMLTextAreaElement;
+        const contenteditable = document.querySelector(`div[contenteditable="true"][role="textbox"]`) as HTMLElement;
         
-        if (retryText.trim().length === 0) {
-          console.log(`[THREAD_COMPOSER][VERIFY] paste still empty -> fallback typing (decisionId=${decisionId}, i=${index + 1}, attempt=${attempt})`);
-          
-          // Fallback to typing
-          const tb = await this.getComposeBox(page, index);
-          await tb.click();
-          page = await this.safeWait(page, 100, { decisionId, attempt, stage: 'typing_fallback' }, pool);
-          await tb.type(text, { delay: 5 });
-          page = await this.safeWait(page, 200, { decisionId, attempt, stage: 'typing_fallback_wait' }, pool);
-          
-          // Final verification
-          const typedText = await page.evaluate((idx: number) => {
-            const textarea = document.querySelector(`[data-testid="tweetTextarea_${idx}"]`) as HTMLTextAreaElement;
-            if (textarea) {
-              return textarea.value || textarea.textContent || '';
-            }
-            return '';
-          }, index);
-          
-          if (typedText.trim().length === 0) {
-            throw new Error(`ComposerTextEmptyAfterPasteAndType decisionId=${decisionId} part=${index + 1}`);
-          }
-          
-          const finalCharCount = typedText.trim().length;
-          console.log(`[THREAD_COMPOSER][VERIFY] part ${index + 1}/${total} composer_len=${finalCharCount} (decisionId=${decisionId}, attempt=${attempt})`);
-        } else {
-          const retryCharCount = retryText.trim().length;
-          console.log(`[THREAD_COMPOSER][VERIFY] part ${index + 1}/${total} composer_len=${retryCharCount} (decisionId=${decisionId}, attempt=${attempt})`);
+        if (textarea) {
+          textarea.focus();
+          textarea.value = args.text;
+          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        } else if (contenteditable) {
+          contenteditable.focus();
+          contenteditable.textContent = args.text;
+          contenteditable.dispatchEvent(new Event('input', { bubbles: true }));
         }
-      } catch (fallbackError: any) {
-        if (fallbackError.message.includes('ComposerTextEmptyAfterPasteAndType')) {
-          throw fallbackError;
+      }, { text, index });
+      
+      page = await this.safeWait(page, 300, { decisionId, attempt, stage: 'paste_retry_wait' }, pool);
+      readText = await waitForTextareaValue(20, 3000);
+    }
+    
+    // If still empty after retry, fallback to typing
+    if (readText.trim().length === 0) {
+      console.log(`[THREAD_COMPOSER][VERIFY] part ${index + 1}/${total} paste still empty -> fallback typing (decisionId=${decisionId}, attempt=${attempt})`);
+      
+      const tb = await this.getComposeBox(page, index);
+      await tb.click();
+      page = await this.safeWait(page, 200, { decisionId, attempt, stage: 'typing_fallback' }, pool);
+      await tb.type(text, { delay: 5 });
+      page = await this.safeWait(page, 300, { decisionId, attempt, stage: 'typing_fallback_wait' }, pool);
+      
+      // Final verification via DOM value length
+      const typedText = await page.evaluate((idx: number) => {
+        const textarea = document.querySelector(`[data-testid="tweetTextarea_${idx}"]`) as HTMLTextAreaElement;
+        const contenteditable = document.querySelector(`div[contenteditable="true"][role="textbox"]`) as HTMLElement;
+        
+        if (textarea) {
+          return textarea.value || textarea.textContent || '';
+        } else if (contenteditable) {
+          return contenteditable.textContent || contenteditable.innerText || '';
         }
-        // If fallback also fails, try typing
-        console.log(`[THREAD_COMPOSER][VERIFY] paste retry failed -> fallback to typing (decisionId=${decisionId}, i=${index + 1}, attempt=${attempt})`);
-        const tb = await this.getComposeBox(page, index);
-        await tb.click();
-        page = await this.safeWait(page, 100, { decisionId, attempt, stage: 'typing_fallback' }, pool);
-        await tb.type(text, { delay: 5 });
-        page = await this.safeWait(page, 200, { decisionId, attempt, stage: 'typing_fallback_wait' }, pool);
+        return '';
+      }, index);
+      
+      if (typedText.trim().length === 0) {
+        // Autopsy: capture selector + activeElement info
+        const autopsy = await page.evaluate((idx: number) => {
+          const textarea = document.querySelector(`[data-testid="tweetTextarea_${idx}"]`) as HTMLTextAreaElement;
+          const contenteditable = document.querySelector(`div[contenteditable="true"][role="textbox"]`) as HTMLElement;
+          const activeElement = document.activeElement;
+          
+          return {
+            textareaExists: !!textarea,
+            textareaVisible: textarea ? (textarea.offsetParent !== null) : false,
+            contenteditableExists: !!contenteditable,
+            contenteditableVisible: contenteditable ? (contenteditable.offsetParent !== null) : false,
+            activeElementTag: activeElement ? activeElement.tagName : 'none',
+            activeElementId: activeElement ? (activeElement as HTMLElement).id || 'none' : 'none'
+          };
+        }, index);
+        
+        console.error(`[THREAD_COMPOSER][VERIFY] ❌ ComposerTextEmptyAfterPasteAndType decisionId=${decisionId} part=${index + 1} attempt=${attempt}`);
+        console.error(`[THREAD_COMPOSER][VERIFY] Autopsy: textareaExists=${autopsy.textareaExists} textareaVisible=${autopsy.textareaVisible} contenteditableExists=${autopsy.contenteditableExists} contenteditableVisible=${autopsy.contenteditableVisible} activeElementTag=${autopsy.activeElementTag}`);
+        
+        throw new Error(`ComposerTextEmptyAfterPasteAndType decisionId=${decisionId} part=${index + 1} textareaExists=${autopsy.textareaExists} textareaVisible=${autopsy.textareaVisible} activeElementTag=${autopsy.activeElementTag}`);
       }
+      
+      const finalCharCount = typedText.trim().length;
+      console.log(`[THREAD_COMPOSER][VERIFY] part ${index + 1}/${total} composer_len=${finalCharCount} method=type (decisionId=${decisionId}, attempt=${attempt})`);
+    } else {
+      const charCount = readText.trim().length;
+      console.log(`[THREAD_COMPOSER][VERIFY] part ${index + 1}/${total} composer_len=${charCount} method=${pasteMethod} (decisionId=${decisionId}, attempt=${attempt})`);
     }
     
     return page;
