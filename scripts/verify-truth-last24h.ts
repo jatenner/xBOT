@@ -30,6 +30,15 @@ interface LogSummary {
   total: number;
 }
 
+interface ThreadProofRow {
+  decision_id: string;
+  decision_type: string;
+  status: string;
+  tweet_id: string | null;
+  thread_tweet_ids_length: number;
+  posted_at: string | null;
+}
+
 interface TruthAuditResult {
   dbDecisions: DecisionRow[];
   logSummary: LogSummary;
@@ -49,6 +58,13 @@ interface TruthAuditResult {
     decision_id: string;
     type: string;
     timestamp: string;
+  }>;
+  threadProof: ThreadProofRow[];
+  warnings: Array<{
+    decision_id: string;
+    decision_type: string;
+    thread_tweet_ids_length: number;
+    reason: string;
   }>;
 }
 
@@ -131,6 +147,52 @@ async function queryDatabase(): Promise<DecisionRow[]> {
   return rows;
 }
 
+async function queryThreadProof(): Promise<ThreadProofRow[]> {
+  const supabase = getSupabaseClient();
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  console.log(`[TRUTH_AUDIT] Querying thread proof (decision_type='thread' OR thread_tweet_ids IS NOT NULL)...`);
+
+  // Query for thread candidates
+  const { data, error } = await supabase
+    .from('content_metadata')
+    .select('decision_id, decision_type, status, tweet_id, thread_tweet_ids, posted_at')
+    .gte('updated_at', twentyFourHoursAgo)
+    .or('decision_type.eq.thread,thread_tweet_ids.not.is.null')
+    .order('updated_at', { ascending: false })
+    .limit(20);
+
+  if (error) {
+    throw new Error(`Thread proof query failed: ${error.message}`);
+  }
+
+  const proofRows: ThreadProofRow[] = (data || []).map((row: any) => {
+    let threadTweetIdsLength = 0;
+    
+    if (row.thread_tweet_ids) {
+      try {
+        const parsed = typeof row.thread_tweet_ids === 'string' 
+          ? JSON.parse(row.thread_tweet_ids) 
+          : row.thread_tweet_ids;
+        threadTweetIdsLength = Array.isArray(parsed) ? parsed.length : 0;
+      } catch (e) {
+        threadTweetIdsLength = 0;
+      }
+    }
+
+    return {
+      decision_id: row.decision_id,
+      decision_type: row.decision_type || 'single',
+      status: row.status,
+      tweet_id: row.tweet_id,
+      thread_tweet_ids_length: threadTweetIdsLength,
+      posted_at: row.posted_at,
+    };
+  });
+
+  return proofRows;
+}
+
 async function fetchLogs(): Promise<string> {
   console.log(`[TRUTH_AUDIT] Fetching Railway logs (last 20k lines)...`);
   
@@ -187,10 +249,11 @@ function parseLogs(logs: string): LogSummary & { successLogs: Array<{ decision_i
   };
 }
 
-function reconcile(dbDecisions: DecisionRow[], logData: ReturnType<typeof parseLogs>): TruthAuditResult {
+function reconcile(dbDecisions: DecisionRow[], logData: ReturnType<typeof parseLogs>, threadProof: ThreadProofRow[]): TruthAuditResult {
   const mismatches: Array<{ decision_id: string; intended_type: string; detected_type: string; reason: string }> = [];
   const missingLogs: Array<{ decision_id: string; status: string; posted_at: string; reason: string }> = [];
   const missingDb: Array<{ decision_id: string; type: string; timestamp: string }> = [];
+  const warnings: Array<{ decision_id: string; decision_type: string; thread_tweet_ids_length: number; reason: string }> = [];
 
   // Create maps for quick lookup
   const dbMap = new Map(dbDecisions.map(d => [d.decision_id, d]));
@@ -203,7 +266,17 @@ function reconcile(dbDecisions: DecisionRow[], logData: ReturnType<typeof parseL
         decision_id: dbDecision.decision_id,
         intended_type: dbDecision.intended_type,
         detected_type: dbDecision.detected_type,
-        reason: `thread_tweet_ids length=${dbDecision.tweet_ids_count} > 1`,
+        reason: `thread_tweet_ids length=${dbDecision.tweet_ids_count} >= 2`,
+      });
+    }
+
+    // 🔥 Add warning if decision_type='thread' but thread_tweet_ids length < 2
+    if (dbDecision.intended_type === 'thread' && dbDecision.tweet_ids_count < 2) {
+      warnings.push({
+        decision_id: dbDecision.decision_id,
+        decision_type: dbDecision.intended_type,
+        thread_tweet_ids_length: dbDecision.tweet_ids_count,
+        reason: `decision_type='thread' but thread_tweet_ids length=${dbDecision.tweet_ids_count} < 2 (missing thread IDs)`,
       });
     }
 
@@ -252,6 +325,8 @@ function reconcile(dbDecisions: DecisionRow[], logData: ReturnType<typeof parseL
     mismatches,
     missingLogs,
     missingDb,
+    threadProof,
+    warnings,
   };
 }
 
@@ -338,6 +413,32 @@ function generateReport(result: TruthAuditResult): string {
     report += `\n`;
   }
 
+  report += `## Thread Proof (DB-only)\n\n`;
+  report += `Last 20 decisions where decision_type='thread' OR thread_tweet_ids IS NOT NULL:\n\n`;
+  if (result.threadProof.length === 0) {
+    report += `No thread candidates found.\n\n`;
+  } else {
+    report += `| decision_id | decision_type | status | tweet_id | thread_tweet_ids_length | posted_at |\n`;
+    report += `|-------------|----------------|--------|----------|------------------------|-----------|\n`;
+    for (const proof of result.threadProof) {
+      report += `| ${proof.decision_id.substring(0, 8)}... | ${proof.decision_type} | ${proof.status} | ${proof.tweet_id ? proof.tweet_id.substring(0, 10) + '...' : 'N/A'} | ${proof.thread_tweet_ids_length} | ${proof.posted_at || 'N/A'} |\n`;
+    }
+    report += `\n`;
+  }
+
+  report += `## Warnings (decision_type='thread' but thread_tweet_ids length < 2)\n\n`;
+  if (result.warnings.length === 0) {
+    report += `✅ No warnings found.\n\n`;
+  } else {
+    report += `Found ${result.warnings.length} warnings:\n\n`;
+    report += `| decision_id | decision_type | thread_tweet_ids_length | reason |\n`;
+    report += `|-------------|---------------|-------------------------|--------|\n`;
+    for (const warning of result.warnings.slice(0, 20)) {
+      report += `| ${warning.decision_id.substring(0, 8)}... | ${warning.decision_type} | ${warning.thread_tweet_ids_length} | ${warning.reason} |\n`;
+    }
+    report += `\n`;
+  }
+
   report += `---\n\n`;
   report += `**Report Generated:** ${new Date().toISOString()}\n`;
 
@@ -351,12 +452,15 @@ async function main() {
     // Query database
     const dbDecisions = await queryDatabase();
 
+    // Query thread proof
+    const threadProof = await queryThreadProof();
+
     // Fetch and parse logs
     const logs = await fetchLogs();
     const logData = parseLogs(logs);
 
     // Reconcile
-    const result = reconcile(dbDecisions, logData);
+    const result = reconcile(dbDecisions, logData, threadProof);
 
     // Generate report
     const report = generateReport(result);
@@ -376,6 +480,8 @@ async function main() {
     console.log(`- Mismatches: ${result.mismatches.length}`);
     console.log(`- Missing logs: ${result.missingLogs.length}`);
     console.log(`- Missing DB: ${result.missingDb.length}`);
+    console.log(`- Thread Proof entries: ${result.threadProof.length}`);
+    console.log(`- Warnings: ${result.warnings.length}`);
 
   } catch (error: any) {
     console.error(`[TRUTH_AUDIT] ❌ Error:`, error.message);
