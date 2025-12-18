@@ -1679,9 +1679,19 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
         if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
           console.log(`${logPrefix} 🔍 DEBUG: Calling postContent for ${decision.decision_type}`);
           console.log(`${logPrefix} 🔍 DEBUG: decision_id=${decision.id} decision_type=${decision.decision_type}`);
-          const result = await postContent(decision);
-          console.log(`${logPrefix} 🔍 DEBUG: postContent returned successfully`);
-          console.log(`${logPrefix} 🔍 DEBUG: result.tweetId=${result?.tweetId || 'MISSING'}, result.tweetUrl=${result?.tweetUrl || 'MISSING'}, result.tweetIds.length=${result?.tweetIds?.length || 0}`);
+          
+          let result;
+          try {
+            result = await postContent(decision);
+            console.log(`${logPrefix} 🔍 DEBUG: postContent returned successfully`);
+            console.log(`${logPrefix} 🔍 DEBUG: result.tweetId=${result?.tweetId || 'MISSING'}, result.tweetUrl=${result?.tweetUrl || 'MISSING'}, result.tweetIds.length=${result?.tweetIds?.length || 0}`);
+          } catch (postContentError: any) {
+            console.error(`[POSTING_QUEUE][POSTCONTENT_THROW] decision_id=${decision.id} decision_type=${decision.decision_type} error_name=${postContentError?.name || 'Unknown'} error_message=${postContentError?.message || 'No message'}`);
+            if (postContentError?.stack) {
+              console.error(`[POSTING_QUEUE][POSTCONTENT_THROW] decision_id=${decision.id} stack=${postContentError.stack}`);
+            }
+            throw postContentError; // Re-throw to maintain existing error handling
+          }
           
           // ✅ VALIDATION: Ensure postContent returned valid tweetId
           if (!result || !result.tweetId) {
