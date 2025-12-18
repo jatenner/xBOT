@@ -2120,13 +2120,16 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             console.log(`[POSTING_QUEUE] ✅ Database save SUCCESS on attempt ${attempt}`);
             
             // ✅ EXPLICIT SUCCESS LOG: Log after DB save confirms post is complete
-            const decisionType = decision.decision_type || 'single';
-            const finalTweetUrl = tweetUrl || `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
+            // 🔥 THREAD TRUTH FIX: Treat multi-tweet posts as threads regardless of decision_type
             const tweetIdsCount = tweetIds && tweetIds.length > 0 ? tweetIds.length : 1;
-            if (decisionType === 'thread') {
-              console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decision.id} type=${decisionType} tweet_id=${tweetId} tweet_ids_count=${tweetIdsCount} url=${finalTweetUrl}`);
+            const isMultiTweetThread = tweetIdsCount > 1;
+            const effectiveDecisionType = isMultiTweetThread ? 'thread' : (decision.decision_type || 'single');
+            const finalTweetUrl = tweetUrl || `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
+            
+            if (effectiveDecisionType === 'thread') {
+              console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decision.id} type=${effectiveDecisionType} tweet_id=${tweetId} tweet_ids_count=${tweetIdsCount} url=${finalTweetUrl}`);
             } else {
-              console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decision.id} type=${decisionType} tweet_id=${tweetId} url=${finalTweetUrl}`);
+              console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decision.id} type=${effectiveDecisionType} tweet_id=${tweetId} url=${finalTweetUrl}`);
             }
             
             // 🔥 PRIORITY 1 FIX: Mark backup as verified (database save succeeded)
