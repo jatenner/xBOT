@@ -2434,6 +2434,21 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
   // 🔒 BROWSER SEMAPHORE: Acquire exclusive browser access (highest priority)
   const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
   
+  // ✅ PER-OPERATION TIMEOUT: Set timeout based on decision type
+  const timeoutMs = decision.decision_type === 'thread' 
+    ? 360000  // 6 minutes for threads
+    : decision.decision_type === 'single'
+    ? 300000  // 5 minutes for singles
+    : 180000; // Fallback to default
+  
+  const label = decision.decision_type === 'thread'
+    ? 'thread_posting'
+    : decision.decision_type === 'single'
+    ? 'tweet_posting'
+    : 'posting';
+  
+  console.log(`[POSTING_QUEUE][SEM_TIMEOUT] decision_id=${decision.id} type=${decision.decision_type} timeoutMs=${timeoutMs}`);
+  
   return await withBrowserLock('posting', BrowserPriority.POSTING, async () => {
     // Check feature flag for posting method
     const { getEnvConfig } = await import('../config/env');
@@ -2647,7 +2662,7 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
       throw new Error(`Playwright posting failed: ${error.message}`);
     }
   }
-  }); // End withBrowserLock
+  }, { timeoutMs, label }); // End withBrowserLock
 }
 
 async function postReply(decision: QueuedDecision): Promise<string> {
@@ -2766,9 +2781,9 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     }
   } catch (error: any) {
     console.error(`[POSTING_QUEUE] ❌ Reply system error: ${error.message}`);
-    throw new Error(`Reply posting failed: ${error.message}`);
-  }
-  }); // End withBrowserLock
+      throw new Error(`Reply posting failed: ${error.message}`);
+    }
+  }, { timeoutMs: 300000, label: 'reply_posting' }); // End withBrowserLock
   
   // Race between posting and timeout
   warningTimer = setTimeout(() => {

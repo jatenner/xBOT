@@ -116,7 +116,8 @@ export class BrowserSemaphore {
 export async function withBrowserLock<T>(
   jobName: string,
   priority: number,
-  operation: () => Promise<T>
+  operation: () => Promise<T>,
+  opts?: { timeoutMs?: number; label?: string }
 ): Promise<T> {
   const semaphore = BrowserSemaphore.getInstance();
   
@@ -125,8 +126,10 @@ export async function withBrowserLock<T>(
   try {
     // 🔧 FIX #4: Improved timeout handling with graceful degradation
     // If browser pool is corrupted (EAGAIN errors), operation may hang forever
-    const BROWSER_OP_TIMEOUT = Number(process.env.BROWSER_LOCK_TIMEOUT_MS ?? 180000); // default 3 minutes
+    const DEFAULT_BROWSER_LOCK_TIMEOUT_MS = Number(process.env.BROWSER_LOCK_TIMEOUT_MS ?? 180000); // default 3 minutes
+    const BROWSER_OP_TIMEOUT = opts?.timeoutMs ?? DEFAULT_BROWSER_LOCK_TIMEOUT_MS;
     const WARNING_TIMEOUT = Math.floor(BROWSER_OP_TIMEOUT * 0.5); // Warn at 50% of timeout
+    const label = opts?.label || 'unknown';
     
     let warningLogged = false;
     const warningTimer = setTimeout(() => {
@@ -139,7 +142,7 @@ export async function withBrowserLock<T>(
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
         clearTimeout(warningTimer);
-        console.error(`[BROWSER_SEM] ⏱️ TIMEOUT: ${jobName} exceeded ${BROWSER_OP_TIMEOUT/1000}s - force releasing lock`);
+        console.error(`[BROWSER_SEM][TIMEOUT] op=${jobName} label=${label} timeoutMs=${BROWSER_OP_TIMEOUT} exceeded`);
         reject(new Error(`Browser operation timeout after ${BROWSER_OP_TIMEOUT/1000}s`));
       }, BROWSER_OP_TIMEOUT);
     });
