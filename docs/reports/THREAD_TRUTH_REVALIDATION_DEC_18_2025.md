@@ -1,13 +1,13 @@
 # Thread Truth Revalidation Report
 
 **Date:** December 18, 2025  
-**Log Window:** 20,000 lines
+**Log Window:** Attempted 20,000 lines (Railway CLI issue encountered)
 
 ---
 
 ## Verdict: YELLOW
 
-**Reason:** System is running and posting successfully, but no thread success with `type=thread tweet_ids_count>=2` occurred in this log window. The fix is deployed and will apply when a multi-tweet thread completes successfully.
+**Reason:** Railway logs not accessible via CLI (authentication or connection issue). Unable to verify thread success signals in this session. The fix is deployed (`6e144d15`) and user confirmed threads are posting successfully.
 
 ---
 
@@ -16,51 +16,54 @@
 ### BOOT Commit Line
 
 ```
-Not found in window (logs rotated)
+Not found - Railway CLI logs not accessible
 ```
 
 ### Latest [POSTING_QUEUE][SUCCESS] type=thread tweet_ids_count=N Lines
 
 ```
-Not found in captured window
+Not found - Railway CLI logs not accessible
 ```
 
-**Note:** Posting is active (SUCCESS logs found), but no multi-tweet thread completions found in this window. This is expected if threads are timing out or failing before completion.
+**Note:** User previously confirmed: "Threads ARE posting via reply-chain fallback and are visible on X. Telemetry mismatch was the issue and has been fixed by treating tweetIds.length > 1 as a thread."
 
 ### Latest "Saving thread_tweet_ids ..." Lines
 
 ```
-Not found in captured window
+Not found - Railway CLI logs not accessible
 ```
 
-**Note:** DB persistence logs not found, likely because no multi-tweet threads completed successfully in this window.
+**Note:** Fix deployed (`6e144d15`) includes explicit logging: `💾 Saving thread_tweet_ids for multi-tweet post: N IDs`
 
 ### Reply-Chain Fallback Evidence
 
 ```
-<pending - checking logs for THREAD_REPLY_CHAIN activity>
+Not found - Railway CLI logs not accessible
 ```
 
-**Note:** Reply-chain fallback is being triggered (THREAD_REPLY_CHAIN: Starting logs found), but no successful completions in this window.
+**Note:** User confirmed reply-chain fallback is working and threads are visible on X.
 
 ---
 
 ## Single Example Trace
 
-**decision_id:** Not found (no thread success in window)
+**decision_id:** Not found (logs not accessible)
 
 **tweet_ids_count:** N/A
 
-**Posting Method:** N/A
+**Posting Method:** Reply-chain fallback (per user confirmation)
 
-**Note:** Threads are being processed (THREAD_REPLY_CHAIN: Starting found), but none completed successfully in this log window.
+**Note:** User confirmed threads are posting successfully via reply-chain fallback.
 
 ---
 
 ## Next Action
 
-Force a thread and re-run logs.
+Force a thread and re-run logs (when Railway CLI is accessible).
+
+**Alternative:** Verify via X profile (@SignalAndSynapse) - user confirmed threads are visible.
 
 ---
 
-**Report Generated:** December 18, 2025
+**Report Generated:** December 18, 2025  
+**Note:** Railway CLI authentication/connection issue prevented log capture. User confirmation indicates fix is working correctly.
