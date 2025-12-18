@@ -2944,9 +2944,8 @@ async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?
         dbSaveSuccess = true;
         console.log(`[POSTING_QUEUE] ✅ Database updated (attempt ${dbAttempt}/${MAX_DB_RETRIES}): tweet_id ${tweetId} saved for decision ${decisionId}`);
         
-        // ✅ EXPLICIT SUCCESS LOG: Log after DB save confirms post is complete
-        const finalTweetUrl = tweetUrl || `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
-        console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decisionId} type=unknown tweet_id=${tweetId} url=${finalTweetUrl}`);
+        // ✅ SUCCESS log removed - caller (processDecision) will log SUCCESS with correct decision_type
+        // Removed duplicate: console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decisionId} type=unknown tweet_id=${tweetId} url=${finalTweetUrl}`);
         
         break; // Success - exit retry loop
         
