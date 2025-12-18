@@ -74,7 +74,7 @@ async function queryDatabase(): Promise<DecisionRow[]> {
 
   const rows: DecisionRow[] = (data || []).map((row: any) => {
     // Parse thread_tweet_ids
-    let tweetIdsCount = 1;
+    let tweetIdsCount = 0;
     let threadTweetIds: string[] = [];
     
     if (row.thread_tweet_ids) {
@@ -82,15 +82,21 @@ async function queryDatabase(): Promise<DecisionRow[]> {
         threadTweetIds = typeof row.thread_tweet_ids === 'string' 
           ? JSON.parse(row.thread_tweet_ids) 
           : row.thread_tweet_ids;
-        tweetIdsCount = Array.isArray(threadTweetIds) ? threadTweetIds.length : 1;
+        tweetIdsCount = Array.isArray(threadTweetIds) ? threadTweetIds.length : 0;
       } catch (e) {
         console.warn(`[TRUTH_AUDIT] Failed to parse thread_tweet_ids for ${row.decision_id}:`, e);
-        tweetIdsCount = 1;
+        tweetIdsCount = 0;
       }
     }
 
-    // Detect type: thread if tweetIdsCount > 1
-    const detectedType = tweetIdsCount > 1 ? 'thread' : (row.decision_type || 'single');
+    // 🔥 THREAD TRUTH FIX: detected_type = 'thread' ONLY IF thread_tweet_ids exists AND length >= 2
+    // Otherwise, use decision_type (single/reply/thread)
+    const detectedType = (tweetIdsCount >= 2) ? 'thread' : (row.decision_type || 'single');
+    
+    // If tweet_id exists but no thread_tweet_ids, assume single tweet
+    if (row.tweet_id && tweetIdsCount === 0) {
+      tweetIdsCount = 1;
+    }
 
     // Determine method (infer from thread_tweet_ids presence and count)
     let method = 'unknown';
