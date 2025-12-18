@@ -2915,18 +2915,30 @@ async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?
     let dbSaveSuccess = false;
     let lastDbError: any = null;
     
+    // 🔥 THREAD TRUTH FIX: Always save thread_tweet_ids when we have multiple tweet IDs
+    // This ensures reply-chain fallback threads are properly recorded
+    const hasMultipleTweetIds = tweetIds && tweetIds.length > 1;
+    
     for (let dbAttempt = 1; dbAttempt <= MAX_DB_RETRIES; dbAttempt++) {
       try {
+        const updateData: any = {
+          status: 'posted',
+          tweet_id: tweetId, // 🔥 CRITICAL: Save tweet ID for metrics scraping!
+          posted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        
+        // 🔥 THREAD TRUTH FIX: Always save thread_tweet_ids when we have multiple IDs
+        if (hasMultipleTweetIds) {
+          updateData.thread_tweet_ids = JSON.stringify(tweetIds);
+          console.log(`[POSTING_QUEUE] 💾 Saving thread_tweet_ids for multi-tweet post: ${tweetIds.length} IDs`);
+        } else {
+          updateData.thread_tweet_ids = tweetIds ? JSON.stringify(tweetIds) : null;
+        }
+        
         const { error: updateError } = await supabase
           .from('content_metadata')
-          .update({
-            status: 'posted',
-            tweet_id: tweetId, // 🔥 CRITICAL: Save tweet ID for metrics scraping!
-            thread_tweet_ids: tweetIds ? JSON.stringify(tweetIds) : null, // 🆕 Store all thread IDs as JSON
-            posted_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-            // tweet_url: tweetUrl // 🔗 TODO: Add this column to database first!
-          })
+          .update(updateData)
           .eq('decision_id', decisionId);  // 🔥 FIX: decisionId is UUID, query by decision_id not id!
         
         if (updateError) {
