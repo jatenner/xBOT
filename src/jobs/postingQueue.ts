@@ -2115,6 +2115,11 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           try {
             console.log(`[POSTING_QUEUE] 💾 Database save attempt ${attempt}/5 for tweet ${tweetId}...`);
             // 🆕 Pass thread IDs if available
+            // 🔥 THREAD TRUTH FIX: Log what we're saving
+            const tweetIdsCountToSave = tweetIds && tweetIds.length > 0 ? tweetIds.length : 0;
+            if (tweetIdsCountToSave >= 2) {
+              console.log(`[DB_THREAD_SAVE] decision_id=${decision.id} tweet_ids_count=${tweetIdsCountToSave} tweet_ids=${tweetIds!.join(',')}`);
+            }
             await markDecisionPosted(decision.id, tweetId, tweetUrl, tweetIds);
             dbSaveSuccess = true;
             console.log(`[POSTING_QUEUE] ✅ Database save SUCCESS on attempt ${attempt}`);

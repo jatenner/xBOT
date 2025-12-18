@@ -946,6 +946,11 @@ export class BulletproofThreadComposer {
     }
     
     console.log(`🔗 THREAD_COMPLETE: Captured ${tweetIds.length}/${segments.length} tweet IDs`);
+    
+    // 🔥 THREAD TRUTH FIX: Log exact result before returning
+    const rootTweetId = tweetIds[0] || rootUrl?.split('/').pop() || '';
+    console.log(`[THREAD_RESULT] mode=REPLY_CHAIN root_tweet_id=${rootTweetId} tweet_ids_count=${tweetIds.length} tweet_ids=${tweetIds.join(',')}`);
+    
     return { rootUrl, tweetIds };
   }
 
