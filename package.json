@@ -217,7 +217,8 @@
     "thread:verify": "railway run --service xBOT -- pnpm plan:run:once && sleep 10 && railway logs --service xBOT --lines 3000 | grep -E 'THREAD_VERIFY|QUEUE_CONTENT.*THREAD QUEUED|THREAD_COMPOSER|THREAD_COMPOSER\\]\\[TIMEOUT|THREAD_COMPOSER\\]\\[AUTOPSY' | tail -n 200",
     "verify:posting:signals": "railway logs --service xBOT --lines 5000 2>&1 | grep -E '\\[BROWSER_POOL\\]\\[RECOVER\\]|\\[POSTING_QUEUE\\]\\[SUCCESS\\]|Target page, context or browser has been closed|browserContext.newPage.*closed' | tail -n 150",
     "verify:truth:last24h": "tsx scripts/verify-truth-last24h.ts",
-    "verify:threads:last6h": "tsx scripts/verify-threads-last6h.ts"
+    "verify:threads:last6h": "tsx scripts/verify-threads-last6h.ts",
+    "verify:replies:sample20": "tsx scripts/verify-replies-sample20.ts"
   },
   "keywords": [
     "twitter",
