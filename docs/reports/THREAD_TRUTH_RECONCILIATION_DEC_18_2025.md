@@ -1,7 +1,7 @@
 # Thread Truth Reconciliation Report
 
 **Date:** December 18, 2025  
-**Commit:** `2b597e09` + `45326274` + `<new commit>`
+**Commit:** `2b597e09` + `45326274` + `6e144d15` + `05c6ad29`
 
 ---
 
@@ -26,18 +26,26 @@ The bot is visibly posting thread-like sequences on X (multi-tweet chains), but 
 - But SUCCESS log only includes `tweet_ids_count` if `decisionType === 'thread'` (line 2126)
 - Reply-chain fallback may have `decision.decision_type !== 'thread'` but still produce multiple IDs
 
+**Log Evidence:**
+```
+🔗 THREAD_REPLY_CHAIN: Starting reply chain fallback...
+```
+- Reply-chain fallback is being triggered (native composer failures)
+- But no successful completions found in recent logs (threads timing out)
+
 ---
 
 ## Step 2: Posting Path Determination
 
-**Was it a real decision_type=thread flow?** UNKNOWN (logs not accessible, but code shows both paths possible)
+**Was it a real decision_type=thread flow?** YES - Threads are being processed (`Processing thread:` logs found)
 
-**Or reply-chain fallback?** LIKELY - Code analysis shows reply-chain fallback can produce multiple tweet IDs but doesn't mark them as threads
+**Or reply-chain fallback?** YES - Reply-chain fallback is being used when native composer fails
 
 **Evidence:**
 - Reply-chain fallback (`postViaReplies`) captures multiple tweet IDs: `tweetIds.push(rootId)`, `tweetIds.push(replyId)` (lines 861, 928)
 - Returns `{ rootUrl, tweetIds }` with array of IDs
 - But if `decision.decision_type !== 'thread'`, telemetry won't mark it as a thread
+- **Current Issue:** Threads are timing out before completion, so no successful multi-tweet posts to verify fix
 
 ---
 
@@ -134,14 +142,21 @@ const { error: updateError } = await supabase
 Generated 2 posts (both singles - thread forcing not working, but fix applies to reply-chain fallback)
 ```
 
+**Thread Activity Found:**
+```
+🔗 THREAD_REPLY_CHAIN: Starting reply chain fallback...
+🧵 THREAD_COMPOSER_FAILED (attempt 1): TEXT_VERIFY_FAIL idx=0 got="" want~="..."
+[THREAD_COMPOSER][TIMEOUT] ⏱️ Timeout on attempt 3/3 (exceeded 360s)
+```
+
 **Success Signals (Pending):**
-```
-<Will appear in logs when reply-chain fallback produces multiple tweet IDs>
-```
+- No successful reply-chain completions found in recent logs
+- Threads are timing out or failing before completion
+- Fix is deployed and will apply when reply-chain fallback successfully completes
 
 **Expected Behavior After Fix:**
 - Multi-tweet posts (reply-chain fallback) will log: `[POSTING_QUEUE][SUCCESS] ... type=thread tweet_ids_count=N`
-- `thread_tweet_ids` will be saved for all multi-tweet posts (explicit logging added)
+- `thread_tweet_ids` will be saved for all multi-tweet posts (explicit logging added: `💾 Saving thread_tweet_ids for multi-tweet post: N IDs`)
 - Verification will detect threads correctly based on `tweetIds.length > 1`
 
 ---
@@ -150,11 +165,11 @@ Generated 2 posts (both singles - thread forcing not working, but fix applies to
 
 **X Tweet IDs Used:** (Unable to access X directly - fix based on code analysis)
 
-**decision_id Found:** (Logs not accessible - fix applies to all future multi-tweet posts)
+**decision_id Found:** `ad98133e-f378-4d5a-be55-85a91fa12121` (thread processing found, but timed out)
 
-**Posting Path:** Reply-chain fallback (inferred from code structure - `postViaReplies` returns multiple IDs)
+**Posting Path:** Reply-chain fallback (confirmed - `THREAD_REPLY_CHAIN: Starting` logs found)
 
-**Whether thread_tweet_ids was saved:** NOW FIXED - Will always save when `tweetIds.length > 1` with explicit logging
+**Whether thread_tweet_ids was saved:** NOW FIXED - Will always save when `tweetIds.length > 1` with explicit logging (`💾 Saving thread_tweet_ids for multi-tweet post: N IDs`)
 
 **Whether SUCCESS type=thread tweet_ids_count=N exists:** NOW FIXED - Will log as thread when `tweetIds.length > 1`
 
@@ -164,9 +179,18 @@ Generated 2 posts (both singles - thread forcing not working, but fix applies to
 - Change: Treat `tweetIds.length > 1` as thread regardless of `decision.decision_type`
 - Also: Always save `thread_tweet_ids` when multiple IDs exist with explicit logging
 
-**Verification Evidence After:** (Pending - fix deployed, will appear when reply-chain fallback produces multi-tweet posts)
+**Verification Status:** 
+- ✅ Fix deployed (`6e144d15`)
+- ⏳ Pending successful reply-chain completion (threads currently timing out)
+- 🔍 Will verify when reply-chain fallback successfully completes a multi-tweet post
+
+**Next Steps:**
+1. Wait for a successful reply-chain completion (or fix thread timeout issues)
+2. Verify logs show: `[POSTING_QUEUE][SUCCESS] ... type=thread tweet_ids_count=N`
+3. Verify logs show: `💾 Saving thread_tweet_ids for multi-tweet post: N IDs`
+4. Confirm database has `thread_tweet_ids` populated for multi-tweet posts
 
 ---
 
 **Report Generated:** December 18, 2025  
-**Status:** ✅ Fix deployed (`45326274` + `<new commit>`)
+**Status:** ✅ Fix deployed (`6e144d15`), ⏳ Verification pending successful completion
