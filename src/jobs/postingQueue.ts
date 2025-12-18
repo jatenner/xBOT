@@ -2122,7 +2122,12 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             // ✅ EXPLICIT SUCCESS LOG: Log after DB save confirms post is complete
             const decisionType = decision.decision_type || 'single';
             const finalTweetUrl = tweetUrl || `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
-            console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decision.id} type=${decisionType} tweet_id=${tweetId} url=${finalTweetUrl}`);
+            const tweetIdsCount = tweetIds && tweetIds.length > 0 ? tweetIds.length : 1;
+            if (decisionType === 'thread') {
+              console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decision.id} type=${decisionType} tweet_id=${tweetId} tweet_ids_count=${tweetIdsCount} url=${finalTweetUrl}`);
+            } else {
+              console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decision.id} type=${decisionType} tweet_id=${tweetId} url=${finalTweetUrl}`);
+            }
             
             // 🔥 PRIORITY 1 FIX: Mark backup as verified (database save succeeded)
             const { markBackupAsVerified } = await import('../utils/tweetIdBackup');
