@@ -1678,8 +1678,19 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       try {
         if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
           console.log(`${logPrefix} 🔍 DEBUG: Calling postContent for ${decision.decision_type}`);
+          console.log(`${logPrefix} 🔍 DEBUG: decision_id=${decision.id} decision_type=${decision.decision_type}`);
           const result = await postContent(decision);
           console.log(`${logPrefix} 🔍 DEBUG: postContent returned successfully`);
+          console.log(`${logPrefix} 🔍 DEBUG: result.tweetId=${result?.tweetId || 'MISSING'}, result.tweetUrl=${result?.tweetUrl || 'MISSING'}, result.tweetIds.length=${result?.tweetIds?.length || 0}`);
+          
+          // ✅ VALIDATION: Ensure postContent returned valid tweetId
+          if (!result || !result.tweetId) {
+            const resultJson = JSON.stringify(result, null, 2);
+            console.error(`[POSTING_QUEUE] ❌ postContent returned invalid result for decision ${decision.id}:`);
+            console.error(`[POSTING_QUEUE] ❌ Result JSON: ${resultJson}`);
+            throw new Error(`postContent returned empty/invalid tweetId for decision ${decision.id}`);
+          }
+          
           tweetId = result.tweetId;
           tweetUrl = result.tweetUrl;
           tweetIds = result.tweetIds; // 🆕 Capture thread IDs if available
