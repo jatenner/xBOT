@@ -6,6 +6,7 @@
  * detecting threads based on thread_tweet_ids length > 1
  */
 
+import 'dotenv/config';
 import { getSupabaseClient } from '../src/db/index';
 import { execSync } from 'child_process';
 
