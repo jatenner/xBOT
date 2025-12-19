@@ -18,7 +18,6 @@ async function verifyThreadComplete(tweetId: string) {
   
   if (!contentData) {
     console.log('❌ FAIL: Tweet not found in content_metadata');
-    console.log('   Error:', contentError?.message || 'Not found');
     return false;
   }
   
@@ -35,7 +34,8 @@ async function verifyThreadComplete(tweetId: string) {
       tweetIds = JSON.parse(contentData.thread_tweet_ids);
       console.log(`   thread_tweet_ids: [${tweetIds.length} IDs]`);
       tweetIds.forEach((id, i) => {
-        console.log(`      ${i+1}. https://x.com/SignalAndSynapse/status/${id}`);
+        console.log(`      ${i+1}. ${id}`);
+        console.log(`         URL: https://x.com/SignalAndSynapse/status/${id}`);
       });
     } catch (e) {
       console.log('   thread_tweet_ids: (parse error)');
@@ -53,38 +53,15 @@ async function verifyThreadComplete(tweetId: string) {
       threadParts.forEach((part, i) => {
         console.log(`   ${i+1}. ${part.substring(0, 80)}...`);
       });
-    } catch (e) {
-      console.log('   thread_parts: (parse error)');
-    }
+    } catch (e) {}
   }
   
   // 4. Timestamps
   console.log(`\n⏰ Timestamps:`);
-  const createdET = new Date(contentData.created_at).toLocaleString('en-US', { 
-    timeZone: 'America/New_York',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true
-  });
-  console.log(`   created_at: ${createdET} ET`);
-  
-  if (contentData.posted_at) {
-    const postedET = new Date(contentData.posted_at).toLocaleString('en-US', { 
-      timeZone: 'America/New_York',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true
-    });
-    console.log(`   posted_at: ${postedET} ET`);
-  } else {
-    console.log(`   posted_at: null`);
-  }
+  const createdDate = new Date(contentData.created_at);
+  const postedDate = contentData.posted_at ? new Date(contentData.posted_at) : null;
+  console.log(`   created_at: ${createdDate.toLocaleString('en-US', { timeZone: 'America/New_York' })} ET`);
+  console.log(`   posted_at: ${postedDate ? postedDate.toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' ET' : 'null'}`);
   
   // 5. Check post_receipts
   console.log(`\n📝 Checking post_receipts...`);
@@ -99,11 +76,9 @@ async function verifyThreadComplete(tweetId: string) {
     console.log(`   receipt_id: ${receiptData.receipt_id}`);
     console.log(`   post_type: ${receiptData.post_type}`);
     console.log(`   tweet_ids: [${receiptData.tweet_ids?.length || 0} IDs]`);
-    if (receiptData.tweet_ids) {
-      receiptData.tweet_ids.forEach((id: string, i: number) => {
-        console.log(`      ${i+1}. ${id}`);
-      });
-    }
+    receiptData.tweet_ids?.forEach((id: string, i: number) => {
+      console.log(`      ${i+1}. ${id}`);
+    });
   } else {
     console.log('⚠️  Not found in post_receipts (expected if old code)');
   }
@@ -124,9 +99,9 @@ async function verifyThreadComplete(tweetId: string) {
   console.log(`✓ Captured IDs: ${capturedIds}`);
   console.log(`✓ Has receipt: ${hasReceipt ? 'YES' : 'NO'}`);
   
-  if (capturedIds >= expectedParts && expectedParts > 0) {
+  if (capturedIds >= expectedParts && capturedIds > 1) {
     console.log(`\n🎉 SUCCESS: All ${expectedParts} tweet IDs captured!`);
-    console.log(`\n✅ Root tweet: https://x.com/SignalAndSynapse/status/${tweetId}`);
+    console.log(`\n🔗 Thread URL: https://x.com/SignalAndSynapse/status/${tweetId}`);
     return true;
   } else if (capturedIds > 1) {
     console.log(`\n⚠️  PARTIAL: ${capturedIds}/${expectedParts} IDs captured`);
@@ -140,15 +115,11 @@ async function verifyThreadComplete(tweetId: string) {
 // CLI usage
 const tweetId = process.argv[2];
 if (!tweetId) {
-  console.error('Usage: pnpm verify:thread <tweet_id>');
-  console.error('Example: pnpm verify:thread 2002100117382504578');
+  console.error('Usage: tsx scripts/verify-thread-complete.ts <tweet_id>');
   process.exit(1);
 }
 
 verifyThreadComplete(tweetId).then(success => {
   process.exit(success ? 0 : 1);
-}).catch(err => {
-  console.error('Error:', err.message);
-  process.exit(1);
 });
 
