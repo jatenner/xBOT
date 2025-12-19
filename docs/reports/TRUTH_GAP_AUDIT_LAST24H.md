@@ -1,6 +1,6 @@
 # Truth Gap Audit: Last 24 Hours
 
-**Date:** 2025-12-19T15:30:08.823Z
+**Date:** 2025-12-19T15:31:01.843Z
 
 ---
 
@@ -30,4 +30,4 @@ Could not fetch tweets from X. Cannot determine truth gap.
 
 ---
 
-**Report Generated:** 2025-12-19T15:30:08.823Z
+**Report Generated:** 2025-12-19T15:31:01.843Z
