@@ -2160,6 +2160,16 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             const decisionType = decision.decision_type || 'single';
             console.log(`[POSTING_QUEUE][DB_SAVE_FAIL] decision_id=${decision.id} type=${decisionType} err=${dbError.message}`);
             
+            // 🔥 TRUTH GAP FIX: Log truth gap if final attempt fails
+            if (attempt === 5) {
+              const tweetIdsCount = tweetIds && tweetIds.length > 0 ? tweetIds.length : 1;
+              console.log(`[TRUTH_GAP] decision_id=${decision.id} posted_on_x=true db_saved=false tweet_ids_count=${tweetIdsCount} tweet_id=${tweetId} tweet_ids=${tweetIds ? tweetIds.join(',') : 'N/A'}`);
+              
+              // 🔥 TRUTH GAP FIX: Enqueue reconciliation job (will be created if needed)
+              // For now, log that reconciliation is needed
+              console.log(`[TRUTH_GAP] ⚠️ Reconciliation needed for decision ${decision.id} - tweet posted but DB save failed`);
+            }
+            
             // 🔧 ENHANCED ERROR TRACKING: Track database save failures
             await trackError(
               'posting_queue',
