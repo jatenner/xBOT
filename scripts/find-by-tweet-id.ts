@@ -27,11 +27,12 @@ async function findByTweetId(tweetId: string) {
   console.log(`\n${'═'.repeat(70)}`);
   console.log(`SEARCHING FOR TWEET ID: ${tweetId}`);
   console.log('═'.repeat(70));
+  console.log(`🎯 CANONICAL SOURCE: content_metadata (markDecisionPosted() write target)`);
   
   const supabase = createClient(url, key);
   
-  // Strategy 1: Search content_metadata view by tweet_id
-  console.log('\n1️⃣  Searching content_metadata.tweet_id...');
+  // Strategy 1: Search CANONICAL truth table (content_metadata) by tweet_id
+  console.log('\n1️⃣  Searching content_metadata.tweet_id (CANONICAL)...');
   const { data: cm1, error: e1 } = await supabase
     .from('content_metadata')
     .select('decision_id, status, decision_type, tweet_id, thread_tweet_ids, created_at, posted_at, updated_at')
@@ -41,15 +42,15 @@ async function findByTweetId(tweetId: string) {
   if (e1) {
     console.log(`   ⚠️  Error: ${e1.message}`);
   } else if (cm1 && cm1.length > 0) {
-    console.log(`   ✅ FOUND in content_metadata.tweet_id`);
-    printRow(cm1[0], 'content_metadata');
-    return { source: 'content_metadata.tweet_id', row: cm1[0] };
+    console.log(`   ✅ FOUND in content_metadata.tweet_id (CANONICAL SOURCE)`);
+    printRow(cm1[0], 'content_metadata [CANONICAL]');
+    return { source: 'content_metadata.tweet_id [CANONICAL]', row: cm1[0] };
   } else {
     console.log(`   ❌ Not found in tweet_id column`);
   }
   
-  // Strategy 2: Search content_metadata where thread_tweet_ids contains the ID
-  console.log('\n2️⃣  Searching content_metadata.thread_tweet_ids (JSONB)...');
+  // Strategy 2: Search content_metadata where thread_tweet_ids contains the ID (CANONICAL)
+  console.log('\n2️⃣  Searching content_metadata.thread_tweet_ids (JSONB ARRAY - CANONICAL)...');
   const { data: cm2, error: e2 } = await supabase
     .from('content_metadata')
     .select('decision_id, status, decision_type, tweet_id, thread_tweet_ids, created_at, posted_at, updated_at')
@@ -66,9 +67,9 @@ async function findByTweetId(tweetId: string) {
             : row.thread_tweet_ids;
           
           if (Array.isArray(ids) && ids.includes(tweetId)) {
-            console.log(`   ✅ FOUND in content_metadata.thread_tweet_ids`);
-            printRow(row, 'content_metadata');
-            return { source: 'content_metadata.thread_tweet_ids', row };
+            console.log(`   ✅ FOUND in content_metadata.thread_tweet_ids (CANONICAL SOURCE)`);
+            printRow(row, 'content_metadata [CANONICAL]');
+            return { source: 'content_metadata.thread_tweet_ids [CANONICAL]', row };
           }
         } catch (err) {
           // Invalid JSON, skip
@@ -78,26 +79,9 @@ async function findByTweetId(tweetId: string) {
     console.log(`   ❌ Not found in thread_tweet_ids arrays (checked ${cm2.length} rows)`);
   }
   
-  // Strategy 3: Search content_generation_metadata_comprehensive (base table)
-  console.log('\n3️⃣  Searching content_generation_metadata_comprehensive (base table)...');
-  const { data: cgmc1, error: e3 } = await supabase
-    .from('content_generation_metadata_comprehensive')
-    .select('decision_id, status, decision_type, tweet_id, thread_tweet_ids, created_at, posted_at, updated_at')
-    .eq('tweet_id', tweetId)
-    .limit(1);
+  // Strategy 3: Search outcomes (secondary evidence - metrics table)
+  console.log('\n3️⃣  Searching outcomes.tweet_id (secondary evidence)...');
   
-  if (e3) {
-    console.log(`   ⚠️  Error: ${e3.message}`);
-  } else if (cgmc1 && cgmc1.length > 0) {
-    console.log(`   ✅ FOUND in content_generation_metadata_comprehensive.tweet_id`);
-    printRow(cgmc1[0], 'content_generation_metadata_comprehensive');
-    return { source: 'content_generation_metadata_comprehensive.tweet_id', row: cgmc1[0] };
-  } else {
-    console.log(`   ❌ Not found in base table tweet_id column`);
-  }
-  
-  // Strategy 4: Search outcomes table
-  console.log('\n4️⃣  Searching outcomes table...');
   const { data: outcomes, error: e4 } = await supabase
     .from('outcomes')
     .select('decision_id, tweet_id, likes, retweets, replies, impressions, collected_at')
