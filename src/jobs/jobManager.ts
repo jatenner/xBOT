@@ -923,6 +923,24 @@ export class JobManager {
       3 * MINUTE   // Start after 3 minutes
     );
 
+    // 🔥 TRUTH GAP FIX: Reconciliation job - every 5 minutes (feature flagged)
+    if (process.env.ENABLE_TRUTH_RECONCILE === 'true') {
+      this.scheduleStaggeredJob(
+        'truth_reconcile',
+        async () => {
+          await this.safeExecute('truth_reconcile', async () => {
+            const { reconcileAllDecisions } = await import('./reconcileDecisionJob');
+            await reconcileAllDecisions();
+          });
+        },
+        5 * MINUTE, // Every 5 minutes
+        2 * MINUTE // Offset 2 min
+      );
+      console.log('[JOB_MANAGER] ✅ Truth reconciliation job enabled (ENABLE_TRUTH_RECONCILE=true)');
+    } else {
+      console.log('[JOB_MANAGER] ⏭️ Truth reconciliation job disabled (set ENABLE_TRUTH_RECONCILE=true to enable)');
+    }
+
     // Watchdog - every 5 minutes to enforce SLAs
     this.scheduleStaggeredJob(
       'job_watchdog',
