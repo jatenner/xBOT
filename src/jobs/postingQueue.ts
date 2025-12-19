@@ -1370,6 +1370,21 @@ async function verifyTweetPosted(content: string, decisionType: string): Promise
 }
 
 async function processDecision(decision: QueuedDecision): Promise<boolean> {
+  // 🔒 TRUTH GUARD: Check if posting is blocked due to truth integrity failures
+  try {
+    const { isTruthIntegrityBlocked } = await import('../utils/truthGuard');
+    const guardCheck = await isTruthIntegrityBlocked();
+    
+    if (guardCheck.blocked) {
+      console.error(`[TRUTH_GUARD] 🚫 posting_paused reason=${guardCheck.reason} failure_count=${guardCheck.failure_count}`);
+      console.error(`[TRUTH_GUARD] Truth integrity is failing repeatedly - pausing posting to prevent learning pollution`);
+      console.error(`[TRUTH_GUARD] To unpause: fix violations, then run: pnpm truth:verify:last24h`);
+      return false; // Don't process, don't count as success
+    }
+  } catch (guardErr: any) {
+    console.warn(`[TRUTH_GUARD] ⚠️ Guard check failed: ${guardErr.message}, allowing posting (fail open)`);
+  }
+  
   const isThread = decision.decision_type === 'thread';
   const logPrefix = isThread ? '[POSTING_QUEUE] 🧵' : '[POSTING_QUEUE] 📝';
   

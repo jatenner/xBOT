@@ -941,6 +941,25 @@ export class JobManager {
       console.log('[JOB_MANAGER] ⏭️ Truth reconciliation job disabled (set ENABLE_TRUTH_RECONCILE=true to enable)');
     }
 
+    // 🔒 TRUTH INTEGRITY VERIFICATION JOB - every 15 minutes (optional)
+    // Audits truth invariants and reports violations
+    if (process.env.ENABLE_TRUTH_INTEGRITY_CHECK === 'true') {
+      this.scheduleStaggeredJob(
+        'truth_integrity',
+        async () => {
+          await this.safeExecute('truth_integrity', async () => {
+            const { runTruthIntegrityCheck } = await import('./truthIntegrityJob');
+            await runTruthIntegrityCheck();
+          });
+        },
+        15 * MINUTE, // Every 15 minutes
+        10 * MINUTE  // Start after 10 minutes (offset)
+      );
+      console.log('[JOB_MANAGER] ✅ Truth integrity verification enabled (ENABLE_TRUTH_INTEGRITY_CHECK=true)');
+    } else {
+      console.log('[JOB_MANAGER] ⏭️ Truth integrity verification disabled (set ENABLE_TRUTH_INTEGRITY_CHECK=true to enable)');
+    }
+    
     // Watchdog - every 5 minutes to enforce SLAs
     this.scheduleStaggeredJob(
       'job_watchdog',
