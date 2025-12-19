@@ -219,7 +219,11 @@
     "verify:truth:last24h": "tsx scripts/verify-truth-last24h.ts",
     "verify:threads:last6h": "tsx scripts/verify-threads-last6h.ts",
     "verify:replies:sample20": "tsx scripts/verify-replies-sample20.ts",
-    "verify:truthgap:last24h": "tsx scripts/truth-gap-audit-last24h.ts"
+    "verify:truthgap:last24h": "tsx scripts/truth-gap-audit-last24h.ts",
+    "truth:verify": "tsx scripts/verifyTruthIntegrity.ts",
+    "truth:verify:last24h": "TRUTH_VERIFY_HOURS=24 tsx scripts/verifyTruthIntegrity.ts",
+    "truth:verify:last7d": "TRUTH_VERIFY_HOURS=168 tsx scripts/verifyTruthIntegrity.ts",
+    "truth:verify:with-x": "TRUTH_VERIFY_ON_X=true TRUTH_VERIFY_SAMPLE=10 tsx scripts/verifyTruthIntegrity.ts"
   },
   "keywords": [
     "twitter",
