@@ -52,6 +52,11 @@ export async function writePostReceipt(receipt: PostReceipt): Promise<{
     console.log(`[RECEIPT]    tweet_ids=${receipt.tweet_ids.join(', ')}`);
     
     // Write receipt (INSERT only, never UPDATE)
+    // Extract parent_tweet_id from metadata for dedicated column (replies only)
+    const parentTweetId = receipt.post_type === 'reply' 
+      ? (receipt.metadata?.parent_tweet_id || receipt.metadata?.target_tweet_id)
+      : null;
+    
     const { data, error } = await supabase
       .from('post_receipts')
       .insert({
@@ -60,6 +65,7 @@ export async function writePostReceipt(receipt: PostReceipt): Promise<{
         root_tweet_id: receipt.root_tweet_id,
         post_type: receipt.post_type,
         posted_at: receipt.posted_at,
+        parent_tweet_id: parentTweetId, // Dedicated column for replies
         metadata: receipt.metadata || {},
         receipt_created_at: new Date().toISOString()
       })
