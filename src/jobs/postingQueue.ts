@@ -1744,14 +1744,24 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             postingSucceeded = true;
           }
           
-          // 🔥 PRIORITY 1 FIX: Save tweet_id to backup file IMMEDIATELY after Twitter post
+          // 🔥 TRUTH GAP FIX: Save tweet_id to backup file IMMEDIATELY after Twitter post
           // This prevents duplicates even if database save fails
+          // Also saves thread_tweet_ids if available
           const { saveTweetIdToBackup } = await import('../utils/tweetIdBackup');
           const contentToBackup = decision.decision_type === 'thread' 
-            ? (decision.thread_parts || []).join(' ')
+            ? (decision.thread_parts || []).join(' ') 
             : decision.content;
           saveTweetIdToBackup(decision.id, tweetId, contentToBackup);
           console.log(`[POSTING_QUEUE] 💾 Tweet ID saved to backup file: ${tweetId}`);
+          
+          // 🔥 TRUTH GAP FIX: Also save thread_tweet_ids to backup if available
+          if (tweetIds && tweetIds.length > 1) {
+            // Save each thread tweet ID individually for reconciliation
+            for (const threadTweetId of tweetIds) {
+              saveTweetIdToBackup(decision.id, threadTweetId, contentToBackup);
+            }
+            console.log(`[POSTING_QUEUE] 💾 Saved ${tweetIds.length} thread tweet IDs to backup`);
+          }
         } else if (decision.decision_type === 'reply') {
           tweetId = await postReply(decision);
         
