@@ -1709,6 +1709,21 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           tweetId = result.tweetId;
           tweetUrl = result.tweetUrl;
           tweetIds = result.tweetIds; // 🆕 Capture thread IDs if available
+          
+          // 🔒 CRITICAL: Save to backup IMMEDIATELY after tweet IDs captured (durable ledger)
+          // This happens BEFORE any other logic that might throw
+          console.log(`[LIFECYCLE] decision_id=${decision.id} step=POST_CLICKED tweet_id=${tweetId}`);
+          try {
+            const { saveTweetIdToBackup } = await import('../utils/tweetIdBackup');
+            const contentToBackup = decision.decision_type === 'thread' && decision.thread_parts 
+              ? decision.thread_parts.join('\n\n') 
+              : decision.content;
+            saveTweetIdToBackup(decision.id, tweetId, contentToBackup, tweetIds);
+            console.log(`[LIFECYCLE] decision_id=${decision.id} step=BACKUP_SAVED tweet_ids_count=${tweetIds?.length || 1}`);
+          } catch (backupErr: any) {
+            console.error(`[BACKUP] ⚠️ Backup failed but continuing: ${backupErr.message}`);
+            // Don't throw - backup failure shouldn't block posting flow
+          }
         
           // ✅ NEW: Handle placeholder IDs (tweet posted, ID extraction failed)
           if (tweetId && tweetId.startsWith('pending_')) {
@@ -2141,6 +2156,8 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             const effectiveDecisionType = isMultiTweetThread ? 'thread' : (decision.decision_type || 'single');
             const finalTweetUrl = tweetUrl || `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
             
+            console.log(`[LIFECYCLE] decision_id=${decision.id} step=SUCCESS type=${effectiveDecisionType} tweet_id=${tweetId} tweet_ids_count=${tweetIdsCount}`);
+            
             if (effectiveDecisionType === 'thread') {
               console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decision.id} type=${effectiveDecisionType} tweet_id=${tweetId} tweet_ids_count=${tweetIdsCount} url=${finalTweetUrl}`);
             } else {
@@ -2154,6 +2171,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             // ✅ Return true ONLY after DB save succeeds and success log is emitted
             return true;
           } catch (dbError: any) {
+            console.error(`[LIFECYCLE][FAIL] decision_id=${decision.id} step=DB_SAVE_FAILED attempt=${attempt}/5 reason=${dbError.message}`);
             console.error(`[POSTING_QUEUE] 🚨 Database save attempt ${attempt}/5 failed:`, dbError.message);
             
             // ✅ EXPLICIT DB SAVE FAILURE LOG
@@ -2901,7 +2919,19 @@ async function updateDecisionStatus(decisionId: string, status: string): Promise
   }
 }
 
-export async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?: string, tweetIds?: string[]): Promise<void> {
+// 🔒 TRUTH PIPELINE FIX: Return confirmation with verified IDs
+export async function markDecisionPosted(
+  decisionId: string, 
+  tweetId: string, 
+  tweetUrl?: string, 
+  tweetIds?: string[]
+): Promise<{ 
+  ok: boolean; 
+  decision_id: string; 
+  savedTweetIds: string[]; 
+  classification: 'single' | 'thread' | 'reply';
+  wasAlreadyPosted: boolean;
+}> {
   try {
     // 🔒 VALIDATION: Validate all IDs before saving
     const { IDValidator } = await import('../validation/idValidator');
