@@ -1223,7 +1223,8 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
       const replyInsertPayload: any = {
         decision_id: reply.decision_id,
         decision_type: 'reply',
-        content: reply.content,
+        // 🔥 CRITICAL FIX: Ensure content is a string, not an array
+        content: Array.isArray(reply.content) ? reply.content[0] : reply.content,
         content_slot: replyContentSlot, // 🎯 v2: Store content slot for replies
         generation_source: 'strategic_multi_generator',
         status: 'queued',
