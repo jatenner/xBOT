@@ -183,12 +183,34 @@ async function fetchXTweetsViaLocalPlaywright(): Promise<FetchResult> {
       
       console.log(`[TRUTH_GAP] Extracting tweet data...`);
       
+      // Debug: Check if we can find ANY tweets on the page
+      const articleCount = await page.evaluate(() => {
+        return document.querySelectorAll('article').length;
+      });
+      console.log(`[TRUTH_GAP] Found ${articleCount} <article> elements on page`);
+      
       // Extract tweet IDs and metadata
       const tweetData = await page.evaluate(() => {
         const tweets: Array<{ id: string; url: string; text: string; time: string }> = [];
         
-        // Find all article elements (tweets)
-        const articles = document.querySelectorAll('article[data-testid="tweet"]');
+        // Try multiple selectors (X's structure may vary)
+        const articleSelectors = [
+          'article[data-testid="tweet"]',
+          'article[role="article"]',
+          'article'
+        ];
+        
+        let articles: NodeListOf<Element> | null = null;
+        for (const selector of articleSelectors) {
+          articles = document.querySelectorAll(selector);
+          if (articles && articles.length > 0) {
+            break;
+          }
+        }
+        
+        if (!articles || articles.length === 0) {
+          return tweets;
+        }
         
         articles.forEach((article) => {
           // Extract tweet ID from links
@@ -263,6 +285,28 @@ async function fetchXTweetsViaLocalPlaywright(): Promise<FetchResult> {
         console.warn(`[TRUTH_GAP]    - Timeline selectors may have changed`);
         console.warn(`[TRUTH_GAP]    - Rate limiting or network issues`);
         console.warn(`[TRUTH_GAP]    - No tweets posted in last 24h`);
+        
+        // Debug: Take screenshot and save HTML for diagnosis
+        try {
+          const fs = await import('fs/promises');
+          const path = await import('path');
+          const logsDir = path.join(process.cwd(), 'logs');
+          await fs.mkdir(logsDir, { recursive: true });
+          
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const screenshotPath = path.join(logsDir, `truth-gap-debug-${timestamp}.png`);
+          const htmlPath = path.join(logsDir, `truth-gap-debug-${timestamp}.html`);
+          
+          await page.screenshot({ path: screenshotPath, fullPage: true });
+          const html = await page.content();
+          await fs.writeFile(htmlPath, html, 'utf-8');
+          
+          console.log(`[TRUTH_GAP] 🔍 Debug files saved:`);
+          console.log(`[TRUTH_GAP]    Screenshot: ${screenshotPath}`);
+          console.log(`[TRUTH_GAP]    HTML: ${htmlPath}`);
+        } catch (debugError: any) {
+          console.warn(`[TRUTH_GAP] Failed to save debug files: ${debugError.message}`);
+        }
       }
       
     } finally {
