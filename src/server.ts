@@ -1185,9 +1185,67 @@ export function startHealthServer(): Promise<void> {
             });
         });
         
-        // 🚨 CRITICAL FIX: Start JobManager to enable posting and replies
+        // 🔒 STARTUP SEQUENCE: Migrations → DB Doctor → Jobs (in background, non-blocking for healthcheck)
         setImmediate(async () => {
           try {
+            // STEP 1: Run migrations
+            console.log('[STARTUP] step=MIGRATE starting...');
+            const { execSync } = await import('child_process');
+            try {
+              execSync('node scripts/bulletproof_migrate.js', {
+                stdio: 'inherit',
+                env: process.env
+              });
+              console.log('[STARTUP] step=MIGRATE ok=true');
+            } catch (migError: any) {
+              console.error('[STARTUP] step=MIGRATE ok=false error:', migError.message);
+              console.error('[STARTUP] WARNING: Migrations failed, but continuing (check logs)');
+            }
+            
+            // STEP 2: Run db:doctor
+            console.log('[STARTUP] step=DB_DOCTOR starting...');
+            try {
+              const { Client } = await import('pg');
+              const client = new Client({
+                connectionString: process.env.DATABASE_URL,
+                ssl: { rejectUnauthorized: false }
+              });
+              
+              await client.connect();
+              
+              // Check required columns
+              const columnChecks = [
+                ['post_receipts', 'parent_tweet_id'],
+                ['post_receipts', 'post_type'],
+                ['post_receipts', 'root_tweet_id']
+              ];
+              
+              for (const [table, column] of columnChecks) {
+                const res = await client.query(
+                  `SELECT COUNT(*) as exists FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2;`,
+                  [table, column]
+                );
+                if (parseInt(res.rows[0].exists) === 0) {
+                  throw new Error(`Missing ${table}.${column}`);
+                }
+              }
+              
+              // Check advisory lock functions
+              const funcRes = await client.query(
+                `SELECT COUNT(*) as exists FROM pg_proc WHERE proname IN ('pg_try_advisory_lock', 'pg_advisory_unlock') AND pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');`
+              );
+              if (parseInt(funcRes.rows[0].exists) < 2) {
+                throw new Error('Advisory lock functions missing');
+              }
+              
+              await client.end();
+              console.log('[STARTUP] step=DB_DOCTOR ok=true');
+            } catch (doctorError: any) {
+              console.error('[STARTUP] step=DB_DOCTOR ok=false error:', doctorError.message);
+              console.error('[STARTUP] WARNING: Schema check failed, but continuing (check logs)');
+            }
+            
+            // STEP 3: Start JobManager (only after migrations + db:doctor complete)
             log({ op: 'job_manager_init', status: 'starting' });
             const jobManager = JobManager.getInstance();
             await jobManager.startJobs();
