@@ -18,24 +18,13 @@ interface ReconciliationResult {
 
 /**
  * Reconcile a single decision using backup file
+ * Only reconciles if status='posted_pending_db' OR backup exists but DB missing tweet_id
  */
 export async function reconcileDecision(decisionId: string): Promise<ReconciliationResult> {
   console.log(`[RECONCILE_DECISION] 🔄 Reconciling decision ${decisionId}...`);
   
   try {
-    // Get tweet_id from backup
-    const tweetId = getTweetIdFromBackup(decisionId);
-    
-    if (!tweetId) {
-      return {
-        decision_id: decisionId,
-        success: false,
-        tweet_id: null,
-        error: 'No tweet_id found in backup file'
-      };
-    }
-    
-    // Query DB to check current status
+    // Query DB to check current status first
     const supabase = getSupabaseClient();
     const { data, error: queryError } = await supabase
       .from('content_metadata')
@@ -47,18 +36,45 @@ export async function reconcileDecision(decisionId: string): Promise<Reconciliat
       return {
         decision_id: decisionId,
         success: false,
-        tweet_id: tweetId,
+        tweet_id: null,
         error: `DB query failed: ${queryError.message}`
       };
     }
     
-    // If already saved, skip
-    if (data?.tweet_id === tweetId && data?.status === 'posted') {
-      console.log(`[RECONCILE_DECISION] ✅ Decision ${decisionId} already reconciled`);
+    // Only reconcile if:
+    // 1. status='posted_pending_db' OR
+    // 2. status='posted' but tweet_id is missing AND backup exists
+    const needsReconciliation = 
+      data?.status === 'posted_pending_db' ||
+      (data?.status === 'posted' && !data?.tweet_id);
+    
+    if (!needsReconciliation) {
+      // Already reconciled or not eligible
+      if (data?.tweet_id && data?.status === 'posted') {
+        console.log(`[RECONCILE_DECISION] ⏭️ Decision ${decisionId} already reconciled (tweet_id=${data.tweet_id})`);
+        return {
+          decision_id: decisionId,
+          success: true,
+          tweet_id: data.tweet_id
+        };
+      }
       return {
         decision_id: decisionId,
-        success: true,
-        tweet_id: tweetId
+        success: false,
+        tweet_id: null,
+        error: 'Decision does not need reconciliation'
+      };
+    }
+    
+    // Get tweet_id from backup
+    const tweetId = getTweetIdFromBackup(decisionId);
+    
+    if (!tweetId) {
+      return {
+        decision_id: decisionId,
+        success: false,
+        tweet_id: null,
+        error: 'No tweet_id found in backup file'
       };
     }
     
