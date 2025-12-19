@@ -60,6 +60,7 @@
     "db:doctor": "NODE_TLS_REJECT_UNAUTHORIZED=0 tsx scripts/verifyDbConnection.ts",
     "db:ping": "node tools/db/ping.js",
     "debug:posts:last5": "NODE_TLS_REJECT_UNAUTHORIZED=0 tsx scripts/inspectPostingState.ts",
+    "debug:replies:last60m": "NODE_TLS_REJECT_UNAUTHORIZED=0 tsx scripts/debug-replies-last60m.ts",
     "backfill-embeddings": "tools/env/run-with-env.sh \"ts-node scripts/backfill-embeddings.ts\"",
     "jobs:learn:js": "node dist/scripts/jobs-learn.js",
     "dryrun:plan:js": "node dist/scripts/dryrun-plan.js",
