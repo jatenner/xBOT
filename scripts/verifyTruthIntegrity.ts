@@ -381,6 +381,14 @@ async function verifyTruthIntegrity(): Promise<number> {
     const report = generateReport(decisions, falseSuccess, salvageable, idempotency, suspect);
     printReport(report);
     
+    // Print summary line for monitoring
+    console.log(`[TRUTH_VERIFY] verdict=${report.pass ? 'PASS' : 'FAIL'} window=${TIME_WINDOW_HOURS}h false_success=${report.false_success_count} salvageable=${report.salvageable_count} suspect=${report.suspect_count}`);
+    
+    // Track failure if not passing
+    if (!report.pass) {
+      await trackVerificationFailure();
+    }
+    
     return report.pass ? 0 : 1;
   } catch (error: any) {
     console.error('[TRUTH_VERIFY] ❌ Verification failed:', error.message);
@@ -388,6 +396,28 @@ async function verifyTruthIntegrity(): Promise<number> {
     return 1;
   }
 }
+
+/**
+ * Track verification failure in DB for truth guard
+ */
+async function trackVerificationFailure(): Promise<void> {
+  try {
+    const supabase = getSupabase();
+    await supabase.from('system_events').insert({
+      component: 'truth_integrity',
+      event_type: 'verification_failed',
+      severity: 'critical',
+      message: 'Truth integrity verification FAILED',
+      metadata: { timestamp: new Date().toISOString() },
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('[TRUTH_VERIFY] Failed to track failure:', err);
+  }
+}
+
+export { trackVerificationFailure };
+
 
 // Run if called directly
 if (require.main === module) {
