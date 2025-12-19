@@ -2901,7 +2901,7 @@ async function updateDecisionStatus(decisionId: string, status: string): Promise
   }
 }
 
-async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?: string, tweetIds?: string[]): Promise<void> {
+export async function markDecisionPosted(decisionId: string, tweetId: string, tweetUrl?: string, tweetIds?: string[]): Promise<void> {
   try {
     // 🔒 VALIDATION: Validate all IDs before saving
     const { IDValidator } = await import('../validation/idValidator');
