@@ -13,8 +13,16 @@
  * - 1: FAIL (critical violation detected)
  */
 
-import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
+
+// Load env vars if running locally (Railway provides them automatically)
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    require('dotenv/config');
+  } catch (e) {
+    // dotenv not available in production build, that's ok
+  }
+}
 
 // Configuration
 const TIME_WINDOW_HOURS = parseInt(process.env.TRUTH_VERIFY_HOURS || '24', 10);
