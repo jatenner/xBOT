@@ -859,9 +859,9 @@ async function generateRealReplies(): Promise<void> {
       // 🚀 PHASE 4: Route replies through orchestratorRouter when enabled
       // ═══════════════════════════════════════════════════════════
       if (usePhase4Routing) {
-        // Extract tweet ID from URL first
-        const tweetUrlStr = String(target.tweet_url || '');
-        const tweetIdFromUrl = tweetUrlStr.split('/').pop() || target.tweet_id || 'unknown';
+      // Extract tweet ID from URL first
+      const tweetUrlStr = String(target.tweet_url || '');
+      const tweetIdFromUrl = tweetUrlStr.split('/').pop() || 'unknown';
         
         // 🔥 CONTEXT: Extract keywords from parent tweet
         const parentText = target.tweet_content || '';
@@ -901,8 +901,7 @@ async function generateRealReplies(): Promise<void> {
               priority_score: priorityScore,
               target_username: target.account.username,
               target_tweet_content: parentText,
-              generator_name: replyGenerator,
-              prompt_override: explicitReplyPrompt // 🔥 Force contextual reply
+              generator_name: replyGenerator
             });
             
             // Extract content (handle array if returned)
