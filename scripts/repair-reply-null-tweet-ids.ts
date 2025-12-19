@@ -76,8 +76,7 @@ async function main() {
           .from('content_metadata')
           .update({
             status: 'failed',
-            updated_at: new Date().toISOString(),
-            failure_reason: 'NULL_TWEET_ID_REPAIR: Posted status but missing tweet_id (repaired by cleanup script)'
+            updated_at: new Date().toISOString()
           })
           .eq('decision_id', row.decision_id);
         

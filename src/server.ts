@@ -1192,6 +1192,7 @@ export function startHealthServer(): Promise<void> {
             const jobManager = JobManager.getInstance();
             await jobManager.startJobs();
             log({ op: 'job_manager_init', outcome: 'success' });
+            console.log('[STARTUP] step=JOBS_STARTED ok=true');
             
             // Run plan job immediately to populate queue
             try {

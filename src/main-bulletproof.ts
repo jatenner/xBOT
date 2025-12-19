@@ -321,6 +321,66 @@ async function boot() {
   console.log(`[BOOT] commit=${commitSha} node=${nodeVersion}`);
   log({ op: 'boot_start', commit_sha: commitSha, node_version: nodeVersion });
   
+  // 🔒 STEP 1: Run database migrations (FAIL-CLOSED)
+  console.log('[STARTUP] step=MIGRATE starting...');
+  try {
+    const { execSync } = await import('child_process');
+    // Run bulletproof_migrate.js directly via node (already compiled JS)
+    execSync('node scripts/bulletproof_migrate.js', {
+      stdio: 'inherit',
+      env: process.env
+    });
+    console.log('[STARTUP] step=MIGRATE ok=true');
+  } catch (migrationError: any) {
+    console.error('[STARTUP] step=MIGRATE ok=false error:', migrationError.message);
+    console.error('[STARTUP] FATAL: Cannot start without migrations');
+    process.exit(1);
+  }
+  
+  // 🔒 STEP 2: Run db:doctor to verify schema (FAIL-CLOSED)
+  console.log('[STARTUP] step=DB_DOCTOR starting...');
+  try {
+    const { Client } = await import('pg');
+    const client = new Client({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false }
+    });
+    
+    await client.connect();
+    
+    // Check required columns
+    const columnChecks = [
+      ['post_receipts', 'parent_tweet_id'],
+      ['post_receipts', 'post_type'],
+      ['post_receipts', 'root_tweet_id']
+    ];
+    
+    for (const [table, column] of columnChecks) {
+      const res = await client.query(
+        `SELECT COUNT(*) as exists FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2;`,
+        [table, column]
+      );
+      if (parseInt(res.rows[0].exists) === 0) {
+        throw new Error(`Missing ${table}.${column}`);
+      }
+    }
+    
+    // Check advisory lock functions
+    const funcRes = await client.query(
+      `SELECT COUNT(*) as exists FROM pg_proc WHERE proname IN ('pg_try_advisory_lock', 'pg_advisory_unlock') AND pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');`
+    );
+    if (parseInt(funcRes.rows[0].exists) < 2) {
+      throw new Error('Advisory lock functions missing');
+    }
+    
+    await client.end();
+    console.log('[STARTUP] step=DB_DOCTOR ok=true');
+  } catch (doctorError: any) {
+    console.error('[STARTUP] step=DB_DOCTOR ok=false error:', doctorError.message);
+    console.error('[STARTUP] FATAL: Database schema not ready. Run: pnpm db:migrate');
+    process.exit(1);
+  }
+  
   // 🔒 CRITICAL FIX #3: Verify database connection and receipt system (FAIL-CLOSED)
   await verifyDatabaseConnection();
   
