@@ -2816,6 +2816,12 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
 }
 
 async function postReply(decision: QueuedDecision): Promise<string> {
+  // 🔒 SAFETY: Check if replies are paused
+  if (process.env.PAUSE_REPLIES === 'true') {
+    console.log(`[REPLY_PAUSE] enabled=true skipping_posting decision_id=${decision.id}`);
+    throw new Error('Replies paused via PAUSE_REPLIES env flag');
+  }
+  
   console.log(`[POSTING_QUEUE] 💬 Posting reply to @${decision.target_username}: "${decision.content.substring(0, 50)}..."`);
   
   // 🔒 BROWSER SEMAPHORE: Acquire exclusive browser access (HIGHEST priority)

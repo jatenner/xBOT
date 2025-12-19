@@ -105,16 +105,16 @@ async function checkReplyHourlyQuota(): Promise<
     try {
       const supabase = getSupabaseClient();
       const now = new Date();
-      const hourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
+      // 🔥 FIX: Use rolling 60 minutes (not calendar hour)
+      const sixtyMinutesAgo = new Date(now.getTime() - 60 * 60 * 1000);
       
-      // Count replies in content_metadata
+      // Count replies in last 60 minutes (rolling window)
       const { count, error } = await supabase
         .from('content_metadata')
         .select('*', { count: 'exact', head: true })
         .eq('decision_type', 'reply')
         .eq('status', 'posted')
-        .gte('posted_at', hourStart.toISOString())
-        .lt('posted_at', new Date(hourStart.getTime() + 60 * 60 * 1000).toISOString());
+        .gte('posted_at', sixtyMinutesAgo.toISOString());
       
       if (error) {
         console.error(`[REPLY_QUOTA] ❌ Database error (attempt ${attempt}/${MAX_RETRIES}):`, error.message);
@@ -137,10 +137,31 @@ async function checkReplyHourlyQuota(): Promise<
       const repliesThisHour = count || 0;
       const canReply = repliesThisHour < REPLY_CONFIG.MAX_REPLIES_PER_HOUR;
       
+      // Log rate limit status
+      if (!canReply) {
+        console.log(`[REPLY_RATE_LIMIT] blocked=true count_last_60m=${repliesThisHour} cap=${REPLY_CONFIG.MAX_REPLIES_PER_HOUR}`);
+      }
+      
       let minutesUntilNext;
       if (!canReply) {
-        const nextHour = new Date(hourStart.getTime() + 60 * 60 * 1000);
-        minutesUntilNext = (nextHour.getTime() - now.getTime()) / (1000 * 60);
+        // Calculate when oldest reply will fall out of 60-minute window
+        const { data: oldestReply } = await supabase
+          .from('content_metadata')
+          .select('posted_at')
+          .eq('decision_type', 'reply')
+          .eq('status', 'posted')
+          .gte('posted_at', sixtyMinutesAgo.toISOString())
+          .order('posted_at', { ascending: true })
+          .limit(1)
+          .single();
+        
+        if (oldestReply) {
+          const oldestTime = new Date(oldestReply.posted_at);
+          const unlocksAt = new Date(oldestTime.getTime() + 60 * 60 * 1000);
+          minutesUntilNext = Math.max(0, (unlocksAt.getTime() - now.getTime()) / (1000 * 60));
+        } else {
+          minutesUntilNext = 60; // Fallback
+        }
       }
       
       // Success - return result
@@ -838,43 +859,96 @@ async function generateRealReplies(): Promise<void> {
       // 🚀 PHASE 4: Route replies through orchestratorRouter when enabled
       // ═══════════════════════════════════════════════════════════
       if (usePhase4Routing) {
-        try {
-          console.log(`[PHASE4][Router][Reply] decisionType=reply slot=reply priority=${priorityScore || 'N/A'}`);
+        // Extract tweet ID from URL first
+        const tweetUrlStr = String(target.tweet_url || '');
+        const tweetIdFromUrl = tweetUrlStr.split('/').pop() || target.tweet_id || 'unknown';
+        
+        // 🔥 CONTEXT: Extract keywords from parent tweet
+        const parentText = target.tweet_content || '';
+        const { extractKeywords } = await import('../gates/ReplyQualityGate');
+        const keywords = extractKeywords(parentText);
+        
+        // Log context
+        const parentExcerpt = parentText.substring(0, 80) + (parentText.length > 80 ? '...' : '');
+        console.log(`[REPLY_CONTEXT] ok=true parent_id=${tweetIdFromUrl} keywords=${keywords.join(', ')}`);
+        console.log(`[REPLY_CONTEXT] parent_excerpt="${parentExcerpt}"`);
+        
+        // 🔁 RETRY LOOP: Generate reply with quality gate (max 2 attempts)
+        const MAX_GENERATION_ATTEMPTS = 2;
+        let generationAttempt = 0;
+        
+        while (generationAttempt < MAX_GENERATION_ATTEMPTS && !strategicReply) {
+          generationAttempt++;
           
-          // Extract topic/angle from tweet content for router
-          const tweetContent = target.tweet_content || '';
-          const replyTopic = target.reply_angle || target.account.category || 'health';
-          const replyAngle = 'reply_context'; // Default angle for replies
-          const replyTone = 'helpful'; // Default tone for replies
-          
-          // Route through orchestratorRouter for generator-based replies
-          const routerResponse = await routeContentGeneration({
-            decision_type: 'reply',
-            content_slot: 'reply',
-            topic: replyTopic,
-            angle: replyAngle,
-            tone: replyTone,
-            priority_score: priorityScore,
-            target_username: target.account.username,
-            target_tweet_content: tweetContent,
-            generator_name: replyGenerator // Pass pre-matched generator
-          });
-          
-          // Use router response for generator-based replies
-          strategicReply = {
-            content: routerResponse.text,
-            provides_value: true,
-            adds_insight: true,
-            not_spam: true,
-            confidence: priorityScore && priorityScore >= 0.8 ? 0.9 : 0.7,
-            visualFormat: routerResponse.visual_format || 'paragraph'
-          };
-          
-          console.log(`[PHASE4][Router][Reply] ✅ Reply routed through orchestratorRouter (generator: ${routerResponse.generator_used})`);
-          
-        } catch (routerError: any) {
-          console.warn(`[PHASE4][Router][Reply] Router failed, falling back to existing systems:`, routerError.message);
-          // Fall through to existing reply generation
+          try {
+            console.log(`[PHASE4][Router][Reply] attempt=${generationAttempt}/${MAX_GENERATION_ATTEMPTS} decisionType=reply slot=reply priority=${priorityScore || 'N/A'}`);
+            
+            // Extract topic/angle from tweet content for router
+            const replyTopic = target.reply_angle || target.account.category || 'health';
+            const replyAngle = 'reply_context'; // Default angle for replies
+            const replyTone = 'helpful'; // Default tone for replies
+            
+            // 🔥 CRITICAL: Build explicit reply prompt override
+            const explicitReplyPrompt = `You are replying to @${target.account.username}'s tweet: "${parentText}"\n\nYour reply must:\n1. Reference at least one keyword from their tweet: ${keywords.join(', ')}\n2. Be ≤220 characters\n3. Be conversational and contextual\n4. NO JSON, NO brackets, NO lists\n5. Sound like a genuine human reply, not a bot\n\nReply:`;
+            
+            // Route through orchestratorRouter for generator-based replies
+            const routerResponse = await routeContentGeneration({
+              decision_type: 'reply',
+              content_slot: 'reply',
+              topic: replyTopic,
+              angle: replyAngle,
+              tone: replyTone,
+              priority_score: priorityScore,
+              target_username: target.account.username,
+              target_tweet_content: parentText,
+              generator_name: replyGenerator,
+              prompt_override: explicitReplyPrompt // 🔥 Force contextual reply
+            });
+            
+            // Extract content (handle array if returned)
+            let replyContent = routerResponse.text;
+            if (Array.isArray(replyContent)) {
+              replyContent = replyContent[0]; // Take first element
+            }
+            
+            // 🔥 QUALITY GATE: Validate reply quality (fail-closed)
+            const { checkReplyQuality } = await import('../gates/ReplyQualityGate');
+            const qualityCheck = checkReplyQuality(replyContent, parentText, generationAttempt);
+            
+            if (qualityCheck.passed) {
+              // Use router response for generator-based replies
+              strategicReply = {
+                content: replyContent,
+                provides_value: true,
+                adds_insight: true,
+                not_spam: true,
+                confidence: priorityScore && priorityScore >= 0.8 ? 0.9 : 0.7,
+                visualFormat: routerResponse.visual_format || 'paragraph'
+              };
+              
+              console.log(`[PHASE4][Router][Reply] ✅ Reply routed through orchestratorRouter (generator: ${routerResponse.generator_used})`);
+            } else {
+              // Quality gate failed
+              console.warn(`[PHASE4][Router][Reply] Quality gate failed: ${qualityCheck.reason}, issues: ${qualityCheck.issues.join(', ')}`);
+              
+              if (generationAttempt >= MAX_GENERATION_ATTEMPTS) {
+                console.error(`[REPLY_JOB] ⛔ Reply quality gate failed after ${MAX_GENERATION_ATTEMPTS} attempts, skipping decision`);
+                continue; // Skip this opportunity entirely
+              }
+              
+              // Try again with next attempt
+              console.log(`[PHASE4][Router][Reply] Retrying generation (attempt ${generationAttempt + 1}/${MAX_GENERATION_ATTEMPTS})...`);
+              await new Promise(resolve => setTimeout(resolve, 500)); // Brief delay before retry
+            }
+            
+          } catch (routerError: any) {
+            console.warn(`[PHASE4][Router][Reply] Router failed (attempt ${generationAttempt}):`, routerError.message);
+            if (generationAttempt >= MAX_GENERATION_ATTEMPTS) {
+              console.error(`[REPLY_JOB] ⛔ Router failed after ${MAX_GENERATION_ATTEMPTS} attempts, falling back to existing systems`);
+              // Fall through to existing reply generation
+              break;
+            }
+          }
         }
       }
       
