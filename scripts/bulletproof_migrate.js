@@ -3,12 +3,15 @@
 /**
  * 🔧 BULLETPROOF AUTO-MIGRATION SYSTEM
  * 
- * - Uses Railway environment variables directly
+ * - Uses Railway environment variables directly (or .env for local)
  * - Actually executes SQL migrations (not just logs them)
  * - Tracks applied migrations to avoid duplicates
  * - Continues deployment even if migrations fail
  * - Works with Supabase PostgreSQL directly
  */
+
+// Load .env for local development (Railway provides env vars directly)
+require('dotenv').config();
 
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
@@ -16,7 +19,7 @@ const path = require('path');
 
 console.log('🔧 === BULLETPROOF MIGRATION SYSTEM STARTING ===');
 
-// Use Railway environment variables
+// Use Railway environment variables (or .env for local)
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
