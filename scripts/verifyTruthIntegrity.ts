@@ -79,7 +79,7 @@ async function fetchDecisions(hoursAgo: number): Promise<Decision[]> {
   
   const { data, error } = await supabase
     .from('content_metadata')
-    .select('decision_id, decision_type, status, tweet_id, thread_tweet_ids, posted_at, updated_at, reconciled_at')
+    .select('decision_id, decision_type, status, tweet_id, thread_tweet_ids, posted_at, updated_at')
     .gte('updated_at', cutoffTime)
     .order('updated_at', { ascending: false });
   
