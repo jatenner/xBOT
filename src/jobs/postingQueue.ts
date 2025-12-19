@@ -1725,11 +1725,11 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           tweetUrl = result.tweetUrl;
           tweetIds = result.tweetIds; // 🆕 Capture thread IDs if available
           
-          // 🔒 CRITICAL: Write IMMUTABLE RECEIPT immediately after tweet IDs captured
-          // This is DURABLE proof-of-posting that survives DB failures
+          // 🔒 CRITICAL FIX #1: Write IMMUTABLE RECEIPT immediately after tweet IDs captured
+          // This MUST succeed or we fail-closed to prevent truth gaps
           console.log(`[LIFECYCLE] decision_id=${decision.id} step=POST_CLICKED tweet_id=${tweetId}`);
           
-          // ✅ STEP 1: Write receipt to Supabase (durable, survives Railway restarts)
+          // ✅ STEP 1: Write receipt to Supabase (FAIL-CLOSED - must succeed)
           try {
             const { writePostReceipt } = await import('../utils/postReceiptWriter');
             
@@ -1756,16 +1756,36 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             });
             
             if (!receiptResult.success) {
-              console.error(`[RECEIPT] 🚨 CRITICAL: Receipt write failed for tweet ${tweetId}`);
+              console.error(`[RECEIPT] 🚨 CRITICAL: Receipt write FAILED - marking post as RETRY_PENDING`);
               console.error(`[RECEIPT] 🚨 Error: ${receiptResult.error}`);
-              console.error(`[RECEIPT] 🚨 Tweet is on X but has NO DURABLE PROOF - truth gap risk!`);
-              // Continue - we'll try to save to content_metadata, but this is a warning sign
-            } else {
-              console.log(`[LIFECYCLE] decision_id=${decision.id} step=RECEIPT_SAVED receipt_id=${receiptResult.receipt_id}`);
+              console.error(`[RECEIPT] 🚨 Tweet ${tweetId} is on X but we have NO DURABLE PROOF`);
+              
+              // Mark decision as retry_pending for reconciliation
+              const { getSupabaseClient } = await import('../db/index');
+              const supabase = getSupabaseClient();
+              await supabase
+                .from('content_metadata')
+                .update({
+                  status: 'retry_pending',
+                  features: {
+                    receipt_write_failed: true,
+                    tweet_id_orphan: tweetId,
+                    needs_reconciliation: true,
+                    failed_at: new Date().toISOString()
+                  }
+                })
+                .eq('decision_id', decision.id);
+              
+              // Fail-closed: throw to trigger retry
+              throw new Error(`Receipt write failed: ${receiptResult.error}`);
             }
+            
+            console.log(`[LIFECYCLE] decision_id=${decision.id} step=RECEIPT_SAVED receipt_id=${receiptResult.receipt_id}`);
+            
           } catch (receiptErr: any) {
             console.error(`[RECEIPT] 🚨 CRITICAL: Receipt exception for tweet ${tweetId}: ${receiptErr.message}`);
-            // Continue but log the critical failure
+            // Fail-closed: re-throw to trigger retry
+            throw new Error(`Receipt write exception: ${receiptErr.message}`);
           }
           
           // ✅ STEP 2: Also save to local backup (best effort, ephemeral on Railway)
@@ -2201,9 +2221,16 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             if (tweetIdsCountToSave >= 2) {
               console.log(`[DB_THREAD_SAVE] decision_id=${decision.id} tweet_ids_count=${tweetIdsCountToSave} tweet_ids=${tweetIds!.join(',')}`);
             }
-            await markDecisionPosted(decision.id, tweetId, tweetUrl, tweetIds);
+            
+            // 🔒 CRITICAL FIX #2: Check return value from markDecisionPosted
+            const saveResult = await markDecisionPosted(decision.id, tweetId, tweetUrl, tweetIds);
+            
+            if (!saveResult.ok) {
+              throw new Error(`markDecisionPosted returned ok=false for decision ${decision.id}`);
+            }
+            
             dbSaveSuccess = true;
-            console.log(`[POSTING_QUEUE] ✅ Database save SUCCESS on attempt ${attempt}`);
+            console.log(`[POSTING_QUEUE] ✅ Database save SUCCESS on attempt ${attempt} (verified: ok=${saveResult.ok})`);
             
             // ✅ EXPLICIT SUCCESS LOG: Log after DB save confirms post is complete
             // 🔥 THREAD TRUTH FIX: Treat multi-tweet posts as threads regardless of decision_type
