@@ -14,63 +14,39 @@
 -- ============================================================
 
 -- Wrapper for pg_try_advisory_lock (non-blocking lock acquisition)
-CREATE OR REPLACE FUNCTION pg_try_advisory_lock(lock_id bigint)
+-- Must explicitly reference pg_catalog to avoid recursion
+CREATE OR REPLACE FUNCTION public.pg_try_advisory_lock(lock_id bigint)
 RETURNS boolean
 LANGUAGE sql
 SECURITY DEFINER
 AS $$
-  SELECT pg_try_advisory_lock(lock_id);
+  SELECT pg_catalog.pg_try_advisory_lock(lock_id);
 $$;
 
-COMMENT ON FUNCTION pg_try_advisory_lock IS 'Try to acquire advisory lock (non-blocking). Returns true if acquired, false if already held.';
+COMMENT ON FUNCTION public.pg_try_advisory_lock IS 'RPC wrapper for pg_try_advisory_lock. Try to acquire advisory lock (non-blocking). Returns true if acquired, false if already held.';
 
 -- Wrapper for pg_advisory_unlock (lock release)
-CREATE OR REPLACE FUNCTION pg_advisory_unlock(lock_id bigint)
+-- Must explicitly reference pg_catalog to avoid recursion
+CREATE OR REPLACE FUNCTION public.pg_advisory_unlock(lock_id bigint)
 RETURNS boolean
 LANGUAGE sql
 SECURITY DEFINER
 AS $$
-  SELECT pg_advisory_unlock(lock_id);
+  SELECT pg_catalog.pg_advisory_unlock(lock_id);
 $$;
 
-COMMENT ON FUNCTION pg_advisory_unlock IS 'Release advisory lock. Returns true if released, false if not held.';
+COMMENT ON FUNCTION public.pg_advisory_unlock IS 'RPC wrapper for pg_advisory_unlock. Release advisory lock. Returns true if released, false if not held.';
 
 -- ============================================================
--- PART 2: Post Receipts Table
+-- PART 2: Post Receipts Table Enhancements
 -- (Immutable proof-of-posting for all content types)
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS post_receipts (
-  -- Primary key
-  receipt_id BIGSERIAL PRIMARY KEY,
-  
-  -- Decision linkage (nullable for orphan receipts)
-  decision_id UUID,
-  
-  -- Tweet IDs (JSONB array for flexibility)
-  tweet_ids JSONB NOT NULL,
-  root_tweet_id TEXT NOT NULL,
-  
-  -- Post classification
-  post_type TEXT NOT NULL CHECK (post_type IN ('single', 'thread', 'reply')),
-  
-  -- Timestamps
-  posted_at TIMESTAMPTZ NOT NULL,
-  receipt_created_at TIMESTAMPTZ DEFAULT NOW(),
-  reconciled_at TIMESTAMPTZ,
-  
-  -- Reply-specific: parent tweet ID (for replies)
-  parent_tweet_id TEXT,
-  
-  -- Additional metadata (JSONB for flexibility)
-  metadata JSONB DEFAULT '{}'::jsonb,
-  
-  -- Constraints
-  CONSTRAINT tweet_ids_not_empty CHECK (jsonb_array_length(tweet_ids) > 0),
-  CONSTRAINT root_tweet_id_not_empty CHECK (root_tweet_id != '')
-);
+-- Table already exists, just add missing column
+ALTER TABLE post_receipts 
+ADD COLUMN IF NOT EXISTS parent_tweet_id TEXT;
 
--- Indexes for common queries
+-- Indexes for common queries (idempotent)
 CREATE INDEX IF NOT EXISTS idx_post_receipts_decision_id ON post_receipts(decision_id);
 CREATE INDEX IF NOT EXISTS idx_post_receipts_post_type ON post_receipts(post_type);
 CREATE INDEX IF NOT EXISTS idx_post_receipts_posted_at ON post_receipts(posted_at DESC);
@@ -78,7 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_post_receipts_root_tweet_id ON post_receipts(root
 CREATE INDEX IF NOT EXISTS idx_post_receipts_parent_tweet_id ON post_receipts(parent_tweet_id) WHERE parent_tweet_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_post_receipts_reconciled ON post_receipts(reconciled_at) WHERE reconciled_at IS NULL;
 
--- Add comments for documentation
+-- Add/update comments for documentation
 COMMENT ON TABLE post_receipts IS 'Immutable receipts for all posted tweets. Written immediately after successful post to X.';
 COMMENT ON COLUMN post_receipts.decision_id IS 'Links to content_metadata. NULL for orphan receipts (salvaged tweets).';
 COMMENT ON COLUMN post_receipts.tweet_ids IS 'JSONB array of all tweet IDs. Single element for singles/replies, multiple for threads.';
