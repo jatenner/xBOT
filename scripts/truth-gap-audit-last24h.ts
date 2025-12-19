@@ -244,16 +244,25 @@ async function fetchXTweetsViaLocalPlaywright(): Promise<FetchResult> {
 }
 
 /**
- * Fetch tweets from X (tries API first, then local Playwright)
+ * Fetch tweets from X (tries API first only if credentials present, otherwise Playwright)
  */
 async function fetchXTweets(): Promise<FetchResult> {
-  // Try API first
-  const apiResult = await fetchXTweetsViaAPI();
-  if (apiResult.method === 'api' && apiResult.tweets.length > 0) {
-    return apiResult;
+  const bearerToken = process.env.TWITTER_BEARER_TOKEN;
+  
+  // Only try API if credentials are present
+  if (bearerToken) {
+    console.log(`[TRUTH_GAP] Twitter API credentials detected, trying API first...`);
+    const apiResult = await fetchXTweetsViaAPI();
+    if (apiResult.method === 'api' && apiResult.tweets.length > 0) {
+      return apiResult;
+    }
+    console.log(`[TRUTH_GAP] API fetch failed or returned no tweets, falling back to Playwright...`);
+  } else {
+    console.log(`[TRUTH_GAP] No Twitter API credentials found (TWITTER_BEARER_TOKEN not set)`);
+    console.log(`[TRUTH_GAP] Using Playwright-only mode (matches posting method)`);
   }
   
-  // Fallback to local Playwright
+  // Use local Playwright (isolated instance, not shared pool)
   const playwrightResult = await fetchXTweetsViaLocalPlaywright();
   return playwrightResult;
 }
@@ -422,14 +431,24 @@ function generateReport(result: TruthGapResult): string {
   }
   report += `\n`;
   
+  // Add note about method
+  if (result.fetchMethod === 'local_playwright') {
+    report += `> **Note:** This audit uses Playwright to verify what is visible on X's UI.\n`;
+    report += `> This matches the posting method, ensuring consistency.\n\n`;
+  }
+  
   if (!result.auditValid) {
     report += `## ⚠️ AUDIT INVALID\n\n`;
     report += `Could not fetch tweets from X. Cannot determine truth gap.\n\n`;
     report += `**Reason:** ${result.fetchError || 'Unknown error'}\n\n`;
+    report += `**What this means:**\n`;
+    report += `- The audit cannot verify if tweets are actually visible on X\n`;
+    report += `- This is NOT the same as "posted but missing in DB"\n`;
+    report += `- Fix X scraping (Playwright) to run a valid audit\n\n`;
     report += `**Next Steps:**\n`;
-    report += `1. Check TWITTER_BEARER_TOKEN is set (for API method)\n`;
-    report += `2. Check Playwright is installed (for fallback method)\n`;
-    report += `3. Verify network connectivity\n\n`;
+    report += `1. Check Playwright is installed and working\n`;
+    report += `2. Verify network connectivity to x.com\n`;
+    report += `3. Check browser session (TWITTER_SESSION_B64) if authentication is required\n\n`;
     report += `---\n\n`;
     report += `**Report Generated:** ${reportDate}\n`;
     return report;
@@ -514,22 +533,20 @@ async function validateTweetUrl(tweetUrl: string): Promise<void> {
   const tweetId = match[1];
   console.log(`[TRUTH_GAP] Extracted tweet_id: ${tweetId}`);
   
-  // Verify it exists on X (try API first)
-  const apiResult = await fetchXTweetsViaAPI();
-  let existsOnX = false;
+  // Verify it exists on X (use same logic as main audit)
+  const fetchResult = await fetchXTweets();
   
-  if (apiResult.method === 'api') {
-    existsOnX = apiResult.tweets.some(t => t.tweet_id === tweetId);
-  } else {
-    // Fallback: try local Playwright
-    const playwrightResult = await fetchXTweetsViaLocalPlaywright();
-    existsOnX = playwrightResult.tweets.some(t => t.tweet_id === tweetId);
+  if (fetchResult.method === 'failed') {
+    console.error(`[TRUTH_GAP] ❌ Cannot validate tweet - X fetch failed: ${fetchResult.error}`);
+    process.exit(1);
   }
+  
+  const existsOnX = fetchResult.tweets.some(t => t.tweet_id === tweetId);
   
   if (!existsOnX) {
     console.log(`[TRUTH_GAP] ⚠️ Tweet ${tweetId} not found on X (may be outside 24h window or deleted)`);
   } else {
-    console.log(`[TRUTH_GAP] ✅ Tweet ${tweetId} exists on X`);
+    console.log(`[TRUTH_GAP] ✅ Tweet ${tweetId} exists on X (via ${fetchResult.method})`);
   }
   
   // Verify it exists in DB
@@ -585,9 +602,10 @@ async function main() {
     
     if (fetchResult.method === 'failed') {
       console.error(`\n[TRUTH_GAP] ❌ AUDIT_INVALID: could not fetch tweets from X`);
-      console.error(`[TRUTH_GAP]    API Error: ${fetchResult.error || 'Unknown'}`);
-      console.error(`[TRUTH_GAP]    Playwright Error: ${fetchResult.error || 'Unknown'}`);
+      console.error(`[TRUTH_GAP]    Error: ${fetchResult.error || 'Unknown'}`);
       console.error(`[TRUTH_GAP]    Cannot determine truth gap without X data.`);
+      console.error(`\n[TRUTH_GAP] This audit verifies what is visible on X via Playwright.`);
+      console.error(`[TRUTH_GAP] If X scraping fails, the audit cannot determine if tweets are truly posted.`);
       
       // Still generate report but mark as invalid
       const dbDecisions = await queryDBDecisions();
@@ -598,6 +616,7 @@ async function main() {
       const reportPath = 'docs/reports/TRUTH_GAP_AUDIT_LAST24H.md';
       await fs.writeFile(reportPath, report, 'utf-8');
       
+      console.error(`\n[TRUTH_GAP] Report generated with AUDIT_VALID=false`);
       process.exit(1);
     }
     
