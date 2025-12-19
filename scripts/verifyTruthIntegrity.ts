@@ -15,14 +15,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Load env vars if running locally (Railway provides them automatically)
-if (process.env.NODE_ENV !== 'production') {
-  try {
-    require('dotenv/config');
-  } catch (e) {
-    // dotenv not available in production build, that's ok
-  }
-}
+// Note: Railway provides environment variables automatically
+// dotenv only needed for local development (loaded by package.json scripts)
 
 // Configuration
 const TIME_WINDOW_HOURS = parseInt(process.env.TRUTH_VERIFY_HOURS || '24', 10);
