@@ -3127,7 +3127,7 @@ export async function markDecisionPosted(
         }
         
         const { error: updateError } = await supabase
-          .from('content_metadata')
+          .from('content_generation_metadata_comprehensive')  // 🔥 FIX: Write to base table, not view
           .update(updateData)
           .eq('decision_id', decisionId);  // 🔥 FIX: decisionId is UUID, query by decision_id not id!
         
