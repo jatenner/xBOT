@@ -333,7 +333,7 @@ async function checkReceiptReconciliation() {
     // Check if post_receipts table exists
     const { data: receipts, error } = await supabase
       .from('post_receipts')
-      .select('receipt_id, root_tweet_id, decision_id, post_type, posted_at, metadata')
+      .select('receipt_id, root_tweet_id, decision_id, post_type, posted_at, parent_tweet_id, metadata')
       .eq('post_type', 'reply')
       .order('posted_at', { ascending: false })
       .limit(10);
@@ -394,12 +394,11 @@ async function checkReceiptReconciliation() {
       console.log(`      Tweet ID: ${receipt.root_tweet_id}`);
       console.log(`      Decision ID: ${receipt.decision_id || 'NULL'}`);
       
-      // Check for parent_tweet_id in metadata
-      const parentTweetId = receipt.metadata?.parent_tweet_id || receipt.metadata?.target_tweet_id;
-      if (parentTweetId) {
-        console.log(`      Parent: ${parentTweetId}`);
+      // Check for parent_tweet_id (dedicated column for replies)
+      if (receipt.parent_tweet_id) {
+        console.log(`      Parent: ${receipt.parent_tweet_id}`);
       } else {
-        const issue = `Receipt ${id}: Missing parent_tweet_id in metadata`;
+        const issue = `Receipt ${id}: Missing parent_tweet_id`;
         console.log(`      ⚠️  ${issue}`);
         issues.push(issue);
       }
