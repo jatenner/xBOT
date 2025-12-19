@@ -919,24 +919,45 @@ export class BulletproofThreadComposer {
         this.safeWait(page, 10000, { decisionId: 'reply_chain', attempt: i, stage: 'reply_post_wait' }, pool)
       ]);
       
-      // 🆕 CAPTURE REPLY TWEET ID AND URL
+      // 🆕 CAPTURE REPLY TWEET ID FROM DOM (Not URL - more reliable!)
       try {
-        await this.safeWait(page, 2000, { decisionId: 'reply_chain', attempt: i, stage: 'reply_capture_wait' }, pool); // Wait for tweet to be posted
-        const newUrl = page.url();
-        const replyId = newUrl.match(/status\/(\d+)/)?.[1];
-        if (replyId && replyId !== rootId) {
+        await this.safeWait(page, 3000, { decisionId: 'reply_chain', attempt: i, stage: 'reply_capture_wait' }, pool);
+        
+        // Wait for tweet articles to load
+        await page.waitForSelector('article[data-testid="tweet"]', { timeout: 5000 });
+        
+        // Extract ID from the LAST article (newest tweet = our reply)
+        const replyId = await page.evaluate(() => {
+          const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+          if (articles.length === 0) return null;
+          
+          // Get last article (most recent tweet)
+          const lastArticle = articles[articles.length - 1];
+          
+          // Find status link in this article
+          const statusLink = lastArticle.querySelector('a[href*="/status/"]');
+          if (!statusLink) return null;
+          
+          const href = statusLink.getAttribute('href');
+          if (!href) return null;
+          
+          // Extract ID from href
+          const match = href.match(/\/status\/(\d+)/);
+          return match ? match[1] : null;
+        });
+        
+        if (replyId && replyId !== rootId && !tweetIds.includes(replyId)) {
           tweetIds.push(replyId);
-          // 🔥 FIX: Update currentTweetUrl to this reply for next iteration
           currentTweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${replyId}`;
           console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1} (ID: ${replyId})`);
           console.log(`🔗 NEXT_PARENT: Reply ${i + 1} will reply to ${replyId}`);
         } else {
-          console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1} (ID not captured)`);
-          console.warn(`⚠️ Could not update parent URL, next reply may break chain`);
+          console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1} (ID not captured - replyId=${replyId}, isDuplicate=${tweetIds.includes(replyId || '')})`);
+          console.warn(`⚠️ Could not capture unique ID, next reply may break chain`);
         }
-      } catch (idError) {
-        console.warn(`⚠️ Could not capture reply ${i} ID:`, idError);
-        console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1}`);
+      } catch (idError: any) {
+        console.warn(`⚠️ Could not capture reply ${i} ID:`, idError.message);
+        console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1} (exception during capture)`);
         console.warn(`⚠️ Chain may break at next reply due to missing URL`);
       }
       

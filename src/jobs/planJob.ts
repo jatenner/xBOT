@@ -609,9 +609,18 @@ async function generateContentWithLLM() {
   const distributionDecision = shouldBeThread(contentSignals);
   logDistributionDecision(distributionDecision.decision, distributionDecision.reason, distributionDecision.probability);
   
-  // Override format strategy based on distribution decision
-  const decidedPostType = distributionDecision.decision;
-  console.log(`[POST_PLAN] decided_type=${decidedPostType} reason=${distributionDecision.reason}`);
+  // 🔥 FORCE THREAD VERIFICATION: Override decision type if flag set
+  let decidedPostType = distributionDecision.decision;
+  const forceThread = process.env.FORCE_NEXT_THREAD === 'true';
+  if (forceThread) {
+    console.log('[THREAD_FORCE] 🔬 FORCE_NEXT_THREAD=true detected - forcing thread generation');
+    decidedPostType = 'thread';
+    // Clear flag after using (one-time force)
+    delete process.env.FORCE_NEXT_THREAD;
+    console.log('[THREAD_FORCE] ✅ Flag cleared - next run will use normal distribution');
+  }
+  
+  console.log(`[POST_PLAN] decided_type=${decidedPostType} reason=${forceThread ? 'FORCED_FOR_TESTING' : distributionDecision.reason}`);
   
   // LEGACY: Keep old diversity tracking for compatibility
   contentDiversityEngine.trackTopic(topic);
