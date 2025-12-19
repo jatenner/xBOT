@@ -207,14 +207,24 @@ FINAL RESULT: ✅ PASS
 **What it means:** Tweet was posted to X and IDs were captured, but DB marking failed. **This is recoverable.**
 
 **Action:**
+
+**Option 1: Auto-repair (recommended)**
+```bash
+# Repair last 24 hours (requires ENABLE_TRUTH_AUTO_REPAIR=true)
+pnpm truth:repair:last24h
+
+# With X verification (slower but safer)
+pnpm truth:repair:with-verify
+```
+
+**Option 2: Manual reconciliation**
 ```bash
 # Run reconciliation job (automatic if ENABLE_TRUTH_RECONCILE=true)
 pnpm reconcile
 
-# Or manually fix:
-# In Supabase SQL editor:
+# Or manually fix in Supabase SQL editor:
 UPDATE content_metadata 
-SET status = 'posted', posted_at = NOW()
+SET status = 'posted', posted_at = NOW(), reconciled_at = NOW()
 WHERE decision_id IN (
   -- decision_ids from report
   'abc12345...', 'def67890...'
@@ -243,6 +253,7 @@ WHERE decision_id IN (
 ### Environment Variables
 
 ```bash
+# ===== Verification =====
 # Enable scheduled checks (jobManager integration)
 ENABLE_TRUTH_INTEGRITY_CHECK=true
 
@@ -257,7 +268,25 @@ TRUTH_VERIFY_SAMPLE=10
 
 # Required for X verification
 TWITTER_SESSION_B64=<base64-encoded-session>
+
+# ===== Truth Guard =====
+# Pause posting on repeated failures (default: true)
+ENABLE_TRUTH_GUARD=true
+
+# ===== Auto-Repair =====
+# Enable automatic repair of salvageable rows (default: false)
+ENABLE_TRUTH_AUTO_REPAIR=false
+
+# Verify on X before repairing (default: false)
+TRUTH_REPAIR_VERIFY_X=false
 ```
+
+### Job Registration
+
+**Where:** `src/jobs/jobManager.ts` (line ~940)  
+**Schedule:** Every 15 minutes (staggered start after 10 min)  
+**Mechanism:** `scheduleStaggeredJob()` with setInterval  
+**Enabled by:** `ENABLE_TRUTH_INTEGRITY_CHECK=true`
 
 ### Changing Schedule
 
@@ -337,6 +366,54 @@ ORDER BY timestamp DESC;
 - Expand time window: `TRUTH_VERIFY_HOURS=168 pnpm truth:verify` (7 days)
 - Verify posting system is running
 - Check if decisions exist: `SELECT COUNT(*) FROM content_metadata;`
+
+---
+
+## Truth Guard (Posting Pause)
+
+### What It Does
+
+If truth integrity verification fails 3+ times in a rolling 60-minute window, the system **automatically pauses posting** to prevent learning pollution.
+
+### How to Tell if Posting is Paused
+
+Check logs for:
+```
+[TRUTH_GUARD] 🚫 posting_paused reason=TRUTH_VERIFY_FAIL_STREAK failure_count=3
+[TRUTH_GUARD] Truth integrity is failing repeatedly - pausing posting to prevent learning pollution
+```
+
+### How to Unpause
+
+1. **Fix the violations**:
+   - Review the truth integrity report
+   - Fix false success rows (if any)
+   - Repair salvageable rows: `pnpm truth:repair:last24h`
+
+2. **Verify integrity is restored**:
+   ```bash
+   pnpm truth:verify:last24h
+   ```
+   
+3. **If PASS, posting will resume automatically** (failures expire after 60 min)
+
+4. **To force unpause immediately** (not recommended):
+   ```bash
+   # In Supabase SQL editor:
+   DELETE FROM system_events 
+   WHERE component = 'truth_integrity' 
+     AND event_type = 'verification_failed'
+     AND timestamp > NOW() - INTERVAL '60 minutes';
+   ```
+
+### Disable Truth Guard (Not Recommended)
+
+```bash
+# In Railway:
+railway variables --service xBOT --set "ENABLE_TRUTH_GUARD=false"
+```
+
+**Warning:** Disabling the guard allows posting even when truth integrity is failing, which can corrupt your learning system.
 
 ---
 
