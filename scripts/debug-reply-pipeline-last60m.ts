@@ -453,30 +453,63 @@ async function checkReceiptReconciliation() {
 }
 
 async function checkRateLimiter(sixtyMinutesAgo: string) {
-  console.log('F) RATE LIMITER CHECK\n');
+  console.log('F) RATE LIMITER CHECK (4/hour Hard Limit)\n');
   
   try {
-    // Count posted replies in last 60 minutes
-    const { count } = await supabase
-      .from('content_metadata')
+    // Count reply receipts in last 60 minutes (source of truth)
+    const { count: receiptCount } = await supabase
+      .from('post_receipts')
       .select('*', { count: 'exact', head: true })
-      .eq('decision_type', 'reply')
-      .eq('status', 'posted')
+      .eq('post_type', 'reply')
       .gte('posted_at', sixtyMinutesAgo);
     
-    const repliesLastHour = count || 0;
+    const repliesLastHour = receiptCount || 0;
     const limit = 4;
-    const wouldBlock = repliesLastHour >= limit;
+    const violation = repliesLastHour > limit;
     
-    console.log(`   Replies in last 60m: ${repliesLastHour} / ${limit}`);
-    console.log(`   Rate limiter would ${wouldBlock ? '🔒 BLOCK' : '✅ ALLOW'} new replies`);
+    console.log(`   Reply receipts in last 60m: ${repliesLastHour} / ${limit}`);
     
-    results.push({
-      section: 'Rate Limiter',
-      passed: true, // Not a failure
-      issues: [],
-      data: { repliesLastHour, limit, wouldBlock }
-    });
+    if (violation) {
+      console.log(`   🚨 RATE LIMIT VIOLATION: ${repliesLastHour} replies in last hour (limit: ${limit})`);
+      console.log(`   🔒 Truth guard should pause posting to prevent learning pollution`);
+      
+      // Emit system event to trigger truth guard pause
+      try {
+        await supabase
+          .from('system_events')
+          .insert({
+            component: 'reply_rate_limiter',
+            event_type: 'rate_limit_violation',
+            severity: 'error',
+            message: `Reply rate limit violated: ${repliesLastHour}/hour (limit: ${limit})`,
+            metadata: {
+              replies_last_hour: repliesLastHour,
+              limit,
+              timestamp: new Date().toISOString()
+            }
+          });
+        console.log(`   📝 System event emitted for truth guard`);
+      } catch (eventErr: any) {
+        console.error(`   ⚠️  Failed to emit system event: ${eventErr.message}`);
+      }
+      
+      results.push({
+        section: 'Rate Limiter',
+        passed: false,
+        issues: [`Rate limit violated: ${repliesLastHour} replies in last hour (limit: ${limit})`]
+      });
+      exitCode = 1;
+    } else {
+      console.log(`   ✅ Rate limiter compliant: ${repliesLastHour} / ${limit} replies`);
+      console.log(`   Would ${repliesLastHour >= limit ? '🔒 BLOCK' : '✅ ALLOW'} new replies`);
+      
+      results.push({
+        section: 'Rate Limiter',
+        passed: true,
+        issues: [],
+        data: { repliesLastHour, limit, wouldBlock: repliesLastHour >= limit }
+      });
+    }
     
   } catch (error: any) {
     console.error(`   ❌ Error: ${error.message}`);
