@@ -992,16 +992,30 @@ export class BulletproofThreadComposer {
 
   /**
    * 📝 Verify textbox contains expected content
+   * 🔥 FIXED: Use page.evaluate() to read value consistently with verifyPasteAndFallback
    */
   private static async verifyTextBoxHas(page: Page, idx: number, expected: string): Promise<void> {
     const tb = await this.getComposeBox(page, idx);
     await tb.waitFor({ state: 'visible', timeout: 8000 });
 
-    const got = (await tb.innerText()).replace(/\s+/g, ' ').trim();
+    // 🔥 FIX: Use same method as verifyPasteAndFallback (page.evaluate vs innerText)
+    const got = await page.evaluate((index: number) => {
+      const textarea = document.querySelector(`[data-testid="tweetTextarea_${index}"]`) as HTMLTextAreaElement;
+      const contenteditable = document.querySelector(`div[contenteditable="true"][role="textbox"]`) as HTMLElement;
+      
+      if (textarea) {
+        return textarea.value || textarea.textContent || '';
+      } else if (contenteditable) {
+        return contenteditable.textContent || contenteditable.innerText || '';
+      }
+      return '';
+    }, idx);
+    
+    const gotClean = got.replace(/\s+/g, ' ').trim();
     const want = expected.replace(/\s+/g, ' ').trim();
     
-    if (!got.includes(want.slice(0, Math.min(40, want.length)))) {
-      throw new Error(`TEXT_VERIFY_FAIL idx=${idx} got="${got.slice(0, 80)}" want~="${want.slice(0, 80)}"`);
+    if (!gotClean.includes(want.slice(0, Math.min(40, want.length)))) {
+      throw new Error(`TEXT_VERIFY_FAIL idx=${idx} got="${gotClean.slice(0, 80)}" want~="${want.slice(0, 80)}"`);
     }
     
     console.log(`THREAD_SEG_VERIFIED idx=${idx} len=${expected.length}`);
