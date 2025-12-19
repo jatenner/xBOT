@@ -129,6 +129,7 @@ async function fetchXTweetsViaAPI(): Promise<FetchResult> {
 /**
  * Fetch tweets from X profile timeline using local Playwright (fallback)
  * Uses a fresh chromium instance, NOT the shared browser pool
+ * Uses same authentication as posting system for consistency
  */
 async function fetchXTweetsViaLocalPlaywright(): Promise<FetchResult> {
   console.log(`[TRUTH_GAP] Fetching tweets from X profile via local Playwright...`);
@@ -144,18 +145,43 @@ async function fetchXTweetsViaLocalPlaywright(): Promise<FetchResult> {
     
     // Launch fresh browser instance (NOT using shared pool)
     const browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext();
+    
+    // Create context with authentication (same as posting system)
+    let context;
+    const sessionB64 = process.env.TWITTER_SESSION_B64;
+    
+    if (sessionB64) {
+      console.log(`[TRUTH_GAP] Loading authenticated session from TWITTER_SESSION_B64...`);
+      try {
+        const sessionJson = Buffer.from(sessionB64, 'base64').toString('utf-8');
+        const storageState = JSON.parse(sessionJson);
+        context = await browser.newContext({ storageState });
+        console.log(`[TRUTH_GAP] ✅ Authenticated session loaded`);
+      } catch (sessionError: any) {
+        console.warn(`[TRUTH_GAP] ⚠️ Failed to load session: ${sessionError.message}`);
+        console.warn(`[TRUTH_GAP] Continuing without authentication...`);
+        context = await browser.newContext();
+      }
+    } else {
+      console.log(`[TRUTH_GAP] No TWITTER_SESSION_B64 found, continuing without authentication...`);
+      context = await browser.newContext();
+    }
+    
     const page = await context.newPage();
     
     try {
+      console.log(`[TRUTH_GAP] Navigating to ${profileUrl}...`);
       await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(3000); // Wait for dynamic content
       
-      // Scroll to load more tweets (scroll 3 times)
-      for (let i = 0; i < 3; i++) {
+      console.log(`[TRUTH_GAP] Scrolling to load tweets...`);
+      // Scroll to load more tweets (scroll 5 times for better coverage)
+      for (let i = 0; i < 5; i++) {
         await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
         await page.waitForTimeout(2000);
       }
+      
+      console.log(`[TRUTH_GAP] Extracting tweet data...`);
       
       // Extract tweet IDs and metadata
       const tweetData = await page.evaluate(() => {
@@ -202,6 +228,8 @@ async function fetchXTweetsViaLocalPlaywright(): Promise<FetchResult> {
         return tweets;
       });
       
+      console.log(`[TRUTH_GAP] Extracted ${tweetData.length} raw tweets from page`);
+      
       // Filter to last 24 hours and convert to XTweet format
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       
@@ -227,7 +255,15 @@ async function fetchXTweetsViaLocalPlaywright(): Promise<FetchResult> {
         }
       }
       
-      console.log(`[TRUTH_GAP] ✅ Fetched ${tweets.length} tweets via local Playwright`);
+      console.log(`[TRUTH_GAP] ✅ Fetched ${tweets.length} tweets from last 24h via local Playwright`);
+      
+      if (tweets.length === 0) {
+        console.warn(`[TRUTH_GAP] ⚠️ No tweets found. Possible reasons:`);
+        console.warn(`[TRUTH_GAP]    - Profile may be private (requires authentication)`);
+        console.warn(`[TRUTH_GAP]    - Timeline selectors may have changed`);
+        console.warn(`[TRUTH_GAP]    - Rate limiting or network issues`);
+        console.warn(`[TRUTH_GAP]    - No tweets posted in last 24h`);
+      }
       
     } finally {
       await page.close();
