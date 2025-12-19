@@ -3096,8 +3096,20 @@ export async function markDecisionPosted(
     } else {
       console.log(`[POSTING_QUEUE] 📝 Decision ${decisionId} marked as posted with tweet ID: ${tweetId}`);
     }
+    
+    // 🔒 Return confirmation (TypeScript requires return value)
+    const savedIds = tweetIds && tweetIds.length > 0 ? tweetIds : [tweetId];
+    const classification = savedIds.length > 1 ? 'thread' : 'single';
+    return {
+      ok: true,
+      decision_id: decisionId,
+      savedTweetIds: savedIds,
+      classification,
+      wasAlreadyPosted: false
+    };
   } catch (error: any) {
     console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Failed to mark posted for ${decisionId}:`, error.message);
+    console.error(`[LIFECYCLE][FAIL] decision_id=${decisionId} reason=MARK_POSTED_EXCEPTION err=${error.message}`);
     // 🔥 CRITICAL FIX: Re-throw error so retry loop can catch it
     // Without this, the calling code thinks save succeeded when it actually failed!
     throw error;
