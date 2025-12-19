@@ -919,7 +919,7 @@ export class BulletproofThreadComposer {
         this.safeWait(page, 10000, { decisionId: 'reply_chain', attempt: i, stage: 'reply_post_wait' }, pool)
       ]);
       
-      // 🆕 CAPTURE REPLY TWEET ID FROM DOM (Not URL - more reliable!)
+      // 🆕 CAPTURE REPLY TWEET ID FROM DOM (Not URL!)
       try {
         await this.safeWait(page, 3000, { decisionId: 'reply_chain', attempt: i, stage: 'reply_capture_wait' }, pool);
         
@@ -952,7 +952,7 @@ export class BulletproofThreadComposer {
           console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1} (ID: ${replyId})`);
           console.log(`🔗 NEXT_PARENT: Reply ${i + 1} will reply to ${replyId}`);
         } else {
-          console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1} (ID not captured - replyId=${replyId}, isDuplicate=${tweetIds.includes(replyId || '')})`);
+          console.log(`✅ THREAD_REPLY_SUCCESS: ${i}/${segments.length - 1} (ID not captured - replyId=${replyId})`);
           console.warn(`⚠️ Could not capture unique ID, next reply may break chain`);
         }
       } catch (idError: any) {
