@@ -594,6 +594,25 @@ async function generateContentWithLLM() {
   console.log(`\n🎨 FORMAT: "${formatStrategy}"`);
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
+  // ═══════════════════════════════════════════════════════════
+  // 🎯 POST TYPE CONTRACT: Determine single vs thread
+  // ═══════════════════════════════════════════════════════════
+  const { shouldBeThread, extractContentSignals, logDistributionDecision } = await import('../scheduling/PostDistributionPolicy');
+  
+  const contentSignals = extractContentSignals({
+    topic,
+    angle,
+    content: `${topic} ${angle}`,
+    metadata: { formatStrategy, selectedSlot }
+  });
+  
+  const distributionDecision = shouldBeThread(contentSignals);
+  logDistributionDecision(distributionDecision.decision, distributionDecision.reason, distributionDecision.probability);
+  
+  // Override format strategy based on distribution decision
+  const decidedPostType = distributionDecision.decision;
+  console.log(`[POST_PLAN] decided_type=${decidedPostType} reason=${distributionDecision.reason}`);
+  
   // LEGACY: Keep old diversity tracking for compatibility
   contentDiversityEngine.trackTopic(topic);
   
@@ -730,7 +749,7 @@ async function generateContentWithLLM() {
     console.log('[PHASE4] 🚀 Using Phase 4 orchestratorRouter');
     
     const routerResponse = await routeContentGeneration({
-      decision_type: (formatStrategy && typeof formatStrategy === 'object' && (formatStrategy as any).format_type === 'thread') ? 'thread' : 'single',
+      decision_type: decidedPostType, // Use distribution decision
       content_slot: selectedSlot,
       topic,
       angle,
@@ -779,6 +798,119 @@ async function generateContentWithLLM() {
   }
   
   llmMetrics.success++;
+  
+  // ═══════════════════════════════════════════════════════════
+  // 🚪 POST QUALITY GATE: Validate content matches contract
+  // ═══════════════════════════════════════════════════════════
+  const { checkPostQuality, shouldRegenerate } = await import('../gates/PostQualityGate');
+  
+  // Convert generated content to PostPlan format
+  let postPlan: any;
+  const isGeneratedThread = Array.isArray(generatedContent.text);
+  
+  if (decidedPostType === 'single') {
+    postPlan = {
+      post_type: 'single',
+      text: isGeneratedThread ? generatedContent.text[0] : generatedContent.text
+    };
+  } else {
+    postPlan = {
+      post_type: 'thread',
+      tweets: isGeneratedThread ? generatedContent.text : [generatedContent.text],
+      thread_goal: `${topic}: ${angle}`
+    };
+  }
+  
+  // Validate with quality gate (up to 3 attempts)
+  let qualityCheck = checkPostQuality(postPlan);
+  let regenerationAttempt = 0;
+  const MAX_QUALITY_ATTEMPTS = 3;
+  
+  while (!qualityCheck.passed && regenerationAttempt < MAX_QUALITY_ATTEMPTS) {
+    regenerationAttempt++;
+    console.log(`[POST_GATE] ❌ REJECTED: ${qualityCheck.reason} (attempt ${regenerationAttempt}/${MAX_QUALITY_ATTEMPTS})`);
+    console.log(`[POST_GATE] Issues: ${qualityCheck.issues.join(', ')}`);
+    
+    if (!shouldRegenerate(qualityCheck)) {
+      break; // Non-critical issues, accept anyway
+    }
+    
+    // Regenerate with stricter constraints
+    console.log(`[POST_GATE] 🔄 Regenerating with stricter constraints...`);
+    
+    const stricterPromptAddition = decidedPostType === 'single'
+      ? `\n\nCRITICAL: This MUST be a SINGLE tweet. NO numbering (1/5, 2/5), NO thread emoji (🧵), NO words like "thread" or "part 1", NO phrases like "let's explore" or "more below". Just one complete, standalone tweet.`
+      : `\n\nCRITICAL: This MUST be a THREAD with 2-6 tweets. Each tweet must be <= 280 chars. Include strong hook in first tweet and clear takeaway in last tweet.`;
+    
+    // Regenerate (simplified - reuse existing generator)
+    if (usePhase4Routing) {
+      const routerResponse = await routeContentGeneration({
+        decision_type: decidedPostType,
+        content_slot: selectedSlot,
+        topic,
+        angle,
+        tone,
+        formatStrategy: (typeof formatStrategy === 'string' ? formatStrategy : JSON.stringify(formatStrategy)) + stricterPromptAddition,
+        generator_name: matchedGenerator,
+        priority_score: null,
+        dynamicTopic,
+        growthIntelligence,
+        viInsights,
+        angle_type: (dynamicTopic as any)?.angle_type,
+        tone_is_singular: (dynamicTopic as any)?.tone_is_singular,
+        tone_cluster: (dynamicTopic as any)?.tone_cluster,
+        structural_type: (dynamicTopic as any)?.structural_type
+      });
+      
+      generatedContent = {
+        text: routerResponse.text,
+        format: routerResponse.format,
+        topic: routerResponse.topic,
+        angle: routerResponse.angle,
+        tone: routerResponse.tone,
+        visual_format: routerResponse.visual_format,
+        angle_type: routerResponse.angle_type,
+        tone_is_singular: routerResponse.tone_is_singular,
+        tone_cluster: routerResponse.tone_cluster,
+        structural_type: routerResponse.structural_type
+      };
+    } else {
+      generatedContent = await callDedicatedGenerator(matchedGenerator, {
+        topic,
+        angle,
+        tone,
+        formatStrategy: (typeof formatStrategy === 'string' ? formatStrategy : formatStrategy) + stricterPromptAddition,
+        dynamicTopic,
+        growthIntelligence,
+        viInsights
+      });
+    }
+    
+    // Rebuild postPlan
+    const isRegeneratedThread = Array.isArray(generatedContent.text);
+    if (decidedPostType === 'single') {
+      postPlan = {
+        post_type: 'single',
+        text: isRegeneratedThread ? generatedContent.text[0] : generatedContent.text
+      };
+    } else {
+      postPlan = {
+        post_type: 'thread',
+        tweets: isRegeneratedThread ? generatedContent.text : [generatedContent.text],
+        thread_goal: `${topic}: ${angle}`
+      };
+    }
+    
+    qualityCheck = checkPostQuality(postPlan);
+  }
+  
+  if (qualityCheck.passed) {
+    console.log(`[POST_GATE] ✅ ACCEPTED: ${qualityCheck.reason}${regenerationAttempt > 0 ? ` (after ${regenerationAttempt} regeneration${regenerationAttempt > 1 ? 's' : ''})` : ''}`);
+  } else {
+    console.log(`[POST_GATE] ⚠️ ACCEPTED WITH WARNINGS after ${MAX_QUALITY_ATTEMPTS} attempts: ${qualityCheck.reason}`);
+    console.log(`[POST_GATE] Warnings: ${qualityCheck.issues.join(', ')}`);
+  }
+  
   const contentData = generatedContent;
   
   // LEGACY FUNCTION (unused now, kept for reference)
