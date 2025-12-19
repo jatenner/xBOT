@@ -333,7 +333,7 @@ async function checkReceiptReconciliation() {
     // Check if post_receipts table exists
     const { data: receipts, error } = await supabase
       .from('post_receipts')
-      .select('receipt_id, root_tweet_id, decision_id, post_type, posted_at')
+      .select('receipt_id, root_tweet_id, decision_id, post_type, posted_at, metadata')
       .eq('post_type', 'reply')
       .order('posted_at', { ascending: false })
       .limit(10);
@@ -353,12 +353,32 @@ async function checkReceiptReconciliation() {
     }
     
     if (!receipts || receipts.length === 0) {
-      console.log(`   ⚠️  No reply receipts found`);
-      results.push({
-        section: 'Receipt Reconciliation',
-        passed: true,
-        issues: []
-      });
+      // 🔥 CRITICAL: No receipts found for replies
+      // Check if there ARE posted replies in content_metadata
+      const { count: postedCount } = await supabase
+        .from('content_metadata')
+        .select('*', { count: 'exact', head: true })
+        .eq('decision_type', 'reply')
+        .eq('status', 'posted')
+        .gte('posted_at', new Date(Date.now() - 60 * 60 * 1000).toISOString());
+      
+      if (postedCount && postedCount > 0) {
+        console.log(`   ❌ CRITICAL: ${postedCount} posted replies in last 60m, but 0 receipts!`);
+        console.log(`   This means receipts are NOT being written for replies.`);
+        results.push({
+          section: 'Receipt Reconciliation',
+          passed: false,
+          issues: [`${postedCount} posted replies have no receipts (receipt write not wired)`]
+        });
+        exitCode = 1;
+      } else {
+        console.log(`   ⚠️  No reply receipts found (no replies posted in last 60m)`);
+        results.push({
+          section: 'Receipt Reconciliation',
+          passed: true,
+          issues: []
+        });
+      }
       console.log('\n');
       return;
     }
@@ -369,9 +389,20 @@ async function checkReceiptReconciliation() {
     
     for (const receipt of receipts) {
       const id = receipt.receipt_id;
-      console.log(`   Receipt ${id}:`);
+      const ago = Math.round((Date.now() - new Date(receipt.posted_at).getTime()) / (1000 * 60));
+      console.log(`   Receipt ${id} (${ago}m ago):`);
       console.log(`      Tweet ID: ${receipt.root_tweet_id}`);
       console.log(`      Decision ID: ${receipt.decision_id || 'NULL'}`);
+      
+      // Check for parent_tweet_id in metadata
+      const parentTweetId = receipt.metadata?.parent_tweet_id || receipt.metadata?.target_tweet_id;
+      if (parentTweetId) {
+        console.log(`      Parent: ${parentTweetId}`);
+      } else {
+        const issue = `Receipt ${id}: Missing parent_tweet_id in metadata`;
+        console.log(`      ⚠️  ${issue}`);
+        issues.push(issue);
+      }
       
       // Check if matching content_metadata row exists
       if (receipt.decision_id) {

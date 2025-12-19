@@ -1854,19 +1854,28 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             console.log(`[POSTING_QUEUE] 💾 Saved ${tweetIds.length} thread tweet IDs to backup`);
           }
         } else if (decision.decision_type === 'reply') {
-          tweetId = await postReply(decision);
-        
-          // 🔒 VALIDATION: Validate reply ID immediately after posting
-          const { IDValidator } = await import('../validation/idValidator');
-          const replyValidation = IDValidator.validateReplyId(tweetId, decision.target_tweet_id || undefined);
-          if (!replyValidation.valid) {
-            throw new Error(`Invalid reply ID returned from postReply: ${replyValidation.error}`);
-          }
+          // 🔒 DISTRIBUTED LOCK: Wrap entire reply posting in lock to prevent concurrent posts
+          const { withReplyLock } = await import('../utils/replyRateLimiter');
           
-          // 🔥 PRIORITY 1 FIX: Save reply tweet_id to backup file IMMEDIATELY
-          const { saveTweetIdToBackup } = await import('../utils/tweetIdBackup');
-          saveTweetIdToBackup(decision.id, tweetId, decision.content);
-          console.log(`[POSTING_QUEUE] 💾 Reply tweet ID saved to backup file: ${tweetId}`);
+          tweetId = await withReplyLock(async () => {
+            // Lock is held - now post the reply
+            const replyTweetId = await postReply(decision);
+          
+            // 🔒 VALIDATION: Validate reply ID immediately after posting
+            const { IDValidator } = await import('../validation/idValidator');
+            const replyValidation = IDValidator.validateReplyId(replyTweetId, decision.target_tweet_id || undefined);
+            if (!replyValidation.valid) {
+              throw new Error(`Invalid reply ID returned from postReply: ${replyValidation.error}`);
+            }
+            
+            // 🔥 PRIORITY 1 FIX: Save reply tweet_id to backup file IMMEDIATELY
+            const { saveTweetIdToBackup } = await import('../utils/tweetIdBackup');
+            saveTweetIdToBackup(decision.id, replyTweetId, decision.content);
+            console.log(`[POSTING_QUEUE] 💾 Reply tweet ID saved to backup file: ${replyTweetId}`);
+            
+            return replyTweetId;
+          });
+          // Lock is released automatically after withReplyLock completes
           
           // For replies, construct URL (reply system doesn't return URL yet)
           tweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
@@ -2233,9 +2242,9 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             dbSaveSuccess = true;
             console.log(`[POSTING_QUEUE] ✅ Database save SUCCESS on attempt ${attempt} (verified: ok=${saveResult.ok})`);
             
-            // 🔒 TRUTH CONTRACT: Log DB success for replies
+            // 🔒 TRUTH CONTRACT: Log DB confirmation for replies
             if (decision.decision_type === 'reply') {
-              console.log(`[REPLY_TRUTH] step=DB_OK decision_id=${decision.id} tweet_id=${tweetId}`);
+              console.log(`[REPLY_TRUTH] step=DB_CONFIRMED ok=true tweet_id=${saveResult.savedTweetIds[0] || tweetId} decision_id=${decision.id}`);
             }
             
             // ✅ EXPLICIT SUCCESS LOG: Log after DB save confirms post is complete
@@ -2862,8 +2871,9 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED: Already replied to tweet ${decision.target_tweet_id} at ${replyTime}`);
     console.log(`[POSTING_QUEUE]    Previous reply ID: ${existingReply.tweet_id}`);
     
-    // Mark this decision as posted (to prevent retry) but don't actually post
-    await updateDecisionStatus(decision.id, 'posted');
+    // 🔥 FIX: Do NOT mark as posted here - this allows NULL tweet_id!
+    // Instead, mark as 'duplicate' or 'failed' with reason
+    console.log(`[REPLY_TRUTH] step=FAIL reason=DUPLICATE_PREVENTED target_tweet_id=${decision.target_tweet_id}`);
     throw new Error(`Duplicate reply prevented: Already replied to ${decision.target_tweet_id}`);
   }
   
@@ -2891,45 +2901,52 @@ async function postReply(decision: QueuedDecision): Promise<string> {
 
       const result = await poster.postReply(decision.content, decision.target_tweet_id, decision.id);
 
+      // 🔥 CRITICAL: Validate result BEFORE any logging or processing
       if (!result.success || !result.tweetId) {
-        throw new Error(result.error || 'Reply posting failed');
+        console.log(`[REPLY_TRUTH] step=FAIL reason=playwright_returned_no_tweetid result=${JSON.stringify(result)}`);
+        throw new Error(result.error || 'Reply posting failed: no tweetId returned');
       }
 
       if (result.tweetId === decision.target_tweet_id) {
+        console.log(`[REPLY_TRUTH] step=FAIL reason=id_extraction_bug got_parent_id=${decision.target_tweet_id}`);
         throw new Error(`Reply ID extraction bug: got parent ID ${decision.target_tweet_id} instead of new reply ID`);
       }
+      
+      // 🔥 VALIDATE: Ensure tweet ID is a valid numeric string (Twitter IDs are numeric)
+      if (!/^\d+$/.test(result.tweetId)) {
+        console.log(`[REPLY_TRUTH] step=FAIL reason=invalid_id_format tweet_id=${result.tweetId}`);
+        throw new Error(`Invalid reply ID format: ${result.tweetId} (expected numeric Twitter ID)`);
+      }
 
-      console.log(`[REPLY_TRUTH] step=POSTED tweet_id=${result.tweetId} parent_id=${decision.target_tweet_id}`);
+      // ✅ STEP 1: Tweet is on X, ID is captured
+      console.log(`[REPLY_TRUTH] step=POSTED_UI tweet_id=${result.tweetId} parent_id=${decision.target_tweet_id}`);
       console.log(`[POSTING_QUEUE] ✅ Reply ID validated: ${result.tweetId} (≠ parent ${decision.target_tweet_id})`);
       const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
       console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
       
-      // 🔒 TRUTH CONTRACT: Write receipt IMMEDIATELY (fail-closed)
-      try {
-        const { writePostReceipt } = await import('../utils/postReceiptWriter');
-        const receiptResult = await writePostReceipt({
-          decision_id: decision.id,
-          tweet_ids: [result.tweetId],
-          root_tweet_id: result.tweetId,
-          post_type: 'reply',
-          posted_at: new Date().toISOString(),
-          metadata: {
-            target_tweet_id: decision.target_tweet_id,
-            target_username: decision.target_username,
-            content_preview: decision.content.substring(0, 100)
-          }
-        });
-        
-        if (!receiptResult.success) {
-          console.log(`[REPLY_TRUTH] step=FAIL reason=receipt_write_failed error=${receiptResult.error}`);
-          throw new Error(`Receipt write failed: ${receiptResult.error}`);
+      // ✅ STEP 2: Write receipt IMMEDIATELY (fail-closed, cannot continue without this)
+      const { writePostReceipt } = await import('../utils/postReceiptWriter');
+      const receiptResult = await writePostReceipt({
+        decision_id: decision.id,
+        tweet_ids: [result.tweetId],
+        root_tweet_id: result.tweetId,
+        post_type: 'reply',
+        posted_at: new Date().toISOString(),
+        metadata: {
+          parent_tweet_id: decision.target_tweet_id, // 🔥 CRITICAL: Store parent_tweet_id
+          target_tweet_id: decision.target_tweet_id,
+          target_username: decision.target_username,
+          content_preview: decision.content.substring(0, 100)
         }
-        
-        console.log(`[REPLY_TRUTH] step=RECEIPT_OK receipt_id=${receiptResult.receipt_id}`);
-      } catch (receiptErr: any) {
-        console.log(`[REPLY_TRUTH] step=FAIL reason=receipt_exception error=${receiptErr.message}`);
-        throw new Error(`Receipt write exception: ${receiptErr.message}`);
+      });
+      
+      if (!receiptResult.success) {
+        console.log(`[REPLY_TRUTH] step=FAIL reason=RECEIPT_WRITE_FAILED error=${receiptResult.error}`);
+        throw new Error(`CRITICAL: Receipt write failed: ${receiptResult.error}`);
       }
+      
+      console.log(`[REPLY_TRUTH] step=RECEIPT_OK receipt_id=${receiptResult.receipt_id}`);
+      console.log(`[REPLY_TRUTH] ✅ Durable proof of posting saved to post_receipts`);
 
       await poster.dispose();
       poster = null;
@@ -2944,18 +2961,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
         console.warn(`[POSTING_QUEUE] ⚠️ Failed to clear opportunity ${decision.target_tweet_id}:`, cleanupError.message);
       }
 
-      if (!result.tweetId || result.tweetId.startsWith('reply_posted_') || result.tweetId.startsWith('posted_')) {
-        console.error(`[POSTING_QUEUE] 🚨 Reply ID extraction failed: got ${result.tweetId || 'null'}`);
-        console.error(`[POSTING_QUEUE] 🚨 This will cause missing tweet_id in database!`);
-        throw new Error(`Reply ID extraction failed: got ${result.tweetId || 'null'}`);
-      }
-      
-      // 🔥 VALIDATE: Ensure tweet ID is a valid numeric string (Twitter IDs are numeric)
-      if (!/^\d+$/.test(result.tweetId)) {
-        console.error(`[POSTING_QUEUE] 🚨 Invalid reply ID format: ${result.tweetId} (expected numeric)`);
-        throw new Error(`Invalid reply ID format: ${result.tweetId} (expected numeric Twitter ID)`);
-      }
-
+      // ✅ STEP 3: Return tweet ID (receipt is saved, can proceed to DB save)
+      console.log(`[REPLY_TRUTH] step=RETURN_TWEETID tweet_id=${result.tweetId}`);
       return result.tweetId;
     } catch (innerError: any) {
       if (poster) {
