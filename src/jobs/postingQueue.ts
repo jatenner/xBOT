@@ -1725,9 +1725,50 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           tweetUrl = result.tweetUrl;
           tweetIds = result.tweetIds; // 🆕 Capture thread IDs if available
           
-          // 🔒 CRITICAL: Save to backup IMMEDIATELY after tweet IDs captured (durable ledger)
-          // This happens BEFORE any other logic that might throw
+          // 🔒 CRITICAL: Write IMMUTABLE RECEIPT immediately after tweet IDs captured
+          // This is DURABLE proof-of-posting that survives DB failures
           console.log(`[LIFECYCLE] decision_id=${decision.id} step=POST_CLICKED tweet_id=${tweetId}`);
+          
+          // ✅ STEP 1: Write receipt to Supabase (durable, survives Railway restarts)
+          try {
+            const { writePostReceipt } = await import('../utils/postReceiptWriter');
+            
+            // Determine post type (handle type mismatch)
+            let postType: 'single' | 'thread' | 'reply' = 'single';
+            const decType = String(decision.decision_type);
+            if (decType === 'reply') {
+              postType = 'reply';
+            } else if (tweetIds && tweetIds.length > 1) {
+              postType = 'thread';
+            }
+            
+            const receiptResult = await writePostReceipt({
+              decision_id: decision.id,
+              tweet_ids: tweetIds || [tweetId],
+              root_tweet_id: tweetId,
+              post_type: postType,
+              posted_at: new Date().toISOString(),
+              metadata: {
+                target_tweet_id: decision.target_tweet_id || null,
+                target_username: decision.target_username || null,
+                content_preview: typeof decision.content === 'string' ? decision.content.substring(0, 100) : ''
+              }
+            });
+            
+            if (!receiptResult.success) {
+              console.error(`[RECEIPT] 🚨 CRITICAL: Receipt write failed for tweet ${tweetId}`);
+              console.error(`[RECEIPT] 🚨 Error: ${receiptResult.error}`);
+              console.error(`[RECEIPT] 🚨 Tweet is on X but has NO DURABLE PROOF - truth gap risk!`);
+              // Continue - we'll try to save to content_metadata, but this is a warning sign
+            } else {
+              console.log(`[LIFECYCLE] decision_id=${decision.id} step=RECEIPT_SAVED receipt_id=${receiptResult.receipt_id}`);
+            }
+          } catch (receiptErr: any) {
+            console.error(`[RECEIPT] 🚨 CRITICAL: Receipt exception for tweet ${tweetId}: ${receiptErr.message}`);
+            // Continue but log the critical failure
+          }
+          
+          // ✅ STEP 2: Also save to local backup (best effort, ephemeral on Railway)
           try {
             const { saveTweetIdToBackup } = await import('../utils/tweetIdBackup');
             const contentToBackup = decision.decision_type === 'thread' && decision.thread_parts 
@@ -1736,8 +1777,8 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             saveTweetIdToBackup(decision.id, tweetId, contentToBackup);
             console.log(`[LIFECYCLE] decision_id=${decision.id} step=BACKUP_SAVED tweet_ids_count=${tweetIds?.length || 1}`);
           } catch (backupErr: any) {
-            console.error(`[BACKUP] ⚠️ Backup failed but continuing: ${backupErr.message}`);
-            // Don't throw - backup failure shouldn't block posting flow
+            console.warn(`[BACKUP] ⚠️ Local backup failed (non-critical on Railway): ${backupErr.message}`);
+            // Don't throw - local backup is ephemeral anyway
           }
         
           // ✅ NEW: Handle placeholder IDs (tweet posted, ID extraction failed)
