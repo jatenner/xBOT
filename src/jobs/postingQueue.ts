@@ -2226,11 +2226,17 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             const saveResult = await markDecisionPosted(decision.id, tweetId, tweetUrl, tweetIds);
             
             if (!saveResult.ok) {
+              console.log(`[REPLY_TRUTH] step=FAIL reason=db_save_returned_false`);
               throw new Error(`markDecisionPosted returned ok=false for decision ${decision.id}`);
             }
-            
+
             dbSaveSuccess = true;
             console.log(`[POSTING_QUEUE] ✅ Database save SUCCESS on attempt ${attempt} (verified: ok=${saveResult.ok})`);
+            
+            // 🔒 TRUTH CONTRACT: Log DB success for replies
+            if (decision.decision_type === 'reply') {
+              console.log(`[REPLY_TRUTH] step=DB_OK decision_id=${decision.id} tweet_id=${tweetId}`);
+            }
             
             // ✅ EXPLICIT SUCCESS LOG: Log after DB save confirms post is complete
             // 🔥 THREAD TRUTH FIX: Treat multi-tweet posts as threads regardless of decision_type
@@ -2245,6 +2251,11 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decision.id} type=${effectiveDecisionType} tweet_id=${tweetId} tweet_ids_count=${tweetIdsCount} url=${finalTweetUrl}`);
             } else {
               console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decision.id} type=${effectiveDecisionType} tweet_id=${tweetId} url=${finalTweetUrl}`);
+            }
+            
+            // 🔒 TRUTH CONTRACT: Final success log for replies
+            if (decision.decision_type === 'reply') {
+              console.log(`[REPLY_TRUTH] step=SUCCESS decision_id=${decision.id} tweet_id=${tweetId} parent_id=${decision.target_tweet_id}`);
             }
             
             // 🔥 PRIORITY 1 FIX: Mark backup as verified (database save succeeded)
@@ -2882,9 +2893,37 @@ async function postReply(decision: QueuedDecision): Promise<string> {
         throw new Error(`Reply ID extraction bug: got parent ID ${decision.target_tweet_id} instead of new reply ID`);
       }
 
+      console.log(`[REPLY_TRUTH] step=POSTED tweet_id=${result.tweetId} parent_id=${decision.target_tweet_id}`);
       console.log(`[POSTING_QUEUE] ✅ Reply ID validated: ${result.tweetId} (≠ parent ${decision.target_tweet_id})`);
       const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
       console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
+      
+      // 🔒 TRUTH CONTRACT: Write receipt IMMEDIATELY (fail-closed)
+      try {
+        const { writePostReceipt } = await import('../utils/postReceiptWriter');
+        const receiptResult = await writePostReceipt({
+          decision_id: decision.id,
+          tweet_ids: [result.tweetId],
+          root_tweet_id: result.tweetId,
+          post_type: 'reply',
+          posted_at: new Date().toISOString(),
+          metadata: {
+            target_tweet_id: decision.target_tweet_id,
+            target_username: decision.target_username,
+            content_preview: decision.content.substring(0, 100)
+          }
+        });
+        
+        if (!receiptResult.success) {
+          console.log(`[REPLY_TRUTH] step=FAIL reason=receipt_write_failed error=${receiptResult.error}`);
+          throw new Error(`Receipt write failed: ${receiptResult.error}`);
+        }
+        
+        console.log(`[REPLY_TRUTH] step=RECEIPT_OK receipt_id=${receiptResult.receipt_id}`);
+      } catch (receiptErr: any) {
+        console.log(`[REPLY_TRUTH] step=FAIL reason=receipt_exception error=${receiptErr.message}`);
+        throw new Error(`Receipt write exception: ${receiptErr.message}`);
+      }
 
       await poster.dispose();
       poster = null;
