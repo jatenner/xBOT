@@ -1718,7 +1718,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             const contentToBackup = decision.decision_type === 'thread' && decision.thread_parts 
               ? decision.thread_parts.join('\n\n') 
               : decision.content;
-            saveTweetIdToBackup(decision.id, tweetId, contentToBackup, tweetIds);
+            saveTweetIdToBackup(decision.id, tweetId, contentToBackup);
             console.log(`[LIFECYCLE] decision_id=${decision.id} step=BACKUP_SAVED tweet_ids_count=${tweetIds?.length || 1}`);
           } catch (backupErr: any) {
             console.error(`[BACKUP] ⚠️ Backup failed but continuing: ${backupErr.message}`);
