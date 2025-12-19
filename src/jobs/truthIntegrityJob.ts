@@ -21,14 +21,16 @@ export async function runTruthIntegrityCheck(): Promise<void> {
       
       // Log to system_events for monitoring
       try {
-        const { trackError } = await import('../utils/errorTracking');
-        await trackError(
-          'truth_integrity',
-          'verification_failed',
-          'Truth integrity check failed - critical violations detected',
-          'critical',
-          { exit_code: exitCode }
-        );
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          component: 'truth_integrity',
+          event_type: 'verification_failed',
+          severity: 'critical',
+          message: 'Truth integrity check failed - critical violations detected',
+          metadata: { exit_code: exitCode },
+          timestamp: new Date().toISOString()
+        });
       } catch (err) {
         console.error('[TRUTH_INTEGRITY_JOB] Failed to log to system_events:', err);
       }
@@ -38,14 +40,16 @@ export async function runTruthIntegrityCheck(): Promise<void> {
     
     // Log to system_events
     try {
-      const { trackError } = await import('../utils/errorTracking');
-      await trackError(
-        'truth_integrity',
-        'verification_crashed',
-        `Truth integrity check crashed: ${error.message}`,
-        'critical',
-        { error: error.message, stack: error.stack }
-      );
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        component: 'truth_integrity',
+        event_type: 'verification_crashed',
+        severity: 'critical',
+        message: `Truth integrity check crashed: ${error.message}`,
+        metadata: { error: error.message, stack: error.stack },
+        timestamp: new Date().toISOString()
+      });
     } catch (err) {
       console.error('[TRUTH_INTEGRITY_JOB] Failed to log to system_events:', err);
     }
