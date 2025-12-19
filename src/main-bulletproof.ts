@@ -54,6 +54,81 @@ process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
   }
 });
 
+// 🔒 CRITICAL FIX #3: Verify database connection and receipt system at startup
+async function verifyDatabaseConnection(): Promise<void> {
+  console.log('[STARTUP] 🔍 Verifying database connection and receipt system...');
+  
+  try {
+    const { getSupabaseClient } = await import('./db/index');
+    const client = getSupabaseClient();
+    
+    if (!client) {
+      throw new Error('Supabase client is null/undefined');
+    }
+    
+    // Test query to content_metadata
+    const { data, error } = await client
+      .from('content_metadata')
+      .select('decision_id')
+      .limit(1);
+    
+    if (error) {
+      throw new Error(`Database query failed: ${error.message}`);
+    }
+    
+    console.log('[STARTUP] ✅ Database connection verified');
+    
+    // Verify post_receipts table exists (CRITICAL for truth gap prevention)
+    const { data: receiptData, error: receiptError } = await client
+      .from('post_receipts')
+      .select('receipt_id')
+      .limit(1);
+    
+    if (receiptError && receiptError.message.includes('does not exist')) {
+      console.error('[STARTUP] 🚨 CRITICAL: post_receipts table does not exist!');
+      console.error('[STARTUP] 🚨 Receipt system will NOT work - run: pnpm db:migrate');
+      console.error('[STARTUP] 🚨 This will cause truth gaps (tweets posted but not saved)');
+      process.exit(1); // Fail-closed
+    }
+    
+    if (receiptError) {
+      console.error('[STARTUP] ⚠️  Warning: post_receipts query failed:', receiptError.message);
+      console.error('[STARTUP] ⚠️  Receipt system may not work correctly');
+    } else {
+      console.log('[STARTUP] ✅ post_receipts table verified');
+    }
+    
+    // Verify system_events table exists
+    const { error: eventsError } = await client
+      .from('system_events')
+      .select('id')
+      .limit(1);
+    
+    if (eventsError && eventsError.message.includes('does not exist')) {
+      console.error('[STARTUP] ⚠️  Warning: system_events table does not exist');
+      console.error('[STARTUP] ⚠️  Event logging will not work');
+    } else {
+      console.log('[STARTUP] ✅ system_events table verified');
+    }
+    
+    console.log('[STARTUP] ✅ All critical database checks passed');
+    
+  } catch (err: any) {
+    console.error('[STARTUP] 🚨 CRITICAL: Database verification FAILED');
+    console.error('[STARTUP] 🚨 Error:', err.message);
+    console.error('[STARTUP] 🚨 Posting will NOT work correctly');
+    
+    // Check if env vars are present
+    if (!ENV.SUPABASE_URL || !ENV.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('[STARTUP] 🚨 Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+      console.error('[STARTUP] 🚨 Set these environment variables in Railway');
+    }
+    
+    console.error('[STARTUP] 🚨 Exiting to prevent truth gaps');
+    process.exit(1); // Fail-closed
+  }
+}
+
 // Startup configuration summary
 function getStartupSummary() {
   const config = {
@@ -245,6 +320,9 @@ async function boot() {
   const nodeVersion = process.version;
   console.log(`[BOOT] commit=${commitSha} node=${nodeVersion}`);
   log({ op: 'boot_start', commit_sha: commitSha, node_version: nodeVersion });
+  
+  // 🔒 CRITICAL FIX #3: Verify database connection and receipt system (FAIL-CLOSED)
+  await verifyDatabaseConnection();
   
   // Load and display unified configuration
   const config = getConfig();
