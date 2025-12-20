@@ -62,9 +62,32 @@ export function checkReplyQuality(
     /^["\[]/ // Starts with quote or bracket
   ];
   
+  // Check 5: No generic reply templates
+  const genericPhrases = [
+    /want to add value/i,
+    /try this: after i/i,
+    /struggling to stick/i,
+    /great point/i,
+    /interesting perspective/i,
+    /here's how to/i,
+    /check out these/i,
+    /let me share/i,
+    /dive deeper/i,
+    /unlock your/i,
+    /boost your/i,
+    /transform your/i
+  ];
+  
   for (const pattern of standalonePatterns) {
     if (pattern.test(replyText)) {
       issues.push('Looks like standalone post, not a contextual reply');
+      break;
+    }
+  }
+  
+  for (const pattern of genericPhrases) {
+    if (pattern.test(replyText)) {
+      issues.push('Generic template detected');
       break;
     }
   }

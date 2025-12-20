@@ -166,6 +166,12 @@ Format it for Twitter with AGGRESSIVE spacing variety!`;
 
     const parsed = JSON.parse(aiResponse);
     
+    // 🔥 FIX: Handle array responses (AI sometimes returns arrays)
+    if (Array.isArray(parsed.formatted)) {
+      console.warn(`[VISUAL_FORMATTER] ⚠️ AI returned array instead of string, taking first element`);
+      parsed.formatted = parsed.formatted[0];
+    }
+    
     if (!parsed.formatted || typeof parsed.formatted !== 'string') {
       throw new Error('Invalid formatted content from AI');
     }
