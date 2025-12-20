@@ -228,6 +228,7 @@
     "verify:thread": "NODE_TLS_REJECT_UNAUTHORIZED=0 tsx scripts/verify-thread-complete.ts",
     "verify:replies:sample20": "tsx scripts/verify-replies-sample20.ts",
     "verify:truthgap:last24h": "tsx scripts/truth-gap-audit-last24h.ts",
+    "verify:system": "NODE_TLS_REJECT_UNAUTHORIZED=0 tsx scripts/verify-system-health.ts",
     "truth:verify": "node -r dotenv/config dist/scripts/verifyTruthIntegrity.js",
     "truth:verify:last24h": "TRUTH_VERIFY_HOURS=24 node -r dotenv/config dist/scripts/verifyTruthIntegrity.js",
     "truth:verify:last7d": "TRUTH_VERIFY_HOURS=168 node -r dotenv/config dist/scripts/verifyTruthIntegrity.js",

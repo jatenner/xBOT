@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "verify:system": "NODE_TLS_REJECT_UNAUTHORIZED=0 tsx scripts/verify-system-health.ts"
+  }
+}
+
