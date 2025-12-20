@@ -1385,6 +1385,26 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
     console.warn(`[TRUTH_GUARD] ⚠️ Guard check failed: ${guardErr.message}, allowing posting (fail open)`);
   }
   
+  // 🚨 RATE LIMIT CHECK: Enforce max posts/replies per hour
+  try {
+    const { checkRateLimits } = await import('../utils/rateLimiter');
+    const rateLimitCheck = await checkRateLimits();
+    
+    if (decision.decision_type === 'reply' && !rateLimitCheck.canPostReply) {
+      console.log(`[RATE_LIMIT] ⏸️  Reply rate limit reached (${rateLimitCheck.repliesThisHour}/4 this hour) - skipping decision ${decision.id}`);
+      return false; // Don't process, don't count as failure
+    }
+    
+    if ((decision.decision_type === 'single' || decision.decision_type === 'thread') && !rateLimitCheck.canPostContent) {
+      console.log(`[RATE_LIMIT] ⏸️  Post rate limit reached (${rateLimitCheck.postsThisHour}/2 this hour) - skipping decision ${decision.id}`);
+      return false; // Don't process, don't count as failure
+    }
+    
+    console.log(`[RATE_LIMIT] ✅ Rate check passed - Posts: ${rateLimitCheck.postsThisHour}/2, Replies: ${rateLimitCheck.repliesThisHour}/4`);
+  } catch (rateLimitErr: any) {
+    console.warn(`[RATE_LIMIT] ⚠️ Rate limit check failed: ${rateLimitErr.message}, allowing posting (fail open)`);
+  }
+  
   const isThread = decision.decision_type === 'thread';
   const logPrefix = isThread ? '[POSTING_QUEUE] 🧵' : '[POSTING_QUEUE] 📝';
   
@@ -3127,7 +3147,7 @@ export async function markDecisionPosted(
         }
         
         const { error: updateError } = await supabase
-          .from('content_generation_metadata_comprehensive')  // 🔥 FIX: Write to base table, not view
+          .from('content_metadata')  // 🔥 FIX: Use content_metadata (works for UPDATE)
           .update(updateData)
           .eq('decision_id', decisionId);  // 🔥 FIX: decisionId is UUID, query by decision_id not id!
         
