@@ -876,10 +876,6 @@ async function generateRealReplies(): Promise<void> {
         // ✅ CONTEXT VALIDATION GATE: Skip if no meaningful context
         if (!parentText || parentText.length < 20) {
           console.log(`[REPLY_SKIP] target_id=${tweetIdFromUrl} reason=missing_context content_length=${parentText.length}`);
-          await diagLogger.logSkip(target.target_tweet_id || tweetIdFromUrl, 'missing_context', {
-            content_length: parentText.length,
-            has_content: !!parentText
-          });
           continue; // Skip this opportunity
         }
         
@@ -889,9 +885,6 @@ async function generateRealReplies(): Promise<void> {
         // ✅ KEYWORD VALIDATION: Skip if no meaningful keywords
         if (keywords.length === 0) {
           console.log(`[REPLY_SKIP] target_id=${tweetIdFromUrl} reason=no_keywords`);
-          await diagLogger.logSkip(target.target_tweet_id || tweetIdFromUrl, 'no_keywords', {
-            content_preview: parentText.substring(0, 50)
-          });
           continue; // Skip this opportunity
         }
         
