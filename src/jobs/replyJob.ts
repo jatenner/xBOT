@@ -872,12 +872,32 @@ async function generateRealReplies(): Promise<void> {
         
         // 🔥 CONTEXT: Extract keywords from parent tweet
         const parentText = target.tweet_content || '';
+        
+        // ✅ CONTEXT VALIDATION GATE: Skip if no meaningful context
+        if (!parentText || parentText.length < 20) {
+          console.log(`[REPLY_SKIP] target_id=${tweetIdFromUrl} reason=missing_context content_length=${parentText.length}`);
+          await diagLogger.logSkip(target.target_tweet_id || tweetIdFromUrl, 'missing_context', {
+            content_length: parentText.length,
+            has_content: !!parentText
+          });
+          continue; // Skip this opportunity
+        }
+        
         const { extractKeywords } = await import('../gates/ReplyQualityGate');
         const keywords = extractKeywords(parentText);
         
+        // ✅ KEYWORD VALIDATION: Skip if no meaningful keywords
+        if (keywords.length === 0) {
+          console.log(`[REPLY_SKIP] target_id=${tweetIdFromUrl} reason=no_keywords`);
+          await diagLogger.logSkip(target.target_tweet_id || tweetIdFromUrl, 'no_keywords', {
+            content_preview: parentText.substring(0, 50)
+          });
+          continue; // Skip this opportunity
+        }
+        
         // Log context
         const parentExcerpt = parentText.substring(0, 80) + (parentText.length > 80 ? '...' : '');
-        console.log(`[REPLY_CONTEXT] ok=true parent_id=${tweetIdFromUrl} keywords=${keywords.join(', ')}`);
+        console.log(`[REPLY_CONTEXT] ok=true parent_id=${tweetIdFromUrl} keywords=${keywords.join(', ')} content_length=${parentText.length}`);
         console.log(`[REPLY_CONTEXT] parent_excerpt="${parentExcerpt}"`);
         
         // 🔁 RETRY LOOP: Generate reply with quality gate (max 2 attempts)
@@ -895,8 +915,31 @@ async function generateRealReplies(): Promise<void> {
             const replyAngle = 'reply_context'; // Default angle for replies
             const replyTone = 'helpful'; // Default tone for replies
             
-            // 🔥 CRITICAL: Build explicit reply prompt override
-            const explicitReplyPrompt = `You are replying to @${target.account.username}'s tweet: "${parentText}"\n\nYour reply must:\n1. Reference at least one keyword from their tweet: ${keywords.join(', ')}\n2. Be ≤220 characters\n3. Be conversational and contextual\n4. NO JSON, NO brackets, NO lists\n5. Sound like a genuine human reply, not a bot\n\nReply:`;
+            // 🔥 CRITICAL: Build explicit contextual reply prompt
+            const explicitReplyPrompt = `You are replying to @${target.account.username}'s tweet about: "${parentText}"
+
+CRITICAL RULES FOR CONTEXTUAL REPLIES:
+1. Your reply MUST directly address THEIR specific point
+2. Reference their exact topic using these keywords: ${keywords.join(', ')}
+3. Be ≤220 characters
+4. Sound like a natural conversation, NOT a standalone post
+5. Do NOT use generic research openers like "Interestingly,", "Research shows", "Studies suggest"
+6. Do NOT sound like you're starting a thread or article
+7. Do NOT make it sound like a lecture or textbook
+
+GOOD REPLY EXAMPLES:
+- "That's a great point! Similar pattern seen in..." (acknowledges their tweet)
+- "Makes sense - when you consider how..." (builds on their idea)
+- "Exactly - and the research backs this up..." (affirms then adds value)
+
+BAD REPLY EXAMPLES:
+- "Interestingly, my mood fluctuated wildly..." (sounds standalone)
+- "Research shows sugar impacts..." (sounds like lecturing)
+- "Let's explore this topic..." (sounds like starting a thread)
+
+Reply as if you're continuing THEIR conversation, not starting your own.
+
+Reply:`;
             
             // Route through orchestratorRouter for generator-based replies
             const routerResponse = await routeContentGeneration({
