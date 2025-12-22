@@ -31,7 +31,7 @@ const parseEnvInt = (key: string, fallback: number, min: number, max: number): n
   return clamp(parsed, min, max);
 };
 
-const MAX_CONTEXTS_CONFIG = parseEnvInt('BROWSER_MAX_CONTEXTS', 3, 1, 6); // Increased to 3 for better capacity (posting + VI scraper + buffer)
+const MAX_CONTEXTS_CONFIG = parseEnvInt('BROWSER_MAX_CONTEXTS', 5, 1, 10); // Increased to 5 (no thread limit with multi-process)
 const MAX_OPERATIONS_CONFIG = parseEnvInt('BROWSER_MAX_OPERATIONS', 25, 5, 100);
 const QUEUE_WAIT_TIMEOUT_CONFIG = parseEnvInt('BROWSER_QUEUE_TIMEOUT_MS', 60000, 10000, 300000);
 const CIRCUIT_BREAKER_TIMEOUT_CONFIG = parseEnvInt('BROWSER_CIRCUIT_BREAKER_TIMEOUT_MS', 60000, 30000, 600000);
@@ -1007,19 +1007,19 @@ export class UnifiedBrowserPool {
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage', // Important for Railway memory limits
-          '--single-process',        // ✅ CRITICAL: Saves ~80MB (no zygote overhead, fixes zygote errors)
-          '--no-zygote',            // ✅ CRITICAL: Prevents zygote communication failures
+          '--disable-dev-shm-usage', // Prevent /dev/shm exhaustion (Pro plan has 32GB, multi-process is safe)
+          // ✅ REMOVED --single-process and --no-zygote to fix pthread_create exhaustion
+          // Multi-process Chromium (standard config) has no per-process thread limit
           '--disable-gpu',
           '--disable-web-security',
           '--memory-pressure-off',
-          '--max_old_space_size=256', // ✅ FIXED: 256MB instead of 2048MB (Railway-appropriate)
+          '--max_old_space_size=256', // Limit V8 heap per process (Pro plan supports multiple processes)
           '--disable-background-timer-throttling',
           '--disable-backgrounding-occluded-windows',
           '--disable-renderer-backgrounding',
           '--disable-extensions',
           '--disable-plugins',
-          // Force new headless mode (fixes zygote crash)
+          // Force new headless mode for better stability
           '--headless=new'
         ]
       });
