@@ -3147,7 +3147,7 @@ export async function markDecisionPosted(
         }
         
         const { error: updateError } = await supabase
-          .from('content_metadata')  // 🔥 FIX: Use content_metadata (works for UPDATE)
+          .from('content_generation_metadata_comprehensive')  // 🔥 CRITICAL: UPDATE the TABLE, not the VIEW!
           .update(updateData)
           .eq('decision_id', decisionId);  // 🔥 FIX: decisionId is UUID, query by decision_id not id!
         
