@@ -86,7 +86,7 @@ async function searchTwitterForTweets(
       const results: any[] = [];
       const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
       const NOW = Date.now();
-      const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+      const MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours - VISIBILITY FIX: Only fresh tweets get views
       
       // Extract up to 50 tweets from search results
       for (let i = 0; i < Math.min(tweetElements.length, 50); i++) {
@@ -99,7 +99,7 @@ async function searchTwitterForTweets(
         
         const tweetTime = new Date(datetime).getTime();
         const ageMs = NOW - tweetTime;
-        if (ageMs > MAX_AGE_MS) continue; // Skip >24h old
+        if (ageMs > MAX_AGE_MS) continue; // Skip >2h old
         
         // Get tweet ID and URL
         const linkEl = tweet.querySelector('a[href*="/status/"]');
