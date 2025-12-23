@@ -307,7 +307,7 @@ export class RealTwitterDiscovery {
             const results: any[] = [];
             const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
             const NOW = Date.now();
-            const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+            const MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours - VISIBILITY FIX: Only fresh tweets get views
             let oldTweetsSkipped = 0;
             let noTimestampSkipped = 0;
             
