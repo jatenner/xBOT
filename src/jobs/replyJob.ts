@@ -717,13 +717,22 @@ async function generateRealReplies(): Promise<void> {
         console.log(`[REPLY_JOB] ⏭️ Already replied to tweet ${opp.target_tweet_id} from @${opp.target_username}`);
         return false;
       }
-      // 🔥 NEW: Minimum follower threshold (high-volume accounts only)
+      // 🔥 FILTER 1: Minimum follower threshold (if data available)
       const MIN_FOLLOWERS = parseInt(process.env.REPLY_MIN_FOLLOWERS || '10000');
       const followers = Number(opp.target_followers) || 0;
-      if (followers < MIN_FOLLOWERS) {
+      if (followers > 0 && followers < MIN_FOLLOWERS) {
         console.log(`[REPLY_JOB] ⏭️ Skipping low-volume account @${opp.target_username} (${followers} followers, min: ${MIN_FOLLOWERS})`);
         return false;
       }
+      
+      // 🎯 FILTER 2: Minimum tweet likes (VISIBILITY FIX - use as proxy for account quality)
+      const MIN_TWEET_LIKES = parseInt(process.env.REPLY_MIN_TWEET_LIKES || '5000');
+      const likes = Number(opp.like_count) || 0;
+      if (likes < MIN_TWEET_LIKES) {
+        console.log(`[REPLY_JOB] ⏭️ Skipping low-engagement tweet from @${opp.target_username} (${likes} likes, min: ${MIN_TWEET_LIKES})`);
+        return false;
+      }
+      
       return true;
     })
     .slice(0, 10);
