@@ -1717,15 +1717,23 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       
       try {
         if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
+          console.log(`[POSTING_QUEUE][FLOW] ════════════════════════════════════════════════════`);
+          console.log(`[POSTING_QUEUE][FLOW] 🚀 STARTING POST FLOW FOR decision_id=${decision.id}`);
+          console.log(`[POSTING_QUEUE][FLOW] Type: ${decision.decision_type}`);
+          console.log(`[POSTING_QUEUE][FLOW] ════════════════════════════════════════════════════`);
+          
+          console.log(`[POSTING_QUEUE][FLOW] ⏱️  STEP 1/4: Posting to Twitter...`);
           console.log(`${logPrefix} 🔍 DEBUG: Calling postContent for ${decision.decision_type}`);
           console.log(`${logPrefix} 🔍 DEBUG: decision_id=${decision.id} decision_type=${decision.decision_type}`);
           
           let result;
           try {
             result = await postContent(decision);
+            console.log(`[POSTING_QUEUE][FLOW] ✅ STEP 1/4 COMPLETE: Posted to Twitter`);
             console.log(`${logPrefix} 🔍 DEBUG: postContent returned successfully`);
             console.log(`${logPrefix} 🔍 DEBUG: result.tweetId=${result?.tweetId || 'MISSING'}, result.tweetUrl=${result?.tweetUrl || 'MISSING'}, result.tweetIds.length=${result?.tweetIds?.length || 0}`);
           } catch (postContentError: any) {
+            console.error(`[POSTING_QUEUE][FLOW] ❌ STEP 1/4 FAILED: Twitter posting failed`);
             console.error(`[POSTING_QUEUE][POSTCONTENT_THROW] decision_id=${decision.id} decision_type=${decision.decision_type} error_name=${postContentError?.name || 'Unknown'} error_message=${postContentError?.message || 'No message'}`);
             if (postContentError?.stack) {
               console.error(`[POSTING_QUEUE][POSTCONTENT_THROW] decision_id=${decision.id} stack=${postContentError.stack}`);
@@ -1745,10 +1753,15 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           tweetUrl = result.tweetUrl;
           tweetIds = result.tweetIds; // 🆕 Capture thread IDs if available
           
+          console.log(`[POSTING_QUEUE][FLOW] 📋 Tweet IDs captured:`);
+          console.log(`[POSTING_QUEUE][FLOW]    Root ID: ${tweetId}`);
+          console.log(`[POSTING_QUEUE][FLOW]    All IDs: ${JSON.stringify(tweetIds || [tweetId])}`);
+          
           // 🔒 CRITICAL FIX #1: Write IMMUTABLE RECEIPT immediately after tweet IDs captured
           // This MUST succeed or we fail-closed to prevent truth gaps
           console.log(`[LIFECYCLE] decision_id=${decision.id} step=POST_CLICKED tweet_id=${tweetId}`);
           
+          console.log(`[POSTING_QUEUE][FLOW] ⏱️  STEP 2/4: Writing receipt to Supabase...`);
           // ✅ STEP 1: Write receipt to Supabase (FAIL-CLOSED - must succeed)
           try {
             const { writePostReceipt } = await import('../utils/postReceiptWriter');
@@ -1761,6 +1774,8 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             } else if (tweetIds && tweetIds.length > 1) {
               postType = 'thread';
             }
+            
+            console.log(`[POSTING_QUEUE][FLOW]    Calling writePostReceipt() with decision_id=${decision.id}, post_type=${postType}, tweet_ids_count=${(tweetIds || [tweetId]).length}`);
             
             const receiptResult = await writePostReceipt({
               decision_id: decision.id,
@@ -1775,7 +1790,10 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               }
             });
             
+            console.log(`[POSTING_QUEUE][FLOW]    Receipt result: success=${receiptResult.success}, receipt_id=${receiptResult.receipt_id}, error=${receiptResult.error}`);
+            
             if (!receiptResult.success) {
+              console.error(`[POSTING_QUEUE][FLOW] ❌ STEP 2/4 FAILED: Receipt write failed`);
               console.error(`[RECEIPT] 🚨 CRITICAL: Receipt write FAILED - marking post as RETRY_PENDING`);
               console.error(`[RECEIPT] 🚨 Error: ${receiptResult.error}`);
               console.error(`[RECEIPT] 🚨 Tweet ${tweetId} is on X but we have NO DURABLE PROOF`);
@@ -1800,10 +1818,15 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               throw new Error(`Receipt write failed: ${receiptResult.error}`);
             }
             
+            console.log(`[POSTING_QUEUE][FLOW] ✅ STEP 2/4 COMPLETE: Receipt saved (ID: ${receiptResult.receipt_id})`);
             console.log(`[LIFECYCLE] decision_id=${decision.id} step=RECEIPT_SAVED receipt_id=${receiptResult.receipt_id}`);
             
           } catch (receiptErr: any) {
+            console.error(`[POSTING_QUEUE][FLOW] ❌ STEP 2/4 EXCEPTION: ${receiptErr.message}`);
             console.error(`[RECEIPT] 🚨 CRITICAL: Receipt exception for tweet ${tweetId}: ${receiptErr.message}`);
+            if (receiptErr.stack) {
+              console.error(`[RECEIPT] 🚨 Stack: ${receiptErr.stack}`);
+            }
             // Fail-closed: re-throw to trigger retry
             throw new Error(`Receipt write exception: ${receiptErr.message}`);
           }
@@ -2251,14 +2274,26 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               console.log(`[DB_THREAD_SAVE] decision_id=${decision.id} tweet_ids_count=${tweetIdsCountToSave} tweet_ids=${tweetIds!.join(',')}`);
             }
             
+            console.log(`[POSTING_QUEUE][FLOW] ⏱️  STEP 3/4: Saving to content_metadata...`);
+            console.log(`[POSTING_QUEUE][FLOW]    Calling markDecisionPosted() with:`);
+            console.log(`[POSTING_QUEUE][FLOW]    - decision_id: ${decision.id}`);
+            console.log(`[POSTING_QUEUE][FLOW]    - tweet_id: ${tweetId}`);
+            console.log(`[POSTING_QUEUE][FLOW]    - tweet_url: ${tweetUrl || 'N/A'}`);
+            console.log(`[POSTING_QUEUE][FLOW]    - tweet_ids: ${JSON.stringify(tweetIds || [])}`);
+            
             // 🔒 CRITICAL FIX #2: Check return value from markDecisionPosted
             const saveResult = await markDecisionPosted(decision.id, tweetId, tweetUrl, tweetIds);
             
+            console.log(`[POSTING_QUEUE][FLOW]    Result: ok=${saveResult.ok}, savedTweetIds=${JSON.stringify(saveResult.savedTweetIds)}, classification=${saveResult.classification}`);
+            console.log(`[POSTING_QUEUE][FLOW]    Result: ok=${saveResult.ok}, savedTweetIds=${JSON.stringify(saveResult.savedTweetIds)}, classification=${saveResult.classification}`);
+            
             if (!saveResult.ok) {
+              console.log(`[POSTING_QUEUE][FLOW] ❌ STEP 3/4 FAILED: markDecisionPosted returned ok=false`);
               console.log(`[REPLY_TRUTH] step=FAIL reason=db_save_returned_false`);
               throw new Error(`markDecisionPosted returned ok=false for decision ${decision.id}`);
             }
 
+            console.log(`[POSTING_QUEUE][FLOW] ✅ STEP 3/4 COMPLETE: Saved to database`);
             dbSaveSuccess = true;
             console.log(`[POSTING_QUEUE] ✅ Database save SUCCESS on attempt ${attempt} (verified: ok=${saveResult.ok})`);
             
