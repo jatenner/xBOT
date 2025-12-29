@@ -1776,6 +1776,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             }
             
             console.log(`[POSTING_QUEUE][FLOW]    Calling writePostReceipt() with decision_id=${decision.id}, post_type=${postType}, tweet_ids_count=${(tweetIds || [tweetId]).length}`);
+            console.log(`[CRITICAL] ⚠️⚠️⚠️ ABOUT TO WRITE RECEIPT - decision_id=${decision.id} tweet_id=${tweetId}`);
             
             const receiptResult = await writePostReceipt({
               decision_id: decision.id,
@@ -1790,6 +1791,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               }
             });
             
+            console.log(`[CRITICAL] 📊 RECEIPT RESULT: success=${receiptResult.success}, receipt_id=${receiptResult.receipt_id}, error=${receiptResult.error}`);
             console.log(`[POSTING_QUEUE][FLOW]    Receipt result: success=${receiptResult.success}, receipt_id=${receiptResult.receipt_id}, error=${receiptResult.error}`);
             
             if (!receiptResult.success) {
@@ -2275,6 +2277,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             }
             
             console.log(`[POSTING_QUEUE][FLOW] ⏱️  STEP 3/4: Saving to content_metadata...`);
+            console.log(`[CRITICAL] ⚠️⚠️⚠️ ABOUT TO CALL markDecisionPosted - decision_id=${decision.id} tweet_id=${tweetId}`);
             console.log(`[POSTING_QUEUE][FLOW]    Calling markDecisionPosted() with:`);
             console.log(`[POSTING_QUEUE][FLOW]    - decision_id: ${decision.id}`);
             console.log(`[POSTING_QUEUE][FLOW]    - tweet_id: ${tweetId}`);
@@ -2284,6 +2287,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             // 🔒 CRITICAL FIX #2: Check return value from markDecisionPosted
             const saveResult = await markDecisionPosted(decision.id, tweetId, tweetUrl, tweetIds);
             
+            console.log(`[CRITICAL] 📊 DB SAVE RESULT: ok=${saveResult.ok}, savedTweetIds=${JSON.stringify(saveResult.savedTweetIds)}`);
             console.log(`[POSTING_QUEUE][FLOW]    Result: ok=${saveResult.ok}, savedTweetIds=${JSON.stringify(saveResult.savedTweetIds)}, classification=${saveResult.classification}`);
             console.log(`[POSTING_QUEUE][FLOW]    Result: ok=${saveResult.ok}, savedTweetIds=${JSON.stringify(saveResult.savedTweetIds)}, classification=${saveResult.classification}`);
             
@@ -2640,6 +2644,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
 }
 
 async function postContent(decision: QueuedDecision): Promise<{ tweetId: string; tweetUrl: string; tweetIds?: string[] }> {
+  console.log(`[CRITICAL] 🚀🚀🚀 postContent() CALLED - decision_id=${decision.id} type=${decision.decision_type}`);
   console.log(`[POSTING_QUEUE] 📝 Posting content: "${decision.content.substring(0, 50)}..."`);
   
   // 📊 FOLLOWER TRACKING: Capture baseline before posting
@@ -2789,6 +2794,8 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
           console.log(`[POSTING_QUEUE] 🔗 Tweet IDs: ${result.tweetIds.join(', ')}`);
         }
         
+        console.log(`[CRITICAL] ✅✅✅ postContent() RETURNING THREAD - rootTweetId=${rootTweetId} tweetIds_count=${result.tweetIds?.length || 0}`);
+        
         return {
           tweetId: rootTweetId,
           tweetUrl: rootTweetUrl,
@@ -2867,6 +2874,7 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         
         console.log(`[POSTING_QUEUE] ✅ Tweet ID extracted: ${result.tweetId}`);
         console.log(`[POSTING_QUEUE] ✅ Tweet URL: ${tweetUrl}`);
+        console.log(`[CRITICAL] ✅✅✅ postContent() RETURNING - tweetId=${result.tweetId}`);
         
         // Return object with both ID and URL
         return { tweetId: result.tweetId, tweetUrl };
