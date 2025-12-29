@@ -5,7 +5,7 @@
  * This adapter ensures replies always use reply-specific prompts and logic
  */
 
-import { createBudgetedChatCompletion } from '../services/openai';
+import { createBudgetedChatCompletion } from '../services/openaiBudgetedClient';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface ReplyGenerationRequest {
