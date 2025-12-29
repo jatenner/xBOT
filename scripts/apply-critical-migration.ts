@@ -121,7 +121,7 @@ async function applyMigration(): Promise<void> {
     }
     
     console.log('[MIGRATION] ✅ Schema verification passed');
-    
+
   } catch (error: any) {
     console.error(`[MIGRATION] ❌ Migration failed: ${error.message}`);
     if (error.code) console.error(`[MIGRATION] Error code: ${error.code}`);
