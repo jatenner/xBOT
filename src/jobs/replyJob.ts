@@ -637,7 +637,7 @@ async function generateRealReplies(): Promise<void> {
       });
     }
   }
-  
+
   const sortedOpportunities = [...allOpportunities].sort((a, b) => {
     // First: Tier priority (MEGA > VIRAL > TRENDING > FRESH)
     const aRank = tierRank(a.tier);
@@ -717,6 +717,15 @@ async function generateRealReplies(): Promise<void> {
         console.log(`[REPLY_JOB] ⏭️ Already replied to tweet ${opp.target_tweet_id} from @${opp.target_username}`);
         return false;
       }
+      
+      // 🚨 CRITICAL FILTER 0: Never reply to reply tweets (only target original posts)
+      // Reply tweets typically start with "@username" at the beginning
+      const tweetContent = String(opp.target_tweet_content || '').trim();
+      if (tweetContent.startsWith('@')) {
+        console.log(`[REPLY_JOB] 🚫 SKIPPING REPLY TWEET from @${opp.target_username} (content starts with @, indicating it's a reply to someone else)`);
+        return false;
+      }
+      
       // 🔥 FILTER 1: Minimum follower threshold (if data available)
       const MIN_FOLLOWERS = parseInt(process.env.REPLY_MIN_FOLLOWERS || '10000');
       const followers = Number(opp.target_followers) || 0;
@@ -1005,57 +1014,57 @@ Reply:`;
       
       // If Phase 4 routing didn't produce a reply, use existing systems
       if (!strategicReply) {
+      try {
+        // Try relationship reply system first (optimized for follower conversion)
+        const { RelationshipReplySystem } = await import('../growth/relationshipReplySystem');
+        const relationshipSystem = RelationshipReplySystem.getInstance();
+        
+        // Extract tweet ID from URL for relationship system
+        const tweetUrlStr = String(target.tweet_url || '');
+        const tweetIdFromUrl = tweetUrlStr.split('/').pop() || 'unknown';
+        
+        const relationshipReply = await relationshipSystem.generateRelationshipReply({
+          tweet_id: tweetIdFromUrl,
+          username: target.account.username,
+          content: target.tweet_content || '',
+          likes: 0, // Will be filled from opportunity if available
+          replies: 0,
+          posted_at: new Date().toISOString(),
+        });
+        
+        // Convert relationship reply format to strategic reply format
+        strategicReply = {
+          content: relationshipReply.reply,
+          provides_value: true, // Relationship replies always provide value
+          adds_insight: relationshipReply.strategy === 'value_first' || relationshipReply.strategy === 'controversy',
+          not_spam: true, // Relationship replies are never spam
+          confidence: relationshipReply.expectedConversion === 'high' ? 0.9 : 
+                     relationshipReply.expectedConversion === 'medium' ? 0.7 : 0.5,
+          visualFormat: 'paragraph' as const
+        };
+        
+        console.log(`[REPLY_JOB] ✅ Relationship reply generated (strategy: ${relationshipReply.strategy}, conversion: ${relationshipReply.expectedConversion})`);
+        
+      } catch (relationshipError: any) {
+        console.warn(`[REPLY_JOB] ⚠️ Relationship reply system failed, trying generator:`, relationshipError.message);
+        
         try {
-          // Try relationship reply system first (optimized for follower conversion)
-          const { RelationshipReplySystem } = await import('../growth/relationshipReplySystem');
-          const relationshipSystem = RelationshipReplySystem.getInstance();
-          
-          // Extract tweet ID from URL for relationship system
-          const tweetUrlStr = String(target.tweet_url || '');
-          const tweetIdFromUrl = tweetUrlStr.split('/').pop() || 'unknown';
-          
-          const relationshipReply = await relationshipSystem.generateRelationshipReply({
-            tweet_id: tweetIdFromUrl,
-            username: target.account.username,
-            content: target.tweet_content || '',
-            likes: 0, // Will be filled from opportunity if available
-            replies: 0,
-            posted_at: new Date().toISOString(),
-          });
-          
-          // Convert relationship reply format to strategic reply format
-          strategicReply = {
-            content: relationshipReply.reply,
-            provides_value: true, // Relationship replies always provide value
-            adds_insight: relationshipReply.strategy === 'value_first' || relationshipReply.strategy === 'controversy',
-            not_spam: true, // Relationship replies are never spam
-            confidence: relationshipReply.expectedConversion === 'high' ? 0.9 : 
-                       relationshipReply.expectedConversion === 'medium' ? 0.7 : 0.5,
-            visualFormat: 'paragraph' as const
-          };
-          
-          console.log(`[REPLY_JOB] ✅ Relationship reply generated (strategy: ${relationshipReply.strategy}, conversion: ${relationshipReply.expectedConversion})`);
-          
-        } catch (relationshipError: any) {
-          console.warn(`[REPLY_JOB] ⚠️ Relationship reply system failed, trying generator:`, relationshipError.message);
-          
-          try {
             // Try to use the selected generator (only if Phase 4 routing didn't already handle it)
             if (!usePhase4Routing) {
-              const { generateReplyWithGenerator } = await import('../generators/replyGeneratorAdapter');
-              strategicReply = await generateReplyWithGenerator(replyGenerator, {
-                tweet_content: target.tweet_content,
-                username: target.account.username,
-                category: target.account.category,
-                reply_angle: target.reply_angle
-              });
-              console.log(`[REPLY_JOB] ✅ ${replyGenerator} generator succeeded`);
+          const { generateReplyWithGenerator } = await import('../generators/replyGeneratorAdapter');
+          strategicReply = await generateReplyWithGenerator(replyGenerator, {
+            tweet_content: target.tweet_content,
+            username: target.account.username,
+            category: target.account.category,
+            reply_angle: target.reply_angle
+          });
+          console.log(`[REPLY_JOB] ✅ ${replyGenerator} generator succeeded`);
             }
-          } catch (generatorError: any) {
-            // Fallback to strategicReplySystem if generator fails
-            console.warn(`[REPLY_JOB] ⚠️ ${replyGenerator} generator failed, using strategic fallback:`, generatorError.message);
-            strategicReply = await strategicReplySystem.generateStrategicReply(target);
-            console.log(`[REPLY_JOB] ✅ Fallback strategicReplySystem succeeded`);
+        } catch (generatorError: any) {
+          // Fallback to strategicReplySystem if generator fails
+          console.warn(`[REPLY_JOB] ⚠️ ${replyGenerator} generator failed, using strategic fallback:`, generatorError.message);
+          strategicReply = await strategicReplySystem.generateStrategicReply(target);
+          console.log(`[REPLY_JOB] ✅ Fallback strategicReplySystem succeeded`);
           }
         }
       }
@@ -1124,9 +1133,9 @@ Reply:`;
         const formattedQualityCheck = checkReplyQuality(formatResult.formatted, target.tweet_content || '', 0);
         
         if (formattedQualityCheck.passed) {
-          reply.content = formatResult.formatted;
-          reply.visual_format = formatResult.visualApproach;
-          console.log(`[REPLY_JOB] 🎨 Visual format applied: ${formatResult.visualApproach}`);
+        reply.content = formatResult.formatted;
+        reply.visual_format = formatResult.visualApproach;
+        console.log(`[REPLY_JOB] 🎨 Visual format applied: ${formatResult.visualApproach}`);
         } else {
           // Formatter corrupted the content - use original
           console.warn(`[REPLY_JOB] ⚠️ Visual formatter output failed quality gate: ${formattedQualityCheck.reason}`);
@@ -1402,33 +1411,33 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
 
       // Build insert payload (conditionally exclude experiment fields if experiments disabled)
       const replyInsertPayload: any = {
-        decision_id: reply.decision_id,
-        decision_type: 'reply',
+    decision_id: reply.decision_id,
+    decision_type: 'reply',
         // 🔥 CRITICAL FIX: Ensure content is a string, not an array
         content: Array.isArray(reply.content) ? reply.content[0] : reply.content,
         content_slot: replyContentSlot, // 🎯 v2: Store content slot for replies
-        generation_source: 'strategic_multi_generator',
-        status: 'queued',
-        scheduled_at: scheduledAt.toISOString(), // Use calculated time
-        quality_score: reply.quality_score || 0.85,
-        predicted_er: reply.predicted_er || 0.028,
-        topic_cluster: reply.topic || 'health',
+    generation_source: 'strategic_multi_generator',
+    status: 'queued',
+    scheduled_at: scheduledAt.toISOString(), // Use calculated time
+    quality_score: reply.quality_score || 0.85,
+    predicted_er: reply.predicted_er || 0.028,
+    topic_cluster: reply.topic || 'health',
         
         // 🎤 PHASE 5: Voice Guide metadata (if available)
         hook_type: voiceDecision?.hookType || 'none', // Replies typically don't use hooks
         structure_type: voiceDecision?.structure || 'reply', // Always 'reply' for replies
         // Note: tone is stored separately if needed
-        target_tweet_id: reply.target_tweet_id,
-        target_username: reply.target_username,
-        generator_name: reply.generator_used || 'unknown',
-        bandit_arm: `strategic_reply_${reply.generator_used || 'unknown'}`,
-        created_at: new Date().toISOString(),
-        features: {
-          generator: reply.generator_used || 'unknown',
-          tweet_url: reply.tweet_url || null,
-          parent_tweet_id: reply.target_tweet_id,
-          parent_username: reply.target_username
-        }
+    target_tweet_id: reply.target_tweet_id,
+    target_username: reply.target_username,
+    generator_name: reply.generator_used || 'unknown',
+    bandit_arm: `strategic_reply_${reply.generator_used || 'unknown'}`,
+    created_at: new Date().toISOString(),
+    features: {
+      generator: reply.generator_used || 'unknown',
+      tweet_url: reply.tweet_url || null,
+      parent_tweet_id: reply.target_tweet_id,
+      parent_username: reply.target_username
+    }
       };
       
       // Only add experiment fields if experiments are enabled (columns may not exist in schema)

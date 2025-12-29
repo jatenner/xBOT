@@ -61,8 +61,37 @@ export class CoreContentOrchestrator {
   static async generate(request: CoreContentRequest): Promise<CoreContentResponse> {
     console.log(`[PHASE4][CoreContentOrchestrator] Generating content for decisionType=${request.decision_type} slot=${request.content_slot}`);
 
-    // Use pre-matched generator if provided (Part 1: for compatibility with planJob)
-    // Otherwise, match generator ourselves
+    // 🚨 CRITICAL FIX: Replies must NEVER use regular generators (they produce thread/single content)
+    if (request.decision_type === 'reply') {
+      console.log(`[PHASE4][CoreContentOrchestrator] 🚫 REPLY detected - using reply-specific generation (NOT regular generators)`);
+      
+      // Use reply-specific generation logic from replyJob
+      const { generateReplyContent } = await import('../ai/replyGeneratorAdapter');
+      const replyResult = await generateReplyContent({
+        target_username: request.target_username || 'unknown',
+        target_tweet_content: request.target_tweet_content || '',
+        topic: request.topic || 'health',
+        angle: request.angle || 'general',
+        tone: request.tone || 'informative',
+        model: request.model || 'gpt-4o-mini'
+      });
+      
+      return {
+        text: replyResult.content,
+        format: 'single', // Replies are always single tweets
+        topic: request.topic || 'health',
+        angle: request.angle,
+        tone: request.tone,
+        visual_format: undefined,
+        generator_used: replyResult.generator_used || 'reply_generator',
+        angle_type: request.angle_type,
+        tone_is_singular: request.tone_is_singular,
+        tone_cluster: request.tone_cluster,
+        structural_type: request.structural_type
+      };
+    }
+
+    // For singles/threads: Use regular generator logic
     let matchedGenerator: string;
     
     if (request.generator_name) {

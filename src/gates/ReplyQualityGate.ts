@@ -46,7 +46,23 @@ export function checkReplyQuality(
     issues.push(`Low keyword overlap (${(overlapScore * 100).toFixed(1)}%, min 10%)`);
   }
   
-  // Check 4: Not a standalone post (generic openers)
+  // Check 4: NO THREAD MARKERS (CRITICAL - replies should never look like threads)
+  const threadMarkers = [
+    /^\d+\/\d+/,        // "1/5", "2/5", etc. at start
+    /🧵/,                // Thread emoji
+    /^\d+\.\s/,         // "1. ", "2. ", etc. at start
+    /^Part \d+/i,       // "Part 1", "Part 2"
+    /^Thread:/i         // "Thread:"
+  ];
+  
+  for (const pattern of threadMarkers) {
+    if (pattern.test(replyText)) {
+      issues.push('Contains thread markers (replies must be single tweets)');
+      break;
+    }
+  }
+  
+  // Check 5: Not a standalone post (generic openers)
   const standalonePatterns = [
     /^Emerging (trend|research|study)/i,
     /^New (research|study) shows/i,
@@ -57,12 +73,11 @@ export function checkReplyQuality(
     /^Did you know that/i,
     /^Here are \d+ (tips|ways)/i,
     /^Let's explore/i,
-    /^Thread:/i,
     /^\d+\)/,  // Numbered list
     /^["\[]/ // Starts with quote or bracket
   ];
   
-  // Check 5: No generic reply templates
+  // Check 6: No generic reply templates
   const genericPhrases = [
     /want to add value/i,
     /try this: after i/i,

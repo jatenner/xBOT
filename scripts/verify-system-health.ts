@@ -50,7 +50,7 @@ async function main() {
   if (postCount > 2) {
     rateStatus = 'FAIL';
     rateDetails.push(`❌ Over post limit: ${postCount}/2`);
-  } else {
+    } else {
     rateDetails.push(`✅ Posts within limit: ${postCount}/2`);
   }
   
