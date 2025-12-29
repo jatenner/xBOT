@@ -833,8 +833,8 @@ async function generateRealReplies(): Promise<void> {
       reply_angle: opportunity.reply_strategy
     };
     try {
-      // Pick a reply-appropriate generator (intelligent matching)
-      const replyGenerator = selectReplyGenerator(target.account.category, target.account.username);
+      // Pick a reply-appropriate generator (intelligent matching with learning)
+      const replyGenerator = await selectReplyGenerator(target.account.category, target.account.username);
       console.log(`[REPLY_JOB] 🎭 Using ${replyGenerator} for reply to @${target.account.username} (${target.account.category})`);
       
       // ═══════════════════════════════════════════════════════════
@@ -1204,18 +1204,64 @@ Reply:`;
  * Select generator appropriate for replies - INTELLIGENT MATCHING
  * Matches generator to tweet category for maximum value addition
  */
-function selectReplyGenerator(category: string, target_account: string): GeneratorType {
-  // Get best performing generator for this account (if we have data)
-  const { replyLearningSystem } = require('../growth/replyLearningSystem');
-  const bestForAccount = replyLearningSystem.getBestGeneratorForAccount(target_account);
-  
-  if (bestForAccount && Math.random() < 0.7) {
-    // 70% exploit best performer
-    console.log(`[GENERATOR_SELECT] 🎯 Using best performer for @${target_account}: ${bestForAccount}`);
-    return bestForAccount;
+async function selectReplyGenerator(category: string, target_account: string): Promise<GeneratorType> {
+  // 🧠 PHASE 3: SMART GENERATOR SELECTION BASED ON LEARNING DATA
+  // Query historical performance for this specific account
+  try {
+    const supabase = getSupabaseClient();
+    
+    // Get last 5 replies to this account
+    const { data: accountHistory, error } = await supabase
+      .from('content_metadata')
+      .select(`
+        decision_id,
+        metadata
+      `)
+      .eq('decision_type', 'reply')
+      .eq('status', 'posted')
+      .eq('metadata->>target_username', target_account)
+      .order('posted_at', { ascending: false })
+      .limit(5);
+
+    if (!error && accountHistory && accountHistory.length >= 2) {
+      // We have history for this account - analyze generator performance
+      const generatorPerformance = new Map<string, number[]>();
+      
+      for (const row of accountHistory) {
+        const metadata = row.metadata as any || {};
+        const generator = metadata.generator || metadata.content_generator || 'Unknown';
+        const followersGained = Number(metadata.followers_gained) || 0;
+        
+        if (!generatorPerformance.has(generator)) {
+          generatorPerformance.set(generator, []);
+        }
+        generatorPerformance.get(generator)!.push(followersGained);
+      }
+      
+      // Find best generator
+      let bestGenerator: GeneratorType | null = null;
+      let bestAvg = 0;
+      
+      for (const [gen, results] of generatorPerformance.entries()) {
+        const avg = results.reduce((a, b) => a + b, 0) / results.length;
+        if (avg > bestAvg) {
+          bestAvg = avg;
+          bestGenerator = gen as GeneratorType;
+        }
+      }
+      
+      if (bestGenerator && bestAvg > 5) { // Must beat baseline of 5 followers
+        console.log(`[GENERATOR_SELECT] 🧠 LEARNING: Using ${bestGenerator} for @${target_account} (${accountHistory.length} samples, +${bestAvg.toFixed(1)} avg followers)`);
+        return bestGenerator;
+      }
+    }
+  } catch (error: any) {
+    console.warn(`[GENERATOR_SELECT] ⚠️ Learning query failed:`, error.message);
   }
   
-  // 30% explore - match generator to category
+  // No strong signal - use category mapping with exploration
+  console.log(`[GENERATOR_SELECT] 🎲 No history for @${target_account}, using category-based selection`);
+  
   const categoryMapping: Record<string, GeneratorType[]> = {
     neuroscience: ['data_nerd', 'news_reporter', 'thought_leader'],
     longevity: ['data_nerd', 'coach', 'thought_leader'],
@@ -1234,7 +1280,6 @@ function selectReplyGenerator(category: string, target_account: string): Generat
   const generators = categoryMapping[category] || ['data_nerd', 'coach', 'thought_leader'];
   const selected = generators[Math.floor(Math.random() * generators.length)];
   
-  console.log(`[GENERATOR_SELECT] 🎲 Exploring with ${selected} for category: ${category}`);
   return selected;
 }
 

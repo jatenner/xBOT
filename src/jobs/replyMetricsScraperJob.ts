@@ -385,6 +385,34 @@ export async function replyMetricsScraperJob(): Promise<void> {
             console.log(`[REPLY_METRICS]   ✅ Updated tweet_metrics for ${reply.tweet_id}`);
           }
           
+          // 🧠 PHASE 3: UPDATE ACCOUNT PERFORMANCE FOR ADAPTIVE TARGETING
+          // If this is a high-value reply, update discovered_accounts for prioritization
+          if (followersGained >= 10 && reply.target_username) {
+            try {
+              const { error: accountUpdateError } = await supabase
+                .from('discovered_accounts')
+                .upsert({
+                  username: reply.target_username,
+                  avg_followers_per_reply: followersGained, // Will be averaged over time
+                  performance_tier: 'excellent',
+                  last_high_value_reply_at: new Date().toISOString(),
+                  total_replies_count: 1, // Will be incremented
+                  updated_at: new Date().toISOString()
+                }, {
+                  onConflict: 'username',
+                  ignoreDuplicates: false
+                });
+              
+              if (accountUpdateError) {
+                console.warn(`[REPLY_METRICS]   ⚠️ Failed to update account performance for @${reply.target_username}:`, accountUpdateError.message);
+              } else {
+                console.log(`[REPLY_METRICS]   🌟 HIGH-VALUE REPLY: Updated @${reply.target_username} performance (+${followersGained} followers)`);
+              }
+            } catch (accountError: any) {
+              console.warn(`[REPLY_METRICS]   ⚠️ Account performance update failed:`, accountError.message);
+            }
+          }
+          
           // 🔥 CRITICAL: Write to outcomes table (used by bandit algorithms and learning systems)
           const { error: outcomesError } = await supabase
             .from('outcomes')
