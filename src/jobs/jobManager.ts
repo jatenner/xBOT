@@ -224,7 +224,7 @@ export class JobManager {
     // This eliminates duplicate browser operations for follower tracking
 
     // Analytics - every 6 hours, offset 180 min (OPTIMIZED: reduced from 30min)
-    // NOW INCLUDES: Follower snapshots (merged from velocity tracker)
+    // NOW INCLUDES: Follower snapshots (merged from velocity tracker) + Performance Analytics
     this.scheduleStaggeredJob(
       'analytics',
       async () => {
@@ -239,6 +239,15 @@ export class JobManager {
             console.log('[JOB_MANAGER] ✅ Follower tracking completed as part of analytics');
           } catch (velocityError: any) {
             console.warn('[JOB_MANAGER] ⚠️ Follower tracking failed:', velocityError.message);
+          }
+          
+          // NEW: Performance Analytics (engagement tiers, generators, etc.)
+          try {
+            const { analyticsJob } = await import('./analyticsJob');
+            await analyticsJob();
+            console.log('[JOB_MANAGER] ✅ Performance analytics completed');
+          } catch (perfError: any) {
+            console.warn('[JOB_MANAGER] ⚠️ Performance analytics failed:', perfError.message);
           }
         });
       },
