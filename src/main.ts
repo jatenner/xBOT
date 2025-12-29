@@ -4,6 +4,7 @@ import { closeBrowser } from './playwright/browserFactory';
 import { closeDatabaseConnections } from './db/index';
 import { boot } from './main-bulletproof';
 import { validateDatabaseSchema } from './db/schemaValidator';
+import { runMigrationsOnStartup } from './db/runMigrations.js';
 
 /**
  * Main application entry point with proper error handling and graceful shutdown
@@ -18,7 +19,11 @@ async function main() {
     process.exit(1);
   }
 
-  // Validate database schema BEFORE starting
+  // Run database migrations FIRST (non-blocking)
+  console.log('🔧 Running database migrations...');
+  await runMigrationsOnStartup();
+  
+  // Validate database schema AFTER migrations
   console.log('🔍 Validating database schema...');
   const schemaResult = await validateDatabaseSchema();
   
