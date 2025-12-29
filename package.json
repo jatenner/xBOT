@@ -45,6 +45,7 @@
     "verify:session": "node verify_session.js",
     "test:session": "node scripts/session_check.js",
     "validate:posting": "node scripts/validate-posting.mjs",
+    "analytics:report": "tsx scripts/analytics-report.ts",
     "test": "jest",
     "test:schema": "npx ts-node scripts/verify-schema.ts",
     "validate:schema": "npx ts-node -r dotenv/config scripts/validateSchema.ts",
