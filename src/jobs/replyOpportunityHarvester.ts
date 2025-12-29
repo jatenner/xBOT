@@ -102,6 +102,67 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     const needToHarvest = TARGET_POOL_SIZE - poolSize;
     console.log(`[HARVESTER] 🎯 Need to harvest ~${needToHarvest} opportunities`);
     
+  // Step 2.5: PROVEN ACCOUNT PRIORITY SEARCH (🧠 LEARNING-POWERED)
+  // Query discovered_accounts for high performers and search them FIRST
+  let provenAccountOpportunities = 0;
+  try {
+    const { data: topAccounts, error: accountError } = await supabase
+      .from('discovered_accounts')
+      .select('username, avg_followers_per_reply, total_replies_count')
+      .gte('avg_followers_per_reply', 8) // Accounts that drive 8+ followers per reply
+      .order('avg_followers_per_reply', { ascending: false })
+      .limit(15);
+
+    if (!accountError && topAccounts && topAccounts.length > 0) {
+      console.log(`[HARVESTER] 🧠 Found ${topAccounts.length} PROVEN PERFORMERS - searching them FIRST`);
+      
+      // Build priority search query
+      const accountQuery = topAccounts.map(a => `from:${a.username}`).join(' OR ');
+      const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
+      
+      const provenQuery = {
+        label: 'PROVEN PERFORMERS (Priority)',
+        minLikes: 3000, // Lower threshold for proven accounts
+        maxReplies: 300,
+        maxAgeHours: 12, // Fresh tweets only
+        query: `(${accountQuery}) min_faves:3000 -filter:replies lang:en`
+      };
+
+      console.log(`[HARVESTER] 🚀 Priority search: ${topAccounts.map(a => '@' + a.username).join(', ')}`);
+      
+      const provenOpps = await withBrowserLock(
+        'search_proven_performers',
+        BrowserPriority.HARVESTING,
+        async () => {
+          return await realTwitterDiscovery.findViralTweetsViaSearch(
+            provenQuery.minLikes,
+            provenQuery.maxReplies,
+            provenQuery.label,
+            provenQuery.maxAgeHours,
+            provenQuery.query
+          );
+        }
+      );
+
+      if (provenOpps && provenOpps.length > 0) {
+        provenAccountOpportunities = provenOpps.length;
+        
+        // Add engagement tier classification
+        const oppsWithTiers = provenOpps.map((opp: any) => ({
+          ...opp,
+          engagement_tier: classifyEngagementTier(opp.like_count || 0)
+        }));
+        
+        await realTwitterDiscovery.storeOpportunities(oppsWithTiers);
+        console.log(`[HARVESTER] ✅ PROVEN PERFORMERS: Found ${provenAccountOpportunities} opportunities from high-value accounts`);
+      }
+    } else {
+      console.log(`[HARVESTER] ℹ️  No proven performers yet (need more reply data with followers_gained metadata)`);
+    }
+  } catch (provenError: any) {
+    console.warn(`[HARVESTER] ⚠️ Proven account search failed:`, provenError.message);
+  }
+    
   // Step 3: Define Twitter search queries (🔥 ENGAGEMENT-FIRST STRATEGY)
   // 
   // 🚀 NEW PRIORITY ORDER:
