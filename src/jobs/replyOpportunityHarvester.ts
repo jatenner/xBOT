@@ -22,6 +22,21 @@ import { realTwitterDiscovery } from '../ai/realTwitterDiscovery';
 
 const MAX_RECOVERY_ATTEMPTS = Number(process.env.HARVESTER_RECOVERY_ATTEMPTS ?? 2);
 
+/**
+ * Classify opportunity by engagement tier
+ * Used for performance analytics and adaptive targeting
+ */
+function classifyEngagementTier(likeCount: number): string {
+  if (likeCount >= 100000) return 'EXTREME_VIRAL';
+  if (likeCount >= 50000) return 'ULTRA_VIRAL';
+  if (likeCount >= 25000) return 'MEGA_VIRAL';
+  if (likeCount >= 10000) return 'VIRAL';
+  if (likeCount >= 5000) return 'TRENDING';
+  if (likeCount >= 2000) return 'POPULAR';
+  if (likeCount >= 1000) return 'RISING';
+  return 'MODERATE';
+}
+
 export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<void> {
   console.log('[HARVESTER] 🔍 Starting TWEET-FIRST viral search harvesting...');
   
@@ -87,31 +102,36 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     const needToHarvest = TARGET_POOL_SIZE - poolSize;
     console.log(`[HARVESTER] 🎯 Need to harvest ~${needToHarvest} opportunities`);
     
-  // Step 3: Define Twitter search queries (🔥 NEW MEGA-VIRAL STRATEGY)
+  // Step 3: Define Twitter search queries (🔥 ENGAGEMENT-FIRST STRATEGY)
   // 
-  // 🚀 BREAKTHROUGH UPGRADE:
-  // OLD: Search "health min_faves:250000" → Finds 0-1 tweets (too specific!)
-  // NEW: Search "min_faves:250000" → Finds 50-200 tweets → AI filters for health → 10-50 health tweets!
+  // 🚀 NEW PRIORITY ORDER:
+  // Search HIGH-ENGAGEMENT tweets FIRST (100K+ → 50K+ → 25K+ → 10K+)
+  // Then health-focused for quality, then lower engagement as fallback
   // 
   // Strategy:
-  // 1. Broad viral search (NO topic filter)
+  // 1. Target mega-viral first (100K+, 50K+, 25K+) - maximum reach
   // 2. AI judges health relevance (GPT-4o-mini)
   // 3. Returns ONLY health-relevant viral tweets
+  // 4. Fallback to health-specific if mega-viral pool low
   // 
-  // Result: 10-50x MORE health opportunities discovered!
-  // 🚀 OPTIMIZED: Prioritize health-focused searches for better targeting
+  // Result: Higher avg engagement per reply = more followers!
   const searchQueries = [
-    // HEALTH-FIRST STRATEGY: These queries target health/wellness content directly
-    { label: 'HEALTH HOT (500+)', minLikes: 500, maxReplies: 150, maxAgeHours: 24, query: '("sleep" OR "cortisol" OR "glucose" OR "metabolic" OR "insulin" OR "fasting" OR "longevity") min_faves:500 -filter:replies lang:en -crypto -nft -betting' },
-    { label: 'HEALTH VIRAL (1K+)', minLikes: 1000, maxReplies: 200, maxAgeHours: 24, query: '("health" OR "wellness" OR "fitness" OR "nutrition" OR "workout" OR "diet") min_faves:1000 -filter:replies lang:en -crypto -nft -betting' },
-    { label: 'BIOHACK (500+)', minLikes: 500, maxReplies: 150, maxAgeHours: 48, query: '("biohack" OR "peptide" OR "sauna" OR "cold plunge" OR "hrv" OR "ozempic" OR "testosterone") min_faves:500 -filter:replies lang:en -crypto -nft' },
-    { label: 'MENTAL HEALTH (500+)', minLikes: 500, maxReplies: 150, maxAgeHours: 24, query: '("mental health" OR "anxiety" OR "depression" OR "therapy" OR "meditation" OR "stress") min_faves:500 -filter:replies lang:en -crypto -nft' },
-    // GENERAL VIRAL: Cast a wider net, rely on AI filtering
-    { label: 'FRESH (1K+)', minLikes: 1000, maxReplies: 120, maxAgeHours: 12, query: 'min_faves:1000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino -nfl -nba' },
-    { label: 'TRENDING (5K+)', minLikes: 5000, maxReplies: 250, maxAgeHours: 24, query: 'min_faves:5000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' },
+    // TIER 1: MEGA-VIRAL (100K+, 50K+, 25K+) - SEARCH FIRST
+    { label: 'EXTREME (100K+)', minLikes: 100000, maxReplies: 1200, maxAgeHours: 96, query: 'min_faves:100000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' },
+    { label: 'ULTRA (50K+)', minLikes: 50000, maxReplies: 900, maxAgeHours: 72, query: 'min_faves:50000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' },
+    { label: 'MEGA (25K+)', minLikes: 25000, maxReplies: 600, maxAgeHours: 48, query: 'min_faves:25000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' },
+    
+    // TIER 2: VIRAL (10K+, 5K+) - SEARCH SECOND
     { label: 'VIRAL (10K+)', minLikes: 10000, maxReplies: 400, maxAgeHours: 48, query: 'min_faves:10000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' },
-    { label: 'MEGA (25K+)', minLikes: 25000, maxReplies: 600, maxAgeHours: 48, query: 'min_faves:25000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' },
-    { label: 'ULTRA (50K+)', minLikes: 50000, maxReplies: 900, maxAgeHours: 72, query: 'min_faves:50000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' }
+    { label: 'TRENDING (5K+)', minLikes: 5000, maxReplies: 250, maxAgeHours: 24, query: 'min_faves:5000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' },
+    
+    // TIER 3: HEALTH-FOCUSED HIGH-ENGAGEMENT - SEARCH THIRD
+    { label: 'HEALTH VIRAL (5K+)', minLikes: 5000, maxReplies: 250, maxAgeHours: 24, query: '("health" OR "wellness" OR "fitness" OR "nutrition" OR "longevity") min_faves:5000 -filter:replies lang:en -crypto -nft -betting' },
+    { label: 'HEALTH TRENDING (2K+)', minLikes: 2000, maxReplies: 200, maxAgeHours: 24, query: '("health" OR "wellness" OR "workout" OR "diet") min_faves:2000 -filter:replies lang:en -crypto -nft -betting' },
+    
+    // TIER 4: FRESH & QUALITY - SEARCH FOURTH (only if pool needs filling)
+    { label: 'BIOHACK (1K+)', minLikes: 1000, maxReplies: 150, maxAgeHours: 48, query: '("biohack" OR "peptide" OR "sauna" OR "cold plunge" OR "hrv" OR "ozempic" OR "testosterone") min_faves:1000 -filter:replies lang:en -crypto -nft' },
+    { label: 'FRESH (1K+)', minLikes: 1000, maxReplies: 120, maxAgeHours: 12, query: 'min_faves:1000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino -nfl -nba' }
   ];
 
   const fallbackQueries = [
@@ -148,12 +168,13 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     console.warn('[HARVESTER] 🚨 CRITICAL MODE: Pool is dangerously low, running extended discovery cycle');
   }
 
-  console.log(`[HARVESTER] 🔥 Configured ${searchQueries.length} FRESHNESS-OPTIMIZED discovery tiers`);
-  console.log(`[HARVESTER] 🎯 Strategy: 3-TIER MIX (Fresh → Trending → Viral)`);
-  console.log(`[HARVESTER]   🔥 FRESH tier: 500-2K likes, <12h old (active conversations)`);
-  console.log(`[HARVESTER]   ⚡ TRENDING tier: 2K-10K likes, <24h old (rising visibility)`);
-  console.log(`[HARVESTER]   🚀 VIRAL tier: 10K-50K likes, <48h old (established reach)`);
-  console.log(`[HARVESTER]   💎 MEGA tier: 50K+ likes, <72h old (rare opportunities)`);
+  console.log(`[HARVESTER] 🔥 Configured ${searchQueries.length} ENGAGEMENT-FIRST discovery tiers`);
+  console.log(`[HARVESTER] 🎯 Strategy: HIGH-ENGAGEMENT FIRST (100K+ → 50K+ → 25K+ → 10K+)`);
+  console.log(`[HARVESTER]   💎 EXTREME tier: 100K+ likes (maximum reach)`);
+  console.log(`[HARVESTER]   🚀 ULTRA tier: 50K-100K likes (mega-viral)`);
+  console.log(`[HARVESTER]   ⚡ MEGA tier: 25K-50K likes (super-viral)`);
+  console.log(`[HARVESTER]   🔥 VIRAL tier: 10K-25K likes (viral reach)`);
+  console.log(`[HARVESTER]   📈 TRENDING tier: 5K-10K likes (trending)`);
   console.log(`[HARVESTER] 🤖 AI-powered: GPT-4o-mini judges health relevance (score 0-10)`);
   console.log(`[HARVESTER] 🚫 No topic restrictions - AI filters AFTER scraping`);
   
@@ -201,17 +222,24 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
       if (opportunities.length > 0) {
         totalHarvested += opportunities.length;
         
-        // 💾 CRITICAL: Store opportunities in database
+        // 💾 CRITICAL: Store opportunities in database with tier classification
         try {
-          await realTwitterDiscovery.storeOpportunities(opportunities);
+          // Add engagement tier classification to each opportunity
+          const opportunitiesWithTiers = opportunities.map((opp: any) => ({
+            ...opp,
+            engagement_tier: classifyEngagementTier(opp.like_count || 0)
+          }));
           
-          // Log tier breakdown
-          const megaViral = opportunities.filter((o: any) => o.like_count >= 50000).length;
-          const superViral = opportunities.filter((o: any) => o.like_count >= 20000 && o.like_count < 50000).length;
-          const viral = opportunities.filter((o: any) => o.like_count >= 10000 && o.like_count < 20000).length;
+          await realTwitterDiscovery.storeOpportunities(opportunitiesWithTiers);
+          
+          // Log tier breakdown (updated classification)
+          const extreme = opportunities.filter((o: any) => o.like_count >= 100000).length;
+          const ultra = opportunities.filter((o: any) => o.like_count >= 50000 && o.like_count < 100000).length;
+          const mega = opportunities.filter((o: any) => o.like_count >= 25000 && o.like_count < 50000).length;
+          const viral = opportunities.filter((o: any) => o.like_count >= 10000 && o.like_count < 25000).length;
           const trending = opportunities.filter((o: any) => o.like_count >= 5000 && o.like_count < 10000).length;
           
-          console.log(`[HARVESTER]     ✓ Found ${opportunities.length} opps: ${megaViral} mega, ${superViral} super, ${viral} viral, ${trending} trending`);
+          console.log(`[HARVESTER]     ✓ Found ${opportunities.length} opps: ${extreme} extreme, ${ultra} ultra, ${mega} mega, ${viral} viral, ${trending} trending`);
         } catch (error: any) {
           console.error(`[HARVESTER]     ❌ Failed to store opportunities:`, error.message);
         }
@@ -262,19 +290,28 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   
   const finalPoolSize = finalCount || 0;
   
-  // Get tier breakdown by like_count (MEGA-IMPACT tiers)
-  const { count: megaViralCount } = await supabase
+  // Get tier breakdown by like_count (NEW TIER STRUCTURE)
+  const { count: extremeCount } = await supabase
     .from('reply_opportunities')
     .select('*', { count: 'exact', head: true })
-    .gte('like_count', 50000)
-    .lt('reply_count', 1000)
+    .gte('like_count', 100000)
+    .lt('reply_count', 1200)
     .eq('replied_to', false)
     .gt('expires_at', new Date().toISOString());
   
-  const { count: superViralCount } = await supabase
+  const { count: ultraCount } = await supabase
     .from('reply_opportunities')
     .select('*', { count: 'exact', head: true })
-    .gte('like_count', 20000)
+    .gte('like_count', 50000)
+    .lt('like_count', 100000)
+    .lt('reply_count', 900)
+    .eq('replied_to', false)
+    .gt('expires_at', new Date().toISOString());
+  
+  const { count: megaCount } = await supabase
+    .from('reply_opportunities')
+    .select('*', { count: 'exact', head: true })
+    .gte('like_count', 25000)
     .lt('like_count', 50000)
     .lt('reply_count', 600)
     .eq('replied_to', false)
@@ -284,7 +321,7 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     .from('reply_opportunities')
     .select('*', { count: 'exact', head: true })
     .gte('like_count', 10000)
-    .lt('like_count', 20000)
+    .lt('like_count', 25000)
     .lt('reply_count', 400)
     .eq('replied_to', false)
     .gt('expires_at', new Date().toISOString());
@@ -304,11 +341,12 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   console.log(`[HARVESTER] 📊 Pool size: ${poolSize} → ${finalPoolSize}`);
   console.log(`[HARVESTER] 🔍 Searches processed: ${searchesProcessed}/${searchQueries.length}`);
   console.log(`[HARVESTER] 🌾 Harvested: ${totalHarvested} new viral tweet opportunities`);
-  console.log(`[HARVESTER] 🏆 MEGA-IMPACT breakdown (total in pool):`);
-  console.log(`[HARVESTER]   🚀 MEGA-VIRAL (50K+ likes): ${megaViralCount || 0} tweets`);
-  console.log(`[HARVESTER]   💎 SUPER-VIRAL (20K+ likes): ${superViralCount || 0} tweets`);
-  console.log(`[HARVESTER]   ⭐ VIRAL (10K+ likes): ${viralCount || 0} tweets`);
-  console.log(`[HARVESTER]   📈 TRENDING (5K+ likes): ${trendingCount || 0} tweets`);
+  console.log(`[HARVESTER] 🏆 ENGAGEMENT TIER breakdown (total in pool):`);
+  console.log(`[HARVESTER]   💎 EXTREME (100K+ likes): ${extremeCount || 0} tweets`);
+  console.log(`[HARVESTER]   🚀 ULTRA (50K-100K likes): ${ultraCount || 0} tweets`);
+  console.log(`[HARVESTER]   ⚡ MEGA (25K-50K likes): ${megaCount || 0} tweets`);
+  console.log(`[HARVESTER]   🔥 VIRAL (10K-25K likes): ${viralCount || 0} tweets`);
+  console.log(`[HARVESTER]   📈 TRENDING (5K-10K likes): ${trendingCount || 0} tweets`);
   
   if (finalPoolSize < MIN_POOL_SIZE) {
     console.warn(`[HARVESTER] ⚠️ Pool still low (${finalPoolSize}/${MIN_POOL_SIZE})`);
@@ -369,8 +407,9 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
           harvested_count: totalHarvested,
           searches_processed: searchesProcessed,
           high_impact_count: highImpactCount || 0,
-          mega: megaViralCount || 0,
-          super: superViralCount || 0,
+          extreme: extremeCount || 0,
+          ultra: ultraCount || 0,
+          mega: megaCount || 0,
           viral: viralCount || 0,
           trending: trendingCount || 0,
           pool_was_critical: poolWasCritical
