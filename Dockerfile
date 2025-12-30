@@ -12,7 +12,7 @@ RUN npm ci --no-audit
 # Copy source code
 COPY . .
 
-# Build TypeScript
+# Build TypeScript (creates empty dist folder for compatibility)
 RUN npm run build
 
 # Production stage
@@ -23,15 +23,20 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only
+# Install production dependencies (tsx and typescript are now in dependencies)
 RUN npm ci --omit=dev --no-audit
 
-# Copy built code from builder
+# Copy source code (needed for tsx runtime)
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/supabase ./supabase
+
+# Copy dist folder (placeholder only, not used in runtime)
 COPY --from=builder /app/dist ./dist
 
-# Expose port
+# Expose port (Railway sets PORT env var)
 EXPOSE 8080
 
-# Start application
-CMD ["node", "dist/src/main-bulletproof.js"]
+# Start application via npm start (runs tsx src/main.ts)
+CMD ["npm", "start"]
 
