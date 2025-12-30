@@ -62,7 +62,8 @@ async function generateSyntheticContent(): Promise<void> {
   const decision_id = uuidv4();
   
   const supabase = getSupabaseClient();
-  await supabase.from('content_metadata').insert([{
+  // 🔥 CRITICAL FIX: Insert into TABLE, not VIEW
+  await supabase.from('content_generation_metadata_comprehensive').insert([{
     decision_id,
     decision_type: 'single',
     content: "Health tip: Stay hydrated! Your body needs water for optimal function.",
@@ -1375,7 +1376,8 @@ async function queueContent(content: any): Promise<void> {
   
   log({ op: 'queue_content', decision_id: content.decision_id, decision_type: insertPayload.decision_type, thread_parts: insertPayload.thread_parts?.length });
   
-  const { data, error} = await supabase.from('content_metadata').insert([insertPayload]);
+  // 🔥 CRITICAL FIX: Insert into TABLE, not VIEW
+  const { data, error} = await supabase.from('content_generation_metadata_comprehensive').insert([insertPayload]);
   
   if (error) {
     log({ op: 'queue_content', outcome: 'error', error: error.message, decision_id: content.decision_id });
