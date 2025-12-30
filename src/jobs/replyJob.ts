@@ -335,6 +335,19 @@ export async function generateReplies(): Promise<void> {
   ReplyDiagnosticLogger.logCycleStart();
   
   // ===========================================================
+  // STEP 0: CHECK X AUTOMATION STATUS
+  // ===========================================================
+  
+  // 🚫 Check X automation status (Cloudflare/human verification block)
+  const { canProceedWithXAutomation } = await import('../browser/xAutomationGuard');
+  if (!canProceedWithXAutomation()) {
+    console.warn('[REPLY_JOB] ⏸️ Skipping reply generation (X automation blocked - cooldown active)');
+    ReplyDiagnosticLogger.logBlocked('X automation blocked', new Date());
+    ReplyDiagnosticLogger.logCycleEnd(false, ['X automation blocked']);
+    return;
+  }
+  
+  // ===========================================================
   // STEP 1: CHECK ALL RATE LIMITS
   // ===========================================================
   
