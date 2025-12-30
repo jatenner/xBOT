@@ -4,7 +4,7 @@
   "scripts": {
     "start": "tsx src/main.ts",
     "dev": "tsx watch src/main.ts",
-    "build": "echo \"skip tsc (runtime uses tsx)\"",
+    "build": "mkdir -p dist && echo 'dist placeholder for Docker COPY'",
     "post-now": "tsx scripts/post-immediately.ts",
     "check": "tsx scripts/live-system-check.ts",
     "analyze": "tsx scripts/analyze-posting-issues.ts",
