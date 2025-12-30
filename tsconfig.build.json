@@ -1,49 +1,22 @@
 {
+  "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
-    "module": "commonjs",
-    "target": "ES2020",
-    "declaration": false,
-    "sourceMap": true,
+    "noEmit": false,
     "skipLibCheck": true,
-    "esModuleInterop": true,
-    "resolveJsonModule": true,
-    "noEmitOnError": false,
-    "strict": false,
-    "rootDir": "."
+    "noEmitOnError": false
   },
   "include": [
-    "src/main-bulletproof.ts",
-    "src/server.ts",
-    "src/intelligence/contentTypeSelector.ts",
-    "src/intelligence/followerTracker.ts",
-    "src/intelligence/realTimeLearningLoop.ts",
-    "src/intelligence/diversityEnforcer.ts",
-    "src/intelligence/dynamicTopicGenerator.ts",
-    "src/intelligence/angleGenerator.ts",
-    "src/intelligence/toneGenerator.ts",
-    "src/intelligence/generatorMatcher.ts",
-    "src/intelligence/formatStrategyGenerator.ts",          
-    "src/generators/**/*",              
-    "src/jobs/planJob.ts",
-    "src/jobs/postingQueue.ts",
-    "src/jobs/metricsScraperJob.ts",
-    "src/learning/growthIntelligence.ts",
-    "src/learning/explorationEnforcer.ts",
-    "src/learning/ceilingAwareness.ts",
-    "src/learning/patternDiscovery.ts",
-    "src/analytics/growthAnalytics.ts",
-    "src/analytics/varianceAnalyzer.ts",
-    "src/validators/substanceValidator.ts",
-    "scripts/startup-acceptance.ts",
-    "scripts/jobs-learn.ts",
-    "scripts/dryrun-plan.ts",
-    "scripts/dryrun-reply.ts"
+    "src/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "dist",
+    "scripts/**",
+    "src/app/**",
+    "src/**/*.tsx",
+    "src/scripts/**",
     "**/*.test.ts",
-    "**/*.spec.ts"
+    "**/*.spec.ts",
+    "node_modules",
+    "dist"
   ]
 }
