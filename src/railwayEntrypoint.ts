@@ -30,6 +30,7 @@ interface BootState {
   jobsOk: boolean;
   recoveryOk: boolean;
   invariantCheckOk: boolean;
+  profileRecoveryOk: boolean;
 }
 
 const bootState: BootState = {
@@ -43,7 +44,8 @@ const bootState: BootState = {
   dbOk: false,
   jobsOk: false,
   recoveryOk: false,
-  invariantCheckOk: false
+  invariantCheckOk: false,
+  profileRecoveryOk: false
 };
 
 /**
@@ -78,6 +80,7 @@ app.get('/ready', (req, res) => {
       jobsOk: bootState.jobsOk,
       recoveryOk: bootState.recoveryOk,
       invariantCheckOk: bootState.invariantCheckOk,
+      profileRecoveryOk: bootState.profileRecoveryOk,
       degraded: bootState.degraded,
       lastError: bootState.lastError
     });
@@ -91,6 +94,7 @@ app.get('/ready', (req, res) => {
       jobsOk: bootState.jobsOk,
       recoveryOk: bootState.recoveryOk,
       invariantCheckOk: bootState.invariantCheckOk,
+      profileRecoveryOk: bootState.profileRecoveryOk,
       degraded: bootState.degraded,
       lastError: bootState.lastError,
       message: 'System not ready yet - background initialization in progress'
@@ -312,7 +316,25 @@ setImmediate(async () => {
       bootState.invariantCheckOk = false;
     }
     
-    // Step 8: Determine final readiness state
+    // Step 8: Start Tier-2 profile backfill recovery
+    if (bootState.dbOk && bootState.jobsOk) {
+      console.log('[BOOT] profile_recovery_start attempt');
+      try {
+        const { startProfileBackfillRecovery } = await import('./jobs/profileBackfillRecoveryJob');
+        startProfileBackfillRecovery();
+        console.log('[BOOT] profile_recovery_started ok');
+        bootState.profileRecoveryOk = true;
+      } catch (profileError: any) {
+        console.error('[BOOT] ⚠️ profile_recovery_start error:', profileError.message);
+        bootState.profileRecoveryOk = false;
+        // Non-critical - don't mark as degraded
+      }
+    } else {
+      console.log('[BOOT] ⚠️ profile_recovery_skipped (db or jobs not ok)');
+      bootState.profileRecoveryOk = false;
+    }
+    
+    // Step 9: Determine final readiness state
     if (bootState.envOk && bootState.dbOk && bootState.jobsOk) {
       bootState.ready = true;
       console.log('[BOOT] ✅ system_ready (all critical systems operational)');
@@ -322,7 +344,7 @@ setImmediate(async () => {
     }
     
     console.log('[BOOT] ✅ background_init complete');
-    console.log(`[BOOT] final_state: ready=${bootState.ready} degraded=${bootState.degraded} envOk=${bootState.envOk} dbOk=${bootState.dbOk} jobsOk=${bootState.jobsOk} recoveryOk=${bootState.recoveryOk} invariantCheckOk=${bootState.invariantCheckOk}`);
+    console.log(`[BOOT] final_state: ready=${bootState.ready} degraded=${bootState.degraded} envOk=${bootState.envOk} dbOk=${bootState.dbOk} jobsOk=${bootState.jobsOk} recoveryOk=${bootState.recoveryOk} invariantCheckOk=${bootState.invariantCheckOk} profileRecoveryOk=${bootState.profileRecoveryOk}`);
     
   } catch (error: any) {
     console.error('[BOOT] ❌ background_init fatal error:', error.message);
@@ -344,7 +366,7 @@ setInterval(() => {
   console.log(
     `[HEARTBEAT] ready=${bootState.ready} degraded=${bootState.degraded} ` +
     `envOk=${bootState.envOk} dbOk=${bootState.dbOk} jobsOk=${bootState.jobsOk} ` +
-    `recoveryOk=${bootState.recoveryOk} invariantCheckOk=${bootState.invariantCheckOk} ` +
+    `recoveryOk=${bootState.recoveryOk} invariantCheckOk=${bootState.invariantCheckOk} profileRecoveryOk=${bootState.profileRecoveryOk} ` +
     `uptime=${uptimeMin}m lastError=${bootState.lastError || 'none'}`
   );
 }, 60 * 1000); // Every 60 seconds

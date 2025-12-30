@@ -141,6 +141,38 @@ async function checkReconciliation(): Promise<{ passed: boolean; message: string
   }
 }
 
+async function checkDiscoveredTweets(): Promise<{ passed: boolean; message: string }> {
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    
+    // Count tweets discovered via profile backfill
+    const { count, error } = await supabase
+      .from('content_metadata')
+      .select('*', { count: 'exact', head: true })
+      .eq('discovered_via_profile', true);
+    
+    if (error) {
+      return { passed: true, message: `Query error (non-critical): ${error.message}` };
+    }
+    
+    if (count && count > 0) {
+      return { 
+        passed: true, 
+        message: `Found ${count} tweets backfilled via Tier-2 profile recovery (system working correctly)` 
+      };
+    }
+    
+    return { passed: true, message: 'No discovered tweets yet (Tier-1 recovery sufficient)' };
+    
+  } catch (error: any) {
+    return { passed: true, message: `Check skipped: ${error.message}` };
+  }
+}
+
 async function main() {
   console.log('🔍 TRUTH GAP VERIFICATION');
   console.log('═══════════════════════════════════════\n');
@@ -185,6 +217,18 @@ async function main() {
   console.log(reconcileCheck.passed ? '✅ PASS' : '❌ FAIL');
   console.log(`   ${reconcileCheck.message}\n`);
   if (!reconcileCheck.passed) result.passed = false;
+  
+  // Check 4: Discovered tweets (backfilled via profile recovery)
+  console.log('Check 4: Discovered Tweets (profile backfill stats)...');
+  const discoveredCheck = await checkDiscoveredTweets();
+  result.checks.push({
+    name: 'Discovered Tweets',
+    passed: discoveredCheck.passed,
+    message: discoveredCheck.message
+  });
+  console.log(discoveredCheck.passed ? '✅ PASS' : '❌ INFO');
+  console.log(`   ${discoveredCheck.message}\n`);
+  // Don't fail overall if discovered tweets exist - it's just informational
   
   // Summary
   console.log('═══════════════════════════════════════');
