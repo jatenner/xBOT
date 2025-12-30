@@ -1105,6 +1105,14 @@ export class RealTwitterDiscovery {
         continue;
       }
       
+      // 🚨 CRITICAL FILTER: Skip reply tweets (tweets starting with '@')
+      // Reply tweets are NOT original posts and should not be reply targets
+      const tweetContent = String(opp.tweet_content || '').trim();
+      if (tweetContent.startsWith('@')) {
+        console.log(`[REAL_DISCOVERY] 🚫 Skipping ${opp.tweet_id} (is a reply tweet, starts with @)`);
+        continue;
+      }
+      
       try {
         // 🎯 Phase 3: Boost opportunity_score based on priority_score
         // Formula: final_score = base_score * (1 + priority_score * boost_factor)
