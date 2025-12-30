@@ -176,12 +176,21 @@ setImmediate(async () => {
     // Step 1: Validate environment (soft check - warn only, don't exit)
     console.log('[BOOT] env_validation start');
     try {
-      const { validateEnvironment } = await import('./config/env');
-      const isValid = validateEnvironment();
-      if (!isValid) {
-        console.warn('[BOOT] ⚠️ env_validation failed - running in degraded mode');
+      // Check for required runtime vars
+      const { ENV } = await import('./config/env');
+      const requiredVars = [
+        'DATABASE_URL',
+        'SUPABASE_URL',
+        'SUPABASE_SERVICE_ROLE_KEY',
+        'OPENAI_API_KEY'
+      ];
+      
+      const missing = requiredVars.filter(key => !ENV[key as keyof typeof ENV]);
+      
+      if (missing.length > 0) {
+        console.warn(`[BOOT] ⚠️ env_validation failed - missing: ${missing.join(', ')}`);
         bootState.degraded = true;
-        bootState.lastError = 'Environment validation failed (missing required env vars)';
+        bootState.lastError = `Missing required env vars: ${missing.join(', ')}`;
         bootState.envOk = false;
       } else {
         console.log('[BOOT] env_validation ok');
