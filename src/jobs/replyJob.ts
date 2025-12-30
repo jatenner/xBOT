@@ -1046,25 +1046,19 @@ Reply:`;
         console.log(`[REPLY_JOB] ✅ Relationship reply generated (strategy: ${relationshipReply.strategy}, conversion: ${relationshipReply.expectedConversion})`);
         
       } catch (relationshipError: any) {
-        console.warn(`[REPLY_JOB] ⚠️ Relationship reply system failed, trying generator:`, relationshipError.message);
+        console.warn(`[REPLY_JOB] ⚠️ Relationship reply system failed, trying fallback:`, relationshipError.message);
         
+        // ✅ P0 FIX: Don't fall back to regular generators (they produce standalone posts, not contextual replies)
+        // If Phase 4 and Relationship systems both failed, use strategic fallback only
         try {
-            // Try to use the selected generator (only if Phase 4 routing didn't already handle it)
-            if (!usePhase4Routing) {
-          const { generateReplyWithGenerator } = await import('../generators/replyGeneratorAdapter');
-          strategicReply = await generateReplyWithGenerator(replyGenerator, {
-            tweet_content: target.tweet_content,
-            username: target.account.username,
-            category: target.account.category,
-            reply_angle: target.reply_angle
-          });
-          console.log(`[REPLY_JOB] ✅ ${replyGenerator} generator succeeded`);
-            }
-        } catch (generatorError: any) {
-          // Fallback to strategicReplySystem if generator fails
-          console.warn(`[REPLY_JOB] ⚠️ ${replyGenerator} generator failed, using strategic fallback:`, generatorError.message);
+          if (!usePhase4Routing) {
+            console.log(`[REPLY_JOB] ⚠️ Phase 4 routing disabled and relationship system failed, using strategic fallback`);
+          }
           strategicReply = await strategicReplySystem.generateStrategicReply(target);
-          console.log(`[REPLY_JOB] ✅ Fallback strategicReplySystem succeeded`);
+          console.log(`[REPLY_JOB] ✅ Strategic fallback succeeded`);
+        } catch (generatorError: any) {
+          console.warn(`[REPLY_JOB] ❌ Strategic fallback also failed:`, generatorError.message);
+          // All systems failed - skip this opportunity
           }
         }
       }

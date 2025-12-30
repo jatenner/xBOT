@@ -396,6 +396,7 @@ export async function processPostingQueue(): Promise<void> {
             .select('decision_type')
             .in('decision_type', ['single', 'thread'])
             .eq('status', 'posted')
+            .not('tweet_id', 'is', null)
             .gte('posted_at', oneHourAgo);
           
           // Count POSTS (not tweets) - threads = 1 post, singles = 1 post
@@ -431,6 +432,7 @@ export async function processPostingQueue(): Promise<void> {
             .select('*', { count: 'exact', head: true })
             .eq('decision_type', 'reply')
             .eq('status', 'posted')
+            .not('tweet_id', 'is', null)
             .gte('posted_at', oneHourAgo);
           
           const totalRepliesThisHour = (replyCount || 0) + repliesPostedThisCycle;
