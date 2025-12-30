@@ -10,7 +10,8 @@
     "analyze": "tsx scripts/analyze-posting-issues.ts",
     "diagnose": "tsx scripts/diagnose-system-now.ts",
     "check-tweets": "tsx scripts/check-recent-tweets.ts",
-    "verify": "tsx scripts/railway-verify.ts"
+    "verify": "tsx scripts/railway-verify.ts",
+    "verify-truth-gap": "tsx scripts/verify-truth-gap.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.4",

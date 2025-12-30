@@ -28,6 +28,8 @@ interface BootState {
   envOk: boolean;
   dbOk: boolean;
   jobsOk: boolean;
+  recoveryOk: boolean;
+  invariantCheckOk: boolean;
 }
 
 const bootState: BootState = {
@@ -39,7 +41,9 @@ const bootState: BootState = {
   lastInitAt: null,
   envOk: false,
   dbOk: false,
-  jobsOk: false
+  jobsOk: false,
+  recoveryOk: false,
+  invariantCheckOk: false
 };
 
 /**
@@ -72,6 +76,8 @@ app.get('/ready', (req, res) => {
       envOk: bootState.envOk,
       dbOk: bootState.dbOk,
       jobsOk: bootState.jobsOk,
+      recoveryOk: bootState.recoveryOk,
+      invariantCheckOk: bootState.invariantCheckOk,
       degraded: bootState.degraded,
       lastError: bootState.lastError
     });
@@ -83,6 +89,8 @@ app.get('/ready', (req, res) => {
       envOk: bootState.envOk,
       dbOk: bootState.dbOk,
       jobsOk: bootState.jobsOk,
+      recoveryOk: bootState.recoveryOk,
+      invariantCheckOk: bootState.invariantCheckOk,
       degraded: bootState.degraded,
       lastError: bootState.lastError,
       message: 'System not ready yet - background initialization in progress'
@@ -259,15 +267,6 @@ setImmediate(async () => {
       console.log('[BOOT] jobs_started ok');
       bootState.jobsOk = true;
       
-      // If we got here with env + DB + jobs all ok, system is ready
-      if (bootState.envOk && bootState.dbOk && bootState.jobsOk) {
-        bootState.ready = true;
-        console.log('[BOOT] ✅ system_ready (all systems operational)');
-      } else {
-        console.log('[BOOT] ⚠️ system_degraded (some systems failed but jobs running)');
-        bootState.degraded = true;
-      }
-      
     } catch (jobError: any) {
       console.error('[BOOT] ⚠️ jobs_start error:', jobError.message);
       console.error('[BOOT] stack:', jobError.stack);
@@ -277,8 +276,53 @@ setImmediate(async () => {
       bootState.jobsOk = false;
     }
     
+    // Step 6: Start self-healing recovery job
+    if (bootState.dbOk) {
+      console.log('[BOOT] recovery_job_start attempt');
+      try {
+        const { startPostingRecoveryJob } = await import('./jobs/postingRecoveryJob');
+        startPostingRecoveryJob();
+        console.log('[BOOT] recovery_job_started ok');
+        bootState.recoveryOk = true;
+      } catch (recoveryError: any) {
+        console.error('[BOOT] ⚠️ recovery_job_start error:', recoveryError.message);
+        bootState.recoveryOk = false;
+        // Non-critical - don't mark as degraded
+      }
+    } else {
+      console.log('[BOOT] ⚠️ recovery_job_skipped (db not ok)');
+      bootState.recoveryOk = false;
+    }
+    
+    // Step 7: Start truth invariant checker
+    if (bootState.dbOk) {
+      console.log('[BOOT] invariant_check_start attempt');
+      try {
+        const { startTruthInvariantCheck } = await import('./jobs/truthInvariantCheck');
+        startTruthInvariantCheck();
+        console.log('[BOOT] invariant_check_started ok');
+        bootState.invariantCheckOk = true;
+      } catch (invariantError: any) {
+        console.error('[BOOT] ⚠️ invariant_check_start error:', invariantError.message);
+        bootState.invariantCheckOk = false;
+        // Non-critical - don't mark as degraded
+      }
+    } else {
+      console.log('[BOOT] ⚠️ invariant_check_skipped (db not ok)');
+      bootState.invariantCheckOk = false;
+    }
+    
+    // Step 8: Determine final readiness state
+    if (bootState.envOk && bootState.dbOk && bootState.jobsOk) {
+      bootState.ready = true;
+      console.log('[BOOT] ✅ system_ready (all critical systems operational)');
+    } else {
+      console.log('[BOOT] ⚠️ system_degraded (some systems failed but jobs running)');
+      bootState.degraded = true;
+    }
+    
     console.log('[BOOT] ✅ background_init complete');
-    console.log(`[BOOT] final_state: ready=${bootState.ready} degraded=${bootState.degraded} envOk=${bootState.envOk} dbOk=${bootState.dbOk} jobsOk=${bootState.jobsOk}`);
+    console.log(`[BOOT] final_state: ready=${bootState.ready} degraded=${bootState.degraded} envOk=${bootState.envOk} dbOk=${bootState.dbOk} jobsOk=${bootState.jobsOk} recoveryOk=${bootState.recoveryOk} invariantCheckOk=${bootState.invariantCheckOk}`);
     
   } catch (error: any) {
     console.error('[BOOT] ❌ background_init fatal error:', error.message);
@@ -300,6 +344,7 @@ setInterval(() => {
   console.log(
     `[HEARTBEAT] ready=${bootState.ready} degraded=${bootState.degraded} ` +
     `envOk=${bootState.envOk} dbOk=${bootState.dbOk} jobsOk=${bootState.jobsOk} ` +
+    `recoveryOk=${bootState.recoveryOk} invariantCheckOk=${bootState.invariantCheckOk} ` +
     `uptime=${uptimeMin}m lastError=${bootState.lastError || 'none'}`
   );
 }, 60 * 1000); // Every 60 seconds
