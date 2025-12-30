@@ -39,9 +39,9 @@ app.use((req, res, next) => {
 });
 
 /**
- * 🔍 INTERNAL QUICK CHECK - Fast diagnostics (no auth needed for internal debugging)
+ * 🔍 INVESTIGATION ENDPOINT - Fast diagnostics (no auth needed for internal debugging)
  */
-app.get('/internal/quick-check', getInternalQuickCheck);
+app.get('/api/investigation/posting-issues', getInternalQuickCheck);
 
 /**
  * Environment info (redacted)
