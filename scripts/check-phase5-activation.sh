@@ -85,3 +85,4 @@ echo "[DIAGNOSTIC] ✅ Report generated: $REPORT_FILE"
 echo ""
 cat "$REPORT_FILE"
 
+

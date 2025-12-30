@@ -25,3 +25,4 @@ echo "   To restart service: railway restart"
 echo "   To check variables: railway variables"
 
 
+

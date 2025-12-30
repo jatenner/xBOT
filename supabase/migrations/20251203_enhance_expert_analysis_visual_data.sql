@@ -33,3 +33,4 @@ COMMENT ON COLUMN expert_tweet_analysis.visual_strategic_insights IS
 
 COMMIT;
 
+

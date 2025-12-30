@@ -182,3 +182,4 @@ WHERE status = 'posted'
   AND posted_at >= NOW() - INTERVAL '24 hours';
 
 
+
