@@ -16,7 +16,35 @@ const app = express();
 app.use(express.json());
 
 /**
+ * 🔍 BOOT STATE - Tracks system readiness and health
+ */
+interface BootState {
+  ready: boolean;
+  degraded: boolean;
+  lastError: string | null;
+  startedAt: number;
+  lastHeartbeatAt: number | null;
+  lastInitAt: number | null;
+  envOk: boolean;
+  dbOk: boolean;
+  jobsOk: boolean;
+}
+
+const bootState: BootState = {
+  ready: false,
+  degraded: false,
+  lastError: null,
+  startedAt: Date.now(),
+  lastHeartbeatAt: null,
+  lastInitAt: null,
+  envOk: false,
+  dbOk: false,
+  jobsOk: false
+};
+
+/**
  * ⚡ INSTANT HEALTHCHECK - No DB, no async imports, no env validation
+ * Always returns 200 (Railway healthcheck requirement)
  */
 app.get('/status', (req, res) => {
   res.status(200).json({
@@ -24,8 +52,42 @@ app.get('/status', (req, res) => {
     ts: Date.now(),
     version: '1.0.0',
     uptime: Math.floor(process.uptime()),
-    pid: process.pid
+    pid: process.pid,
+    ready: bootState.ready,
+    degraded: bootState.degraded,
+    lastError: bootState.lastError
   });
+});
+
+/**
+ * 🎯 READINESS CHECK - Returns 200 ONLY when system is truly ready
+ * Used by external monitoring to verify the bot is actually running
+ */
+app.get('/ready', (req, res) => {
+  if (bootState.ready) {
+    res.status(200).json({
+      ready: true,
+      ts: Date.now(),
+      uptime: Math.floor(process.uptime()),
+      envOk: bootState.envOk,
+      dbOk: bootState.dbOk,
+      jobsOk: bootState.jobsOk,
+      degraded: bootState.degraded,
+      lastError: bootState.lastError
+    });
+  } else {
+    res.status(503).json({
+      ready: false,
+      ts: Date.now(),
+      uptime: Math.floor(process.uptime()),
+      envOk: bootState.envOk,
+      dbOk: bootState.dbOk,
+      jobsOk: bootState.jobsOk,
+      degraded: bootState.degraded,
+      lastError: bootState.lastError,
+      message: 'System not ready yet - background initialization in progress'
+    });
+  }
 });
 
 /**
@@ -96,75 +158,151 @@ process.on('uncaughtException', (error: Error) => {
  */
 setImmediate(async () => {
   console.log('[BOOT] background_init start');
+  bootState.lastInitAt = Date.now();
   
   try {
-    // Validate environment (soft check - warn only, don't exit)
+    // Step 1: Validate environment (soft check - warn only, don't exit)
     console.log('[BOOT] env_validation start');
     try {
       const { validateEnvironment } = await import('./config/env');
       const isValid = validateEnvironment();
       if (!isValid) {
         console.warn('[BOOT] ⚠️ env_validation failed - running in degraded mode');
-        // Continue anyway - let individual systems handle missing env vars
+        bootState.degraded = true;
+        bootState.lastError = 'Environment validation failed (missing required env vars)';
+        bootState.envOk = false;
       } else {
         console.log('[BOOT] env_validation ok');
+        bootState.envOk = true;
       }
     } catch (envError: any) {
       console.error('[BOOT] ⚠️ env_validation error:', envError.message);
       console.error('[BOOT] continuing in degraded mode...');
+      bootState.degraded = true;
+      bootState.lastError = `Env validation error: ${envError.message}`;
+      bootState.envOk = false;
     }
     
-    // Run database migrations
-    console.log('[BOOT] migrations start');
+    // Step 2: Database connectivity check (cheap ping)
+    console.log('[BOOT] db_ping start');
     try {
-      const { runMigrationsOnStartup } = await import('./db/runMigrations');
-      await runMigrationsOnStartup();
-      console.log('[BOOT] migrations ok');
-    } catch (migError: any) {
-      console.error('[BOOT] ⚠️ migrations error:', migError.message);
-      console.error('[BOOT] continuing without migrations...');
-    }
-    
-    // Validate database schema
-    console.log('[BOOT] schema_validation start');
-    try {
-      const { validateDatabaseSchema } = await import('./db/schemaValidator');
-      const schemaResult = await validateDatabaseSchema();
-      if (!schemaResult.valid) {
-        console.error('[BOOT] ⚠️ schema_validation failed');
-        console.error(`[BOOT]    errors=${schemaResult.errors.length}`);
-        console.error(`[BOOT]    missing_tables=${schemaResult.missingTables.length}`);
-        console.error(`[BOOT]    missing_columns=${schemaResult.missingColumns.length}`);
-        schemaResult.errors.slice(0, 5).forEach(err => console.error(`[BOOT]    - ${err}`));
-        console.error('[BOOT] continuing in degraded mode...');
-      } else {
-        console.log('[BOOT] schema_validation ok');
+      const { getSupabaseClient } = await import('./db/index');
+      const supabase = getSupabaseClient();
+      
+      // Cheap query to verify DB connectivity
+      const { error } = await supabase
+        .from('content_metadata')
+        .select('decision_id', { count: 'exact', head: true })
+        .limit(1);
+      
+      if (error) {
+        throw new Error(`DB query failed: ${error.message}`);
       }
-    } catch (schemaError: any) {
-      console.error('[BOOT] ⚠️ schema_validation error:', schemaError.message);
-      console.error('[BOOT] continuing without schema validation...');
+      
+      console.log('[BOOT] db_ping ok');
+      bootState.dbOk = true;
+    } catch (dbError: any) {
+      console.error('[BOOT] ⚠️ db_ping error:', dbError.message);
+      console.error('[BOOT] continuing without database...');
+      bootState.degraded = true;
+      bootState.lastError = `Database ping failed: ${dbError.message}`;
+      bootState.dbOk = false;
     }
     
-    // Start the main application system
-    console.log('[BOOT] main_system start');
+    // Step 3: Run database migrations (if DB is ok)
+    if (bootState.dbOk) {
+      console.log('[BOOT] migrations start');
+      try {
+        const { runMigrationsOnStartup } = await import('./db/runMigrations');
+        await runMigrationsOnStartup();
+        console.log('[BOOT] migrations ok');
+      } catch (migError: any) {
+        console.error('[BOOT] ⚠️ migrations error:', migError.message);
+        console.error('[BOOT] continuing without migrations...');
+        // Don't set degraded for migration failures - they might already be applied
+      }
+    }
+    
+    // Step 4: Validate database schema (if DB is ok)
+    if (bootState.dbOk) {
+      console.log('[BOOT] schema_validation start');
+      try {
+        const { validateDatabaseSchema } = await import('./db/schemaValidator');
+        const schemaResult = await validateDatabaseSchema();
+        if (!schemaResult.valid) {
+          console.error('[BOOT] ⚠️ schema_validation failed');
+          console.error(`[BOOT]    errors=${schemaResult.errors.length}`);
+          console.error(`[BOOT]    missing_tables=${schemaResult.missingTables.length}`);
+          console.error(`[BOOT]    missing_columns=${schemaResult.missingColumns.length}`);
+          schemaResult.errors.slice(0, 5).forEach(err => console.error(`[BOOT]    - ${err}`));
+          console.error('[BOOT] continuing in degraded mode...');
+          bootState.degraded = true;
+          bootState.lastError = 'Database schema validation failed';
+        } else {
+          console.log('[BOOT] schema_validation ok');
+        }
+      } catch (schemaError: any) {
+        console.error('[BOOT] ⚠️ schema_validation error:', schemaError.message);
+        console.error('[BOOT] continuing without schema validation...');
+      }
+    }
+    
+    // Step 5: Start the main application system (jobs/scheduler)
+    console.log('[BOOT] jobs_start attempt');
     try {
-      const { boot } = await import('./main-bulletproof');
-      await boot();
-      console.log('[BOOT] main_system ok');
-    } catch (bootError: any) {
-      console.error('[BOOT] ⚠️ main_system error:', bootError.message);
+      // Import and start the job manager directly
+      const { JobManager } = await import('./jobs/jobManager');
+      const jobManager = JobManager.getInstance();
+      
+      await jobManager.startJobs();
+      
+      console.log('[BOOT] jobs_started ok');
+      bootState.jobsOk = true;
+      
+      // If we got here with env + DB + jobs all ok, system is ready
+      if (bootState.envOk && bootState.dbOk && bootState.jobsOk) {
+        bootState.ready = true;
+        console.log('[BOOT] ✅ system_ready (all systems operational)');
+      } else {
+        console.log('[BOOT] ⚠️ system_degraded (some systems failed but jobs running)');
+        bootState.degraded = true;
+      }
+      
+    } catch (jobError: any) {
+      console.error('[BOOT] ⚠️ jobs_start error:', jobError.message);
+      console.error('[BOOT] stack:', jobError.stack);
       console.error('[BOOT] continuing with server only (no jobs)...');
+      bootState.degraded = true;
+      bootState.lastError = `Job manager failed: ${jobError.message}`;
+      bootState.jobsOk = false;
     }
     
     console.log('[BOOT] ✅ background_init complete');
+    console.log(`[BOOT] final_state: ready=${bootState.ready} degraded=${bootState.degraded} envOk=${bootState.envOk} dbOk=${bootState.dbOk} jobsOk=${bootState.jobsOk}`);
     
   } catch (error: any) {
     console.error('[BOOT] ❌ background_init fatal error:', error.message);
     console.error('[BOOT] stack:', error.stack);
     console.error('[BOOT] server stays alive in minimal mode (healthcheck only)');
+    bootState.degraded = true;
+    bootState.lastError = `Fatal init error: ${error.message}`;
     // DO NOT exit - server continues to respond to healthcheck
   }
 });
+
+/**
+ * 💓 HEARTBEAT - Log system health every 60 seconds
+ */
+setInterval(() => {
+  bootState.lastHeartbeatAt = Date.now();
+  const uptimeMin = Math.floor(process.uptime() / 60);
+  
+  console.log(
+    `[HEARTBEAT] ready=${bootState.ready} degraded=${bootState.degraded} ` +
+    `envOk=${bootState.envOk} dbOk=${bootState.dbOk} jobsOk=${bootState.jobsOk} ` +
+    `uptime=${uptimeMin}m lastError=${bootState.lastError || 'none'}`
+  );
+}, 60 * 1000); // Every 60 seconds
 
 console.log('[BOOT] entrypoint loaded, server starting...');
 
