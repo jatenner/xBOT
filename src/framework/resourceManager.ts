@@ -267,3 +267,4 @@ export class ResourceManager {
 // Export singleton
 export const resourceManager = ResourceManager.getInstance();
 
+

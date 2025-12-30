@@ -17,6 +17,7 @@ import { requireAdminAuth as legacyAuth, adminJobsHandler, adminJobRunHandler } 
 import { requireAdminAuth } from './api/middleware/adminAuth';
 import { jobScheduleHandler } from './api/adminJobSchedule';
 import adminRouter from './server/routes/admin';
+import { getInternalQuickCheck } from './api/internalQuickCheck';
 // import lightweightPostingRouter from './api/lightweightPosting'; // REMOVED: Legacy posting API
 import bulletproofPostingRouter from './api/bulletproofPosting';
 import emergencySystemRouter from './api/emergencySystem';
@@ -36,6 +37,11 @@ app.use((req, res, next) => {
   log({ op: 'http_request', method: req.method, path: req.path });
   next();
 });
+
+/**
+ * 🔍 INTERNAL QUICK CHECK - Fast diagnostics (no auth needed for internal debugging)
+ */
+app.get('/internal/quick-check', getInternalQuickCheck);
 
 /**
  * Environment info (redacted)
@@ -1147,164 +1153,6 @@ app.get('/dashboard/formatting', async (req, res) => {
 });
 
 /**
- * 🔍 INTERNAL QUICK CHECK - Fast diagnostic endpoint
- * Runs inside the container, instant response, no Railway CLI overhead
- */
-app.get('/internal/quick-check', async (req, res) => {
-  const startTime = Date.now();
-  let exitCode = 0;
-  const checks: any = {
-    timestamp: new Date().toISOString(),
-    check1_recent_posts: { status: 'pending' },
-    check2_queue: { status: 'pending' },
-    check3_rate_limit: { status: 'pending' }
-  };
-
-  try {
-    const { getSupabaseClient } = await import('./db/index');
-    const supabase = getSupabaseClient();
-
-    // CHECK 1: Recent posts
-    try {
-      const { data: posts, error } = await Promise.race([
-        supabase
-          .from('content_metadata')
-          .select('tweet_id, decision_type, posted_at')
-          .eq('status', 'posted')
-          .order('posted_at', { ascending: false })
-          .limit(5),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), 5000)
-        )
-      ]);
-
-      if (error) {
-        checks.check1_recent_posts = { status: 'fail', error: error.message };
-        exitCode = 1;
-      } else if (!posts || posts.length === 0) {
-        checks.check1_recent_posts = {
-          status: 'fail',
-          error: 'No posts in database - tweets posting but not saving!',
-          count: 0
-        };
-        exitCode = 1;
-      } else {
-        checks.check1_recent_posts = {
-          status: 'pass',
-          count: posts.length,
-          recent_posts: posts.map(p => ({
-            id: p.tweet_id,
-            type: p.decision_type,
-            minutes_ago: Math.round((Date.now() - new Date(p.posted_at).getTime()) / 60000)
-          }))
-        };
-      }
-    } catch (error: any) {
-      checks.check1_recent_posts = { status: 'fail', error: error.message };
-      exitCode = 1;
-    }
-
-    // CHECK 2: Queue status
-    try {
-      const { data: queue, error: queueError } = await Promise.race([
-        supabase
-          .from('content_metadata')
-          .select('decision_type, scheduled_at')
-          .eq('status', 'queued')
-          .order('scheduled_at', { ascending: true })
-          .limit(3),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), 5000)
-        )
-      ]);
-
-      if (queueError) {
-        checks.check2_queue = { status: 'fail', error: queueError.message };
-        exitCode = 1;
-      } else {
-        checks.check2_queue = {
-          status: 'pass',
-          count: queue?.length || 0,
-          next_posts: queue?.map(q => ({
-            type: q.decision_type,
-            in_minutes: Math.round((new Date(q.scheduled_at).getTime() - Date.now()) / 60000)
-          }))
-        };
-      }
-    } catch (error: any) {
-      checks.check2_queue = { status: 'fail', error: error.message };
-      exitCode = 1;
-    }
-
-    // CHECK 3: Rate limit compliance
-    try {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { data: recentPosts, error: rateError } = await Promise.race([
-        supabase
-          .from('content_metadata')
-          .select('tweet_id, posted_at', { count: 'exact' })
-          .eq('status', 'posted')
-          .gte('posted_at', oneHourAgo),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), 5000)
-        )
-      ]);
-
-      if (rateError) {
-        checks.check3_rate_limit = { status: 'fail', error: rateError.message };
-        exitCode = 1;
-      } else {
-        const postCount = recentPosts?.length || 0;
-        const MAX_POSTS_PER_HOUR = 2;
-
-        if (postCount > MAX_POSTS_PER_HOUR) {
-          checks.check3_rate_limit = {
-            status: 'fail',
-            posts_last_hour: postCount,
-            limit: MAX_POSTS_PER_HOUR,
-            violation: true
-          };
-          exitCode = 1;
-        } else {
-          checks.check3_rate_limit = {
-            status: 'pass',
-            posts_last_hour: postCount,
-            limit: MAX_POSTS_PER_HOUR
-          };
-        }
-      }
-    } catch (error: any) {
-      checks.check3_rate_limit = { status: 'fail', error: error.message };
-      exitCode = 1;
-    }
-
-  } catch (error: any) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-      duration_ms: Date.now() - startTime
-    });
-    return;
-  }
-
-  // Return results
-  const duration = Date.now() - startTime;
-  const allPassed = exitCode === 0;
-
-  res.status(allPassed ? 200 : 500).json({
-    ok: allPassed,
-    exit_code: exitCode,
-    duration_ms: duration,
-    checks,
-    summary: {
-      total: 3,
-      passed: Object.values(checks).filter((c: any) => c.status === 'pass').length,
-      failed: Object.values(checks).filter((c: any) => c.status === 'fail').length
-    }
-  });
-});
-
-/**
  * 404 handler
  */
 app.use((req, res) => {
@@ -1312,7 +1160,7 @@ app.use((req, res) => {
     error: 'Endpoint not found',
     path: req.path,
     timestamp: new Date().toISOString(),
-    availableEndpoints: ['/status', '/env', '/canary', '/playwright', '/playwright/ping', '/session', '/posting', '/metrics', '/dashboard', '/dashboard/recent', '/dashboard/posts', '/dashboard/replies', '/internal/quick-check']
+    availableEndpoints: ['/status', '/env', '/canary', '/playwright', '/playwright/ping', '/session', '/posting', '/metrics', '/dashboard', '/dashboard/recent', '/dashboard/posts', '/dashboard/replies']
   });
 });
 
