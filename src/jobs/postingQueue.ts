@@ -252,6 +252,14 @@ export async function processPostingQueue(): Promise<void> {
   
   log({ op: 'posting_queue_start' });
   
+  // 🚫 Check X automation status (Cloudflare/human verification block)
+  const { canProceedWithXAutomation } = await import('../browser/xAutomationGuard');
+  if (!canProceedWithXAutomation()) {
+    console.warn('[POSTING_QUEUE] ⏸️ Skipping queue processing (X automation blocked - cooldown active)');
+    log({ op: 'posting_queue', status: 'x_automation_blocked' });
+    return;
+  }
+  
   // 🔧 FIX #2: Check circuit breaker before processing (now async with health checks)
   const circuitBreakerOpen = !(await checkCircuitBreaker());
   if (circuitBreakerOpen) {
@@ -2766,12 +2774,17 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         }
         
         // 🛡️ TIMEOUT PROTECTION: Adaptive timeout based on retry count
-        const result = await withTimeout(
-          () => BulletproofThreadComposer.post(formattedThreadParts, decision.id),
-          { 
-            timeoutMs: THREAD_POST_TIMEOUT_MS, 
-            operationName: `thread_post_${thread_parts.length}_tweets`
-          }
+        // 🚫 X BLOCK DETECTION: Wrap Playwright operation with block detection
+        const { safePost } = await import('../browser/xAutomationGuard');
+        const result = await safePost(
+          () => withTimeout(
+            () => BulletproofThreadComposer.post(formattedThreadParts, decision.id),
+            { 
+              timeoutMs: THREAD_POST_TIMEOUT_MS, 
+              operationName: `thread_post_${thread_parts.length}_tweets`
+            }
+          ),
+          'thread'
         );
         
         if (!result.success) {
@@ -2849,12 +2862,15 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         const poster = new UltimateTwitterPoster();
         
         // 🛡️ TIMEOUT PROTECTION: Adaptive timeout based on retry count
-        const result = await withTimeout(
-          () => poster.postTweet(contentToPost),
-          { 
-            timeoutMs: SINGLE_POST_TIMEOUT_MS, 
-            operationName: 'single_post',
-            onTimeout: async () => {
+        // 🚫 X BLOCK DETECTION: Wrap Playwright operation with block detection
+        const { safePost } = await import('../browser/xAutomationGuard');
+        const result = await safePost(
+          () => withTimeout(
+            () => poster.postTweet(contentToPost),
+            { 
+              timeoutMs: SINGLE_POST_TIMEOUT_MS, 
+              operationName: 'single_post',
+              onTimeout: async () => {
               console.error(`[POSTING_QUEUE] ⏱️ Single post timeout after ${SINGLE_POST_TIMEOUT_MS}ms (attempt ${retryCount + 1}) - cleaning up`);
               try {
                 await poster.dispose();
@@ -2863,6 +2879,8 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
               }
             }
           }
+        ),
+        'single'
         );
         await poster.dispose();
         
@@ -2964,7 +2982,12 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       console.log(`[POSTING_QUEUE] 💬 Posting REAL reply to tweet ${decision.target_tweet_id}...`);
       console.log(`[POSTING_QUEUE] 📝 Reply content: "${decision.content.substring(0, 60)}..."`);
 
-      const result = await poster.postReply(decision.content, decision.target_tweet_id, decision.id);
+      // 🚫 X BLOCK DETECTION: Wrap Playwright operation with block detection
+      const { safePost } = await import('../browser/xAutomationGuard');
+      const result = await safePost(
+        () => poster!.postReply(decision.content, decision.target_tweet_id, decision.id),
+        'reply'
+      );
 
       // 🔥 CRITICAL: Validate result BEFORE any logging or processing
       if (!result.success || !result.tweetId) {
