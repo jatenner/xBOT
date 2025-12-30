@@ -1174,9 +1174,11 @@ export function start(port?: number): Promise<void> {
 export function startHealthServer(): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
-      const port = parseInt(ENV.PORT);
-      const host = ENV.HOST;
+      const port = parseInt(process.env.PORT || '3000');
+      const host = '0.0.0.0'; // ⚡ ALWAYS bind to 0.0.0.0 for Railway/Docker
+      
       const server = app.listen(port, host, () => {
+        console.log(`[BOOT] listening host=${host} port=${port}`);
         log({ op: 'server_start', host, port, status: 'listening' });
         log({ op: 'server_endpoints', endpoints: ['status', 'env', 'playwright', 'session', 'learning'] });
         

@@ -1,103 +1,22 @@
 /**
- * 🩺 STATUS ROUTE - System health and job timer status
+ * 🩺 STATUS ROUTE - FAST healthcheck for Railway (no DB queries, no slow imports)
+ * 
+ * This endpoint MUST respond within 5 seconds for Railway healthcheck to pass.
+ * All heavy operations (DB, browser, etc.) are deferred to /health endpoint.
  */
 
 import express from 'express';
-import fs from 'node:fs';
 
 const router = express.Router();
 
-router.get('/', async (req, res) => {
-  try {
-    const { flags } = await import('../../config/featureFlags');
-    const { JobManager } = await import('../../jobs/jobManager');
-    const { SESSION_PATH } = await import('../../infra/session/xSession');
-    
-    const jobManager = JobManager.getInstance();
-    const stats = jobManager.getStats();
-    
-    // Get next ready count
-    const { getSupabaseClient } = await import('../../db/index');
-    const supabase = getSupabaseClient();
-    const GRACE_MINUTES = parseInt(process.env.GRACE_MINUTES || '5', 10);
-    const graceWindow = new Date(Date.now() + GRACE_MINUTES * 60 * 1000).toISOString();
-    
-    const { count: nextReadyCount } = await supabase
-      .from('content_metadata')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'queued')
-      .lte('scheduled_at', graceWindow);
-    
-    const status = {
-      ok: true,
-      mode: flags.mode,
-      postingEnabled: flags.postingEnabled,
-      scheduling: {
-        timezone: process.env.SCHED_TZ || 'UTC',
-        grace_minutes: GRACE_MINUTES,
-        next_ready_count: nextReadyCount || 0,
-        min_minutes_until_slot: parseInt(process.env.MIN_MINUTES_UNTIL_SLOT || '0', 10),
-        post_now_on_cold_start: process.env.POST_NOW_ON_COLD_START !== 'false'
-      },
-      timers: {
-        plan: stats.planRuns > 0 || flags.plannerEnabled,
-        reply: stats.replyRuns > 0 || flags.replyEnabled,
-        posting: stats.postingRuns > 0 || flags.postingEnabled,
-        learn: stats.learnRuns > 0 || flags.learnEnabled,
-        // COMPREHENSIVE DATA COLLECTION SYSTEMS
-        analytics: true, // 30 min - scrapes real Twitter metrics
-        attribution: true, // 2h - tracks follower growth
-        outcomes_real: true, // 2h - comprehensive engagement
-        data_collection: true, // 1h - DataCollectionEngine (40+ metrics)
-        ai_orchestration: true, // 6h - AI-driven strategy
-        viral_thread: flags.live, // 24h - daily amazing thread
-        velocity_tracker: true, // 30 min - follower attribution & velocity tracking
-        sync_follower: true, // 30 min - sync tracking data into outcomes
-      },
-      browserProfileDirExists: fs.existsSync('/tmp/xbot-profile'),
-      sessionFileExists: fs.existsSync(SESSION_PATH),
-      lastLoginAt: (globalThis as any).__x_last_login_at || null,
-      lastAuthCheck: (globalThis as any).__x_last_auth_check || null,
-      jobStats: {
-        planRuns: stats.planRuns,
-        replyRuns: stats.replyRuns,
-        postingRuns: stats.postingRuns,
-        learnRuns: stats.learnRuns,
-        errors: stats.errors,
-        lastPostingTime: stats.lastPostingTime?.toISOString() || null,
-      },
-      lastPostAttemptAt: (globalThis as any).__xbotLastPostAttemptAt || null,
-      lastPostResult: (globalThis as any).__xbotLastPostResult || null,
-      uptime_seconds: process.uptime(),
-      timestamp: new Date().toISOString()
-    };
-    
-    // Add exploration mode status
-    try {
-      const { getModeStatus } = await import('../../exploration/explorationModeManager');
-      const explorationStatus = await getModeStatus();
-      (status as any).exploration = {
-        mode: explorationStatus.mode,
-        currentFollowers: explorationStatus.currentFollowers,
-        avgEngagement: explorationStatus.avgEngagement.toFixed(2),
-        reason: explorationStatus.reason,
-        thresholds: {
-          followers: explorationStatus.followerThreshold,
-          engagement: explorationStatus.engagementThreshold
-        }
-      };
-    } catch (error: any) {
-      console.warn('⚠️ Failed to get exploration status:', error.message);
-    }
-    
-    res.json(status);
-  } catch (error: any) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
+router.get('/', (req, res) => {
+  // ⚡ INSTANT RESPONSE - no async, no DB, no imports
+  res.status(200).json({
+    ok: true,
+    ts: Date.now(),
+    version: '1.0.0',
+    uptime: Math.floor(process.uptime())
+  });
 });
 
 export default router;
