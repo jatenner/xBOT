@@ -2,7 +2,7 @@
   "name": "xbot",
   "version": "1.0.0",
   "scripts": {
-    "start": "tsx src/main.ts",
+    "start": "tsx src/railwayEntrypoint.ts",
     "dev": "tsx watch src/main.ts",
     "build": "mkdir -p dist && echo 'dist placeholder for Docker COPY'",
     "post-now": "tsx scripts/post-immediately.ts",
