@@ -8,59 +8,77 @@ import { runMigrationsOnStartup } from './db/runMigrations.js';
 
 /**
  * Main application entry point with proper error handling and graceful shutdown
+ * 
+ * ⚡ BOOT ORDER (Railway healthcheck optimized):
+ *  1. Validate env (fast)
+ *  2. Start server on 0.0.0.0:PORT (/status responds immediately)
+ *  3. THEN run slow init (migrations, schema, browser, jobs) in background
  */
 async function main() {
-  console.log('🛡️ BULLETPROOF_SYSTEM: Starting production-grade quality content generation');
-  console.log(`📅 Started at: ${new Date().toISOString()}`);
+  console.log('[BOOT] start');
+  console.log(`[BOOT] timestamp=${new Date().toISOString()}`);
+  console.log(`[BOOT] env PORT=${process.env.PORT || 3000}`);
   
-  // Validate environment
+  // Step 1: Validate environment (fast, fail early)
   if (!validateEnvironment()) {
-    console.error('❌ Environment validation failed');
+    console.error('[BOOT] ❌ Environment validation failed');
     process.exit(1);
   }
+  console.log('[BOOT] env validated');
 
-  // Run database migrations FIRST (non-blocking)
-  console.log('🔧 Running database migrations...');
-  await runMigrationsOnStartup();
-  
-  // Validate database schema AFTER migrations
-  console.log('🔍 Validating database schema...');
-  const schemaResult = await validateDatabaseSchema();
-  
-  if (!schemaResult.valid) {
-    console.error('\n❌ DATABASE SCHEMA VALIDATION FAILED!');
-    console.error(`   Errors: ${schemaResult.errors.length}`);
-    console.error(`   Missing tables: ${schemaResult.missingTables.length}`);
-    console.error(`   Missing columns: ${schemaResult.missingColumns.length}`);
-    
-    schemaResult.errors.forEach(err => console.error(`   • ${err}`));
-    
-    if (schemaResult.missingColumns.length > 0) {
-      console.error('\n📊 Missing columns:');
-      schemaResult.missingColumns.forEach(({ table, columns }) => {
-        console.error(`   • ${table}: ${columns.join(', ')}`);
-      });
-    }
-    
-    console.error('\n💡 Fix: Run database migrations or check EXPECTED_SCHEMA in src/db/schemaValidator.ts');
-    process.exit(1);
-  }
-  
-  console.log('✅ Database schema validated successfully\n');
-
-  // Start health server
+  // Step 2: Start health server IMMEDIATELY (before any slow init)
+  console.log('[BOOT] status route ready');
   await startHealthServer();
-  console.log('🏥 Health server started');
+  console.log('[BOOT] server listening');
 
-  // Initialize and start the bulletproof system
-  console.log('🚀 BULLETPROOF_STARTUP: Initializing lightweight Railway-optimized system...');
-  
-  console.log('🎯 BULLETPROOF_FEATURES: Lightweight posting, Resource protection, Memory optimization');
-  console.log('✅ BULLETPROOF_READY: Railway-optimized system starting...');
-  
-  // Start the bulletproof system
-  await boot();
-  
+  // Step 3: Move ALL slow initialization to background (non-blocking for healthcheck)
+  console.log('[BOOT] starting background init');
+  setImmediate(async () => {
+    try {
+      // Run database migrations
+      console.log('[BOOT] migrations start');
+      await runMigrationsOnStartup();
+      console.log('[BOOT] migrations complete');
+      
+      // Validate database schema
+      console.log('[BOOT] schema validation start');
+      const schemaResult = await validateDatabaseSchema();
+      
+      if (!schemaResult.valid) {
+        console.error('[BOOT] ❌ DATABASE SCHEMA VALIDATION FAILED!');
+        console.error(`[BOOT]    Errors: ${schemaResult.errors.length}`);
+        console.error(`[BOOT]    Missing tables: ${schemaResult.missingTables.length}`);
+        console.error(`[BOOT]    Missing columns: ${schemaResult.missingColumns.length}`);
+        
+        schemaResult.errors.forEach(err => console.error(`[BOOT]    • ${err}`));
+        
+        if (schemaResult.missingColumns.length > 0) {
+          console.error('[BOOT] 📊 Missing columns:');
+          schemaResult.missingColumns.forEach(({ table, columns }) => {
+            console.error(`[BOOT]    • ${table}: ${columns.join(', ')}`);
+          });
+        }
+        
+        console.error('[BOOT] 💡 Schema invalid but server stays alive (degraded mode)');
+        // DON'T exit - keep server running for debugging
+        return;
+      }
+      
+      console.log('[BOOT] schema validated');
+
+      // Initialize and start the bulletproof system
+      console.log('[BOOT] bulletproof system start');
+      await boot();
+      console.log('[BOOT] bulletproof system ready');
+      
+      console.log('[BOOT] ✅ Full initialization complete');
+    } catch (error: any) {
+      console.error('[BOOT] ❌ Background init error:', error.message);
+      console.error('[BOOT] Server stays alive (degraded mode)');
+      // Keep server running even if init fails
+    }
+  });
+
   // Set up graceful shutdown
   const shutdown = async (signal: string) => {
     console.log(`🛑 Received ${signal}, shutting down gracefully...`);

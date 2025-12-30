@@ -13,7 +13,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.runRuntimeMigrations = runRuntimeMigrations;
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
-const client_1 = require("../dist/src/db/client");
+const client_1 = require("../src/db/client");
 // Environment detection
 const isProd = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
 const DATABASE_URL = process.env.DATABASE_URL;
