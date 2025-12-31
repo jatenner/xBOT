@@ -13,6 +13,7 @@
 
 import { getSupabaseClient } from '../db/index';
 import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
+import { canProceedWithXAutomation } from '../browser/xAutomationGuard';
 
 interface ProfileTweet {
   tweet_id: string;
@@ -185,15 +186,9 @@ export async function runProfileBackfillRecovery(): Promise<RecoveryResult> {
     console.log('[PROFILE_RECOVERY] Starting Tier-2 profile backfill recovery...');
     
     // 🚫 Check X automation status (Cloudflare/human verification block)
-    try {
-      const { canProceedWithXAutomation } = await import('../browser/xAutomationGuard');
-      if (!canProceedWithXAutomation()) {
-        console.warn('[PROFILE_RECOVERY] ⏸️ Skipping profile backfill (X automation blocked - cooldown active)');
-        return result;
-      }
-    } catch (guardError: any) {
-      console.warn('[PROFILE_RECOVERY] ⚠️ X automation guard failed to load, proceeding anyway:', guardError);
-      // Continue with job execution - fail-safe
+    if (!canProceedWithXAutomation()) {
+      console.warn('[PROFILE_RECOVERY] ⏸️ Skipping profile backfill (X automation blocked - cooldown active)');
+      return result;
     }
     
     // Step 1: Scrape our profile
