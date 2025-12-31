@@ -15,6 +15,7 @@ import { collectRealOutcomes as collectAnalytics } from './analyticsCollectorJob
 import { runLearningCycle } from './learnJob';
 import { runPhantomRecoveryJob } from './phantomRecoveryJob';
 import { recordJobFailure, recordJobSkip, recordJobStart, recordJobSuccess } from './jobHeartbeat';
+import { recordJobRun, recordJobError, getJobHeartbeats } from './jobHeartbeatRegistry';
 
 export interface JobStats {
   planRuns: number;
@@ -1446,7 +1447,7 @@ export class JobManager {
    * Get current job statistics
    */
   public getStats(): JobStats {
-    return { ...this.stats };
+    return { ...this.stats, heartbeats: getJobHeartbeats() };
   }
 
   /**
