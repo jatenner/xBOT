@@ -339,12 +339,17 @@ export async function generateReplies(): Promise<void> {
   // ===========================================================
   
   // 🚫 Check X automation status (Cloudflare/human verification block)
-  const { canProceedWithXAutomation } = await import('../browser/xAutomationGuard');
-  if (!canProceedWithXAutomation()) {
-    console.warn('[REPLY_JOB] ⏸️ Skipping reply generation (X automation blocked - cooldown active)');
-    ReplyDiagnosticLogger.logBlocked('X automation blocked', new Date());
-    ReplyDiagnosticLogger.logCycleEnd(false, ['X automation blocked']);
-    return;
+  try {
+    const { canProceedWithXAutomation } = await import('../browser/xAutomationGuard');
+    if (!canProceedWithXAutomation()) {
+      console.warn('[REPLY_JOB] ⏸️ Skipping reply generation (X automation blocked - cooldown active)');
+      ReplyDiagnosticLogger.logBlocked('X automation blocked', new Date());
+      ReplyDiagnosticLogger.logCycleEnd(false, ['X automation blocked']);
+      return;
+    }
+  } catch (guardError: any) {
+    console.warn('[REPLY_JOB] ⚠️ X automation guard failed to load, proceeding anyway:', guardError.message);
+    // Continue with job execution - fail-safe
   }
   
   // ===========================================================
