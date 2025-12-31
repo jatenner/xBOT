@@ -13,6 +13,7 @@ import { getConfig, getModeFlags } from '../config/config';
 import { learningSystem } from '../learning/learningSystem';
 import { trackError, ErrorTracker } from '../utils/errorTracker';
 import { SystemFailureAuditor } from '../audit/systemFailureAuditor';
+import { canProceedWithXAutomation } from '../browser/xAutomationGuard';
 
 const FOLLOWER_BASELINE_TIMEOUT_MS = Number(process.env.FOLLOWER_BASELINE_TIMEOUT_MS ?? '10000');
 const TWITTER_AUTH_PATH = path.join(process.cwd(), 'twitter-auth.json');
@@ -253,16 +254,10 @@ export async function processPostingQueue(): Promise<void> {
   log({ op: 'posting_queue_start' });
   
   // 🚫 Check X automation status (Cloudflare/human verification block)
-  try {
-    const { canProceedWithXAutomation } = await import('../browser/xAutomationGuard');
-    if (!canProceedWithXAutomation()) {
-      console.warn('[POSTING_QUEUE] ⏸️ Skipping queue processing (X automation blocked - cooldown active)');
-      log({ op: 'posting_queue', status: 'x_automation_blocked' });
-      return;
-    }
-  } catch (guardError: any) {
-    console.warn('[POSTING_QUEUE] ⚠️ X automation guard failed to load, proceeding anyway:', guardError.message);
-    // Continue with job execution - fail-safe
+  if (!canProceedWithXAutomation()) {
+    console.warn('[POSTING_QUEUE] ⏸️ Skipping queue processing (X automation blocked - cooldown active)');
+    log({ op: 'posting_queue', status: 'x_automation_blocked' });
+    return;
   }
   
   // 🔧 FIX #2: Check circuit breaker before processing (now async with health checks)
