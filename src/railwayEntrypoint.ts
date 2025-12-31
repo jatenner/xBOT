@@ -15,6 +15,14 @@ const app = express();
 // Middleware
 app.use(express.json());
 
+// Import admin endpoints
+import { 
+  requireAdminToken, 
+  triggerPostingQueue, 
+  triggerReplyJob, 
+  triggerPlanJob 
+} from './server/adminEndpoints';
+
 /**
  * 🔍 BOOT STATE - Tracks system readiness and health
  */
@@ -52,7 +60,11 @@ const bootState: BootState = {
  * ⚡ INSTANT HEALTHCHECK - No DB, no async imports, no env validation
  * Always returns 200 (Railway healthcheck requirement)
  */
-app.get('/status', (req, res) => {
+app.get('/status', async (req, res) => {
+  const { getJobHeartbeats, getJobStatus } = await import('./jobs/jobHeartbeatRegistry');
+  const heartbeats = getJobHeartbeats();
+  const postingStatus = getJobStatus('posting');
+  
   res.status(200).json({
     ok: true,
     ts: Date.now(),
@@ -61,7 +73,18 @@ app.get('/status', (req, res) => {
     pid: process.pid,
     ready: bootState.ready,
     degraded: bootState.degraded,
-    lastError: bootState.lastError
+    lastError: bootState.lastError,
+    heartbeats: Object.entries(heartbeats).reduce((acc, [job, hb]) => {
+      acc[job] = {
+        lastRunAt: hb.lastRunAt ? new Date(hb.lastRunAt).toISOString() : null,
+        minutesSinceLastRun: hb.lastRunAt ? ((Date.now() - hb.lastRunAt) / 60000).toFixed(1) : null,
+        lastError: hb.lastError,
+        runCount: hb.runCount,
+        errorCount: hb.errorCount,
+      };
+      return acc;
+    }, {} as any),
+    postingJobHealthy: postingStatus.isHealthy,
   });
 });
 
@@ -69,8 +92,16 @@ app.get('/status', (req, res) => {
  * 🎯 READINESS CHECK - Returns 200 ONLY when system is truly ready
  * Used by external monitoring to verify the bot is actually running
  */
-app.get('/ready', (req, res) => {
-  if (bootState.ready) {
+app.get('/ready', async (req, res) => {
+  const { getJobHeartbeats, getJobStatus } = await import('./jobs/jobHeartbeatRegistry');
+  const heartbeats = getJobHeartbeats();
+  const postingStatus = getJobStatus('posting');
+  
+  // Check if posting job is stalled (hasn't run in 15+ min OR has error)
+  const postingStalled = postingStatus.minutesSinceLastRun !== null && postingStatus.minutesSinceLastRun > 15;
+  const postingHasError = postingStatus.hasError;
+  
+  if (bootState.ready && !postingStalled && !postingHasError) {
     res.status(200).json({
       ready: true,
       ts: Date.now(),
@@ -82,9 +113,16 @@ app.get('/ready', (req, res) => {
       invariantCheckOk: bootState.invariantCheckOk,
       profileRecoveryOk: bootState.profileRecoveryOk,
       degraded: bootState.degraded,
-      lastError: bootState.lastError
+      lastError: bootState.lastError,
+      postingJobHealthy: postingStatus.isHealthy,
+      postingLastRunMin: postingStatus.minutesSinceLastRun,
     });
   } else {
+    const reasons = [];
+    if (!bootState.ready) reasons.push('System not ready');
+    if (postingStalled) reasons.push(`Posting stalled (${postingStatus.minutesSinceLastRun?.toFixed(1)}min since last run)`);
+    if (postingHasError) reasons.push(`Posting error: ${heartbeats.posting?.lastError}`);
+    
     res.status(503).json({
       ready: false,
       ts: Date.now(),
@@ -95,9 +133,13 @@ app.get('/ready', (req, res) => {
       recoveryOk: bootState.recoveryOk,
       invariantCheckOk: bootState.invariantCheckOk,
       profileRecoveryOk: bootState.profileRecoveryOk,
-      degraded: bootState.degraded,
+      degraded: true,
       lastError: bootState.lastError,
-      message: 'System not ready yet - background initialization in progress'
+      postingJobHealthy: false,
+      postingLastRunMin: postingStatus.minutesSinceLastRun,
+      postingLastError: heartbeats.posting?.lastError,
+      reasons,
+      message: reasons.join('; '),
     });
   }
 });
@@ -113,6 +155,13 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
+/**
+ * 🔒 ADMIN ENDPOINTS - Manual job triggers (require x-admin-token header)
+ */
+app.post('/admin/run/postingQueue', requireAdminToken, triggerPostingQueue);
+app.post('/admin/run/replyJob', requireAdminToken, triggerReplyJob);
+app.post('/admin/run/planJob', requireAdminToken, triggerPlanJob);
 
 /**
  * Start server IMMEDIATELY (before any heavy init)
