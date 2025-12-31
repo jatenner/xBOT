@@ -13,7 +13,6 @@
 
 import { getSupabaseClient } from '../db/index';
 import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
-import { canProceedWithXAutomation } from '../browser/xAutomationGuard';
 
 interface ProfileTweet {
   tweet_id: string;
@@ -40,18 +39,10 @@ async function scrapeOwnProfileTweets(limit: number = 30): Promise<ProfileTweet[
     const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
     console.log(`[PROFILE_RECOVERY] Navigating to profile: ${username}`);
     
-    // 🚫 X BLOCK DETECTION: Wrap Playwright operation with block detection
-    const { safeScrape } = await import('../browser/xAutomationGuard');
-    await safeScrape(async () => {
-      await page.goto(`https://x.com/${username}`, { 
-        waitUntil: 'domcontentloaded', 
-        timeout: 30000 
-      });
-      
-      // Check for X/Cloudflare blocks after navigation
-      const { assertPageNotBlocked } = await import('../browser/xAutomationGuard');
-      await assertPageNotBlocked(page, `https://x.com/${username}`);
-    }, 'profile_scan');
+    await page.goto(`https://x.com/${username}`, { 
+      waitUntil: 'domcontentloaded', 
+      timeout: 30000 
+    });
     
     // Wait for timeline to load
     await page.waitForTimeout(3000);
@@ -184,12 +175,6 @@ export async function runProfileBackfillRecovery(): Promise<RecoveryResult> {
   
   try {
     console.log('[PROFILE_RECOVERY] Starting Tier-2 profile backfill recovery...');
-    
-    // 🚫 Check X automation status (Cloudflare/human verification block)
-    if (!canProceedWithXAutomation()) {
-      console.warn('[PROFILE_RECOVERY] ⏸️ Skipping profile backfill (X automation blocked - cooldown active)');
-      return result;
-    }
     
     // Step 1: Scrape our profile
     const profileTweets = await scrapeOwnProfileTweets(30);
