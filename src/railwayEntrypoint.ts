@@ -31,9 +31,6 @@ interface BootState {
   recoveryOk: boolean;
   invariantCheckOk: boolean;
   profileRecoveryOk: boolean;
-  xAutomationOk: boolean; // X.com automation is not blocked
-  xAutomationBlocked: boolean; // X.com is blocking Playwright
-  xAutomationLastError: string | null; // Last X block error
 }
 
 const bootState: BootState = {
@@ -48,10 +45,7 @@ const bootState: BootState = {
   jobsOk: false,
   recoveryOk: false,
   invariantCheckOk: false,
-  profileRecoveryOk: false,
-  xAutomationOk: true,
-  xAutomationBlocked: false,
-  xAutomationLastError: null
+  profileRecoveryOk: false
 };
 
 /**
@@ -67,9 +61,7 @@ app.get('/status', (req, res) => {
     pid: process.pid,
     ready: bootState.ready,
     degraded: bootState.degraded,
-    lastError: bootState.lastError,
-    xAutomationOk: bootState.xAutomationOk,
-    xAutomationBlocked: bootState.xAutomationBlocked
+    lastError: bootState.lastError
   });
 });
 
@@ -89,9 +81,6 @@ app.get('/ready', (req, res) => {
       recoveryOk: bootState.recoveryOk,
       invariantCheckOk: bootState.invariantCheckOk,
       profileRecoveryOk: bootState.profileRecoveryOk,
-      xAutomationOk: bootState.xAutomationOk,
-      xAutomationBlocked: bootState.xAutomationBlocked,
-      xAutomationLastError: bootState.xAutomationLastError,
       degraded: bootState.degraded,
       lastError: bootState.lastError
     });
@@ -106,9 +95,6 @@ app.get('/ready', (req, res) => {
       recoveryOk: bootState.recoveryOk,
       invariantCheckOk: bootState.invariantCheckOk,
       profileRecoveryOk: bootState.profileRecoveryOk,
-      xAutomationOk: bootState.xAutomationOk,
-      xAutomationBlocked: bootState.xAutomationBlocked,
-      xAutomationLastError: bootState.xAutomationLastError,
       degraded: bootState.degraded,
       lastError: bootState.lastError,
       message: 'System not ready yet - background initialization in progress'
@@ -380,18 +366,6 @@ setImmediate(async () => {
 });
 
 /**
- * Sync X automation state to bootState (called by jobs when they detect blocks)
- */
-export function syncXAutomationState(state: {
-  blocked: boolean;
-  lastError: string | null;
-}): void {
-  bootState.xAutomationBlocked = state.blocked;
-  bootState.xAutomationOk = !state.blocked;
-  bootState.xAutomationLastError = state.lastError;
-}
-
-/**
  * 💓 HEARTBEAT - Log system health every 60 seconds
  */
 setInterval(() => {
@@ -402,7 +376,6 @@ setInterval(() => {
     `[HEARTBEAT] ready=${bootState.ready} degraded=${bootState.degraded} ` +
     `envOk=${bootState.envOk} dbOk=${bootState.dbOk} jobsOk=${bootState.jobsOk} ` +
     `recoveryOk=${bootState.recoveryOk} invariantCheckOk=${bootState.invariantCheckOk} profileRecoveryOk=${bootState.profileRecoveryOk} ` +
-    `xAutomationOk=${bootState.xAutomationOk} xBlocked=${bootState.xAutomationBlocked} ` +
     `uptime=${uptimeMin}m lastError=${bootState.lastError || 'none'}`
   );
 }, 60 * 1000); // Every 60 seconds
