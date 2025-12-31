@@ -19,7 +19,7 @@ RUN mkdir -p dist public supabase
 RUN npm run build || true
 
 # Production stage
-FROM mcr.microsoft.com/playwright:v1.48.2-noble
+FROM mcr.microsoft.com/playwright:v1.57.0-noble
 
 WORKDIR /app
 
