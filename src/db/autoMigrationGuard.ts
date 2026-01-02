@@ -1,6 +1,6 @@
 /**
- * 🛡️ AUTO-MIGRATION GUARD
- * Ensures required schema columns exist without manual SQL work
+ * 🛡️ AUTO-MIGRATION GUARD WITH AUTO-APPLY
+ * Ensures required schema columns exist, auto-applies if missing (NO MANUAL SQL)
  */
 
 import { getSupabaseClient } from './index';
@@ -10,93 +10,93 @@ interface SchemaCheckResult {
   missingColumns: string[];
   action: 'none' | 'auto_apply' | 'degraded';
   reason: string;
+  autoApplySuccess?: boolean;
 }
 
 const REQUIRED_COLUMNS = {
   content_generation_metadata_comprehensive: [
-    'root_tweet_id',
-    'original_candidate_tweet_id',
-    'resolved_via_root',
+    { name: 'root_tweet_id', type: 'TEXT' },
+    { name: 'original_candidate_tweet_id', type: 'TEXT' },
+    { name: 'resolved_via_root', type: 'BOOLEAN DEFAULT FALSE' },
   ],
   reply_opportunities: [
-    'is_root_tweet',
-    'root_tweet_id',
+    { name: 'is_root_tweet', type: 'BOOLEAN DEFAULT TRUE' },
+    { name: 'root_tweet_id', type: 'TEXT' },
   ],
 };
 
 /**
- * Check if required columns exist
+ * Check if a column exists by attempting to select it
  */
-async function checkColumns(
-  tableName: string,
-  requiredColumns: string[]
-): Promise<{ present: string[]; missing: string[] }> {
+async function columnExists(tableName: string, columnName: string): Promise<boolean> {
   const supabase = getSupabaseClient();
   
-  const present: string[] = [];
-  const missing: string[] = [];
-  
-  for (const column of requiredColumns) {
-    try {
-      // Try to select the column - if it doesn't exist, Supabase will error
-      const { error } = await supabase
-        .from(tableName)
-        .select(column)
-        .limit(1);
-      
-      if (error) {
-        // Check if error is about missing column
-        if (error.message?.includes(column) || error.message?.includes('does not exist')) {
-          missing.push(column);
-        } else {
-          // Other error, assume column exists
-          present.push(column);
-        }
-      } else {
-        present.push(column);
+  try {
+    const { error } = await supabase
+      .from(tableName)
+      .select(columnName)
+      .limit(1);
+    
+    if (error) {
+      // Check if error message indicates missing column
+      const errorMsg = error.message?.toLowerCase() || '';
+      if (errorMsg.includes('column') && errorMsg.includes('does not exist')) {
+        return false;
       }
-    } catch (err: any) {
-      // Assume missing on any error
-      missing.push(column);
+      // Other errors - assume column exists
+      return true;
     }
+    
+    return true;
+  } catch (err: any) {
+    // Assume missing on errors
+    return false;
   }
-  
-  return { present, missing };
 }
 
 /**
- * Auto-apply missing columns (idempotent)
+ * Auto-apply missing columns using raw SQL
  */
-async function autoApplyColumns(
+async function autoApplyMissingColumns(
   tableName: string,
-  missingColumns: string[]
+  missingColumns: Array<{ name: string; type: string }>
 ): Promise<boolean> {
   const supabase = getSupabaseClient();
   
   try {
     console.log(`[SCHEMA] 🔧 Auto-applying ${missingColumns.length} missing columns to ${tableName}...`);
     
-    const alterStatements: string[] = [];
+    // Build ALTER TABLE statements (idempotent with IF NOT EXISTS)
+    const statements: string[] = [];
     
-    // Build ALTER TABLE statements
-    for (const column of missingColumns) {
-      if (column === 'root_tweet_id' || column === 'original_candidate_tweet_id') {
-        alterStatements.push(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS ${column} TEXT;`);
-      } else if (column === 'resolved_via_root' || column === 'is_root_tweet') {
-        alterStatements.push(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS ${column} BOOLEAN DEFAULT FALSE;`);
-      }
+    for (const col of missingColumns) {
+      statements.push(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS ${col.name} ${col.type};`);
     }
     
-    // Execute via RPC or direct SQL (Supabase allows this via service role)
-    const sql = alterStatements.join('\n');
-    
-    // Use Supabase's rpc or direct query
-    const { error } = await supabase.rpc('exec_sql', { sql_query: sql }).single();
-    
-    if (error) {
-      // RPC might not exist, try alternative approach
-      console.warn(`[SCHEMA] ⚠️ RPC approach failed, columns may need manual migration`);
-      return false;
+    // Execute each statement individually for better error handling
+    for (const stmt of statements) {
+      console.log(`[SCHEMA] Executing: ${stmt}`);
+      
+      // Use Supabase's rpc if available, otherwise try direct query
+      try {
+        // Try using the sql RPC function (if enabled in Supabase)
+        const { error } = await supabase.rpc('exec_sql', { sql_query: stmt });
+        
+        if (error) {
+          console.warn(`[SCHEMA] ⚠️ RPC failed for statement, trying alternative...`);
+          
+          // Alternative: Use the REST API directly with raw SQL
+          // This requires the postgrest endpoint to allow raw SQL
+          // For now, we'll log and continue
+          console.warn(`[SCHEMA] ⚠️ Could not auto-apply: ${stmt}`);
+          console.warn(`[SCHEMA] ⚠️ Error: ${error.message}`);
+          return false;
+        }
+      } catch (stmtError: any) {
+        console.error(`[SCHEMA] ❌ Failed to execute statement: ${stmt}`);
+        console.error(`[SCHEMA] Error: ${stmtError.message}`);
+        return false;
+      }
     }
     
     console.log(`[SCHEMA] ✅ Auto-applied ${missingColumns.length} columns successfully`);
@@ -108,20 +108,24 @@ async function autoApplyColumns(
 }
 
 /**
- * Main schema guard - checks and optionally applies missing columns
+ * Main schema guard - checks and auto-applies missing columns
  */
-export async function ensureReplySchemaColumns(): Promise<SchemaCheckResult> {
+export async function ensureReplySchemaColumnsWithAutoApply(): Promise<SchemaCheckResult> {
   console.log('[SCHEMA] 🔍 Checking required reply schema columns...');
   
   try {
-    const allMissing: string[] = [];
-    const checks: Record<string, { present: string[]; missing: string[] }> = {};
+    const allMissing: Array<{ table: string; column: { name: string; type: string } }> = [];
     
     // Check all tables
     for (const [tableName, columns] of Object.entries(REQUIRED_COLUMNS)) {
-      const result = await checkColumns(tableName, columns);
-      checks[tableName] = result;
-      allMissing.push(...result.missing.map(c => `${tableName}.${c}`));
+      for (const col of columns) {
+        const exists = await columnExists(tableName, col.name);
+        
+        if (!exists) {
+          allMissing.push({ table: tableName, column: col });
+          console.log(`[SCHEMA] ⚠️ Missing: ${tableName}.${col.name}`);
+        }
+      }
     }
     
     if (allMissing.length === 0) {
@@ -134,24 +138,71 @@ export async function ensureReplySchemaColumns(): Promise<SchemaCheckResult> {
       };
     }
     
-    console.log('[SCHEMA] ⚠️ Missing columns detected:', allMissing.join(', '));
+    console.log(`[SCHEMA] ⚠️ Found ${allMissing.length} missing columns`);
     
-    // In production, log banner and run in degraded mode
-    // (Migration should be applied via Railway deploy)
-    console.error('═══════════════════════════════════════════════════════');
-    console.error('🚨 SCHEMA MISSING: Reply system columns not present');
-    console.error(`   Missing: ${allMissing.join(', ')}`);
-    console.error('   Reply pipeline will run in DEGRADED mode');
-    console.error('   Root resolution will be SKIPPED');
-    console.error('   Migration 20260101_add_root_tweet_fields.sql needs to be applied');
-    console.error('═══════════════════════════════════════════════════════');
+    // Group by table for auto-apply
+    const missingByTable = allMissing.reduce((acc, item) => {
+      if (!acc[item.table]) {
+        acc[item.table] = [];
+      }
+      acc[item.table].push(item.column);
+      return acc;
+    }, {} as Record<string, Array<{ name: string; type: string }>>);
     
-    return {
-      allPresent: false,
-      missingColumns: allMissing,
-      action: 'degraded',
-      reason: 'columns missing, migration needed',
-    };
+    // Attempt auto-apply
+    console.log('[SCHEMA] 🔧 Attempting auto-apply...');
+    let allApplied = true;
+    
+    for (const [tableName, columns] of Object.entries(missingByTable)) {
+      const success = await autoApplyMissingColumns(tableName, columns);
+      if (!success) {
+        allApplied = false;
+      }
+    }
+    
+    if (allApplied) {
+      console.log('[SCHEMA] ✅ Auto-apply successful, re-checking...');
+      
+      // Re-check to confirm
+      const recheckMissing: string[] = [];
+      for (const [tableName, columns] of Object.entries(REQUIRED_COLUMNS)) {
+        for (const col of columns) {
+          const exists = await columnExists(tableName, col.name);
+          if (!exists) {
+            recheckMissing.push(`${tableName}.${col.name}`);
+          }
+        }
+      }
+      
+      if (recheckMissing.length === 0) {
+        console.log('[SCHEMA] ✅ All columns now present after auto-apply');
+        return {
+          allPresent: true,
+          missingColumns: [],
+          action: 'auto_apply',
+          reason: 'auto-applied successfully',
+          autoApplySuccess: true,
+        };
+      } else {
+        console.warn('[SCHEMA] ⚠️ Some columns still missing after auto-apply:', recheckMissing.join(', '));
+        return {
+          allPresent: false,
+          missingColumns: recheckMissing,
+          action: 'degraded',
+          reason: 'auto-apply incomplete',
+          autoApplySuccess: false,
+        };
+      }
+    } else {
+      console.error('[SCHEMA] ❌ Auto-apply failed, running in degraded mode');
+      return {
+        allPresent: false,
+        missingColumns: allMissing.map(m => `${m.table}.${m.column.name}`),
+        action: 'degraded',
+        reason: 'auto-apply failed',
+        autoApplySuccess: false,
+      };
+    }
   } catch (error: any) {
     console.error('[SCHEMA] ❌ Schema check failed:', error.message);
     return {
@@ -163,3 +214,7 @@ export async function ensureReplySchemaColumns(): Promise<SchemaCheckResult> {
   }
 }
 
+// Keep old function for backwards compatibility
+export async function ensureReplySchemaColumns(): Promise<SchemaCheckResult> {
+  return ensureReplySchemaColumnsWithAutoApply();
+}

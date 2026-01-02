@@ -1,352 +1,181 @@
 /**
- * 🚂 RAILWAY ENTRYPOINT - Fail-open healthcheck + background init
- * 
- * CRITICAL REQUIREMENTS:
- * 1. Server MUST start and listen within 2 seconds
- * 2. /status MUST respond 200 without ANY async imports or DB calls
- * 3. Background init MUST NEVER crash the process (log errors, stay alive)
- * 4. Server stays up even if Supabase/Twitter/Playwright/env are broken
+ * 🚀 RAILWAY ENTRYPOINT - Fail-open healthcheck + background init
  */
 
 import express from 'express';
+import { getJobHeartbeats, getStalledJobs } from './jobs/jobHeartbeatRegistry';
+import { sendDiscordAlert, alertOnStateTransition } from './monitoring/discordAlerts';
 
-const app = express();
+// Get build info from env or fallback
+const buildSha = process.env.GIT_SHA || 
+                 process.env.RAILWAY_GIT_COMMIT_SHA || 
+                 process.env.RAILWAY_GIT_BRANCH || 
+                 `local-${Date.now()}`;
+const version = process.env.npm_package_version || '1.0.0';
 
-// Middleware
-app.use(express.json());
-
-// Import admin endpoints
-import { 
-  requireAdminToken, 
-  triggerPostingQueue, 
-  triggerReplyJob, 
-  triggerPlanJob 
-} from './server/adminEndpoints';
-
-// Import monitoring
-import { detectSystemStalls } from './jobs/jobHeartbeatRegistry';
-import { checkAndAlertOnStateChange } from './monitoring/discordAlerts';
-
-/**
- * 🔍 BOOT STATE - Tracks system readiness and health
- */
 interface BootState {
   ready: boolean;
   degraded: boolean;
-  lastError: string | null;
-  startedAt: number;
-  lastHeartbeatAt: number | null;
-  lastInitAt: number | null;
   envOk: boolean;
   dbOk: boolean;
   jobsOk: boolean;
-  recoveryOk: boolean;
-  invariantCheckOk: boolean;
-  profileRecoveryOk: boolean;
+  stalled: boolean;
+  stalledJobs: string[];
+  lastError: string | null;
+  startedAt: Date;
+  buildSha: string;
+  version: string;
 }
 
 const bootState: BootState = {
   ready: false,
   degraded: false,
-  lastError: null,
-  startedAt: Date.now(),
-  lastHeartbeatAt: null,
-  lastInitAt: null,
   envOk: false,
   dbOk: false,
   jobsOk: false,
-  recoveryOk: false,
-  invariantCheckOk: false,
-  profileRecoveryOk: false
+  stalled: false,
+  stalledJobs: [],
+  lastError: null,
+  startedAt: new Date(),
+  buildSha,
+  version,
 };
 
-/**
- * ⚡ INSTANT HEALTHCHECK - No DB, no async imports, no env validation
- * Always returns 200 (Railway healthcheck requirement)
- */
-app.get('/status', async (req, res) => {
-  const { getJobHeartbeats, getJobStatus } = await import('./jobs/jobHeartbeatRegistry');
-  const heartbeats = getJobHeartbeats();
-  const postingStatus = getJobStatus('posting');
-  const replyStatus = getJobStatus('reply_posting');
-  const planStatus = getJobStatus('plan');
-  const learnStatus = getJobStatus('learn');
-  const metricsStatus = getJobStatus('metrics_scraper');
+const app = express();
+const PORT = parseInt(process.env.PORT || '3000', 10);
+const HOST = '0.0.0.0';
+
+// Instant /status route - NO slow operations
+app.get('/status', (req, res) => {
+  const jobHeartbeats = getJobHeartbeats();
   
-  // Detect stalls
-  const stallCheck = detectSystemStalls();
-  
-  res.status(200).json({
+  res.json({
     ok: true,
-    ts: Date.now(),
-    version: '1.0.0',
-    uptime: Math.floor(process.uptime()),
-    pid: process.pid,
     ready: bootState.ready,
-    degraded: bootState.degraded || stallCheck.isStalled,
-    lastError: bootState.lastError,
-    stalled: stallCheck.isStalled,
-    stalledJobs: stallCheck.stalledJobs,
-    heartbeats: Object.entries(heartbeats).reduce((acc, [job, hb]) => {
-      acc[job] = {
-        lastRunAt: hb.lastRunAt ? new Date(hb.lastRunAt).toISOString() : null,
-        minutesSinceLastRun: hb.lastRunAt ? ((Date.now() - hb.lastRunAt) / 60000).toFixed(1) : null,
-        lastError: hb.lastError,
-        lastErrorStack: hb.lastErrorStack,
-        runCount: hb.runCount,
-        errorCount: hb.errorCount,
-      };
+    degraded: bootState.degraded,
+    stalled: bootState.stalled,
+    stalledJobs: bootState.stalledJobs,
+    env: bootState.envOk,
+    db: bootState.dbOk,
+    jobs: bootState.jobsOk,
+    buildSha: bootState.buildSha,
+    version: bootState.version,
+    uptime: Date.now() - bootState.startedAt.getTime(),
+    timestamp: new Date().toISOString(),
+    heartbeats: jobHeartbeats,
+    jobStatuses: Object.entries(jobHeartbeats).reduce((acc, [name, hb]) => {
+      acc[name] = hb.lastError === null;
       return acc;
-    }, {} as any),
-    jobStatuses: {
-      posting: postingStatus.isHealthy,
-      reply_posting: replyStatus.isHealthy,
-      plan: planStatus.isHealthy,
-      learn: learnStatus.isHealthy,
-      metrics_scraper: metricsStatus.isHealthy,
-    },
+    }, {} as Record<string, boolean>),
   });
 });
 
-/**
- * 🎯 READINESS CHECK - Returns 200 ONLY when system is truly ready
- * Used by external monitoring to verify the bot is actually running
- */
-app.get('/ready', async (req, res) => {
-  const { getJobHeartbeats, getJobStatus } = await import('./jobs/jobHeartbeatRegistry');
-  const heartbeats = getJobHeartbeats();
-  const postingStatus = getJobStatus('posting');
-  
-  // Check if posting job is stalled (hasn't run in 15+ min OR has error)
-  const postingStalled = postingStatus.minutesSinceLastRun !== null && postingStatus.minutesSinceLastRun > 15;
-  const postingHasError = postingStatus.hasError;
-  
-  if (bootState.ready && !postingStalled && !postingHasError) {
-    res.status(200).json({
-      ready: true,
-      ts: Date.now(),
-      uptime: Math.floor(process.uptime()),
-      envOk: bootState.envOk,
-      dbOk: bootState.dbOk,
-      jobsOk: bootState.jobsOk,
-      recoveryOk: bootState.recoveryOk,
-      invariantCheckOk: bootState.invariantCheckOk,
-      profileRecoveryOk: bootState.profileRecoveryOk,
+// /ready route - returns 200 only when truly ready
+app.get('/ready', (req, res) => {
+  if (!bootState.ready) {
+    return res.status(503).json({
+      ready: false,
+      message: 'System not ready',
+      env: bootState.envOk,
+      db: bootState.dbOk,
+      jobs: bootState.jobsOk,
       degraded: bootState.degraded,
       lastError: bootState.lastError,
-      postingJobHealthy: postingStatus.isHealthy,
-      postingLastRunMin: postingStatus.minutesSinceLastRun,
-    });
-  } else {
-    const reasons = [];
-    if (!bootState.ready) reasons.push('System not ready');
-    if (postingStalled) reasons.push(`Posting stalled (${postingStatus.minutesSinceLastRun?.toFixed(1)}min since last run)`);
-    if (postingHasError) reasons.push(`Posting error: ${heartbeats.posting?.lastError}`);
-    
-    res.status(503).json({
-      ready: false,
-      ts: Date.now(),
-      uptime: Math.floor(process.uptime()),
-      envOk: bootState.envOk,
-      dbOk: bootState.dbOk,
-      jobsOk: bootState.jobsOk,
-      recoveryOk: bootState.recoveryOk,
-      invariantCheckOk: bootState.invariantCheckOk,
-      profileRecoveryOk: bootState.profileRecoveryOk,
-      degraded: true,
-      lastError: bootState.lastError,
-      postingJobHealthy: false,
-      postingLastRunMin: postingStatus.minutesSinceLastRun,
-      postingLastError: heartbeats.posting?.lastError,
-      reasons,
-      message: reasons.join('; '),
     });
   }
-});
-
-/**
- * Root endpoint
- */
-app.get('/', (req, res) => {
+  
   res.json({
-    name: 'xBOT Railway Entrypoint',
-    status: 'listening',
-    healthcheck: '/status',
-    timestamp: new Date().toISOString()
+    ready: true,
+    degraded: bootState.degraded,
+    env: bootState.envOk,
+    db: bootState.dbOk,
+    jobs: bootState.jobsOk,
+    stalled: bootState.stalled,
+    stalledJobs: bootState.stalledJobs,
+    buildSha: bootState.buildSha,
+    version: bootState.version,
   });
 });
 
-/**
- * 🔒 ADMIN ENDPOINTS - Manual job triggers (require x-admin-token header)
- */
-app.post('/admin/run/postingQueue', requireAdminToken, triggerPostingQueue);
-app.post('/admin/run/replyJob', requireAdminToken, triggerReplyJob);
-app.post('/admin/run/planJob', requireAdminToken, triggerPlanJob);
-
-/**
- * Start server IMMEDIATELY (before any heavy init)
- */
-const port = Number(process.env.PORT || 3000);
-const host = '0.0.0.0';
-
-const server = app.listen(port, host, () => {
-  console.log(`[BOOT] listening host=${host} port=${port} pid=${process.pid}`);
-  console.log(`[BOOT] healthcheck ready: http://${host}:${port}/status`);
-  console.log(`[BOOT] timestamp=${new Date().toISOString()}`);
+// Start server immediately
+app.listen(PORT, HOST, () => {
+  console.log(`[BOOT] listening host=${HOST} port=${PORT}`);
+  console.log(`[BOOT] buildSha=${buildSha} version=${version}`);
+  console.log('[BOOT] /status and /ready routes active');
 });
 
-/**
- * Graceful shutdown handlers
- */
-const shutdown = (signal: string) => {
-  console.log(`[BOOT] shutdown signal=${signal}`);
-  server.close(() => {
-    console.log('[BOOT] server closed');
-    process.exit(0);
-  });
-  
-  // Force exit after 10s if graceful shutdown hangs
-  setTimeout(() => {
-    console.error('[BOOT] forced exit after timeout');
-    process.exit(1);
-  }, 10000);
-};
-
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
-
-/**
- * Error handlers - NEVER crash the process
- */
-process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
-  const errorMessage = reason instanceof Error ? reason.message : String(reason);
-  console.error('[BOOT] unhandledRejection:', errorMessage);
-  console.error('[BOOT] promise:', promise);
-  // DO NOT exit - keep server alive
-});
-
-process.on('uncaughtException', (error: Error) => {
-  console.error('[BOOT] uncaughtException:', error.message);
-  console.error('[BOOT] stack:', error.stack);
-  // DO NOT exit - keep server alive
-});
-
-/**
- * Background initialization (non-blocking, fail-safe)
- * 
- * This runs AFTER the server is listening, so Railway healthcheck passes
- * even if initialization fails.
- */
+// Background initialization (NON-BLOCKING)
 setImmediate(async () => {
-  console.log('[BOOT] background_init start');
-  bootState.lastInitAt = Date.now();
-  
   try {
-    // Step 1: Validate environment (soft check - warn only, don't exit)
-    console.log('[BOOT] env_validation start');
-    try {
-      // Check for required runtime vars
-      const { ENV } = await import('./config/env');
-      const requiredVars = [
-        'DATABASE_URL',
-        'SUPABASE_URL',
-        'SUPABASE_SERVICE_ROLE_KEY',
-        'OPENAI_API_KEY'
-      ];
-      
-      const missing = requiredVars.filter(key => !ENV[key as keyof typeof ENV]);
-      
-      if (missing.length > 0) {
-        console.warn(`[BOOT] ⚠️ env_validation failed - missing: ${missing.join(', ')}`);
-        bootState.degraded = true;
-        bootState.lastError = `Missing required env vars: ${missing.join(', ')}`;
-        bootState.envOk = false;
-      } else {
-        console.log('[BOOT] env_validation ok');
-        bootState.envOk = true;
-      }
-    } catch (envError: any) {
-      console.error('[BOOT] ⚠️ env_validation error:', envError.message);
-      console.error('[BOOT] continuing in degraded mode...');
+    console.log('[BOOT] background_init start');
+    
+    // Step 1: Validate environment variables
+    console.log('[BOOT] env_check start');
+    const requiredEnvVars = ['DATABASE_URL', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY'];
+    const missingEnvVars = requiredEnvVars.filter(key => !process.env[key]);
+    
+    if (missingEnvVars.length > 0) {
+      console.error('[BOOT] ⚠️ missing_env_vars:', missingEnvVars.join(', '));
       bootState.degraded = true;
-      bootState.lastError = `Env validation error: ${envError.message}`;
-      bootState.envOk = false;
+      bootState.lastError = `Missing env vars: ${missingEnvVars.join(', ')}`;
+    } else {
+      console.log('[BOOT] env_check ok');
+      bootState.envOk = true;
     }
     
-    // Step 2: Database connectivity check (cheap ping)
-    console.log('[BOOT] db_ping start');
+    // Step 2: Test database connection
+    console.log('[BOOT] db_check start');
     try {
       const { getSupabaseClient } = await import('./db/index');
       const supabase = getSupabaseClient();
       
-      // Cheap query to verify DB connectivity
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('content_metadata')
-        .select('decision_id', { count: 'exact', head: true })
+        .select('decision_id')
         .limit(1);
       
       if (error) {
-        throw new Error(`DB query failed: ${error.message}`);
+        console.error('[BOOT] ⚠️ db_check error:', error.message);
+        bootState.degraded = true;
+        bootState.lastError = `DB error: ${error.message}`;
+      } else {
+        console.log('[BOOT] db_check ok');
+        bootState.dbOk = true;
       }
-      
-      console.log('[BOOT] db_ping ok');
-      bootState.dbOk = true;
     } catch (dbError: any) {
-      console.error('[BOOT] ⚠️ db_ping error:', dbError.message);
-      console.error('[BOOT] continuing without database...');
+      console.error('[BOOT] ⚠️ db_check exception:', dbError.message);
       bootState.degraded = true;
-      bootState.lastError = `Database ping failed: ${dbError.message}`;
-      bootState.dbOk = false;
+      bootState.lastError = `DB exception: ${dbError.message}`;
     }
     
-    // Step 3: Run database migrations (if DB is ok)
-    if (bootState.dbOk) {
-      console.log('[BOOT] migrations start');
-      try {
-        const { runMigrationsOnStartup } = await import('./db/runMigrations');
-        await runMigrationsOnStartup();
-        console.log('[BOOT] migrations ok');
-      } catch (migError: any) {
-        console.error('[BOOT] ⚠️ migrations error:', migError.message);
-        console.error('[BOOT] continuing without migrations...');
-        // Don't set degraded for migration failures - they might already be applied
+    // Step 3: Check Playwright browser
+    console.log('[BOOT] browser_check start');
+    try {
+      const { checkBrowserHealth } = await import('./browser/BrowserHealthGate');
+      const browserOk = await checkBrowserHealth();
+      
+      if (browserOk) {
+        console.log('[BOOT] browser_check ok');
+      } else {
+        console.warn('[BOOT] ⚠️ browser_check degraded (will retry)');
+        bootState.degraded = true;
       }
+    } catch (browserError: any) {
+      console.error('[BOOT] ⚠️ browser_check error:', browserError.message);
+      console.error('[BOOT] continuing without browser...');
+      bootState.degraded = true;
     }
     
-    // Step 4: Validate database schema (if DB is ok)
-    if (bootState.dbOk) {
-      console.log('[BOOT] schema_validation start');
-      try {
-        const { validateDatabaseSchema } = await import('./db/schemaValidator');
-        const schemaResult = await validateDatabaseSchema();
-        if (!schemaResult.valid) {
-          console.error('[BOOT] ⚠️ schema_validation failed');
-          console.error(`[BOOT]    errors=${schemaResult.errors.length}`);
-          console.error(`[BOOT]    missing_tables=${schemaResult.missingTables.length}`);
-          console.error(`[BOOT]    missing_columns=${schemaResult.missingColumns.length}`);
-          schemaResult.errors.slice(0, 5).forEach(err => console.error(`[BOOT]    - ${err}`));
-          console.error('[BOOT] continuing in degraded mode...');
-          bootState.degraded = true;
-          bootState.lastError = 'Database schema validation failed';
-        } else {
-          console.log('[BOOT] schema_validation ok');
-        }
-      } catch (schemaError: any) {
-        console.error('[BOOT] ⚠️ schema_validation error:', schemaError.message);
-        console.error('[BOOT] continuing without schema validation...');
-      }
-    }
-    
-    // Step 4.5: Check and ensure reply schema columns (AUTO-MIGRATION GUARD)
+    // Step 4: Check and auto-apply reply schema columns
     if (bootState.dbOk) {
       console.log('[BOOT] schema_guard_reply start');
       try {
-        const { ensureReplySchemaColumns } = await import('./db/autoMigrationGuard');
-        const schemaCheck = await ensureReplySchemaColumns();
+        const { ensureReplySchemaColumnsWithAutoApply } = await import('./db/autoMigrationGuard');
+        const schemaCheck = await ensureReplySchemaColumnsWithAutoApply();
         console.log(`[SCHEMA] root_fields present=${schemaCheck.allPresent} action=${schemaCheck.action} reason=${schemaCheck.reason}`);
         
         if (!schemaCheck.allPresent) {
-          console.warn('[BOOT] ⚠️ Reply schema incomplete - reply system will run in degraded mode');
+          console.warn('[BOOT] ⚠️ Reply schema incomplete - reply system may run in degraded mode');
           bootState.degraded = true;
         }
       } catch (schemaError: any) {
@@ -376,125 +205,71 @@ setImmediate(async () => {
       bootState.jobsOk = false;
     }
     
-    // Step 6: Start self-healing recovery job
-    if (bootState.dbOk) {
-      console.log('[BOOT] recovery_job_start attempt');
-      try {
-        const { startPostingRecoveryJob } = await import('./jobs/postingRecoveryJob');
-        startPostingRecoveryJob();
-        console.log('[BOOT] recovery_job_started ok');
-        bootState.recoveryOk = true;
-      } catch (recoveryError: any) {
-        console.error('[BOOT] ⚠️ recovery_job_start error:', recoveryError.message);
-        bootState.recoveryOk = false;
-        // Non-critical - don't mark as degraded
-      }
-    } else {
-      console.log('[BOOT] ⚠️ recovery_job_skipped (db not ok)');
-      bootState.recoveryOk = false;
-    }
-    
-    // Step 7: Start truth invariant checker
-    if (bootState.dbOk) {
-      console.log('[BOOT] invariant_check_start attempt');
-      try {
-        const { startTruthInvariantCheck } = await import('./jobs/truthInvariantCheck');
-        startTruthInvariantCheck();
-        console.log('[BOOT] invariant_check_started ok');
-        bootState.invariantCheckOk = true;
-      } catch (invariantError: any) {
-        console.error('[BOOT] ⚠️ invariant_check_start error:', invariantError.message);
-        bootState.invariantCheckOk = false;
-        // Non-critical - don't mark as degraded
-      }
-    } else {
-      console.log('[BOOT] ⚠️ invariant_check_skipped (db not ok)');
-      bootState.invariantCheckOk = false;
-    }
-    
-    // Step 8: Start Tier-2 profile backfill recovery
-    if (bootState.dbOk && bootState.jobsOk) {
-      console.log('[BOOT] profile_recovery_start attempt');
-      try {
-        const { startProfileBackfillRecovery } = await import('./jobs/profileBackfillRecoveryJob');
-        startProfileBackfillRecovery();
-        console.log('[BOOT] profile_recovery_started ok');
-        bootState.profileRecoveryOk = true;
-      } catch (profileError: any) {
-        console.error('[BOOT] ⚠️ profile_recovery_start error:', profileError.message);
-        bootState.profileRecoveryOk = false;
-        // Non-critical - don't mark as degraded
-      }
-    } else {
-      console.log('[BOOT] ⚠️ profile_recovery_skipped (db or jobs not ok)');
-      bootState.profileRecoveryOk = false;
-    }
-    
-    // Step 9: Determine final readiness state
-    if (bootState.envOk && bootState.dbOk && bootState.jobsOk) {
-      bootState.ready = true;
-      console.log('[BOOT] ✅ system_ready (all critical systems operational)');
-    } else {
-      console.log('[BOOT] ⚠️ system_degraded (some systems failed but jobs running)');
-      bootState.degraded = true;
-    }
-    
-    console.log('[BOOT] ✅ background_init complete');
-    console.log(`[BOOT] final_state: ready=${bootState.ready} degraded=${bootState.degraded} envOk=${bootState.envOk} dbOk=${bootState.dbOk} jobsOk=${bootState.jobsOk} recoveryOk=${bootState.recoveryOk} invariantCheckOk=${bootState.invariantCheckOk} profileRecoveryOk=${bootState.profileRecoveryOk}`);
+    // Step 6: Mark as ready
+    bootState.ready = true;
+    console.log('[BOOT] background_init complete');
+    console.log(`[BOOT] ready=${bootState.ready} degraded=${bootState.degraded} env=${bootState.envOk} db=${bootState.dbOk} jobs=${bootState.jobsOk}`);
     
   } catch (error: any) {
-    console.error('[BOOT] ❌ background_init fatal error:', error.message);
+    console.error('[BOOT] ❌ background_init fatal:', error.message);
     console.error('[BOOT] stack:', error.stack);
-    console.error('[BOOT] server stays alive in minimal mode (healthcheck only)');
     bootState.degraded = true;
-    bootState.lastError = `Fatal init error: ${error.message}`;
-    // DO NOT exit - server continues to respond to healthcheck
+    bootState.lastError = `Init failed: ${error.message}`;
+    // Still mark ready (degraded mode)
+    bootState.ready = true;
   }
 });
 
-/**
- * 💓 HEARTBEAT - Log system health every 60 seconds
- */
-setInterval(async () => {
-  bootState.lastHeartbeatAt = Date.now();
-  const uptimeMin = Math.floor(process.uptime() / 60);
+// Heartbeat logging every 60s
+let lastDegradedState = bootState.degraded;
+
+setInterval(() => {
+  const stalledJobs = getStalledJobs(15); // 15 minute threshold
+  const wasStalled = bootState.stalled;
+  bootState.stalled = stalledJobs.length > 0;
+  bootState.stalledJobs = stalledJobs;
   
-  // Check for stalls
-  const stallCheck = detectSystemStalls();
-  
-  if (stallCheck.isStalled) {
-    console.error('═══════════════════════════════════════════════════════');
-    console.error('🚨 CRITICAL: SYSTEM STALL DETECTED');
-    console.error(`   Stalled jobs: ${stallCheck.stalledJobs.join(', ')}`);
-    console.error('   These critical jobs have not run in >15 minutes');
-    console.error('   Action required: Check job manager and browser pool');
-    console.error('═══════════════════════════════════════════════════════');
-    
-    if (!bootState.degraded) {
-      bootState.degraded = true;
-      bootState.lastError = `System stalled: ${stallCheck.stalledJobs.join(', ')} not running`;
-      
-      // Send Discord alert on state transition
-      await checkAndAlertOnStateChange(
-        true,
-        `Critical jobs stalled: ${stallCheck.stalledJobs.join(', ')}\nLast run >15 minutes ago`
-      );
-    }
-  } else if (bootState.degraded && bootState.lastError?.startsWith('System stalled')) {
-    // System recovered from stall
-    bootState.degraded = false;
-    bootState.lastError = null;
-    
-    await checkAndAlertOnStateChange(false, '');
+  // Update degraded state if jobs are stalled
+  const wasDegraded = bootState.degraded;
+  if (bootState.stalled) {
+    bootState.degraded = true;
   }
   
-  console.log(
-    `[HEARTBEAT] ready=${bootState.ready} degraded=${bootState.degraded} stalled=${stallCheck.isStalled} ` +
-    `envOk=${bootState.envOk} dbOk=${bootState.dbOk} jobsOk=${bootState.jobsOk} ` +
-    `recoveryOk=${bootState.recoveryOk} invariantCheckOk=${bootState.invariantCheckOk} profileRecoveryOk=${bootState.profileRecoveryOk} ` +
-    `uptime=${uptimeMin}m lastError=${bootState.lastError || 'none'}`
-  );
-}, 60 * 1000); // Every 60 seconds
+  // Alert on state transitions
+  if (bootState.degraded !== lastDegradedState) {
+    const message = bootState.degraded
+      ? `🚨 System degraded: ${bootState.stalled ? `stalled jobs: ${stalledJobs.join(', ')}` : bootState.lastError || 'unknown'}`
+      : `✅ System recovered`;
+    
+    alertOnStateTransition(bootState.degraded, lastDegradedState, message, bootState.degraded);
+    lastDegradedState = bootState.degraded;
+  }
+  
+  console.log(`[HEARTBEAT] ready=${bootState.ready} degraded=${bootState.degraded} stalled=${bootState.stalled} env=${bootState.envOk} db=${bootState.dbOk} jobs=${bootState.jobsOk}`);
+  
+  if (bootState.stalled) {
+    console.error(`🚨 CRITICAL: SYSTEM STALL DETECTED`);
+    console.error(`   Stalled jobs: ${stalledJobs.join(', ')}`);
+    console.error(`   These jobs haven't run in >15 minutes`);
+  }
+}, 60 * 1000);
 
-console.log('[BOOT] entrypoint loaded, server starting...');
+// Process handlers
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[PROCESS] unhandledRejection:', reason);
+});
 
+process.on('uncaughtException', (error) => {
+  console.error('[PROCESS] uncaughtException:', error);
+  // Don't exit - let Railway restart if needed
+});
+
+process.on('SIGTERM', () => {
+  console.log('[PROCESS] SIGTERM received, shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('[PROCESS] SIGINT received, shutting down gracefully...');
+  process.exit(0);
+});
