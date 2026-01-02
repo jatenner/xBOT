@@ -764,24 +764,49 @@ async function generateRealReplies(): Promise<void> {
         return false;
       }
       
-      // 🔥 FILTER 1: Minimum follower threshold (if data available)
-      const MIN_FOLLOWERS = parseInt(process.env.REPLY_MIN_FOLLOWERS || '10000');
+      // 🔥 FILTER 1: Minimum follower threshold (RELAXED - velocity-aware)
+      // Use tiered approach: prefer high-follower, but allow medium-follower with high velocity
+      const MIN_FOLLOWERS_STRICT = parseInt(process.env.REPLY_MIN_FOLLOWERS || '5000'); // Relaxed from 10K
+      const MIN_FOLLOWERS_RELAXED = 1000; // Fallback tier
       const followers = Number(opp.target_followers) || 0;
-      if (followers > 0 && followers < MIN_FOLLOWERS) {
+      const minutesAgo = Number(opp.posted_minutes_ago) || 9999;
+      const likes = Number(opp.like_count) || 0;
+      
+      // Calculate velocity (likes per minute)
+      const velocity = minutesAgo > 0 ? likes / minutesAgo : 0;
+      
+      // Tier 1: High velocity overrides follower count (viral potential)
+      const highVelocity = velocity >= 50; // 50+ likes/min = viral
+      
+      // Tier 2: Medium follower + decent engagement
+      const mediumFollowerOk = followers >= MIN_FOLLOWERS_RELAXED && likes >= 200;
+      
+      // Tier 3: High follower (original strict tier)
+      const highFollowerOk = followers >= MIN_FOLLOWERS_STRICT;
+      
+      if (followers > 0 && !highVelocity && !mediumFollowerOk && !highFollowerOk) {
         diagCounters.low_followers++;
         if (diagCounters.low_followers <= 3) {
-          console.log(`[REPLY_JOB] ⏭️ Skipping low-volume account @${opp.target_username} (${followers} followers, min: ${MIN_FOLLOWERS})`);
+          console.log(`[REPLY_JOB] ⏭️ Skipping low-volume account @${opp.target_username} (${followers} followers, ${likes} likes, velocity=${velocity.toFixed(1)})`);
         }
         return false;
       }
       
-      // 🎯 FILTER 2: Minimum tweet likes (VISIBILITY FIX - use as proxy for account quality)
-      const MIN_TWEET_LIKES = parseInt(process.env.REPLY_MIN_TWEET_LIKES || '5000');
-      const likes = Number(opp.like_count) || 0;
-      if (likes < MIN_TWEET_LIKES) {
+      // 🎯 FILTER 2: Minimum tweet likes (RELAXED - velocity-aware)
+      // Prefer high-engagement, but allow fresh high-velocity tweets
+      const MIN_LIKES_STRICT = parseInt(process.env.REPLY_MIN_TWEET_LIKES || '500'); // Relaxed from 5K to 500
+      const MIN_LIKES_FRESH = 100; // For very recent (<30min) tweets
+      
+      // Fresh + rising = acceptable
+      const freshAndRising = minutesAgo <= 30 && likes >= MIN_LIKES_FRESH;
+      
+      // High engagement = acceptable
+      const highEngagement = likes >= MIN_LIKES_STRICT;
+      
+      if (!freshAndRising && !highEngagement) {
         diagCounters.low_likes++;
         if (diagCounters.low_likes <= 3) {
-          console.log(`[REPLY_JOB] ⏭️ Skipping low-engagement tweet from @${opp.target_username} (${likes} likes, min: ${MIN_TWEET_LIKES})`);
+          console.log(`[REPLY_JOB] ⏭️ Skipping low-engagement tweet from @${opp.target_username} (${likes} likes, ${minutesAgo}min ago, velocity=${velocity.toFixed(1)})`);
         }
         return false;
       }
