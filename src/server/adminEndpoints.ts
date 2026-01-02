@@ -45,18 +45,18 @@ export async function triggerPostingQueue(req: Request, res: Response): Promise<
   }
 }
 
-// Manual trigger for replyJob
+// Manual trigger for replyJob (ENHANCED version with root resolution)
 export async function triggerReplyJob(req: Request, res: Response): Promise<void> {
-  console.log('[ADMIN] 🚀 Manual trigger: replyJob');
+  console.log('[ADMIN] 🚀 Manual trigger: replyJobEnhanced (with root resolution + pacing)');
   
   try {
-    const { generateReplies } = await import('../jobs/replyJob');
-    await generateReplies();
+    const { generateRepliesEnhanced } = await import('../jobs/replyJobEnhanced');
+    await generateRepliesEnhanced();
     
-    console.log('[ADMIN] ✅ replyJob completed successfully');
-    res.json({ ok: true, message: 'replyJob completed successfully' });
+    console.log('[ADMIN] ✅ replyJobEnhanced completed successfully');
+    res.json({ ok: true, message: 'replyJobEnhanced completed successfully' });
   } catch (error: any) {
-    console.error('[ADMIN] ❌ replyJob failed:', error);
+    console.error('[ADMIN] ❌ replyJobEnhanced failed:', error);
     console.error('[ADMIN] Stack:', error.stack);
     res.status(500).json({ 
       ok: false, 
