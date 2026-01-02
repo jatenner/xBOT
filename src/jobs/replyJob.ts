@@ -814,6 +814,62 @@ async function generateRealReplies(): Promise<void> {
   console.log(`[REPLY_JOB] ✅ Found ${opportunities.length} reply opportunities from database pool`);
   
   // ============================================================
+  // 🎯 PHASE 2: ROOT TWEET RESOLUTION
+  // ============================================================
+  // CRITICAL: Resolve each candidate to its root tweet BEFORE generating replies
+  // This ensures we reply to ORIGINAL posts, not replies
+  console.log('[REPLY_JOB] 🔍 Resolving candidates to root tweets...');
+  const { resolveReplyCandidate } = await import('./replyRootResolver');
+  
+  const resolvedOpportunities: any[] = [];
+  for (const opp of opportunities) {
+    // Extract tweet ID from URL
+    const tweetId = opp.tweet_url.split('/').pop() || '';
+    if (!tweetId) {
+      console.log(`[REPLY_JOB] ⚠️ Skipping opportunity with invalid URL: ${opp.tweet_url}`);
+      continue;
+    }
+    
+    // Resolve to root
+    const resolved = await resolveReplyCandidate(tweetId, opp.tweet_content);
+    if (!resolved) {
+      console.log(`[REPLY_JOB] 🚫 Skipped candidate ${tweetId} (could not resolve or should skip)`);
+      continue;
+    }
+    
+    // Update opportunity with root data
+    const resolvedOpp = {
+      ...opp,
+      original_candidate_tweet_id: resolved.originalCandidateId,
+      root_tweet_id: resolved.rootTweetId,
+      root_tweet_url: resolved.rootTweetUrl,
+      resolved_via_root: !resolved.isRootTweet,
+      // Use ROOT tweet content for context
+      tweet_url: resolved.rootTweetUrl,
+      tweet_content: resolved.rootTweetContent || opp.tweet_content,
+      target: {
+        ...opp.target,
+        // Update author if different
+        username: resolved.rootTweetAuthor || opp.target.username,
+      }
+    };
+    
+    resolvedOpportunities.push(resolvedOpp);
+  }
+  
+  console.log(`[REPLY_JOB] ✅ Root resolution: ${resolvedOpportunities.length}/${opportunities.length} candidates resolved`);
+  
+  // Replace opportunities with resolved ones
+  const opportunitiesBeforeResolution = opportunities.length;
+  opportunities.length = 0; // Clear array
+  opportunities.push(...resolvedOpportunities); // Replace with resolved
+  
+  if (opportunities.length === 0) {
+    console.log('[REPLY_JOB] ⚠️ No opportunities after root resolution');
+    return;
+  }
+  
+  // ============================================================
   // SMART BATCH GENERATION: 5 REPLIES PER CYCLE
   // ============================================================
   // Job runs every 30 min (2 runs/hour)
@@ -1123,7 +1179,12 @@ Reply:`;
         tweet_url: tweetUrlStr,
         scheduled_at: new Date(Date.now() + staggerDelay * 60 * 1000).toISOString(),
         visual_format: strategicReply.visualFormat || null,
-        topic: target.reply_angle || target.account.category || 'health'
+        topic: target.reply_angle || target.account.category || 'health',
+        
+        // 🎯 PHASE 2: Root resolution data from opportunity
+        root_tweet_id: opportunity.root_tweet_id || null,
+        original_candidate_tweet_id: opportunity.original_candidate_tweet_id || null,
+        resolved_via_root: opportunity.resolved_via_root || false
       };
       
       // ============================================================
@@ -1450,7 +1511,12 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
       tweet_url: reply.tweet_url || null,
       parent_tweet_id: reply.target_tweet_id,
       parent_username: reply.target_username
-    }
+    },
+        
+        // 🎯 PHASE 2: Root tweet resolution data
+        root_tweet_id: reply.root_tweet_id || null,
+        original_candidate_tweet_id: reply.original_candidate_tweet_id || null,
+        resolved_via_root: reply.resolved_via_root || false
       };
       
       // Only add experiment fields if experiments are enabled (columns may not exist in schema)
