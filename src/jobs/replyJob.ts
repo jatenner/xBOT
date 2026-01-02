@@ -519,15 +519,50 @@ async function generateRealReplies(): Promise<void> {
 
         console.log('[REPLY_JOB] ✅ Harvester preflight complete');
 
-        // Refresh pool count after harvest
-        const refreshed = await supabaseClient
-          .from('reply_opportunities')
-          .select('id', { count: 'exact', head: true })
-          .eq('replied_to', false)
-          .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString());
-        if (!refreshed.error) {
-          poolCount = refreshed.count || 0;
-          console.log(`[REPLY_JOB] 📈 Opportunity pool after harvest: ${poolCount}`);
+        // 🔄 WAIT FOR HARVEST TO POPULATE POOL (fixes race condition)
+        const MAX_WAIT_MS = 90000; // 90 seconds max wait
+        const POLL_INTERVAL_MS = 10000; // Check every 10 seconds
+        const startPoolCount = poolCount;
+        const waitStartTime = Date.now();
+        let pollCount = 0;
+        
+        console.log(`[REPLY_JOB] ⏳ Waiting for harvest to populate pool (start=${startPoolCount}, threshold=${HARVESTER_TRIGGER_THRESHOLD})`);
+        
+        while (Date.now() - waitStartTime < MAX_WAIT_MS) {
+          pollCount++;
+          
+          // Wait before polling (skip first iteration)
+          if (pollCount > 1) {
+            await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+          }
+          
+          // Re-count pool
+          const polled = await supabaseClient
+            .from('reply_opportunities')
+            .select('id', { count: 'exact', head: true })
+            .eq('replied_to', false)
+            .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString());
+          
+          if (!polled.error) {
+            poolCount = polled.count || 0;
+            const elapsed = Date.now() - waitStartTime;
+            console.log(`[REPLY_JOB] ⏳ waiting_for_harvest poll=${pollCount} elapsed=${elapsed}ms pool=${poolCount}/${HARVESTER_TRIGGER_THRESHOLD}`);
+            
+            // Break early if threshold met
+            if (poolCount >= HARVESTER_TRIGGER_THRESHOLD) {
+              console.log(`[REPLY_JOB] ✅ Pool threshold met after ${elapsed}ms (${startPoolCount} → ${poolCount})`);
+              break;
+            }
+          }
+        }
+        
+        const finalWaitTime = Date.now() - waitStartTime;
+        console.log(`[REPLY_JOB] 📊 pool_after_harvest start=${startPoolCount} end=${poolCount} waited_ms=${finalWaitTime}`);
+        
+        // If still below threshold, exit early
+        if (poolCount < HARVESTER_TRIGGER_THRESHOLD) {
+          console.warn(`[REPLY_JOB] ⚠️ pool_still_low after_wait_ms=${finalWaitTime} pool=${poolCount} threshold=${HARVESTER_TRIGGER_THRESHOLD} action=exit`);
+          return;
         }
       } catch (error: any) {
         console.error('[REPLY_JOB] ❌ Harvester preflight failed:', error.message);
