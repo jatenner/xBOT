@@ -5,6 +5,7 @@
 import express from 'express';
 import { getJobHeartbeats, getStalledJobs } from './jobs/jobHeartbeatRegistry';
 import { sendDiscordAlert, alertOnStateTransition } from './monitoring/discordAlerts';
+import { requireAdminToken, triggerPostingQueue, triggerReplyJob, triggerPlanJob } from './server/adminEndpoints';
 
 // Get build info from env or fallback
 const buildSha = process.env.GIT_SHA || 
@@ -44,6 +45,14 @@ const bootState: BootState = {
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = '0.0.0.0';
+
+// Parse JSON bodies for admin endpoints
+app.use(express.json());
+
+// 🔒 ADMIN ENDPOINTS - Manual job triggers (protected)
+app.post('/admin/run/postingQueue', requireAdminToken, triggerPostingQueue);
+app.post('/admin/run/replyJob', requireAdminToken, triggerReplyJob);
+app.post('/admin/run/planJob', requireAdminToken, triggerPlanJob);
 
 // Instant /status route - NO slow operations
 app.get('/status', (req, res) => {
