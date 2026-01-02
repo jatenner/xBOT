@@ -1745,7 +1745,7 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
         
         // 🎤 PHASE 5: Voice Guide metadata (if available)
         hook_type: voiceDecision?.hookType || 'none', // Replies typically don't use hooks
-        structure_type: voiceDecision?.structure || 'reply', // Always 'reply' for replies
+        // structure_type: voiceDecision?.structure || 'reply', // REMOVED: column doesn't exist in prod
         // Note: tone is stored separately if needed
     target_tweet_id: reply.target_tweet_id,
     target_username: reply.target_username,
