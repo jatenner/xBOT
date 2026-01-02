@@ -12,6 +12,8 @@ interface StatusResponse {
   degraded: boolean;
   stalled: boolean;
   stalledJobs: string[];
+  buildSha?: string;
+  version?: string;
   heartbeats: Record<string, {
     lastRunAt: string | null;
     minutesSinceLastRun: string | null;
@@ -22,7 +24,7 @@ interface StatusResponse {
   jobStatuses: Record<string, boolean>;
 }
 
-async function checkStatus(): Promise<{ pass: boolean; message: string }> {
+async function checkStatus(): Promise<{ pass: boolean; message: string; data?: StatusResponse }> {
   try {
     const response = await fetch(`${BASE_URL}/status`);
     
@@ -36,7 +38,8 @@ async function checkStatus(): Promise<{ pass: boolean; message: string }> {
       return { pass: false, message: '❌ /status ok=false' };
     }
     
-    return { pass: true, message: '✅ /status 200 OK' };
+    const buildInfo = data.buildSha ? ` (build: ${data.buildSha.substring(0, 8)}, v${data.version})` : '';
+    return { pass: true, message: `✅ /status 200 OK${buildInfo}`, data };
   } catch (error: any) {
     return { pass: false, message: `❌ /status failed: ${error.message}` };
   }
@@ -132,6 +135,7 @@ async function main() {
   ];
   
   let allPassed = true;
+  let statusData: StatusResponse | undefined;
   
   for (const check of checks) {
     const result = await check.fn();
@@ -139,6 +143,15 @@ async function main() {
     if (!result.pass) {
       allPassed = false;
     }
+    if (check.name === 'Status Endpoint' && 'data' in result) {
+      statusData = result.data;
+    }
+  }
+  
+  // Print build info
+  if (statusData?.buildSha) {
+    console.log(`\n📦 Build: ${statusData.buildSha}`);
+    console.log(`📌 Version: ${statusData.version}`);
   }
   
   console.log('\n═══════════════════════════════════════════════════════════════');
