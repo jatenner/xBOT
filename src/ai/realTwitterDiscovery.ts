@@ -654,6 +654,14 @@ export class RealTwitterDiscovery {
           
           const tweetPostedAt = datetime; // Save for later use
           
+          // 🚨 CRITICAL: Check if this is a reply tweet (MUST BE SKIPPED)
+          const replyingToEl = tweet.querySelector('[data-testid="socialContext"]');
+          const isReplyTweet = replyingToEl && replyingToEl.textContent?.toLowerCase().includes('replying to');
+          
+          if (isReplyTweet) {
+            continue; // Skip reply tweets entirely - we only want ROOT tweets
+          }
+          
           // Get tweet content
           const contentEl = tweet.querySelector('[data-testid="tweetText"]');
           const content = contentEl?.textContent || '';
