@@ -47,11 +47,16 @@ export function calculateNextReplyTime(lastReplyAt: Date | null): Date {
   const now = Date.now();
   
   if (!lastReplyAt) {
-    // No previous reply, can reply now (but add small jitter)
-    const jitter = Math.random() * 
-      (THROUGHPUT_CONFIG.JITTER_MAX - THROUGHPUT_CONFIG.JITTER_MIN) + 
-      THROUGHPUT_CONFIG.JITTER_MIN;
-    return new Date(now + jitter * 60 * 1000);
+    // No previous reply, can reply immediately
+    return new Date(now);
+  }
+  
+  const timeSinceLastReply = now - lastReplyAt.getTime();
+  const oneHourMs = 60 * 60 * 1000;
+  
+  // If last reply was >1 hour ago, can reply immediately (gap is clearly satisfied)
+  if (timeSinceLastReply > oneHourMs) {
+    return new Date(now);
   }
   
   // Calculate minimum gap with randomization
@@ -66,8 +71,13 @@ export function calculateNextReplyTime(lastReplyAt: Date | null): Date {
   
   const nextTime = lastReplyAt.getTime() + (gapMinutes + jitter) * 60 * 1000;
   
-  // If next time is in the past, use now + jitter
-  return new Date(Math.max(nextTime, now + jitter * 60 * 1000));
+  // If next time is still in the future, respect it
+  if (nextTime > now) {
+    return new Date(nextTime);
+  }
+  
+  // Gap is satisfied, can reply now
+  return new Date(now);
 }
 
 /**
