@@ -1718,7 +1718,7 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
         
         // 🎯 PHASE 2: Root tweet resolution data
         root_tweet_id: reply.root_tweet_id || null,
-        original_candidate_tweet_id: reply.original_candidate_tweet_id || null,
+        // original_candidate_tweet_id: reply.original_candidate_tweet_id || null, // REMOVED: column doesn't exist in prod schema
         resolved_via_root: reply.resolved_via_root || false
       };
       
