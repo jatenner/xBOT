@@ -42,9 +42,10 @@ async function checkProductionStatus(): Promise<void> {
 async function verifyReplyTargeting(): Promise<{ pass: boolean; message: string; stats?: any }> {
   try {
     // Get last 50 reply decisions
+    // Query the underlying table directly (content_metadata view may not include new columns)
     const { data: replies, error } = await supabase
-      .from('content_metadata')
-      .select('decision_id, target_tweet_id, root_tweet_id, original_candidate_tweet_id, resolved_via_root, posted_at, status')
+      .from('content_generation_metadata_comprehensive')
+      .select('decision_id, target_tweet_id, root_tweet_id, original_candidate_tweet_id, resolved_via_root, posted_at, status, created_at')
       .eq('decision_type', 'reply')
       .in('status', ['posted', 'queued'])
       .order('created_at', { ascending: false })
