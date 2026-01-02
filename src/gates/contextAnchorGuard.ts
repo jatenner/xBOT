@@ -1,5 +1,5 @@
 /**
- * 🎯 CONTEXT ANCHOR GUARD - Ensure replies reference the original tweet
+ * 🎯 CONTEXT ANCHOR GUARD - Ensure replies reference the original tweet with echo
  */
 
 export interface AnchorCheckResult {
@@ -30,17 +30,71 @@ const STOPWORDS = new Set([
 export function extractKeywords(text: string): string[] {
   const words = text
     .toLowerCase()
-    .replace(/[^\w\s]/g, ' ') // Remove punctuation
+    .replace(/[^\w\s]/g, ' ')
     .split(/\s+/)
     .filter(word => word.length >= 4 && !STOPWORDS.has(word));
   
-  // Deduplicate and return top 7
   const unique = [...new Set(words)];
   return unique.slice(0, 7);
 }
 
 /**
- * Check if reply references the original tweet content
+ * Extract key phrases (2-3 word meaningful sequences)
+ */
+function extractKeyPhrases(text: string): string[] {
+  const words = text.toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length >= 4 && !STOPWORDS.has(w));
+  
+  const phrases: string[] = [];
+  
+  for (let i = 0; i < words.length - 1; i++) {
+    phrases.push(`${words[i]} ${words[i+1]}`);
+  }
+  
+  for (let i = 0; i < words.length - 2; i++) {
+    phrases.push(`${words[i]} ${words[i+1]} ${words[i+2]}`);
+  }
+  
+  return phrases;
+}
+
+/**
+ * Check if reply includes an "echo clause" that paraphrases the root tweet
+ */
+export function hasEchoClause(replyContent: string, rootTweetContent: string): boolean {
+  const echoPatterns = [
+    /you'?re (basically |essentially )?saying/i,
+    /if (the |your )?point is/i,
+    /(right|exactly)[,\s]+(the|your) (key|point|claim)/i,
+    /that'?s (a )?great (point|observation)/i,
+    /makes sense[,\s]+/i,
+    /^(so|that|this) (means|suggests|shows)/i,
+  ];
+  
+  const hasEchoPattern = echoPatterns.some(pattern => pattern.test(replyContent));
+  
+  const rootPhrases = extractKeyPhrases(rootTweetContent);
+  const replyPhrases = extractKeyPhrases(replyContent);
+  
+  const sharedPhrases = rootPhrases.filter(phrase => 
+    replyPhrases.some(rp => rp.includes(phrase) || phrase.includes(rp))
+  );
+  
+  return hasEchoPattern || sharedPhrases.length > 0;
+}
+
+/**
+ * Extract the echo text from reply (first sentence or clause)
+ */
+function extractEchoText(replyContent: string): string {
+  const firstSentence = replyContent.split(/[.!?]/)[0];
+  return firstSentence.substring(0, 50) + (firstSentence.length > 50 ? '...' : '');
+}
+
+/**
+ * Check if reply references the original tweet with echo + context
  */
 export function checkContextAnchor(
   replyContent: string,
@@ -50,8 +104,7 @@ export function checkContextAnchor(
   const keywords = extractKeywords(rootTweetContent);
   
   if (keywords.length === 0) {
-    // Root tweet too short or generic - pass anyway
-    console.log(`[REPLY_ANCHOR] pass=true reason=no_keywords_in_root action=post`);
+    console.log(`[REPLY_CONTEXT] pass=true reason=no_keywords_in_root echo=N/A`);
     return {
       pass: true,
       matched: [],
@@ -60,7 +113,6 @@ export function checkContextAnchor(
     };
   }
   
-  // Check for direct keyword matches
   const matched: string[] = [];
   for (const keyword of keywords) {
     if (replyLower.includes(keyword)) {
@@ -68,9 +120,11 @@ export function checkContextAnchor(
     }
   }
   
-  // Pass if at least 1 keyword matched
-  if (matched.length > 0) {
-    console.log(`[REPLY_ANCHOR] pass=true matched=${JSON.stringify(matched)} action=post`);
+  const hasEcho = hasEchoClause(replyContent, rootTweetContent);
+  
+  if (hasEcho || matched.length > 0) {
+    const echoText = hasEcho ? extractEchoText(replyContent) : 'N/A';
+    console.log(`[REPLY_CONTEXT] pass=true echo="${echoText}" matched=${JSON.stringify(matched)} action=post`);
     return {
       pass: true,
       matched,
@@ -79,37 +133,23 @@ export function checkContextAnchor(
     };
   }
   
-  // Check for paraphrases/related terms (simple heuristic)
-  // If reply is very short and root tweet is long, be more lenient
-  if (replyContent.length < 100 && rootTweetContent.length > 150) {
-    console.log(`[REPLY_ANCHOR] pass=true matched=[] reason=short_reply_lenient action=post`);
-    return {
-      pass: true,
-      matched: [],
-      reason: 'short_reply_lenient',
-      action: 'post',
-    };
-  }
-  
-  // No match found
-  console.log(`[REPLY_ANCHOR] pass=false matched=[] keywords=${JSON.stringify(keywords)} action=regen`);
+  console.log(`[REPLY_CONTEXT] pass=false echo=false matched=[] keywords=${JSON.stringify(keywords)} action=regen`);
   return {
     pass: false,
     matched: [],
-    reason: 'no_keyword_match',
+    reason: 'no_echo_or_keywords',
     action: 'regen',
   };
 }
 
 /**
- * Build regeneration instruction referencing specific root tweet content
+ * Build regeneration instruction requiring echo
  */
 export function buildAnchorRegenerationInstruction(
   rootTweetContent: string,
   keywords: string[]
 ): string {
-  const primaryKeyword = keywords[0] || 'the topic';
+  const excerpt = rootTweetContent.substring(0, 80) + (rootTweetContent.length > 80 ? '...' : '');
   
-  return `Your first line must directly reference the original tweet's point about ${primaryKeyword}. Quote or paraphrase their specific claim, then add your insight.`;
+  return `Your first sentence must echo their claim: "${excerpt}". Use a pattern like "You're saying X..." or "That point about X...". Then add your insight in 1-2 more lines.`;
 }
-

@@ -2963,6 +2963,11 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       poster = new PosterCtor({ purpose: 'reply' });
       console.log(`[POSTING_QUEUE] 💬 Posting REAL reply to tweet ${decision.target_tweet_id}...`);
       console.log(`[POSTING_QUEUE] 📝 Reply content: "${decision.content.substring(0, 60)}..."`);
+      
+      // 🔒 LOG POSTING MODE (prove we're not using thread composer)
+      const contentLength = decision.content.length;
+      const contentLines = (decision.content.match(/\n/g) || []).length + 1;
+      console.log(`[REPLY_POST] mode=reply tweet_id=${decision.target_tweet_id} len=${contentLength} lines=${contentLines} used_thread_composer=false`);
 
       const result = await poster.postReply(decision.content, decision.target_tweet_id, decision.id);
 

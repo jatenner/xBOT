@@ -1152,41 +1152,54 @@ async function generateRealReplies(): Promise<void> {
             const replyTone = 'helpful'; // Default tone for replies
             
             // 🔥 CRITICAL: Build explicit contextual reply prompt (UPGRADED FOR QUALITY)
+            const templateChoice = Math.floor(Math.random() * 3);
+            const templates = [
+              'AGREE + ADD: Echo their point, add mechanism/data, end with hook',
+              'NUANCE + ADD: Respectful correction, one key fact, end with hook',
+              'MINI-PLAYBOOK: 2-step suggestion, end with hook'
+            ];
+            const chosenTemplate = templates[templateChoice];
+            
             const explicitReplyPrompt = `You are replying to this tweet:
 
 ROOT_TWEET_TEXT: "${parentText}"
 AUTHOR: @${target.account.username}
 KEY_TOPICS: ${keywords.join(', ')}
 
-YOUR REPLY MUST:
-1. **Reference ROOT_TWEET_TEXT directly** - mention a specific detail from their tweet
-2. **Be 1-3 short lines** (max 220 chars total)
-3. **First line acknowledges their point** (agree/clarify/push back)
-4. **Add ONE insight** (mechanism/tradeoff/practical step OR one stat)
-5. **Optional: End with short question or soft CTA** ("If you want, I can...")
+YOUR REPLY MUST FOLLOW THIS TEMPLATE: ${chosenTemplate}
 
-STRUCTURE (choose ONE):
-- AGREE + ADD VALUE: "Exactly - [their point]. [Mechanism/data that explains why]"
-- CLARIFY + NUANCE: "[Their point] is spot on, though [important caveat]. [Why it matters]"
-- QUESTION + INSIGHT: "Have you tried [practical step]? [Why it works for this specific case]"
+CRITICAL REQUIREMENTS:
+1. **ECHO FIRST**: First sentence must paraphrase their claim. Use patterns like:
+   - "You're basically saying X..."
+   - "That point about X is spot on"
+   - "Right — the key here is X"
+   - "Makes sense — when you consider X"
+
+2. **LENGTH**: 1-3 short lines, max 220 chars total
+
+3. **ADD VALUE**: One practical insight, mechanism, or stat (not generic advice)
+
+4. **END WITH HOOK**: Question OR "try this" suggestion (drive engagement)
 
 HARD BANS:
-- NO "Studies show", "Research suggests", "Interestingly" openings
-- NO generic health facts unless directly tied to THEIR tweet
-- NO medical disclaimers
-- NO thread markers (1/, 🧵, etc)
+- NO "Studies show" / "Research suggests" unless naming the study
+- NO generic "improves health" endings
+- NO medical disclaimers or lectures
+- NO thread markers (1/, 🧵, Part, continued)
 - NO multi-paragraph responses
-- NO starting your own topic
+- NO bullet lists
 
-GOOD:
-- "That cortisol spike makes sense - happens when blood sugar crashes after refined carbs. Try protein + fat instead."
-- "Exactly! The mechanism: gut bacteria ferment fiber → produce butyrate → reduces inflammation. Takes 2-3 weeks to notice."
+GOOD EXAMPLES:
+- "That cortisol spike makes sense — happens when blood sugar crashes after refined carbs. Have you tried protein + fat instead?"
+- "Right, fiber feeds gut bacteria → they produce butyrate → reduces inflammation. Takes 2-3 weeks to see effects though."
+- "Makes sense. Two-step fix: 1) Cut seed oils, 2) Add omega-3s daily. Which one would be easier for you?"
 
-BAD:
-- "Research shows fiber is important for gut health. It helps with digestion and..." (generic, not tied to their tweet)
-- "Interestingly, I've noticed similar patterns in my own health journey..." (about you, not them)
+BAD EXAMPLES:
+- "Research shows fiber is important for gut health..." (generic, no echo)
+- "Interestingly, I've noticed..." (about you, not them)
+- "1/ Let me explain why this matters..." (thread marker)
 
-Reply (1-3 lines, directly reference ROOT_TWEET_TEXT):`;
+Reply (1-3 lines, echo their point first):`;
             
             // Route through orchestratorRouter for generator-based replies
             const routerResponse = await routeContentGeneration({
@@ -1420,6 +1433,27 @@ Reply (1-3 lines, directly reference ROOT_TWEET_TEXT):`;
         }
       } catch (formatError: any) {
         console.warn(`[REPLY_JOB] ⚠️ Visual formatter failed, using original reply: ${formatError.message}`);
+      }
+      
+      // ============================================================
+      // 🔒 OUTPUT CONTRACT: Final validation before queueing
+      // ============================================================
+      const { validateReplyContract, hashContent } = await import('../gates/replyOutputContract');
+      const contractCheck = validateReplyContract(reply.content);
+      
+      if (!contractCheck.pass) {
+        console.error(`[REPLY_QUALITY] fail_closed reason=${contractCheck.reason} content_hash=${hashContent(reply.content)}`);
+        console.error(`[REPLY_QUALITY] Content: "${reply.content.substring(0, 100)}..."`);
+        
+        // If sanitization worked, use it
+        if (contractCheck.sanitized) {
+          reply.content = contractCheck.sanitized;
+          console.log(`[REPLY_QUALITY] sanitize_success using_sanitized len=${contractCheck.sanitized.length}`);
+        } else {
+          // Skip this reply
+          console.error(`[REPLY_QUALITY] action=skip target=@${target.account.username}`);
+          continue;
+        }
       }
       
       // Queue for posting with smart spacing
