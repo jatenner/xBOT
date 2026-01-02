@@ -12,7 +12,9 @@
     "check-tweets": "tsx scripts/check-recent-tweets.ts",
     "verify": "tsx scripts/railway-verify.ts",
     "verify-truth-gap": "tsx scripts/verify-truth-gap.ts",
-    "verify-ready": "tsx scripts/railway-ready-check.ts"
+    "verify-ready": "tsx scripts/railway-ready-check.ts",
+    "verify-ops": "tsx scripts/verify-ops.ts",
+    "verify-replies": "tsx scripts/verify-replies.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.4",
