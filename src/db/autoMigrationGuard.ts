@@ -139,29 +139,14 @@ export async function ensureReplySchemaColumnsWithAutoApply(): Promise<SchemaChe
     }
     
     console.log(`[SCHEMA] ⚠️ Found ${allMissing.length} missing columns`);
+    console.log('[SCHEMA] 🔧 Attempting auto-apply via direct PostgreSQL connection...');
     
-    // Group by table for auto-apply
-    const missingByTable = allMissing.reduce((acc, item) => {
-      if (!acc[item.table]) {
-        acc[item.table] = [];
-      }
-      acc[item.table].push(item.column);
-      return acc;
-    }, {} as Record<string, Array<{ name: string; type: string }>>);
+    // Try direct migration apply
+    const { applyReplySchemaColumnsDirectly } = await import('./applyMigrationDirect');
+    const applyResult = await applyReplySchemaColumnsDirectly();
     
-    // Attempt auto-apply
-    console.log('[SCHEMA] 🔧 Attempting auto-apply...');
-    let allApplied = true;
-    
-    for (const [tableName, columns] of Object.entries(missingByTable)) {
-      const success = await autoApplyMissingColumns(tableName, columns);
-      if (!success) {
-        allApplied = false;
-      }
-    }
-    
-    if (allApplied) {
-      console.log('[SCHEMA] ✅ Auto-apply successful, re-checking...');
+    if (applyResult.success) {
+      console.log('[SCHEMA] ✅ Migration applied successfully, re-checking...');
       
       // Re-check to confirm
       const recheckMissing: string[] = [];
@@ -180,7 +165,7 @@ export async function ensureReplySchemaColumnsWithAutoApply(): Promise<SchemaChe
           allPresent: true,
           missingColumns: [],
           action: 'auto_apply',
-          reason: 'auto-applied successfully',
+          reason: 'auto-applied successfully via direct connection',
           autoApplySuccess: true,
         };
       } else {
@@ -194,12 +179,12 @@ export async function ensureReplySchemaColumnsWithAutoApply(): Promise<SchemaChe
         };
       }
     } else {
-      console.error('[SCHEMA] ❌ Auto-apply failed, running in degraded mode');
+      console.error(`[SCHEMA] ❌ Auto-apply failed: ${applyResult.error}`);
       return {
         allPresent: false,
         missingColumns: allMissing.map(m => `${m.table}.${m.column.name}`),
         action: 'degraded',
-        reason: 'auto-apply failed',
+        reason: `auto-apply failed: ${applyResult.error}`,
         autoApplySuccess: false,
       };
     }
