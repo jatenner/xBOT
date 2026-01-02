@@ -650,7 +650,9 @@ export class JobManager {
         'reply_posting',
         async () => {
           await this.safeExecute('reply_posting', async () => {
-            await generateReplies();
+            // Use enhanced reply job with Phase 2 & 3 features
+            const { generateRepliesEnhanced } = await import('./replyJobEnhanced');
+            await generateRepliesEnhanced();
             this.stats.replyRuns = (this.stats.replyRuns || 0) + 1;
             this.stats.lastReplyTime = new Date();
           });

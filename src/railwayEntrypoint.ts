@@ -337,6 +337,24 @@ setImmediate(async () => {
       }
     }
     
+    // Step 4.5: Check and ensure reply schema columns (AUTO-MIGRATION GUARD)
+    if (bootState.dbOk) {
+      console.log('[BOOT] schema_guard_reply start');
+      try {
+        const { ensureReplySchemaColumns } = await import('./db/autoMigrationGuard');
+        const schemaCheck = await ensureReplySchemaColumns();
+        console.log(`[SCHEMA] root_fields present=${schemaCheck.allPresent} action=${schemaCheck.action} reason=${schemaCheck.reason}`);
+        
+        if (!schemaCheck.allPresent) {
+          console.warn('[BOOT] ⚠️ Reply schema incomplete - reply system will run in degraded mode');
+          bootState.degraded = true;
+        }
+      } catch (schemaError: any) {
+        console.error('[BOOT] ⚠️ schema_guard_reply error:', schemaError.message);
+        console.error('[BOOT] continuing without schema guard...');
+      }
+    }
+    
     // Step 5: Start the main application system (jobs/scheduler)
     console.log('[BOOT] jobs_start attempt');
     try {
