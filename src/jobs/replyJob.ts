@@ -39,32 +39,33 @@ const getReplyConfig = () => {
 
 const REPLY_CONFIG = getReplyConfig();
 
-const HARVESTER_TRIGGER_THRESHOLD_DEFAULT = 40; // Lowered from 80 to prevent deadlock
+const HARVESTER_TRIGGER_THRESHOLD_DEFAULT = 40; // Lowered from 80 to be more realistic
 const HARVESTER_CRITICAL_THRESHOLD = 20;
 const HARVESTER_COOLDOWN_MS = 45 * 60 * 1000; // 45 minutes between forced runs
+let lastHarvesterTriggerTs = 0;
 
 /**
- * Calculate dynamic pool threshold based on reply activity
- * - If replies are flowing: require higher pool (40)
- * - If replies stalled >2h: allow lower pool (20)
- * - If replies stalled >24h: allow minimal pool (10)
+ * Calculate dynamic pool threshold based on reply recency
+ * Prevents deadlock when system has been idle
  */
-function getDynamicPoolThreshold(lastReplyAt: Date | null): { threshold: number; reason: string } {
+function getDynamicPoolThreshold(lastReplyAt: Date | null): number {
   if (!lastReplyAt) {
-    return { threshold: 10, reason: 'no_replies_ever' };
+    return 10; // System never replied - be very lenient
   }
   
-  const hoursSinceLastReply = (Date.now() - lastReplyAt.getTime()) / (1000 * 60 * 60);
+  const hoursSinceLastReply = (Date.now() - lastReplyAt.getTime()) / (60 * 60 * 1000);
   
   if (hoursSinceLastReply > 24) {
-    return { threshold: 10, reason: `stalled_24h+ (${hoursSinceLastReply.toFixed(1)}h)` };
+    console.log(`[REPLY_JOB] 📊 pool_threshold dynamic=10 lastReplyAgeHours=${hoursSinceLastReply.toFixed(1)} (24h+ idle)`);
+    return 10; // Very idle - be very lenient
   } else if (hoursSinceLastReply > 2) {
-    return { threshold: 20, reason: `stalled_2h+ (${hoursSinceLastReply.toFixed(1)}h)` };
+    console.log(`[REPLY_JOB] 📊 pool_threshold dynamic=20 lastReplyAgeHours=${hoursSinceLastReply.toFixed(1)} (2h+ idle)`);
+    return 20; // Somewhat idle - be lenient
   } else {
-    return { threshold: HARVESTER_TRIGGER_THRESHOLD_DEFAULT, reason: `active (<2h, ${hoursSinceLastReply.toFixed(1)}h)` };
+    console.log(`[REPLY_JOB] 📊 pool_threshold dynamic=40 lastReplyAgeHours=${hoursSinceLastReply.toFixed(1)} (active)`);
+    return HARVESTER_TRIGGER_THRESHOLD_DEFAULT; // Active - use default
   }
 }
-let lastHarvesterTriggerTs = 0;
 
 // Global metrics
 let replyLLMMetrics = {
@@ -487,11 +488,6 @@ async function generateRealReplies(): Promise<void> {
   
   console.log('[REPLY_JOB] 🎯 Starting reply generation (AI-driven targeting)...');
  
-  // Get last reply time for dynamic threshold calculation
-  const { lastReplyTime } = await checkTimeBetweenReplies();
-  const { threshold: HARVESTER_TRIGGER_THRESHOLD, reason: thresholdReason } = getDynamicPoolThreshold(lastReplyTime || null);
-  console.log(`[REPLY_JOB] 📊 Dynamic pool threshold: ${HARVESTER_TRIGGER_THRESHOLD} (reason: ${thresholdReason})`);
- 
   // Log account pool status
   const { getAccountPoolHealth } = await import('./accountDiscoveryJob');
   const poolHealth = await getAccountPoolHealth();
@@ -524,13 +520,26 @@ async function generateRealReplies(): Promise<void> {
   console.log(`[REPLY_JOB] 📊 Opportunity pool: ${poolCount} available`);
   const targetRepliesThisCycle = poolCount >= 200 ? 6 : poolCount <= 50 ? 3 : 5;
   console.log(`[REPLY_JOB] 📋 Target: ${targetRepliesThisCycle} replies per cycle (auto-adjusted for pool size)`);
- 
+
+  // 🎯 DYNAMIC THRESHOLD: Get last reply time to calculate dynamic threshold
+  const { data: lastReplyData } = await supabaseClient
+    .from('content_metadata')
+    .select('posted_at')
+    .eq('decision_type', 'reply')
+    .eq('status', 'posted')
+    .order('posted_at', { ascending: false })
+    .limit(1)
+    .single();
+  
+  const lastReplyAt = lastReplyData?.posted_at ? new Date(lastReplyData.posted_at) : null;
+  const HARVESTER_TRIGGER_THRESHOLD = getDynamicPoolThreshold(lastReplyAt);
+
   if (poolCount < HARVESTER_TRIGGER_THRESHOLD) {
     const now = Date.now();
     const sinceLastTrigger = now - lastHarvesterTriggerTs;
     const cooldownRemaining = HARVESTER_COOLDOWN_MS - sinceLastTrigger;
 
-    console.warn(`[REPLY_JOB] ⚠️ Opportunity pool below threshold (${poolCount} < ${HARVESTER_TRIGGER_THRESHOLD})`);
+    console.warn(`[REPLY_JOB] ⚠️ Opportunity pool below dynamic threshold (${poolCount} < ${HARVESTER_TRIGGER_THRESHOLD})`);
 
     if (sinceLastTrigger >= HARVESTER_COOLDOWN_MS || poolCount < HARVESTER_CRITICAL_THRESHOLD) {
       console.log(`[REPLY_JOB] 🚨 Triggering harvesters (cooldown ${Math.max(0, cooldownRemaining)}ms remaining, critical=${poolCount < HARVESTER_CRITICAL_THRESHOLD})`);
