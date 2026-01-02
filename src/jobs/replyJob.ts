@@ -1398,9 +1398,9 @@ Reply (1-3 lines, echo their point first):`;
         topic: target.reply_angle || target.account.category || 'health',
         
         // 🎯 PHASE 2: Root resolution data from opportunity
-        root_tweet_id: opportunity.root_tweet_id || null,
-        original_candidate_tweet_id: opportunity.original_candidate_tweet_id || null,
-        resolved_via_root: opportunity.resolved_via_root || false
+        // root_tweet_id: opportunity.root_tweet_id || null, // REMOVED: column doesn't exist in prod schema
+        // original_candidate_tweet_id: opportunity.original_candidate_tweet_id || null, // REMOVED: column doesn't exist in prod schema
+        // resolved_via_root: opportunity.resolved_via_root || false // REMOVED: column doesn't exist in prod schema
       };
       
       // ============================================================
