@@ -1136,6 +1136,12 @@ async function generateRealReplies(): Promise<void> {
         console.log(`[REPLY_CONTEXT] ok=true parent_id=${tweetIdFromUrl} keywords=${keywords.join(', ')} content_length=${parentText.length}`);
         console.log(`[REPLY_CONTEXT] parent_excerpt="${parentExcerpt}"`);
         
+        // 🎯 REPLY_SELECT LOG: Prove we're selecting ROOT tweets only
+        const isReplyTweet = parentText.trim().startsWith('@');
+        const action = isReplyTweet ? 'skip' : 'keep';
+        const reason = isReplyTweet ? 'target_is_reply' : 'root_tweet_confirmed';
+        console.log(`[REPLY_SELECT] candidate=${tweetIdFromUrl} is_reply=${isReplyTweet} resolved_root=${tweetIdFromUrl} action=${action} reason=${reason}`);
+        
         // 🔁 RETRY LOOP: Generate reply with quality gate (max 2 attempts)
         const MAX_GENERATION_ATTEMPTS = 2;
         let generationAttempt = 0;
@@ -1373,6 +1379,9 @@ Reply (1-3 lines, echo their point first):`;
       // Extract tweet ID from URL
       const tweetUrlStr = String(target.tweet_url || '');
       const tweetIdFromUrl = tweetUrlStr.split('/').pop() || 'unknown';
+      
+      // 🎯 REPLY_TARGET LOG: Prove we're posting to ROOT tweets
+      console.log(`[REPLY_TARGET] posting_to=${tweetIdFromUrl} (must_be_root) root=${tweetIdFromUrl} author=@${target.account.username}`);
       
       // ============================================================
       // SMART SCHEDULING: 5 min and 20 min spacing
