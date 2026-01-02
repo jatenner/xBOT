@@ -1115,31 +1115,42 @@ async function generateRealReplies(): Promise<void> {
             const replyAngle = 'reply_context'; // Default angle for replies
             const replyTone = 'helpful'; // Default tone for replies
             
-            // 🔥 CRITICAL: Build explicit contextual reply prompt
-            const explicitReplyPrompt = `You are replying to @${target.account.username}'s tweet about: "${parentText}"
+            // 🔥 CRITICAL: Build explicit contextual reply prompt (UPGRADED FOR QUALITY)
+            const explicitReplyPrompt = `You are replying to this tweet:
 
-CRITICAL RULES FOR CONTEXTUAL REPLIES:
-1. Your reply MUST directly address THEIR specific point
-2. Reference their exact topic using these keywords: ${keywords.join(', ')}
-3. Be ≤220 characters
-4. Sound like a natural conversation, NOT a standalone post
-5. Do NOT use generic research openers like "Interestingly,", "Research shows", "Studies suggest"
-6. Do NOT sound like you're starting a thread or article
-7. Do NOT make it sound like a lecture or textbook
+ROOT_TWEET_TEXT: "${parentText}"
+AUTHOR: @${target.account.username}
+KEY_TOPICS: ${keywords.join(', ')}
 
-GOOD REPLY EXAMPLES:
-- "That's a great point! Similar pattern seen in..." (acknowledges their tweet)
-- "Makes sense - when you consider how..." (builds on their idea)
-- "Exactly - and the research backs this up..." (affirms then adds value)
+YOUR REPLY MUST:
+1. **Reference ROOT_TWEET_TEXT directly** - mention a specific detail from their tweet
+2. **Be 1-3 short lines** (max 220 chars total)
+3. **First line acknowledges their point** (agree/clarify/push back)
+4. **Add ONE insight** (mechanism/tradeoff/practical step OR one stat)
+5. **Optional: End with short question or soft CTA** ("If you want, I can...")
 
-BAD REPLY EXAMPLES:
-- "Interestingly, my mood fluctuated wildly..." (sounds standalone)
-- "Research shows sugar impacts..." (sounds like lecturing)
-- "Let's explore this topic..." (sounds like starting a thread)
+STRUCTURE (choose ONE):
+- AGREE + ADD VALUE: "Exactly - [their point]. [Mechanism/data that explains why]"
+- CLARIFY + NUANCE: "[Their point] is spot on, though [important caveat]. [Why it matters]"
+- QUESTION + INSIGHT: "Have you tried [practical step]? [Why it works for this specific case]"
 
-Reply as if you're continuing THEIR conversation, not starting your own.
+HARD BANS:
+- NO "Studies show", "Research suggests", "Interestingly" openings
+- NO generic health facts unless directly tied to THEIR tweet
+- NO medical disclaimers
+- NO thread markers (1/, 🧵, etc)
+- NO multi-paragraph responses
+- NO starting your own topic
 
-Reply:`;
+GOOD:
+- "That cortisol spike makes sense - happens when blood sugar crashes after refined carbs. Try protein + fat instead."
+- "Exactly! The mechanism: gut bacteria ferment fiber → produce butyrate → reduces inflammation. Takes 2-3 weeks to notice."
+
+BAD:
+- "Research shows fiber is important for gut health. It helps with digestion and..." (generic, not tied to their tweet)
+- "Interestingly, I've noticed similar patterns in my own health journey..." (about you, not them)
+
+Reply (1-3 lines, directly reference ROOT_TWEET_TEXT):`;
             
             // Route through orchestratorRouter for generator-based replies
             const routerResponse = await routeContentGeneration({
@@ -1160,23 +1171,11 @@ Reply:`;
               replyContent = replyContent[0]; // Take first element
             }
             
-            // 🔥 QUALITY GATE: Validate reply quality (fail-closed)
+            // 🔥 QUALITY GATE 1: Validate reply quality (fail-closed)
             const { checkReplyQuality } = await import('../gates/ReplyQualityGate');
             const qualityCheck = checkReplyQuality(replyContent, parentText, generationAttempt);
             
-            if (qualityCheck.passed) {
-              // Use router response for generator-based replies
-              strategicReply = {
-                content: replyContent,
-                provides_value: true,
-                adds_insight: true,
-                not_spam: true,
-                confidence: priorityScore && priorityScore >= 0.8 ? 0.9 : 0.7,
-                visualFormat: routerResponse.visual_format || 'paragraph'
-              };
-              
-              console.log(`[PHASE4][Router][Reply] ✅ Reply routed through orchestratorRouter (generator: ${routerResponse.generator_used})`);
-            } else {
+            if (!qualityCheck.passed) {
               // Quality gate failed
               console.warn(`[PHASE4][Router][Reply] Quality gate failed: ${qualityCheck.reason}, issues: ${qualityCheck.issues.join(', ')}`);
               
@@ -1188,7 +1187,61 @@ Reply:`;
               // Try again with next attempt
               console.log(`[PHASE4][Router][Reply] Retrying generation (attempt ${generationAttempt + 1}/${MAX_GENERATION_ATTEMPTS})...`);
               await new Promise(resolve => setTimeout(resolve, 500)); // Brief delay before retry
+              continue;
             }
+            
+            // 🔒 QUALITY GATE 2: Format Guard (single tweet, no thread markers)
+            const { checkReplyFormat, collapseLineBreaks } = await import('../gates/replyFormatGuard');
+            let formatCheck = checkReplyFormat(replyContent);
+            
+            if (!formatCheck.pass && formatCheck.action === 'regen' && generationAttempt < MAX_GENERATION_ATTEMPTS) {
+              console.warn(`[REPLY_FORMAT] Failed format check: ${formatCheck.reason}, regenerating...`);
+              await new Promise(resolve => setTimeout(resolve, 500));
+              continue; // Retry generation
+            } else if (!formatCheck.pass && formatCheck.action === 'skip') {
+              console.error(`[REPLY_FORMAT] Format check failed permanently: ${formatCheck.reason}, skipping`);
+              continue; // Skip this opportunity
+            } else if (formatCheck.stats.lineBreaks > 2) {
+              // Attempt to collapse line breaks
+              const collapsed = collapseLineBreaks(replyContent);
+              const recheck = checkReplyFormat(collapsed);
+              if (recheck.pass) {
+                replyContent = collapsed;
+                console.log(`[REPLY_FORMAT] ✅ Collapsed line breaks: ${formatCheck.stats.lineBreaks} → ${recheck.stats.lineBreaks}`);
+                formatCheck = recheck;
+              }
+            }
+            
+            // 🎯 QUALITY GATE 3: Context Anchor (must reference root tweet)
+            const { checkContextAnchor, extractKeywords, buildAnchorRegenerationInstruction } = await import('../gates/contextAnchorGuard');
+            const anchorCheck = checkContextAnchor(replyContent, parentText);
+            
+            if (!anchorCheck.pass && anchorCheck.action === 'regen' && generationAttempt < MAX_GENERATION_ATTEMPTS) {
+              console.warn(`[REPLY_ANCHOR] Failed anchor check, regenerating with stricter instruction...`);
+              
+              // Add stricter instruction for next attempt
+              const anchorInstruction = buildAnchorRegenerationInstruction(parentText, extractKeywords(parentText));
+              console.log(`[REPLY_ANCHOR] Regen instruction: ${anchorInstruction}`);
+              
+              await new Promise(resolve => setTimeout(resolve, 500));
+              continue; // Retry generation
+            } else if (!anchorCheck.pass) {
+              console.error(`[REPLY_ANCHOR] Anchor check failed permanently, skipping`);
+              continue; // Skip this opportunity
+            }
+            
+            // ✅ ALL GATES PASSED - Use this reply
+            strategicReply = {
+              content: replyContent,
+              provides_value: true,
+              adds_insight: true,
+              not_spam: true,
+              confidence: priorityScore && priorityScore >= 0.8 ? 0.9 : 0.7,
+              visualFormat: routerResponse.visual_format || 'paragraph'
+            };
+            
+            console.log(`[PHASE4][Router][Reply] ✅ All gates passed - Reply routed through orchestratorRouter (generator: ${routerResponse.generator_used})`);
+            console.log(`[PHASE4][Router][Reply] ✅ Format: len=${formatCheck.stats.length} lines=${formatCheck.stats.lineBreaks} context_matched=${anchorCheck.matched.join(',') || 'lenient_pass'}`);
             
           } catch (routerError: any) {
             console.warn(`[PHASE4][Router][Reply] Router failed (attempt ${generationAttempt}):`, routerError.message);
