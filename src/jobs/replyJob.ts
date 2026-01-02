@@ -335,7 +335,26 @@ export async function generateReplies(): Promise<void> {
   ReplyDiagnosticLogger.logCycleStart();
   
   // ===========================================================
-  // STEP 1: CHECK ALL RATE LIMITS
+  // STEP 1: CHECK PACING GUARD (PHASE 3 - THROUGHPUT)
+  // ===========================================================
+  
+  const { checkReplyPacing, calculateNextRunHint } = await import('./replyPacingGuard');
+  const pacingCheck = await checkReplyPacing();
+  
+  if (!pacingCheck.canReply) {
+    const nextHint = calculateNextRunHint(pacingCheck);
+    console.log(`[REPLY_JOB] next_run_hint_in_min=${nextHint} reason=${pacingCheck.reason}`);
+    
+    ReplyDiagnosticLogger.logBlocked(
+      `Pacing guard: ${pacingCheck.reason}`,
+      pacingCheck.nextAllowedInMin ? new Date(Date.now() + pacingCheck.nextAllowedInMin * 60 * 1000) : undefined
+    );
+    ReplyDiagnosticLogger.logCycleEnd(false, [pacingCheck.reason]);
+    return;
+  }
+  
+  // ===========================================================
+  // STEP 2: CHECK LEGACY RATE LIMITS (FALLBACK)
   // ===========================================================
   
   // Check 1: Hourly quota
