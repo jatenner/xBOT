@@ -39,9 +39,31 @@ const getReplyConfig = () => {
 
 const REPLY_CONFIG = getReplyConfig();
 
-const HARVESTER_TRIGGER_THRESHOLD = 80;
+const HARVESTER_TRIGGER_THRESHOLD_DEFAULT = 40; // Lowered from 80 to prevent deadlock
 const HARVESTER_CRITICAL_THRESHOLD = 20;
 const HARVESTER_COOLDOWN_MS = 45 * 60 * 1000; // 45 minutes between forced runs
+
+/**
+ * Calculate dynamic pool threshold based on reply activity
+ * - If replies are flowing: require higher pool (40)
+ * - If replies stalled >2h: allow lower pool (20)
+ * - If replies stalled >24h: allow minimal pool (10)
+ */
+function getDynamicPoolThreshold(lastReplyAt: Date | null): { threshold: number; reason: string } {
+  if (!lastReplyAt) {
+    return { threshold: 10, reason: 'no_replies_ever' };
+  }
+  
+  const hoursSinceLastReply = (Date.now() - lastReplyAt.getTime()) / (1000 * 60 * 60);
+  
+  if (hoursSinceLastReply > 24) {
+    return { threshold: 10, reason: `stalled_24h+ (${hoursSinceLastReply.toFixed(1)}h)` };
+  } else if (hoursSinceLastReply > 2) {
+    return { threshold: 20, reason: `stalled_2h+ (${hoursSinceLastReply.toFixed(1)}h)` };
+  } else {
+    return { threshold: HARVESTER_TRIGGER_THRESHOLD_DEFAULT, reason: `active (<2h, ${hoursSinceLastReply.toFixed(1)}h)` };
+  }
+}
 let lastHarvesterTriggerTs = 0;
 
 // Global metrics
@@ -464,6 +486,11 @@ async function generateRealReplies(): Promise<void> {
   }
   
   console.log('[REPLY_JOB] 🎯 Starting reply generation (AI-driven targeting)...');
+ 
+  // Get last reply time for dynamic threshold calculation
+  const { lastReplyTime } = await checkTimeBetweenReplies();
+  const { threshold: HARVESTER_TRIGGER_THRESHOLD, reason: thresholdReason } = getDynamicPoolThreshold(lastReplyTime || null);
+  console.log(`[REPLY_JOB] 📊 Dynamic pool threshold: ${HARVESTER_TRIGGER_THRESHOLD} (reason: ${thresholdReason})`);
  
   // Log account pool status
   const { getAccountPoolHealth } = await import('./accountDiscoveryJob');

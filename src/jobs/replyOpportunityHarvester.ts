@@ -172,33 +172,36 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   // Strategy:
   // 1. Target mega-viral first (100K+, 50K+, 25K+) - maximum reach
   // 2. AI judges health relevance (GPT-4o-mini)
-  // 3. Returns ONLY health-relevant viral tweets
-  // 4. Fallback to health-specific if mega-viral pool low
-  // 
-  // Result: Higher avg engagement per reply = more followers!
+  // 🎯 CRITICAL FIX: HEALTH-FIRST QUERIES (search health BEFORE generic viral)
+  // Strategy: Search health-relevant tweets with various engagement levels
+  // Exclude politics/news to reduce AI filter rejections
+  // Result: Pool fills with health content = replies actually generate!
+  const politicsExclusion = ' -("election" OR "trump" OR "biden" OR "democrat" OR "republican" OR "war" OR "gaza" OR "ukraine" OR "elon" OR "musk")';
+  
   const searchQueries = [
-    // TIER 1: MEGA-VIRAL (100K+, 50K+, 25K+) - SEARCH FIRST
-    { label: 'EXTREME (100K+)', minLikes: 100000, maxReplies: 1200, maxAgeHours: 96, query: 'min_faves:100000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' },
-    { label: 'ULTRA (50K+)', minLikes: 50000, maxReplies: 900, maxAgeHours: 72, query: 'min_faves:50000 -filter:replies lang:en -airdrop -giveaway -crypto -nft' },
-    { label: 'MEGA (25K+)', minLikes: 25000, maxReplies: 600, maxAgeHours: 48, query: 'min_faves:25000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' },
+    // TIER 1: HEALTH-FOCUSED PRIMARY QUERIES (SEARCH FIRST!)
+    { label: 'NUTRITION/DIET (2K+)', minLikes: 2000, maxReplies: 300, maxAgeHours: 24, query: '(nutrition OR diet OR protein OR fiber OR gut OR glucose OR insulin OR metabolism OR keto OR carnivore OR fasting) min_faves:2000 -filter:replies lang:en -crypto -nft' + politicsExclusion },
+    { label: 'SLEEP/RECOVERY (2K+)', minLikes: 2000, maxReplies: 300, maxAgeHours: 24, query: '(sleep OR circadian OR caffeine OR alcohol OR melatonin OR apnea OR recovery OR rest) min_faves:2000 -filter:replies lang:en -crypto -nft' + politicsExclusion },
+    { label: 'EXERCISE/FITNESS (2K+)', minLikes: 2000, maxReplies: 300, maxAgeHours: 24, query: '(exercise OR strength OR cardio OR "VO2 max" OR "zone 2" OR hypertrophy OR steps OR workout OR gym OR training) min_faves:2000 -filter:replies lang:en -crypto -nft' + politicsExclusion },
+    { label: 'MENTAL HEALTH (2K+)', minLikes: 2000, maxReplies: 300, maxAgeHours: 24, query: '(stress OR anxiety OR cortisol OR dopamine OR serotonin OR mood OR depression OR "mental health") min_faves:2000 -filter:replies lang:en -crypto -nft' + politicsExclusion },
     
-    // TIER 2: VIRAL (10K+, 5K+) - SEARCH SECOND
-    { label: 'VIRAL (10K+)', minLikes: 10000, maxReplies: 400, maxAgeHours: 48, query: 'min_faves:10000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' },
-    { label: 'TRENDING (5K+)', minLikes: 5000, maxReplies: 250, maxAgeHours: 24, query: 'min_faves:5000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' },
+    // TIER 2: BIOHACKING & TRENDING HEALTH TOPICS (SEARCH SECOND)
+    { label: 'BIOHACK/LONGEVITY (1K+)', minLikes: 1000, maxReplies: 200, maxAgeHours: 36, query: '(biohack OR peptide OR sauna OR "cold plunge" OR hrv OR ozempic OR testosterone OR longevity OR aging OR supplement) min_faves:1000 -filter:replies lang:en -crypto -nft' + politicsExclusion },
+    { label: 'WELLNESS/GENERAL (1K+)', minLikes: 1000, maxReplies: 200, maxAgeHours: 24, query: '(health OR wellness OR fitness OR nutrition OR longevity OR "gut health") min_faves:1000 -filter:replies lang:en -crypto -nft' + politicsExclusion },
     
-    // TIER 3: HEALTH-FOCUSED HIGH-ENGAGEMENT - SEARCH THIRD
-    { label: 'HEALTH VIRAL (5K+)', minLikes: 5000, maxReplies: 250, maxAgeHours: 24, query: '("health" OR "wellness" OR "fitness" OR "nutrition" OR "longevity") min_faves:5000 -filter:replies lang:en -crypto -nft -betting' },
-    { label: 'HEALTH TRENDING (2K+)', minLikes: 2000, maxReplies: 200, maxAgeHours: 24, query: '("health" OR "wellness" OR "workout" OR "diet") min_faves:2000 -filter:replies lang:en -crypto -nft -betting' },
+    // TIER 3: BROADER HEALTH TOPICS (SEARCH THIRD)
+    { label: 'HEALTH VIRAL (5K+)', minLikes: 5000, maxReplies: 250, maxAgeHours: 24, query: '("health" OR "wellness" OR "fitness" OR "nutrition" OR "longevity") min_faves:5000 -filter:replies lang:en -crypto -nft -betting' + politicsExclusion },
+    { label: 'HEALTH TRENDING (2K+)', minLikes: 2000, maxReplies: 200, maxAgeHours: 24, query: '("health" OR "wellness" OR "workout" OR "diet") min_faves:2000 -filter:replies lang:en -crypto -nft -betting' + politicsExclusion },
     
-    // TIER 4: FRESH & QUALITY - SEARCH FOURTH (only if pool needs filling)
-    { label: 'BIOHACK (1K+)', minLikes: 1000, maxReplies: 150, maxAgeHours: 48, query: '("biohack" OR "peptide" OR "sauna" OR "cold plunge" OR "hrv" OR "ozempic" OR "testosterone") min_faves:1000 -filter:replies lang:en -crypto -nft' },
-    { label: 'FRESH (1K+)', minLikes: 1000, maxReplies: 120, maxAgeHours: 12, query: 'min_faves:1000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino -nfl -nba' }
+    // TIER 4: FALLBACK TO GENERIC VIRAL (ONLY IF HEALTH DOESN'T YIELD ENOUGH)
+    { label: 'VIRAL GENERAL (10K+)', minLikes: 10000, maxReplies: 400, maxAgeHours: 48, query: 'min_faves:10000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino -nfl -nba' + politicsExclusion },
+    { label: 'TRENDING GENERAL (5K+)', minLikes: 5000, maxReplies: 250, maxAgeHours: 24, query: 'min_faves:5000 -filter:replies lang:en -airdrop -giveaway -crypto -nft -betting -casino' + politicsExclusion }
   ];
 
   const fallbackQueries = [
-    { label: 'RESCUE HEALTH (250+)', minLikes: 250, maxReplies: 150, maxAgeHours: 24, query: '("sleep" OR "insulin" OR "glucose" OR "longevity" OR "diet" OR "exercise") min_faves:250 -filter:replies lang:en -giveaway -crypto -nft' },
-    { label: 'RESCUE GENERAL (200+)', minLikes: 200, maxReplies: 140, maxAgeHours: 18, query: '(health OR wellness OR recovery OR hospital OR clinic OR doctor OR patients) min_faves:200 -filter:replies lang:en -crypto -nft -betting' },
-    { label: 'RESCUE FAST RISING (150+)', minLikes: 150, maxReplies: 100, maxAgeHours: 12, query: '(sleep OR cortisol OR metabolism OR gut OR workout OR gym OR immunity) min_faves:150 -filter:replies lang:en -airdrop -crypto -nft' }
+    { label: 'RESCUE HEALTH (500+)', minLikes: 500, maxReplies: 200, maxAgeHours: 36, query: '("sleep" OR "insulin" OR "glucose" OR "longevity" OR "diet" OR "exercise" OR "protein" OR "fiber") min_faves:500 -filter:replies lang:en -crypto -nft' + politicsExclusion },
+    { label: 'RESCUE WELLNESS (300+)', minLikes: 300, maxReplies: 180, maxAgeHours: 24, query: '(health OR wellness OR recovery OR "gut health" OR immunity OR supplements) min_faves:300 -filter:replies lang:en -crypto -nft -betting' + politicsExclusion },
+    { label: 'RESCUE SPECIFIC (250+)', minLikes: 250, maxReplies: 150, maxAgeHours: 18, query: '(cortisol OR metabolism OR circadian OR "cold plunge" OR sauna OR fasting) min_faves:250 -filter:replies lang:en -crypto -nft' + politicsExclusion }
   ];
   
   const testLimitRaw = process.env.HARVESTER_TEST_LIMIT;
@@ -209,8 +212,8 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   }
   // 🔧 PERMANENT FIX #1: Support degraded mode operation
   const isDegradedMode = process.env.HARVESTER_DEGRADED_MODE === 'true';
-  const baseMaxSearches = Number(process.env.HARVESTER_MAX_SEARCHES_PER_RUN ?? 3);
-  const baseMaxCriticalSearches = Number(process.env.HARVESTER_MAX_CRITICAL_SEARCHES_PER_RUN ?? 6);
+  const baseMaxSearches = Number(process.env.HARVESTER_MAX_SEARCHES_PER_RUN ?? 6); // Increased from 3 to 6 for health-first queries
+  const baseMaxCriticalSearches = Number(process.env.HARVESTER_MAX_CRITICAL_SEARCHES_PER_RUN ?? 10); // Increased from 6 to 10
   
   // In degraded mode, reduce search count but still operate
   const maxSearchesPerRun = isDegradedMode ? Math.max(1, Math.floor(baseMaxSearches / 2)) : baseMaxSearches;
@@ -262,6 +265,7 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     
     try {
       console.log(`[HARVESTER]   🔍 Searching: ${searchQuery.label} (${searchQuery.minLikes}+ likes)...`);
+      console.log(`[HARVESTER]   📝 Query: ${searchQuery.query.substring(0, 120)}...`);
       
       // 🔒 BROWSER SEMAPHORE: Acquire browser lock for search (priority 3)
       const opportunities = await withBrowserLock(
