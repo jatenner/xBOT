@@ -23,6 +23,10 @@ import {
   triggerPlanJob 
 } from './server/adminEndpoints';
 
+// Import monitoring
+import { detectSystemStalls } from './jobs/jobHeartbeatRegistry';
+import { checkAndAlertOnStateChange } from './monitoring/discordAlerts';
+
 /**
  * 🔍 BOOT STATE - Tracks system readiness and health
  */
@@ -64,6 +68,13 @@ app.get('/status', async (req, res) => {
   const { getJobHeartbeats, getJobStatus } = await import('./jobs/jobHeartbeatRegistry');
   const heartbeats = getJobHeartbeats();
   const postingStatus = getJobStatus('posting');
+  const replyStatus = getJobStatus('reply_posting');
+  const planStatus = getJobStatus('plan');
+  const learnStatus = getJobStatus('learn');
+  const metricsStatus = getJobStatus('metrics_scraper');
+  
+  // Detect stalls
+  const stallCheck = detectSystemStalls();
   
   res.status(200).json({
     ok: true,
@@ -72,19 +83,28 @@ app.get('/status', async (req, res) => {
     uptime: Math.floor(process.uptime()),
     pid: process.pid,
     ready: bootState.ready,
-    degraded: bootState.degraded,
+    degraded: bootState.degraded || stallCheck.isStalled,
     lastError: bootState.lastError,
+    stalled: stallCheck.isStalled,
+    stalledJobs: stallCheck.stalledJobs,
     heartbeats: Object.entries(heartbeats).reduce((acc, [job, hb]) => {
       acc[job] = {
         lastRunAt: hb.lastRunAt ? new Date(hb.lastRunAt).toISOString() : null,
         minutesSinceLastRun: hb.lastRunAt ? ((Date.now() - hb.lastRunAt) / 60000).toFixed(1) : null,
         lastError: hb.lastError,
+        lastErrorStack: hb.lastErrorStack,
         runCount: hb.runCount,
         errorCount: hb.errorCount,
       };
       return acc;
     }, {} as any),
-    postingJobHealthy: postingStatus.isHealthy,
+    jobStatuses: {
+      posting: postingStatus.isHealthy,
+      reply_posting: replyStatus.isHealthy,
+      plan: planStatus.isHealthy,
+      learn: learnStatus.isHealthy,
+      metrics_scraper: metricsStatus.isHealthy,
+    },
   });
 });
 
@@ -417,12 +437,41 @@ setImmediate(async () => {
 /**
  * 💓 HEARTBEAT - Log system health every 60 seconds
  */
-setInterval(() => {
+setInterval(async () => {
   bootState.lastHeartbeatAt = Date.now();
   const uptimeMin = Math.floor(process.uptime() / 60);
   
+  // Check for stalls
+  const stallCheck = detectSystemStalls();
+  
+  if (stallCheck.isStalled) {
+    console.error('═══════════════════════════════════════════════════════');
+    console.error('🚨 CRITICAL: SYSTEM STALL DETECTED');
+    console.error(`   Stalled jobs: ${stallCheck.stalledJobs.join(', ')}`);
+    console.error('   These critical jobs have not run in >15 minutes');
+    console.error('   Action required: Check job manager and browser pool');
+    console.error('═══════════════════════════════════════════════════════');
+    
+    if (!bootState.degraded) {
+      bootState.degraded = true;
+      bootState.lastError = `System stalled: ${stallCheck.stalledJobs.join(', ')} not running`;
+      
+      // Send Discord alert on state transition
+      await checkAndAlertOnStateChange(
+        true,
+        `Critical jobs stalled: ${stallCheck.stalledJobs.join(', ')}\nLast run >15 minutes ago`
+      );
+    }
+  } else if (bootState.degraded && bootState.lastError?.startsWith('System stalled')) {
+    // System recovered from stall
+    bootState.degraded = false;
+    bootState.lastError = null;
+    
+    await checkAndAlertOnStateChange(false, '');
+  }
+  
   console.log(
-    `[HEARTBEAT] ready=${bootState.ready} degraded=${bootState.degraded} ` +
+    `[HEARTBEAT] ready=${bootState.ready} degraded=${bootState.degraded} stalled=${stallCheck.isStalled} ` +
     `envOk=${bootState.envOk} dbOk=${bootState.dbOk} jobsOk=${bootState.jobsOk} ` +
     `recoveryOk=${bootState.recoveryOk} invariantCheckOk=${bootState.invariantCheckOk} profileRecoveryOk=${bootState.profileRecoveryOk} ` +
     `uptime=${uptimeMin}m lastError=${bootState.lastError || 'none'}`
