@@ -16,14 +16,25 @@ export async function generateRepliesEnhanced(): Promise<void> {
   // PHASE 3: Check pacing guard FIRST
   const pacingCheck = await checkReplyPacing();
   
+  // 📊 PACING DIAGNOSTIC - Always log this
+  console.log('[REPLY_PACING] ═══════════════════════════════════════');
+  console.log(`[REPLY_PACING] pass=${pacingCheck.canReply}`);
+  if (pacingCheck.stats) {
+    console.log(`[REPLY_PACING] hourCount=${pacingCheck.stats.hourCount}/4`);
+    console.log(`[REPLY_PACING] dayCount=${pacingCheck.stats.dayCount}/40`);
+    if (pacingCheck.stats.lastReplyAt) {
+      const lastReplyMinutesAgo = Math.round((Date.now() - new Date(pacingCheck.stats.lastReplyAt).getTime()) / 60000);
+      console.log(`[REPLY_PACING] lastReplyAt=${pacingCheck.stats.lastReplyAt} (${lastReplyMinutesAgo} min ago)`);
+    } else {
+      console.log(`[REPLY_PACING] lastReplyAt=null (no recent replies)`);
+    }
+  }
+  console.log(`[REPLY_PACING] reason=${pacingCheck.reason || 'ok'}`);
+  console.log('[REPLY_PACING] ═══════════════════════════════════════');
+  
   if (!pacingCheck.canReply) {
     const nextHint = calculateNextRunHint(pacingCheck);
-    console.log(`[REPLY_JOB] next_run_hint_in_min=${nextHint} reason=${pacingCheck.reason}`);
-    
-    if (pacingCheck.stats) {
-      console.log(`[REPLY_JOB] 📊 Stats: hour=${pacingCheck.stats.hourCount}/4 day=${pacingCheck.stats.dayCount}/40`);
-    }
-    
+    console.log(`[REPLY_JOB] ⏸️ Pacing blocked. Next allowed in ${nextHint} minutes`);
     return;
   }
   

@@ -726,14 +726,30 @@ async function generateRealReplies(): Promise<void> {
 
   console.log(`[REPLY_JOB] 🔒 Already replied to ${repliedTweetIds.size} unique tweets`);
 
+  // 📊 DIAGNOSTIC COUNTERS - Track filter reasons
+  let diagCounters = {
+    total_candidates: candidateOpportunities.length,
+    null_tweet_id: 0,
+    already_replied: 0,
+    is_reply_tweet: 0,
+    low_followers: 0,
+    low_likes: 0,
+    kept: 0
+  };
+
   const dbOpportunities = candidateOpportunities
     .filter(opp => {
       if (!opp.target_tweet_id) {
+        diagCounters.null_tweet_id++;
         console.log(`[REPLY_JOB] ⚠️ Skipping opportunity with NULL tweet_id from @${opp.target_username}`);
         return false;
       }
       if (repliedTweetIds.has(opp.target_tweet_id)) {
-        console.log(`[REPLY_JOB] ⏭️ Already replied to tweet ${opp.target_tweet_id} from @${opp.target_username}`);
+        diagCounters.already_replied++;
+        // Only log first few to avoid spam
+        if (diagCounters.already_replied <= 3) {
+          console.log(`[REPLY_JOB] ⏭️ Already replied to tweet ${opp.target_tweet_id} from @${opp.target_username}`);
+        }
         return false;
       }
       
@@ -741,7 +757,10 @@ async function generateRealReplies(): Promise<void> {
       // Reply tweets typically start with "@username" at the beginning
       const tweetContent = String(opp.target_tweet_content || '').trim();
       if (tweetContent.startsWith('@')) {
-        console.log(`[REPLY_JOB] 🚫 SKIPPING REPLY TWEET from @${opp.target_username} (content starts with @, indicating it's a reply to someone else)`);
+        diagCounters.is_reply_tweet++;
+        if (diagCounters.is_reply_tweet <= 3) {
+          console.log(`[REPLY_JOB] 🚫 SKIPPING REPLY TWEET from @${opp.target_username} (content starts with @, indicating it's a reply to someone else)`);
+        }
         return false;
       }
       
@@ -749,7 +768,10 @@ async function generateRealReplies(): Promise<void> {
       const MIN_FOLLOWERS = parseInt(process.env.REPLY_MIN_FOLLOWERS || '10000');
       const followers = Number(opp.target_followers) || 0;
       if (followers > 0 && followers < MIN_FOLLOWERS) {
-        console.log(`[REPLY_JOB] ⏭️ Skipping low-volume account @${opp.target_username} (${followers} followers, min: ${MIN_FOLLOWERS})`);
+        diagCounters.low_followers++;
+        if (diagCounters.low_followers <= 3) {
+          console.log(`[REPLY_JOB] ⏭️ Skipping low-volume account @${opp.target_username} (${followers} followers, min: ${MIN_FOLLOWERS})`);
+        }
         return false;
       }
       
@@ -757,16 +779,31 @@ async function generateRealReplies(): Promise<void> {
       const MIN_TWEET_LIKES = parseInt(process.env.REPLY_MIN_TWEET_LIKES || '5000');
       const likes = Number(opp.like_count) || 0;
       if (likes < MIN_TWEET_LIKES) {
-        console.log(`[REPLY_JOB] ⏭️ Skipping low-engagement tweet from @${opp.target_username} (${likes} likes, min: ${MIN_TWEET_LIKES})`);
+        diagCounters.low_likes++;
+        if (diagCounters.low_likes <= 3) {
+          console.log(`[REPLY_JOB] ⏭️ Skipping low-engagement tweet from @${opp.target_username} (${likes} likes, min: ${MIN_TWEET_LIKES})`);
+        }
         return false;
       }
       
+      diagCounters.kept++;
       return true;
     })
     .slice(0, 10);
   
+  // 📊 DIAGNOSTIC SUMMARY - Always print this
+  console.log('[REPLY_DIAG] ═══════════════════════════════════════');
+  console.log(`[REPLY_DIAG] fetched_from_db=${diagCounters.total_candidates}`);
+  console.log(`[REPLY_DIAG] skipped_null_tweet_id=${diagCounters.null_tweet_id}`);
+  console.log(`[REPLY_DIAG] skipped_already_replied=${diagCounters.already_replied}`);
+  console.log(`[REPLY_DIAG] skipped_is_reply_tweet=${diagCounters.is_reply_tweet}`);
+  console.log(`[REPLY_DIAG] skipped_low_followers=${diagCounters.low_followers} (min=10000)`);
+  console.log(`[REPLY_DIAG] skipped_low_likes=${diagCounters.low_likes} (min=5000)`);
+  console.log(`[REPLY_DIAG] kept_after_filters=${diagCounters.kept}`);
+  console.log('[REPLY_DIAG] ═══════════════════════════════════════');
+  
   if (dbOpportunities.length === 0) {
-    console.log('[REPLY_JOB] ⚠️ No new opportunities (all recently replied)');
+    console.log('[REPLY_JOB] ⚠️ No opportunities kept after filtering');
     return;
   }
   
@@ -821,11 +858,20 @@ async function generateRealReplies(): Promise<void> {
   console.log('[REPLY_JOB] 🔍 Resolving candidates to root tweets...');
   const { resolveReplyCandidate } = await import('./replyRootResolver');
   
+  // 📊 ROOT RESOLUTION DIAGNOSTIC COUNTERS
+  let rootDiagCounters = {
+    before_resolution: opportunities.length,
+    invalid_url: 0,
+    could_not_resolve: 0,
+    kept_after_resolution: 0
+  };
+  
   const resolvedOpportunities: any[] = [];
   for (const opp of opportunities) {
     // Extract tweet ID from URL
     const tweetId = opp.tweet_url.split('/').pop() || '';
     if (!tweetId) {
+      rootDiagCounters.invalid_url++;
       console.log(`[REPLY_JOB] ⚠️ Skipping opportunity with invalid URL: ${opp.tweet_url}`);
       continue;
     }
@@ -833,6 +879,7 @@ async function generateRealReplies(): Promise<void> {
     // Resolve to root
     const resolved = await resolveReplyCandidate(tweetId, opp.tweet_content);
     if (!resolved) {
+      rootDiagCounters.could_not_resolve++;
       console.log(`[REPLY_JOB] 🚫 Skipped candidate ${tweetId} (could not resolve or should skip)`);
       continue;
     }
@@ -854,10 +901,17 @@ async function generateRealReplies(): Promise<void> {
       }
     };
     
+    rootDiagCounters.kept_after_resolution++;
     resolvedOpportunities.push(resolvedOpp);
   }
   
-  console.log(`[REPLY_JOB] ✅ Root resolution: ${resolvedOpportunities.length}/${opportunities.length} candidates resolved`);
+  // 📊 ROOT RESOLUTION SUMMARY
+  console.log('[REPLY_DIAG] ═══════════════════════════════════════');
+  console.log(`[REPLY_DIAG] before_root_resolution=${rootDiagCounters.before_resolution}`);
+  console.log(`[REPLY_DIAG] skipped_invalid_url=${rootDiagCounters.invalid_url}`);
+  console.log(`[REPLY_DIAG] skipped_could_not_resolve=${rootDiagCounters.could_not_resolve}`);
+  console.log(`[REPLY_DIAG] kept_after_root_resolution=${rootDiagCounters.kept_after_resolution}`);
+  console.log('[REPLY_DIAG] ═══════════════════════════════════════');
   
   // Replace opportunities with resolved ones
   const opportunitiesBeforeResolution = opportunities.length;
