@@ -79,6 +79,27 @@ app.get('/status', (req, res) => {
   });
 });
 
+// 🎯 /status/reply - Detailed reply metrics endpoint
+app.get('/status/reply', async (req, res) => {
+  try {
+    const { getSystemStatus } = await import('./api/status');
+    const fullStatus = await getSystemStatus();
+    
+    res.json({
+      ok: true,
+      timestamp: new Date().toISOString(),
+      reply_metrics: fullStatus.reply_metrics,
+      posting: fullStatus.posting,
+      memory: fullStatus.memory,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+});
+
 // /ready route - returns 200 only when truly ready
 app.get('/ready', (req, res) => {
   if (!bootState.ready) {
