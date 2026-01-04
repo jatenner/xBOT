@@ -2077,6 +2077,38 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           }
         } else if (decision.decision_type === 'reply') {
           // ═══════════════════════════════════════════════════════════════════════
+          // 🔒 FINAL SAFETY CHECK: Verify decision has required gate data
+          // ═══════════════════════════════════════════════════════════════════════
+          const requiredFields = [
+            'target_tweet_id',
+            'target_tweet_content_snapshot',
+            'target_tweet_content_hash',
+            'semantic_similarity'
+          ];
+          
+          const missingFields = requiredFields.filter(field => !decision[field]);
+          
+          if (missingFields.length > 0) {
+            console.error(`[POSTING_QUEUE] ⛔ BLOCKED: Reply decision missing gate data: ${missingFields.join(', ')}`);
+            console.error(`[POSTING_QUEUE]   decision_id=${decision.id}`);
+            console.error(`[POSTING_QUEUE]   This indicates gates were BYPASSED during generation`);
+            
+            // Mark as blocked
+            await supabase.from('content_generation_metadata_comprehensive')
+              .update({
+                status: 'blocked',
+                skip_reason: 'missing_gate_data_safety_block',
+                error_message: `Missing fields: ${missingFields.join(', ')}`
+              })
+              .eq('decision_id', decision.id);
+            
+            continue; // Skip this decision
+          }
+          
+          console.log(`[POSTING_QUEUE] ✅ Safety check passed: All gate data present for ${decision.id}`);
+          // ═══════════════════════════════════════════════════════════════════════
+          
+          // ═══════════════════════════════════════════════════════════════════════
           // 🔒 PRE-POST INVARIANT CHECK - SKIP (NOT CRASH) ON FAILURE
           // ═══════════════════════════════════════════════════════════════════════
           const invariantCheck = await checkReplyInvariantsPrePost(decision);

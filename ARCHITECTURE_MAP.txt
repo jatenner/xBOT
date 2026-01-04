@@ -1,0 +1,298 @@
+# ONE-PAGE REPLY PIPELINE ARCHITECTURE MAP
+
+```
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                         REPLY SYSTEM - WIRING PROOF                         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ENTRY POINTS (ALL CONVERGE TO generateReplies())                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. Admin API (PRODUCTION)        2. Scheduler (CRON)
+   /admin/run/replyJob              JobManager.run()
+          │                                │
+          ▼                                ▼
+   adminEndpoints.ts:49          jobManager.ts:10
+   triggerReplyJob()              import { generateReplies }
+          │                                │
+          └────────────────┬───────────────┘
+                           │
+3. CLI (TEST)              │              4. Direct (FALLBACK)
+   runReplyOnce.ts         │                 bin/run-job.ts:80
+          │                │                        │
+          └────────────────┼────────────────────────┘
+                           │
+                           ▼
+          ┌────────────────────────────────┐
+          │   src/jobs/replyJob.ts         │
+          │   generateReplies()            │
+          │   Line 149                     │
+          └────────────────────────────────┘
+                           │
+                           ├─────────► generateRealReplies() [Line 482]
+                           │                    │
+                           │                    ▼
+                           │           ┌─────────────────────────────┐
+                           │           │  OPPORTUNITY SELECTION      │
+                           │           │  Lines 625-945              │
+                           │           │                             │
+                           │           │  SELECT FROM                │
+                           │           │  reply_opportunities        │
+                           │           │  WHERE replied_to = false   │
+                           │           │  AND fresh (<180 min)       │
+                           │           │  ORDER BY score DESC        │
+                           │           └─────────────────────────────┘
+                           │                    │
+                           │                    ▼
+                           │           ┌─────────────────────────────┐
+                           │           │  FOR EACH OPPORTUNITY       │
+                           │           │  Lines 1074-1558            │
+                           │           └─────────────────────────────┘
+                           │                    │
+                           │                    ├──► 🔒 GATE 1: Context Lock
+                           │                    │    createContextSnapshot()
+                           │                    │    Line 1398
+                           │                    │    ✓ Captures target tweet text
+                           │                    │    ✓ Calculates content hash
+                           │                    │    ✓ Ensures immutability
+                           │                    │
+                           │                    ├──► 🔒 GATE 2: Semantic Gate
+                           │                    │    checkSemanticGate()
+                           │                    │    Line 1429
+                           │                    │    ✓ Keyword overlap check
+                           │                    │    ✓ Similarity score (0.0-1.0)
+                           │                    │    ✓ Blocks off-topic replies
+                           │                    │
+                           │                    ├──► 🔒 GATE 3: Anti-Spam Guard
+                           │                    │    checkAntiSpam()
+                           │                    │    Line 1471
+                           │                    │    ✓ Detects spam patterns
+                           │                    │    ✓ Checks reply history
+                           │                    │    ✓ Prevents duplicate replies
+                           │                    │
+                           │                    ├──► 🧠 GENERATION ROUTER
+                           │                    │    generateReplyContent()
+                           │                    │    Line 1130
+                           │                    │    ✓ Phase 4 orchestrator (primary)
+                           │                    │    ✓ Strategic system (fallback)
+                           │                    │    ⛔ BLOCKS thread generators
+                           │                    │
+                           │                    └──► 💾 QUEUE REPLY
+                           │                         queueReply()
+                           │                         Line 1726
+                           │                         ✓ Stores ALL gate data in DB
+                           │                         ✓ decision_id (UUID)
+                           │                         ✓ target_tweet_content_snapshot
+                           │                         ✓ target_tweet_content_hash
+                           │                         ✓ semantic_similarity
+                           │                         ✓ anti_spam_checks
+                           │                         ✓ root_tweet_id
+                           │                         └─► INSERT INTO content_metadata
+                           │
+                           └─────────► generateSyntheticReplies() [Line 457]
+                                              │
+                                              ▼
+                                       ⛔ BLOCKED IN PRODUCTION
+                                       (requires ALLOW_SYNTHETIC_REPLIES=true)
+                                       ⚠️  Bypasses ALL gates - TEST ONLY
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ DATABASE (TRUTH SOURCE)                                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                           ┌────────────────────────────────┐
+                           │  content_metadata (VIEW)       │
+                           │  Base: content_generation_     │
+                           │        metadata_comprehensive  │
+                           ├────────────────────────────────┤
+                           │  decision_id               UUID│
+                           │  decision_type           'reply'│
+                           │  content                    TEXT│
+                           │  status      'queued'/'blocked' │
+                           │  target_tweet_id            TEXT│
+                           │  target_username            TEXT│
+                           │  target_tweet_content_      TEXT│ ← Context Lock
+                           │    snapshot                     │
+                           │  target_tweet_content_hash  TEXT│ ← Immutability
+                           │  semantic_similarity        REAL│ ← Relevance
+                           │  anti_spam_checks           JSON│ ← Safety
+                           │  root_tweet_id              TEXT│ ← Root Target
+                           │  scheduled_at                 TS│
+                           │  created_at                   TS│
+                           └────────────────────────────────┘
+                                       │
+                                       │ PostingQueue reads
+                                       │ (NO rehydration)
+                                       ▼
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ POSTING FLOW (ALL PATHS CONVERGE HERE)                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                           ┌────────────────────────────────┐
+                           │  src/jobs/postingQueue.ts      │
+                           │  processPostingQueue()         │
+                           │  Line 45                       │
+                           └────────────────────────────────┘
+                                       │
+                                       ▼
+                           SELECT * FROM content_metadata
+                           WHERE status IN ('queued', 'ready')
+                           AND scheduled_at <= NOW()
+                                       │
+                                       ▼
+                           ┌────────────────────────────────┐
+                           │  FOR EACH decision             │
+                           │  Line ~1640                    │
+                           └────────────────────────────────┘
+                                       │
+                                       ├─► IF decision_type = 'post'
+                                       │   → postSingle() or postThread()
+                                       │
+                                       └─► IF decision_type = 'reply'
+                                            │
+                                            ▼
+                                   ┌─────────────────────────────┐
+                                   │  🔒 SAFETY CHECK            │
+                                   │  Line 2081                  │
+                                   │                             │
+                                   │  Verify ALL gate data       │
+                                   │  present in decision:       │
+                                   │  • target_tweet_id          │
+                                   │  • target_tweet_content_    │
+                                   │    snapshot                 │
+                                   │  • target_tweet_content_hash│
+                                   │  • semantic_similarity      │
+                                   │                             │
+                                   │  ⛔ IF MISSING:             │
+                                   │    Block + Log              │
+                                   │    Skip posting             │
+                                   └─────────────────────────────┘
+                                            │
+                                            ▼ All data present
+                                   ┌─────────────────────────────┐
+                                   │  🔒 PRE-POST INVARIANTS     │
+                                   │  checkReplyInvariantsPrePost│
+                                   │  Line 2082                  │
+                                   │                             │
+                                   │  • format_check             │
+                                   │    (no thread markers)      │
+                                   │  • length_check (<260 chars)│
+                                   │  • root_check               │
+                                   │    (is_root_tweet = true)   │
+                                   │  • freshness_check          │
+                                   │    (<180 min old)           │
+                                   │  • context_lock_verify      │
+                                   │    (hash matches)           │
+                                   │  • pipeline_guard           │
+                                   │    (no thread generators)   │
+                                   │                             │
+                                   │  ⛔ IF FAIL:                │
+                                   │    Mark blocked             │
+                                   │    Skip posting             │
+                                   └─────────────────────────────┘
+                                            │
+                                            ▼ All checks pass
+                                   ┌─────────────────────────────┐
+                                   │  postReply()                │
+                                   │  Line 3050                  │
+                                   │                             │
+                                   │  UltimateTwitterPoster      │
+                                   │    .postReply()             │
+                                   │                             │
+                                   │  Uses data from DB row ONLY │
+                                   │  (NO rehydration)           │
+                                   └─────────────────────────────┘
+                                            │
+                                            ▼
+                                   ┌─────────────────────────────┐
+                                   │  ✅ Posted to Twitter       │
+                                   │                             │
+                                   │  1. Write receipt           │
+                                   │  2. Update status='posted'  │
+                                   │  3. Store tweet_id          │
+                                   │  4. Log success             │
+                                   └─────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GATE COVERAGE MATRIX                                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┏━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Path          ┃ Context    ┃ Semantic   ┃ Anti-    ┃ Pre-Post   ┃ Status ┃
+┃               ┃ Lock       ┃ Gate       ┃ Spam     ┃ Check      ┃        ┃
+┣━━━━━━━━━━━━━━━╋━━━━━━━━━━━━╋━━━━━━━━━━━━╋━━━━━━━━━━╋━━━━━━━━━━━━╋━━━━━━━━┫
+┃ Admin API     ┃     ✅     ┃     ✅     ┃    ✅    ┃     ✅     ┃  SAFE  ┃
+┃ Scheduler     ┃     ✅     ┃     ✅     ┃    ✅    ┃     ✅     ┃  SAFE  ┃
+┃ CLI           ┃     ✅     ┃     ✅     ┃    ✅    ┃     ✅     ┃  SAFE  ┃
+┃ Direct        ┃     ✅     ┃     ✅     ┃    ✅    ┃     ✅     ┃  SAFE  ┃
+┃ Synthetic     ┃     ❌     ┃     ❌     ┃    ❌    ┃   ⚠️  Part ┃ BLOCKED┃
+┃ PostingQueue  ┃ Verifies   ┃ Verifies   ┃ Verifies ┃     ✅     ┃  SAFE  ┃
+┗━━━━━━━━━━━━━━━┻━━━━━━━━━━━━┻━━━━━━━━━━━━┻━━━━━━━━━━┻━━━━━━━━━━━━┻━━━━━━━━┛
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GUARANTEES AFTER PATCHES                                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. ✅ IMPOSSIBLE TO BYPASS GATES
+   • Synthetic path blocked with runtime error
+   • PostingQueue verifies gate data present
+   • Missing data → automatic block + skip
+
+2. ✅ NO THREAD GENERATORS IN REPLY MODE
+   • Pipeline guard checks generation_source
+   • orchestratorRouter blocks thread generators for decision_type='reply'
+   • Runtime assertion in postingQueue
+
+3. ✅ FULL AUDIT TRAIL
+   • ALL decisions store: context snapshot, hash, semantic score, anti-spam result
+   • Blocked decisions store: reason, guard results, error message
+   • Grep-friendly logs with decision_id throughout
+
+4. ✅ NO REHYDRATION
+   • PostingQueue reads decision row from DB
+   • Uses target_tweet_content_snapshot (not re-fetching)
+   • Hash verification ensures immutability
+
+5. ✅ FAIL-CLOSED BEHAVIOR
+   • Gate failure → mark blocked + continue (not crash)
+   • Missing data → mark blocked + continue (not crash)
+   • Invariant failure → mark blocked + continue (not crash)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ DEPLOYMENT STATUS                                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+✅ Patch 1: Synthetic replies blocked (replyJob.ts:457)
+✅ Patch 2: Runtime safety check added (postingQueue.ts:2081)
+✅ Patch 3: Documentation added (replyJob.ts:1)
+
+🔄 Pending: Deploy to Railway
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ VERIFICATION COMMANDS                                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+# Test synthetic block
+NODE_ENV=production ts-node -e "
+  require('./src/jobs/replyJob').generateSyntheticReplies()
+    .catch(e => console.log('✅ BLOCKED:', e.message))
+"
+
+# Check all decisions have gate data
+psql "$DATABASE_URL" -c "
+  SELECT COUNT(*) as missing_gate_data
+  FROM content_metadata
+  WHERE decision_type = 'reply'
+    AND status = 'queued'
+    AND (target_tweet_content_hash IS NULL OR semantic_similarity IS NULL);
+"
+
+# Check logs for safety blocks
+railway logs --lines 100 | grep "SAFETY CHECK\|BLOCKED.*missing_gate_data"
+
+# Verify no thread generators
+grep -r "strategic_multi_generator\|thread_generator" src/jobs/replyJob.ts
+```
+

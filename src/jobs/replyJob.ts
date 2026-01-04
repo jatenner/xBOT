@@ -1,6 +1,21 @@
 /**
  * 💬 REPLY JOB - Autonomous Reply Generation
  * Generates replies using LLM and queues for posting
+ * 
+ * ═══════════════════════════════════════════════════════════════════════
+ * 🔒 CRITICAL SAFETY INVARIANTS:
+ * 
+ * 1. ALL reply generation MUST go through generateReplyContent() router
+ * 2. NO direct imports of single/thread generators allowed
+ * 3. ALL decisions MUST pass: Context Lock + Semantic Gate + Anti-Spam
+ * 4. Synthetic replies BLOCKED in production (require ALLOW_SYNTHETIC_REPLIES=true)
+ * 5. PostingQueue verifies gate data present before posting
+ * 
+ * If you need to modify reply generation:
+ * - Add logic to generateReplyContent() router
+ * - Never import generators directly
+ * - Never bypass gate checks
+ * ═══════════════════════════════════════════════════════════════════════
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -455,7 +470,17 @@ export async function generateReplies(): Promise<void> {
 }
 
 async function generateSyntheticReplies(): Promise<void> {
+  // 🚨 HARD BLOCK: Synthetic replies bypass ALL gates (context lock, semantic, anti-spam)
+  // Only allow in explicit test mode
+  const isTestMode = process.env.NODE_ENV === 'test' || process.env.ALLOW_SYNTHETIC_REPLIES === 'true';
+  
+  if (!isTestMode) {
+    throw new Error('[SYNTHETIC_REPLIES] ⛔ BLOCKED: Synthetic replies bypass safety gates. Set ALLOW_SYNTHETIC_REPLIES=true if testing.');
+  }
+  
+  console.warn('[SYNTHETIC_REPLIES] ⚠️ Running in UNSAFE mode - bypasses context lock, semantic gate, anti-spam');
   console.log('[REPLY_JOB] 🎭 Generating synthetic replies for shadow mode...');
+  
   const decision_id = uuidv4();
   
   const supabase = getSupabaseClient();
