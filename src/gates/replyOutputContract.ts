@@ -24,6 +24,8 @@ const THREAD_MARKERS = [
   /\bPart\s+\d+/i,           // "Part 1"
   /\bcontinued\b/i,          // "continued"
   /^\d+\.\s/m,               // "1. ", "2. " at start of line
+  /\bPROTOCOL:/i,            // "PROTOCOL:"
+  /\bTIP:/i,                 // "TIP:"
 ];
 
 /**

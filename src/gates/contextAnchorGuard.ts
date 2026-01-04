@@ -94,7 +94,33 @@ function extractEchoText(replyContent: string): string {
 }
 
 /**
- * Check if reply references the original tweet with echo + context
+ * Extract specific tokens (proper nouns, unique keywords, handles)
+ */
+function extractSpecificTokens(text: string): string[] {
+  const specific: string[] = [];
+  
+  // Extract @handles
+  const handles = text.match(/@\w+/g) || [];
+  specific.push(...handles);
+  
+  // Extract capitalized words (likely proper nouns)
+  const words = text.split(/\s+/);
+  for (const word of words) {
+    const clean = word.replace(/[^\w]/g, '');
+    if (clean.length >= 4 && /^[A-Z]/.test(clean) && !/^[A-Z]+$/.test(clean)) {
+      specific.push(clean.toLowerCase());
+    }
+  }
+  
+  // Extract numbers (often specific data points)
+  const numbers = text.match(/\b\d+[.,]?\d*\b/g) || [];
+  specific.push(...numbers);
+  
+  return Array.from(new Set(specific));
+}
+
+/**
+ * Check if reply references the original tweet with strong context
  */
 export function checkContextAnchor(
   replyContent: string,
@@ -104,7 +130,7 @@ export function checkContextAnchor(
   const keywords = extractKeywords(rootTweetContent);
   
   if (keywords.length === 0) {
-    console.log(`[REPLY_CONTEXT] pass=true reason=no_keywords_in_root echo=N/A`);
+    console.log(`[REPLY_ANCHOR_GUARD] pass=true reason=no_keywords_in_root overlaps=[] specific=[]`);
     return {
       pass: true,
       matched: [],
@@ -113,6 +139,7 @@ export function checkContextAnchor(
     };
   }
   
+  // Check for keyword matches
   const matched: string[] = [];
   for (const keyword of keywords) {
     if (replyLower.includes(keyword)) {
@@ -120,11 +147,23 @@ export function checkContextAnchor(
     }
   }
   
+  // Check for specific tokens
+  const rootSpecific = extractSpecificTokens(rootTweetContent);
+  const replySpecific = extractSpecificTokens(replyContent);
+  const matchedSpecific = rootSpecific.filter(token => 
+    replySpecific.some(rt => rt.toLowerCase().includes(token.toLowerCase()))
+  );
+  
+  // Check for echo clause
   const hasEcho = hasEchoClause(replyContent, rootTweetContent);
   
-  if (hasEcho || matched.length > 0) {
+  // STRENGTHENED REQUIREMENT: Need >=2 keyword overlaps AND >=1 specific token
+  const hasEnoughOverlaps = matched.length >= 2;
+  const hasSpecificToken = matchedSpecific.length >= 1;
+  
+  if ((hasEnoughOverlaps && hasSpecificToken) || hasEcho) {
     const echoText = hasEcho ? extractEchoText(replyContent) : 'N/A';
-    console.log(`[REPLY_CONTEXT] pass=true echo="${echoText}" matched=${JSON.stringify(matched)} action=post`);
+    console.log(`[REPLY_ANCHOR_GUARD] pass=true overlaps=${JSON.stringify(matched)} specific=${JSON.stringify(matchedSpecific)} echo="${echoText}" reason=ok`);
     return {
       pass: true,
       matched,
@@ -133,11 +172,11 @@ export function checkContextAnchor(
     };
   }
   
-  console.log(`[REPLY_CONTEXT] pass=false echo=false matched=[] keywords=${JSON.stringify(keywords)} action=regen`);
+  console.log(`[REPLY_ANCHOR_GUARD] pass=false overlaps=${JSON.stringify(matched)} specific=${JSON.stringify(matchedSpecific)} reason=insufficient_context_overlap min_overlaps=2 min_specific=1`);
   return {
     pass: false,
     matched: [],
-    reason: 'no_echo_or_keywords',
+    reason: 'insufficient_context_overlap',
     action: 'regen',
   };
 }

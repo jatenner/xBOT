@@ -1450,6 +1450,38 @@ Reply (1-3 lines, echo their point first):`;
       }
       
       // ============================================================
+      // 🚧 PHASE 1: KIND GUARD - Lane separation (reply vs thread)
+      // ============================================================
+      const { checkReplyKindGuard } = await import('../gates/replyKindGuard');
+      const kindCheck = checkReplyKindGuard(
+        reply.content,
+        reply.target_tweet_id,
+        'reply' // Replies are always kind="reply"
+      );
+      
+      if (!kindCheck.pass) {
+        console.error(`[REPLY_KIND_GUARD] ❌ FAIL_CLOSED: ${kindCheck.reason}`);
+        console.error(`[REPLY_KIND_GUARD] Content: "${reply.content.substring(0, 100)}..."`);
+        continue; // Skip this reply
+      }
+      
+      // ============================================================
+      // 🎯 PHASE 2: TARGET GUARD - Root-only + freshness + context
+      // ============================================================
+      const { checkReplyTargetGuard } = await import('../gates/replyTargetGuard');
+      const targetCheck = checkReplyTargetGuard(
+        reply.target_tweet_id,
+        opportunity.tweet_content || '',
+        opportunity.tweet_posted_at || null,
+        opportunity.is_reply_tweet || null
+      );
+      
+      if (!targetCheck.pass) {
+        console.error(`[REPLY_TARGET_GUARD] ❌ FAIL_CLOSED: ${targetCheck.reason}`);
+        continue; // Skip this reply
+      }
+      
+      // ============================================================
       // 🔒 OUTPUT CONTRACT: Final validation before queueing
       // ============================================================
       const { validateReplyContract, hashContent } = await import('../gates/replyOutputContract');
