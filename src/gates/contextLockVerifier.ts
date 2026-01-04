@@ -38,8 +38,8 @@ function computeTextSimilarity(text1: string, text2: string): number {
 
   if (tokens1.size === 0 || tokens2.size === 0) return 0;
 
-  const intersection = new Set([...tokens1].filter(t => tokens2.has(t)));
-  const union = new Set([...tokens1, ...tokens2]);
+  const intersection = new Set(Array.from(tokens1).filter(t => tokens2.has(t)));
+  const union = new Set([...Array.from(tokens1), ...Array.from(tokens2)]);
 
   return intersection.size / union.size; // Jaccard similarity
 }
@@ -106,7 +106,7 @@ async function fetchTweetData(targetTweetId: string): Promise<{
       try {
         const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
         const pool = UnifiedBrowserPool.getInstance();
-        await pool.releasePage(page, 'context_verifier');
+        await pool.releasePage(page);
       } catch (e) {
         console.error('[CONTEXT_LOCK_VERIFY] Error releasing page:', e);
       }

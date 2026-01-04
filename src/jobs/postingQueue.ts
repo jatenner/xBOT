@@ -316,6 +316,77 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
     console.warn(`[POSTING_QUEUE] ⚠️ Proceeding despite topic check error`);
   }
   
+  // ═══════════════════════════════════════════════════════════════════════
+  // GATE 4: Thread-Like Content Blocker (FAIL-CLOSED)
+  // ═══════════════════════════════════════════════════════════════════════
+  console.log(`[POSTING_QUEUE] 🔍 Checking thread-like content for decision ${decisionId}`);
+  
+  const content = decision.content || '';
+  
+  // Thread markers that indicate this is thread content, not a single reply
+  const threadPatterns = [
+    { pattern: /^\d+\/\d+\b/, name: 'numbered_start', desc: 'Starts with X/Y' },
+    { pattern: /\b\d+\/\d+\b/, name: 'numbered_inline', desc: 'Contains X/Y' },
+    { pattern: /\bTIP\s*\d+\s*\/\s*\d+/i, name: 'tip_marker', desc: 'TIP X/Y' },
+    { pattern: /\bPROTOCOL:/i, name: 'protocol_marker', desc: 'PROTOCOL:' },
+    { pattern: /🧵/, name: 'thread_emoji', desc: 'Thread emoji' },
+    { pattern: /\bthread\b/i, name: 'thread_word', desc: 'Word "thread"' },
+    { pattern: /\(\d+\)/, name: 'paren_number', desc: 'Parenthetical (1)' }
+  ];
+  
+  for (const { pattern, name, desc } of threadPatterns) {
+    if (pattern.test(content)) {
+      console.error(`[POSTING_QUEUE] ⛔ THREAD-LIKE BLOCKED: ${desc} (${name})`);
+      console.error(`[POSTING_QUEUE]   decision_id=${decisionId}`);
+      console.error(`[POSTING_QUEUE]   content_preview="${content.substring(0, 100)}..."`);
+      
+      await supabase.from('content_generation_metadata_comprehensive')
+        .update({
+          status: 'blocked',
+          skip_reason: 'thread_like_blocked',
+          error_message: `Thread marker: ${desc}`
+        })
+        .eq('decision_id', decisionId);
+      
+      return true; // Skip
+    }
+  }
+  
+  // Length checks
+  const lineCount = content.split('\n').filter((l: string) => l.trim()).length;
+  
+  if (content.length > 260) {
+    console.error(`[POSTING_QUEUE] ⛔ THREAD-LIKE BLOCKED: Too long (${content.length} chars)`);
+    console.error(`[POSTING_QUEUE]   decision_id=${decisionId}`);
+    
+    await supabase.from('content_generation_metadata_comprehensive')
+      .update({
+        status: 'blocked',
+        skip_reason: 'thread_like_blocked',
+        error_message: `Too long: ${content.length} chars (max 260)`
+      })
+      .eq('decision_id', decisionId);
+    
+    return true; // Skip
+  }
+  
+  if (lineCount > 3) {
+    console.error(`[POSTING_QUEUE] ⛔ THREAD-LIKE BLOCKED: Too many lines (${lineCount})`);
+    console.error(`[POSTING_QUEUE]   decision_id=${decisionId}`);
+    
+    await supabase.from('content_generation_metadata_comprehensive')
+      .update({
+        status: 'blocked',
+        skip_reason: 'thread_like_blocked',
+        error_message: `Too many lines: ${lineCount} (max 3)`
+      })
+      .eq('decision_id', decisionId);
+    
+    return true; // Skip
+  }
+  
+  console.log(`[POSTING_QUEUE] ✅ Thread-like check passed for ${decisionId}`);
+  
   return false; // OK to proceed
 }
 

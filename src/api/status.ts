@@ -81,7 +81,15 @@ export interface SystemStatus {
     skipped_thread_like_60m: number;
     skipped_no_context_60m: number;
     skipped_stale_60m: number;
+    // 🚨 CRITICAL: All the blocking reasons for fail-closed gates
+    thread_like_blocked_60m: number;
+    target_not_root_or_missing_60m: number;
     context_mismatch_blocked_60m: number;
+    topic_mismatch_blocked_60m: number;
+    missing_gate_data_blocked_60m: number;
+    verification_fetch_error_60m: number;
+    missing_target_text_60m: number;
+    posting_target_not_root_60m: number;
     low_similarity_blocked_60m: number;
     root_cooldown_blocked_60m: number;
     author_cooldown_blocked_60m: number;
@@ -276,10 +284,13 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
           COUNT(*) FILTER (WHERE skip_reason = 'topic_mismatch') as topic_mismatch,
           COUNT(*) FILTER (WHERE skip_reason = 'verification_fetch_error') as verification_fetch_error,
           COUNT(*) FILTER (WHERE skip_reason LIKE '%similarity%') as low_similarity,
+          COUNT(*) FILTER (WHERE skip_reason = 'thread_like_blocked') as thread_like_blocked,
           COUNT(*) FILTER (WHERE skip_reason = 'root_tweet_cooldown') as root_cooldown,
           COUNT(*) FILTER (WHERE skip_reason = 'author_cooldown') as author_cooldown,
           COUNT(*) FILTER (WHERE skip_reason = 'self_reply_blocked') as self_reply,
-          COUNT(*) FILTER (WHERE skip_reason = 'hourly_rate_limit_reached') as hourly_rate
+          COUNT(*) FILTER (WHERE skip_reason = 'hourly_rate_limit_reached') as hourly_rate,
+          COUNT(*) FILTER (WHERE skip_reason = 'missing_target_text') as missing_target_text,
+          COUNT(*) FILTER (WHERE skip_reason = 'posting_target_not_root') as posting_target_not_root
         FROM content_generation_metadata_comprehensive
         WHERE decision_type = 'reply'
           AND status = 'blocked'
@@ -320,6 +331,9 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       topic_mismatch: 0,
       verification_fetch_error: 0,
       low_similarity: 0,
+      thread_like_blocked: 0,
+      missing_target_text: 0,
+      posting_target_not_root: 0,
       root_cooldown: 0,
       author_cooldown: 0,
       self_reply: 0,
@@ -360,11 +374,15 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       skipped_thread_like_60m: parseInt(invariantBlocks.format_blocks || '0'),
       skipped_no_context_60m: parseInt(invariantBlocks.context_blocks || '0'),
       skipped_stale_60m: parseInt(invariantBlocks.stale_blocks || '0'),
-      missing_gate_data_safety_block_60m: parseInt(blockedByReason.missing_gate_data || '0'),
+      // 🚨 CRITICAL: All blocking reasons from fail-closed gates
+      thread_like_blocked_60m: parseInt(blockedByReason.thread_like_blocked || '0'),
       target_not_root_or_missing_60m: (parseInt(blockedByReason.target_not_found || '0') + parseInt(blockedByReason.target_not_root || '0')),
       context_mismatch_blocked_60m: parseInt(blockedByReason.context_mismatch || '0'),
       topic_mismatch_blocked_60m: parseInt(blockedByReason.topic_mismatch || '0'),
+      missing_gate_data_blocked_60m: parseInt(blockedByReason.missing_gate_data || '0'),
       verification_fetch_error_60m: parseInt(blockedByReason.verification_fetch_error || '0'),
+      missing_target_text_60m: parseInt(blockedByReason.missing_target_text || '0'),
+      posting_target_not_root_60m: parseInt(blockedByReason.posting_target_not_root || '0'),
       low_similarity_blocked_60m: parseInt(blockedByReason.low_similarity || '0'),
       root_cooldown_blocked_60m: parseInt(blockedByReason.root_cooldown || '0'),
       author_cooldown_blocked_60m: parseInt(blockedByReason.author_cooldown || '0'),
@@ -390,11 +408,14 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       skipped_thread_like_60m: 0,
       skipped_no_context_60m: 0,
       skipped_stale_60m: 0,
-      missing_gate_data_safety_block_60m: 0,
+      thread_like_blocked_60m: 0,
       target_not_root_or_missing_60m: 0,
       context_mismatch_blocked_60m: 0,
       topic_mismatch_blocked_60m: 0,
+      missing_gate_data_blocked_60m: 0,
       verification_fetch_error_60m: 0,
+      missing_target_text_60m: 0,
+      posting_target_not_root_60m: 0,
       low_similarity_blocked_60m: 0,
       root_cooldown_blocked_60m: 0,
       author_cooldown_blocked_60m: 0,
