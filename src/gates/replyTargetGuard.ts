@@ -17,7 +17,7 @@ export interface TargetGuardResult {
 }
 
 const MAX_TARGET_AGE_MINUTES = 180; // 3 hours
-const MIN_CONTEXT_LENGTH = 40;
+const MIN_CONTEXT_LENGTH = 30; // Lowered from 40 to allow shorter tweets
 
 /**
  * Check if tweet content suggests it's a reply
