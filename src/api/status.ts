@@ -274,17 +274,19 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
         AND created_at >= $1
       `, [twentyFourHoursAgo]),
       
-      // Blocked by specific reasons (from content_metadata)
+      // Blocked by specific reasons (from content_metadata) - FINAL_REPLY_GATE reasons
       pgPool.query(`
         SELECT 
           COUNT(*) FILTER (WHERE skip_reason = 'missing_gate_data_safety_block') as missing_gate_data,
           COUNT(*) FILTER (WHERE skip_reason = 'target_not_found_or_deleted') as target_not_found,
-          COUNT(*) FILTER (WHERE skip_reason = 'target_not_root') as target_not_root,
+          COUNT(*) FILTER (WHERE skip_reason = 'target_not_root' OR skip_reason = 'target_not_root_violation') as target_not_root,
+          COUNT(*) FILTER (WHERE skip_reason = 'missing_root_tweet_id' OR skip_reason = 'missing_target_tweet_id') as missing_root_or_target,
+          COUNT(*) FILTER (WHERE skip_reason = 'snapshot_too_short') as snapshot_too_short,
           COUNT(*) FILTER (WHERE skip_reason = 'context_mismatch') as context_mismatch,
           COUNT(*) FILTER (WHERE skip_reason = 'topic_mismatch') as topic_mismatch,
           COUNT(*) FILTER (WHERE skip_reason = 'verification_fetch_error') as verification_fetch_error,
-          COUNT(*) FILTER (WHERE skip_reason LIKE '%similarity%') as low_similarity,
-          COUNT(*) FILTER (WHERE skip_reason = 'thread_like_blocked') as thread_like_blocked,
+          COUNT(*) FILTER (WHERE skip_reason LIKE '%similarity%' OR skip_reason = 'low_semantic_similarity') as low_similarity,
+          COUNT(*) FILTER (WHERE skip_reason LIKE '%thread_like%') as thread_like_blocked,
           COUNT(*) FILTER (WHERE skip_reason = 'root_tweet_cooldown') as root_cooldown,
           COUNT(*) FILTER (WHERE skip_reason = 'author_cooldown') as author_cooldown,
           COUNT(*) FILTER (WHERE skip_reason = 'self_reply_blocked') as self_reply,
@@ -327,6 +329,8 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       missing_gate_data: 0,
       target_not_found: 0,
       target_not_root: 0,
+      missing_root_or_target: 0,
+      snapshot_too_short: 0,
       context_mismatch: 0,
       topic_mismatch: 0,
       verification_fetch_error: 0,
@@ -374,9 +378,9 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       skipped_thread_like_60m: parseInt(invariantBlocks.format_blocks || '0'),
       skipped_no_context_60m: parseInt(invariantBlocks.context_blocks || '0'),
       skipped_stale_60m: parseInt(invariantBlocks.stale_blocks || '0'),
-      // 🚨 CRITICAL: All blocking reasons from fail-closed gates
+      // 🚨 CRITICAL: All blocking reasons from fail-closed gates (FINAL_REPLY_GATE)
       thread_like_blocked_60m: parseInt(blockedByReason.thread_like_blocked || '0'),
-      target_not_root_or_missing_60m: (parseInt(blockedByReason.target_not_found || '0') + parseInt(blockedByReason.target_not_root || '0')),
+      target_not_root_or_missing_60m: (parseInt(blockedByReason.target_not_found || '0') + parseInt(blockedByReason.target_not_root || '0') + parseInt(blockedByReason.missing_root_or_target || '0') + parseInt(blockedByReason.snapshot_too_short || '0')),
       context_mismatch_blocked_60m: parseInt(blockedByReason.context_mismatch || '0'),
       topic_mismatch_blocked_60m: parseInt(blockedByReason.topic_mismatch || '0'),
       missing_gate_data_blocked_60m: parseInt(blockedByReason.missing_gate_data || '0'),

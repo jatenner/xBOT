@@ -15,6 +15,7 @@ yarn-error.log*
 dist/
 build/
 *.tsbuildinfo
+.next/
 
 # Logs
 *.log
@@ -28,6 +29,28 @@ working_bot.log
 # Editor directories and files
 .vscode/
 .idea/
+
+# Playwright session/browser caches (CRITICAL - these are LARGE)
+.pw-twitter-login/
+playwright-session/
+.browser-profile/
+playwright-traces/
+playwright-videos/
+playwright-screenshots/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Debug screenshots
+debug*.png
+*.screenshot.png
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+.cache/
+coverage/
 *.swp
 *.swo
 *~

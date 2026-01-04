@@ -194,14 +194,68 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
 }
 
 /**
- * 🔒 REPLY SAFETY GATES - Centralized gate checks for replies
- * Returns true if decision should be skipped, false if ok to proceed
+ * 🔒 FINAL_REPLY_GATE - FAIL-CLOSED safety checks before posting any reply
+ * Returns true if decision should be SKIPPED, false if ok to proceed
+ * 
+ * INVARIANTS (NON-NEGOTIABLE):
+ * 1. target_tweet_id exists
+ * 2. root_tweet_id exists AND root_tweet_id == target_tweet_id (ROOT-ONLY)
+ * 3. target_tweet_content_snapshot exists and length >= 20
+ * 4. No thread markers (/\b\d+\/\d+\b/, TIP:, PROTOCOL:, 🧵, thread)
+ * 5. length <= 260, line breaks <= 2
+ * 6. semantic_similarity >= 0.30
+ * 7. No tech/art/politics targets with health replies
  */
 async function checkReplySafetyGates(decision: any, supabase: any): Promise<boolean> {
   const decisionId = decision.id || decision.decision_id || 'unknown';
   
+  console.log(`[FINAL_REPLY_GATE] 🔍 Starting fail-closed checks for decision ${decisionId}`);
+  
   // ═══════════════════════════════════════════════════════════════════════
-  // GATE 1: Missing Fields Check
+  // GATE 0: ROOT-ONLY INVARIANT (CRITICAL)
+  // ═══════════════════════════════════════════════════════════════════════
+  const targetTweetId = decision.target_tweet_id;
+  const rootTweetId = decision.root_tweet_id;
+  
+  if (!targetTweetId) {
+    console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: No target_tweet_id`);
+    console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId}`);
+    
+    await supabase.from('content_generation_metadata_comprehensive')
+      .update({ status: 'blocked', skip_reason: 'missing_target_tweet_id' })
+      .eq('decision_id', decisionId);
+    
+    return true; // SKIP
+  }
+  
+  if (!rootTweetId) {
+    console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: No root_tweet_id`);
+    console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId} target=${targetTweetId}`);
+    
+    await supabase.from('content_generation_metadata_comprehensive')
+      .update({ status: 'blocked', skip_reason: 'missing_root_tweet_id' })
+      .eq('decision_id', decisionId);
+    
+    return true; // SKIP
+  }
+  
+  if (rootTweetId !== targetTweetId) {
+    console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: ROOT-ONLY violation!`);
+    console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId}`);
+    console.error(`[FINAL_REPLY_GATE]   root=${rootTweetId} target=${targetTweetId}`);
+    console.error(`[FINAL_REPLY_GATE]   REASON: target is a REPLY, not a ROOT tweet`);
+    
+    await supabase.from('content_generation_metadata_comprehensive')
+      .update({ status: 'blocked', skip_reason: 'target_not_root_violation' })
+      .eq('decision_id', decisionId);
+    
+    return true; // SKIP
+  }
+  
+  console.log(`[FINAL_REPLY_GATE] ✅ ROOT-ONLY: root=${rootTweetId} == target=${targetTweetId}`);
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // GATE 1: Missing Fields Check + Snapshot Length
   // ═══════════════════════════════════════════════════════════════════════
   const requiredFields = [
     'target_tweet_id',
@@ -219,23 +273,52 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
   
   if (missingFields.length > 0) {
     const fieldValues = missingFields.reduce((acc, f) => ({ ...acc, [f]: decision[f] }), {});
-    console.error(`[POSTING_QUEUE] ⛔ BLOCKED: Reply decision missing gate data`);
-    console.error(`[POSTING_QUEUE]   decision_id=${decisionId}`);
-    console.error(`[POSTING_QUEUE]   missing_fields=${JSON.stringify(missingFields)}`);
-    console.error(`[POSTING_QUEUE]   field_values=${JSON.stringify(fieldValues)}`);
+    console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: Missing gate data`);
+    console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId}`);
+    console.error(`[FINAL_REPLY_GATE]   missing=${JSON.stringify(missingFields)}`);
     
     await supabase.from('content_generation_metadata_comprehensive')
       .update({
         status: 'blocked',
         skip_reason: 'missing_gate_data_safety_block',
-        error_message: `Missing fields: ${missingFields.join(', ')}`
+        error_message: `Missing: ${missingFields.join(', ')}`
       })
       .eq('decision_id', decisionId);
     
     return true; // Skip
   }
   
-  console.log(`[POSTING_QUEUE] ✅ Safety check passed: All gate data present for ${decisionId}`);
+  // Check snapshot length >= 20
+  const snapshotLen = (decision.target_tweet_content_snapshot || '').length;
+  if (snapshotLen < 20) {
+    console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: Snapshot too short (${snapshotLen} < 20)`);
+    console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId}`);
+    
+    await supabase.from('content_generation_metadata_comprehensive')
+      .update({ status: 'blocked', skip_reason: 'snapshot_too_short' })
+      .eq('decision_id', decisionId);
+    
+    return true; // SKIP
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // GATE 1.5: SEMANTIC SIMILARITY THRESHOLD (>= 0.30)
+  // ═══════════════════════════════════════════════════════════════════════
+  const similarity = parseFloat(decision.semantic_similarity) || 0;
+  const MIN_SIMILARITY = 0.30;
+  
+  if (similarity < MIN_SIMILARITY) {
+    console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: Low semantic similarity (${similarity.toFixed(2)} < ${MIN_SIMILARITY})`);
+    console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId}`);
+    
+    await supabase.from('content_generation_metadata_comprehensive')
+      .update({ status: 'blocked', skip_reason: 'low_semantic_similarity' })
+      .eq('decision_id', decisionId);
+    
+    return true; // SKIP
+  }
+  
+  console.log(`[FINAL_REPLY_GATE] ✅ All required fields present, snapshot=${snapshotLen} chars, similarity=${similarity.toFixed(2)}`);
   
   // ═══════════════════════════════════════════════════════════════════════
   // GATE 2: Context Lock Verification (fetch target tweet)

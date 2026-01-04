@@ -8,14 +8,23 @@ coverage
 tmp
 logs
 
-# Playwright artifacts
+# Playwright session/browser caches (CRITICAL - these cause snapshot failures!)
+.pw-twitter-login
+playwright-session
+.browser-profile
 playwright-traces
 playwright-videos
 playwright-screenshots
 test-results
 playwright-report
+playwright/.cache
+
+# Debug screenshots
+debug*.png
+*.screenshot.png
 
 # Local development
+.env
 .env.local
 .env.development
 *.log

@@ -1917,33 +1917,33 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
 
       // Build insert payload (conditionally exclude experiment fields if experiments disabled)
       const replyInsertPayload: any = {
-        decision_id: reply.decision_id,
-        decision_type: 'reply',
+    decision_id: reply.decision_id,
+    decision_type: 'reply',
         // 🔥 CRITICAL FIX: Ensure content is a string, not an array
         content: Array.isArray(reply.content) ? reply.content[0] : reply.content,
         content_slot: replyContentSlot, // 🎯 v2: Store content slot for replies
         generation_source: 'strategic_reply_system', // Single-reply only (never thread)
-        status: 'queued',
-        scheduled_at: scheduledAt.toISOString(), // Use calculated time
-        quality_score: reply.quality_score || 0.85,
-        predicted_er: reply.predicted_er || 0.028,
-        topic_cluster: reply.topic || 'health',
+    status: 'queued',
+    scheduled_at: scheduledAt.toISOString(), // Use calculated time
+    quality_score: reply.quality_score || 0.85,
+    predicted_er: reply.predicted_er || 0.028,
+    topic_cluster: reply.topic || 'health',
         
         // 🎤 PHASE 5: Voice Guide metadata (if available)
         hook_type: voiceDecision?.hookType || 'none', // Replies typically don't use hooks
         structure_type: voiceDecision?.structure || 'reply', // Always 'reply' for replies
         
-        target_tweet_id: reply.target_tweet_id,
-        target_username: reply.target_username,
-        generator_name: reply.generator_used || 'unknown',
-        bandit_arm: `strategic_reply_${reply.generator_used || 'unknown'}`,
-        created_at: new Date().toISOString(),
-        features: {
-          generator: reply.generator_used || 'unknown',
-          tweet_url: reply.tweet_url || null,
-          parent_tweet_id: reply.target_tweet_id,
-          parent_username: reply.target_username
-        },
+    target_tweet_id: reply.target_tweet_id,
+    target_username: reply.target_username,
+    generator_name: reply.generator_used || 'unknown',
+    bandit_arm: `strategic_reply_${reply.generator_used || 'unknown'}`,
+    created_at: new Date().toISOString(),
+    features: {
+      generator: reply.generator_used || 'unknown',
+      tweet_url: reply.tweet_url || null,
+      parent_tweet_id: reply.target_tweet_id,
+      parent_username: reply.target_username
+    },
         
         // ═══════════════════════════════════════════════════════════════════════
         // 🚨 CRITICAL: CONTEXT LOCK DATA - MUST be stored for gate verification
