@@ -621,12 +621,17 @@ async function generateRealReplies(): Promise<void> {
   let offset = 0;
   
   // 🎯 Phase 3: Join with discovered_accounts to get priority_score for sorting
+  // 🔒 FRESHNESS GATE: Only consider tweets < 180 min old
+  const MAX_AGE_MIN = 180;
+  const freshnessThreshold = new Date(Date.now() - MAX_AGE_MIN * 60 * 1000).toISOString();
+  
   while (true) {
     const { data: batch, error: oppError } = await supabaseClient
       .from('reply_opportunities')
       .select('*')
       .eq('replied_to', false)
       .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
+      .gte('tweet_posted_at', freshnessThreshold) // 🔒 FRESH-ONLY: Max 180 min old
       .order('opportunity_score', { ascending: false }) // ✅ Phase 3: Sort by boosted opportunity_score
       .range(offset, offset + batchSize - 1);
     
@@ -1778,7 +1783,7 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
         // 🔥 CRITICAL FIX: Ensure content is a string, not an array
         content: Array.isArray(reply.content) ? reply.content[0] : reply.content,
         content_slot: replyContentSlot, // 🎯 v2: Store content slot for replies
-    generation_source: 'strategic_multi_generator',
+    generation_source: 'strategic_reply_system', // Single-reply only (never thread)
     status: 'queued',
     scheduled_at: scheduledAt.toISOString(), // Use calculated time
     quality_score: reply.quality_score || 0.85,

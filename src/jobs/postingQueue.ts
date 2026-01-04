@@ -18,6 +18,140 @@ const FOLLOWER_BASELINE_TIMEOUT_MS = Number(process.env.FOLLOWER_BASELINE_TIMEOU
 const TWITTER_AUTH_PATH = path.join(process.cwd(), 'twitter-auth.json');
 const MAX_POSTING_RECOVERY_ATTEMPTS = Number(process.env.POSTING_MAX_RECOVERY_ATTEMPTS ?? 2);
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔒 PRE-POST INVARIANT CHECK - Structural checks before posting a reply
+// ═══════════════════════════════════════════════════════════════════════════════
+interface InvariantCheckPrePost {
+  pass: boolean;
+  reason: string;
+  guard_results: Record<string, any>;
+}
+
+async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantCheckPrePost> {
+  const decisionId = decision.id || decision.decision_id || 'unknown';
+  const guardResults: Record<string, any> = {};
+  
+  console.log(`[INVARIANT] ═══════════════════════════════════════`);
+  console.log(`[INVARIANT] decision_id=${decisionId} PRE-POST CHECK`);
+  
+  // 1) CONTENT FORMAT CHECK - No thread markers
+  const content = decision.content || '';
+  const threadPatterns = [
+    /\b\d+\/\d+\b/,           // "1/5", "2/3"
+    /^\d+\.\s/m,              // "1. " at line start
+    /\(\d+\)/,                // "(1)", "(2)"
+    /🧵/,                      // Thread emoji
+    /\bthread\b/i,            // Word "thread"
+    /TIP\s*\d+/i,             // "TIP 1", "TIP 3"
+    /\bPROTOCOL:/i,           // "PROTOCOL:"
+  ];
+  
+  for (const pattern of threadPatterns) {
+    if (pattern.test(content)) {
+      guardResults.format_check = { pass: false, pattern: pattern.source };
+      console.log(`[INVARIANT] format_check=FAIL pattern=${pattern.source}`);
+      return { pass: false, reason: 'thread_marker_detected', guard_results: guardResults };
+    }
+  }
+  guardResults.format_check = { pass: true };
+  console.log(`[INVARIANT] format_check=pass len=${content.length}`);
+  
+  // 2) LENGTH CHECK
+  if (content.length > 260) {
+    guardResults.length_check = { pass: false, length: content.length };
+    console.log(`[INVARIANT] length_check=FAIL len=${content.length}`);
+    return { pass: false, reason: 'content_too_long', guard_results: guardResults };
+  }
+  guardResults.length_check = { pass: true, length: content.length };
+  
+  // 3) ROOT-ONLY CHECK - Structural (from DB metadata)
+  try {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    
+    // Check reply_opportunities for is_root_tweet metadata
+    const { data: opportunity } = await supabase
+      .from('reply_opportunities')
+      .select('target_tweet_content, is_root_tweet, tweet_posted_at')
+      .eq('target_tweet_id', decision.target_tweet_id)
+      .maybeSingle();
+    
+    if (opportunity) {
+      // Structural check: is_root_tweet from harvester
+      if (opportunity.is_root_tweet === false) {
+        guardResults.root_check = { pass: false, reason: 'is_root_tweet=false' };
+        console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=false reason=metadata_says_not_root`);
+        return { pass: false, reason: 'target_is_reply_tweet', guard_results: guardResults };
+      }
+      
+      // Text heuristic fallback: content starts with @
+      const targetContent = opportunity.target_tweet_content || '';
+      if (targetContent.trim().startsWith('@')) {
+        guardResults.root_check = { pass: false, reason: 'content_starts_with_@' };
+        console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=false reason=content_starts_with_@`);
+        return { pass: false, reason: 'target_looks_like_reply', guard_results: guardResults };
+      }
+      
+      guardResults.root_check = { pass: true };
+      console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=true reason=structural_check_passed`);
+      
+      // 4) FRESHNESS CHECK - Target must be <= 180 min old
+      if (opportunity.tweet_posted_at) {
+        const postedAt = new Date(opportunity.tweet_posted_at);
+        const ageMinutes = (Date.now() - postedAt.getTime()) / (60 * 1000);
+        const MAX_AGE_MIN = 180;
+        
+        if (ageMinutes > MAX_AGE_MIN) {
+          guardResults.freshness_check = { pass: false, age_min: Math.round(ageMinutes), max: MAX_AGE_MIN };
+          console.log(`[INVARIANT] freshness_check=FAIL age_min=${Math.round(ageMinutes)} max=${MAX_AGE_MIN}`);
+          return { pass: false, reason: 'target_too_old', guard_results: guardResults };
+        }
+        guardResults.freshness_check = { pass: true, age_min: Math.round(ageMinutes) };
+        console.log(`[INVARIANT] freshness_check=pass age_min=${Math.round(ageMinutes)}`);
+      }
+    } else {
+      // No opportunity found - fail closed
+      guardResults.root_check = { pass: false, reason: 'opportunity_not_found' };
+      console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=unknown reason=opportunity_not_found`);
+      return { pass: false, reason: 'opportunity_not_found', guard_results: guardResults };
+    }
+  } catch (lookupError: any) {
+    console.warn(`[INVARIANT] ⚠️ DB lookup failed: ${lookupError.message}`);
+    guardResults.db_error = lookupError.message;
+    // Fail open on transient DB errors (allow posting)
+  }
+  
+  // 5) PIPELINE GUARD: Block thread generators in reply mode
+  const generationSource = decision.generation_source || decision.metadata?.generation_source || '';
+  const THREAD_GENERATORS = ['thread', 'multi_tweet', 'thread_generator', 'multi_generator'];
+  
+  // Check if generation_source indicates a thread generator
+  const isThreadGenerator = THREAD_GENERATORS.some(pattern => 
+    generationSource.toLowerCase().includes(pattern)
+  );
+  
+  if (isThreadGenerator) {
+    guardResults.pipeline_guard = { pass: false, source: generationSource, reason: 'thread_generator_in_reply_mode' };
+    console.log(`[PIPELINE_GUARD] generator=${generationSource} mode=reply action=blocked`);
+    return { pass: false, reason: 'thread_generator_blocked', guard_results: guardResults };
+  }
+  
+  // Also block if content looks like it came from a thread generator
+  if (content.split('\n').filter((l: string) => l.trim()).length > 3) {
+    guardResults.pipeline_guard = { pass: false, reason: 'too_many_paragraphs', line_count: content.split('\n').filter((l: string) => l.trim()).length };
+    console.log(`[PIPELINE_GUARD] lines=${content.split('\n').filter((l: string) => l.trim()).length} max=3 action=blocked`);
+    return { pass: false, reason: 'too_many_paragraphs_for_reply', guard_results: guardResults };
+  }
+  
+  guardResults.pipeline_guard = { pass: true };
+  console.log(`[PIPELINE_GUARD] generator=${generationSource || 'unknown'} mode=reply pass=true`);
+  
+  console.log(`[INVARIANT] FINAL: pass=true`);
+  console.log(`[INVARIANT] ═══════════════════════════════════════`);
+  
+  return { pass: true, reason: 'ok', guard_results: guardResults };
+}
+
 async function forceTwitterSessionReset(reason: string): Promise<void> {
   try {
     if (fs.existsSync(TWITTER_AUTH_PATH)) {
@@ -1901,6 +2035,55 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             console.log(`[POSTING_QUEUE] 💾 Saved ${tweetIds.length} thread tweet IDs to backup`);
           }
         } else if (decision.decision_type === 'reply') {
+          // ═══════════════════════════════════════════════════════════════════════
+          // 🔒 PRE-POST INVARIANT CHECK - SKIP (NOT CRASH) ON FAILURE
+          // ═══════════════════════════════════════════════════════════════════════
+          const invariantCheck = await checkReplyInvariantsPrePost(decision);
+          
+          if (!invariantCheck.pass) {
+            console.log(`[INVARIANT_BLOCK] decision_id=${decision.id} reason=${invariantCheck.reason} action=blocked`);
+            
+            // Mark decision as blocked (NOT throw)
+            try {
+              const { getSupabaseClient } = await import('../db/index');
+              const supabase = getSupabaseClient();
+              await supabase.from('content_generation_metadata_comprehensive')
+                .update({
+                  status: 'blocked',
+                  skip_reason: invariantCheck.reason,
+                  guard_results: invariantCheck.guard_results
+                })
+                .eq('decision_id', decision.id);
+              console.log(`[INVARIANT_BLOCK] ✅ Marked decision ${decision.id} as blocked`);
+            } catch (blockError: any) {
+              console.warn(`[INVARIANT_BLOCK] ⚠️ Failed to mark as blocked: ${blockError.message}`);
+            }
+            
+            // Log to system_events
+            try {
+              const { getSupabaseClient } = await import('../db/index');
+              const supabase = getSupabaseClient();
+              await supabase.from('system_events').insert({
+                event_type: 'reply_invariant_blocked',
+                severity: 'warning',
+                event_data: {
+                  decision_id: decision.id,
+                  reason: invariantCheck.reason,
+                  guard_results: invariantCheck.guard_results,
+                  content_preview: decision.content.substring(0, 100)
+                },
+                created_at: new Date().toISOString()
+              });
+            } catch (logError: any) {
+              console.warn(`[INVARIANT_BLOCK] ⚠️ Failed to log event: ${logError.message}`);
+            }
+            
+            return false; // Skip this decision, continue queue processing
+          }
+          
+          console.log(`[INVARIANT] ✅ Pre-post check passed for decision_id=${decision.id}`);
+          // ═══════════════════════════════════════════════════════════════════════
+          
           // 🔒 DISTRIBUTED LOCK: Wrap entire reply posting in lock to prevent concurrent posts
           const { withReplyLock } = await import('../utils/replyRateLimiter');
           
@@ -2896,96 +3079,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     throw new Error('Replies paused via PAUSE_REPLIES env flag');
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 🔒 INVARIANT GUARD - FAIL-CLOSED CHECKS (NON-NEGOTIABLE)
-  // ═══════════════════════════════════════════════════════════════════════════
-  const { checkReplyInvariants } = await import('../gates/replyInvariantGuard');
-  
-  // Fetch target tweet content for context check (if available)
-  let targetTweetContent: string | null = null;
-  let rootTweetContent: string | null = null;
-  let isRootTweet: boolean | null = null;
-  
-  try {
-    const { getSupabaseClient } = await import('../db/index');
-    const supabase = getSupabaseClient();
-    
-    // Check reply_opportunities for target tweet content
-    const { data: opportunity } = await supabase
-      .from('reply_opportunities')
-      .select('target_tweet_content, is_root_tweet, root_tweet_id')
-      .eq('target_tweet_id', decision.target_tweet_id)
-      .maybeSingle();
-    
-    if (opportunity) {
-      targetTweetContent = opportunity.target_tweet_content;
-      isRootTweet = opportunity.is_root_tweet;
-    }
-    
-    // Also check content_metadata for root resolution data
-    const { data: metadata } = await supabase
-      .from('content_metadata')
-      .select('root_tweet_id, resolved_via_root')
-      .eq('decision_id', decision.id)
-      .maybeSingle();
-    
-    if (metadata?.root_tweet_id) {
-      isRootTweet = !metadata.resolved_via_root;
-    }
-  } catch (lookupError: any) {
-    console.warn(`[INVARIANT] ⚠️ Failed to fetch context: ${lookupError.message}`);
-  }
-  
-  const invariantResult = checkReplyInvariants(
-    decision.content,
-    targetTweetContent,
-    rootTweetContent || targetTweetContent,
-    isRootTweet,
-    decision.id
-  );
-  
-  if (!invariantResult.pass) {
-    console.error(`[INVARIANT] ⛔ REPLY BLOCKED decision_id=${decision.id} reason=${invariantResult.skip_reason}`);
-    
-    // Log to system_events for monitoring
-    try {
-      const { getSupabaseClient } = await import('../db/index');
-      const supabase = getSupabaseClient();
-      await supabase.from('system_events').insert({
-        event_type: 'reply_invariant_blocked',
-        severity: 'warning',
-        event_data: {
-          decision_id: decision.id,
-          skip_reason: invariantResult.skip_reason,
-          checks: invariantResult.checks,
-          content_preview: decision.content.substring(0, 100)
-        },
-        created_at: new Date().toISOString()
-      });
-    } catch (logError: any) {
-      console.warn(`[INVARIANT] ⚠️ Failed to log block event: ${logError.message}`);
-    }
-    
-    // Store guard results in content_metadata
-    try {
-      const { getSupabaseClient } = await import('../db/index');
-      const supabase = getSupabaseClient();
-      await supabase.from('content_generation_metadata_comprehensive')
-        .update({
-          guard_results: invariantResult.checks,
-          status: 'skipped',
-          skip_reason: invariantResult.skip_reason
-        })
-        .eq('decision_id', decision.id);
-    } catch (updateError: any) {
-      console.warn(`[INVARIANT] ⚠️ Failed to update guard_results: ${updateError.message}`);
-    }
-    
-    throw new Error(`Invariant check failed: ${invariantResult.skip_reason}`);
-  }
-  
-  console.log(`[INVARIANT] ✅ All checks passed for decision_id=${decision.id}`);
-  // ═══════════════════════════════════════════════════════════════════════════
+  // NOTE: Invariant checks now happen in processDecision BEFORE calling postReply
+  // This allows graceful skip (not crash) on invariant failures
   
   console.log(`[POSTING_QUEUE] 💬 Posting reply to @${decision.target_username}: "${decision.content.substring(0, 50)}..."`);
   

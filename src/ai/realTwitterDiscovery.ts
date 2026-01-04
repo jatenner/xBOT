@@ -998,6 +998,43 @@ export class RealTwitterDiscovery {
   async storeOpportunities(opportunities: ReplyOpportunity[]): Promise<void> {
     if (opportunities.length === 0) return;
     
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 🔒 FRESHNESS GATE: Never store opportunities older than MAX_AGE_MIN
+    // ═══════════════════════════════════════════════════════════════════════════
+    const MAX_AGE_MIN = 180; // 3 hours - matches posting invariant
+    const now = Date.now();
+    const originalCount = opportunities.length;
+    
+    opportunities = opportunities.filter(opp => {
+      // Use tweet_posted_at if available, else posted_minutes_ago
+      let ageMinutes: number;
+      
+      if (opp.tweet_posted_at) {
+        const postedAt = new Date(opp.tweet_posted_at);
+        ageMinutes = (now - postedAt.getTime()) / (60 * 1000);
+      } else if (opp.posted_minutes_ago !== undefined) {
+        ageMinutes = opp.posted_minutes_ago;
+      } else {
+        // No age info - reject to be safe
+        console.log(`[REAL_DISCOVERY] ⏱️ REJECTED tweet ${opp.tweet_id}: no age info`);
+        return false;
+      }
+      
+      if (ageMinutes > MAX_AGE_MIN) {
+        console.log(`[REAL_DISCOVERY] ⏱️ REJECTED stale tweet ${opp.tweet_id}: ${Math.round(ageMinutes)}m old > ${MAX_AGE_MIN}m max`);
+        return false;
+      }
+      
+      return true;
+    });
+    
+    if (opportunities.length < originalCount) {
+      console.log(`[REAL_DISCOVERY] 🔒 FRESHNESS GATE: Rejected ${originalCount - opportunities.length}/${originalCount} stale tweets (>${MAX_AGE_MIN}min)`);
+    }
+    
+    if (opportunities.length === 0) return;
+    // ═══════════════════════════════════════════════════════════════════════════
+    
     const supabase = getSupabaseClient();
     
     const targetIds = opportunities

@@ -74,6 +74,28 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
       }
     }
     
+    // Step 0.5: 🔒 FRESHNESS GATE - Purge stale opportunities (> 180 min old)
+    const MAX_AGE_MIN = 180;
+    const freshnessThreshold = new Date(Date.now() - MAX_AGE_MIN * 60 * 1000).toISOString();
+    
+    const { count: staleCount, error: staleCountError } = await supabase
+      .from('reply_opportunities')
+      .select('*', { count: 'exact', head: true })
+      .lt('tweet_posted_at', freshnessThreshold);
+    
+    if (!staleCountError && staleCount && staleCount > 0) {
+      const { error: staleDeleteError } = await supabase
+        .from('reply_opportunities')
+        .delete()
+        .lt('tweet_posted_at', freshnessThreshold);
+      
+      if (staleDeleteError) {
+        console.warn('[HARVESTER] ⚠️ Failed to purge stale opportunities:', staleDeleteError.message);
+      } else {
+        console.log(`[HARVESTER] 🧹 FRESHNESS GATE: Purged ${staleCount} stale opportunities (>${MAX_AGE_MIN}min old)`);
+      }
+    }
+    
     // Step 1: Check current pool size
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const thirtySixHoursAgo = new Date(Date.now() - 36 * 60 * 60 * 1000);
