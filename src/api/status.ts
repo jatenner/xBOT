@@ -269,7 +269,12 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       // Blocked by specific reasons (from content_metadata)
       pgPool.query(`
         SELECT 
+          COUNT(*) FILTER (WHERE skip_reason = 'missing_gate_data_safety_block') as missing_gate_data,
+          COUNT(*) FILTER (WHERE skip_reason = 'target_not_found_or_deleted') as target_not_found,
+          COUNT(*) FILTER (WHERE skip_reason = 'target_not_root') as target_not_root,
           COUNT(*) FILTER (WHERE skip_reason = 'context_mismatch') as context_mismatch,
+          COUNT(*) FILTER (WHERE skip_reason = 'topic_mismatch') as topic_mismatch,
+          COUNT(*) FILTER (WHERE skip_reason = 'verification_fetch_error') as verification_fetch_error,
           COUNT(*) FILTER (WHERE skip_reason LIKE '%similarity%') as low_similarity,
           COUNT(*) FILTER (WHERE skip_reason = 'root_tweet_cooldown') as root_cooldown,
           COUNT(*) FILTER (WHERE skip_reason = 'author_cooldown') as author_cooldown,
@@ -307,7 +312,19 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
     const repliesPosted = parseInt(postedResult.rows[0]?.count || '0');
     const repliesBlocked = parseInt(blockedResult.rows[0]?.count || '0');
     const invariantBlocks = invariantBlocksResult.rows[0] || { root_blocks: 0, format_blocks: 0, context_blocks: 0, stale_blocks: 0, total_blocks: 0 };
-    const blockedByReason = blockedByReasonResult.rows[0] || { context_mismatch: 0, low_similarity: 0, root_cooldown: 0, author_cooldown: 0, self_reply: 0, hourly_rate: 0 };
+    const blockedByReason = blockedByReasonResult.rows[0] || {
+      missing_gate_data: 0,
+      target_not_found: 0,
+      target_not_root: 0,
+      context_mismatch: 0,
+      topic_mismatch: 0,
+      verification_fetch_error: 0,
+      low_similarity: 0,
+      root_cooldown: 0,
+      author_cooldown: 0,
+      self_reply: 0,
+      hourly_rate: 0
+    };
     const lastSuccessAt = lastSuccessResult.rows[0]?.posted_at || null;
     const lastHarvestAt = lastHarvestResult.rows[0]?.created_at || null;
     
@@ -343,7 +360,11 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       skipped_thread_like_60m: parseInt(invariantBlocks.format_blocks || '0'),
       skipped_no_context_60m: parseInt(invariantBlocks.context_blocks || '0'),
       skipped_stale_60m: parseInt(invariantBlocks.stale_blocks || '0'),
+      missing_gate_data_safety_block_60m: parseInt(blockedByReason.missing_gate_data || '0'),
+      target_not_root_or_missing_60m: (parseInt(blockedByReason.target_not_found || '0') + parseInt(blockedByReason.target_not_root || '0')),
       context_mismatch_blocked_60m: parseInt(blockedByReason.context_mismatch || '0'),
+      topic_mismatch_blocked_60m: parseInt(blockedByReason.topic_mismatch || '0'),
+      verification_fetch_error_60m: parseInt(blockedByReason.verification_fetch_error || '0'),
       low_similarity_blocked_60m: parseInt(blockedByReason.low_similarity || '0'),
       root_cooldown_blocked_60m: parseInt(blockedByReason.root_cooldown || '0'),
       author_cooldown_blocked_60m: parseInt(blockedByReason.author_cooldown || '0'),
@@ -369,7 +390,11 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       skipped_thread_like_60m: 0,
       skipped_no_context_60m: 0,
       skipped_stale_60m: 0,
+      missing_gate_data_safety_block_60m: 0,
+      target_not_root_or_missing_60m: 0,
       context_mismatch_blocked_60m: 0,
+      topic_mismatch_blocked_60m: 0,
+      verification_fetch_error_60m: 0,
       low_similarity_blocked_60m: 0,
       root_cooldown_blocked_60m: 0,
       author_cooldown_blocked_60m: 0,

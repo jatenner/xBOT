@@ -427,6 +427,44 @@ export async function processPostingQueue(): Promise<void> {
   
   log({ op: 'posting_queue_start' });
   
+  // ═══════════════════════════════════════════════════════════════════════
+  // 🔍 SOURCE-OF-TRUTH CHECK: Verify content_metadata has all required fields
+  // ═══════════════════════════════════════════════════════════════════════
+  try {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    
+    const requiredColumns = [
+      'target_tweet_id',
+      'target_tweet_content_snapshot',
+      'target_tweet_content_hash',
+      'semantic_similarity',
+      'root_tweet_id',
+      'target_username'
+    ];
+    
+    // Try to select these columns (will fail if missing)
+    const { error: schemaError } = await supabase
+      .from('content_metadata')
+      .select(requiredColumns.join(','))
+      .limit(1);
+    
+    if (schemaError) {
+      console.error(`[POSTING_QUEUE] ❌ SOURCE-OF-TRUTH CHECK FAILED: content_metadata missing columns`);
+      console.error(`[POSTING_QUEUE]   Required: ${requiredColumns.join(', ')}`);
+      console.error(`[POSTING_QUEUE]   Error: ${schemaError.message}`);
+      console.error(`[POSTING_QUEUE]   System unhealthy - skipping queue processing`);
+      return; // Fail-closed: skip processing if schema is wrong
+    }
+    
+    console.log(`[POSTING_QUEUE] ✅ Source-of-truth check passed: all required columns accessible`);
+  } catch (schemaCheckError: any) {
+    console.error(`[POSTING_QUEUE] ❌ Source-of-truth check threw error: ${schemaCheckError.message}`);
+    console.error(`[POSTING_QUEUE]   System unhealthy - skipping queue processing`);
+    return; // Fail-closed
+  }
+  // ═══════════════════════════════════════════════════════════════════════
+  
   // 🔧 FIX #2: Check circuit breaker before processing (now async with health checks)
   const circuitBreakerOpen = !(await checkCircuitBreaker());
   if (circuitBreakerOpen) {
@@ -2086,11 +2124,23 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             'semantic_similarity'
           ];
           
-          const missingFields = requiredFields.filter(field => !decision[field]);
+          // ✅ FIX: Only treat null/undefined/empty-string as missing, allow 0/false
+          const missingFields = requiredFields.filter(field => {
+            const value = decision[field];
+            // null or undefined => missing
+            if (value === null || value === undefined) return true;
+            // string => missing if empty after trim
+            if (typeof value === 'string' && value.trim() === '') return true;
+            // numbers/booleans => NOT missing even if 0/false
+            return false;
+          });
           
           if (missingFields.length > 0) {
-            console.error(`[POSTING_QUEUE] ⛔ BLOCKED: Reply decision missing gate data: ${missingFields.join(', ')}`);
+            const fieldValues = missingFields.reduce((acc, f) => ({ ...acc, [f]: decision[f] }), {});
+            console.error(`[POSTING_QUEUE] ⛔ BLOCKED: Reply decision missing gate data`);
             console.error(`[POSTING_QUEUE]   decision_id=${decision.id}`);
+            console.error(`[POSTING_QUEUE]   missing_fields=${JSON.stringify(missingFields)}`);
+            console.error(`[POSTING_QUEUE]   field_values=${JSON.stringify(fieldValues)}`);
             console.error(`[POSTING_QUEUE]   This indicates gates were BYPASSED during generation`);
             
             // Mark as blocked
@@ -2106,6 +2156,93 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           }
           
           console.log(`[POSTING_QUEUE] ✅ Safety check passed: All gate data present for ${decision.id}`);
+          // ═══════════════════════════════════════════════════════════════════════
+          
+          // ═══════════════════════════════════════════════════════════════════════
+          // 🔒 POST-TIME CONTEXT LOCK VERIFICATION - Fetch target tweet to verify
+          // ═══════════════════════════════════════════════════════════════════════
+          console.log(`[POSTING_QUEUE] 🔍 Verifying context lock for decision ${decision.id}`);
+          
+          try {
+            const { verifyContextLock } = await import('../gates/contextLockVerifier');
+            const contextVerification = await verifyContextLock(
+              decision.target_tweet_id,
+              decision.target_tweet_content_snapshot,
+              decision.target_tweet_content_hash
+            );
+            
+            if (!contextVerification.pass) {
+              console.error(`[POSTING_QUEUE] ⛔ CONTEXT LOCK FAILED: ${contextVerification.skip_reason}`);
+              console.error(`[POSTING_QUEUE]   decision_id=${decision.id}`);
+              console.error(`[POSTING_QUEUE]   details=${JSON.stringify(contextVerification.details)}`);
+              
+              // Mark as blocked
+              await supabase.from('content_generation_metadata_comprehensive')
+                .update({
+                  status: 'blocked',
+                  skip_reason: contextVerification.skip_reason,
+                  error_message: JSON.stringify(contextVerification.details),
+                  metadata: {
+                    ...decision.metadata,
+                    context_verification: contextVerification.details
+                  }
+                })
+                .eq('decision_id', decision.id);
+              
+              continue; // Skip this decision
+            }
+            
+            console.log(`[POSTING_QUEUE] ✅ Context lock verified for ${decision.id}`);
+          } catch (verifyError: any) {
+            console.error(`[POSTING_QUEUE] ❌ Context verification threw error: ${verifyError.message}`);
+            console.error(`[POSTING_QUEUE]   Blocking decision ${decision.id} (fail-closed)`);
+            
+            await supabase.from('content_generation_metadata_comprehensive')
+              .update({
+                status: 'blocked',
+                skip_reason: 'verification_fetch_error',
+                error_message: verifyError.message
+              })
+              .eq('decision_id', decision.id);
+            
+            continue; // Skip this decision
+          }
+          // ═══════════════════════════════════════════════════════════════════════
+          
+          // ═══════════════════════════════════════════════════════════════════════
+          // 🚫 TOPIC MISMATCH GUARD - Deterministic check for tech+health mismatch
+          // ═══════════════════════════════════════════════════════════════════════
+          console.log(`[POSTING_QUEUE] 🔍 Checking topic mismatch for decision ${decision.id}`);
+          
+          try {
+            const { checkTopicMismatch } = await import('../gates/topicMismatchGuard');
+            const topicCheck = checkTopicMismatch(
+              decision.target_tweet_content_snapshot || '',
+              decision.content || ''
+            );
+            
+            if (!topicCheck.pass) {
+              console.error(`[POSTING_QUEUE] ⛔ TOPIC MISMATCH: ${topicCheck.skip_reason}`);
+              console.error(`[POSTING_QUEUE]   decision_id=${decision.id}`);
+              console.error(`[POSTING_QUEUE]   details=${JSON.stringify(topicCheck.details)}`);
+              
+              await supabase.from('content_generation_metadata_comprehensive')
+                .update({
+                  status: 'blocked',
+                  skip_reason: topicCheck.skip_reason,
+                  error_message: JSON.stringify(topicCheck.details)
+                })
+                .eq('decision_id', decision.id);
+              
+              continue; // Skip this decision
+            }
+            
+            console.log(`[POSTING_QUEUE] ✅ Topic check passed for ${decision.id}`);
+          } catch (topicError: any) {
+            console.error(`[POSTING_QUEUE] ❌ Topic check threw error: ${topicError.message}`);
+            // Don't block on topic check error - just log and continue
+            console.warn(`[POSTING_QUEUE] ⚠️ Proceeding despite topic check error`);
+          }
           // ═══════════════════════════════════════════════════════════════════════
           
           // ═══════════════════════════════════════════════════════════════════════

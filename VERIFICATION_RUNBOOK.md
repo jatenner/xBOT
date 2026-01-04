@@ -153,6 +153,106 @@ railway logs --lines 200 | grep -E "target_tweet_content_snapshot|re-fetch|rehyd
 
 ---
 
+## POST-DEPLOYMENT VERIFICATION (WIRING RELIABILITY)
+
+### 11. Verify No Posted Replies Missing Gate Data
+```sql
+-- Check all POSTED replies in last 24h have gate data
+SELECT 
+  decision_id,
+  tweet_id,
+  target_tweet_id,
+  CASE WHEN target_tweet_content_snapshot IS NULL THEN '❌ MISSING' ELSE '✅' END as snapshot,
+  CASE WHEN target_tweet_content_hash IS NULL THEN '❌ MISSING' ELSE '✅' END as hash,
+  CASE WHEN semantic_similarity IS NULL THEN '❌ MISSING' ELSE semantic_similarity::text END as similarity,
+  created_at,
+  posted_at
+FROM content_metadata
+WHERE decision_type = 'reply'
+  AND status = 'posted'
+  AND posted_at >= NOW() - INTERVAL '24 hours'
+ORDER BY posted_at DESC;
+```
+**Expected:** ALL rows show ✅ for snapshot, hash, and similarity score
+
+### 12. Verify Gates Fire for Each Posted Reply
+```bash
+# Check logs show all gate checks for recent posted replies
+railway logs --lines 500 | grep -E "SAFETY CHECK|CONTEXT_LOCK_VERIFY|SEMANTIC_GATE|TOPIC_MISMATCH" | tail -50
+```
+**Expected Output Pattern (per reply):**
+```
+[POSTING_QUEUE] ✅ Safety check passed: All gate data present for <decision_id>
+[POSTING_QUEUE] 🔍 Verifying context lock for decision <decision_id>
+[CONTEXT_LOCK_VERIFY] 🔍 Fetching target tweet <tweet_id> for verification
+[CONTEXT_LOCK_VERIFY] 📊 Content similarity: 0.XXX (threshold: 0.80)
+[CONTEXT_LOCK_VERIFY] ✅ Verification passed for <tweet_id>
+[POSTING_QUEUE] ✅ Context lock verified for <decision_id>
+[POSTING_QUEUE] 🔍 Checking topic mismatch for decision <decision_id>
+[POSTING_QUEUE] ✅ Topic check passed for <decision_id>
+```
+
+### 13. Reproduce "Turmeric Under Grok" Case (Topic Mismatch Test)
+```bash
+# Manually insert a decision with tech target + health reply
+psql "$DATABASE_URL" -c "
+INSERT INTO content_generation_metadata_comprehensive
+(decision_id, decision_type, content, status, scheduled_at,
+ target_tweet_id, target_username, 
+ target_tweet_content_snapshot, target_tweet_content_hash, semantic_similarity)
+VALUES (
+  gen_random_uuid(),
+  'reply',
+  'Turmeric is a powerful anti-inflammatory that supports gut health and reduces cortisol.',
+  'queued',
+  NOW(),
+  'test_grok_tweet_123',
+  'elonmusk',
+  'Excited to announce Grok 2.0 with enhanced reasoning capabilities and GPU optimization.',
+  'abc123hash',
+  0.18
+);
+"
+
+# Trigger posting queue
+ADMIN_TOKEN=$(grep ADMIN_TOKEN .env.local | cut -d'=' -f2)
+curl -X POST https://xbot-production-844b.up.railway.app/admin/run/postingQueue \
+  -H "x-admin-token: $ADMIN_TOKEN"
+
+# Check logs for block
+sleep 5
+railway logs --lines 100 | grep -E "TOPIC_MISMATCH|test_grok_tweet"
+```
+**Expected:**
+```
+[TOPIC_MISMATCH] ⚠️ Detected tech target + health reply
+[TOPIC_MISMATCH]   Target keywords: grok, gpu
+[TOPIC_MISMATCH]   Reply keywords: turmeric, cortisol, gut
+[POSTING_QUEUE] ⛔ TOPIC MISMATCH: topic_mismatch
+```
+
+### 14. Check Blocked Reason Metrics
+```bash
+curl -s https://xbot-production-844b.up.railway.app/status/reply | jq '.reply_metrics | {
+  missing_gate_data: .missing_gate_data_safety_block_60m,
+  target_not_root: .target_not_root_or_missing_60m,
+  context_mismatch: .context_mismatch_blocked_60m,
+  topic_mismatch: .topic_mismatch_blocked_60m,
+  verification_fetch_error: .verification_fetch_error_60m,
+  low_similarity: .low_similarity_blocked_60m
+}'
+```
+**Expected:** All counters >= 0, no unexpected spike
+
+### 15. Verify Fail-Closed Behavior (No Crashes)
+```bash
+# Check for any Error stack traces in last 500 logs
+railway logs --lines 500 | grep -E "Error:|throw new Error|UnhandledPromiseRejection|TypeError"
+```
+**Expected:** No crashes from synthetic block or missing fields checks
+
+---
+
 ## CONTINUOUS MONITORING
 
 ### Daily Checks

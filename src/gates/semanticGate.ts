@@ -93,7 +93,7 @@ function extractTopicKeywords(text: string): Set<string> {
 export async function checkSemanticGate(
   targetText: string,
   replyText: string,
-  minSimilarity: number = parseFloat(process.env.SEMANTIC_GATE_MIN_SIMILARITY || '0.15')
+  minSimilarity: number = parseFloat(process.env.SEMANTIC_GATE_MIN_SIMILARITY || '0.25')
 ): Promise<SemanticGateResult> {
   
   // Compute similarity

@@ -470,15 +470,18 @@ export async function generateReplies(): Promise<void> {
 }
 
 async function generateSyntheticReplies(): Promise<void> {
-  // 🚨 HARD BLOCK: Synthetic replies bypass ALL gates (context lock, semantic, anti-spam)
+  // 🚨 FAIL-CLOSED BLOCK: Synthetic replies bypass ALL gates (context lock, semantic, anti-spam)
   // Only allow in explicit test mode
   const isTestMode = process.env.NODE_ENV === 'test' || process.env.ALLOW_SYNTHETIC_REPLIES === 'true';
   
   if (!isTestMode) {
-    throw new Error('[SYNTHETIC_REPLIES] ⛔ BLOCKED: Synthetic replies bypass safety gates. Set ALLOW_SYNTHETIC_REPLIES=true if testing.');
+    console.error('[SYNTHETIC_REPLIES] ⛔ BLOCKED: Synthetic replies bypass safety gates in production');
+    console.error('[SYNTHETIC_REPLIES]   Set ALLOW_SYNTHETIC_REPLIES=true to enable for testing');
+    console.warn('[SYNTHETIC_REPLIES] ⚠️ Skipping synthetic replies (production mode - fail-closed)');
+    return; // SKIP not CRASH - fail-closed invariant
   }
   
-  console.warn('[SYNTHETIC_REPLIES] ⚠️ Running in UNSAFE mode - bypasses context lock, semantic gate, anti-spam');
+  console.warn('[SYNTHETIC_REPLIES] ⚠️ Running in UNSAFE TEST mode - bypasses context lock, semantic gate, anti-spam');
   console.log('[REPLY_JOB] 🎭 Generating synthetic replies for shadow mode...');
   
   const decision_id = uuidv4();
