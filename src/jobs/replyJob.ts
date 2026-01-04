@@ -71,14 +71,14 @@ function getDynamicPoolThreshold(lastReplyAt: Date | null): number {
   const hoursSinceLastReply = (Date.now() - lastReplyAt.getTime()) / (60 * 60 * 1000);
   
   if (hoursSinceLastReply > 24) {
-    console.log(`[REPLY_JOB] 📊 pool_threshold dynamic=10 lastReplyAgeHours=${hoursSinceLastReply.toFixed(1)} (24h+ idle)`);
-    return 10; // Very idle - be very lenient
+    console.log(`[REPLY_JOB] 📊 pool_threshold dynamic=5 lastReplyAgeHours=${hoursSinceLastReply.toFixed(1)} (24h+ idle)`);
+    return 5; // Very idle - very lenient
   } else if (hoursSinceLastReply > 2) {
-    console.log(`[REPLY_JOB] 📊 pool_threshold dynamic=20 lastReplyAgeHours=${hoursSinceLastReply.toFixed(1)} (2h+ idle)`);
-    return 20; // Somewhat idle - be lenient
+    console.log(`[REPLY_JOB] 📊 pool_threshold dynamic=8 lastReplyAgeHours=${hoursSinceLastReply.toFixed(1)} (2h+ idle)`);
+    return 8; // Somewhat idle - lenient (was 20)
   } else {
-    console.log(`[REPLY_JOB] 📊 pool_threshold dynamic=40 lastReplyAgeHours=${hoursSinceLastReply.toFixed(1)} (active)`);
-    return HARVESTER_TRIGGER_THRESHOLD_DEFAULT; // Active - use default
+    console.log(`[REPLY_JOB] 📊 pool_threshold dynamic=15 lastReplyAgeHours=${hoursSinceLastReply.toFixed(1)} (active)`);
+    return 15; // Active - moderate threshold (was 40)
   }
 }
 
