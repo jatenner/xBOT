@@ -81,6 +81,12 @@ export interface SystemStatus {
     skipped_thread_like_60m: number;
     skipped_no_context_60m: number;
     skipped_stale_60m: number;
+    context_mismatch_blocked_60m: number;
+    low_similarity_blocked_60m: number;
+    root_cooldown_blocked_60m: number;
+    author_cooldown_blocked_60m: number;
+    self_reply_blocked_60m: number;
+    hourly_rate_blocked_60m: number;
     last_successful_reply_at: string | null;
     last_harvest_success_at: string | null;
     pacing_status: string;
@@ -197,6 +203,7 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       postedResult,
       blockedResult,
       invariantBlocksResult,
+      blockedByReasonResult,
       lastSuccessResult,
       lastHarvestResult
     ] = await Promise.all([
@@ -259,6 +266,21 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
         AND created_at >= $1
       `, [twentyFourHoursAgo]),
       
+      // Blocked by specific reasons (from content_metadata)
+      pgPool.query(`
+        SELECT 
+          COUNT(*) FILTER (WHERE skip_reason = 'context_mismatch') as context_mismatch,
+          COUNT(*) FILTER (WHERE skip_reason LIKE '%similarity%') as low_similarity,
+          COUNT(*) FILTER (WHERE skip_reason = 'root_tweet_cooldown') as root_cooldown,
+          COUNT(*) FILTER (WHERE skip_reason = 'author_cooldown') as author_cooldown,
+          COUNT(*) FILTER (WHERE skip_reason = 'self_reply_blocked') as self_reply,
+          COUNT(*) FILTER (WHERE skip_reason = 'hourly_rate_limit_reached') as hourly_rate
+        FROM content_generation_metadata_comprehensive
+        WHERE decision_type = 'reply'
+          AND status = 'blocked'
+          AND created_at >= $1
+      `, [sixtyMinutesAgo]),
+      
       // Last successful reply
       pgPool.query(`
         SELECT posted_at FROM content_generation_metadata_comprehensive 
@@ -285,6 +307,7 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
     const repliesPosted = parseInt(postedResult.rows[0]?.count || '0');
     const repliesBlocked = parseInt(blockedResult.rows[0]?.count || '0');
     const invariantBlocks = invariantBlocksResult.rows[0] || { root_blocks: 0, format_blocks: 0, context_blocks: 0, stale_blocks: 0, total_blocks: 0 };
+    const blockedByReason = blockedByReasonResult.rows[0] || { context_mismatch: 0, low_similarity: 0, root_cooldown: 0, author_cooldown: 0, self_reply: 0, hourly_rate: 0 };
     const lastSuccessAt = lastSuccessResult.rows[0]?.posted_at || null;
     const lastHarvestAt = lastHarvestResult.rows[0]?.created_at || null;
     
@@ -320,6 +343,12 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       skipped_thread_like_60m: parseInt(invariantBlocks.format_blocks || '0'),
       skipped_no_context_60m: parseInt(invariantBlocks.context_blocks || '0'),
       skipped_stale_60m: parseInt(invariantBlocks.stale_blocks || '0'),
+      context_mismatch_blocked_60m: parseInt(blockedByReason.context_mismatch || '0'),
+      low_similarity_blocked_60m: parseInt(blockedByReason.low_similarity || '0'),
+      root_cooldown_blocked_60m: parseInt(blockedByReason.root_cooldown || '0'),
+      author_cooldown_blocked_60m: parseInt(blockedByReason.author_cooldown || '0'),
+      self_reply_blocked_60m: parseInt(blockedByReason.self_reply || '0'),
+      hourly_rate_blocked_60m: parseInt(blockedByReason.hourly_rate || '0'),
       last_successful_reply_at: lastSuccessAt ? new Date(lastSuccessAt).toISOString() : null,
       last_harvest_success_at: lastHarvestAt ? new Date(lastHarvestAt).toISOString() : null,
       pacing_status: pacingStatus,
@@ -340,6 +369,12 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       skipped_thread_like_60m: 0,
       skipped_no_context_60m: 0,
       skipped_stale_60m: 0,
+      context_mismatch_blocked_60m: 0,
+      low_similarity_blocked_60m: 0,
+      root_cooldown_blocked_60m: 0,
+      author_cooldown_blocked_60m: 0,
+      self_reply_blocked_60m: 0,
+      hourly_rate_blocked_60m: 0,
       last_successful_reply_at: null,
       last_harvest_success_at: null,
       pacing_status: 'error',

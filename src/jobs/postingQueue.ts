@@ -121,7 +121,48 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
     // Fail open on transient DB errors (allow posting)
   }
   
-  // 5) PIPELINE GUARD: Block thread generators in reply mode
+  // 5) CONTEXT LOCK VERIFICATION (for replies only)
+  try {
+    // Fetch snapshot from decision metadata
+    const { data: decisionData } = await supabase
+      .from('content_metadata')
+      .select('target_tweet_content_snapshot, target_tweet_content_hash, target_tweet_id, target_username')
+      .eq('decision_id', decision.id)
+      .maybeSingle();
+    
+    if (decisionData && decisionData.target_tweet_content_hash) {
+      const { verifyContextLock, ContextSnapshot } = await import('../gates/contextLockGuard');
+      
+      const snapshot: any = {
+        target_tweet_id: decisionData.target_tweet_id,
+        target_tweet_text: decisionData.target_tweet_content_snapshot || '',
+        target_tweet_text_hash: decisionData.target_tweet_content_hash,
+        target_author: decisionData.target_username,
+        snapshot_at: new Date().toISOString()
+      };
+      
+      const lockResult = await verifyContextLock(snapshot);
+      
+      if (!lockResult.pass) {
+        guardResults.context_lock = { 
+          pass: false, 
+          reason: lockResult.reason,
+          similarity: lockResult.similarity 
+        };
+        console.log(`[CONTEXT_LOCK] decision_id=${decisionId} pass=false reason=${lockResult.reason} similarity=${lockResult.similarity}`);
+        return { pass: false, reason: lockResult.reason, guard_results: guardResults };
+      }
+      
+      guardResults.context_lock = { pass: true, similarity: lockResult.similarity };
+      console.log(`[CONTEXT_LOCK] decision_id=${decisionId} pass=true similarity=${(lockResult.similarity || 0).toFixed(2)}`);
+    }
+  } catch (lockError: any) {
+    console.warn(`[CONTEXT_LOCK] ⚠️ Verification failed: ${lockError.message}`);
+    guardResults.context_lock_error = lockError.message;
+    // Fail open on transient errors (allow posting)
+  }
+  
+  // 6) PIPELINE GUARD: Block thread generators in reply mode
   const generationSource = decision.generation_source || decision.metadata?.generation_source || '';
   const THREAD_GENERATORS = ['thread', 'multi_tweet', 'thread_generator', 'multi_generator'];
   

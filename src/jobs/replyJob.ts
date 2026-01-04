@@ -1381,6 +1381,118 @@ Reply (1-3 lines, echo their point first):`;
       
       const decision_id = uuidv4();
       
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🔒 NEW: CONTEXT LOCK - Create snapshot of target tweet text
+      // ═══════════════════════════════════════════════════════════════════════
+      const { createContextSnapshot } = await import('../gates/contextLockGuard');
+      
+      // Extract tweet ID from URL
+      const tweetUrlStr = String(target.tweet_url || '');
+      const tweetIdFromUrl = tweetUrlStr.split('/').pop() || 'unknown';
+      
+      let contextSnapshot;
+      try {
+        // Validate we have tweet content before creating snapshot
+        if (!target.tweet_content || target.tweet_content.trim().length < 20) {
+          console.log(`[CONTEXT_LOCK] ⛔ Skipping - no meaningful content for ${tweetIdFromUrl} (len=${(target.tweet_content || '').length})`);
+          continue;
+        }
+        
+        contextSnapshot = await createContextSnapshot(
+          tweetIdFromUrl,
+          target.tweet_content,
+          target.account.username
+        );
+        console.log(`[CONTEXT_LOCK] ✅ Snapshot created for ${tweetIdFromUrl} hash=${contextSnapshot.target_tweet_text_hash.substring(0, 8)}...`);
+      } catch (snapshotError: any) {
+        console.error(`[CONTEXT_LOCK] ❌ Failed to create snapshot: ${snapshotError.message}`);
+        continue;
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🧠 NEW: SEMANTIC GATE - Verify reply is related to target tweet
+      // ═══════════════════════════════════════════════════════════════════════
+      const { checkSemanticGate } = await import('../gates/semanticGate');
+      
+      const semanticResult = await checkSemanticGate(
+        contextSnapshot.target_tweet_text,
+        strategicReply.content
+      );
+      
+      if (!semanticResult.pass) {
+        console.log(`[SEMANTIC_GATE] ⛔ Blocked decision_id=${decision_id} reason=${semanticResult.reason} similarity=${(semanticResult.similarity * 100).toFixed(1)}%`);
+        console.log(`[SEMANTIC_GATE]   Target: "${semanticResult.target_preview}..."`);
+        console.log(`[SEMANTIC_GATE]   Reply:  "${semanticResult.reply_preview}..."`);
+        
+        // Store blocked decision for monitoring
+        try {
+          await supabaseClient.from('content_generation_metadata_comprehensive').insert({
+            decision_id,
+            decision_type: 'reply',
+            content: strategicReply.content,
+            target_tweet_id: tweetIdFromUrl,
+            target_username: target.account.username,
+            target_tweet_content_snapshot: contextSnapshot.target_tweet_text,
+            target_tweet_content_hash: contextSnapshot.target_tweet_text_hash,
+            status: 'blocked',
+            skip_reason: semanticResult.reason,
+            semantic_similarity: semanticResult.similarity,
+            generator_name: replyGenerator,
+            created_at: new Date().toISOString()
+          });
+        } catch (insertError: any) {
+          console.warn(`[SEMANTIC_GATE] ⚠️ Failed to store blocked decision: ${insertError.message}`);
+        }
+        
+        continue; // Skip this opportunity
+      }
+      
+      console.log(`[SEMANTIC_GATE] ✅ Pass decision_id=${decision_id} similarity=${(semanticResult.similarity * 100).toFixed(1)}%`);
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🚫 NEW: ANTI-SPAM GATE - Prevent duplicate replies
+      // ═══════════════════════════════════════════════════════════════════════
+      const { checkAntiSpam } = await import('../gates/antiSpamGuard');
+      
+      const antiSpamResult = await checkAntiSpam(
+        opportunity.root_tweet_id || null,
+        tweetIdFromUrl,
+        target.account.username
+      );
+      
+      if (!antiSpamResult.pass) {
+        console.log(`[ANTI_SPAM] ⛔ Blocked decision_id=${decision_id} reason=${antiSpamResult.reason}`);
+        if (antiSpamResult.cooldown_remaining_minutes) {
+          console.log(`[ANTI_SPAM]   Cooldown: ${antiSpamResult.cooldown_remaining_minutes}min remaining`);
+        }
+        
+        // Store blocked decision for monitoring
+        try {
+          await supabaseClient.from('content_generation_metadata_comprehensive').insert({
+            decision_id,
+            decision_type: 'reply',
+            content: strategicReply.content,
+            target_tweet_id: tweetIdFromUrl,
+            target_username: target.account.username,
+            target_tweet_content_snapshot: contextSnapshot.target_tweet_text,
+            target_tweet_content_hash: contextSnapshot.target_tweet_text_hash,
+            status: 'blocked',
+            skip_reason: antiSpamResult.reason,
+            semantic_similarity: semanticResult.similarity,
+            anti_spam_checks: antiSpamResult,
+            generator_name: replyGenerator,
+            created_at: new Date().toISOString()
+          });
+        } catch (insertError: any) {
+          console.warn(`[ANTI_SPAM] ⚠️ Failed to store blocked decision: ${insertError.message}`);
+        }
+        
+        continue; // Skip this opportunity
+      }
+      
+      console.log(`[ANTI_SPAM] ✅ Pass decision_id=${decision_id} reason=${antiSpamResult.reason}`);
+      // ═══════════════════════════════════════════════════════════════════════
+      
       // Run gate chain
       const gateResult = await runGateChain(strategicReply.content, decision_id);
       
@@ -1388,10 +1500,6 @@ Reply (1-3 lines, echo their point first):`;
         console.log(`[GATE_CHAIN] ⛔ Blocked (${gateResult.gate}) decision_id=${decision_id}, reason=${gateResult.reason}`);
         continue;
       }
-      
-      // Extract tweet ID from URL
-      const tweetUrlStr = String(target.tweet_url || '');
-      const tweetIdFromUrl = tweetUrlStr.split('/').pop() || 'unknown';
       
       // ============================================================
       // SMART SCHEDULING: 5 min and 20 min spacing
@@ -1409,6 +1517,9 @@ Reply (1-3 lines, echo their point first):`;
         target_username: target.account.username,
         target_tweet_id: tweetIdFromUrl,
         target_tweet_content: target.tweet_content,
+        target_tweet_content_snapshot: contextSnapshot.target_tweet_text,
+        target_tweet_content_hash: contextSnapshot.target_tweet_text_hash,
+        semantic_similarity: semanticResult.similarity,
         generator_used: replyGenerator,
         estimated_reach: target.estimated_reach,
         tweet_url: tweetUrlStr,
@@ -1417,7 +1528,7 @@ Reply (1-3 lines, echo their point first):`;
         topic: target.reply_angle || target.account.category || 'health',
         
         // 🎯 PHASE 2: Root resolution data from opportunity
-        // root_tweet_id: opportunity.root_tweet_id || null, // REMOVED: column doesn't exist in prod schema
+        root_tweet_id: opportunity.root_tweet_id || null,
         // original_candidate_tweet_id: opportunity.original_candidate_tweet_id || null, // REMOVED: column doesn't exist in prod schema
         // resolved_via_root: opportunity.resolved_via_root || false // REMOVED: column doesn't exist in prod schema
       };
