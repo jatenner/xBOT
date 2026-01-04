@@ -193,6 +193,132 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
   return { pass: true, reason: 'ok', guard_results: guardResults };
 }
 
+/**
+ * 🔒 REPLY SAFETY GATES - Centralized gate checks for replies
+ * Returns true if decision should be skipped, false if ok to proceed
+ */
+async function checkReplySafetyGates(decision: any, supabase: any): Promise<boolean> {
+  const decisionId = decision.id || decision.decision_id || 'unknown';
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // GATE 1: Missing Fields Check
+  // ═══════════════════════════════════════════════════════════════════════
+  const requiredFields = [
+    'target_tweet_id',
+    'target_tweet_content_snapshot',
+    'target_tweet_content_hash',
+    'semantic_similarity'
+  ];
+  
+  const missingFields = requiredFields.filter(field => {
+    const value = decision[field];
+    if (value === null || value === undefined) return true;
+    if (typeof value === 'string' && value.trim() === '') return true;
+    return false;
+  });
+  
+  if (missingFields.length > 0) {
+    const fieldValues = missingFields.reduce((acc, f) => ({ ...acc, [f]: decision[f] }), {});
+    console.error(`[POSTING_QUEUE] ⛔ BLOCKED: Reply decision missing gate data`);
+    console.error(`[POSTING_QUEUE]   decision_id=${decisionId}`);
+    console.error(`[POSTING_QUEUE]   missing_fields=${JSON.stringify(missingFields)}`);
+    console.error(`[POSTING_QUEUE]   field_values=${JSON.stringify(fieldValues)}`);
+    
+    await supabase.from('content_generation_metadata_comprehensive')
+      .update({
+        status: 'blocked',
+        skip_reason: 'missing_gate_data_safety_block',
+        error_message: `Missing fields: ${missingFields.join(', ')}`
+      })
+      .eq('decision_id', decisionId);
+    
+    return true; // Skip
+  }
+  
+  console.log(`[POSTING_QUEUE] ✅ Safety check passed: All gate data present for ${decisionId}`);
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // GATE 2: Context Lock Verification (fetch target tweet)
+  // ═══════════════════════════════════════════════════════════════════════
+  console.log(`[POSTING_QUEUE] 🔍 Verifying context lock for decision ${decisionId}`);
+  
+  try {
+    const { verifyContextLock } = await import('../gates/contextLockVerifier');
+    const contextVerification = await verifyContextLock(
+      decision.target_tweet_id,
+      decision.target_tweet_content_snapshot,
+      decision.target_tweet_content_hash
+    );
+    
+    if (!contextVerification.pass) {
+      console.error(`[POSTING_QUEUE] ⛔ CONTEXT LOCK FAILED: ${contextVerification.skip_reason}`);
+      console.error(`[POSTING_QUEUE]   decision_id=${decisionId}`);
+      console.error(`[POSTING_QUEUE]   details=${JSON.stringify(contextVerification.details)}`);
+      
+      await supabase.from('content_generation_metadata_comprehensive')
+        .update({
+          status: 'blocked',
+          skip_reason: contextVerification.skip_reason,
+          error_message: JSON.stringify(contextVerification.details)
+        })
+        .eq('decision_id', decisionId);
+      
+      return true; // Skip
+    }
+    
+    console.log(`[POSTING_QUEUE] ✅ Context lock verified for ${decisionId}`);
+  } catch (verifyError: any) {
+    console.error(`[POSTING_QUEUE] ❌ Context verification threw error: ${verifyError.message}`);
+    console.error(`[POSTING_QUEUE]   Blocking decision ${decisionId} (fail-closed)`);
+    
+    await supabase.from('content_generation_metadata_comprehensive')
+      .update({
+        status: 'blocked',
+        skip_reason: 'verification_fetch_error',
+        error_message: verifyError.message
+      })
+      .eq('decision_id', decisionId);
+    
+    return true; // Skip
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // GATE 3: Topic Mismatch Guard
+  // ═══════════════════════════════════════════════════════════════════════
+  console.log(`[POSTING_QUEUE] 🔍 Checking topic mismatch for decision ${decisionId}`);
+  
+  try {
+    const { checkTopicMismatch } = await import('../gates/topicMismatchGuard');
+    const topicCheck = checkTopicMismatch(
+      decision.target_tweet_content_snapshot || '',
+      decision.content || ''
+    );
+    
+    if (!topicCheck.pass) {
+      console.error(`[POSTING_QUEUE] ⛔ TOPIC MISMATCH: ${topicCheck.skip_reason}`);
+      console.error(`[POSTING_QUEUE]   decision_id=${decisionId}`);
+      console.error(`[POSTING_QUEUE]   details=${JSON.stringify(topicCheck.details)}`);
+      
+      await supabase.from('content_generation_metadata_comprehensive')
+        .update({
+          status: 'blocked',
+          skip_reason: topicCheck.skip_reason,
+          error_message: JSON.stringify(topicCheck.details)
+        })
+        .eq('decision_id', decisionId);
+      
+      return true; // Skip
+    }
+    
+    console.log(`[POSTING_QUEUE] ✅ Topic check passed for ${decisionId}`);
+  } catch (topicError: any) {
+    console.error(`[POSTING_QUEUE] ❌ Topic check threw error: ${topicError.message}`);
+    console.warn(`[POSTING_QUEUE] ⚠️ Proceeding despite topic check error`);
+  }
+  
+  return false; // OK to proceed
+}
+
 async function forceTwitterSessionReset(reason: string): Promise<void> {
   try {
     if (fs.existsSync(TWITTER_AUTH_PATH)) {
@@ -2115,136 +2241,14 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           }
         } else if (decision.decision_type === 'reply') {
           // ═══════════════════════════════════════════════════════════════════════
-          // 🔒 FINAL SAFETY CHECK: Verify decision has required gate data
+          // 🔒 REPLY SAFETY GATES - Run all checks, skip if any fail
           // ═══════════════════════════════════════════════════════════════════════
-          const requiredFields = [
-            'target_tweet_id',
-            'target_tweet_content_snapshot',
-            'target_tweet_content_hash',
-            'semantic_similarity'
-          ];
-          
-          // ✅ FIX: Only treat null/undefined/empty-string as missing, allow 0/false
-          const missingFields = requiredFields.filter(field => {
-            const value = decision[field];
-            // null or undefined => missing
-            if (value === null || value === undefined) return true;
-            // string => missing if empty after trim
-            if (typeof value === 'string' && value.trim() === '') return true;
-            // numbers/booleans => NOT missing even if 0/false
-            return false;
-          });
-          
-          if (missingFields.length > 0) {
-            const fieldValues = missingFields.reduce((acc, f) => ({ ...acc, [f]: decision[f] }), {});
-            console.error(`[POSTING_QUEUE] ⛔ BLOCKED: Reply decision missing gate data`);
-            console.error(`[POSTING_QUEUE]   decision_id=${decision.id}`);
-            console.error(`[POSTING_QUEUE]   missing_fields=${JSON.stringify(missingFields)}`);
-            console.error(`[POSTING_QUEUE]   field_values=${JSON.stringify(fieldValues)}`);
-            console.error(`[POSTING_QUEUE]   This indicates gates were BYPASSED during generation`);
-            
-            // Mark as blocked
-            await supabase.from('content_generation_metadata_comprehensive')
-              .update({
-                status: 'blocked',
-                skip_reason: 'missing_gate_data_safety_block',
-                error_message: `Missing fields: ${missingFields.join(', ')}`
-              })
-              .eq('decision_id', decision.id);
-            
-            continue; // Skip this decision
+          const shouldSkip = await checkReplySafetyGates(decision, supabase);
+          if (shouldSkip) {
+            continue; // Skip to next decision
           }
           
-          console.log(`[POSTING_QUEUE] ✅ Safety check passed: All gate data present for ${decision.id}`);
-          // ═══════════════════════════════════════════════════════════════════════
-          
-          // ═══════════════════════════════════════════════════════════════════════
-          // 🔒 POST-TIME CONTEXT LOCK VERIFICATION - Fetch target tweet to verify
-          // ═══════════════════════════════════════════════════════════════════════
-          console.log(`[POSTING_QUEUE] 🔍 Verifying context lock for decision ${decision.id}`);
-          
-          try {
-            const { verifyContextLock } = await import('../gates/contextLockVerifier');
-            const contextVerification = await verifyContextLock(
-              decision.target_tweet_id,
-              decision.target_tweet_content_snapshot,
-              decision.target_tweet_content_hash
-            );
-            
-            if (!contextVerification.pass) {
-              console.error(`[POSTING_QUEUE] ⛔ CONTEXT LOCK FAILED: ${contextVerification.skip_reason}`);
-              console.error(`[POSTING_QUEUE]   decision_id=${decision.id}`);
-              console.error(`[POSTING_QUEUE]   details=${JSON.stringify(contextVerification.details)}`);
-              
-              // Mark as blocked
-              await supabase.from('content_generation_metadata_comprehensive')
-                .update({
-                  status: 'blocked',
-                  skip_reason: contextVerification.skip_reason,
-                  error_message: JSON.stringify(contextVerification.details),
-                  metadata: {
-                    ...decision.metadata,
-                    context_verification: contextVerification.details
-                  }
-                })
-                .eq('decision_id', decision.id);
-              
-              continue; // Skip this decision
-            }
-            
-            console.log(`[POSTING_QUEUE] ✅ Context lock verified for ${decision.id}`);
-          } catch (verifyError: any) {
-            console.error(`[POSTING_QUEUE] ❌ Context verification threw error: ${verifyError.message}`);
-            console.error(`[POSTING_QUEUE]   Blocking decision ${decision.id} (fail-closed)`);
-            
-            await supabase.from('content_generation_metadata_comprehensive')
-              .update({
-                status: 'blocked',
-                skip_reason: 'verification_fetch_error',
-                error_message: verifyError.message
-              })
-              .eq('decision_id', decision.id);
-            
-            continue; // Skip this decision
-          }
-          // ═══════════════════════════════════════════════════════════════════════
-          
-          // ═══════════════════════════════════════════════════════════════════════
-          // 🚫 TOPIC MISMATCH GUARD - Deterministic check for tech+health mismatch
-          // ═══════════════════════════════════════════════════════════════════════
-          console.log(`[POSTING_QUEUE] 🔍 Checking topic mismatch for decision ${decision.id}`);
-          
-          try {
-            const { checkTopicMismatch } = await import('../gates/topicMismatchGuard');
-            const topicCheck = checkTopicMismatch(
-              decision.target_tweet_content_snapshot || '',
-              decision.content || ''
-            );
-            
-            if (!topicCheck.pass) {
-              console.error(`[POSTING_QUEUE] ⛔ TOPIC MISMATCH: ${topicCheck.skip_reason}`);
-              console.error(`[POSTING_QUEUE]   decision_id=${decision.id}`);
-              console.error(`[POSTING_QUEUE]   details=${JSON.stringify(topicCheck.details)}`);
-              
-              await supabase.from('content_generation_metadata_comprehensive')
-                .update({
-                  status: 'blocked',
-                  skip_reason: topicCheck.skip_reason,
-                  error_message: JSON.stringify(topicCheck.details)
-                })
-                .eq('decision_id', decision.id);
-              
-              continue; // Skip this decision
-            }
-            
-            console.log(`[POSTING_QUEUE] ✅ Topic check passed for ${decision.id}`);
-          } catch (topicError: any) {
-            console.error(`[POSTING_QUEUE] ❌ Topic check threw error: ${topicError.message}`);
-            // Don't block on topic check error - just log and continue
-            console.warn(`[POSTING_QUEUE] ⚠️ Proceeding despite topic check error`);
-          }
-          // ═══════════════════════════════════════════════════════════════════════
-          
+          // All gates passed - proceed to invariant check
           // ═══════════════════════════════════════════════════════════════════════
           // 🔒 PRE-POST INVARIANT CHECK - SKIP (NOT CRASH) ON FAILURE
           // ═══════════════════════════════════════════════════════════════════════
