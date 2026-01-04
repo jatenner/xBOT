@@ -302,10 +302,10 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
   }
   
   // ═══════════════════════════════════════════════════════════════════════
-  // GATE 1.5: SEMANTIC SIMILARITY THRESHOLD (>= 0.30)
+  // GATE 1.5: SEMANTIC SIMILARITY THRESHOLD (>= 0.25)
   // ═══════════════════════════════════════════════════════════════════════
   const similarity = parseFloat(decision.semantic_similarity) || 0;
-  const MIN_SIMILARITY = 0.30;
+  const MIN_SIMILARITY = 0.25;
   
   if (similarity < MIN_SIMILARITY) {
     console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: Low semantic similarity (${similarity.toFixed(2)} < ${MIN_SIMILARITY})`);
@@ -919,6 +919,16 @@ export async function processPostingQueue(): Promise<void> {
         }
         
         if (isReply) {
+          // 🛑 KILL SWITCH: Check REPLIES_ENABLED flag
+          const repliesEnabled = process.env.REPLIES_ENABLED !== 'false';
+          if (!repliesEnabled) {
+            console.log(`[POSTING_QUEUE] 🛑 REPLIES_DISABLED: Skipping reply ${decision.id} (REPLIES_ENABLED=false)`);
+            await supabase.from('content_generation_metadata_comprehensive')
+              .update({ status: 'blocked', skip_reason: 'replies_disabled_killswitch' })
+              .eq('decision_id', decision.id);
+            continue;
+          }
+          
           // 🚨 FIX: Query content_metadata TABLE directly
           const { count: replyCount } = await supabase
             .from('content_metadata')
