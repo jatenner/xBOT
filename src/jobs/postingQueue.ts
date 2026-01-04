@@ -2896,6 +2896,97 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     throw new Error('Replies paused via PAUSE_REPLIES env flag');
   }
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🔒 INVARIANT GUARD - FAIL-CLOSED CHECKS (NON-NEGOTIABLE)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const { checkReplyInvariants } = await import('../gates/replyInvariantGuard');
+  
+  // Fetch target tweet content for context check (if available)
+  let targetTweetContent: string | null = null;
+  let rootTweetContent: string | null = null;
+  let isRootTweet: boolean | null = null;
+  
+  try {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    
+    // Check reply_opportunities for target tweet content
+    const { data: opportunity } = await supabase
+      .from('reply_opportunities')
+      .select('target_tweet_content, is_root_tweet, root_tweet_id')
+      .eq('target_tweet_id', decision.target_tweet_id)
+      .maybeSingle();
+    
+    if (opportunity) {
+      targetTweetContent = opportunity.target_tweet_content;
+      isRootTweet = opportunity.is_root_tweet;
+    }
+    
+    // Also check content_metadata for root resolution data
+    const { data: metadata } = await supabase
+      .from('content_metadata')
+      .select('root_tweet_id, resolved_via_root')
+      .eq('decision_id', decision.id)
+      .maybeSingle();
+    
+    if (metadata?.root_tweet_id) {
+      isRootTweet = !metadata.resolved_via_root;
+    }
+  } catch (lookupError: any) {
+    console.warn(`[INVARIANT] ⚠️ Failed to fetch context: ${lookupError.message}`);
+  }
+  
+  const invariantResult = checkReplyInvariants(
+    decision.content,
+    targetTweetContent,
+    rootTweetContent || targetTweetContent,
+    isRootTweet,
+    decision.id
+  );
+  
+  if (!invariantResult.pass) {
+    console.error(`[INVARIANT] ⛔ REPLY BLOCKED decision_id=${decision.id} reason=${invariantResult.skip_reason}`);
+    
+    // Log to system_events for monitoring
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'reply_invariant_blocked',
+        severity: 'warning',
+        event_data: {
+          decision_id: decision.id,
+          skip_reason: invariantResult.skip_reason,
+          checks: invariantResult.checks,
+          content_preview: decision.content.substring(0, 100)
+        },
+        created_at: new Date().toISOString()
+      });
+    } catch (logError: any) {
+      console.warn(`[INVARIANT] ⚠️ Failed to log block event: ${logError.message}`);
+    }
+    
+    // Store guard results in content_metadata
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('content_generation_metadata_comprehensive')
+        .update({
+          guard_results: invariantResult.checks,
+          status: 'skipped',
+          skip_reason: invariantResult.skip_reason
+        })
+        .eq('decision_id', decision.id);
+    } catch (updateError: any) {
+      console.warn(`[INVARIANT] ⚠️ Failed to update guard_results: ${updateError.message}`);
+    }
+    
+    throw new Error(`Invariant check failed: ${invariantResult.skip_reason}`);
+  }
+  
+  console.log(`[INVARIANT] ✅ All checks passed for decision_id=${decision.id}`);
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   console.log(`[POSTING_QUEUE] 💬 Posting reply to @${decision.target_username}: "${decision.content.substring(0, 50)}..."`);
   
   // 🔒 BROWSER SEMAPHORE: Acquire exclusive browser access (HIGHEST priority)

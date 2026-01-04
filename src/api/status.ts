@@ -68,6 +68,19 @@ export interface SystemStatus {
     heap_total_mb: number;
     rss_mb: number;
   };
+  // 🎯 PHASE 4: Reply monitoring metrics (last 60 min)
+  reply_metrics?: {
+    opportunities_available: number;
+    replies_queued_60m: number;
+    replies_posted_60m: number;
+    invariant_blocks_60m: number;
+    skipped_is_reply_60m: number;
+    skipped_thread_like_60m: number;
+    skipped_no_context_60m: number;
+    last_successful_reply_at: string | null;
+    pacing_status: string;
+    opportunity_pool_health: string;
+  };
 }
 
 /**
@@ -108,12 +121,17 @@ export async function getSystemStatus(): Promise<SystemStatus> {
     rss_mb: Math.round(memoryUsage.rss / 1024 / 1024)
   };
   
+  // 🎯 PHASE 4: Reply monitoring metrics
+  const replyMetrics = await getReplyMetrics();
+  
   // Overall health determination
   let overallStatus: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
   
   if (!dbStatus.connected) {
     overallStatus = 'unhealthy';
   } else if (memory.used_mb > 400) { // High memory usage
+    overallStatus = 'degraded';
+  } else if (replyMetrics.opportunity_pool_health === 'critical') {
     overallStatus = 'degraded';
   }
   
@@ -145,13 +163,130 @@ export async function getSystemStatus(): Promise<SystemStatus> {
       budget_enforcer_enabled: process.env.BUDGET_ENFORCER_ENABLED === 'true',
       real_metrics_enabled: process.env.REAL_METRICS_ENABLED === 'true'
     },
-    memory
+    memory,
+    reply_metrics: replyMetrics
   };
   
   const duration = Date.now() - startTime;
   console.log(`STATUS_CHECK: Completed in ${duration}ms (${overallStatus})`);
   
   return status;
+}
+
+/**
+ * 🎯 PHASE 4: Get reply monitoring metrics (last 60 minutes)
+ */
+async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
+  try {
+    const sixtyMinutesAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    
+    // Run queries in parallel
+    const [
+      opportunitiesResult,
+      queuedResult,
+      postedResult,
+      invariantBlocksResult,
+      lastSuccessResult
+    ] = await Promise.all([
+      // Opportunities available
+      pgPool.query(`
+        SELECT COUNT(*) as count FROM reply_opportunities 
+        WHERE replied_to = false 
+        AND (expires_at IS NULL OR expires_at > NOW())
+      `),
+      
+      // Replies queued in last 60 min
+      pgPool.query(`
+        SELECT COUNT(*) as count FROM content_generation_metadata_comprehensive 
+        WHERE decision_type = 'reply' 
+        AND status = 'queued'
+        AND created_at >= $1
+      `, [sixtyMinutesAgo]),
+      
+      // Replies posted in last 60 min
+      pgPool.query(`
+        SELECT COUNT(*) as count FROM content_generation_metadata_comprehensive 
+        WHERE decision_type = 'reply' 
+        AND status = 'posted'
+        AND posted_at >= $1
+      `, [sixtyMinutesAgo]),
+      
+      // Invariant blocks in last 24h (from system_events)
+      pgPool.query(`
+        SELECT 
+          COUNT(*) FILTER (WHERE event_data->>'skip_reason' LIKE '%root%') as root_blocks,
+          COUNT(*) FILTER (WHERE event_data->>'skip_reason' LIKE '%format%' OR event_data->>'skip_reason' LIKE '%thread%') as format_blocks,
+          COUNT(*) FILTER (WHERE event_data->>'skip_reason' LIKE '%context%') as context_blocks,
+          COUNT(*) as total_blocks
+        FROM system_events 
+        WHERE event_type = 'reply_invariant_blocked' 
+        AND created_at >= $1
+      `, [twentyFourHoursAgo]),
+      
+      // Last successful reply
+      pgPool.query(`
+        SELECT posted_at FROM content_generation_metadata_comprehensive 
+        WHERE decision_type = 'reply' 
+        AND status = 'posted' 
+        AND tweet_id IS NOT NULL
+        ORDER BY posted_at DESC 
+        LIMIT 1
+      `)
+    ]);
+    
+    const opportunitiesAvailable = parseInt(opportunitiesResult.rows[0]?.count || '0');
+    const repliesQueued = parseInt(queuedResult.rows[0]?.count || '0');
+    const repliesPosted = parseInt(postedResult.rows[0]?.count || '0');
+    const invariantBlocks = invariantBlocksResult.rows[0] || { root_blocks: 0, format_blocks: 0, context_blocks: 0, total_blocks: 0 };
+    const lastSuccessAt = lastSuccessResult.rows[0]?.posted_at || null;
+    
+    // Determine pool health
+    let poolHealth = 'healthy';
+    if (opportunitiesAvailable < 10) {
+      poolHealth = 'critical';
+    } else if (opportunitiesAvailable < 50) {
+      poolHealth = 'low';
+    } else if (opportunitiesAvailable < 100) {
+      poolHealth = 'moderate';
+    }
+    
+    // Determine pacing status
+    let pacingStatus = 'ok';
+    if (repliesPosted >= 4) {
+      pacingStatus = 'at_hourly_limit';
+    } else if (repliesPosted === 0 && opportunitiesAvailable > 10) {
+      pacingStatus = 'no_activity';
+    }
+    
+    return {
+      opportunities_available: opportunitiesAvailable,
+      replies_queued_60m: repliesQueued,
+      replies_posted_60m: repliesPosted,
+      invariant_blocks_60m: parseInt(invariantBlocks.total_blocks || '0'),
+      skipped_is_reply_60m: parseInt(invariantBlocks.root_blocks || '0'),
+      skipped_thread_like_60m: parseInt(invariantBlocks.format_blocks || '0'),
+      skipped_no_context_60m: parseInt(invariantBlocks.context_blocks || '0'),
+      last_successful_reply_at: lastSuccessAt ? new Date(lastSuccessAt).toISOString() : null,
+      pacing_status: pacingStatus,
+      opportunity_pool_health: poolHealth
+    };
+    
+  } catch (error: any) {
+    console.error('REPLY_METRICS_ERROR:', error.message);
+    return {
+      opportunities_available: 0,
+      replies_queued_60m: 0,
+      replies_posted_60m: 0,
+      invariant_blocks_60m: 0,
+      skipped_is_reply_60m: 0,
+      skipped_thread_like_60m: 0,
+      skipped_no_context_60m: 0,
+      last_successful_reply_at: null,
+      pacing_status: 'error',
+      opportunity_pool_health: 'unknown'
+    };
+  }
 }
 
 /**
