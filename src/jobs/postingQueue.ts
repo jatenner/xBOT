@@ -2245,7 +2245,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           // ═══════════════════════════════════════════════════════════════════════
           const shouldSkip = await checkReplySafetyGates(decision, supabase);
           if (shouldSkip) {
-            continue; // Skip to next decision
+            return false; // Skip this decision (return early from processDecision)
           }
           
           // All gates passed - proceed to invariant check
