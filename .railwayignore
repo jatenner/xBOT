@@ -1,4 +1,32 @@
-node_modules/
+# Railway ignore file - exclude large directories from deploy snapshot
+node_modules
+dist
+.next
+.git
+.cache
+coverage
+tmp
+logs
+
+# Playwright artifacts
+playwright-traces
+playwright-videos
+playwright-screenshots
+test-results
+playwright-report
+
+# Local development
+.env.local
+.env.development
 *.log
-temp/
-.env*
+*.tmp
+
+# Build caches
+.turbo
+.parcel-cache
+.swc
+
+# IDE
+.idea
+.vscode
+*.swp
