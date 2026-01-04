@@ -958,6 +958,7 @@ async function generateRealReplies(): Promise<void> {
   let rootDiagCounters = {
     before_resolution: opportunities.length,
     invalid_url: 0,
+    skipped_is_reply_tweet: 0, // NEW: Hard block for reply tweets
     could_not_resolve: 0,
     kept_after_resolution: 0
   };
@@ -972,6 +973,13 @@ async function generateRealReplies(): Promise<void> {
       continue;
     }
     
+    // 🚨 HARD BLOCK: Skip if opportunity is marked as reply tweet
+    if (opp.is_reply_tweet === true) {
+      console.log(`[REPLY_SELECT] candidate=${tweetId} is_reply=true resolved_root=none action=skip reason=target_is_reply_tweet`);
+      rootDiagCounters.skipped_is_reply_tweet++;
+      continue;
+    }
+    
     // Resolve to root
     const resolved = await resolveReplyCandidate(tweetId, opp.tweet_content);
     if (!resolved) {
@@ -979,6 +987,11 @@ async function generateRealReplies(): Promise<void> {
       console.log(`[REPLY_JOB] 🚫 Skipped candidate ${tweetId} (could not resolve or should skip)`);
       continue;
     }
+    
+    // 🎯 LOGGING: Prove we're selecting ROOT tweets only
+    const rootId = resolved.rootTweetId;
+    const isReplyTweet = !resolved.isRootTweet;
+    console.log(`[REPLY_SELECT] candidate=${tweetId} is_reply=${isReplyTweet} resolved_root=${rootId} action=keep reason=${resolved.isRootTweet ? 'root_tweet_confirmed' : 'resolved_to_root'}`);
     
     // Update opportunity with root data
     const resolvedOpp = {
@@ -1005,6 +1018,7 @@ async function generateRealReplies(): Promise<void> {
   console.log('[REPLY_DIAG] ═══════════════════════════════════════');
   console.log(`[REPLY_DIAG] before_root_resolution=${rootDiagCounters.before_resolution}`);
   console.log(`[REPLY_DIAG] skipped_invalid_url=${rootDiagCounters.invalid_url}`);
+  console.log(`[REPLY_DIAG] skipped_is_reply_tweet=${rootDiagCounters.skipped_is_reply_tweet}`);
   console.log(`[REPLY_DIAG] skipped_could_not_resolve=${rootDiagCounters.could_not_resolve}`);
   console.log(`[REPLY_DIAG] kept_after_root_resolution=${rootDiagCounters.kept_after_resolution}`);
   console.log('[REPLY_DIAG] ═══════════════════════════════════════');
@@ -1135,12 +1149,6 @@ async function generateRealReplies(): Promise<void> {
         const parentExcerpt = parentText.substring(0, 80) + (parentText.length > 80 ? '...' : '');
         console.log(`[REPLY_CONTEXT] ok=true parent_id=${tweetIdFromUrl} keywords=${keywords.join(', ')} content_length=${parentText.length}`);
         console.log(`[REPLY_CONTEXT] parent_excerpt="${parentExcerpt}"`);
-        
-        // 🎯 REPLY_SELECT LOG: Prove we're selecting ROOT tweets only
-        const isReplyTweet = parentText.trim().startsWith('@');
-        const action = isReplyTweet ? 'skip' : 'keep';
-        const reason = isReplyTweet ? 'target_is_reply' : 'root_tweet_confirmed';
-        console.log(`[REPLY_SELECT] candidate=${tweetIdFromUrl} is_reply=${isReplyTweet} resolved_root=${tweetIdFromUrl} action=${action} reason=${reason}`);
         
         // 🔁 RETRY LOOP: Generate reply with quality gate (max 2 attempts)
         const MAX_GENERATION_ATTEMPTS = 2;
@@ -1380,9 +1388,6 @@ Reply (1-3 lines, echo their point first):`;
       const tweetUrlStr = String(target.tweet_url || '');
       const tweetIdFromUrl = tweetUrlStr.split('/').pop() || 'unknown';
       
-      // 🎯 REPLY_TARGET LOG: Prove we're posting to ROOT tweets
-      console.log(`[REPLY_TARGET] posting_to=${tweetIdFromUrl} (must_be_root) root=${tweetIdFromUrl} author=@${target.account.username}`);
-      
       // ============================================================
       // SMART SCHEDULING: 5 min and 20 min spacing
       // ============================================================
@@ -1464,6 +1469,11 @@ Reply (1-3 lines, echo their point first):`;
           continue;
         }
       }
+      
+      // 🎯 REPLY_TARGET LOG: Prove we're posting to ROOT tweets
+      const targetTweetId = reply.target_tweet_id;
+      const rootId = opportunity.root_tweet_id || targetTweetId;
+      console.log(`[REPLY_TARGET] posting_to=${targetTweetId} (must_be_root) root=${rootId} author=@${target.account.username}`);
       
       // Queue for posting with smart spacing
       await queueReply(reply, staggerDelay);
@@ -1745,7 +1755,7 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
         
         // 🎤 PHASE 5: Voice Guide metadata (if available)
         hook_type: voiceDecision?.hookType || 'none', // Replies typically don't use hooks
-        // structure_type: voiceDecision?.structure || 'reply', // REMOVED: column doesn't exist in prod
+        structure_type: voiceDecision?.structure || 'reply', // Always 'reply' for replies
         // Note: tone is stored separately if needed
     target_tweet_id: reply.target_tweet_id,
     target_username: reply.target_username,

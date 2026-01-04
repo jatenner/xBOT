@@ -654,14 +654,6 @@ export class RealTwitterDiscovery {
           
           const tweetPostedAt = datetime; // Save for later use
           
-          // 🚨 CRITICAL: Check if this is a reply tweet (MUST BE SKIPPED)
-          const replyingToEl = tweet.querySelector('[data-testid="socialContext"]');
-          const isReplyTweet = replyingToEl && replyingToEl.textContent?.toLowerCase().includes('replying to');
-          
-          if (isReplyTweet) {
-            continue; // Skip reply tweets entirely - we only want ROOT tweets
-          }
-          
           // Get tweet content
           const contentEl = tweet.querySelector('[data-testid="tweetText"]');
           const content = contentEl?.textContent || '';
@@ -1142,6 +1134,16 @@ export class RealTwitterDiscovery {
           ? new Date(Date.now() - opp.posted_minutes_ago * 60 * 1000).toISOString()
           : new Date().toISOString();
         
+        // 🚨 HARD BLOCK: Detect if tweet content suggests it's a reply
+        // (belt-and-suspenders protection even though -filter:replies is in query)
+        const isReplyTweet = opp.tweet_content.toLowerCase().includes('replying to @') 
+          || opp.tweet_content.startsWith('@');
+        
+        if (isReplyTweet) {
+          console.log(`[REAL_DISCOVERY] 🚫 Skipping reply tweet ${opp.tweet_id} (content starts with @ or mentions 'replying to')`);
+          continue;
+        }
+        
           const { data, error } = await supabase
           .from('reply_opportunities')
           .upsert({
@@ -1157,6 +1159,7 @@ export class RealTwitterDiscovery {
             opportunity_score: finalScore, // ✅ Use boosted score
             tweet_posted_at: tweetPostedAt,
             status: 'pending',
+            is_reply_tweet: false, // ✅ NEW: Explicitly mark as NOT a reply (verified by -filter:replies)
             // NEW: Engagement rate & tiering
             engagement_rate: (opp as any).engagement_rate,
             tier: (opp as any).tier,
