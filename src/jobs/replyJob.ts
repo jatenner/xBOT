@@ -974,7 +974,11 @@ async function generateRealReplies(): Promise<void> {
     tweet_posted_at: opp.tweet_posted_at,
     minutes_since_post: Number(opp.posted_minutes_ago) || 0,
     reply_strategy: 'Add value with research or insights',
-    estimated_followers: Math.round((Number(opp.opportunity_score || 0) / 100) * 10)
+    estimated_followers: Math.round((Number(opp.opportunity_score || 0) / 100) * 10),
+    // 🎯 CRITICAL: Pass through root tweet data from DB
+    is_root_tweet: opp.is_root_tweet || false,
+    is_reply_tweet: opp.is_reply_tweet || false,
+    root_tweet_id: opp.root_tweet_id || null
   }));
   
   console.log(`[REPLY_JOB] ✅ Found ${opportunities.length} reply opportunities from database pool`);
@@ -1013,12 +1017,27 @@ async function generateRealReplies(): Promise<void> {
       continue;
     }
     
-    // Resolve to root
-    const resolved = await resolveReplyCandidate(tweetId, opp.tweet_content);
-    if (!resolved) {
-      rootDiagCounters.could_not_resolve++;
-      console.log(`[REPLY_JOB] 🚫 Skipped candidate ${tweetId} (could not resolve or should skip)`);
-      continue;
+    // 🎯 OPTIMIZATION: If DB already has root_tweet_id and is_root_tweet=true, skip live resolution
+    let resolved: any;
+    if (opp.is_root_tweet === true && opp.root_tweet_id) {
+      console.log(`[REPLY_SELECT] candidate=${tweetId} using_db_root=${opp.root_tweet_id} (is_root_tweet=true)`);
+      resolved = {
+        originalCandidateId: tweetId,
+        rootTweetId: opp.root_tweet_id,
+        rootTweetUrl: opp.tweet_url,
+        rootTweetAuthor: opp.target?.username || null,
+        rootTweetContent: opp.tweet_content,
+        isRootTweet: true,
+        shouldSkip: false
+      };
+    } else {
+      // Fall back to live resolution
+      resolved = await resolveReplyCandidate(tweetId, opp.tweet_content);
+      if (!resolved) {
+        rootDiagCounters.could_not_resolve++;
+        console.log(`[REPLY_JOB] 🚫 Skipped candidate ${tweetId} (could not resolve or should skip)`);
+        continue;
+      }
     }
     
     // 🎯 LOGGING: Prove we're selecting ROOT tweets only
@@ -1462,6 +1481,7 @@ Reply (1-3 lines, echo their point first):`;
             target_username: target.account.username,
             target_tweet_content_snapshot: contextSnapshot.target_tweet_text,
             target_tweet_content_hash: contextSnapshot.target_tweet_text_hash,
+            root_tweet_id: opportunity.root_tweet_id || null,
             status: 'blocked',
             skip_reason: semanticResult.reason,
             semantic_similarity: semanticResult.similarity,
@@ -1504,6 +1524,7 @@ Reply (1-3 lines, echo their point first):`;
             target_username: target.account.username,
             target_tweet_content_snapshot: contextSnapshot.target_tweet_text,
             target_tweet_content_hash: contextSnapshot.target_tweet_text_hash,
+            root_tweet_id: opportunity.root_tweet_id || null,
             status: 'blocked',
             skip_reason: antiSpamResult.reason,
             semantic_similarity: semanticResult.similarity,

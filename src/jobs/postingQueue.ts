@@ -131,9 +131,9 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
       .maybeSingle();
     
     if (decisionData && decisionData.target_tweet_content_hash) {
-      const { verifyContextLock, ContextSnapshot } = await import('../gates/contextLockGuard');
+      const { verifyContextLock } = await import('../gates/contextLockGuard');
       
-      const snapshot: any = {
+      const snapshot = {
         target_tweet_id: decisionData.target_tweet_id,
         target_tweet_text: decisionData.target_tweet_content_snapshot || '',
         target_tweet_text_hash: decisionData.target_tweet_content_hash,
@@ -868,6 +868,20 @@ export async function processPostingQueue(): Promise<void> {
     const maxRepliesPerHourRaw = Number(config.REPLIES_PER_HOUR ?? 4);
     const maxRepliesPerHour = Number.isFinite(maxRepliesPerHourRaw) ? maxRepliesPerHourRaw : 4;
     
+    // 🛑 DRAIN MODE: Mark all queued items as skipped for audit
+    if (process.env.DRAIN_QUEUE === 'true') {
+      console.log(`[POSTING_QUEUE] 🛑 DRAIN_QUEUE=true: Marking ${readyDecisions.length} decisions as skipped`);
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      for (const decision of readyDecisions) {
+        await supabase.from('content_generation_metadata_comprehensive')
+          .update({ status: 'blocked', skip_reason: 'queue_drain_mode' })
+          .eq('decision_id', decision.id);
+      }
+      console.log(`[POSTING_QUEUE] ✅ Drained ${readyDecisions.length} decisions`);
+      return;
+    }
+    
     for (const decision of readyDecisions) {
       try {
         // 🔥 CRITICAL: Check rate limit BEFORE each post (not just once at start!)
@@ -880,6 +894,26 @@ export async function processPostingQueue(): Promise<void> {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
         
         if (isContent) {
+          // 🛑 KILL SWITCHES: Check content type flags
+          const isThread = decision.decision_type === 'thread';
+          const isSingle = decision.decision_type === 'single';
+          
+          if (isThread && process.env.THREADS_ENABLED === 'false') {
+            console.log(`[POSTING_QUEUE] 🛑 THREADS_DISABLED: Skipping thread ${decision.id}`);
+            await supabase.from('content_generation_metadata_comprehensive')
+              .update({ status: 'blocked', skip_reason: 'threads_disabled_killswitch' })
+              .eq('decision_id', decision.id);
+            continue;
+          }
+          
+          if (isSingle && process.env.SINGLE_POSTS_ENABLED === 'false') {
+            console.log(`[POSTING_QUEUE] 🛑 SINGLE_POSTS_DISABLED: Skipping single ${decision.id}`);
+            await supabase.from('content_generation_metadata_comprehensive')
+              .update({ status: 'blocked', skip_reason: 'singles_disabled_killswitch' })
+              .eq('decision_id', decision.id);
+            continue;
+          }
+          
           // 🎯 COUNT POSTS, NOT TWEETS: Threads count as 1 post, not multiple tweets
           // A thread is ONE POST on Twitter, regardless of how many parts it has
           

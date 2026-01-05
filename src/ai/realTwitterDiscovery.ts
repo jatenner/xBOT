@@ -1196,7 +1196,9 @@ export class RealTwitterDiscovery {
             opportunity_score: finalScore, // ✅ Use boosted score
             tweet_posted_at: tweetPostedAt,
             status: 'pending',
-            is_reply_tweet: false, // ✅ NEW: Explicitly mark as NOT a reply (verified by -filter:replies)
+            is_reply_tweet: false, // ✅ Explicitly mark as NOT a reply (verified by -filter:replies)
+            is_root_tweet: true, // ✅ Mark as root tweet (verified by -filter:replies query)
+            root_tweet_id: opp.tweet_id, // ✅ Root is itself (since we filter out replies)
             // NEW: Engagement rate & tiering
             engagement_rate: (opp as any).engagement_rate,
             tier: (opp as any).tier,
