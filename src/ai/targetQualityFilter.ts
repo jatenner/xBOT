@@ -241,12 +241,12 @@ export function scoreTargetQuality(
   // POSITIVE SCORING
   // ═══════════════════════════════════════════════════════════════════════
   
-  // Health/science content (+25 max)
+  // Health/science content (+30 max)
   let healthScore = 0;
   for (const pattern of HEALTH_SCIENCE_PATTERNS) {
-    if (pattern.test(content)) healthScore += 5;
+    if (pattern.test(content)) healthScore += 7;
   }
-  healthScore = Math.min(healthScore, 25);
+  healthScore = Math.min(healthScore, 30);
   if (healthScore > 0) {
     score += healthScore;
     reasons.push(`health_science_content:+${healthScore}`);
@@ -275,8 +275,14 @@ export function scoreTargetQuality(
   // Numbers/data points (signals specific claims)
   const numberMatches = content.match(/\d+(\.\d+)?(%|x|mg|g|hours?|min|days?)?/g);
   if (numberMatches && numberMatches.length >= 2) {
-    score += 10;
-    reasons.push('data_points:+10');
+    score += 12;
+    reasons.push('data_points:+12');
+  }
+  
+  // Percentage claims (strong scientific signal)
+  if (/\d+(\.\d+)?%/.test(content)) {
+    score += 5;
+    reasons.push('percentage_claim:+5');
   }
   
   // Author credibility
