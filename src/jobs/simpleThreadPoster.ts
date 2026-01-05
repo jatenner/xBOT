@@ -2,9 +2,11 @@
  * 🧵 SIMPLE THREAD POSTER
  * Straightforward thread posting: post first tweet, then replies
  * No complex fallbacks - just works!
+ * 
+ * 🔒 SECURITY: Requires decision_id for authorization
  */
 
-import { UltimateTwitterPoster } from '../posting/UltimateTwitterPoster';
+import { UltimateTwitterPoster, setPostingAuthorization, clearPostingAuthorization } from '../posting/UltimateTwitterPoster';
 
 export interface SimpleThreadResult {
   success: boolean;
@@ -19,8 +21,24 @@ export interface SimpleThreadResult {
 export class SimpleThreadPoster {
   /**
    * Post a thread as a series of linked tweets
+   * 🔒 REQUIRES: decision_id for authorization
    */
-  static async postThread(tweets: string[]): Promise<SimpleThreadResult> {
+  static async postThread(tweets: string[], decision_id?: string): Promise<SimpleThreadResult> {
+    // 🔒 AUTHORIZATION CHECK: Block unauthorized posting
+    if (!decision_id) {
+      console.error(`[SIMPLE_THREAD] 🚨 BLOCKED: postThread called without decision_id`);
+      return {
+        success: false,
+        tweetId: '',
+        tweetUrl: '',
+        tweetIds: [],
+        mode: 'thread',
+        error: 'postThread requires decision_id for authorization'
+      };
+    }
+    
+    // Set authorization for the first tweet
+    setPostingAuthorization({ decision_id, pipeline_source: 'simpleThreadPoster' });
     console.log(`[SIMPLE_THREAD] 🧵 Posting ${tweets.length}-tweet thread...`);
     
     if (tweets.length === 0) {
@@ -107,6 +125,9 @@ export class SimpleThreadPoster {
             console.log(`[SIMPLE_THREAD] ⏳ Waiting 3s between tweets...`);
             await new Promise(r => setTimeout(r, 3000));
           }
+          
+          // 🔒 RE-AUTHORIZE before each reply (auth expires after 30s)
+          setPostingAuthorization({ decision_id: decision_id!, pipeline_source: 'simpleThreadPoster' });
           
           const replyResult = await poster.postReply(tweets[i], lastTweetId);
           

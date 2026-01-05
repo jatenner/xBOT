@@ -1,6 +1,9 @@
 /**
  * Robust Twitter Poster - Compliant and Reliable
  * No anti-bot detection attempts, focuses on stability and compliance
+ * 
+ * 🔒 SECURITY: All posting MUST go through authorized paths.
+ * Direct calls without provenance will be blocked.
  */
 
 import { log } from '../lib/logger';
@@ -12,6 +15,75 @@ import { BulletproofTweetExtractor } from '../utils/bulletproofTweetExtractor';
 import { ensureComposerFocused } from './composerFocus';
 import { supaService } from '../lib/supabaseService';
 import { ReplyPostingTelemetry } from './ReplyPostingTelemetry';
+
+/**
+ * 🔒 POSTING AUTHORIZATION CONTEXT
+ * Must be set by authorized callers before posting.
+ * Cleared after each post to prevent reuse.
+ */
+interface PostingAuthorization {
+  decision_id: string;
+  pipeline_source: string;
+  authorized_at: number;
+}
+
+let _currentAuthorization: PostingAuthorization | null = null;
+const AUTHORIZATION_TIMEOUT_MS = 30000; // 30 seconds max between auth and post
+
+/**
+ * 🔒 SET POSTING AUTHORIZATION
+ * Called by PostingGuard/postingQueue BEFORE posting
+ */
+export function setPostingAuthorization(auth: { decision_id: string; pipeline_source: string }): void {
+  _currentAuthorization = {
+    decision_id: auth.decision_id,
+    pipeline_source: auth.pipeline_source,
+    authorized_at: Date.now()
+  };
+  console.log(`[POSTING_AUTH] ✅ Authorization set: decision_id=${auth.decision_id} source=${auth.pipeline_source}`);
+}
+
+/**
+ * 🔒 CLEAR POSTING AUTHORIZATION
+ * Called after posting to prevent reuse
+ */
+export function clearPostingAuthorization(): void {
+  _currentAuthorization = null;
+}
+
+/**
+ * 🔒 VERIFY POSTING AUTHORIZATION
+ * Returns the current authorization if valid, throws if not
+ */
+function verifyPostingAuthorization(operation: 'postTweet' | 'postReply'): PostingAuthorization {
+  // 🚨 BYPASS KILLSWITCH: Allow bypass during testing if explicitly set
+  if (process.env.ALLOW_POSTING_BYPASS === 'true') {
+    console.warn(`[POSTING_AUTH] ⚠️ BYPASS ENABLED - posting without authorization (ALLOW_POSTING_BYPASS=true)`);
+    return {
+      decision_id: 'bypass_enabled',
+      pipeline_source: 'bypass',
+      authorized_at: Date.now()
+    };
+  }
+  
+  if (!_currentAuthorization) {
+    const msg = `[POSTING_AUTH] 🚨 BLOCKED: ${operation} called without authorization. ` +
+                `All posting must go through PostingGuard or postingQueue.`;
+    console.error(msg);
+    throw new Error(msg);
+  }
+  
+  const elapsed = Date.now() - _currentAuthorization.authorized_at;
+  if (elapsed > AUTHORIZATION_TIMEOUT_MS) {
+    const msg = `[POSTING_AUTH] 🚨 BLOCKED: Authorization expired (${elapsed}ms > ${AUTHORIZATION_TIMEOUT_MS}ms)`;
+    console.error(msg);
+    _currentAuthorization = null;
+    throw new Error(msg);
+  }
+  
+  console.log(`[POSTING_AUTH] ✅ Authorization verified: decision_id=${_currentAuthorization.decision_id}`);
+  return _currentAuthorization;
+}
 
 export interface PostResult {
   success: boolean;
@@ -49,6 +121,14 @@ export class UltimateTwitterPoster {
   }
 
   async postTweet(content: string): Promise<PostResult> {
+    // 🔒 AUTHORIZATION CHECK: Block unauthorized posting
+    let auth: PostingAuthorization;
+    try {
+      auth = verifyPostingAuthorization('postTweet');
+    } catch (authError: any) {
+      return { success: false, error: authError.message };
+    }
+    
     let retryCount = 0;
     const maxRetries = 2; // Increased retries
     const startTime = Date.now();
@@ -1403,10 +1483,18 @@ export class UltimateTwitterPoster {
    * Navigates to tweet and posts actual reply (not @mention)
    */
   async postReply(content: string, replyToTweetId: string, decisionId?: string): Promise<PostResult> {
+    // 🔒 AUTHORIZATION CHECK: Block unauthorized posting
+    let auth: PostingAuthorization;
+    try {
+      auth = verifyPostingAuthorization('postReply');
+    } catch (authError: any) {
+      return { success: false, error: authError.message };
+    }
+    
     let retryCount = 0;
     const maxRetries = 2;
 
-    console.log(`ULTIMATE_POSTER: Posting reply to tweet ${replyToTweetId}`);
+    console.log(`ULTIMATE_POSTER: Posting reply to tweet ${replyToTweetId} (auth: ${auth.decision_id})`);
 
     while (retryCount <= maxRetries) {
       const sessionRefreshesBefore = this.sessionRefreshes;

@@ -93,3 +93,26 @@ export function detectSystemStalls(): { isStalled: boolean; stalledJobs: string[
   };
 }
 
+/**
+ * 🔍 GET STALLED JOBS
+ * Returns list of jobs that haven't run in threshold minutes
+ * Used by railwayEntrypoint.ts for health monitoring
+ */
+export function getStalledJobs(thresholdMinutes: number = 15): string[] {
+  const stalledJobs: string[] = [];
+  
+  for (const [jobName, heartbeat] of Object.entries(jobHeartbeats)) {
+    if (!heartbeat.lastRunAt) continue;
+    
+    const minutesSinceLastRun = (Date.now() - heartbeat.lastRunAt) / 60000;
+    
+    // Only critical jobs are considered for stall detection
+    const isCritical = ['posting', 'reply_posting', 'plan'].includes(jobName);
+    if (isCritical && minutesSinceLastRun > thresholdMinutes) {
+      stalledJobs.push(jobName);
+    }
+  }
+  
+  return stalledJobs;
+}
+

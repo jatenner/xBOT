@@ -3450,6 +3450,10 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         
         const poster = new UltimateTwitterPoster();
         
+        // 🔒 SET AUTHORIZATION: Required for UltimateTwitterPoster to proceed
+        const { setPostingAuthorization, clearPostingAuthorization } = await import('../posting/UltimateTwitterPoster');
+        setPostingAuthorization({ decision_id: decision.id, pipeline_source: 'postingQueue' });
+        
         // 🛡️ TIMEOUT PROTECTION: Adaptive timeout based on retry count
         const result = await withTimeout(
           () => poster.postTweet(contentToPost),
@@ -3568,6 +3572,10 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       poster = new PosterCtor({ purpose: 'reply' });
       console.log(`[POSTING_QUEUE] 💬 Posting REAL reply to tweet ${decision.target_tweet_id}...`);
       console.log(`[POSTING_QUEUE] 📝 Reply content: "${decision.content.substring(0, 60)}..."`);
+      
+      // 🔒 SET AUTHORIZATION: Required for UltimateTwitterPoster to proceed
+      const { setPostingAuthorization, clearPostingAuthorization } = await import('../posting/UltimateTwitterPoster');
+      setPostingAuthorization({ decision_id: decision.id, pipeline_source: 'postingQueue' });
       
       // 🔒 LOG POSTING MODE (prove we're not using thread composer)
       const contentLength = decision.content.length;
