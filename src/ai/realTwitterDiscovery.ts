@@ -999,9 +999,25 @@ export class RealTwitterDiscovery {
     if (opportunities.length === 0) return;
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // 🔒 FRESHNESS GATE: Never store opportunities older than MAX_AGE_MIN
+    // 🔒 DYNAMIC FRESHNESS GATE: Visibility-tier aware age limits
     // ═══════════════════════════════════════════════════════════════════════════
-    const MAX_AGE_MIN = 180; // 3 hours - matches posting invariant
+    // Viral tweets (100K+ likes) take time to go viral - allow older tweets
+    // Fresh tweets (<10K likes) should be newer to have reply value
+    // 
+    // Thresholds:
+    // - 100K+ likes: Allow up to 72 hours (MEGA-VIRAL worth replying to anytime)
+    // - 25K+ likes:  Allow up to 48 hours (VIRAL still has high visibility)
+    // - 10K+ likes:  Allow up to 24 hours (HIGH engagement, decent window)
+    // - <10K likes:  Allow up to 3 hours (low visibility needs freshness)
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    function getMaxAgeMinutes(likeCount: number): number {
+      if (likeCount >= 100000) return 72 * 60;  // 72 hours for 100K+
+      if (likeCount >= 25000) return 48 * 60;   // 48 hours for 25K+
+      if (likeCount >= 10000) return 24 * 60;   // 24 hours for 10K+
+      return 180; // 3 hours for lower engagement (original gate)
+    }
+    
     const now = Date.now();
     const originalCount = opportunities.length;
     
@@ -1020,8 +1036,11 @@ export class RealTwitterDiscovery {
         return false;
       }
       
-      if (ageMinutes > MAX_AGE_MIN) {
-        console.log(`[REAL_DISCOVERY] ⏱️ REJECTED stale tweet ${opp.tweet_id}: ${Math.round(ageMinutes)}m old > ${MAX_AGE_MIN}m max`);
+      const likeCount = Number(opp.like_count || 0);
+      const maxAgeMin = getMaxAgeMinutes(likeCount);
+      
+      if (ageMinutes > maxAgeMin) {
+        console.log(`[REAL_DISCOVERY] ⏱️ REJECTED stale tweet ${opp.tweet_id}: ${Math.round(ageMinutes)}m old > ${maxAgeMin}m max (${Math.round(likeCount/1000)}K likes)`);
         return false;
       }
       
@@ -1029,7 +1048,7 @@ export class RealTwitterDiscovery {
     });
     
     if (opportunities.length < originalCount) {
-      console.log(`[REAL_DISCOVERY] 🔒 FRESHNESS GATE: Rejected ${originalCount - opportunities.length}/${originalCount} stale tweets (>${MAX_AGE_MIN}min)`);
+      console.log(`[REAL_DISCOVERY] 🔒 FRESHNESS GATE: Rejected ${originalCount - opportunities.length}/${originalCount} stale tweets (visibility-adjusted)`);
     }
     
     if (opportunities.length === 0) return;

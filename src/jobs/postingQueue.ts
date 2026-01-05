@@ -95,19 +95,26 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
       guardResults.root_check = { pass: true };
       console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=true reason=structural_check_passed`);
       
-      // 4) FRESHNESS CHECK - Target must be <= 180 min old
+      // 4) FRESHNESS CHECK - Visibility-aware age limits
+      // High-visibility tweets (100K+ likes) are worth replying to even if older
       if (opportunity.tweet_posted_at) {
         const postedAt = new Date(opportunity.tweet_posted_at);
         const ageMinutes = (Date.now() - postedAt.getTime()) / (60 * 1000);
-        const MAX_AGE_MIN = 180;
+        const likeCount = Number(opportunity.like_count || 0);
         
-        if (ageMinutes > MAX_AGE_MIN) {
-          guardResults.freshness_check = { pass: false, age_min: Math.round(ageMinutes), max: MAX_AGE_MIN };
-          console.log(`[INVARIANT] freshness_check=FAIL age_min=${Math.round(ageMinutes)} max=${MAX_AGE_MIN}`);
+        // Dynamic freshness: viral tweets get longer windows
+        let maxAgeMin = 180; // Default: 3 hours
+        if (likeCount >= 100000) maxAgeMin = 72 * 60;      // 72h for 100K+ likes
+        else if (likeCount >= 25000) maxAgeMin = 48 * 60;  // 48h for 25K+ likes
+        else if (likeCount >= 10000) maxAgeMin = 24 * 60;  // 24h for 10K+ likes
+        
+        if (ageMinutes > maxAgeMin) {
+          guardResults.freshness_check = { pass: false, age_min: Math.round(ageMinutes), max: maxAgeMin, likes: likeCount };
+          console.log(`[INVARIANT] freshness_check=FAIL age_min=${Math.round(ageMinutes)} max=${maxAgeMin} likes=${likeCount}`);
           return { pass: false, reason: 'target_too_old', guard_results: guardResults };
         }
-        guardResults.freshness_check = { pass: true, age_min: Math.round(ageMinutes) };
-        console.log(`[INVARIANT] freshness_check=pass age_min=${Math.round(ageMinutes)}`);
+        guardResults.freshness_check = { pass: true, age_min: Math.round(ageMinutes), max: maxAgeMin, likes: likeCount };
+        console.log(`[INVARIANT] freshness_check=pass age_min=${Math.round(ageMinutes)} max=${maxAgeMin} likes=${likeCount}`);
       }
     } else {
       // No opportunity found - fail closed

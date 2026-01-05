@@ -74,26 +74,55 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
       }
     }
     
-    // Step 0.5: 🔒 FRESHNESS GATE - Purge stale opportunities (> 180 min old)
-    const MAX_AGE_MIN = 180;
-    const freshnessThreshold = new Date(Date.now() - MAX_AGE_MIN * 60 * 1000).toISOString();
+    // Step 0.5: 🔒 VISIBILITY-AWARE FRESHNESS GATE
+    // High-visibility tweets get longer windows before being purged
+    // - 100K+ likes: Keep up to 72 hours
+    // - 25K+ likes:  Keep up to 48 hours
+    // - 10K+ likes:  Keep up to 24 hours
+    // - <10K likes:  Keep up to 3 hours (original gate)
+    const now = Date.now();
+    let totalPurged = 0;
     
-    const { count: staleCount, error: staleCountError } = await supabase
+    // Purge low-engagement tweets older than 3 hours
+    const lowEngagementThreshold = new Date(now - 180 * 60 * 1000).toISOString();
+    const { error: lowPurgeError, count: lowPurgeCount } = await supabase
       .from('reply_opportunities')
-      .select('*', { count: 'exact', head: true })
-      .lt('tweet_posted_at', freshnessThreshold);
+      .delete()
+      .lt('tweet_posted_at', lowEngagementThreshold)
+      .lt('like_count', 10000);
+    if (!lowPurgeError && lowPurgeCount) totalPurged += lowPurgeCount;
     
-    if (!staleCountError && staleCount && staleCount > 0) {
-      const { error: staleDeleteError } = await supabase
-        .from('reply_opportunities')
-        .delete()
-        .lt('tweet_posted_at', freshnessThreshold);
-      
-      if (staleDeleteError) {
-        console.warn('[HARVESTER] ⚠️ Failed to purge stale opportunities:', staleDeleteError.message);
-      } else {
-        console.log(`[HARVESTER] 🧹 FRESHNESS GATE: Purged ${staleCount} stale opportunities (>${MAX_AGE_MIN}min old)`);
-      }
+    // Purge 10K-25K tweets older than 24 hours
+    const midEngagementThreshold = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+    const { error: midPurgeError, count: midPurgeCount } = await supabase
+      .from('reply_opportunities')
+      .delete()
+      .lt('tweet_posted_at', midEngagementThreshold)
+      .gte('like_count', 10000)
+      .lt('like_count', 25000);
+    if (!midPurgeError && midPurgeCount) totalPurged += midPurgeCount;
+    
+    // Purge 25K-100K tweets older than 48 hours
+    const highEngagementThreshold = new Date(now - 48 * 60 * 60 * 1000).toISOString();
+    const { error: highPurgeError, count: highPurgeCount } = await supabase
+      .from('reply_opportunities')
+      .delete()
+      .lt('tweet_posted_at', highEngagementThreshold)
+      .gte('like_count', 25000)
+      .lt('like_count', 100000);
+    if (!highPurgeError && highPurgeCount) totalPurged += highPurgeCount;
+    
+    // Purge mega-viral (100K+) tweets older than 72 hours
+    const megaViralThreshold = new Date(now - 72 * 60 * 60 * 1000).toISOString();
+    const { error: megaPurgeError, count: megaPurgeCount } = await supabase
+      .from('reply_opportunities')
+      .delete()
+      .lt('tweet_posted_at', megaViralThreshold)
+      .gte('like_count', 100000);
+    if (!megaPurgeError && megaPurgeCount) totalPurged += megaPurgeCount;
+    
+    if (totalPurged > 0) {
+      console.log(`[HARVESTER] 🧹 FRESHNESS GATE: Purged ${totalPurged} stale opportunities (visibility-adjusted)`);
     }
     
     // Step 1: Check current pool size
