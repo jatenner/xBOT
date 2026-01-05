@@ -1486,6 +1486,8 @@ Reply (1-3 lines, echo their point first):`;
             skip_reason: semanticResult.reason,
             semantic_similarity: semanticResult.similarity,
             generator_name: replyGenerator,
+            pipeline_source: 'replyJobEnhanced',
+            build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || `local-${Date.now()}`,
             created_at: new Date().toISOString()
           });
         } catch (insertError: any) {
@@ -1972,7 +1974,11 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
         target_tweet_content_snapshot: reply.target_tweet_content_snapshot || null,
         target_tweet_content_hash: reply.target_tweet_content_hash || null,
         semantic_similarity: reply.semantic_similarity || null,
-        root_tweet_id: reply.root_tweet_id || null
+        root_tweet_id: reply.root_tweet_id || null,
+        
+        // 🔒 PROVENANCE TRACKING - Required for debugging and auditing
+        pipeline_source: 'replyJobEnhanced',
+        build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || `local-${Date.now()}`
       };
       
       // Only add experiment fields if experiments are enabled (columns may not exist in schema)

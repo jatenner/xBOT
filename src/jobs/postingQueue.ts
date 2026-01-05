@@ -838,11 +838,12 @@ export async function processPostingQueue(): Promise<void> {
     // NOTE: Disabled temporarily to prevent over-generation
     // await ensureMinimumQueueDepth();
     
-    // 2. Check rate limits
-    const canPost = await checkPostingRateLimits();
-    if (!canPost) {
-      log({ op: 'posting_queue', status: 'rate_limited' });
-      return;
+    // 2. Check rate limits - but DON'T block entire queue if only content is limited
+    // checkPostingRateLimits only checks singles/threads - replies have separate limit
+    const canPostContent = await checkPostingRateLimits();
+    if (!canPostContent) {
+      log({ op: 'posting_queue', content_rate_limited: true, note: 'replies_may_still_proceed' });
+      // DON'T return here - replies might still be allowed
     }
     
     // 3. Get ready decisions from queue
@@ -894,6 +895,12 @@ export async function processPostingQueue(): Promise<void> {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
         
         if (isContent) {
+          // 🚨 CHECK: Skip content if content rate limit was reached at start
+          if (!canPostContent) {
+            console.log(`[POSTING_QUEUE] ⛔ SKIP CONTENT: Content rate limit reached, skipping ${decision.decision_type} ${decision.id}`);
+            continue; // Skip to next decision (might be a reply which is allowed)
+          }
+          
           // 🛑 KILL SWITCHES: Check content type flags
           const isThread = decision.decision_type === 'thread';
           const isSingle = decision.decision_type === 'single';
