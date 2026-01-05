@@ -6,7 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-export function getPgSSL(dbUrl: string): { require: true; rejectUnauthorized: boolean; ca?: string } | undefined {
+export function getPgSSL(dbUrl: string): { rejectUnauthorized: boolean; ca?: string } | boolean | undefined {
   if (!dbUrl) {
     return undefined;
   }
@@ -19,7 +19,7 @@ export function getPgSSL(dbUrl: string): { require: true; rejectUnauthorized: bo
     if (fs.existsSync(certPath)) {
       console.log(`[STATUS_PG] ssl_enabled=true rejectUnauthorized=true certPath=${certPath}`);
       const ca = fs.readFileSync(certPath, 'utf8');
-      return { require: true, rejectUnauthorized: true, ca };
+      return { rejectUnauthorized: true, ca };
     }
     
     // PRODUCTION/RAILWAY/SUPABASE: Always use rejectUnauthorized=false for hosted Supabase
@@ -41,12 +41,12 @@ export function getPgSSL(dbUrl: string): { require: true; rejectUnauthorized: bo
         try { return new URL(dbUrl).hostname; } catch { return 'unknown'; }
       })();
       console.log(`[STATUS_PG] ssl_enabled=true rejectUnauthorized=false host=${host} (hosted/supabase)`);
-      return { require: true, rejectUnauthorized: false };
+      return { rejectUnauthorized: false };
     }
     
     // DEVELOPMENT: Try system CA bundle, but warn if it fails
     console.log('[STATUS_PG] ssl_enabled=true rejectUnauthorized=true (dev mode - may fail without cert)');
-    return { require: true, rejectUnauthorized: true };
+    return { rejectUnauthorized: true };
   }
 
   console.log('[STATUS_PG] ssl_enabled=false (no sslmode=require in connection string)');
