@@ -1202,6 +1202,8 @@ export class RealTwitterDiscovery {
             // NEW: Engagement rate & tiering
             engagement_rate: (opp as any).engagement_rate,
             tier: (opp as any).tier,
+            harvest_tier: (opp as any).harvest_tier, // 🆕 Track which tier found this (A/B/C/D)
+            engagement_tier: (opp as any).engagement_tier, // 🆕 Like-count classification
             momentum_score: (opp as any).momentum_score,
             account_followers: (opp as any).account_followers,
             expires_at: (opp as any).expires_at,

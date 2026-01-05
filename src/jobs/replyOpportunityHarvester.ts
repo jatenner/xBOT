@@ -202,33 +202,68 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   // 
   // Result: 80%+ AI judge pass rate → populated pool → replies flow
   
-  // Shared exclusions for all queries
-  const POLITICS_EXCLUSION = ' -("election" OR "trump" OR "biden" OR "democrat" OR "republican" OR "war" OR "gaza" OR "ukraine" OR "congress" OR "senate")';
-  const SPAM_EXCLUSION = ' -airdrop -giveaway -crypto -nft -betting -casino';
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🎯 HIGH-VISIBILITY TIERED HARVESTING SYSTEM
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Strategy: Target 10K-1M+ likes tweets for MAXIMUM reach
+  // Tiers: A (100K+) → B (25K+) → C (10K+) → D (2.5K+ fallback only if pool low)
+  // 
+  // Why high visibility matters:
+  // - 100K+ like tweets = millions of impressions = massive follower potential
+  // - Reply to viral = get seen by viral audience
+  // - Low engagement tweets = wasted effort (no one sees our replies)
+  // ═══════════════════════════════════════════════════════════════════════════
   
-  const searchQueries = [
-    // TIER 1: HEALTH-FOCUSED QUERIES - SEARCH FIRST (highest pass rate)
-    { label: 'NUTRITION', minLikes: 2000, maxReplies: 250, maxAgeHours: 48, query: '(nutrition OR diet OR protein OR fiber OR gut OR glucose OR insulin OR metabolism) min_faves:2000 -filter:replies lang:en' + SPAM_EXCLUSION + POLITICS_EXCLUSION },
-    { label: 'SLEEP/STRESS', minLikes: 2000, maxReplies: 250, maxAgeHours: 48, query: '(sleep OR circadian OR caffeine OR alcohol OR melatonin OR stress OR anxiety OR cortisol) min_faves:2000 -filter:replies lang:en' + SPAM_EXCLUSION + POLITICS_EXCLUSION },
-    { label: 'EXERCISE', minLikes: 2000, maxReplies: 250, maxAgeHours: 48, query: '(exercise OR strength OR cardio OR "VO2 max" OR "zone 2" OR hypertrophy OR steps OR workout) min_faves:2000 -filter:replies lang:en' + SPAM_EXCLUSION + POLITICS_EXCLUSION },
-    { label: 'WELLNESS', minLikes: 2000, maxReplies: 250, maxAgeHours: 48, query: '(wellness OR longevity OR biohacking OR supplements OR vitamins OR peptides) min_faves:2000 -filter:replies lang:en' + SPAM_EXCLUSION + POLITICS_EXCLUSION },
-    
-    // TIER 2: BROAD HEALTH (5K+) - SEARCH SECOND
-    { label: 'HEALTH VIRAL (5K+)', minLikes: 5000, maxReplies: 250, maxAgeHours: 24, query: '(health OR wellness OR fitness OR nutrition OR longevity) min_faves:5000 -filter:replies lang:en' + SPAM_EXCLUSION + POLITICS_EXCLUSION },
-    
-    // TIER 3: BIOHACKING/TRENDING - SEARCH THIRD
-    { label: 'BIOHACK (1K+)', minLikes: 1000, maxReplies: 150, maxAgeHours: 48, query: '(biohack OR peptide OR sauna OR "cold plunge" OR hrv OR ozempic OR testosterone OR seed oils) min_faves:1000 -filter:replies lang:en' + SPAM_EXCLUSION + POLITICS_EXCLUSION },
-    
-    // TIER 4: MEGA-VIRAL FALLBACK (only if health queries insufficient)
-    { label: 'MEGA (25K+)', minLikes: 25000, maxReplies: 600, maxAgeHours: 48, query: 'min_faves:25000 -filter:replies lang:en' + SPAM_EXCLUSION + POLITICS_EXCLUSION },
-    { label: 'VIRAL (10K+)', minLikes: 10000, maxReplies: 400, maxAgeHours: 48, query: 'min_faves:10000 -filter:replies lang:en' + SPAM_EXCLUSION + POLITICS_EXCLUSION }
+  // Shared exclusions for all queries
+  const POLITICS_EXCLUSION = ' -trump -biden -election -gaza -ukraine -war -breaking -celebrity -shooting -killed -died';
+  const SPAM_EXCLUSION = ' -airdrop -giveaway -crypto -nft -betting -casino -OnlyFans -porn';
+  
+  // Comprehensive health keyword bundle
+  const HEALTH_KEYWORDS = '(health OR wellness OR fitness OR nutrition OR diet OR protein OR sleep OR exercise OR workout OR running OR lifting OR cardio OR metabolism OR longevity OR supplement OR creatine OR testosterone OR cortisol OR inflammation OR recovery OR fasting OR glucose OR insulin OR gut OR microbiome OR immune OR vitamin OR mineral OR hydration)';
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TIER A: MEGA-VIRAL HEALTH (100K+ likes) - SEARCH FIRST
+  // ═══════════════════════════════════════════════════════════════════════════
+  const tierAQueries = [
+    { tier: 'A', label: 'TIER_A_HEALTH_100K', minLikes: 100000, maxReplies: 1000, maxAgeHours: 72, 
+      query: `${HEALTH_KEYWORDS} min_faves:100000 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
   ];
-
-  const fallbackQueries = [
-    { label: 'RESCUE HEALTH (250+)', minLikes: 250, maxReplies: 150, maxAgeHours: 24, query: '(sleep OR insulin OR glucose OR longevity OR diet OR exercise) min_faves:250 -filter:replies lang:en' + SPAM_EXCLUSION + POLITICS_EXCLUSION },
-    { label: 'RESCUE GENERAL (200+)', minLikes: 200, maxReplies: 140, maxAgeHours: 18, query: '(health OR wellness OR recovery OR hospital OR clinic OR doctor OR patients) min_faves:200 -filter:replies lang:en' + SPAM_EXCLUSION + POLITICS_EXCLUSION },
-    { label: 'RESCUE FAST RISING (150+)', minLikes: 150, maxReplies: 100, maxAgeHours: 12, query: '(sleep OR cortisol OR metabolism OR gut OR workout OR gym OR immunity) min_faves:150 -filter:replies lang:en' + SPAM_EXCLUSION + POLITICS_EXCLUSION }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TIER B: VIRAL HEALTH (25K+ likes) - SEARCH SECOND
+  // ═══════════════════════════════════════════════════════════════════════════
+  const tierBQueries = [
+    { tier: 'B', label: 'TIER_B_HEALTH_25K', minLikes: 25000, maxReplies: 600, maxAgeHours: 48, 
+      query: `${HEALTH_KEYWORDS} min_faves:25000 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
+    { tier: 'B', label: 'TIER_B_FITNESS_25K', minLikes: 25000, maxReplies: 600, maxAgeHours: 48, 
+      query: `(gym OR gains OR muscle OR bodybuilding OR "weight loss" OR running OR marathon) min_faves:25000 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
   ];
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TIER C: HIGH-ENGAGEMENT HEALTH (10K+ likes) - SEARCH THIRD
+  // ═══════════════════════════════════════════════════════════════════════════
+  const tierCQueries = [
+    { tier: 'C', label: 'TIER_C_HEALTH_10K', minLikes: 10000, maxReplies: 400, maxAgeHours: 36, 
+      query: `${HEALTH_KEYWORDS} min_faves:10000 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
+    { tier: 'C', label: 'TIER_C_NUTRITION_10K', minLikes: 10000, maxReplies: 400, maxAgeHours: 36, 
+      query: `(nutrition OR protein OR diet OR fasting OR calories OR macros OR "seed oils" OR ozempic) min_faves:10000 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
+    { tier: 'C', label: 'TIER_C_SLEEP_10K', minLikes: 10000, maxReplies: 400, maxAgeHours: 36, 
+      query: `(sleep OR insomnia OR melatonin OR circadian OR caffeine OR "deep sleep") min_faves:10000 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
+  ];
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TIER D: FALLBACK (2.5K+ likes) - ONLY IF POOL CRITICALLY LOW
+  // ═══════════════════════════════════════════════════════════════════════════
+  const tierDFallback = [
+    { tier: 'D', label: 'TIER_D_HEALTH_2500', minLikes: 2500, maxReplies: 200, maxAgeHours: 24, 
+      query: `${HEALTH_KEYWORDS} min_faves:2500 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
+    { tier: 'D', label: 'TIER_D_BIOHACK_2500', minLikes: 2500, maxReplies: 200, maxAgeHours: 24, 
+      query: `(biohacking OR peptides OR sauna OR "cold plunge" OR testosterone OR HRT OR supplements) min_faves:2500 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
+  ];
+  
+  // Build query list based on priority (A → B → C, D only if critical)
+  const searchQueries = [...tierAQueries, ...tierBQueries, ...tierCQueries];
+  const fallbackQueries = tierDFallback;
   
   const testLimitRaw = process.env.HARVESTER_TEST_LIMIT;
   const testLimit = testLimitRaw ? Math.max(1, Math.min(searchQueries.length, parseInt(testLimitRaw, 10) || 1)) : searchQueries.length;
@@ -258,16 +293,14 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     console.warn('[HARVESTER] 🚨 CRITICAL MODE: Pool is dangerously low, running extended discovery cycle');
   }
 
-  console.log(`[HARVESTER] 🔥 Configured ${searchQueries.length} HEALTH-FIRST discovery queries`);
-  console.log(`[HARVESTER] 🎯 Strategy: HEALTH-FOCUSED FIRST (highest AI judge pass rate)`);
-  console.log(`[HARVESTER]   🥗 NUTRITION: diet, protein, fiber, gut, glucose, insulin (2K+)`);
-  console.log(`[HARVESTER]   😴 SLEEP/STRESS: sleep, caffeine, cortisol, anxiety (2K+)`);
-  console.log(`[HARVESTER]   💪 EXERCISE: strength, cardio, VO2, zone 2, workout (2K+)`);
-  console.log(`[HARVESTER]   🧬 WELLNESS: longevity, biohacking, supplements, peptides (2K+)`);
-  console.log(`[HARVESTER]   🌟 HEALTH VIRAL: broad health queries (5K+)`);
-  console.log(`[HARVESTER]   🔬 BIOHACK: ozempic, testosterone, seed oils (1K+)`);
-  console.log(`[HARVESTER] 🤖 AI-powered: GPT-4o-mini judges health relevance (score 0-10)`);
-  console.log(`[HARVESTER] 🚫 Politics filter: -election -trump -biden -war -gaza -ukraine`);
+  console.log(`[HARVESTER] 🔥 Configured ${searchQueries.length} HIGH-VISIBILITY tiered queries`);
+  console.log(`[HARVESTER] 🎯 Strategy: VISIBILITY-FIRST (10K-1M+ likes for maximum reach)`);
+  console.log(`[HARVESTER]   🏆 TIER A: 100K+ likes (mega-viral health)`);
+  console.log(`[HARVESTER]   🚀 TIER B: 25K+ likes (viral health/fitness)`);
+  console.log(`[HARVESTER]   📈 TIER C: 10K+ likes (high-engagement health)`);
+  console.log(`[HARVESTER]   🔄 TIER D: 2.5K+ likes (fallback only if pool critical)`);
+  console.log(`[HARVESTER] 🏥 Health keywords: ${HEALTH_KEYWORDS.substring(0, 80)}...`);
+  console.log(`[HARVESTER] 🚫 Exclusions: politics, crypto, spam, drama`);
   
   // Step 4: TIME-BOXED SEARCH-BASED HARVESTING
   const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
@@ -291,8 +324,8 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     }
     
     try {
-      console.log(`[HARVESTER]   🔍 Searching: ${searchQuery.label} (${searchQuery.minLikes}+ likes)...`);
-      console.log(`[HARVESTER]   📝 Query: ${searchQuery.query.substring(0, 100)}...`);
+      const tierLabel = (searchQuery as any).tier || 'X';
+      console.log(`[HARVEST_TIER] tier=${tierLabel} query="${searchQuery.label}" min_likes=${searchQuery.minLikes}`);
       
       // 🔒 BROWSER SEMAPHORE: Acquire browser lock for search (priority 3)
       const opportunities = await withBrowserLock(
@@ -311,33 +344,60 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
       
       searchesProcessed++;
       
-      if (opportunities.length > 0) {
-        totalHarvested += opportunities.length;
-        console.log(`[HARVESTER]   ✅ query_selected="${searchQuery.label}" scraped=${opportunities.length}`);
+      // Filter out any reply tweets that slipped through
+      const rootOnlyOpps = opportunities.filter((opp: any) => {
+        const content = String(opp.tweet_content || opp.target_tweet_content || '');
+        // Hard-skip tweets starting with @mention (reply indicators)
+        if (content.startsWith('@') || content.toLowerCase().startsWith('replying to @')) {
+          console.log(`[HARVEST_TIER] SKIP_REPLY tweet_id=${opp.tweet_id || opp.target_tweet_id} reason=starts_with_@`);
+          return false;
+        }
+        return true;
+      });
+      
+      const skippedReplyCount = opportunities.length - rootOnlyOpps.length;
+      
+      if (rootOnlyOpps.length > 0) {
+        totalHarvested += rootOnlyOpps.length;
+        console.log(`[HARVEST_TIER] tier=${tierLabel} query="${searchQuery.label}" scraped=${opportunities.length} kept=${rootOnlyOpps.length} skipped_reply=${skippedReplyCount}`);
         
         // 💾 CRITICAL: Store opportunities in database with tier classification
         try {
-          // Add engagement tier classification to each opportunity
-          const opportunitiesWithTiers = opportunities.map((opp: any) => ({
+          // Add engagement tier + harvest tier + ensure root fields
+          const opportunitiesWithTiers = rootOnlyOpps.map((opp: any) => ({
             ...opp,
-            engagement_tier: classifyEngagementTier(opp.like_count || 0)
+            engagement_tier: classifyEngagementTier(opp.like_count || 0),
+            harvest_tier: tierLabel,
+            is_root_tweet: true,
+            root_tweet_id: opp.tweet_id || opp.target_tweet_id
           }));
           
           await realTwitterDiscovery.storeOpportunities(opportunitiesWithTiers);
           
-          // Log tier breakdown (updated classification)
-          const extreme = opportunities.filter((o: any) => o.like_count >= 100000).length;
-          const ultra = opportunities.filter((o: any) => o.like_count >= 50000 && o.like_count < 100000).length;
-          const mega = opportunities.filter((o: any) => o.like_count >= 25000 && o.like_count < 50000).length;
-          const viral = opportunities.filter((o: any) => o.like_count >= 10000 && o.like_count < 25000).length;
-          const trending = opportunities.filter((o: any) => o.like_count >= 5000 && o.like_count < 10000).length;
+          // Log per-opportunity with [HARVEST_STORE]
+          for (const opp of opportunitiesWithTiers.slice(0, 5)) { // Log first 5
+            const tweetId = opp.tweet_id || opp.target_tweet_id;
+            const likes = opp.like_count || 0;
+            const ageMin = opp.posted_minutes_ago || 0;
+            console.log(`[HARVEST_STORE] tweet_id=${tweetId} likes=${likes} age_min=${ageMin} tier=${tierLabel}`);
+          }
+          if (opportunitiesWithTiers.length > 5) {
+            console.log(`[HARVEST_STORE] ... and ${opportunitiesWithTiers.length - 5} more`);
+          }
           
-          console.log(`[HARVESTER]     ✓ Found ${opportunities.length} opps: ${extreme} extreme, ${ultra} ultra, ${mega} mega, ${viral} viral, ${trending} trending`);
+          // Log tier breakdown (updated classification)
+          const extreme = rootOnlyOpps.filter((o: any) => o.like_count >= 100000).length;
+          const ultra = rootOnlyOpps.filter((o: any) => o.like_count >= 50000 && o.like_count < 100000).length;
+          const mega = rootOnlyOpps.filter((o: any) => o.like_count >= 25000 && o.like_count < 50000).length;
+          const viral = rootOnlyOpps.filter((o: any) => o.like_count >= 10000 && o.like_count < 25000).length;
+          const trending = rootOnlyOpps.filter((o: any) => o.like_count >= 5000 && o.like_count < 10000).length;
+          
+          console.log(`[HARVEST_TIER] breakdown: ${extreme}×100K+ ${ultra}×50K+ ${mega}×25K+ ${viral}×10K+ ${trending}×5K+`);
         } catch (error: any) {
-          console.error(`[HARVESTER]     ❌ Failed to store opportunities:`, error.message);
+          console.error(`[HARVEST_TIER] STORE_FAILED tier=${tierLabel} error=${error.message}`);
         }
       } else {
-        console.log(`[HARVESTER]     ✗ No opportunities found for ${searchQuery.label}`);
+        console.log(`[HARVEST_TIER] tier=${tierLabel} query="${searchQuery.label}" scraped=0`);
       }
       
     } catch (error: any) {

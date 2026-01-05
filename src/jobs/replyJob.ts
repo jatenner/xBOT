@@ -761,37 +761,65 @@ async function generateRealReplies(): Promise<void> {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🎯 EXPECTED IMPRESSIONS RANKER
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Score = likes × freshness_multiplier × health_multiplier × account_priority
+  // 
+  // Goal: Maximize visibility by replying to tweets that will generate most impressions
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  function calculateExpectedImpressions(opp: any): number {
+    const likes = Number(opp.like_count) || 0;
+    const minutesAgo = Number(opp.posted_minutes_ago) || 180;
+    
+    // Freshness multiplier (newer = more visibility from our reply)
+    let freshnessMultiplier = 0.5; // Default for stale
+    if (minutesAgo <= 30) freshnessMultiplier = 2.0;      // Very fresh - 10x visibility
+    else if (minutesAgo <= 60) freshnessMultiplier = 1.5; // Fresh - 5x visibility
+    else if (minutesAgo <= 120) freshnessMultiplier = 1.0; // Decent - normal
+    else if (minutesAgo <= 180) freshnessMultiplier = 0.75; // Getting old
+    
+    // Health relevance multiplier (if AI judged as health-relevant)
+    const healthScore = Number(opp.health_relevance_score) || 0;
+    const healthMultiplier = healthScore >= 7 ? 1.5 : healthScore >= 5 ? 1.2 : 1.0;
+    
+    // Account priority from discovered_accounts (proven performers)
+    const username = String(opp.target_username || '').toLowerCase().trim();
+    const accountPriority = priorityMap.get(username) || 0;
+    const priorityMultiplier = 1 + (accountPriority * 0.5); // Up to 50% boost
+    
+    // Calculate expected impressions score
+    // Likes are the primary signal - a 100K like tweet is 100x more valuable than 1K
+    const score = likes * freshnessMultiplier * healthMultiplier * priorityMultiplier;
+    
+    return score;
+  }
+  
   const sortedOpportunities = [...allOpportunities].sort((a, b) => {
-    // First: Tier priority (MEGA > VIRAL > TRENDING > FRESH)
-    const aRank = tierRank(a.tier);
-    const bRank = tierRank(b.tier);
-    if (aRank !== bRank) return aRank - bRank;
-
-    // Second: Priority score (from discovered_accounts) - higher priority gets preference
-    const aUsername = String(a.target_username || '').toLowerCase().trim();
-    const bUsername = String(b.target_username || '').toLowerCase().trim();
-    const aPriority = priorityMap.get(aUsername) || 0;
-    const bPriority = priorityMap.get(bUsername) || 0;
-    if (aPriority !== bPriority) return bPriority - aPriority; // Higher priority first
-
-    // Third: Opportunity score (already boosted by harvester)
-    const aOppScore = Number(a.opportunity_score || 0);
-    const bOppScore = Number(b.opportunity_score || 0);
-    if (aOppScore !== bOppScore) return bOppScore - aOppScore;
-
-    // Fourth: Likes (engagement)
+    const aScore = calculateExpectedImpressions(a);
+    const bScore = calculateExpectedImpressions(b);
+    
+    // Primary: Expected impressions (higher = better)
+    if (aScore !== bScore) return bScore - aScore;
+    
+    // Tiebreaker 1: Raw likes (higher = better)
     const aLikes = Number(a.like_count) || 0;
     const bLikes = Number(b.like_count) || 0;
     if (aLikes !== bLikes) return bLikes - aLikes;
-
-    // Fifth: Comments (engagement)
-    const aComments = Number(a.reply_count) || 0;
-    const bComments = Number(b.reply_count) || 0;
-    if (aComments !== bComments) return aComments - bComments;
-
-    // Last: Engagement rate
-    return (Number(b.engagement_rate) || 0) - (Number(a.engagement_rate) || 0);
+    
+    // Tiebreaker 2: Freshness (lower minutes ago = better)
+    const aAge = Number(a.posted_minutes_ago) || 9999;
+    const bAge = Number(b.posted_minutes_ago) || 9999;
+    return aAge - bAge;
   });
+  
+  // Log top opportunities with their scores
+  console.log('[REPLY_JOB] 🎯 TOP OPPORTUNITIES BY EXPECTED IMPRESSIONS:');
+  for (const opp of sortedOpportunities.slice(0, 5)) {
+    const score = calculateExpectedImpressions(opp);
+    console.log(`[REPLY_JOB]   📊 @${opp.target_username} likes=${opp.like_count} age=${opp.posted_minutes_ago}min score=${Math.round(score).toLocaleString()}`);
+  }
 
   // 🎯 PRIORITIZE RECENCY: Fresh tweets (<2 hours old) get 10-50x more visibility
   // Filter for tweets posted within last 2 hours (120 minutes)
