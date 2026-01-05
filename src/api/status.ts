@@ -269,10 +269,10 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       // Invariant blocks in last 24h (from system_events)
       pgPool.query(`
         SELECT 
-          COUNT(*) FILTER (WHERE event_data->>'reason' LIKE '%root%' OR event_data->>'reason' LIKE '%reply%') as root_blocks,
-          COUNT(*) FILTER (WHERE event_data->>'reason' LIKE '%format%' OR event_data->>'reason' LIKE '%thread%') as format_blocks,
-          COUNT(*) FILTER (WHERE event_data->>'reason' LIKE '%context%') as context_blocks,
-          COUNT(*) FILTER (WHERE event_data->>'reason' LIKE '%stale%' OR event_data->>'reason' LIKE '%old%') as stale_blocks,
+          COUNT(*) FILTER (WHERE metadata->>'reason' LIKE '%root%' OR metadata->>'reason' LIKE '%reply%') as root_blocks,
+          COUNT(*) FILTER (WHERE metadata->>'reason' LIKE '%format%' OR metadata->>'reason' LIKE '%thread%') as format_blocks,
+          COUNT(*) FILTER (WHERE metadata->>'reason' LIKE '%context%') as context_blocks,
+          COUNT(*) FILTER (WHERE metadata->>'reason' LIKE '%stale%' OR metadata->>'reason' LIKE '%old%') as stale_blocks,
           COUNT(*) as total_blocks
         FROM system_events 
         WHERE event_type = 'reply_invariant_blocked' 
