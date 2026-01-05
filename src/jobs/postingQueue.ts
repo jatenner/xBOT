@@ -278,13 +278,78 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
     return { pass: false, reason: 'substance_gate_no_markers', guard_results: guardResults };
   }
   
-  guardResults.substance_gate = { pass: true, hasQuestion, hasActionWord, hasSpecificTerm };
+  guardResults.substance_gate = { pass: true, hasQuestion, hasActionWord, hasSpecificTerm };        
   console.log(`[SUBSTANCE_GATE] pass=true question=${hasQuestion} action=${hasActionWord} specific=${hasSpecificTerm}`);
   
-  console.log(`[INVARIANT] FINAL: pass=true`);
-  console.log(`[INVARIANT] ═══════════════════════════════════════`);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 9) ANCHOR CHECK - Reply must reference something from the target tweet
+  // ═══════════════════════════════════════════════════════════════════════════
+  // This is a DETERMINISTIC check (not LLM-based):
+  // - Extract meaningful words (4+ chars) from both content and snapshot
+  // - Require at least 1 word overlap OR a number/fact reference
+  try {
+    // Access snapshot from decision metadata
+    const snapshot = (decision.target_tweet_content_snapshot || '') as string;
+    
+    if (snapshot && snapshot.length >= 20) {
+      // Extract meaningful words (4+ chars, alphanumeric only)
+      const extractWords = (text: string): Set<string> => {
+        const words = text.toLowerCase()
+          .replace(/[^a-z0-9\s]/gi, ' ')
+          .split(/\s+/)
+          .filter(w => w.length >= 4)
+          .filter(w => !['this', 'that', 'have', 'been', 'with', 'from', 'they', 'your', 'will', 'just', 'more', 'when', 'what', 'than', 'very', 'also', 'some', 'like', 'into'].includes(w));
+        return new Set(words);
+      };
+      
+      const contentWords = extractWords(content);
+      const snapshotWords = extractWords(snapshot);
+      
+      // Find overlapping words
+      const overlap = [...contentWords].filter(w => snapshotWords.has(w));
+      
+      // Extract numbers from both      
+      const contentNumbers: string[] = content.match(/\d+(\.\d+)?%?/g) || [];             
+      const snapshotNumbers: string[] = snapshot.match(/\d+(\.\d+)?%?/g) || [];           
+      const numberOverlap = contentNumbers.filter(n => snapshotNumbers.includes(n));
+      
+      const hasWordAnchor = overlap.length >= 1;
+      const hasNumberAnchor = numberOverlap.length >= 1;
+      
+      if (!hasWordAnchor && !hasNumberAnchor) {
+        guardResults.anchor_check = { 
+          pass: false, 
+          reason: 'no_content_anchor',
+          word_overlap: overlap.length,
+          number_overlap: numberOverlap.length
+        };
+        console.log(`[ANCHOR_CHECK] FAIL: no_content_anchor word_overlap=${overlap.length} number_overlap=${numberOverlap.length}`);
+        return { pass: false, reason: 'no_content_anchor', guard_results: guardResults };
+      }
+      
+      guardResults.anchor_check = { 
+        pass: true, 
+        word_overlap: overlap.length,
+        number_overlap: numberOverlap.length,
+        anchor_words: overlap.slice(0, 3)
+      };
+      console.log(`[ANCHOR_CHECK] pass=true word_overlap=${overlap.length} number_overlap=${numberOverlap.length} anchors=${overlap.slice(0, 3).join(',')}`);
+    } else {
+      // No snapshot to check against - fail closed
+      guardResults.anchor_check = { pass: false, reason: 'missing_snapshot_for_anchor' };
+      console.log(`[ANCHOR_CHECK] FAIL: missing_snapshot_for_anchor snapshot_len=${snapshot?.length || 0}`);
+      return { pass: false, reason: 'missing_snapshot_for_anchor', guard_results: guardResults };
+    }
+  } catch (anchorError: any) {
+    console.warn(`[ANCHOR_CHECK] Error computing anchor:`, anchorError.message);
+    // Fail open on errors - other gates should catch issues
+    guardResults.anchor_check = { pass: true, error: anchorError.message };
+  }
   
-  return { pass: true, reason: 'ok', guard_results: guardResults };
+  console.log(`[INVARIANT] FINAL: pass=true`);              
+  console.log(`[INVARIANT] ═══════════════════════════════════════`);           
+  
+  return { pass: true, reason: 'ok', guard_results: guardResults };             
 }
 
 /**
