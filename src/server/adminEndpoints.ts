@@ -87,3 +87,24 @@ export async function triggerPlanJob(req: Request, res: Response): Promise<void>
   }
 }
 
+// Manual trigger for harvester
+export async function triggerHarvester(req: Request, res: Response): Promise<void> {
+  console.log('[ADMIN] 🚀 Manual trigger: replyOpportunityHarvester');
+  
+  try {
+    const { replyOpportunityHarvester } = await import('../jobs/replyOpportunityHarvester');
+    await replyOpportunityHarvester();
+    
+    console.log('[ADMIN] ✅ replyOpportunityHarvester completed successfully');
+    res.json({ ok: true, message: 'replyOpportunityHarvester completed successfully' });
+  } catch (error: any) {
+    console.error('[ADMIN] ❌ replyOpportunityHarvester failed:', error);
+    console.error('[ADMIN] Stack:', error.stack);
+    res.status(500).json({ 
+      ok: false, 
+      error: error.message,
+      stack: error.stack,
+    });
+  }
+}
+

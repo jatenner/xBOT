@@ -5,7 +5,7 @@
 import express from 'express';
 import { getJobHeartbeats, getStalledJobs } from './jobs/jobHeartbeatRegistry';
 import { sendDiscordAlert, alertOnStateTransition } from './monitoring/discordAlerts';
-import { requireAdminToken, triggerPostingQueue, triggerReplyJob, triggerPlanJob } from './server/adminEndpoints';
+import { requireAdminToken, triggerPostingQueue, triggerReplyJob, triggerPlanJob, triggerHarvester } from './server/adminEndpoints';
 
 // Get build info from env or fallback
 const buildSha = process.env.GIT_SHA || 
@@ -53,6 +53,7 @@ app.use(express.json());
 app.post('/admin/run/postingQueue', requireAdminToken, triggerPostingQueue);
 app.post('/admin/run/replyJob', requireAdminToken, triggerReplyJob);
 app.post('/admin/run/planJob', requireAdminToken, triggerPlanJob);
+app.post('/admin/run/harvester', requireAdminToken, triggerHarvester);
 
 // Instant /status route - NO slow operations
 app.get('/status', (req, res) => {
