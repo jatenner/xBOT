@@ -3,6 +3,17 @@
  * All database connections use the same SSL configuration
  */
 
+// 🔒 SSL WORKAROUND: For Supabase/Railway hosted databases with self-signed certs
+// This MUST be set before any pg Pool is created
+if (process.env.DATABASE_URL?.includes('supabase.com') || 
+    process.env.DATABASE_URL?.includes('pooler.supabase.com') ||
+    process.env.RAILWAY_ENVIRONMENT_ID) {
+  if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    console.log('[DB_SSL] Set NODE_TLS_REJECT_UNAUTHORIZED=0 for hosted Supabase');
+  }
+}
+
 import { Pool, Client, ClientConfig, PoolClient } from 'pg';
 import { makePgPool, closePgPool } from './pgClient';
 
