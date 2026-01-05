@@ -81,17 +81,81 @@ app.get('/status', (req, res) => {
 });
 
 // 🎯 /status/reply - Detailed reply metrics endpoint
-app.get('/status/reply', async (req, res) => {
+app.get('/status/reply', async (req, res) => {              
   try {
-    const { getSystemStatus } = await import('./api/status');
-    const fullStatus = await getSystemStatus();
+    const { getSystemStatus } = await import('./api/status');                   
+    const fullStatus = await getSystemStatus();             
     
     res.json({
       ok: true,
-      timestamp: new Date().toISOString(),
-      reply_metrics: fullStatus.reply_metrics,
-      posting: fullStatus.posting,
-      memory: fullStatus.memory,
+      timestamp: new Date().toISOString(),                  
+      reply_metrics: fullStatus.reply_metrics,              
+      posting: fullStatus.posting,      
+      memory: fullStatus.memory,        
+    });
+  } catch (error: any) {                
+    res.status(500).json({              
+      ok: false,
+      error: error.message,             
+    });
+  }
+});
+
+// 🎯 CANDIDATE INSPECTION ENDPOINT
+app.get('/status/reply/candidates', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const { pgPool } = await import('./db/index');
+    
+    const result = await pgPool.query(`
+      SELECT 
+        target_tweet_id,
+        target_username,
+        target_tweet_content,
+        like_count,
+        view_count,
+        EXTRACT(EPOCH FROM (NOW() - tweet_posted_at))/60 as age_minutes,
+        like_count / GREATEST(EXTRACT(EPOCH FROM (NOW() - tweet_posted_at))/60, 10) as velocity,
+        tier,
+        harvest_tier,
+        target_quality_score,
+        target_quality_tier,
+        opportunity_score,
+        harvest_source,
+        harvest_source_detail,
+        tweet_posted_at
+      FROM reply_opportunities
+      WHERE replied_to = false
+        AND (expires_at IS NULL OR expires_at > NOW())
+        AND (target_quality_score IS NULL OR target_quality_score >= 70)
+      ORDER BY 
+        COALESCE(view_count, 0) DESC,
+        like_count DESC,
+        opportunity_score DESC
+      LIMIT $1
+    `, [limit]);
+    
+    const candidates = result.rows.map(row => ({
+      tweet_id: row.target_tweet_id,
+      author: row.target_username,
+      preview: (row.target_tweet_content || '').substring(0, 120) + '...',
+      likes: parseInt(row.like_count || 0),
+      views: row.view_count ? parseInt(row.view_count) : null,
+      age_minutes: Math.round(parseFloat(row.age_minutes || 0)),
+      velocity: Math.round(parseFloat(row.velocity || 0)),
+      tier: row.tier || row.harvest_tier,
+      quality_score: parseInt(row.target_quality_score || 0),
+      quality_tier: row.target_quality_tier,
+      score: Math.round(parseFloat(row.opportunity_score || 0)),
+      harvest_source: row.harvest_source,
+      harvest_source_detail: row.harvest_source_detail,
+      posted_at: row.tweet_posted_at,
+    }));
+    
+    res.json({
+      ok: true,
+      count: candidates.length,
+      candidates,
     });
   } catch (error: any) {
     res.status(500).json({

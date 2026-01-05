@@ -150,8 +150,49 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
       return;
     }
     
-    const needToHarvest = TARGET_POOL_SIZE - poolSize;
-    console.log(`[HARVESTER] 🎯 Need to harvest ~${needToHarvest} opportunities`);
+    const needToHarvest = TARGET_POOL_SIZE - poolSize;      
+    console.log(`[HARVESTER] 🎯 Need to harvest ~${needToHarvest} opportunities`);                  
+    
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Step 2.3: SEED ACCOUNT HARVESTER (PRIMARY SOURCE) 🌱
+  // ═══════════════════════════════════════════════════════════════════════════
+  let seedAccountOpportunities = 0;
+  try {
+    console.log(`[HARVESTER] 🌱 PRIMARY SOURCE: Seed account harvester`);
+    const { harvestSeedAccounts } = await import('../ai/seedAccountHarvester');
+    const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
+    
+    const seedResult = await withBrowserLock(
+      'seed_account_harvest',
+      BrowserPriority.HARVESTING,
+      async () => {
+        const browserModule = await import('../infra/playwright/browserManager');
+        const page = await browserModule.getAuthenticatedPage();
+        return await harvestSeedAccounts(page, {
+          max_tweets_per_account: 50,
+          max_accounts: 6, // Process 6 accounts per run
+        });
+      }
+    );
+    
+    seedAccountOpportunities = seedResult.total_stored;
+    console.log(`[HARVESTER] 🌱 SEED ACCOUNTS: ${seedResult.total_stored}/${seedResult.total_scraped} opportunities stored`);
+    
+    // Log to system_events
+    await supabase.from('system_events').insert({
+      event_type: 'seed_harvest_complete',
+      severity: 'info',
+      message: `Seed account harvest: ${seedResult.total_stored} stored`,
+      event_data: {
+        total_scraped: seedResult.total_scraped,
+        total_stored: seedResult.total_stored,
+        results: seedResult.results,
+      },
+      created_at: new Date().toISOString(),
+    });
+  } catch (seedError: any) {
+    console.error(`[HARVESTER] ❌ Seed account harvest failed:`, seedError.message);
+  }
     
   // Step 2.5: PROVEN ACCOUNT PRIORITY SEARCH (🧠 LEARNING-POWERED)
   // Query discovered_accounts for high performers and search them FIRST

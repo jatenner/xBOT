@@ -132,6 +132,21 @@ export interface SystemStatus {
     top_candidate_author: string | null;
     top_candidate_views: number | null;
     blocked_by_quality_60m: number;
+    // 🌱 HARVEST OBSERVABILITY
+    last_harvest_at: string | null;
+    last_harvest_sources: {
+      seed_accounts: number;
+      search_queries: number;
+    } | null;
+    last_harvest_counts: {
+      scraped: number;
+      root_kept: number;
+      stored: number;
+      blocked_reply: number;
+      blocked_quality: number;
+      blocked_stale: number;
+    } | null;
+    last_harvest_error: string | null;
     median_age_minutes_fresh: number | null;
     median_likes_fresh: number | null;
     top_candidate_likes: number | null;
@@ -573,6 +588,55 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       top_candidate_author: topCandidate ? (topCandidate as any).target_username || null : null,
       top_candidate_views: topCandidate ? parseInt((topCandidate as any).view_count || '0') || null : null,
       blocked_by_quality_60m: 0, // TODO: Add query for this
+      // 🌱 HARVEST OBSERVABILITY
+      last_harvest_at: await (async () => {
+        try {
+          const result = await pgPool.query(`
+            SELECT created_at FROM system_events
+            WHERE event_type IN ('harvest_run', 'seed_harvest_complete')
+            ORDER BY created_at DESC LIMIT 1
+          `);
+          return result.rows[0]?.created_at || null;
+        } catch { return null; }
+      })(),
+      last_harvest_sources: await (async () => {
+        try {
+          const result = await pgPool.query(`
+            SELECT 
+              COUNT(*) FILTER (WHERE harvest_source = 'seed_account') as seed_accounts,
+              COUNT(*) FILTER (WHERE harvest_source = 'search') as search_queries
+            FROM reply_opportunities
+            WHERE created_at >= NOW() - INTERVAL '6 hours'
+          `);
+          const row = result.rows[0];
+          return {
+            seed_accounts: parseInt(row?.seed_accounts || 0),
+            search_queries: parseInt(row?.search_queries || 0),
+          };
+        } catch { return null; }
+      })(),
+      last_harvest_counts: await (async () => {
+        try {
+          const result = await pgPool.query(`
+            SELECT event_data FROM system_events
+            WHERE event_type IN ('seed_harvest_complete', 'harvest_run')
+            ORDER BY created_at DESC LIMIT 1
+          `);
+          const data = result.rows[0]?.event_data;
+          if (data && typeof data === 'object') {
+            return {
+              scraped: data.total_scraped || 0,
+              root_kept: data.root_only_count || data.total_scraped || 0,
+              stored: data.total_stored || 0,
+              blocked_reply: data.blocked_reply_count || 0,
+              blocked_quality: data.blocked_quality_count || 0,
+              blocked_stale: data.blocked_stale_count || 0,
+            };
+          }
+          return null;
+        } catch { return null; }
+      })(),
+      last_harvest_error: null,
       last_skip_reasons: recentSkipReasons,
     };
     
@@ -631,6 +695,10 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       top_candidate_author: null,
       top_candidate_views: null,
       blocked_by_quality_60m: 0,
+      last_harvest_at: null,
+      last_harvest_sources: null,
+      last_harvest_counts: null,
+      last_harvest_error: null,
       last_skip_reasons: [],            
     };
   }
