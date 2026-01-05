@@ -1279,6 +1279,7 @@ interface QueuedDecision {
   decision_type: 'single' | 'thread' | 'reply'; // FIXED: Match database schema
   target_tweet_id?: string;
   target_username?: string;
+  root_tweet_id?: string; // 🔧 FIX: Required for FINAL_REPLY_GATE root-only check
   bandit_arm: string;
   timing_arm?: string;
   predicted_er: number;
@@ -1301,6 +1302,7 @@ interface QueuedDecisionRow {
   decision_type: unknown;
   target_tweet_id?: unknown;
   target_username?: unknown;
+  root_tweet_id?: unknown; // 🔧 FIX: Required for FINAL_REPLY_GATE
   bandit_arm: unknown;
   timing_arm?: unknown;
   predicted_er: unknown;
@@ -1831,6 +1833,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       decision_type: String(row.decision_type ?? 'single') as 'single' | 'thread' | 'reply',
       target_tweet_id: row.target_tweet_id ? String(row.target_tweet_id) : undefined,
       target_username: row.target_username ? String(row.target_username) : undefined,
+      root_tweet_id: row.root_tweet_id ? String(row.root_tweet_id) : undefined, // 🔧 FIX: Pass through for FINAL_REPLY_GATE
       bandit_arm: String(row.bandit_arm ?? ''),
       thread_parts: row.thread_parts as string[] | undefined,
       timing_arm: row.timing_arm ? String(row.timing_arm) : undefined,
