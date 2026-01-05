@@ -16,6 +16,19 @@ export interface PostResult {
 }
 
 export async function postNow({ text }: { text: string }): Promise<PostResult> {
+  // 🚨 BYPASS BLOCKED: postNow is deprecated
+  // All posting MUST go through postingQueue.ts which enforces PostingGuard
+  console.error(`[BYPASS_BLOCKED] 🚨 postNow() is deprecated and blocked.`);
+  console.error(`[BYPASS_BLOCKED]   text_length=${text.length}`);
+  console.error(`[BYPASS_BLOCKED]   reason=All posting must go through postingQueue with PostingGuard`);
+  console.error(`[BYPASS_BLOCKED]   stack=${new Error().stack}`);
+  
+  return {
+    success: false,
+    error: 'BYPASS_BLOCKED: postNow() is deprecated. Use postingQueue.ts'
+  };
+  
+  // Dead code below - kept for reference
   const startTime = Date.now();
   log({ op: 'post_now_start', text_length: text.length });
   globalThis.__xbotLastPostAttemptAt = new Date().toISOString();

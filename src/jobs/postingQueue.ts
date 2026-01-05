@@ -3746,8 +3746,27 @@ async function postReply(decision: QueuedDecision): Promise<string> {
         throw new Error(`CRITICAL: Receipt write failed: ${receiptResult.error}`);
       }
       
-      console.log(`[REPLY_TRUTH] step=RECEIPT_OK receipt_id=${receiptResult.receipt_id}`);
-      console.log(`[REPLY_TRUTH] ✅ Durable proof of posting saved to post_receipts`);
+      console.log(`[REPLY_TRUTH] step=RECEIPT_OK receipt_id=${receiptResult.receipt_id}`);          
+      console.log(`[REPLY_TRUTH] ✅ Durable proof of posting saved to post_receipts`);              
+
+      // 📊 LOG TO SYSTEM_EVENTS: reply_posted
+      try {
+        await supabase.from('system_events').insert({
+          event_type: 'reply_posted',
+          severity: 'info',
+          event_data: {
+            decision_id: decision.id,
+            tweet_id: result.tweetId,
+            target_tweet_id: decision.target_tweet_id,
+            target_username: decision.target_username,
+            receipt_id: receiptResult.receipt_id,
+            content_length: decision.content.length
+          },
+          created_at: new Date().toISOString()
+        });
+      } catch (eventError) {
+        console.warn(`[SYSTEM_EVENTS] Failed to log reply_posted:`, eventError);
+      }
 
       await poster.dispose();
       poster = null;
