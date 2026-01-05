@@ -47,6 +47,7 @@ async function main() {
     thread_like: [] as any[],
     missing_context: [] as any[],
     missing_db: [] as any[],
+    target_is_reply: [] as any[],
   };
   
   for (const reply of replies) {
@@ -91,6 +92,20 @@ async function main() {
         posted_at: reply.posted_at,
       });
     }
+    
+    // Target is reply: target_in_reply_to_tweet_id is set OR conversation_id != target_tweet_id
+    if ((reply as any).target_in_reply_to_tweet_id || 
+        ((reply as any).target_conversation_id && 
+         (reply as any).target_conversation_id !== reply.target_tweet_id)) {
+      violations.target_is_reply.push({
+        decision_id: reply.decision_id,
+        tweet_id: reply.tweet_id,
+        target_tweet_id: reply.target_tweet_id,
+        in_reply_to: (reply as any).target_in_reply_to_tweet_id,
+        conversation_id: (reply as any).target_conversation_id,
+        posted_at: reply.posted_at,
+      });
+    }
   }
   
   // Report violations
@@ -123,10 +138,21 @@ async function main() {
     }
   }
   
+  console.log(`\n🚫 Target Is Reply Tweet: ${violations.target_is_reply.length}`);
+  if (violations.target_is_reply.length > 0) {
+    violations.target_is_reply.slice(0, 5).forEach(v => {
+      console.log(`   ❌ ${v.tweet_id}: target=${v.target_tweet_id} in_reply_to=${v.in_reply_to || 'N/A'} conversation=${v.conversation_id || 'N/A'}`);
+    });
+    if (violations.target_is_reply.length > 5) {
+      console.log(`   ... and ${violations.target_is_reply.length - 5} more`);
+    }
+  }
+  
   const totalViolations = 
     violations.reply_chain.length + 
     violations.thread_like.length + 
-    violations.missing_context.length;
+    violations.missing_context.length +
+    violations.target_is_reply.length;
   
   if (totalViolations === 0) {
     console.log(`\n✅ NO VIOLATIONS FOUND`);

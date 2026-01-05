@@ -411,10 +411,52 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
     return true; // SKIP
   }
   
-  console.log(`[FINAL_REPLY_GATE] ✅ ROOT-ONLY: root=${rootTweetId} == target=${targetTweetId}`);
+  console.log(`[FINAL_REPLY_GATE] ✅ ROOT-ONLY: root=${rootTweetId} == target=${targetTweetId}`);   
   
   // ═══════════════════════════════════════════════════════════════════════
-  // GATE 1: Missing Fields Check + Snapshot Length
+  // GATE 0.5: LIVE ROOT VERIFICATION (Twitter Truth)
+  // Check if target_in_reply_to_tweet_id is set in DB (indicates reply tweet)
+  // ═══════════════════════════════════════════════════════════════════════
+  const { data: targetOpportunity } = await supabase
+    .from('reply_opportunities')
+    .select('target_in_reply_to_tweet_id, target_conversation_id')
+    .eq('target_tweet_id', targetTweetId)
+    .single();
+  
+  if (targetOpportunity) {
+    if (targetOpportunity.target_in_reply_to_tweet_id) {
+      console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: Target is a REPLY tweet (Twitter truth)`);
+      console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId}`);
+      console.error(`[FINAL_REPLY_GATE]   target=${targetTweetId}`);
+      console.error(`[FINAL_REPLY_GATE]   in_reply_to=${targetOpportunity.target_in_reply_to_tweet_id}`);
+      
+      await supabase.from('content_generation_metadata_comprehensive')
+        .update({ status: 'blocked', skip_reason: 'target_not_root_live_check' })
+        .eq('decision_id', decisionId);
+      
+      return true; // SKIP
+    }
+    
+    if (targetOpportunity.target_conversation_id && 
+        targetOpportunity.target_conversation_id !== targetTweetId &&
+        targetOpportunity.target_conversation_id !== 'unknown') {
+      console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: Target is part of a conversation (not root)`);
+      console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId}`);
+      console.error(`[FINAL_REPLY_GATE]   target=${targetTweetId}`);
+      console.error(`[FINAL_REPLY_GATE]   conversation_id=${targetOpportunity.target_conversation_id}`);
+      
+      await supabase.from('content_generation_metadata_comprehensive')
+        .update({ status: 'blocked', skip_reason: 'target_not_root_conversation_check' })
+        .eq('decision_id', decisionId);
+      
+      return true; // SKIP
+    }
+  }
+  
+  console.log(`[FINAL_REPLY_GATE] ✅ LIVE ROOT CHECK: Target is a true root tweet`);
+  
+  // ═══════════════════════════════════════════════════════════════════════    
+  // GATE 1: Missing Fields Check + Snapshot Length         
   // ═══════════════════════════════════════════════════════════════════════
   const requiredFields = [
     'target_tweet_id',

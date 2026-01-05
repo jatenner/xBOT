@@ -84,6 +84,8 @@ export interface SystemStatus {
     // 🚨 CRITICAL: All the blocking reasons for fail-closed gates
     thread_like_blocked_60m: number;
     target_not_root_or_missing_60m: number;
+    blocked_target_is_reply_60m: number;
+    blocked_target_not_root_live_check_60m: number;
     context_mismatch_blocked_60m: number;
     topic_mismatch_blocked_60m: number;
     missing_gate_data_blocked_60m: number;
@@ -527,6 +529,8 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       // 🚨 CRITICAL: All blocking reasons from fail-closed gates (FINAL_REPLY_GATE)
       thread_like_blocked_60m: parseInt(blockedByReason.thread_like_blocked || '0'),
       target_not_root_or_missing_60m: (parseInt(blockedByReason.target_not_found || '0') + parseInt(blockedByReason.target_not_root || '0') + parseInt(blockedByReason.missing_root_or_target || '0') + parseInt(blockedByReason.snapshot_too_short || '0')),
+      blocked_target_is_reply_60m: parseInt(blockedByReason.target_is_reply_tweet || '0'),
+      blocked_target_not_root_live_check_60m: (parseInt(blockedByReason.target_not_root_live_check || '0') + parseInt(blockedByReason.target_not_root_conversation_check || '0')),
       context_mismatch_blocked_60m: parseInt(blockedByReason.context_mismatch || '0'),
       topic_mismatch_blocked_60m: parseInt(blockedByReason.topic_mismatch || '0'),
       missing_gate_data_blocked_60m: parseInt(blockedByReason.missing_gate_data || '0'),
@@ -656,6 +660,8 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       skipped_stale_60m: 0,
       thread_like_blocked_60m: 0,
       target_not_root_or_missing_60m: 0,
+      blocked_target_is_reply_60m: 0,
+      blocked_target_not_root_live_check_60m: 0,
       context_mismatch_blocked_60m: 0,
       topic_mismatch_blocked_60m: 0,
       missing_gate_data_blocked_60m: 0,

@@ -71,6 +71,8 @@ interface ScrapedTweet {
   is_reply_tweet: boolean;
   is_retweet: boolean;
   is_quote: boolean;
+  in_reply_to_tweet_id?: string;
+  conversation_id?: string;
 }
 
 interface HarvestResult {
@@ -179,9 +181,30 @@ async function harvestAccount(
   
   console.log(`[SEED_HARVEST] 📊 @${username}: Extracted ${tweets.length} tweets`);
   
-  // Filter ROOT tweets only
-  const rootTweets = tweets.filter(t => t.is_root_tweet && !t.is_reply_tweet && !t.is_retweet);
+  // Filter ROOT tweets only with TRUE verification
+  // A tweet is a root tweet ONLY if:
+  // 1. Not a reply (no in_reply_to_tweet_id)
+  // 2. Not a retweet
+  // 3. conversation_id == tweet_id (best effort)
+  const rootTweets = tweets.filter(t => {
+    // Hard rejection if in_reply_to is present
+    if (t.in_reply_to_tweet_id) {
+      console.log(`[SEED_HARVEST] 🚫 REJECTED ${t.tweet_id}: is a reply (in_reply_to=${t.in_reply_to_tweet_id})`);
+      return false;
+    }
+    // Reject retweets
+    if (t.is_retweet) {
+      return false;
+    }
+    // Reject if conversation_id != tweet_id (indicates thread participant)
+    if (t.conversation_id && t.conversation_id !== t.tweet_id && t.conversation_id !== 'unknown') {
+      console.log(`[SEED_HARVEST] 🚫 REJECTED ${t.tweet_id}: conversation_id mismatch`);
+      return false;
+    }
+    return t.is_root_tweet && !t.is_reply_tweet;
+  });
   result.root_only_count = rootTweets.length;
+  result.blocked_reply_count = tweets.length - rootTweets.length;
   
   console.log(`[SEED_HARVEST] 🎯 @${username}: ${rootTweets.length} root tweets`);
   
@@ -259,9 +282,27 @@ async function extractTweetsFromProfile(page: Page, max_tweets: number): Promise
           const textDiv = card.querySelector('[data-testid="tweetText"]');
           const content = textDiv?.textContent || '';
           
-          // Check if reply (has "Replying to" text)
-          const replyingTo = card.querySelector('[data-testid="reply"]');
+          // Check if reply (has "Replying to" text)        
+          const replyingTo = card.querySelector('[data-testid="reply"]');       
           const isReply = Boolean(replyingTo) || content.trim().startsWith('@');
+          
+          // Extract in_reply_to_tweet_id and conversation_id (Twitter truth)
+          let inReplyToTweetId: string | undefined;
+          let conversationId: string | undefined;
+          
+          if (replyingTo) {
+            // Try to get parent tweet ID from "Replying to" link
+            const replyLink = replyingTo.querySelector('a[href*="/status/"]');
+            if (replyLink) {
+              const parentUrl = (replyLink as HTMLAnchorElement).href;
+              inReplyToTweetId = parentUrl.match(/\/status\/(\d+)/)?.[1];
+            }
+          }
+          
+          // Conversation ID is typically the root tweet ID
+          // For replies, we need to check if this is part of a thread
+          // Best effort: if it's a reply, conversation_id != tweet_id
+          conversationId = isReply ? (inReplyToTweetId || 'unknown') : tweetId;
           
           // Check if retweet
           const isRetweet = Boolean(card.querySelector('[data-testid="socialContext"]')?.textContent?.includes('reposted'));
@@ -305,19 +346,21 @@ async function extractTweetsFromProfile(page: Page, max_tweets: number): Promise
           const ageMinutes = (Date.now() - postedAt.getTime()) / (60 * 1000);
           
           return {
-            tweet_id: tweetId,
-            tweet_url: tweetUrl,
+            tweet_id: tweetId,          
+            tweet_url: tweetUrl,        
             author_handle: authorHandle,
-            author_name: authorName,
-            tweet_content: content,
-            like_count: likeCount,
-            reply_count: replyCount,
+            author_name: authorName,    
+            tweet_content: content,     
+            like_count: likeCount,      
+            reply_count: replyCount,    
             retweet_count: retweetCount,
-            view_count: viewCount,
-            tweet_posted_at: postedAt.toISOString(),
-            age_minutes: ageMinutes,
-            is_reply: isReply,
+            view_count: viewCount,      
+            tweet_posted_at: postedAt.toISOString(),        
+            age_minutes: ageMinutes,    
+            is_reply: isReply,          
             is_retweet: isRetweet,
+            in_reply_to_tweet_id: inReplyToTweetId,
+            conversation_id: conversationId,
           };
         } catch (err) {
           return null;
@@ -418,10 +461,12 @@ async function storeOpportunity(
       harvest_tier: tier,
       target_quality_score: quality.score,
       target_quality_tier: quality.quality_tier,
-      target_quality_reasons: quality.reasons,
-      account_username: 'xBOT_health', // Our account
-      harvest_source: 'seed_account',
+      target_quality_reasons: quality.reasons,              
+      account_username: 'xBOT_health', // Our account       
+      harvest_source: 'seed_account',   
       harvest_source_detail: tweet.author_handle,
+      target_in_reply_to_tweet_id: tweet.in_reply_to_tweet_id,
+      target_conversation_id: tweet.conversation_id,
     }, {
       onConflict: 'target_tweet_id',
     });
