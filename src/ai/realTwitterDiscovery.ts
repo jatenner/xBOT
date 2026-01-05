@@ -999,23 +999,36 @@ export class RealTwitterDiscovery {
     if (opportunities.length === 0) return;
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // 🔒 DYNAMIC FRESHNESS GATE: Visibility-tier aware age limits
+    // 🔒 VELOCITY-AWARE FRESHNESS GATE
     // ═══════════════════════════════════════════════════════════════════════════
-    // Viral tweets (100K+ likes) take time to go viral - allow older tweets
-    // Fresh tweets (<10K likes) should be newer to have reply value
+    // Strategy: Accept tweets based on VELOCITY (activity) not just age+likes
     // 
-    // Thresholds:
-    // - 100K+ likes: Allow up to 72 hours (MEGA-VIRAL worth replying to anytime)
-    // - 25K+ likes:  Allow up to 48 hours (VIRAL still has high visibility)
-    // - 10K+ likes:  Allow up to 24 hours (HIGH engagement, decent window)
-    // - <10K likes:  Allow up to 3 hours (low visibility needs freshness)
+    // Hard limits (can't be overridden):
+    // - PREFERRED: <= 6 hours for all tweets (maximum reply value)
+    // - HARD MAX: <= 12 hours (only if velocity >= 100)
+    // - ABSOLUTE MAX: <= 24 hours (only if velocity >= 200 = EXTREME)
+    // 
+    // Velocity = likes / max(age_minutes, 10)
     // ═══════════════════════════════════════════════════════════════════════════
     
-    function getMaxAgeMinutes(likeCount: number): number {
-      if (likeCount >= 100000) return 72 * 60;  // 72 hours for 100K+
-      if (likeCount >= 25000) return 48 * 60;   // 48 hours for 25K+
-      if (likeCount >= 10000) return 24 * 60;   // 24 hours for 10K+
-      return 180; // 3 hours for lower engagement (original gate)
+    function calculateVelocityForStorage(likes: number, ageMin: number): number {
+      return likes / Math.max(ageMin, 10);
+    }
+    
+    function getMaxAgeMinutes(likeCount: number, ageMinutes: number): number {
+      const velocity = calculateVelocityForStorage(likeCount, ageMinutes);
+      
+      // EXTREME velocity (>= 200): Allow up to 24 hours
+      if (velocity >= 200) return 24 * 60;
+      
+      // HIGH velocity (>= 100): Allow up to 12 hours
+      if (velocity >= 100) return 12 * 60;
+      
+      // MEDIUM velocity (>= 30): Allow up to 6 hours
+      if (velocity >= 30) return 6 * 60;
+      
+      // LOW velocity: 3 hours max (original gate)
+      return 180;
     }
     
     const now = Date.now();
@@ -1037,12 +1050,15 @@ export class RealTwitterDiscovery {
       }
       
       const likeCount = Number(opp.like_count || 0);
-      const maxAgeMin = getMaxAgeMinutes(likeCount);
+      const velocity = calculateVelocityForStorage(likeCount, ageMinutes);
+      const maxAgeMin = getMaxAgeMinutes(likeCount, ageMinutes);
       
       if (ageMinutes > maxAgeMin) {
-        console.log(`[REAL_DISCOVERY] ⏱️ REJECTED stale tweet ${opp.tweet_id}: ${Math.round(ageMinutes)}m old > ${maxAgeMin}m max (${Math.round(likeCount/1000)}K likes)`);
+        console.log(`[REAL_DISCOVERY] ⏱️ REJECTED stale tweet ${opp.tweet_id}: ${Math.round(ageMinutes)}m old > ${maxAgeMin}m max (${Math.round(likeCount/1000)}K likes, velocity=${velocity.toFixed(1)})`);
         return false;
       }
+      
+      console.log(`[REAL_DISCOVERY] ✓ ACCEPTED tweet ${opp.tweet_id}: ${Math.round(ageMinutes)}m old <= ${maxAgeMin}m max (${Math.round(likeCount/1000)}K likes, velocity=${velocity.toFixed(1)})`)
       
       return true;
     });

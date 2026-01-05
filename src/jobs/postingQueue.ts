@@ -72,7 +72,7 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
     // Check reply_opportunities for is_root_tweet metadata
     const { data: opportunity } = await supabase
       .from('reply_opportunities')
-      .select('target_tweet_content, is_root_tweet, tweet_posted_at')
+      .select('target_tweet_content, is_root_tweet, tweet_posted_at, like_count')
       .eq('target_tweet_id', decision.target_tweet_id)
       .maybeSingle();
     
@@ -95,26 +95,29 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
       guardResults.root_check = { pass: true };
       console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=true reason=structural_check_passed`);
       
-      // 4) FRESHNESS CHECK - Visibility-aware age limits
-      // High-visibility tweets (100K+ likes) are worth replying to even if older
+      // 4) FRESHNESS CHECK - Velocity-aware age limits
+      // Prioritize ACTIVE tweets (high velocity) over stale viral tweets
       if (opportunity.tweet_posted_at) {
         const postedAt = new Date(opportunity.tweet_posted_at);
         const ageMinutes = (Date.now() - postedAt.getTime()) / (60 * 1000);
         const likeCount = Number(opportunity.like_count || 0);
+        const velocity = likeCount / Math.max(ageMinutes, 10);
         
-        // Dynamic freshness: viral tweets get longer windows
-        let maxAgeMin = 180; // Default: 3 hours
-        if (likeCount >= 100000) maxAgeMin = 72 * 60;      // 72h for 100K+ likes
-        else if (likeCount >= 25000) maxAgeMin = 48 * 60;  // 48h for 25K+ likes
-        else if (likeCount >= 10000) maxAgeMin = 24 * 60;  // 24h for 10K+ likes
+        // Velocity-aware freshness limits
+        // PREFERRED: <= 6 hours | HARD MAX: <= 12 hours (with high velocity)
+        let maxAgeMin = 360; // Default: 6 hours (preferred)
+        if (velocity >= 200) maxAgeMin = 24 * 60;      // EXTREME velocity: 24h
+        else if (velocity >= 100) maxAgeMin = 12 * 60; // HIGH velocity: 12h
+        else if (velocity >= 30) maxAgeMin = 6 * 60;   // MEDIUM velocity: 6h
+        else maxAgeMin = 3 * 60;                       // LOW velocity: 3h
         
         if (ageMinutes > maxAgeMin) {
-          guardResults.freshness_check = { pass: false, age_min: Math.round(ageMinutes), max: maxAgeMin, likes: likeCount };
-          console.log(`[INVARIANT] freshness_check=FAIL age_min=${Math.round(ageMinutes)} max=${maxAgeMin} likes=${likeCount}`);
+          guardResults.freshness_check = { pass: false, age_min: Math.round(ageMinutes), max: maxAgeMin, likes: likeCount, velocity: Math.round(velocity) };
+          console.log(`[INVARIANT] freshness_check=FAIL age_min=${Math.round(ageMinutes)} max=${maxAgeMin} likes=${likeCount} velocity=${velocity.toFixed(1)}`);
           return { pass: false, reason: 'target_too_old', guard_results: guardResults };
         }
-        guardResults.freshness_check = { pass: true, age_min: Math.round(ageMinutes), max: maxAgeMin, likes: likeCount };
-        console.log(`[INVARIANT] freshness_check=pass age_min=${Math.round(ageMinutes)} max=${maxAgeMin} likes=${likeCount}`);
+        guardResults.freshness_check = { pass: true, age_min: Math.round(ageMinutes), max: maxAgeMin, likes: likeCount, velocity: Math.round(velocity) };
+        console.log(`[INVARIANT] freshness_check=pass age_min=${Math.round(ageMinutes)} max=${maxAgeMin} likes=${likeCount} velocity=${velocity.toFixed(1)}`);
       }
     } else {
       // No opportunity found - fail closed

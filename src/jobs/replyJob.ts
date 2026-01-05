@@ -762,85 +762,136 @@ async function generateRealReplies(): Promise<void> {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // 🎯 EXPECTED IMPRESSIONS RANKER
+  // 🚀 VELOCITY-FIRST CANDIDATE GATE
   // ═══════════════════════════════════════════════════════════════════════════
-  // Score = likes × freshness_multiplier × health_multiplier × account_priority
+  // Strategy: Prioritize ACTIVE tweets (high velocity) over stale viral tweets
   // 
-  // Goal: Maximize visibility by replying to tweets that will generate most impressions
+  // Age limits:
+  // - PREFERRED: <= 360 min (6 hours) - reply window for maximum visibility
+  // - HARD MAX: <= 720 min (12 hours) - only allow if velocity is EXTREME
+  // 
+  // Velocity = likes / max(age_minutes, 10)  
+  // - EXTREME: >= 100 (e.g., 10K likes in 100 min)
+  // - HIGH:    >= 30
+  // - MEDIUM:  >= 10
+  // - LOW:     < 10
   // ═══════════════════════════════════════════════════════════════════════════
   
-  function calculateExpectedImpressions(opp: any): number {
+  const PREFERRED_MAX_AGE_MIN = 360;  // 6 hours
+  const HARD_MAX_AGE_MIN = 720;       // 12 hours
+  const EXTREME_VELOCITY_THRESHOLD = 100;
+  
+  function calculateVelocity(likes: number, ageMin: number): number {
+    return likes / Math.max(ageMin, 10);
+  }
+  
+  function getVelocityTier(velocity: number): string {
+    if (velocity >= 100) return 'EXTREME';
+    if (velocity >= 30) return 'HIGH';
+    if (velocity >= 10) return 'MEDIUM';
+    return 'LOW';
+  }
+  
+  function calculateRankingScore(opp: any): { score: number; velocity: number; ageMin: number } {
     const likes = Number(opp.like_count) || 0;
-    const minutesAgo = Number(opp.posted_minutes_ago) || 180;
+    const ageMin = Number(opp.posted_minutes_ago) || 360;
+    const velocity = calculateVelocity(likes, ageMin);
     
-    // Freshness multiplier (newer = more visibility from our reply)
-    let freshnessMultiplier = 0.5; // Default for stale
-    if (minutesAgo <= 30) freshnessMultiplier = 2.0;      // Very fresh - 10x visibility
-    else if (minutesAgo <= 60) freshnessMultiplier = 1.5; // Fresh - 5x visibility
-    else if (minutesAgo <= 120) freshnessMultiplier = 1.0; // Decent - normal
-    else if (minutesAgo <= 180) freshnessMultiplier = 0.75; // Getting old
+    // Core ranking: velocity * log(likes) * freshness
+    // Velocity is the PRIMARY signal (active engagement NOW)
+    // Log(likes) normalizes for scale (100K vs 10K)
+    // Freshness multiplier penalizes old tweets
     
-    // Health relevance multiplier (if AI judged as health-relevant)
+    let freshnessMultiplier = 1.0;
+    if (ageMin <= 60) freshnessMultiplier = 2.0;       // Very fresh
+    else if (ageMin <= 120) freshnessMultiplier = 1.5; // Fresh
+    else if (ageMin <= 240) freshnessMultiplier = 1.0; // OK
+    else if (ageMin <= 360) freshnessMultiplier = 0.7; // Getting old
+    else freshnessMultiplier = 0.3;                    // Stale
+    
+    // Health relevance boost
     const healthScore = Number(opp.health_relevance_score) || 0;
     const healthMultiplier = healthScore >= 7 ? 1.5 : healthScore >= 5 ? 1.2 : 1.0;
     
-    // Account priority from discovered_accounts (proven performers)
+    // Account priority from discovered_accounts
     const username = String(opp.target_username || '').toLowerCase().trim();
     const accountPriority = priorityMap.get(username) || 0;
-    const priorityMultiplier = 1 + (accountPriority * 0.5); // Up to 50% boost
+    const priorityMultiplier = 1 + (accountPriority * 0.3);
     
-    // Calculate expected impressions score
-    // Likes are the primary signal - a 100K like tweet is 100x more valuable than 1K
-    const score = likes * freshnessMultiplier * healthMultiplier * priorityMultiplier;
+    // Final score: velocity-weighted ranking
+    const score = velocity * Math.log10(likes + 1) * freshnessMultiplier * healthMultiplier * priorityMultiplier;
     
-    return score;
+    return { score, velocity, ageMin };
   }
   
-  const sortedOpportunities = [...allOpportunities].sort((a, b) => {
-    const aScore = calculateExpectedImpressions(a);
-    const bScore = calculateExpectedImpressions(b);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CANDIDATE GATE: Filter opportunities by age + velocity
+  // ═══════════════════════════════════════════════════════════════════════════
+  const candidateGateResults: { kept: number; skipped_stale: number; skipped_low_velocity: number } = {
+    kept: 0, skipped_stale: 0, skipped_low_velocity: 0
+  };
+  
+  const gatedOpportunities = allOpportunities.filter(opp => {
+    const tweetId = opp.target_tweet_id || opp.tweet_id || 'unknown';
+    const likes = Number(opp.like_count) || 0;
+    const ageMin = Number(opp.posted_minutes_ago) || 9999;
+    const velocity = calculateVelocity(likes, ageMin);
+    const velocityTier = getVelocityTier(velocity);
     
-    // Primary: Expected impressions (higher = better)
-    if (aScore !== bScore) return bScore - aScore;
+    // HARD MAX: Skip anything older than 12 hours unless EXTREME velocity
+    if (ageMin > HARD_MAX_AGE_MIN) {
+      if (velocity >= EXTREME_VELOCITY_THRESHOLD) {
+        console.log(`[CANDIDATE_GATE] tweet_id=${tweetId} tier=EXCEPTION age_min=${Math.round(ageMin)} likes=${likes} velocity=${velocity.toFixed(1)} action=keep reason=extreme_velocity_override`);
+        candidateGateResults.kept++;
+        return true;
+      }
+      console.log(`[CANDIDATE_GATE] tweet_id=${tweetId} tier=STALE age_min=${Math.round(ageMin)} likes=${likes} velocity=${velocity.toFixed(1)} action=skip reason=exceeds_hard_max_12h`);
+      candidateGateResults.skipped_stale++;
+      return false;
+    }
     
-    // Tiebreaker 1: Raw likes (higher = better)
-    const aLikes = Number(a.like_count) || 0;
-    const bLikes = Number(b.like_count) || 0;
-    if (aLikes !== bLikes) return bLikes - aLikes;
+    // PREFERRED MAX: Warn but allow if velocity is at least MEDIUM
+    if (ageMin > PREFERRED_MAX_AGE_MIN) {
+      if (velocity >= 10) {
+        console.log(`[CANDIDATE_GATE] tweet_id=${tweetId} tier=WARN age_min=${Math.round(ageMin)} likes=${likes} velocity=${velocity.toFixed(1)} action=keep reason=acceptable_velocity_${velocityTier}`);
+        candidateGateResults.kept++;
+        return true;
+      }
+      console.log(`[CANDIDATE_GATE] tweet_id=${tweetId} tier=STALE age_min=${Math.round(ageMin)} likes=${likes} velocity=${velocity.toFixed(1)} action=skip reason=stale_low_velocity`);
+      candidateGateResults.skipped_low_velocity++;
+      return false;
+    }
     
-    // Tiebreaker 2: Freshness (lower minutes ago = better)
-    const aAge = Number(a.posted_minutes_ago) || 9999;
-    const bAge = Number(b.posted_minutes_ago) || 9999;
-    return aAge - bAge;
+    // Within preferred window - keep all
+    console.log(`[CANDIDATE_GATE] tweet_id=${tweetId} tier=FRESH age_min=${Math.round(ageMin)} likes=${likes} velocity=${velocity.toFixed(1)} action=keep reason=within_preferred_window`);
+    candidateGateResults.kept++;
+    return true;
   });
   
-  // Log top opportunities with their scores
-  console.log('[REPLY_JOB] 🎯 TOP OPPORTUNITIES BY EXPECTED IMPRESSIONS:');
+  console.log(`[CANDIDATE_GATE] ═══════════════════════════════════════════════`);
+  console.log(`[CANDIDATE_GATE] SUMMARY: kept=${candidateGateResults.kept} skipped_stale=${candidateGateResults.skipped_stale} skipped_low_velocity=${candidateGateResults.skipped_low_velocity}`);
+  console.log(`[CANDIDATE_GATE] ═══════════════════════════════════════════════`);
+  
+  // Sort by ranking score (velocity-weighted)
+  const sortedOpportunities = [...gatedOpportunities].sort((a, b) => {
+    const aRank = calculateRankingScore(a);
+    const bRank = calculateRankingScore(b);
+    return bRank.score - aRank.score;
+  });
+  
+  // Log top opportunities with velocity
+  console.log('[REPLY_JOB] 🎯 TOP OPPORTUNITIES BY VELOCITY-WEIGHTED SCORE:');
   for (const opp of sortedOpportunities.slice(0, 5)) {
-    const score = calculateExpectedImpressions(opp);
-    console.log(`[REPLY_JOB]   📊 @${opp.target_username} likes=${opp.like_count} age=${opp.posted_minutes_ago}min score=${Math.round(score).toLocaleString()}`);
+    const { score, velocity, ageMin } = calculateRankingScore(opp);
+    const tier = getVelocityTier(velocity);
+    console.log(`[REPLY_JOB]   📊 @${opp.target_username} likes=${opp.like_count} age=${Math.round(ageMin)}min velocity=${velocity.toFixed(1)} (${tier}) score=${Math.round(score)}`);
   }
 
-  // 🎯 PRIORITIZE RECENCY: Fresh tweets (<2 hours old) get 10-50x more visibility
-  // Filter for tweets posted within last 2 hours (120 minutes)
-  const FRESH_TWEET_THRESHOLD_MINUTES = 120; // 2 hours = maximum visibility window
-  
-  const highVirality = sortedOpportunities.filter(opp => (Number(opp.like_count) || 0) >= 10000).slice(0, 5);
-  const freshHot = sortedOpportunities.filter(opp => {
-    const minutesAgo = Number(opp.posted_minutes_ago) || 9999;
-    return minutesAgo <= FRESH_TWEET_THRESHOLD_MINUTES; // Only tweets <2 hours old
-  }).slice(0, 10); // Increase priority pool for fresh tweets
-  
-  console.log(`[REPLY_JOB] 🔥 Fresh tweets (<${FRESH_TWEET_THRESHOLD_MINUTES} min): ${freshHot.length} opportunities`);
-  
-  // Prioritize fresh + viral, then others
-  const priorityPool = Array.from(new Set([...freshHot, ...highVirality, ...sortedOpportunities]));
-
-  const candidateOpportunities = priorityPool.slice(0, 40);
+  const candidateOpportunities = sortedOpportunities.slice(0, 40);
   
   // ✅ MEMORY OPTIMIZATION: Clear intermediate arrays after use
   // These arrays are no longer needed after creating candidateOpportunities
-  clearArrays(highVirality, freshHot, sortedOpportunities, priorityPool);
+  clearArrays(gatedOpportunities, sortedOpportunities);
 
   // 🚨 CRITICAL FIX: Check for TWEET IDs we've already replied to (not just usernames!)
   // This prevents multiple replies to the same tweet
@@ -1068,10 +1119,29 @@ async function generateRealReplies(): Promise<void> {
       }
     }
     
-    // 🎯 LOGGING: Prove we're selecting ROOT tweets only
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🔒 ROOT-ONLY ENFORCEMENT (FAIL-CLOSED)
+    // ═══════════════════════════════════════════════════════════════════════
     const rootId = resolved.rootTweetId;
     const isReplyTweet = !resolved.isRootTweet;
-    console.log(`[REPLY_SELECT] candidate=${tweetId} is_reply=${isReplyTweet} resolved_root=${rootId} action=keep reason=${resolved.isRootTweet ? 'root_tweet_confirmed' : 'resolved_to_root'}`);
+    const rootMatchesTarget = rootId === tweetId;
+    
+    // BLOCK if target is a reply (root != target)
+    if (!rootMatchesTarget && !resolved.isRootTweet) {
+      console.log(`[ROOT_ONLY] target=${tweetId} root=${rootId} is_reply=true pass=false reason=target_is_reply_resolves_to_different_root`);
+      rootDiagCounters.skipped_is_reply_tweet++;
+      continue;
+    }
+    
+    // BLOCK if explicitly marked as reply tweet
+    if (isReplyTweet) {
+      console.log(`[ROOT_ONLY] target=${tweetId} root=${rootId} is_reply=true pass=false reason=is_reply_tweet_flag`);
+      rootDiagCounters.skipped_is_reply_tweet++;
+      continue;
+    }
+    
+    // PASS - confirmed root tweet
+    console.log(`[ROOT_ONLY] target=${tweetId} root=${rootId} is_reply=false pass=true reason=confirmed_root_tweet`);
     
     // Update opportunity with root data
     const resolvedOpp = {
@@ -1207,14 +1277,27 @@ async function generateRealReplies(): Promise<void> {
       const tweetUrlStr = String(target.tweet_url || '');
       const tweetIdFromUrl = tweetUrlStr.split('/').pop() || 'unknown';
         
-        // 🔥 CONTEXT: Extract keywords from parent tweet
-        const parentText = target.tweet_content || '';
+        // ═══════════════════════════════════════════════════════════════════════
+        // 🔒 CONTEXT INPUT GATE (FAIL-CLOSED)
+        // ═══════════════════════════════════════════════════════════════════════
+        const parentText = target.tweet_content;
+        const rootId = opportunity.root_tweet_id || tweetIdFromUrl;
+        const MIN_CONTEXT_LENGTH = 40; // Minimum meaningful context
         
-        // ✅ CONTEXT VALIDATION GATE: Skip if no meaningful context
-        if (!parentText || parentText.length < 20) {
-          console.log(`[REPLY_SKIP] target_id=${tweetIdFromUrl} reason=missing_context content_length=${parentText.length}`);
-          continue; // Skip this opportunity
+        // BLOCK: No text at all
+        if (!parentText || typeof parentText !== 'string') {
+          console.log(`[CONTEXT_INPUT] target_id=${tweetIdFromUrl} root_id=${rootId} text_len=0 pass=false reason=missing_target_text`);
+          continue;
         }
+        
+        // BLOCK: Text too short
+        const trimmedText = parentText.trim();
+        if (trimmedText.length < MIN_CONTEXT_LENGTH) {
+          console.log(`[CONTEXT_INPUT] target_id=${tweetIdFromUrl} root_id=${rootId} text_len=${trimmedText.length} pass=false reason=text_too_short_min_${MIN_CONTEXT_LENGTH}`);
+          continue;
+        }
+        
+        console.log(`[CONTEXT_INPUT] target_id=${tweetIdFromUrl} root_id=${rootId} text_len=${trimmedText.length} pass=true`);
         
         const { extractKeywords } = await import('../gates/ReplyQualityGate');
         const keywords = extractKeywords(parentText);

@@ -104,6 +104,20 @@ export interface SystemStatus {
     bypass_blocked_count: number;
     last_bypass_blocked_at: string | null;
     last_bypass_caller: string | null;
+    // 🎯 NEW: Velocity-aware metrics
+    opportunities_by_tier: {
+      tier_100k_plus: number;
+      tier_25k_plus: number;
+      tier_10k_plus: number;
+      tier_2500_plus: number;
+      tier_low: number;
+    };
+    median_age_minutes_fresh: number | null;
+    median_likes_fresh: number | null;
+    top_candidate_likes: number | null;
+    top_candidate_age_minutes: number | null;
+    top_candidate_velocity: number | null;
+    last_skip_reasons: Array<{ reason: string; count: number }>;
   };
 }
 
@@ -204,8 +218,9 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
   try {
     const sixtyMinutesAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const MAX_AGE_MIN = 180;
-    const freshnessThreshold = new Date(Date.now() - MAX_AGE_MIN * 60 * 1000).toISOString();
+    // Use velocity-aware freshness (6h for low velocity, 12h for high)
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+    const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
     
     // Run queries in parallel
     const [
@@ -218,7 +233,11 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       invariantBlocksResult,
       blockedByReasonResult,
       lastSuccessResult,
-      lastHarvestResult
+      lastHarvestResult,
+      // NEW: Tier breakdown and velocity metrics
+      tierBreakdownResult,
+      topCandidatesResult,
+      recentSkipReasonsResult
     ] = await Promise.all([
       // All opportunities available (not replied, not expired)
       pgPool.query(`
@@ -233,14 +252,14 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
         WHERE replied_to = false 
         AND (expires_at IS NULL OR expires_at > NOW())
         AND tweet_posted_at >= $1
-      `, [freshnessThreshold]),
+      `, [sixHoursAgo]),
       
-      // Stale opportunities (>180 min old)
+      // Stale opportunities (>12h old - beyond hard max)
       pgPool.query(`
         SELECT COUNT(*) as count FROM reply_opportunities 
         WHERE replied_to = false 
         AND tweet_posted_at < $1
-      `, [freshnessThreshold]),
+      `, [twelveHoursAgo]),
       
       // Replies queued in last 60 min
       pgPool.query(`
@@ -320,7 +339,51 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
         WHERE event_type = 'harvester_complete' 
         ORDER BY created_at DESC 
         LIMIT 1
-      `)
+      `),
+      
+      // NEW: Tier breakdown for fresh opportunities
+      pgPool.query(`
+        SELECT 
+          COUNT(*) FILTER (WHERE like_count >= 100000) as tier_100k_plus,
+          COUNT(*) FILTER (WHERE like_count >= 25000 AND like_count < 100000) as tier_25k_plus,
+          COUNT(*) FILTER (WHERE like_count >= 10000 AND like_count < 25000) as tier_10k_plus,
+          COUNT(*) FILTER (WHERE like_count >= 2500 AND like_count < 10000) as tier_2500_plus,
+          COUNT(*) FILTER (WHERE like_count < 2500) as tier_low,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - tweet_posted_at))/60) as median_age_min,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY like_count) as median_likes
+        FROM reply_opportunities 
+        WHERE replied_to = false 
+          AND (expires_at IS NULL OR expires_at > NOW())
+          AND tweet_posted_at >= $1
+      `, [twelveHoursAgo]),
+      
+      // NEW: Top 3 candidates by velocity
+      pgPool.query(`
+        SELECT 
+          target_tweet_id,
+          like_count,
+          EXTRACT(EPOCH FROM (NOW() - tweet_posted_at))/60 as age_min,
+          like_count / GREATEST(EXTRACT(EPOCH FROM (NOW() - tweet_posted_at))/60, 10) as velocity
+        FROM reply_opportunities 
+        WHERE replied_to = false 
+          AND (expires_at IS NULL OR expires_at > NOW())
+          AND tweet_posted_at >= $1
+        ORDER BY (like_count / GREATEST(EXTRACT(EPOCH FROM (NOW() - tweet_posted_at))/60, 10)) DESC
+        LIMIT 3
+      `, [twelveHoursAgo]),
+      
+      // NEW: Top 5 skip reasons in last 60 min
+      pgPool.query(`
+        SELECT skip_reason, COUNT(*) as count
+        FROM content_generation_metadata_comprehensive
+        WHERE decision_type = 'reply'
+          AND status = 'blocked'
+          AND skip_reason IS NOT NULL
+          AND created_at >= $1
+        GROUP BY skip_reason
+        ORDER BY count DESC
+        LIMIT 5
+      `, [sixtyMinutesAgo])
     ]);
     
     const opportunitiesAvailable = parseInt(opportunitiesResult.rows[0]?.count || '0');
@@ -350,6 +413,20 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
     };
     const lastSuccessAt = lastSuccessResult.rows[0]?.posted_at || null;
     const lastHarvestAt = lastHarvestResult.rows[0]?.created_at || null;
+    
+    // NEW: Process tier breakdown and velocity metrics
+    const tierBreakdown = tierBreakdownResult.rows[0] || {
+      tier_100k_plus: 0, tier_25k_plus: 0, tier_10k_plus: 0, tier_2500_plus: 0, tier_low: 0,
+      median_age_min: null, median_likes: null
+    };
+    
+    const topCandidates = topCandidatesResult.rows || [];
+    const topCandidate = topCandidates[0] || null;
+    
+    const recentSkipReasons = (recentSkipReasonsResult.rows || []).map((r: any) => ({
+      reason: r.skip_reason,
+      count: parseInt(r.count || '0')
+    }));
     
     // Determine pool health (based on FRESH opportunities, not total)
     let poolHealth = 'healthy';
@@ -426,6 +503,20 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       bypass_blocked_count: bypassStats.bypass_blocked_count,
       last_bypass_blocked_at: bypassStats.last_bypass_blocked_at,
       last_bypass_caller: bypassStats.last_bypass_caller,
+      // 🎯 NEW: Velocity-aware metrics
+      opportunities_by_tier: {
+        tier_100k_plus: parseInt(tierBreakdown.tier_100k_plus || '0'),
+        tier_25k_plus: parseInt(tierBreakdown.tier_25k_plus || '0'),
+        tier_10k_plus: parseInt(tierBreakdown.tier_10k_plus || '0'),
+        tier_2500_plus: parseInt(tierBreakdown.tier_2500_plus || '0'),
+        tier_low: parseInt(tierBreakdown.tier_low || '0'),
+      },
+      median_age_minutes_fresh: tierBreakdown.median_age_min ? Math.round(parseFloat(tierBreakdown.median_age_min)) : null,
+      median_likes_fresh: tierBreakdown.median_likes ? Math.round(parseFloat(tierBreakdown.median_likes)) : null,
+      top_candidate_likes: topCandidate ? parseInt(topCandidate.like_count || '0') : null,
+      top_candidate_age_minutes: topCandidate ? Math.round(parseFloat(topCandidate.age_min || '0')) : null,
+      top_candidate_velocity: topCandidate ? Math.round(parseFloat(topCandidate.velocity || '0')) : null,
+      last_skip_reasons: recentSkipReasons,
     };
     
   } catch (error: any) {
@@ -463,6 +554,20 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       bypass_blocked_count: 0,
       last_bypass_blocked_at: null,
       last_bypass_caller: null,
+      // 🎯 NEW: Velocity-aware metrics (defaults)
+      opportunities_by_tier: {
+        tier_100k_plus: 0,
+        tier_25k_plus: 0,
+        tier_10k_plus: 0,
+        tier_2500_plus: 0,
+        tier_low: 0,
+      },
+      median_age_minutes_fresh: null,
+      median_likes_fresh: null,
+      top_candidate_likes: null,
+      top_candidate_age_minutes: null,
+      top_candidate_velocity: null,
+      last_skip_reasons: [],
     };
   }
 }
