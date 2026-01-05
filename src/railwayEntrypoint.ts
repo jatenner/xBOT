@@ -105,7 +105,7 @@ app.get('/status/reply', async (req, res) => {
 app.get('/status/reply/candidates', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
-    const { pgPool } = await import('./db/index');
+    const { pgPool } = await import('./db/pg');
     
     const result = await pgPool.query(`
       SELECT 
