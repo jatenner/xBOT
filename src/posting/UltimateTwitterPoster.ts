@@ -259,7 +259,14 @@ export class UltimateTwitterPoster {
       return { success: false, error: (verification as { valid: false; error: string }).error };
     }
     const validGuard = (verification as { valid: true; guard: PostingGuard }).guard;
+    
+    // 📊 COMPREHENSIVE LOGGING: Build fingerprint for audit trail
+    const BUILD_SHA = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || 'dev';
+    const DB_URL = process.env.DATABASE_URL || '';
+    const DB_ENV_FINGERPRINT = require('crypto').createHash('md5').update(DB_URL).digest('hex').substring(0, 8);
+    
     console.log(`[POST_TWEET] 🔐 Authorized via guard: decision_id=${validGuard.decision_id}`);
+    console.log(`[POST_TWEET] 📊 AUDIT_TRAIL: decision_id=${validGuard.decision_id} pipeline_source=${validGuard.pipeline_source} job_run_id=${validGuard.job_run_id} build_sha=${BUILD_SHA} db_env=${DB_ENV_FINGERPRINT}`);
     
     let retryCount = 0;
     const maxRetries = 2; // Increased retries
@@ -287,10 +294,14 @@ export class UltimateTwitterPoster {
             throw new Error(result.error || 'Post attempt failed');
           }
 
-          const canonical = await this.extractCanonicalTweet(content);
-          const ms = Date.now() - startTime;
+          const canonical = await this.extractCanonicalTweet(content);          
+          const ms = Date.now() - startTime;                
           log({ op: 'ultimate_poster_complete', outcome: 'success', attempt: retryCount + 1, tweet_id: canonical.tweetId, ms });
-          await this.dispose();
+          
+          // 🎯 SUCCESS LOG: Include tweet_id for audit trail
+          console.log(`[POST_TWEET] ✅ SUCCESS: tweet_id=${canonical.tweetId} decision_id=${validGuard.decision_id} pipeline_source=${validGuard.pipeline_source} build_sha=${BUILD_SHA} db_env=${DB_ENV_FINGERPRINT}`);
+          
+          await this.dispose();         
           return { success: true, tweetId: canonical.tweetId, tweetUrl: canonical.tweetUrl };
           
         } catch (error) {
@@ -1623,7 +1634,14 @@ export class UltimateTwitterPoster {
       return { success: false, error: (verification as { valid: false; error: string }).error };
     }
     const validGuard = (verification as { valid: true; guard: PostingGuard }).guard;
+    
+    // 📊 COMPREHENSIVE LOGGING: Build fingerprint for audit trail
+    const BUILD_SHA = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || 'dev';
+    const DB_URL = process.env.DATABASE_URL || '';
+    const DB_ENV_FINGERPRINT = require('crypto').createHash('md5').update(DB_URL).digest('hex').substring(0, 8);
+    
     console.log(`[POST_REPLY] 🔐 Authorized via guard: decision_id=${validGuard.decision_id} target=${replyToTweetId}`);
+    console.log(`[POST_REPLY] 📊 AUDIT_TRAIL: decision_id=${validGuard.decision_id} target_tweet_id=${replyToTweetId} pipeline_source=${validGuard.pipeline_source} job_run_id=${validGuard.job_run_id} build_sha=${BUILD_SHA} db_env=${DB_ENV_FINGERPRINT}`);
     
     let retryCount = 0;
     const maxRetries = 2;
