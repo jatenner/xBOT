@@ -46,7 +46,24 @@ export class RealTwitterDiscovery {
     secondary: ['supplement', 'vitamin', 'protein', 'sleep', 'workout', 'exercise', 'fasting', 'glucose', 'insulin', 'hormone', 'gut', 'microbiome'],
     tertiary: ['recovery', 'hydrate', 'immune', 'metabolic', 'sauna', 'cold plunge', 'meditation', 'stress', 'mental health', 'therapy']
   };
-  public readonly curatedAccounts = [];
+  public readonly curatedAccounts = []; 
+  
+  // 🌟 HIGH-VISIBILITY SEED ACCOUNTS for fallback harvesting
+  // These are accounts known to post viral health/fitness content
+  private readonly SEED_HEALTH_ACCOUNTS = [
+    { username: 'hubermanlab', followers: 5000000, minLikes: 25000 },
+    { username: 'PeterAttiaMD', followers: 1500000, minLikes: 10000 },
+    { username: 'foundmyfitness', followers: 300000, minLikes: 5000 },
+    { username: 'MaxLugavere', followers: 200000, minLikes: 3000 },
+    { username: 'DrMarkHyman', followers: 400000, minLikes: 5000 },
+    { username: 'DaveAsprey', followers: 600000, minLikes: 5000 },
+    { username: 'SolBrah', followers: 500000, minLikes: 10000 },
+    { username: 'HealthyGamerGG', followers: 200000, minLikes: 5000 },
+    { username: 'NiallHarbison', followers: 100000, minLikes: 5000 },
+    { username: 'DrGundry', followers: 200000, minLikes: 3000 },
+    { username: 'BreyerMeyer', followers: 100000, minLikes: 2000 },
+    { username: 'FitFounder', followers: 500000, minLikes: 5000 },
+  ];
 
   private constructor() {}
 
@@ -563,10 +580,124 @@ export class RealTwitterDiscovery {
         timeout: 30000 
       });
       
-      // 🕐 GIVE TWITTER TIME TO LOAD
-      await page.waitForTimeout(5000); // Longer for search results
+      // 🕐 GIVE TWITTER TIME TO LOAD   
+      await page.waitForTimeout(5000); // Longer for search results             
       
-      // Extract viral tweets from search results
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🔍 HARVEST DEBUG: Save artifacts to diagnose empty results
+      // ═══════════════════════════════════════════════════════════════════════
+      const debugEnabled = process.env.HARVEST_DEBUG !== 'false';
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const querySlug = searchLabel.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+      const debugDir = `/tmp/harvest_debug/${timestamp}_${querySlug}`;
+      
+      let debugCounters = {
+        dom_tweet_cards_found: 0,
+        extracted_tweets_count: 0,
+        login_wall_detected: false,
+        rate_limit_banner_detected: false,
+        captcha_detected: false,
+        no_results_message_detected: false,
+        page_html_length: 0,
+        page_title: '',
+      };
+      
+      if (debugEnabled) {
+        try {
+          // Create debug directory
+          const { mkdirSync, writeFileSync } = await import('fs');
+          mkdirSync(debugDir, { recursive: true });
+          
+          // Take screenshot BEFORE extraction
+          await page.screenshot({ path: `${debugDir}/page_screenshot.png`, fullPage: false });
+          console.log(`[HARVEST_DEBUG] 📸 Screenshot saved: ${debugDir}/page_screenshot.png`);
+          
+          // Get page HTML (truncated for storage)
+          const html = await page.content();
+          debugCounters.page_html_length = html.length;
+          writeFileSync(`${debugDir}/page_content.html`, html.substring(0, 500000)); // Max 500KB
+          console.log(`[HARVEST_DEBUG] 📄 HTML saved: ${debugDir}/page_content.html (${html.length} chars)`);
+          
+          // Get page title
+          debugCounters.page_title = await page.title();
+          
+          // Check for common blocking indicators
+          const pageText = await page.evaluate(() => document.body?.innerText || '');
+          
+          // Login wall detection
+          if (pageText.includes('Sign in') && pageText.includes('the conversation') || 
+              pageText.includes('Log in') && pageText.includes('your account')) {
+            debugCounters.login_wall_detected = true;
+            console.warn(`[HARVEST_DEBUG] ⚠️ LOGIN WALL DETECTED`);
+          }
+          
+          // Rate limit detection
+          if (pageText.includes('Rate limit') || pageText.includes('exceeded') || 
+              pageText.includes('too many requests') || pageText.includes('try again later')) {
+            debugCounters.rate_limit_banner_detected = true;
+            console.warn(`[HARVEST_DEBUG] ⚠️ RATE LIMIT DETECTED`);
+          }
+          
+          // Captcha detection
+          if (pageText.includes('verify') && pageText.includes('robot') || 
+              pageText.includes('Captcha') || pageText.includes('challenge')) {
+            debugCounters.captcha_detected = true;
+            console.warn(`[HARVEST_DEBUG] ⚠️ CAPTCHA DETECTED`);
+          }
+          
+          // No results message
+          if (pageText.includes('No results for') || pageText.includes("didn't match any")) {
+            debugCounters.no_results_message_detected = true;
+            console.log(`[HARVEST_DEBUG] ℹ️ No results message shown (query too restrictive)`);
+          }
+          
+          // Count DOM tweet elements BEFORE extraction
+          debugCounters.dom_tweet_cards_found = await page.evaluate(() => {
+            const selectors = [
+              'article[data-testid="tweet"]',
+              'article[role="article"]',
+              'div[data-testid="cellInnerDiv"]',
+              'div[data-testid="tweet"]'
+            ];
+            let found = 0;
+            for (const sel of selectors) {
+              found = document.querySelectorAll(sel).length;
+              if (found > 0) break;
+            }
+            return found;
+          });
+          console.log(`[HARVEST_DEBUG] 🔢 DOM tweet cards found: ${debugCounters.dom_tweet_cards_found}`);
+          
+          // Save counters to file
+          writeFileSync(`${debugDir}/debug_counters.json`, JSON.stringify(debugCounters, null, 2));
+          
+          // Log to system_events
+          try {
+            const { getSupabaseClient } = await import('../db/index');
+            const supabase = getSupabaseClient();
+            await supabase.from('system_events').insert({
+              event_type: 'harvest_debug',
+              severity: debugCounters.login_wall_detected || debugCounters.rate_limit_banner_detected ? 'warning' : 'info',
+              message: `Harvest debug: ${searchLabel}`,
+              event_data: {
+                query: queryText,
+                search_label: searchLabel,
+                counters: debugCounters,
+                debug_dir: debugDir
+              },
+              created_at: new Date().toISOString()
+            });
+          } catch (dbErr) {
+            console.warn(`[HARVEST_DEBUG] DB log failed:`, dbErr);
+          }
+          
+        } catch (debugErr: any) {
+          console.warn(`[HARVEST_DEBUG] Failed to save debug artifacts:`, debugErr.message);
+        }
+      }
+      // ═══════════════════════════════════════════════════════════════════════
+      
+      // Extract viral tweets from search results           
       console.log(`[REAL_DISCOVERY] 📊 Page loaded, extracting tweets...`);
       
       const opportunities = await page.evaluate(
@@ -729,11 +860,50 @@ export class RealTwitterDiscovery {
       ) as any[];
     
     console.log(`[REAL_DISCOVERY] 📊 Page extraction complete: Found ${opportunities.length} tweets`);
+    
+    // Update debug counters with extraction results
+    if (debugEnabled) {
+      debugCounters.extracted_tweets_count = opportunities.length;
+      console.log(`[HARVEST_DEBUG] 🔢 extracted_tweets_count=${opportunities.length} (from ${debugCounters.dom_tweet_cards_found} DOM cards)`);
+      console.log(`[HARVEST_DEBUG] 📁 Debug artifacts saved to: ${debugDir}`);
       
-      console.log(`[REAL_DISCOVERY] ✅ Scraped ${opportunities.length} viral tweets (all topics)`);
+      // If we found DOM cards but extracted 0, that's a PARSER issue
+      if (debugCounters.dom_tweet_cards_found > 0 && opportunities.length === 0) {
+        console.warn(`[HARVEST_DEBUG] ⚠️ PARSER_ISSUE: Found ${debugCounters.dom_tweet_cards_found} DOM cards but extracted 0 tweets!`);
+        console.warn(`[HARVEST_DEBUG] ⚠️ Check selectors and filters in page.evaluate()`);
+      }
+      // If we found 0 DOM cards, that's a LOADING or BLOCKING issue
+      else if (debugCounters.dom_tweet_cards_found === 0) {
+        console.warn(`[HARVEST_DEBUG] ⚠️ LOADING_ISSUE: No DOM tweet cards found - page may not have loaded correctly`);
+        if (debugCounters.login_wall_detected) console.warn(`[HARVEST_DEBUG] ⚠️ Reason: LOGIN_WALL`);
+        if (debugCounters.rate_limit_banner_detected) console.warn(`[HARVEST_DEBUG] ⚠️ Reason: RATE_LIMIT`);
+        if (debugCounters.captcha_detected) console.warn(`[HARVEST_DEBUG] ⚠️ Reason: CAPTCHA`);
+        if (debugCounters.no_results_message_detected) console.warn(`[HARVEST_DEBUG] ⚠️ Reason: NO_RESULTS_FOR_QUERY`);
+      }
       
-      if (opportunities.length === 0) {
-        console.log('[REAL_DISCOVERY] ⚠️ No viral tweets found in search');
+      // Update system_events with final counts
+      try {
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').upsert({
+          event_type: 'harvest_debug_final',
+          severity: opportunities.length === 0 ? 'warning' : 'info',
+          message: `Harvest final: ${opportunities.length} extracted from ${searchLabel}`,
+          event_data: {
+            query: searchLabel,
+            counters: debugCounters,
+            debug_dir: debugDir,
+            timestamp: new Date().toISOString()
+          },
+          created_at: new Date().toISOString()
+        });
+      } catch {}
+    }
+      
+      console.log(`[REAL_DISCOVERY] ✅ Scraped ${opportunities.length} viral tweets (all topics)`); 
+      
+      if (opportunities.length === 0) { 
+        console.log('[REAL_DISCOVERY] ⚠️ No viral tweets found in search');      
         return [];
       }
       
@@ -991,9 +1161,179 @@ export class RealTwitterDiscovery {
     console.log(`[REAL_DISCOVERY] 💾 Stored ${accounts.length} accounts in database`);
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🌟 FALLBACK HARVESTING: Scrape seed accounts when search fails
+  // ═══════════════════════════════════════════════════════════════════════════
+  async harvestFromSeedAccounts(maxAccounts: number = 5): Promise<ReplyOpportunity[]> {
+    console.log(`[SEED_HARVEST] 🌟 Starting fallback harvest from seed accounts (max ${maxAccounts})...`);
+    
+    const allOpportunities: ReplyOpportunity[] = [];
+    const pool = UnifiedBrowserPool.getInstance();
+    
+    // Shuffle accounts for variety
+    const shuffled = [...this.SEED_HEALTH_ACCOUNTS].sort(() => Math.random() - 0.5);
+    const accountsToScrape = shuffled.slice(0, maxAccounts);
+    
+    for (const account of accountsToScrape) {
+      console.log(`[SEED_HARVEST] 📱 Scraping @${account.username} (${account.followers.toLocaleString()} followers)...`);
+      
+      let page;
+      try {
+        page = await pool.acquirePage('seed_harvest');
+        
+        // Navigate to account timeline
+        await page.goto(`https://x.com/${account.username}`, {
+          waitUntil: 'domcontentloaded',
+          timeout: 30000
+        });
+        
+        await page.waitForTimeout(3000);
+        
+        // Extract tweets from timeline
+        const tweets = await page.evaluate(
+          ({ minLikes, username }: { minLikes: number; username: string }) => {
+            const results: any[] = [];
+            const tweetElements = document.querySelectorAll('article[data-testid="tweet"]');
+            const NOW = Date.now();
+            const MAX_AGE_MS = 72 * 60 * 60 * 1000; // 72 hours for seed accounts (they post viral content)
+            
+            for (let i = 0; i < Math.min(tweetElements.length, 20); i++) {
+              const tweet = tweetElements[i];
+              
+              // Check if this is a retweet (skip)
+              const retweetIndicator = tweet.querySelector('[data-testid="socialContext"]');
+              if (retweetIndicator?.textContent?.includes('reposted') || 
+                  retweetIndicator?.textContent?.includes('Retweeted')) {
+                continue;
+              }
+              
+              // Check if this is a reply (skip - we want ROOT tweets only)
+              const replyIndicator = tweet.textContent?.startsWith('Replying to');
+              if (replyIndicator) continue;
+              
+              // Get timestamp
+              const timeEl = tweet.querySelector('time');
+              const datetime = timeEl?.getAttribute('datetime') || '';
+              if (!datetime) continue;
+              
+              const tweetTime = new Date(datetime).getTime();
+              const ageMs = NOW - tweetTime;
+              if (ageMs > MAX_AGE_MS) continue;
+              
+              // Get tweet content
+              const contentEl = tweet.querySelector('[data-testid="tweetText"]');
+              const content = contentEl?.textContent || '';
+              if (content.length < 30) continue; // Skip very short tweets
+              
+              // Get tweet link and ID
+              const linkEl = tweet.querySelector('a[href*="/status/"]');
+              const href = linkEl?.getAttribute('href') || '';
+              const match = href.match(/\/status\/(\d+)/);
+              const tweetId = match ? match[1] : '';
+              if (!tweetId) continue;
+              
+              // Get engagement metrics
+              const likeEl = tweet.querySelector('[data-testid="like"]') ||
+                             tweet.querySelector('[data-testid="unlike"]');
+              const likeText = likeEl?.textContent || '0';
+              
+              // Parse engagement
+              const parseEngagement = (text: string): number => {
+                if (!text || text === '0') return 0;
+                const clean = text.trim().toUpperCase();
+                if (clean.includes('K')) return Math.floor(parseFloat(clean) * 1000);
+                if (clean.includes('M')) return Math.floor(parseFloat(clean) * 1000000);
+                return parseInt(clean.replace(/[^\d]/g, '')) || 0;
+              };
+              
+              const likeCount = parseEngagement(likeText);
+              if (likeCount < minLikes) continue;
+              
+              const postedMinutesAgo = Math.floor(ageMs / 60000);
+              
+              results.push({
+                tweet_id: tweetId,
+                tweet_url: `https://x.com/${username}/status/${tweetId}`,
+                tweet_content: content,
+                tweet_author: username,
+                like_count: likeCount,
+                posted_minutes_ago: postedMinutesAgo,
+                tweet_posted_at: datetime,
+                is_root_tweet: true, // We filtered out replies
+                is_reply_tweet: false,
+              });
+            }
+            
+            return results;
+          },
+          { minLikes: account.minLikes, username: account.username }
+        );
+        
+        console.log(`[SEED_HARVEST] ✅ @${account.username}: Found ${tweets.length} tweets with ${account.minLikes}+ likes`);
+        
+        // Classify tiers and add metadata
+        for (const tweet of tweets) {
+          const likeCount = tweet.like_count;
+          let tier = 'D';
+          if (likeCount >= 100000) tier = 'A';
+          else if (likeCount >= 25000) tier = 'B';
+          else if (likeCount >= 10000) tier = 'C';
+          
+          tweet.harvest_tier = tier;
+          tweet.engagement_tier = likeCount >= 100000 ? 'EXTREME_VIRAL' :
+                                  likeCount >= 50000 ? 'ULTRA_VIRAL' :
+                                  likeCount >= 25000 ? 'MEGA_VIRAL' :
+                                  likeCount >= 10000 ? 'VIRAL' : 'TRENDING';
+          tweet.root_tweet_id = tweet.tweet_id; // ROOT tweet
+          tweet.target_tweet_id = tweet.tweet_id;
+        }
+        
+        allOpportunities.push(...tweets);
+        
+      } catch (err: any) {
+        console.warn(`[SEED_HARVEST] ⚠️ Failed to scrape @${account.username}:`, err.message);
+      } finally {
+        if (page) {
+          try { await pool.releasePage(page); } catch {}
+        }
+      }
+      
+      // Small delay between accounts
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    
+    console.log(`[SEED_HARVEST] 🎉 Total harvested from seed accounts: ${allOpportunities.length} opportunities`);
+    
+    // Log to system_events
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'seed_harvest_complete',
+        severity: 'info',
+        message: `Seed harvest: ${allOpportunities.length} opportunities from ${accountsToScrape.length} accounts`,
+        event_data: {
+          accounts_scraped: accountsToScrape.map(a => a.username),
+          opportunities_found: allOpportunities.length,
+          tier_breakdown: {
+            tier_a: allOpportunities.filter(o => o.harvest_tier === 'A').length,
+            tier_b: allOpportunities.filter(o => o.harvest_tier === 'B').length,
+            tier_c: allOpportunities.filter(o => o.harvest_tier === 'C').length,
+            tier_d: allOpportunities.filter(o => o.harvest_tier === 'D').length,
+          }
+        },
+        created_at: new Date().toISOString()
+      });
+    } catch (dbErr) {
+      console.warn(`[SEED_HARVEST] DB log failed:`, dbErr);
+    }
+    
+    return allOpportunities;
+  }
+
   /**
-   * Store reply opportunities in database
-   * Phase 3 Enhancement: Boosts opportunity_score based on discovered_accounts.priority_score
+   * Store reply opportunities in database                  
+   * Phase 3 Enhancement: Boosts opportunity_score based on discovered_accounts.priority_score      
    */
   async storeOpportunities(opportunities: ReplyOpportunity[]): Promise<void> {
     if (opportunities.length === 0) return;

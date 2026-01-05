@@ -550,11 +550,58 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
       console.warn('[HARVESTER] ⚠️ Failed to log low pool event:', eventError.message);
     }
 
-    if (recoveryAttempt < MAX_RECOVERY_ATTEMPTS) {
-      const waitMs = Math.min(60000, 15000 * (recoveryAttempt + 1));
-      console.log(`[HARVESTER] 🔁 Recovery attempt ${recoveryAttempt + 1}/${MAX_RECOVERY_ATTEMPTS} starting in ${Math.round(waitMs / 1000)}s...`);
-      await new Promise(resolve => setTimeout(resolve, waitMs));
-      await replyOpportunityHarvester(recoveryAttempt + 1);
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🌟 SEED ACCOUNT FALLBACK - Try scraping known health accounts directly
+    // ═══════════════════════════════════════════════════════════════════════
+    if (recoveryAttempt === 0) {
+      console.log(`[HARVESTER] 🌟 Attempting SEED ACCOUNT FALLBACK (search may be failing)...`);
+      try {
+        const seedOpportunities = await realTwitterDiscovery.harvestFromSeedAccounts(8);
+        if (seedOpportunities.length > 0) {
+          console.log(`[HARVESTER] 🌟 Seed harvest returned ${seedOpportunities.length} opportunities!`);
+          
+          // Mark as root and add expiry
+          const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          const processedSeedOpps = seedOpportunities.map(opp => ({
+            ...opp,
+            is_root_tweet: true,
+            root_tweet_id: opp.tweet_id,
+            is_reply_tweet: false,
+            expires_at: expiresAt.toISOString(),
+            harvest_source: 'seed_account_fallback'
+          }));
+          
+          await realTwitterDiscovery.storeOpportunities(processedSeedOpps);
+          console.log(`[HARVESTER] ✅ Stored ${processedSeedOpps.length} seed account opportunities`);
+          
+          // Log tier breakdown from seed harvest
+          const seedTierA = processedSeedOpps.filter(o => (o.like_count || 0) >= 100000).length;
+          const seedTierB = processedSeedOpps.filter(o => (o.like_count || 0) >= 25000 && (o.like_count || 0) < 100000).length;
+          const seedTierC = processedSeedOpps.filter(o => (o.like_count || 0) >= 10000 && (o.like_count || 0) < 25000).length;
+          console.log(`[SEED_HARVEST] Tier breakdown: A=${seedTierA} B=${seedTierB} C=${seedTierC}`);
+          
+          // Check if pool is now acceptable
+          const { count: newPoolCount } = await supabase
+            .from('reply_opportunities')
+            .select('*', { count: 'exact', head: true })
+            .eq('replied_to', false)
+            .gt('expires_at', new Date().toISOString());
+          
+          if ((newPoolCount || 0) >= MIN_POOL_SIZE) {
+            console.log(`[HARVESTER] ✅ Pool recovered to ${newPoolCount} via seed fallback!`);
+            return;
+          }
+        }
+      } catch (seedError: any) {
+        console.error(`[HARVESTER] ⚠️ Seed fallback failed:`, seedError.message);
+      }
+    }
+    
+    if (recoveryAttempt < MAX_RECOVERY_ATTEMPTS) {          
+      const waitMs = Math.min(60000, 15000 * (recoveryAttempt + 1));            
+      console.log(`[HARVESTER] 🔁 Recovery attempt ${recoveryAttempt + 1}/${MAX_RECOVERY_ATTEMPTS} starting in ${Math.round(waitMs / 1000)}s...`);              
+      await new Promise(resolve => setTimeout(resolve, waitMs));                
+      await replyOpportunityHarvester(recoveryAttempt + 1); 
       return;
     }
 
