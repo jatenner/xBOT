@@ -118,13 +118,20 @@ export interface SystemStatus {
       adjustment_reason: string;
     } | null;
     // 🎯 NEW: Velocity-aware metrics
-    opportunities_by_tier: {
-      tier_100k_plus: number;
-      tier_25k_plus: number;
-      tier_10k_plus: number;
-      tier_2500_plus: number;
-      tier_low: number;
+    opportunities_by_tier: {            
+      tier_aplus: number;  // 1M+ views OR 100K+ likes (ELITE)
+      tier_100k_plus: number;           
+      tier_25k_plus: number;            
+      tier_10k_plus: number;            
+      tier_2500_plus: number;           
+      tier_low: number;                 
     };
+    // 🎯 QUALITY METRICS
+    top_candidate_quality_score: number | null;
+    top_candidate_quality_tier: string | null;
+    top_candidate_author: string | null;
+    top_candidate_views: number | null;
+    blocked_by_quality_60m: number;
     median_age_minutes_fresh: number | null;
     median_likes_fresh: number | null;
     top_candidate_likes: number | null;
@@ -357,7 +364,8 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       // NEW: Tier breakdown for fresh opportunities
       pgPool.query(`
         SELECT 
-          COUNT(*) FILTER (WHERE like_count >= 100000) as tier_100k_plus,
+          COUNT(*) FILTER (WHERE view_count >= 1000000 OR like_count >= 100000) as tier_aplus,
+          COUNT(*) FILTER (WHERE like_count >= 100000 AND (view_count IS NULL OR view_count < 1000000)) as tier_100k_plus,   
           COUNT(*) FILTER (WHERE like_count >= 25000 AND like_count < 100000) as tier_25k_plus,
           COUNT(*) FILTER (WHERE like_count >= 10000 AND like_count < 25000) as tier_10k_plus,
           COUNT(*) FILTER (WHERE like_count >= 2500 AND like_count < 10000) as tier_2500_plus,
@@ -370,18 +378,26 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
           AND tweet_posted_at >= $1
       `, [twelveHoursAgo]),
       
-      // NEW: Top 3 candidates by velocity
+      // NEW: Top 3 candidates by velocity (with quality fields)
       pgPool.query(`
         SELECT 
           target_tweet_id,
+          target_username,
           like_count,
-          EXTRACT(EPOCH FROM (NOW() - tweet_posted_at))/60 as age_min,
-          like_count / GREATEST(EXTRACT(EPOCH FROM (NOW() - tweet_posted_at))/60, 10) as velocity
-        FROM reply_opportunities 
-        WHERE replied_to = false 
-          AND (expires_at IS NULL OR expires_at > NOW())
+          view_count,
+          target_quality_score,
+          target_quality_tier,
+          EXTRACT(EPOCH FROM (NOW() - tweet_posted_at))/60 as age_min,          
+          like_count / GREATEST(EXTRACT(EPOCH FROM (NOW() - tweet_posted_at))/60, 10) as velocity   
+        FROM reply_opportunities        
+        WHERE replied_to = false        
+          AND (expires_at IS NULL OR expires_at > NOW())    
           AND tweet_posted_at >= $1
-        ORDER BY (like_count / GREATEST(EXTRACT(EPOCH FROM (NOW() - tweet_posted_at))/60, 10)) DESC
+          AND (target_quality_score IS NULL OR target_quality_score >= 70)
+        ORDER BY 
+          COALESCE(view_count, 0) DESC,
+          like_count DESC,
+          (like_count / GREATEST(EXTRACT(EPOCH FROM (NOW() - tweet_posted_at))/60, 10)) DESC 
         LIMIT 3
       `, [twelveHoursAgo]),
       
@@ -537,19 +553,26 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
           return null;
         }
       })(),
-      // 🎯 NEW: Velocity-aware metrics
+      // 🎯 NEW: Velocity-aware metrics 
       opportunities_by_tier: {
-        tier_100k_plus: parseInt(tierBreakdown.tier_100k_plus || '0'),
-        tier_25k_plus: parseInt(tierBreakdown.tier_25k_plus || '0'),
-        tier_10k_plus: parseInt(tierBreakdown.tier_10k_plus || '0'),
-        tier_2500_plus: parseInt(tierBreakdown.tier_2500_plus || '0'),
-        tier_low: parseInt(tierBreakdown.tier_low || '0'),
+        tier_aplus: parseInt((tierBreakdown as any).tier_aplus || '0'),
+        tier_100k_plus: parseInt(tierBreakdown.tier_100k_plus || '0'),          
+        tier_25k_plus: parseInt(tierBreakdown.tier_25k_plus || '0'),            
+        tier_10k_plus: parseInt(tierBreakdown.tier_10k_plus || '0'),            
+        tier_2500_plus: parseInt(tierBreakdown.tier_2500_plus || '0'),          
+        tier_low: parseInt(tierBreakdown.tier_low || '0'),  
       },
-      median_age_minutes_fresh: tierBreakdown.median_age_min ? Math.round(parseFloat(tierBreakdown.median_age_min)) : null,
-      median_likes_fresh: tierBreakdown.median_likes ? Math.round(parseFloat(tierBreakdown.median_likes)) : null,
-      top_candidate_likes: topCandidate ? parseInt(topCandidate.like_count || '0') : null,
-      top_candidate_age_minutes: topCandidate ? Math.round(parseFloat(topCandidate.age_min || '0')) : null,
+      median_age_minutes_fresh: tierBreakdown.median_age_min ? Math.round(parseFloat(tierBreakdown.median_age_min)) : null,                 
+      median_likes_fresh: tierBreakdown.median_likes ? Math.round(parseFloat(tierBreakdown.median_likes)) : null,       
+      top_candidate_likes: topCandidate ? parseInt(topCandidate.like_count || '0') : null,          
+      top_candidate_age_minutes: topCandidate ? Math.round(parseFloat(topCandidate.age_min || '0')) : null,             
       top_candidate_velocity: topCandidate ? Math.round(parseFloat(topCandidate.velocity || '0')) : null,
+      // 🎯 QUALITY METRICS
+      top_candidate_quality_score: topCandidate ? parseInt((topCandidate as any).target_quality_score || '0') : null,
+      top_candidate_quality_tier: topCandidate ? (topCandidate as any).target_quality_tier || null : null,
+      top_candidate_author: topCandidate ? (topCandidate as any).target_username || null : null,
+      top_candidate_views: topCandidate ? parseInt((topCandidate as any).view_count || '0') || null : null,
+      blocked_by_quality_60m: 0, // TODO: Add query for this
       last_skip_reasons: recentSkipReasons,
     };
     
@@ -589,20 +612,26 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       last_bypass_blocked_at: null,     
       last_bypass_caller: null,
       freshness_policy_state: null,
-      // 🎯 NEW: Velocity-aware metrics (defaults)
+      // 🎯 NEW: Velocity-aware metrics (defaults)          
       opportunities_by_tier: {
-        tier_100k_plus: 0,
-        tier_25k_plus: 0,
-        tier_10k_plus: 0,
-        tier_2500_plus: 0,
+        tier_aplus: 0,
+        tier_100k_plus: 0,              
+        tier_25k_plus: 0,               
+        tier_10k_plus: 0,               
+        tier_2500_plus: 0,              
         tier_low: 0,
       },
-      median_age_minutes_fresh: null,
-      median_likes_fresh: null,
-      top_candidate_likes: null,
-      top_candidate_age_minutes: null,
+      median_age_minutes_fresh: null,   
+      median_likes_fresh: null,         
+      top_candidate_likes: null,        
+      top_candidate_age_minutes: null,  
       top_candidate_velocity: null,
-      last_skip_reasons: [],
+      top_candidate_quality_score: null,
+      top_candidate_quality_tier: null,
+      top_candidate_author: null,
+      top_candidate_views: null,
+      blocked_by_quality_60m: 0,
+      last_skip_reasons: [],            
     };
   }
 }

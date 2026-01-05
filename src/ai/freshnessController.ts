@@ -22,6 +22,7 @@ import { getSupabaseClient } from '../db/index';
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Default strict limits (in minutes)
+const DEFAULT_TIER_APLUS_MAX_AGE = 12 * 60; // 12 hours for elite (1M+ views or 100K+ likes)
 const DEFAULT_TIER_A_MAX_AGE = 24 * 60;   // 24 hours
 const DEFAULT_TIER_B_MAX_AGE = 18 * 60;   // 18 hours
 const DEFAULT_TIER_C_MAX_AGE = 8 * 60;    // 8 hours

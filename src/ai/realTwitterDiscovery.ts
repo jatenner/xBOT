@@ -1516,13 +1516,32 @@ export class RealTwitterDiscovery {
         continue;
       }
       
-      // 🚨 CRITICAL FILTER: Skip reply tweets (tweets starting with '@')
-      // Reply tweets are NOT original posts and should not be reply targets
-      const tweetContent = String(opp.tweet_content || '').trim();
-      if (tweetContent.startsWith('@')) {
-        console.log(`[REAL_DISCOVERY] 🚫 Skipping ${opp.tweet_id} (is a reply tweet, starts with @)`);
+      // 🚨 CRITICAL FILTER: Skip reply tweets (tweets starting with '@')       
+      // Reply tweets are NOT original posts and should not be reply targets    
+      const tweetContent = String(opp.tweet_content || '').trim();              
+      if (tweetContent.startsWith('@')) {                   
+        console.log(`[REAL_DISCOVERY] 🚫 Skipping ${opp.tweet_id} (is a reply tweet, starts with @)`);                  
         continue;
       }
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🎯 QUALITY FILTER: Score and filter by brand-safety + health relevance
+      // ═══════════════════════════════════════════════════════════════════════
+      const { scoreTargetQuality } = await import('./targetQualityFilter');
+      const qualityResult = scoreTargetQuality(
+        tweetContent,
+        opp.tweet_author,
+        (opp as any).author_followers,
+        (opp as any).view_count,
+        opp.like_count
+      );
+      
+      if (!qualityResult.pass) {
+        console.log(`[QUALITY_FILTER] 🚫 BLOCKED: ${opp.tweet_id} @${opp.tweet_author} - score=${qualityResult.score} reason=${qualityResult.block_reason}`);
+        continue;
+      }
+      
+      console.log(`[QUALITY_FILTER] ✅ PASSED: ${opp.tweet_id} @${opp.tweet_author} - score=${qualityResult.score} tier=${qualityResult.quality_tier}`);
       
       try {
         // 🎯 Phase 3: Boost opportunity_score based on priority_score
@@ -1582,10 +1601,14 @@ export class RealTwitterDiscovery {
             account_followers: (opp as any).account_followers,
             expires_at: (opp as any).expires_at,
             replied_to: false,
-            // 🧠 NEW: AI health judgment fields
-            health_relevance_score: (opp as any).health_relevance_score,
-            health_category: (opp as any).health_category,
-            ai_judge_reason: (opp as any).ai_judge_reason
+            // 🧠 NEW: AI health judgment fields            
+            health_relevance_score: (opp as any).health_relevance_score,        
+            health_category: (opp as any).health_category,  
+            ai_judge_reason: (opp as any).ai_judge_reason,
+            // 🎯 NEW: Quality filter fields
+            target_quality_score: qualityResult.score,
+            target_quality_tier: qualityResult.quality_tier,
+            target_quality_reasons: qualityResult.reasons,
           }, {
             onConflict: 'target_tweet_id'
           })
