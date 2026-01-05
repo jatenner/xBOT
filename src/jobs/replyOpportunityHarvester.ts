@@ -527,8 +527,32 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   console.log(`[HARVESTER]   💎 EXTREME (100K+ likes): ${extremeCount || 0} tweets`);
   console.log(`[HARVESTER]   🚀 ULTRA (50K-100K likes): ${ultraCount || 0} tweets`);
   console.log(`[HARVESTER]   ⚡ MEGA (25K-50K likes): ${megaCount || 0} tweets`);
-  console.log(`[HARVESTER]   🔥 VIRAL (10K-25K likes): ${viralCount || 0} tweets`);
-  console.log(`[HARVESTER]   📈 TRENDING (5K-10K likes): ${trendingCount || 0} tweets`);
+  console.log(`[HARVESTER]   🔥 VIRAL (10K-25K likes): ${viralCount || 0} tweets`);                 
+  console.log(`[HARVESTER]   📈 TRENDING (5K-10K likes): ${trendingCount || 0} tweets`);            
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🕐 Report to Autonomous Freshness Controller
+  // ═══════════════════════════════════════════════════════════════════════════
+  try {
+    const { reportHarvestResults, getState: getFreshnessState } = await import('../ai/freshnessController');
+    const freshnessResult = await reportHarvestResults({
+      tier_a_count: extremeCount || 0,
+      tier_b_count: (ultraCount || 0) + (megaCount || 0), // 25K-100K combined
+      tier_c_count: viralCount || 0,
+      tier_d_count: trendingCount || 0,
+      total_scraped: searchesProcessed,
+      total_stored: totalHarvested,
+    });
+    
+    if (freshnessResult.adjusted) {
+      console.log(`[FRESHNESS_CONTROLLER] 🔄 Policy ${freshnessResult.direction}: ${freshnessResult.reason}`);
+    }
+    
+    const freshnessState = getFreshnessState();
+    console.log(`[FRESHNESS_CONTROLLER] Current limits: A=${Math.round(freshnessState.current_tier_a_max/60)}h B=${Math.round(freshnessState.current_tier_b_max/60)}h C=${Math.round(freshnessState.current_tier_c_max/60)}h D=${freshnessState.current_tier_d_max}m`);
+  } catch (freshnessError: any) {
+    console.warn(`[FRESHNESS_CONTROLLER] Failed to report:`, freshnessError.message);
+  }
   
   if (finalPoolSize < MIN_POOL_SIZE) {
     console.warn(`[HARVESTER] ⚠️ Pool still low (${finalPoolSize}/${MIN_POOL_SIZE})`);

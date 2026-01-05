@@ -1315,11 +1315,11 @@ export class RealTwitterDiscovery {
         event_data: {
           accounts_scraped: accountsToScrape.map(a => a.username),
           opportunities_found: allOpportunities.length,
-          tier_breakdown: {
-            tier_a: allOpportunities.filter(o => o.harvest_tier === 'A').length,
-            tier_b: allOpportunities.filter(o => o.harvest_tier === 'B').length,
-            tier_c: allOpportunities.filter(o => o.harvest_tier === 'C').length,
-            tier_d: allOpportunities.filter(o => o.harvest_tier === 'D').length,
+          tier_breakdown: {             
+            tier_a: allOpportunities.filter(o => (o as any).like_count >= 100000).length,
+            tier_b: allOpportunities.filter(o => (o as any).like_count >= 25000 && (o as any).like_count < 100000).length,
+            tier_c: allOpportunities.filter(o => (o as any).like_count >= 10000 && (o as any).like_count < 25000).length,
+            tier_d: allOpportunities.filter(o => (o as any).like_count >= 2500 && (o as any).like_count < 10000).length,
           }
         },
         created_at: new Date().toISOString()
@@ -1355,37 +1355,18 @@ export class RealTwitterDiscovery {
       return likes / Math.max(ageMin, 10);
     }
     
-    function getMaxAgeMinutes(likeCount: number, ageMinutes: number): number {  
-      const velocity = calculateVelocityForStorage(likeCount, ageMinutes);      
-      
-      // ═══════════════════════════════════════════════════════════════════════
-      // HIGH-VISIBILITY OVERRIDE: Massive tweets are ALWAYS valuable
-      // These tweets have huge audiences that will see replies
-      // ═══════════════════════════════════════════════════════════════════════
-      
-      // TIER A: 100K+ likes - Allow up to 72 hours (3 days)
-      // These mega-viral tweets have ongoing engagement for days
-      if (likeCount >= 100000) return 72 * 60;
-      
-      // TIER B: 25K+ likes - Allow up to 48 hours (2 days)
-      if (likeCount >= 25000) return 48 * 60;
-      
-      // TIER C: 10K+ likes - Allow up to 24 hours
-      if (likeCount >= 10000) return 24 * 60;
-      
-      // Below 10K: Use velocity-based gating
-      // EXTREME velocity (>= 200): Allow up to 24 hours    
-      if (velocity >= 200) return 24 * 60;                  
-      
-      // HIGH velocity (>= 100): Allow up to 12 hours       
-      if (velocity >= 100) return 12 * 60;                  
-      
-      // MEDIUM velocity (>= 30): Allow up to 6 hours       
-      if (velocity >= 30) return 6 * 60;
-      
-      // LOW velocity: 3 hours max (original gate)          
-      return 180;
-    }
+    // Import autonomous freshness controller
+    const { checkFreshness, getState: getFreshnessState } = await import('./freshnessController');
+    
+    // Log current freshness policy state
+    const freshnessState = getFreshnessState();
+    console.log(`[FRESHNESS_CONTROLLER] Current policy:`);
+    console.log(`  Tier A max: ${Math.round(freshnessState.current_tier_a_max / 60)}h`);
+    console.log(`  Tier B max: ${Math.round(freshnessState.current_tier_b_max / 60)}h`);
+    console.log(`  Tier C max: ${Math.round(freshnessState.current_tier_c_max / 60)}h`);
+    console.log(`  Tier D max: ${freshnessState.current_tier_d_max}m`);
+    console.log(`  Failed runs: ${freshnessState.consecutive_failed_runs}`);
+    console.log(`  Successful runs: ${freshnessState.consecutive_successful_runs}`);
     
     const now = Date.now();
     const originalCount = opportunities.length;
@@ -1405,16 +1386,18 @@ export class RealTwitterDiscovery {
         return false;
       }
       
-      const likeCount = Number(opp.like_count || 0);
-      const velocity = calculateVelocityForStorage(likeCount, ageMinutes);
-      const maxAgeMin = getMaxAgeMinutes(likeCount, ageMinutes);
+      const likeCount = Number(opp.like_count || 0);        
+      const velocity = calculateVelocityForStorage(likeCount, ageMinutes);      
       
-      if (ageMinutes > maxAgeMin) {
-        console.log(`[REAL_DISCOVERY] ⏱️ REJECTED stale tweet ${opp.tweet_id}: ${Math.round(ageMinutes)}m old > ${maxAgeMin}m max (${Math.round(likeCount/1000)}K likes, velocity=${velocity.toFixed(1)})`);
-        return false;
+      // Use autonomous freshness controller
+      const freshnessResult = checkFreshness(likeCount, ageMinutes, velocity);
+      
+      if (!freshnessResult.pass) {     
+        console.log(`[REAL_DISCOVERY] ⏱️ REJECTED tweet ${opp.tweet_id}: ${freshnessResult.reason} (${Math.round(ageMinutes)}m old, ${Math.round(likeCount/1000)}K likes, velocity=${velocity.toFixed(1)}${freshnessResult.velocity_required ? `, need velocity>=${freshnessResult.velocity_required}` : ''})`);                 
+        return false;                   
       }
       
-      console.log(`[REAL_DISCOVERY] ✓ ACCEPTED tweet ${opp.tweet_id}: ${Math.round(ageMinutes)}m old <= ${maxAgeMin}m max (${Math.round(likeCount/1000)}K likes, velocity=${velocity.toFixed(1)})`)
+      console.log(`[REAL_DISCOVERY] ✓ ACCEPTED tweet ${opp.tweet_id}: ${freshnessResult.reason} (${Math.round(ageMinutes)}m old, ${Math.round(likeCount/1000)}K likes, velocity=${velocity.toFixed(1)})`)
       
       return true;
     });

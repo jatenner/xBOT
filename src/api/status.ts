@@ -100,10 +100,23 @@ export interface SystemStatus {
     pacing_status: string;
     pacing_status_reason: string;
     opportunity_pool_health: string;
-    // 🔒 BYPASS TRACKING
-    bypass_blocked_count: number;
-    last_bypass_blocked_at: string | null;
+    // 🔒 BYPASS TRACKING               
+    bypass_blocked_count: number;       
+    last_bypass_blocked_at: string | null;                  
     last_bypass_caller: string | null;
+    // 🕐 FRESHNESS POLICY STATE
+    freshness_policy_state: {
+      tier_a_max_hours: number;
+      tier_b_max_hours: number;
+      tier_c_max_hours: number;
+      tier_d_max_minutes: number;
+      consecutive_failed_runs: number;
+      consecutive_successful_runs: number;
+      total_relaxations: number;
+      total_tightenings: number;
+      last_adjustment_at: string;
+      adjustment_reason: string;
+    } | null;
     // 🎯 NEW: Velocity-aware metrics
     opportunities_by_tier: {
       tier_100k_plus: number;
@@ -499,10 +512,31 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       pacing_status: pacingStatus,
       pacing_status_reason: pacingReason,
       opportunity_pool_health: poolHealth,
-      // 🔒 BYPASS TRACKING
-      bypass_blocked_count: bypassStats.bypass_blocked_count,
-      last_bypass_blocked_at: bypassStats.last_bypass_blocked_at,
+      // 🔒 BYPASS TRACKING             
+      bypass_blocked_count: bypassStats.bypass_blocked_count,                   
+      last_bypass_blocked_at: bypassStats.last_bypass_blocked_at,               
       last_bypass_caller: bypassStats.last_bypass_caller,
+      // 🕐 FRESHNESS POLICY STATE
+      freshness_policy_state: await (async () => {
+        try {
+          const { getState } = await import('../ai/freshnessController');
+          const state = getState();
+          return {
+            tier_a_max_hours: Math.round(state.current_tier_a_max / 60),
+            tier_b_max_hours: Math.round(state.current_tier_b_max / 60),
+            tier_c_max_hours: Math.round(state.current_tier_c_max / 60),
+            tier_d_max_minutes: state.current_tier_d_max,
+            consecutive_failed_runs: state.consecutive_failed_runs,
+            consecutive_successful_runs: state.consecutive_successful_runs,
+            total_relaxations: state.total_relaxations,
+            total_tightenings: state.total_tightenings,
+            last_adjustment_at: state.last_adjustment_at,
+            adjustment_reason: state.adjustment_reason,
+          };
+        } catch {
+          return null;
+        }
+      })(),
       // 🎯 NEW: Velocity-aware metrics
       opportunities_by_tier: {
         tier_100k_plus: parseInt(tierBreakdown.tier_100k_plus || '0'),
@@ -551,9 +585,10 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       pacing_status: 'error',
       pacing_status_reason: `Database query failed: ${error.message}`,
       opportunity_pool_health: 'unknown',
-      bypass_blocked_count: 0,
-      last_bypass_blocked_at: null,
+      bypass_blocked_count: 0,          
+      last_bypass_blocked_at: null,     
       last_bypass_caller: null,
+      freshness_policy_state: null,
       // 🎯 NEW: Velocity-aware metrics (defaults)
       opportunities_by_tier: {
         tier_100k_plus: 0,
