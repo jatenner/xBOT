@@ -1355,19 +1355,35 @@ export class RealTwitterDiscovery {
       return likes / Math.max(ageMin, 10);
     }
     
-    function getMaxAgeMinutes(likeCount: number, ageMinutes: number): number {
-      const velocity = calculateVelocityForStorage(likeCount, ageMinutes);
+    function getMaxAgeMinutes(likeCount: number, ageMinutes: number): number {  
+      const velocity = calculateVelocityForStorage(likeCount, ageMinutes);      
       
-      // EXTREME velocity (>= 200): Allow up to 24 hours
-      if (velocity >= 200) return 24 * 60;
+      // ═══════════════════════════════════════════════════════════════════════
+      // HIGH-VISIBILITY OVERRIDE: Massive tweets are ALWAYS valuable
+      // These tweets have huge audiences that will see replies
+      // ═══════════════════════════════════════════════════════════════════════
       
-      // HIGH velocity (>= 100): Allow up to 12 hours
-      if (velocity >= 100) return 12 * 60;
+      // TIER A: 100K+ likes - Allow up to 72 hours (3 days)
+      // These mega-viral tweets have ongoing engagement for days
+      if (likeCount >= 100000) return 72 * 60;
       
-      // MEDIUM velocity (>= 30): Allow up to 6 hours
+      // TIER B: 25K+ likes - Allow up to 48 hours (2 days)
+      if (likeCount >= 25000) return 48 * 60;
+      
+      // TIER C: 10K+ likes - Allow up to 24 hours
+      if (likeCount >= 10000) return 24 * 60;
+      
+      // Below 10K: Use velocity-based gating
+      // EXTREME velocity (>= 200): Allow up to 24 hours    
+      if (velocity >= 200) return 24 * 60;                  
+      
+      // HIGH velocity (>= 100): Allow up to 12 hours       
+      if (velocity >= 100) return 12 * 60;                  
+      
+      // MEDIUM velocity (>= 30): Allow up to 6 hours       
       if (velocity >= 30) return 6 * 60;
       
-      // LOW velocity: 3 hours max (original gate)
+      // LOW velocity: 3 hours max (original gate)          
       return 180;
     }
     
