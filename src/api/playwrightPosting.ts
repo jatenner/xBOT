@@ -74,34 +74,18 @@ router.post('/test-playwright-posting', async (req, res) => {
       });
     }
 
-    console.log('🎭 TEST_API: Testing posting...');
+    // 🚨 BYPASS BLOCKED: Test posting API is disabled
+    // All posting MUST go through postingQueue.ts which enforces PostingGuard
+    console.error(`[BYPASS_BLOCKED] 🚨 TEST_API posting is disabled.`);
+    console.error(`[BYPASS_BLOCKED]   content_length=${content.length}`);
+    console.error(`[BYPASS_BLOCKED]   reason=All posting must go through postingQueue with PostingGuard`);
     
-    const { UltimateTwitterPoster } = await import('../posting/UltimateTwitterPoster');
-    const poster = new UltimateTwitterPoster();
-    const startTime = Date.now();
-    const result = await poster.postTweet(content);
-    const duration = Date.now() - startTime;
-    
-    if (result.success) {
-      console.log(`✅ TEST_API: Posting succeeded in ${duration}ms`);
-      
-      res.json({
-        success: true,
-        message: 'Posting test successful',
-        tweetId: result.tweetId,
-        method: 'ultimate',
-        duration: duration
-      });
-    } else {
-      console.error(`❌ TEST_API: Posting failed: ${result.error}`);
-      
-      res.status(500).json({
-        success: false,
-        error: result.error,
-        method: 'ultimate',
-        duration: duration
-      });
-    }
+    res.status(403).json({
+      success: false,
+      error: 'BYPASS_BLOCKED: Test posting API is disabled. Use postingQueue.ts',
+      reason: 'All posting must go through authorized pipeline with PostingGuard'
+    });
+    return;
     
   } catch (error: any) {
     console.error('❌ TEST_API: Playwright test failed:', error.message);

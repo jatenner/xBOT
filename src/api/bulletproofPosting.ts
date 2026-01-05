@@ -32,38 +32,18 @@ router.post('/bulletproof-post', async (req, res) => {
       });
     }
 
-    console.log('🛡️ BULLETPROOF_API: Starting crash-resistant post...');
-    console.log(`📝 Content: "${content.substring(0, 100)}${content.length > 100 ? '...' : ''}"`);
-
-    // Use UltimateTwitterPoster (replacement for deleted bulletproofPoster)
-    const poster = new UltimateTwitterPoster();
-    const result = await poster.postTweet(content);
+    // 🚨 BYPASS BLOCKED: Bulletproof posting API is disabled
+    // All posting MUST go through postingQueue.ts which enforces PostingGuard
+    console.error(`[BYPASS_BLOCKED] 🚨 BULLETPROOF_API posting is disabled.`);
+    console.error(`[BYPASS_BLOCKED]   content_length=${content.length}`);
+    console.error(`[BYPASS_BLOCKED]   reason=All posting must go through postingQueue with PostingGuard`);
     
-    const duration = Date.now() - startTime;
-    
-    if (result.success) {
-      console.log(`✅ BULLETPROOF_SUCCESS: Posted in ${duration}ms`);
-      
-      res.json({
-        success: true,
-        message: `Posted successfully via UltimateTwitterPoster`,
-        tweetId: result.tweetId,
-        method: 'ultimate',
-        performance: {
-          duration: duration
-        }
-      });
-    } else {
-      console.error(`❌ BULLETPROOF_FAILED: ${result.error}`);
-      
-      res.status(500).json({
-        success: false,
-        error: result.error,
-        performance: {
-          duration: duration
-        }
-      });
-    }
+    res.status(403).json({
+      success: false,
+      error: 'BYPASS_BLOCKED: Bulletproof posting API is disabled. Use postingQueue.ts',
+      reason: 'All posting must go through authorized pipeline with PostingGuard'
+    });
+    return;
 
   } catch (error: any) {
     const duration = Date.now() - startTime;

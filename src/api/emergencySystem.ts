@@ -26,8 +26,20 @@ router.post('/emergency-post', async (req, res) => {
       });
     }
 
-    console.log('🚨 EMERGENCY_API: Force posting with guaranteed success...');
+    // 🚨 BYPASS BLOCKED: Emergency posting is disabled
+    // All posting MUST go through postingQueue.ts which enforces PostingGuard
+    console.error(`[BYPASS_BLOCKED] 🚨 EMERGENCY_API posting is disabled.`);
+    console.error(`[BYPASS_BLOCKED]   content_length=${content.length}`);
+    console.error(`[BYPASS_BLOCKED]   reason=All posting must go through postingQueue with PostingGuard`);
     
+    res.status(403).json({
+      success: false,
+      error: 'BYPASS_BLOCKED: Emergency posting is disabled. Use postingQueue.ts',
+      reason: 'All posting must go through authorized pipeline with PostingGuard'
+    });
+    return;
+    
+    // Dead code below - kept for reference
     const poster = new UltimateTwitterPoster();
     const result = await poster.postTweet(content);
     const duration = Date.now() - startTime;

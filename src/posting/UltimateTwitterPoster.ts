@@ -88,6 +88,30 @@ function verifyPostingGuard(
   operation: 'postTweet' | 'postReply'
 ): { valid: true; guard: PostingGuard } | { valid: false; error: string } {
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🛑 MASTER KILLSWITCHES - ENFORCED AT FINAL CHOKEPOINT
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // REPLIES_ENABLED=false blocks ALL reply posting at this final chokepoint
+  if (operation === 'postReply' && process.env.REPLIES_ENABLED === 'false') {
+    console.warn(`[KILLSWITCH] 🛑 REPLIES_ENABLED=false - Blocking ${operation}`);
+    return { valid: false, error: 'REPLIES_ENABLED=false - Reply posting disabled at killswitch' };
+  }
+  
+  // POSTING_ENABLED=false blocks ALL posting (tweets and replies)
+  if (process.env.POSTING_ENABLED === 'false') {
+    console.warn(`[KILLSWITCH] 🛑 POSTING_ENABLED=false - Blocking ${operation}`);
+    return { valid: false, error: 'POSTING_ENABLED=false - All posting disabled at killswitch' };
+  }
+  
+  // DRAIN_QUEUE=true also blocks posting (posts should be marked skipped upstream)
+  if (process.env.DRAIN_QUEUE === 'true') {
+    console.warn(`[KILLSWITCH] 🛑 DRAIN_QUEUE=true - Blocking ${operation}`);
+    return { valid: false, error: 'DRAIN_QUEUE=true - Queue draining, posting blocked' };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   // 🚨 BYPASS KILLSWITCH: Allow bypass during testing if explicitly set
   if (process.env.ALLOW_POSTING_BYPASS === 'true') {
     console.warn(`[POSTING_GUARD] ⚠️ BYPASS ENABLED (ALLOW_POSTING_BYPASS=true)`);

@@ -187,32 +187,21 @@ async function postToXWithRetry(decision: QueuedDecision, retries = 3): Promise<
 }
 
 async function postContent(decision: QueuedDecision): Promise<string> {
-  const { UltimateTwitterPoster } = await import('./UltimateTwitterPoster');
-  const poster = new UltimateTwitterPoster();
-  
-  const result = await poster.postTweet(decision.content);
-  
-  if (!result.success) {
-    throw new Error(result.error || 'Unknown posting error');
-  }
-  
-  return result.tweetId || `posted_${Date.now()}`;
+  // 🚨 BYPASS BLOCKED: This function is deprecated and no longer posts
+  // All posting MUST go through postingQueue.ts which enforces PostingGuard
+  console.error(`[BYPASS_BLOCKED] 🚨 orchestrator.postContent() is deprecated and blocked.`);
+  console.error(`[BYPASS_BLOCKED]   decision_id=${decision.decision_id}`);
+  console.error(`[BYPASS_BLOCKED]   Use postingQueue.ts instead.`);
+  throw new Error('BYPASS_BLOCKED: orchestrator.postContent() is deprecated. Use postingQueue.ts');
 }
 
 async function postReply(decision: QueuedDecision): Promise<string> {
-  // For replies, use the same posting infrastructure
-  // In production, would navigate to specific tweet and reply
-  const { UltimateTwitterPoster } = await import('./UltimateTwitterPoster');
-  const poster = new UltimateTwitterPoster();
-  
-  const replyContent = `@${decision.target_username} ${decision.content}`;
-  const result = await poster.postTweet(replyContent);
-  
-  if (!result.success) {
-    throw new Error(result.error || 'Reply posting failed');
-  }
-  
-  return result.tweetId || `reply_${Date.now()}`;
+  // 🚨 BYPASS BLOCKED: This function is deprecated and no longer posts
+  // All posting MUST go through postingQueue.ts which enforces PostingGuard
+  console.error(`[BYPASS_BLOCKED] 🚨 orchestrator.postReply() is deprecated and blocked.`);
+  console.error(`[BYPASS_BLOCKED]   decision_id=${decision.decision_id}`);
+  console.error(`[BYPASS_BLOCKED]   Use postingQueue.ts instead.`);
+  throw new Error('BYPASS_BLOCKED: orchestrator.postReply() is deprecated. Use postingQueue.ts');
 }
 
 async function storePostedDecision(decision: QueuedDecision, tweetId: string): Promise<void> {

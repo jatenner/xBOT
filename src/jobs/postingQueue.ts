@@ -34,35 +34,52 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
   console.log(`[INVARIANT] ═══════════════════════════════════════`);
   console.log(`[INVARIANT] decision_id=${decisionId} PRE-POST CHECK`);
   
-  // 1) CONTENT FORMAT CHECK - No thread markers
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 1) THREAD-LIKE CONTENT CHECK (FAIL CLOSED)
+  // ═══════════════════════════════════════════════════════════════════════════
   const content = decision.content || '';
   const threadPatterns = [
-    /\b\d+\/\d+\b/,           // "1/5", "2/3"
+    /^\s*\d+\/\d+/,           // "1/5", "2/3" at start
     /^\d+\.\s/m,              // "1. " at line start
     /\(\d+\)/,                // "(1)", "(2)"
     /🧵/,                      // Thread emoji
     /\bthread\b/i,            // Word "thread"
     /TIP\s*\d+/i,             // "TIP 1", "TIP 3"
     /\bPROTOCOL:/i,           // "PROTOCOL:"
+    /\b\d+\)\s/,              // "1) " listicle style
+    /^Here's|^Here is/i,      // Generic thread opener
+    /---+/,                   // Divider lines
+    /THREAD\s*BREAK/i,        // Thread break marker
   ];
   
   for (const pattern of threadPatterns) {
     if (pattern.test(content)) {
-      guardResults.format_check = { pass: false, pattern: pattern.source };
-      console.log(`[INVARIANT] format_check=FAIL pattern=${pattern.source}`);
-      return { pass: false, reason: 'thread_marker_detected', guard_results: guardResults };
+      guardResults.format_check = { pass: false, pattern: pattern.source, matched: content.match(pattern)?.[0] };
+      console.log(`[INVARIANT] format_check=FAIL pattern="${pattern.source}" matched="${content.match(pattern)?.[0]}"`);
+      return { pass: false, reason: 'thread_like_content', guard_results: guardResults };
     }
   }
-  guardResults.format_check = { pass: true };
-  console.log(`[INVARIANT] format_check=pass len=${content.length}`);
   
-  // 2) LENGTH CHECK
-  if (content.length > 260) {
-    guardResults.length_check = { pass: false, length: content.length };
-    console.log(`[INVARIANT] length_check=FAIL len=${content.length}`);
-    return { pass: false, reason: 'content_too_long', guard_results: guardResults };
+  // 2) MULTI-NEWLINE CHECK - Replies should not have >1 newline (thread-like)
+  const newlineCount = (content.match(/\n/g) || []).length;
+  if (newlineCount > 1) {
+    guardResults.newline_check = { pass: false, newline_count: newlineCount };
+    console.log(`[INVARIANT] newline_check=FAIL count=${newlineCount} (max=1)`);
+    return { pass: false, reason: 'too_many_newlines', guard_results: guardResults };
   }
-  guardResults.length_check = { pass: true, length: content.length };
+  guardResults.newline_check = { pass: true, newline_count: newlineCount };
+  
+  guardResults.format_check = { pass: true };
+  console.log(`[INVARIANT] format_check=pass len=${content.length} newlines=${newlineCount}`);
+  
+  // 3) LENGTH CHECK - Replies should be concise (max 240 chars)
+  const MAX_REPLY_LENGTH = 240;
+  if (content.length > MAX_REPLY_LENGTH) {
+    guardResults.length_check = { pass: false, length: content.length, max: MAX_REPLY_LENGTH };
+    console.log(`[INVARIANT] length_check=FAIL len=${content.length} max=${MAX_REPLY_LENGTH}`);
+    return { pass: false, reason: 'reply_too_long', guard_results: guardResults };
+  }
+  guardResults.length_check = { pass: true, length: content.length, max: MAX_REPLY_LENGTH };
   
   // 3) ROOT-ONLY CHECK - Structural (from DB metadata)
   try {
@@ -196,6 +213,73 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
   
   guardResults.pipeline_guard = { pass: true };
   console.log(`[PIPELINE_GUARD] generator=${generationSource || 'unknown'} mode=reply pass=true`);
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 7) TOPIC MISMATCH GATE - Block politics/conflict topics in health replies
+  // ═══════════════════════════════════════════════════════════════════════════
+  const POLITICAL_TOPICS = [
+    /\b(trump|biden|election|democrat|republican|congress|senate|vote|voting)\b/i,
+    /\b(israel|palestine|gaza|hamas|war|ukraine|russia|military|conflict)\b/i,
+    /\b(immigrant|immigration|border|deport|refugee)\b/i,
+    /\b(abortion|roe|wade|pro-life|pro-choice)\b/i,
+    /\b(gun|shooting|2nd amendment|nra)\b/i,
+    /\b(climate change|global warming)\b/i,  // Contentious - avoid unless explicitly health-related
+  ];
+  
+  for (const pattern of POLITICAL_TOPICS) {
+    if (pattern.test(content)) {
+      guardResults.topic_mismatch = { pass: false, reason: 'political_topic_detected', pattern: pattern.source };
+      console.log(`[TOPIC_MISMATCH] FAIL: political_topic pattern="${pattern.source}"`);
+      return { pass: false, reason: 'topic_mismatch_political', guard_results: guardResults };
+    }
+  }
+  guardResults.topic_mismatch = { pass: true };
+  console.log(`[TOPIC_MISMATCH] pass=true (no political topics)`);
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 8) SUBSTANCE GATE - Reply must be contextual, not generic filler
+  // ═══════════════════════════════════════════════════════════════════════════
+  const GENERIC_OPENERS = [
+    /^Research shows/i,
+    /^Studies show/i,
+    /^Studies suggest/i,
+    /^Mindfulness is/i,
+    /^Science shows/i,
+    /^The research is clear/i,
+    /^Here's the thing/i,
+    /^Great point!/i,
+    /^Good point!/i,
+    /^Interesting!/i,
+    /^This is so true/i,
+    /^So true!/i,
+    /^Absolutely!/i,
+    /^100%!/i,
+    /^Facts!/i,
+    /^Exactly!/i,
+  ];
+  
+  for (const pattern of GENERIC_OPENERS) {
+    if (pattern.test(content.trim())) {
+      guardResults.substance_gate = { pass: false, reason: 'generic_opener', pattern: pattern.source };
+      console.log(`[SUBSTANCE_GATE] FAIL: generic_opener pattern="${pattern.source}"`);
+      return { pass: false, reason: 'substance_gate_generic_opener', guard_results: guardResults };
+    }
+  }
+  
+  // Check for minimum substance indicators
+  // Reply should have at least one of: question mark, specific term, or action word
+  const hasQuestion = content.includes('?');
+  const hasActionWord = /\b(try|consider|check|notice|think|look|might|could|would|should)\b/i.test(content);
+  const hasSpecificTerm = /\b(mg|vitamin|protein|calories|hours?|minutes?|percent|%|study|research|data)\b/i.test(content);
+  
+  if (!hasQuestion && !hasActionWord && !hasSpecificTerm) {
+    guardResults.substance_gate = { pass: false, reason: 'lacks_substance_markers' };
+    console.log(`[SUBSTANCE_GATE] FAIL: lacks_substance_markers (no question, action word, or specific term)`);
+    return { pass: false, reason: 'substance_gate_no_markers', guard_results: guardResults };
+  }
+  
+  guardResults.substance_gate = { pass: true, hasQuestion, hasActionWord, hasSpecificTerm };
+  console.log(`[SUBSTANCE_GATE] pass=true question=${hasQuestion} action=${hasActionWord} specific=${hasSpecificTerm}`);
   
   console.log(`[INVARIANT] FINAL: pass=true`);
   console.log(`[INVARIANT] ═══════════════════════════════════════`);
@@ -4175,3 +4259,4 @@ async function ensureMinimumQueueDepth(): Promise<void> {
     // Don't throw - this is a safety net, not critical path
   }
 }
+
