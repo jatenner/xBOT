@@ -3,10 +3,10 @@
  * Straightforward thread posting: post first tweet, then replies
  * No complex fallbacks - just works!
  * 
- * 🔒 SECURITY: Requires decision_id for authorization
+ * 🔒 SECURITY: Requires decision_id for authorization (unforgeable guard)
  */
 
-import { UltimateTwitterPoster, setPostingAuthorization, clearPostingAuthorization } from '../posting/UltimateTwitterPoster';
+import { UltimateTwitterPoster, createPostingGuard, PostingGuard } from '../posting/UltimateTwitterPoster';
 
 export interface SimpleThreadResult {
   success: boolean;
@@ -37,8 +37,12 @@ export class SimpleThreadPoster {
       };
     }
     
-    // Set authorization for the first tweet
-    setPostingAuthorization({ decision_id, pipeline_source: 'simpleThreadPoster' });
+    // 🔒 Create guard for the first tweet
+    let guard = createPostingGuard({ 
+      decision_id, 
+      pipeline_source: 'simpleThreadPoster',
+      job_run_id: `thread_${Date.now()}`
+    });
     console.log(`[SIMPLE_THREAD] 🧵 Posting ${tweets.length}-tweet thread...`);
     
     if (tweets.length === 0) {
@@ -64,7 +68,7 @@ export class SimpleThreadPoster {
       console.log(`[SIMPLE_THREAD] 📝 Posting root tweet (1/${tweets.length})...`);
       console.log(`[SIMPLE_THREAD] 📄 Content: "${tweets[0].substring(0, 80)}..."`);
       
-      const rootResult = await poster.postTweet(tweets[0]);
+      const rootResult = await poster.postTweet(tweets[0], guard);
       
       if (!rootResult.success) {
         await poster.dispose();
@@ -126,10 +130,14 @@ export class SimpleThreadPoster {
             await new Promise(r => setTimeout(r, 3000));
           }
           
-          // 🔒 RE-AUTHORIZE before each reply (auth expires after 30s)
-          setPostingAuthorization({ decision_id: decision_id!, pipeline_source: 'simpleThreadPoster' });
+          // 🔒 CREATE NEW GUARD before each reply (guards expire after 60s)
+          guard = createPostingGuard({ 
+            decision_id: decision_id!, 
+            pipeline_source: 'simpleThreadPoster_reply',
+            job_run_id: `thread_reply_${i}_${Date.now()}`
+          });
           
-          const replyResult = await poster.postReply(tweets[i], lastTweetId);
+          const replyResult = await poster.postReply(tweets[i], lastTweetId, guard);
           
           if (!replyResult.success) {
             console.error(`[SIMPLE_THREAD] ❌ Reply ${i + 1} failed: ${replyResult.error}`);

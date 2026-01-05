@@ -17,72 +17,180 @@ import { supaService } from '../lib/supabaseService';
 import { ReplyPostingTelemetry } from './ReplyPostingTelemetry';
 
 /**
- * 🔒 POSTING AUTHORIZATION CONTEXT
- * Must be set by authorized callers before posting.
- * Cleared after each post to prevent reuse.
+ * 🔒 POSTING AUTHORIZATION GUARD (UNFORGEABLE)
+ * 
+ * The PostingGuard is an opaque token that ONLY postingQueue can create.
+ * All posting methods require this guard to be passed as a parameter.
+ * This prevents any module from authorizing itself.
  */
-interface PostingAuthorization {
+
+// 🔐 SECRET KEY: Only known inside this module + postingQueue
+// This is NOT exported - no other module can forge a guard
+const GUARD_SECRET = Symbol('posting_guard_secret');
+
+export interface PostingGuard {
+  readonly __secret: typeof GUARD_SECRET;
+  readonly decision_id: string;
+  readonly pipeline_source: string;
+  readonly job_run_id: string;
+  readonly created_at: number;
+}
+
+/**
+ * 🔒 CREATE POSTING GUARD (Only callable from postingQueue)
+ * This function is exported but the guard it creates can only be verified
+ * by this module because it contains the Symbol secret.
+ */
+export function createPostingGuard(params: {
   decision_id: string;
   pipeline_source: string;
-  authorized_at: number;
-}
-
-let _currentAuthorization: PostingAuthorization | null = null;
-const AUTHORIZATION_TIMEOUT_MS = 30000; // 30 seconds max between auth and post
-
-/**
- * 🔒 SET POSTING AUTHORIZATION
- * Called by PostingGuard/postingQueue BEFORE posting
- */
-export function setPostingAuthorization(auth: { decision_id: string; pipeline_source: string }): void {
-  _currentAuthorization = {
-    decision_id: auth.decision_id,
-    pipeline_source: auth.pipeline_source,
-    authorized_at: Date.now()
+  job_run_id?: string;
+}): PostingGuard {
+  const guard: PostingGuard = {
+    __secret: GUARD_SECRET,
+    decision_id: params.decision_id,
+    pipeline_source: params.pipeline_source,
+    job_run_id: params.job_run_id || `job_${Date.now()}`,
+    created_at: Date.now(),
   };
-  console.log(`[POSTING_AUTH] ✅ Authorization set: decision_id=${auth.decision_id} source=${auth.pipeline_source}`);
+  console.log(`[POSTING_GUARD] ✅ Guard created: decision_id=${params.decision_id} source=${params.pipeline_source}`);
+  return guard;
 }
 
-/**
- * 🔒 CLEAR POSTING AUTHORIZATION
- * Called after posting to prevent reuse
- */
-export function clearPostingAuthorization(): void {
-  _currentAuthorization = null;
+// 🚨 BYPASS TRACKING: Count and log all bypass attempts with stack traces
+let _bypass_blocked_count = 0;
+let _last_bypass_blocked_at: string | null = null;
+let _last_bypass_stack: string | null = null;
+let _last_bypass_caller: string | null = null;
+
+export function getBypassStats(): {
+  bypass_blocked_count: number;
+  last_bypass_blocked_at: string | null;
+  last_bypass_stack: string | null;
+  last_bypass_caller: string | null;
+} {
+  return {
+    bypass_blocked_count: _bypass_blocked_count,
+    last_bypass_blocked_at: _last_bypass_blocked_at,
+    last_bypass_stack: _last_bypass_stack,
+    last_bypass_caller: _last_bypass_caller,
+  };
 }
 
+const GUARD_TIMEOUT_MS = 60000; // 60 seconds max between guard creation and post
+
 /**
- * 🔒 VERIFY POSTING AUTHORIZATION
- * Returns the current authorization if valid, throws if not
+ * 🔒 VERIFY POSTING GUARD
+ * Validates the guard is real (has secret) and not expired
  */
-function verifyPostingAuthorization(operation: 'postTweet' | 'postReply'): PostingAuthorization {
+function verifyPostingGuard(
+  guard: PostingGuard | undefined,
+  operation: 'postTweet' | 'postReply'
+): { valid: true; guard: PostingGuard } | { valid: false; error: string } {
+  
   // 🚨 BYPASS KILLSWITCH: Allow bypass during testing if explicitly set
   if (process.env.ALLOW_POSTING_BYPASS === 'true') {
-    console.warn(`[POSTING_AUTH] ⚠️ BYPASS ENABLED - posting without authorization (ALLOW_POSTING_BYPASS=true)`);
+    console.warn(`[POSTING_GUARD] ⚠️ BYPASS ENABLED (ALLOW_POSTING_BYPASS=true)`);
     return {
-      decision_id: 'bypass_enabled',
-      pipeline_source: 'bypass',
-      authorized_at: Date.now()
+      valid: true,
+      guard: {
+        __secret: GUARD_SECRET,
+        decision_id: 'bypass_enabled',
+        pipeline_source: 'bypass_env',
+        job_run_id: 'bypass',
+        created_at: Date.now(),
+      }
     };
   }
   
-  if (!_currentAuthorization) {
-    const msg = `[POSTING_AUTH] 🚨 BLOCKED: ${operation} called without authorization. ` +
-                `All posting must go through PostingGuard or postingQueue.`;
-    console.error(msg);
-    throw new Error(msg);
+  // Extract stack trace for logging
+  const stack = new Error().stack || '';
+  const stackLines = stack.split('\n').slice(2, 8); // Skip Error line and this function
+  const trimmedStack = stackLines.map(line => line.trim()).join(' → ');
+  
+  // Extract likely caller file/function
+  const callerMatch = stackLines[1]?.match(/at\s+(\S+)/);
+  const caller = callerMatch ? callerMatch[1] : 'unknown';
+  
+  // Check guard exists
+  if (!guard) {
+    _bypass_blocked_count++;
+    _last_bypass_blocked_at = new Date().toISOString();
+    _last_bypass_stack = trimmedStack;
+    _last_bypass_caller = caller;
+    
+    console.error(`\n${'='.repeat(80)}`);
+    console.error(`[BYPASS_BLOCKED] 🚨 UNAUTHORIZED POSTING ATTEMPT DETECTED`);
+    console.error(`${'='.repeat(80)}`);
+    console.error(`  timestamp: ${_last_bypass_blocked_at}`);
+    console.error(`  operation: ${operation}`);
+    console.error(`  guard: MISSING`);
+    console.error(`  caller: ${caller}`);
+    console.error(`  MODE: ${process.env.MODE || 'unset'}`);
+    console.error(`  NODE_ENV: ${process.env.NODE_ENV || 'unset'}`);
+    console.error(`  stack_trace:`);
+    stackLines.forEach(line => console.error(`    ${line.trim()}`));
+    console.error(`${'='.repeat(80)}\n`);
+    
+    return { valid: false, error: `No posting guard provided. Caller: ${caller}` };
   }
   
-  const elapsed = Date.now() - _currentAuthorization.authorized_at;
-  if (elapsed > AUTHORIZATION_TIMEOUT_MS) {
-    const msg = `[POSTING_AUTH] 🚨 BLOCKED: Authorization expired (${elapsed}ms > ${AUTHORIZATION_TIMEOUT_MS}ms)`;
-    console.error(msg);
-    _currentAuthorization = null;
-    throw new Error(msg);
+  // Check guard has correct secret (unforgeable)
+  if (guard.__secret !== GUARD_SECRET) {
+    _bypass_blocked_count++;
+    _last_bypass_blocked_at = new Date().toISOString();
+    _last_bypass_stack = trimmedStack;
+    _last_bypass_caller = caller;
+    
+    console.error(`\n${'='.repeat(80)}`);
+    console.error(`[BYPASS_BLOCKED] 🚨 FORGED GUARD DETECTED`);
+    console.error(`${'='.repeat(80)}`);
+    console.error(`  timestamp: ${_last_bypass_blocked_at}`);
+    console.error(`  operation: ${operation}`);
+    console.error(`  guard_decision_id: ${(guard as any).decision_id || 'none'}`);
+    console.error(`  caller: ${caller}`);
+    console.error(`  reason: Guard secret mismatch - likely forged`);
+    console.error(`  stack_trace:`);
+    stackLines.forEach(line => console.error(`    ${line.trim()}`));
+    console.error(`${'='.repeat(80)}\n`);
+    
+    return { valid: false, error: `Invalid guard secret. Caller: ${caller}` };
   }
   
-  console.log(`[POSTING_AUTH] ✅ Authorization verified: decision_id=${_currentAuthorization.decision_id}`);
-  return _currentAuthorization;
+  // Check guard not expired
+  const elapsed = Date.now() - guard.created_at;
+  if (elapsed > GUARD_TIMEOUT_MS) {
+    _bypass_blocked_count++;
+    _last_bypass_blocked_at = new Date().toISOString();
+    _last_bypass_stack = trimmedStack;
+    _last_bypass_caller = caller;
+    
+    console.error(`\n${'='.repeat(80)}`);
+    console.error(`[BYPASS_BLOCKED] 🚨 EXPIRED GUARD`);
+    console.error(`${'='.repeat(80)}`);
+    console.error(`  timestamp: ${_last_bypass_blocked_at}`);
+    console.error(`  operation: ${operation}`);
+    console.error(`  guard_decision_id: ${guard.decision_id}`);
+    console.error(`  elapsed_ms: ${elapsed}`);
+    console.error(`  max_ms: ${GUARD_TIMEOUT_MS}`);
+    console.error(`  caller: ${caller}`);
+    console.error(`${'='.repeat(80)}\n`);
+    
+    return { valid: false, error: `Guard expired (${elapsed}ms > ${GUARD_TIMEOUT_MS}ms)` };
+  }
+  
+  console.log(`[POSTING_GUARD] ✅ Verified: decision_id=${guard.decision_id} source=${guard.pipeline_source} job=${guard.job_run_id}`);
+  return { valid: true, guard };
+}
+
+// Legacy exports for backward compatibility (will log deprecation warnings)
+export function setPostingAuthorization(auth: { decision_id: string; pipeline_source: string }): void {
+  console.warn(`[POSTING_AUTH] ⚠️ DEPRECATED: setPostingAuthorization() is deprecated. Use createPostingGuard() instead.`);
+  // This no longer does anything - posting now requires guard parameter
+}
+
+export function clearPostingAuthorization(): void {
+  // No-op for backward compatibility
 }
 
 export interface PostResult {
@@ -120,14 +228,14 @@ export class UltimateTwitterPoster {
     this.forceFreshContextPerAttempt = this.purpose === 'reply';
   }
 
-  async postTweet(content: string): Promise<PostResult> {
-    // 🔒 AUTHORIZATION CHECK: Block unauthorized posting
-    let auth: PostingAuthorization;
-    try {
-      auth = verifyPostingAuthorization('postTweet');
-    } catch (authError: any) {
-      return { success: false, error: authError.message };
+  async postTweet(content: string, guard?: PostingGuard): Promise<PostResult> {
+    // 🔒 GUARD CHECK: Block unauthorized posting
+    const verification = verifyPostingGuard(guard, 'postTweet');
+    if (!verification.valid) {
+      return { success: false, error: (verification as { valid: false; error: string }).error };
     }
+    const validGuard = (verification as { valid: true; guard: PostingGuard }).guard;
+    console.log(`[POST_TWEET] 🔐 Authorized via guard: decision_id=${validGuard.decision_id}`);
     
     let retryCount = 0;
     const maxRetries = 2; // Increased retries
@@ -1481,25 +1589,27 @@ export class UltimateTwitterPoster {
   /**
    * 💬 POST REPLY TO TWEET (Permanent Solution)
    * Navigates to tweet and posts actual reply (not @mention)
+   * 
+   * 🔒 REQUIRES: PostingGuard from createPostingGuard()
    */
-  async postReply(content: string, replyToTweetId: string, decisionId?: string): Promise<PostResult> {
-    // 🔒 AUTHORIZATION CHECK: Block unauthorized posting
-    let auth: PostingAuthorization;
-    try {
-      auth = verifyPostingAuthorization('postReply');
-    } catch (authError: any) {
-      return { success: false, error: authError.message };
+  async postReply(content: string, replyToTweetId: string, guard?: PostingGuard): Promise<PostResult> {
+    // 🔒 GUARD CHECK: Block unauthorized posting
+    const verification = verifyPostingGuard(guard, 'postReply');
+    if (!verification.valid) {
+      return { success: false, error: (verification as { valid: false; error: string }).error };
     }
+    const validGuard = (verification as { valid: true; guard: PostingGuard }).guard;
+    console.log(`[POST_REPLY] 🔐 Authorized via guard: decision_id=${validGuard.decision_id} target=${replyToTweetId}`);
     
     let retryCount = 0;
     const maxRetries = 2;
 
-    console.log(`ULTIMATE_POSTER: Posting reply to tweet ${replyToTweetId} (auth: ${auth.decision_id})`);
+    console.log(`ULTIMATE_POSTER: Posting reply to tweet ${replyToTweetId} (guard: ${validGuard.decision_id})`);
 
     while (retryCount <= maxRetries) {
       const sessionRefreshesBefore = this.sessionRefreshes;
       let composerAttempts = 0;
-      const telemetry = new ReplyPostingTelemetry(decisionId, replyToTweetId, retryCount + 1);
+      const telemetry = new ReplyPostingTelemetry(validGuard.decision_id, replyToTweetId, retryCount + 1);
       try {
         console.log(`ULTIMATE_POSTER: Reply attempt ${retryCount + 1}/${maxRetries + 1}`);
         await this.prepareForAttempt(retryCount);

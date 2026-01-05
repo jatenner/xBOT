@@ -869,6 +869,9 @@ export async function processPostingQueue(): Promise<void> {
     const maxRepliesPerHourRaw = Number(config.REPLIES_PER_HOUR ?? 4);
     const maxRepliesPerHour = Number.isFinite(maxRepliesPerHourRaw) ? maxRepliesPerHourRaw : 4;
     
+    // 📊 QUEUE_LIMITS: Explicit logging of rate limit state
+    console.log(`[QUEUE_LIMITS] canPostContent=${canPostContent} content_max=${maxContentPerHour}/hr replies_max=${maxRepliesPerHour}/hr REPLIES_ENABLED=${process.env.REPLIES_ENABLED !== 'false'}`);
+    
     // 🛑 DRAIN MODE: Mark all queued items as skipped for audit
     if (process.env.DRAIN_QUEUE === 'true') {
       console.log(`[POSTING_QUEUE] 🛑 DRAIN_QUEUE=true: Marking ${readyDecisions.length} decisions as skipped`);
@@ -3450,13 +3453,17 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         
         const poster = new UltimateTwitterPoster();
         
-        // 🔒 SET AUTHORIZATION: Required for UltimateTwitterPoster to proceed
-        const { setPostingAuthorization, clearPostingAuthorization } = await import('../posting/UltimateTwitterPoster');
-        setPostingAuthorization({ decision_id: decision.id, pipeline_source: 'postingQueue' });
+        // 🔒 CREATE POSTING GUARD: Unforgeable authorization token
+        const { createPostingGuard } = await import('../posting/UltimateTwitterPoster');
+        const guard = createPostingGuard({
+          decision_id: decision.id,
+          pipeline_source: 'postingQueue',
+          job_run_id: `posting_${Date.now()}`,
+        });
         
         // 🛡️ TIMEOUT PROTECTION: Adaptive timeout based on retry count
         const result = await withTimeout(
-          () => poster.postTweet(contentToPost),
+          () => poster.postTweet(contentToPost, guard),
           { 
             timeoutMs: SINGLE_POST_TIMEOUT_MS, 
             operationName: 'single_post',
@@ -3573,16 +3580,20 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       console.log(`[POSTING_QUEUE] 💬 Posting REAL reply to tweet ${decision.target_tweet_id}...`);
       console.log(`[POSTING_QUEUE] 📝 Reply content: "${decision.content.substring(0, 60)}..."`);
       
-      // 🔒 SET AUTHORIZATION: Required for UltimateTwitterPoster to proceed
-      const { setPostingAuthorization, clearPostingAuthorization } = await import('../posting/UltimateTwitterPoster');
-      setPostingAuthorization({ decision_id: decision.id, pipeline_source: 'postingQueue' });
+      // 🔒 CREATE POSTING GUARD: Unforgeable authorization token
+      const { createPostingGuard } = await import('../posting/UltimateTwitterPoster');
+      const guard = createPostingGuard({
+        decision_id: decision.id,
+        pipeline_source: 'postingQueue_reply',
+        job_run_id: `reply_${Date.now()}`,
+      });
       
       // 🔒 LOG POSTING MODE (prove we're not using thread composer)
       const contentLength = decision.content.length;
       const contentLines = (decision.content.match(/\n/g) || []).length + 1;
       console.log(`[REPLY_POST] mode=reply tweet_id=${decision.target_tweet_id} len=${contentLength} lines=${contentLines} used_thread_composer=false`);
 
-      const result = await poster.postReply(decision.content, decision.target_tweet_id, decision.id);
+      const result = await poster.postReply(decision.content, decision.target_tweet_id, guard);
 
       // 🔥 CRITICAL: Validate result BEFORE any logging or processing
       if (!result.success || !result.tweetId) {

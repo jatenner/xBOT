@@ -98,7 +98,12 @@ export interface SystemStatus {
     last_successful_reply_at: string | null;
     last_harvest_success_at: string | null;
     pacing_status: string;
+    pacing_status_reason: string;
     opportunity_pool_health: string;
+    // 🔒 BYPASS TRACKING
+    bypass_blocked_count: number;
+    last_bypass_blocked_at: string | null;
+    last_bypass_caller: string | null;
   };
 }
 
@@ -356,14 +361,34 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       poolHealth = 'moderate';
     }
     
-    // Determine pacing status
+    // Determine pacing status with reason
     let pacingStatus = 'ok';
+    let pacingReason = 'Replies are pacing normally within limits';
     if (repliesPosted >= 4) {
       pacingStatus = 'at_hourly_limit';
+      pacingReason = `Posted ${repliesPosted}/4 replies this hour - at limit`;
     } else if (repliesPosted === 0 && freshOpportunities > 10) {
       pacingStatus = 'no_activity';
+      pacingReason = `No replies posted despite ${freshOpportunities} fresh opportunities available`;
     } else if (freshOpportunities === 0) {
       pacingStatus = 'no_fresh_opportunities';
+      pacingReason = 'No fresh opportunities in pool to reply to';
+    } else if (repliesPosted > 0) {
+      pacingReason = `Posted ${repliesPosted}/4 replies this hour`;
+    }
+    
+    // 🔒 Get bypass stats from UltimateTwitterPoster
+    let bypassStats = { bypass_blocked_count: 0, last_bypass_blocked_at: null as string | null, last_bypass_caller: null as string | null };
+    try {
+      const { getBypassStats } = await import('../posting/UltimateTwitterPoster');
+      const stats = getBypassStats();
+      bypassStats = {
+        bypass_blocked_count: stats.bypass_blocked_count,
+        last_bypass_blocked_at: stats.last_bypass_blocked_at,
+        last_bypass_caller: stats.last_bypass_caller,
+      };
+    } catch (bypassErr: any) {
+      console.warn('Could not get bypass stats:', bypassErr.message);
     }
     
     return {
@@ -395,11 +420,16 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       last_successful_reply_at: lastSuccessAt ? new Date(lastSuccessAt).toISOString() : null,
       last_harvest_success_at: lastHarvestAt ? new Date(lastHarvestAt).toISOString() : null,
       pacing_status: pacingStatus,
-      opportunity_pool_health: poolHealth
+      pacing_status_reason: pacingReason,
+      opportunity_pool_health: poolHealth,
+      // 🔒 BYPASS TRACKING
+      bypass_blocked_count: bypassStats.bypass_blocked_count,
+      last_bypass_blocked_at: bypassStats.last_bypass_blocked_at,
+      last_bypass_caller: bypassStats.last_bypass_caller,
     };
     
   } catch (error: any) {
-    console.error('REPLY_METRICS_ERROR:', error.message);
+    console.error('REPLY_METRICS_ERROR:', error.message, error.stack);
     return {
       opportunities_available: 0,
       fresh_opportunities_available: 0,
@@ -428,7 +458,11 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       last_successful_reply_at: null,
       last_harvest_success_at: null,
       pacing_status: 'error',
-      opportunity_pool_health: 'unknown'
+      pacing_status_reason: `Database query failed: ${error.message}`,
+      opportunity_pool_health: 'unknown',
+      bypass_blocked_count: 0,
+      last_bypass_blocked_at: null,
+      last_bypass_caller: null,
     };
   }
 }
