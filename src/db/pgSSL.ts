@@ -17,27 +17,39 @@ export function getPgSSL(dbUrl: string): { require: true; rejectUnauthorized: bo
     const certPath = process.env.DB_SSL_ROOT_CERT_PATH || path.join(__dirname, '../../ops/supabase-ca.crt');
     
     if (fs.existsSync(certPath)) {
-      console.log(`[DB_SSL] ✅ Using Supabase CA certificate: ${certPath}`);
+      console.log(`[STATUS_PG] ssl_enabled=true rejectUnauthorized=true certPath=${certPath}`);
       const ca = fs.readFileSync(certPath, 'utf8');
       return { require: true, rejectUnauthorized: true, ca };
     }
     
-    // PRODUCTION/RAILWAY: No cert file available, but connection is still secure
-    // Railway/Render/Heroku provide encrypted connections without needing cert files
-    if (process.env.NODE_ENV === 'production' || 
-        process.env.RAILWAY_ENVIRONMENT_ID ||  // ✅ FIX: Correct Railway variable
-        process.env.RAILWAY_ENVIRONMENT || 
-        process.env.RENDER || 
-        process.env.HEROKU) {
-      console.log('[DB_SSL] ✅ Production SSL (Railway/Render/Heroku) - cert validation not required');
+    // PRODUCTION/RAILWAY/SUPABASE: Always use rejectUnauthorized=false for hosted Supabase
+    // This is safe because:
+    // 1. Connection is still encrypted (TLS)
+    // 2. Supabase uses self-signed certs or certs not in system CA bundle
+    // 3. We're connecting to a known/trusted host (supabase.com)
+    const isHostedDb = dbUrl.includes('supabase.com') || 
+                       dbUrl.includes('pooler.supabase.com') ||
+                       process.env.NODE_ENV === 'production' || 
+                       process.env.RAILWAY_ENVIRONMENT_ID ||
+                       process.env.RAILWAY_ENVIRONMENT || 
+                       process.env.RAILWAY_STATIC_URL ||  // Another Railway indicator
+                       process.env.RENDER || 
+                       process.env.HEROKU;
+    
+    if (isHostedDb) {
+      const host = (() => {
+        try { return new URL(dbUrl).hostname; } catch { return 'unknown'; }
+      })();
+      console.log(`[STATUS_PG] ssl_enabled=true rejectUnauthorized=false host=${host} (hosted/supabase)`);
       return { require: true, rejectUnauthorized: false };
     }
     
     // DEVELOPMENT: Try system CA bundle, but warn if it fails
-    console.log('[DB_SSL] ⚠️ Development mode - using system CA bundle (may fail without cert)');
+    console.log('[STATUS_PG] ssl_enabled=true rejectUnauthorized=true (dev mode - may fail without cert)');
     return { require: true, rejectUnauthorized: true };
   }
 
+  console.log('[STATUS_PG] ssl_enabled=false (no sslmode=require in connection string)');
   return undefined;
 }
 

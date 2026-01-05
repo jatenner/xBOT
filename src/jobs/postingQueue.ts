@@ -983,11 +983,12 @@ export async function processPostingQueue(): Promise<void> {
             .gte('posted_at', oneHourAgo);
           
           const totalRepliesThisHour = (replyCount || 0) + repliesPostedThisCycle;
+          const windowStart = oneHourAgo;
           
-          console.log(`[POSTING_QUEUE] 📊 Replies this hour: ${totalRepliesThisHour}/${maxRepliesPerHour} (DB: ${replyCount}, This cycle: ${repliesPostedThisCycle})`);
+          console.log(`[REPLY_QUOTA] posted_last_60m=${totalRepliesThisHour} limit=${maxRepliesPerHour} window_start=${windowStart} db_count=${replyCount} cycle_count=${repliesPostedThisCycle}`);
           
           if (totalRepliesThisHour >= maxRepliesPerHour) {
-            console.log(`[POSTING_QUEUE] ⛔ SKIP: Reply limit reached ${totalRepliesThisHour}/${maxRepliesPerHour}`);
+            console.log(`[REPLY_QUOTA] ⛔ BLOCKED: limit reached ${totalRepliesThisHour}/${maxRepliesPerHour}`);
             continue; // Skip this decision, move to next
           }
         }
