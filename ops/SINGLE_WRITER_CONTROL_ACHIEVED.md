@@ -307,6 +307,65 @@ Controlled Test #1 posted TWO tweets because `POSTING_QUEUE_MAX=1` limits per-ru
 
 ### Implementation Details:
 - **Migration:** `supabase/migrations/20260106092255_ops_control_table.sql`
+
+---
+
+## LEASE-BASED TOKEN + 429 RETRY HANDLING - IMPLEMENTED ✅
+
+**Date:** January 6, 2026  
+**Status:** ✅ **IMPLEMENTED**
+
+### Problem Identified:
+One-time token consumption burned token on 429 (rate limit) errors, preventing retries. Token was consumed before posting succeeded, so retries were blocked with "ALREADY CONSUMED" message.
+
+### Solution Implemented:
+
+1. **Lease-Based Token System:**
+   - **Migration:** `supabase/migrations/20260106204000_ops_control_lease.sql`
+   - Added `lease_owner` and `lease_expires_at` columns to `ops_control` table
+   - **RPC Functions:**
+     - `acquire_controlled_token(token_value, owner_id, ttl_seconds)` - Atomically acquire lease with TTL (default 600s)
+     - `finalize_controlled_token(token_value, owner_id)` - Finalize/consume token after successful post
+     - `release_controlled_token(token_value, owner_id)` - Release lease on non-retryable failures
+   - Lease expires automatically after TTL if not finalized/released
+
+2. **429-Aware Retry Logic:**
+   - **Detection:** Updated `UltimateTwitterPoster.isRecoverableError()` to detect:
+     - `HTTP-429`
+     - `code 88` (X rate limit code)
+     - `rate limit` errors
+     - `ApiError.*429`
+   - **Backoff Strategy:** Exponential backoff with jitter for 429 errors:
+     - Retry 1: 30s ± 30% jitter
+     - Retry 2: 60s ± 30% jitter
+     - Retry 3: 120s ± 30% jitter
+   - **Timeout:** Increased overall timeout from 120s → 300s (5 min) for retries
+   - **Lease Behavior:** Lease kept on 429 errors (allows retry within TTL), released on other failures
+
+3. **Lease Management in postingQueue:**
+   - Acquire lease BEFORE fetching decisions
+   - Finalize lease AFTER successful post
+   - Release lease on non-retryable failures
+   - Keep lease on 429 errors (retryable within TTL)
+
+4. **One-Shot Runner:**
+   - Created `scripts/run-controlled-post-once.ts`
+   - Acquires lease, runs postingQueue, handles finalization/release
+   - Provides detailed logging of lease status and retry behavior
+
+### Files Changed:
+- `supabase/migrations/20260106204000_ops_control_lease.sql` (NEW)
+- `src/jobs/postingQueue.ts` (lease acquisition/finalization/release logic)
+- `src/posting/UltimateTwitterPoster.ts` (429 detection + exponential backoff)
+- `scripts/run-controlled-post-once.ts` (NEW)
+- `scripts/apply-lease-migration.ts` (NEW)
+
+### Benefits:
+- ✅ Token not burned on 429 errors
+- ✅ Automatic retries with exponential backoff
+- ✅ Lease expires automatically if process crashes
+- ✅ Multiple runs can retry within lease TTL
+- ✅ Fail-closed: only owner can finalize/release lease
 - **Code Changes:** `src/jobs/postingQueue.ts` (controlled window gate logic)
 - **Scripts:** 
   - `scripts/set-controlled-window-token.ts` (generate token)

@@ -34,6 +34,9 @@ async function main() {
   console.log(`🔒 Lease Owner: ${leaseOwner}`);
   console.log('');
   
+  // Set lease owner in env so postingQueue can reuse it
+  process.env.CONTROLLED_POST_TOKEN_LEASE_OWNER = leaseOwner;
+  
   const supabase = getSupabaseClient();
   
   // Acquire lease
@@ -63,11 +66,26 @@ async function main() {
   let postingSuccess = false;
   let retryCount = 0;
   let finalError: any = null;
+  let tweetId: string | null = null;
   
   try {
     await processPostingQueue();
-    postingSuccess = true;
-    console.log(`✅ Posting completed`);
+    
+    // Check if decision was actually posted
+    const { data: decision } = await supabase
+      .from('content_generation_metadata_comprehensive')
+      .select('tweet_id, status')
+      .eq('decision_id', controlledDecisionId)
+      .single();
+    
+    if (decision?.status === 'posted' && decision?.tweet_id) {
+      postingSuccess = true;
+      tweetId = decision.tweet_id;
+      console.log(`✅ Posting completed - tweet_id: ${tweetId}`);
+    } else {
+      console.log(`⚠️  PostingQueue completed but decision not posted (status: ${decision?.status || 'unknown'})`);
+      postingSuccess = false;
+    }
   } catch (error: any) {
     finalError = error;
     const is429 = error?.message?.includes('HTTP-429') || 
@@ -123,6 +141,7 @@ async function main() {
   console.log('📊 SUMMARY:');
   console.log(`   Lease acquired: ✅`);
   console.log(`   Posting success: ${postingSuccess ? '✅' : '❌'}`);
+  console.log(`   Tweet ID: ${tweetId || 'N/A'}`);
   console.log(`   Retries: ${retryCount}`);
   console.log(`   Final error: ${finalError ? finalError.message : 'None'}`);
   console.log(`   Lease status: ${postingSuccess ? 'Finalized' : (finalError?.message?.includes('HTTP-429') ? 'Kept for retry' : 'Released')}`);
