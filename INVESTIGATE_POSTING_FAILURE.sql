@@ -174,3 +174,4 @@ FROM system_events
 WHERE severity = 'critical' AND created_at >= NOW() - INTERVAL '12 hours';
 
 
+

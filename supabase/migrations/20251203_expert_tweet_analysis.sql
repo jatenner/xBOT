@@ -166,3 +166,4 @@ COMMIT;
 -- SELECT column_name FROM information_schema.columns WHERE table_name = 'vi_format_intelligence' AND column_name IN ('expert_insights', 'strategic_recommendations', 'content_strategy');
 
 
+

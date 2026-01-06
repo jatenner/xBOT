@@ -283,8 +283,11 @@ async function extractTweetsFromProfile(page: Page, max_tweets: number): Promise
           const content = textDiv?.textContent || '';
           
           // Check if reply (has "Replying to" text)        
-          const replyingTo = card.querySelector('[data-testid="reply"]');       
-          const isReply = Boolean(replyingTo) || content.trim().startsWith('@');
+          // More accurate: Check for "Replying to @username" indicator, not just reply button
+          const replyingToIndicator = card.querySelector('[data-testid="reply"]')?.closest('div')?.textContent?.includes('Replying to');
+          const hasReplyContext = card.textContent?.includes('Replying to');
+          // Only mark as reply if we have explicit "Replying to" context, not just @ mentions in content
+          const isReply = Boolean(hasReplyContext || replyingToIndicator);
           
           // Extract in_reply_to_tweet_id and conversation_id (Twitter truth)
           let inReplyToTweetId: string | undefined;

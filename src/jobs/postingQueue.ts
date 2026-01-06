@@ -1032,9 +1032,20 @@ export async function processPostingQueue(): Promise<void> {
   const flags = getModeFlags(config);
   
   // 🔒 CONTROLLED TEST MODE: Limit to exactly ONE post if POSTING_QUEUE_MAX=1
+  // 🚀 RAMP MODE: Skip controlled test mode limit when RAMP_MODE is enabled
+  const rampModeEnabled = process.env.RAMP_MODE === 'true';
+  const controlledDecisionId = process.env.CONTROLLED_DECISION_ID?.trim();
+  const controlledPostToken = process.env.CONTROLLED_POST_TOKEN?.trim();
+  const explicitControlledMode = process.env.CONTROLLED_TEST_MODE === 'true';
+  
   const maxPostsForThisRun = process.env.POSTING_QUEUE_MAX ? parseInt(process.env.POSTING_QUEUE_MAX, 10) : undefined;
-  if (maxPostsForThisRun === 1) {
-    console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_TEST_MODE: Limiting to exactly 1 post`);
+  const shouldLimitToControlled = maxPostsForThisRun === 1 && !rampModeEnabled && (controlledDecisionId || controlledPostToken || explicitControlledMode);
+  
+  if (shouldLimitToControlled) {
+    const reason = controlledDecisionId ? 'CONTROLLED_DECISION_ID set' : controlledPostToken ? 'CONTROLLED_POST_TOKEN set' : 'CONTROLLED_TEST_MODE=true';
+    console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_TEST_MODE: Limiting to exactly 1 post (reason: ${reason})`);
+  } else if (rampModeEnabled && maxPostsForThisRun === 1) {
+    console.log(`[POSTING_QUEUE] 🚀 RAMP_MODE: Skipping CONTROLLED_TEST_MODE limit (ramp quotas will enforce limits)`);
   }
   
   log({ op: 'posting_queue_start' });
@@ -1343,10 +1354,24 @@ export async function processPostingQueue(): Promise<void> {
     }
     
     // 🔒 CONTROLLED TEST MODE: Limit to exactly ONE post if POSTING_QUEUE_MAX=1
+    // 🚀 RAMP MODE: Skip controlled test mode limit when RAMP_MODE is enabled
+    const rampModeEnabled = process.env.RAMP_MODE === 'true';
+    const controlledDecisionId = process.env.CONTROLLED_DECISION_ID?.trim();
+    const controlledPostToken = process.env.CONTROLLED_POST_TOKEN?.trim();
+    const explicitControlledMode = process.env.CONTROLLED_TEST_MODE === 'true';
+    
     const maxPostsForThisRun = process.env.POSTING_QUEUE_MAX ? parseInt(process.env.POSTING_QUEUE_MAX, 10) : undefined;
-    const decisionsToProcess = maxPostsForThisRun === 1 ? readyDecisions.slice(0, 1) : readyDecisions;
-    if (maxPostsForThisRun === 1 && readyDecisions.length > 1) {
-      console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_TEST_MODE: Processing only 1 of ${readyDecisions.length} queued decisions`);
+    const shouldLimitToControlled = maxPostsForThisRun === 1 && !rampModeEnabled && (controlledDecisionId || controlledPostToken || explicitControlledMode);
+    
+    let decisionsToProcess = readyDecisions;
+    if (shouldLimitToControlled) {
+      decisionsToProcess = readyDecisions.slice(0, 1);
+      const reason = controlledDecisionId ? 'CONTROLLED_DECISION_ID' : controlledPostToken ? 'CONTROLLED_POST_TOKEN' : 'CONTROLLED_TEST_MODE=true';
+      console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_TEST_MODE: Processing only 1 of ${readyDecisions.length} queued decisions (reason: ${reason})`);
+    } else if (rampModeEnabled) {
+      // Ramp mode: process all decisions up to quota limits (already enforced by rate limits above)
+      const rampLevel = process.env.RAMP_LEVEL || '1';
+      console.log(`[POSTING_QUEUE] 🚀 RAMP_MODE (level ${rampLevel}): Processing ${readyDecisions.length} decisions (quota limits enforced)`);
     }
     
     for (const decision of decisionsToProcess) {
