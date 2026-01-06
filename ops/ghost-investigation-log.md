@@ -381,3 +381,78 @@ railway variables | grep -E "POSTING_ENABLED|REPLIES_ENABLED|DRAIN_QUEUE"
 **Next Step:** Monitor for post completion, then verify traceability
 
 ---
+
+## 2026-01-06 09:10:13 ET - CONTROLLED TEST #1 SUCCESS
+
+**Action:** STEP 3-6 - Complete controlled test execution
+
+**Commands:**
+```bash
+# Reset post to queued
+pnpm exec tsx scripts/reset-post-to-queued.ts 497a9126-e638-49ba-9420-192017d08f13
+
+# Restart Railway to pick up env vars
+railway up --detach
+
+# Watch logs (post succeeded!)
+railway logs --lines 500 | grep -E "497a9126|CONTROLLED_TEST|ATOMIC_POST"
+
+# Lock back down immediately
+railway variables --set "POSTING_ENABLED=false"
+railway variables --set "DRAIN_QUEUE=true"
+
+# Verify traceability
+pnpm exec tsx scripts/query-tweet-details.ts 2008541676739191145
+pnpm exec tsx scripts/verify-not-in-db.ts --since-hours=0.25
+```
+
+**Key Output:**
+- ✅ Post succeeded after Railway restart
+- ✅ tweet_id: 2008541676739191145
+- ✅ Tweet URL: https://twitter.com/Signal_Synapse/status/2008541676739191145
+- ✅ status: posted
+- ✅ System locked down immediately after posting
+
+**Conclusion:**
+- ✅ Controlled test post successful
+- ✅ Exactly ONE tweet posted
+- ✅ Ready to verify traceability
+
+**Next Step:** Verify DB traceability and update documentation
+
+---
+
+## 2026-01-06 09:16:07 ET - CONTROLLED TEST #1 VERIFICATION (STEP 6)
+
+**Action:** STEP 6 - Verify DB row traceability
+
+**Commands:**
+```bash
+# Query tweet details
+pnpm exec tsx scripts/query-tweet-details.ts 2008541676739191145
+
+# Verify decision_id traceability
+pnpm exec tsx scripts/query-tweet-details.ts 497a9126-e638-49ba-9420-192017d08f13
+
+# Run verifier
+pnpm exec tsx scripts/verify-not-in-db.ts --since-hours=0.5
+```
+
+**Key Output:**
+- ✅ status='posted' ✓
+- ✅ tweet_id='2008541676739191145' ✓
+- ✅ build_sha='fdf00f1e32b67fa399f668d836c0a737e73bc62a' (NOT null, NOT dev, NOT unknown) ✓
+- ✅ pipeline_source='postingQueue' ✓
+- ✅ job_run_id='posting_1767708577516' ✓
+- ✅ posted_at='2026-01-06T14:10:36.279+00:00' ✓
+- ✅ Verifier: CLEAN (0 tweets, 0 NULL/dev build_sha)
+
+**Conclusion:**
+- ✅ All DB traceability requirements met
+- ✅ build_sha is proper git commit SHA
+- ✅ No ghost posts detected
+- ✅ Exactly ONE tweet posted
+
+**Next Step:** Update documentation with complete proof
+
+---

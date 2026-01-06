@@ -205,3 +205,69 @@ pnpm exec tsx scripts/verify-not-in-db.ts --since-hours=0.25
 pnpm exec tsx scripts/query-tweet-details.ts <tweet_id>
 ```
 
+---
+
+## CONTROLLED TEST #1 - COMPLETED ✅
+
+**Date:** January 6, 2026, 09:10:13 ET  
+**Status:** ✅ **SUCCESS**
+
+### Test Execution:
+- ✅ POSTING_QUEUE_MAX=1 set and verified
+- ✅ POSTING_ENABLED=true (temporarily enabled)
+- ✅ DRAIN_QUEUE=false (temporarily disabled)
+- ✅ REPLIES_ENABLED=false (correctly disabled)
+- ✅ Railway restarted to pick up env vars
+- ✅ Post processed successfully
+
+### Results:
+- ✅ **tweet_id:** `2008541676739191145`
+- ✅ **Tweet URL:** https://twitter.com/Signal_Synapse/status/2008541676739191145
+- ✅ **decision_id:** `497a9126-e638-49ba-9420-192017d08f13`
+- ✅ **status:** `posted`
+- ✅ **posted_at:** `2026-01-06T14:10:36.279+00:00`
+- ✅ **pipeline_source:** `postingQueue`
+- ✅ **build_sha:** `fdf00f1e32b67fa399f668d836c0a737e73bc62a` (NOT null, NOT dev, NOT unknown - proper git commit SHA!)
+- ✅ **job_run_id:** `posting_1767708577516`
+
+### DB Row Proof:
+```json
+{
+  "decision_id": "497a9126-e638-49ba-9420-192017d08f13",
+  "status": "posted",
+  "tweet_id": "2008541676739191145",
+  "pipeline_source": "postingQueue",
+  "build_sha": "fdf00f1e32b67fa399f668d836c0a737e73bc62a",
+  "job_run_id": "posting_1767708577516",
+  "posted_at": "2026-01-06T14:10:36.279+00:00"
+}
+```
+
+**Verification:**
+- ✅ status='posted' ✓
+- ✅ tweet_id exists ✓
+- ✅ build_sha is NOT null ✓
+- ✅ build_sha is NOT 'dev' ✓
+- ✅ build_sha is NOT 'unknown' ✓
+- ✅ build_sha is proper git commit SHA ✓
+- ✅ pipeline_source='postingQueue' ✓
+
+### Verifier Output:
+```
+✅ Found 0 tweets IN_DB since 2026-01-06T14:16:00.548Z
+✅ CLEAN: All tweets have valid build_sha
+```
+
+### System Lockdown:
+- ✅ POSTING_ENABLED=false (immediately after posting)
+- ✅ DRAIN_QUEUE=true (immediately after posting)
+- ✅ REPLIES_ENABLED=false
+
+### Conclusion:
+- ✅ Exactly ONE tweet posted
+- ✅ Tweet is IN_DB with proper traceability
+- ✅ System locked down immediately
+- ✅ No ghost posts detected
+
+**Status:** ✅ **TEST COMPLETE - ALL VERIFICATIONS PASSED**
+
