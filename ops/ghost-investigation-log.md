@@ -575,3 +575,67 @@ pnpm exec tsx scripts/query-tweet-details.ts 2008543155772338592
 **Status:** ✅ MIGRATION APPLIED AND VERIFIED
 
 ---
+
+---
+
+## 2026-01-06 10:45:00 ET - CONTROLLED TEST #2 EXECUTION
+
+**Action:** Prove "exactly one tweet" with controlled window gate
+
+**STEP 0 - System State:**
+- ✅ POSTING_ENABLED=false
+- ✅ REPLIES_ENABLED=false
+- ✅ DRAIN_QUEUE=true
+- ✅ Found 2 queued items (marked as blocked)
+
+**STEP 1 - Controlled Test Post:**
+- ✅ Created decision_id: 1e43a484-e5a8-48ed-bfb3-5d6e7358d6ba
+- ✅ Marked 3 other queued items as blocked
+- ✅ Verified only 1 queued item remains
+
+**STEP 2 - Controlled Window:**
+- ✅ Token generated: 642075e753f9f97c62f59eec93e2e0c497d2e86eeeb123deaaff8d999fea5b78
+- ✅ Token stored in ops_control table
+
+**STEP 3 - Posting Window Opened:**
+- ✅ CONTROLLED_DECISION_ID=1e43a484-e5a8-48ed-bfb3-5d6e7358d6ba
+- ✅ CONTROLLED_POST_TOKEN set
+- ✅ POSTING_ENABLED=true
+- ✅ DRAIN_QUEUE=false
+- ⏳ Monitoring logs for 10 minutes...
+
+**Next:** Check if post succeeded and verify only ONE tweet posted
+
+---
+
+---
+
+## 2026-01-06 11:00:00 ET - CONTROLLED TEST #2 STATUS
+
+**Status:** ⏳ Post still queued - waiting for Railway to process
+
+**Findings:**
+- ✅ Controlled window gate variables set correctly
+- ✅ Token generated and stored
+- ⏳ PostingQueue has not processed the controlled decision yet
+- ⚠️ Need to verify Railway has latest code with controlled window gate
+
+**Next Steps:**
+- Check if Railway deployment includes controlled window gate code
+- Wait for next postingQueue cycle (runs every 5 minutes)
+- Verify token consumption and posting
+
+---
+
+---
+
+## 2026-01-06 11:15:00 ET - CONTROLLED TEST #2 FINAL STATUS
+
+**Issue Found:** Railway was running old code (controlled window gate not deployed)
+**Action Taken:** Pushed latest code and triggered Railway deployment
+
+**Status:** ⏳ Waiting for Railway to deploy and process controlled test post
+
+**Next:** Once deployed, Railway should process the controlled decision with gate active
+
+---
