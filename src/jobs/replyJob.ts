@@ -638,10 +638,48 @@ async function generateRealReplies(): Promise<void> {
         const finalWaitTime = Date.now() - waitStartTime;
         console.log(`[REPLY_JOB] 📊 pool_after_harvest start=${startPoolCount} end=${poolCount} waited_ms=${finalWaitTime}`);
         
-        // If still below threshold, exit early
+        // 🚀 DYNAMIC THRESHOLD: Allow proceeding with lower pool if conditions met
         if (poolCount < HARVESTER_TRIGGER_THRESHOLD) {
-          console.warn(`[REPLY_JOB] ⚠️ pool_still_low after_wait_ms=${finalWaitTime} pool=${poolCount} threshold=${HARVESTER_TRIGGER_THRESHOLD} action=exit`);
-          return;
+          // Check if we can proceed with reduced threshold
+          const { data: lastReplyAttemptData } = await supabaseClient
+            .from('content_metadata')
+            .select('posted_at, created_at')
+            .eq('decision_type', 'reply')
+            .in('status', ['posted', 'queued', 'ready'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          const lastReplyAttemptAt = lastReplyAttemptData?.created_at ? new Date(lastReplyAttemptData.created_at) : null;
+          const minutesSinceLastAttempt = lastReplyAttemptAt ? (Date.now() - lastReplyAttemptAt.getTime()) / (1000 * 60) : 999;
+          
+          // Count replies posted in last hour
+          const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+          const { count: repliesLastHour } = await supabaseClient
+            .from('content_metadata')
+            .select('*', { count: 'exact', head: true })
+            .eq('decision_type', 'reply')
+            .eq('status', 'posted')
+            .gte('posted_at', oneHourAgo);
+          
+          const canProceedWithReducedThreshold = poolCount >= 1 && (
+            minutesSinceLastAttempt >= 30 || 
+            (repliesLastHour || 0) === 0
+          );
+          
+          if (canProceedWithReducedThreshold) {
+            console.log(`[REPLY_JOB] 🚀 DYNAMIC_THRESHOLD: Proceeding with reduced pool (${poolCount} < ${HARVESTER_TRIGGER_THRESHOLD})`);
+            console.log(`[REPLY_JOB]   eligible_pool_size=${poolCount} threshold_used=1 reason=reduced_threshold_met`);
+            console.log(`[REPLY_JOB]   minutes_since_last_attempt=${Math.round(minutesSinceLastAttempt)} replies_last_hour=${repliesLastHour || 0}`);
+          } else {
+            console.warn(`[REPLY_JOB] ⚠️ pool_still_low after_wait_ms=${finalWaitTime} pool=${poolCount} threshold=${HARVESTER_TRIGGER_THRESHOLD} action=exit`);
+            console.log(`[REPLY_JOB]   eligible_pool_size=${poolCount} threshold_used=${HARVESTER_TRIGGER_THRESHOLD} reason=threshold_not_met`);
+            console.log(`[REPLY_JOB]   minutes_since_last_attempt=${Math.round(minutesSinceLastAttempt)} replies_last_hour=${repliesLastHour || 0}`);
+            return;
+          }
+        } else {
+          console.log(`[REPLY_JOB] ✅ Pool threshold met: ${poolCount} >= ${HARVESTER_TRIGGER_THRESHOLD}`);
+          console.log(`[REPLY_JOB]   eligible_pool_size=${poolCount} threshold_used=${HARVESTER_TRIGGER_THRESHOLD} reason=normal_threshold_met`);
         }
       } catch (error: any) {
         console.error('[REPLY_JOB] ❌ Harvester preflight failed:', error.message);
