@@ -321,3 +321,63 @@ POSTING_QUEUE_MAX=1 POSTING_ENABLED=true DRAIN_QUEUE=false pnpm exec tsx scripts
 **Next Step:** Wait for Railway to process, then verify in database
 
 ---
+
+## 2026-01-06 08:30:48 ET - CONTROLLED TEST #1 STATUS CHECK (STEP D)
+
+**Action:** STEP D - Check if post succeeded
+
+**Commands:**
+```bash
+# Check controlled test status
+pnpm exec tsx scripts/check-controlled-test-status.ts
+
+# Check for new tweets
+pnpm exec tsx scripts/verify-not-in-db.ts --since-hours=0.17
+```
+
+**Key Output:**
+- ⏳ Post still queued (not yet posted)
+- status: queued
+- tweet_id: NOT POSTED YET
+- build_sha: unknown_1767705785655 (needs Railway env var)
+- pipeline_source: postingQueue
+- ✅ No new tweets in last 10 minutes (clean)
+
+**Conclusion:**
+- Post is queued and ready
+- Railway should pick it up in next cycle (every 5 minutes)
+- Need to wait for Railway to process
+
+**Next Step:** Lock back down, then monitor
+
+---
+
+## 2026-01-06 08:31:00 ET - CONTROLLED TEST #1 LOCKDOWN (STEP E)
+
+**Action:** STEP E - Lock back down
+
+**Commands:**
+```bash
+# Disable posting
+railway variables --set "POSTING_ENABLED=false"
+
+# Enable drain queue
+railway variables --set "DRAIN_QUEUE=true"
+
+# Verify
+railway variables | grep -E "POSTING_ENABLED|REPLIES_ENABLED|DRAIN_QUEUE"
+```
+
+**Key Output:**
+- ✅ POSTING_ENABLED=false
+- ✅ DRAIN_QUEUE=true
+- ✅ REPLIES_ENABLED=false
+
+**Conclusion:**
+- System locked down
+- Controlled test post may still be processed by Railway if it was already picked up
+- Need to monitor for completion
+
+**Next Step:** Monitor for post completion, then verify traceability
+
+---

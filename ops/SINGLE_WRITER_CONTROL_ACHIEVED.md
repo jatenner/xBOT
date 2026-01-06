@@ -166,3 +166,42 @@
 **Investigation Log:** `ops/ghost-investigation-log.md`  
 **Status:** ✅ **READY FOR CONTROLLED TEST**
 
+---
+
+## CONTROLLED TEST #1 - IN PROGRESS
+
+**Date:** January 6, 2026, 08:31:00 ET  
+**Status:** ⏳ **AWAITING RAILWAY PROCESSING**
+
+### Test Setup:
+- ✅ Controlled test post inserted: `497a9126-e638-49ba-9420-192017d08f13`
+- ✅ Content: `[CONTROLLED_TEST_1] build_sha=unknown_ ts=1/6/2026, 8:21:13 AM Testing single-writer control recovery...`
+- ✅ POSTING_QUEUE_MAX=1 set (limits to exactly 1 post)
+- ✅ POSTING_ENABLED=true (temporarily enabled)
+- ✅ DRAIN_QUEUE=false (temporarily disabled)
+- ✅ REPLIES_ENABLED=false (correctly disabled)
+
+### Current Status:
+- ⏳ Post still queued (waiting for Railway to process)
+- ⏳ Railway runs posting queue every 5 minutes
+- ✅ System locked down (POSTING_ENABLED=false, DRAIN_QUEUE=true)
+
+### Next Steps:
+1. Wait for Railway to process the queued post
+2. Check `scripts/check-controlled-test-status.ts` for completion
+3. Verify tweet_id appears in database
+4. Verify build_sha and pipeline_source are correct
+5. Re-run verifier to confirm IN_DB
+
+### Commands to Check Status:
+```bash
+# Check if post succeeded
+pnpm exec tsx scripts/check-controlled-test-status.ts
+
+# Check for new tweets
+pnpm exec tsx scripts/verify-not-in-db.ts --since-hours=0.25
+
+# Query tweet details
+pnpm exec tsx scripts/query-tweet-details.ts <tweet_id>
+```
+
