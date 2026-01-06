@@ -271,3 +271,68 @@ pnpm exec tsx scripts/query-tweet-details.ts <tweet_id>
 
 **Status:** ✅ **TEST COMPLETE - ALL VERIFICATIONS PASSED**
 
+---
+
+## CONTROLLED WINDOW GATE - IMPLEMENTED ✅
+
+**Date:** January 6, 2026  
+**Status:** ✅ **IMPLEMENTED**
+
+### Problem Identified:
+Controlled Test #1 posted TWO tweets because `POSTING_QUEUE_MAX=1` limits per-run, not per-window. The scheduler ran `postingQueue` twice while `POSTING_ENABLED` was temporarily true, causing both runs to process posts.
+
+### Solution Implemented:
+1. **Environment Variable Gate:** `CONTROLLED_DECISION_ID` (UUID)
+   - When set, `postingQueue` MUST only select/process that one `decision_id`
+   - If the queue run does not find that `decision_id` queued, it does nothing
+   - After posting that `decision_id`, it immediately exits and does not process any other rows
+
+2. **DB-Backed One-Time Token:** `ops_control` table
+   - Table: `ops_control` with fields: `key`, `value`, `updated_at`
+   - Uses `key='controlled_post_token'` and stores a random token for the window
+   - `postingQueue` atomically consumes it using `consume_controlled_token()` RPC function
+   - If consume fails, `postingQueue` refuses to post and logs "CONTROLLED WINDOW ALREADY CONSUMED"
+   - Even if `postingQueue` runs twice, only the first run can post
+
+3. **Enhanced Status Script:** `scripts/check-controlled-test-status.ts`
+   - Shows how many queued posts existed at the time
+   - Shows `decision_ids` posted during the window
+
+### Implementation Details:
+- **Migration:** `supabase/migrations/20260106092255_ops_control_table.sql`
+- **Code Changes:** `src/jobs/postingQueue.ts` (controlled window gate logic)
+- **Scripts:** 
+  - `scripts/set-controlled-window-token.ts` (generate token)
+  - `scripts/check-controlled-test-status.ts` (enhanced status)
+
+### Usage:
+```bash
+# 1. Generate token
+pnpm exec tsx scripts/set-controlled-window-token.ts
+
+# 2. Set Railway variables
+railway variables --set CONTROLLED_DECISION_ID=<decision_id>
+railway variables --set CONTROLLED_POST_TOKEN=<token_from_step_1>
+
+# 3. Enable posting temporarily
+railway variables --set POSTING_ENABLED=true
+railway variables --set DRAIN_QUEUE=false
+
+# 4. Wait for posting (runs every 5 min)
+
+# 5. Check status
+pnpm exec tsx scripts/check-controlled-test-status.ts <decision_id>
+
+# 6. Lock back down immediately
+railway variables --set POSTING_ENABLED=false
+railway variables --set DRAIN_QUEUE=true
+```
+
+### Rerun Plan for Controlled Test #2:
+1. Generate new token: `pnpm exec tsx scripts/set-controlled-window-token.ts`
+2. Insert controlled test post with unique marker
+3. Set `CONTROLLED_DECISION_ID` and `CONTROLLED_POST_TOKEN` in Railway
+4. Enable posting temporarily
+5. Verify exactly ONE tweet posted
+6. Lock back down immediately
+
