@@ -926,3 +926,21 @@ No self-reply guardrail existed at harvester or execution time.
 - Running normal posting queue cycle
 - Checking for ramp mode summary logs
 
+
+### Root Cause Found (21:40 ET):
+
+**Issue:**
+- CONTROLLED_DECISION_ID was still set from previous test
+- This blocked normal posting queue operation
+- Code fix: Added empty string check to controlled gate
+
+**Queue State:**
+- 25 decisions ready to post
+- 1 blocked (target_too_old)
+- Types: 11 single, 9 thread, 6 reply
+
+**Actions:**
+- Fixed code to check for empty strings
+- Cleared controlled gate variables
+- Running normal posting queue cycle
+
