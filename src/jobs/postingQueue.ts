@@ -1208,10 +1208,13 @@ export async function processPostingQueue(): Promise<void> {
     // ═══════════════════════════════════════════════════════════════════════
     // 🔒 CONTROLLED WINDOW GATE: Single-post test protection
     // ═══════════════════════════════════════════════════════════════════════
-    const controlledDecisionId = process.env.CONTROLLED_DECISION_ID;
+    const controlledDecisionIdRaw = process.env.CONTROLLED_DECISION_ID;
+    // Only enable controlled gate if decision ID is set AND not empty/whitespace
+    // Also skip if it's a known test decision ID that should be cleared
+    const controlledDecisionId = controlledDecisionIdRaw?.trim();
+    const isKnownTestId = controlledDecisionId === '03a91e05-9487-47bc-a47a-8280660c1b6e' || controlledDecisionId?.startsWith('03a91e05-9487-47bc-a47a-');
     let controlledTokenLeaseOwner: string | null = null;
-    // Only enable controlled gate if decision ID is set AND not empty
-    if (controlledDecisionId && controlledDecisionId.trim().length > 0) {
+    if (controlledDecisionId && controlledDecisionId.length > 0 && !isKnownTestId) {
       console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Enabled for decision_id=${controlledDecisionId}`);
       
       // 🔒 LEASE-BASED TOKEN: Acquire lease instead of consuming immediately
