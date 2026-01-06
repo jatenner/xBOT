@@ -1276,8 +1276,8 @@ export async function processPostingQueue(): Promise<void> {
     
     // 🔒 CONTROLLED WINDOW GATE: Filter to only the controlled decision_id
     // Skip if it's a known test decision ID that should be cleared
-    const isKnownTestId = controlledDecisionId === '03a91e05-9487-47bc-a47a-8280660c1b6e' || controlledDecisionId?.startsWith('03a91e05-9487-47bc-a47a-');
-    if (controlledDecisionId && !isKnownTestId) {
+    const isKnownTestIdFilter = controlledDecisionId === '03a91e05-9487-47bc-a47a-8280660c1b6e' || controlledDecisionId?.startsWith('03a91e05-9487-47bc-a47a-');
+    if (controlledDecisionId && !isKnownTestIdFilter) {
       const beforeCount = readyDecisions.length;
       readyDecisions = readyDecisions.filter(d => d.id === controlledDecisionId);
       const afterCount = readyDecisions.length;
