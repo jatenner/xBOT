@@ -1355,8 +1355,8 @@ export async function processPostingQueue(): Promise<void> {
     
     // 🔒 CONTROLLED TEST MODE: Limit to exactly ONE post if POSTING_QUEUE_MAX=1
     // 🚀 RAMP MODE: Skip controlled test mode limit when RAMP_MODE is enabled
+    // Note: controlledDecisionId already declared above (line 1225)
     const rampModeEnabled = process.env.RAMP_MODE === 'true';
-    const controlledDecisionId = process.env.CONTROLLED_DECISION_ID?.trim();
     const controlledPostToken = process.env.CONTROLLED_POST_TOKEN?.trim();
     const explicitControlledMode = process.env.CONTROLLED_TEST_MODE === 'true';
     
