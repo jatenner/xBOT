@@ -1090,20 +1090,24 @@ export async function processPostingQueue(): Promise<void> {
       // Check and atomically consume the controlled post token
       const controlledToken = process.env.CONTROLLED_POST_TOKEN;
       if (controlledToken) {
+        console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Attempting token consumption (token: ${controlledToken.substring(0, 16)}...)`);
         const { data: tokenConsumed, error: tokenError } = await supabase
           .rpc('consume_controlled_token', { token_value: controlledToken });
         
         if (tokenError) {
           console.error(`[POSTING_QUEUE] ❌ CONTROLLED_WINDOW_GATE: Token consumption failed: ${tokenError.message}`);
+          console.error(`[POSTING_QUEUE] ❌ Token error code: ${tokenError.code}`);
           console.error(`[POSTING_QUEUE] 🔒 CONTROLLED WINDOW ALREADY CONSUMED or token invalid`);
-          log({ op: 'posting_queue', status: 'controlled_window_consumed' });
+          log({ op: 'posting_queue', status: 'controlled_window_consumed', error: tokenError.message });
           return; // Fail-closed: refuse to post if token consumption fails
         }
         
+        console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Token consumption result: ${JSON.stringify(tokenConsumed)}`);
+        
         // RPC function returns boolean directly
         if (!tokenConsumed || tokenConsumed === false) {
-          console.log(`[POSTING_QUEUE] 🔒 CONTROLLED WINDOW ALREADY CONSUMED - refusing to post`);
-          log({ op: 'posting_queue', status: 'controlled_window_consumed' });
+          console.log(`[POSTING_QUEUE] 🔒 CONTROLLED WINDOW ALREADY CONSUMED - refusing to post (result: ${tokenConsumed})`);
+          log({ op: 'posting_queue', status: 'controlled_window_consumed', result: tokenConsumed });
           return; // Token already consumed by another run
         }
         
