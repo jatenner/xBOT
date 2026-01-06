@@ -53,8 +53,34 @@ export async function executeAuthorizedPost(
   const supabase = getSupabaseClient();
   const { decision_id, decision_type, pipeline_source, build_sha, job_run_id } = metadata;
   
+  // 🔒 CRITICAL: Fail-closed if build_sha is missing
+  const finalBuildSha = build_sha || getBuildSHA();
+  if (!finalBuildSha || finalBuildSha === 'dev' || finalBuildSha === 'unknown') {
+    const errorMsg = `[ATOMIC_POST] ❌ BLOCKED: Missing or invalid build_sha. Provided: ${build_sha}, Resolved: ${finalBuildSha}`;
+    console.error(errorMsg);
+    
+    await supabase.from('system_events').insert({
+      event_type: 'atomic_post_blocked_missing_build_sha',
+      severity: 'critical',
+      message: `Posting blocked: missing build_sha`,
+      event_data: {
+        decision_id,
+        decision_type,
+        pipeline_source,
+        provided_build_sha: build_sha,
+        resolved_build_sha: finalBuildSha,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    return {
+      success: false,
+      error: `BLOCKED: Missing or invalid build_sha (${finalBuildSha})`,
+    };
+  }
+  
   console.log(`[ATOMIC_POST] ⚛️ Starting atomic post execution`);
-  console.log(`[ATOMIC_POST]   decision_id=${decision_id} type=${decision_type} source=${pipeline_source}`);
+  console.log(`[ATOMIC_POST]   decision_id=${decision_id} type=${decision_type} source=${pipeline_source} build_sha=${finalBuildSha}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 1: PREWRITE - Insert DB row BEFORE posting
@@ -65,9 +91,9 @@ export async function executeAuthorizedPost(
     decision_id,
     decision_type,
     status: 'posting_attempt',
-    pipeline_source,
-    build_sha,
-    job_run_id,
+    pipeline_source: pipeline_source || 'unknown',
+    build_sha: finalBuildSha,
+    job_run_id: job_run_id || `unknown_${Date.now()}`,
     content: metadata.content,
     target_tweet_id: metadata.target_tweet_id,
     root_tweet_id: metadata.root_tweet_id,
@@ -372,10 +398,24 @@ export async function executeAuthorizedPost(
  * Helper: Get build SHA for audit trail
  */
 export function getBuildSHA(): string {
-  return process.env.RAILWAY_GIT_COMMIT_SHA || 
-         process.env.VERCEL_GIT_COMMIT_SHA || 
-         process.env.BUILD_SHA || 
-         'dev';
+  const sha = process.env.RAILWAY_GIT_COMMIT_SHA || 
+              process.env.VERCEL_GIT_COMMIT_SHA || 
+              process.env.BUILD_SHA;
+  
+  // 🔒 CRITICAL: Never return 'dev' or empty - fail-closed
+  if (!sha || sha === 'dev') {
+    // Try to get from Railway deployment if available
+    const railwaySha = process.env.RAILWAY_DEPLOYMENT_ID || 
+                       process.env.RAILWAY_DEPLOYMENT_COMMIT_SHA;
+    if (railwaySha) {
+      return railwaySha;
+    }
+    
+    // Last resort: use timestamp-based ID (better than 'dev')
+    return `unknown_${Date.now()}`;
+  }
+  
+  return sha;
 }
 
 /**

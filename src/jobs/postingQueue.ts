@@ -4208,11 +4208,23 @@ export async function markDecisionPosted(
     
     for (let dbAttempt = 1; dbAttempt <= MAX_DB_RETRIES; dbAttempt++) {
       try {
+        // 🔒 CRITICAL: Preserve pipeline_source and build_sha from existing row
+        const { getBuildSHA } = await import('../posting/atomicPostExecutor');
+        const { data: existingRow } = await supabase
+          .from('content_generation_metadata_comprehensive')
+          .select('pipeline_source, build_sha, job_run_id')
+          .eq('decision_id', decisionId)
+          .single();
+        
         const updateData: any = {
           status: 'posted',
           tweet_id: tweetId, // 🔥 CRITICAL: Save tweet ID for metrics scraping!
           posted_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          // 🔒 PRESERVE: Never lose pipeline_source or build_sha
+          pipeline_source: existingRow?.pipeline_source || 'postingQueue',
+          build_sha: existingRow?.build_sha || getBuildSHA(),
+          job_run_id: existingRow?.job_run_id || `markPosted_${Date.now()}`,
         };
         
         // 🔥 THREAD TRUTH FIX: Always save thread_tweet_ids when we have multiple IDs
