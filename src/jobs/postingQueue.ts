@@ -1046,6 +1046,41 @@ export async function processPostingQueue(): Promise<void> {
     // await ensureMinimumQueueDepth();
     
     // ═══════════════════════════════════════════════════════════════════════
+    // 🚨 FAIL-CLOSED GHOST PROTECTION: Block posting if NOT_IN_DB detected
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      
+      // Check for tweets with NULL/dev/unknown build_sha in last hour (ghost indicators)
+      const { data: ghostIndicators, error: ghostCheckError } = await supabase
+        .from('content_generation_metadata_comprehensive')
+        .select('tweet_id, decision_id, build_sha, posted_at')
+        .eq('status', 'posted')
+        .not('tweet_id', 'is', null)
+        .gte('posted_at', oneHourAgo)
+        .or('build_sha.is.null,build_sha.eq.dev,build_sha.eq.unknown');
+      
+      if (!ghostCheckError && ghostIndicators && ghostIndicators.length > 0) {
+        console.error(`[POSTING_QUEUE] 🚨 FAIL-CLOSED GHOST PROTECTION: Detected ${ghostIndicators.length} tweets with NULL/dev/unknown build_sha in last hour`);
+        ghostIndicators.forEach(indicator => {
+          console.error(`[POSTING_QUEUE]   🚨 Ghost indicator: tweet_id=${indicator.tweet_id} build_sha=${indicator.build_sha || 'NULL'} posted_at=${indicator.posted_at}`);
+        });
+        console.error(`[POSTING_QUEUE] 🔒 BLOCKING ALL POSTING/REPLIES - Ghost protection activated`);
+        log({ op: 'posting_queue', status: 'ghost_protection_activated', ghost_count: ghostIndicators.length });
+        return; // Fail-closed: refuse to post if ghost indicators detected
+      }
+      
+      console.log(`[POSTING_QUEUE] ✅ Ghost protection check passed: No NULL/dev/unknown build_sha in last hour`);
+    } catch (ghostProtectionError: any) {
+      console.error(`[POSTING_QUEUE] ⚠️ Ghost protection check failed: ${ghostProtectionError.message}`);
+      // On error, allow posting (graceful degradation) but log the error
+      log({ op: 'posting_queue', status: 'ghost_protection_check_error', error: ghostProtectionError.message });
+    }
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    // ═══════════════════════════════════════════════════════════════════════
     // 🔒 CONTROLLED WINDOW GATE: Single-post test protection
     // ═══════════════════════════════════════════════════════════════════════
     const controlledDecisionId = process.env.CONTROLLED_DECISION_ID;
@@ -1760,26 +1795,39 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     const postedIds = new Set((alreadyPosted || []).map(p => p.decision_id));
     
-    // ✅ FIX: Fetch content and replies SEPARATELY to prevent blocking
-    // Prioritize content posts (main tweets), then add replies
-    // ✅ Include visual_format in SELECT
-    // ✅ EXCLUDE 'posting' status to prevent race conditions
-    // 🔧 FIX: Include ALL posts scheduled in the past OR within grace window (removed gte restriction)
-    const { data: contentPosts, error: contentError } = await supabase
+    // 🔒 CONTROLLED WINDOW GATE: If CONTROLLED_DECISION_ID is set, ONLY select that decision_id
+    const controlledDecisionId = process.env.CONTROLLED_DECISION_ID;
+    let contentQuery = supabase
       .from('content_metadata')
       .select('*, visual_format')
       .eq('status', 'queued')
       .in('decision_type', ['single', 'thread'])
-      .lte('scheduled_at', graceWindow.toISOString()) // Include posts scheduled in past OR near future
+      .lte('scheduled_at', graceWindow.toISOString()); // Include posts scheduled in past OR near future
+    
+    if (controlledDecisionId) {
+      // 🔒 CRITICAL: Only select the controlled decision_id
+      contentQuery = contentQuery.eq('decision_id', controlledDecisionId);
+      console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Query filtering to decision_id=${controlledDecisionId}`);
+    }
+    
+    const { data: contentPosts, error: contentError } = await contentQuery
       .order('scheduled_at', { ascending: true })
       .limit(10); // Get up to 10 content posts
     
-    const { data: replyPosts, error: replyError } = await supabase
+    // 🔒 CONTROLLED WINDOW GATE: If CONTROLLED_DECISION_ID is set, ONLY select that decision_id for replies too
+    let replyQuery = supabase
       .from('content_metadata')
       .select('*, visual_format')
       .eq('status', 'queued')
       .eq('decision_type', 'reply')
-      .lte('scheduled_at', graceWindow.toISOString()) // Include replies scheduled in past OR near future
+      .lte('scheduled_at', graceWindow.toISOString()); // Include replies scheduled in past OR near future
+    
+    if (controlledDecisionId) {
+      // 🔒 CRITICAL: Only select the controlled decision_id
+      replyQuery = replyQuery.eq('decision_id', controlledDecisionId);
+    }
+    
+    const { data: replyPosts, error: replyError } = await replyQuery
       .order('scheduled_at', { ascending: true })
       .limit(10); // Get up to 10 replies
     

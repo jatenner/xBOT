@@ -512,3 +512,33 @@ pnpm exec tsx scripts/query-tweet-details.ts 2008543155772338592
 **Next Step:** Apply migration and test controlled window gate
 
 ---
+
+---
+
+## 2026-01-06 10:00:00 ET - CONTROLLED WINDOW GATE + GHOST PROTECTION COMPLETE
+
+**Action:** Complete implementation of controlled window gate and fail-closed ghost protection
+
+**TASK A - Controlled Window Gate:**
+1. ✅ Verified postingQueue selection logic filters at query level (getReadyDecisions)
+2. ✅ CONTROLLED_DECISION_ID env var implemented - filters both content and replies
+3. ✅ DB one-time token (ops_control table) with consume_controlled_token() RPC
+4. ✅ Created scripts/start-controlled-window.ts for easy test setup
+
+**TASK B - Fail-Closed Ghost Protection:**
+1. ✅ Added ghost protection check before postingQueue processes decisions
+2. ✅ Checks for NULL/dev/unknown build_sha in last hour
+3. ✅ If detected, blocks ALL posting/replies (fail-closed)
+4. ✅ Logs ghost indicators and activates protection
+
+**Files Changed:**
+- src/jobs/postingQueue.ts (controlled window gate + ghost protection)
+- scripts/start-controlled-window.ts (NEW - combines token + decision_id setup)
+- supabase/migrations/20260106092255_ops_control_table.sql (already created)
+
+**Next Steps:**
+- Fix TypeScript linter error (unrelated to changes)
+- Commit and push changes
+- Update documentation
+
+---
