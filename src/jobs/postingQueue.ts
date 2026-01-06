@@ -282,7 +282,56 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
   console.log(`[SUBSTANCE_GATE] pass=true question=${hasQuestion} action=${hasActionWord} specific=${hasSpecificTerm}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // 9) ANCHOR CHECK - Reply must reference something from the target tweet
+  // 9) SPECIFICITY GATE - Reply must reference target tweet content (minimal)
+  // ═══════════════════════════════════════════════════════════════════════════
+  try {
+    const snapshot = (decision.target_tweet_content_snapshot || '') as string;
+    
+    if (snapshot && snapshot.length >= 20) {
+      // Extract non-trivial tokens (4+ chars, exclude common words)
+      const commonWords = new Set(['this', 'that', 'with', 'from', 'have', 'been', 'will', 'would', 'could', 'should', 'about', 'their', 'there', 'these', 'those', 'which', 'where', 'when', 'what', 'they', 'them', 'then', 'than', 'more', 'most', 'some', 'many', 'much', 'very', 'just', 'only', 'also', 'even', 'still', 'well', 'here', 'were', 'your', 'ours']);
+      
+      const extractTokens = (text: string): Set<string> => {
+        return new Set(
+          text.toLowerCase()
+            .replace(/[^a-z0-9\s]/gi, ' ')
+            .split(/\s+/)
+            .filter(w => w.length >= 4 && !commonWords.has(w))
+        );
+      };
+      
+      const replyTokens = extractTokens(content);
+      const targetTokens = extractTokens(snapshot);
+      
+      // Check for token overlap
+      const overlap = Array.from(replyTokens).filter(t => targetTokens.has(t));
+      
+      // Also check for named entities/keywords (numbers, proper nouns, specific terms)
+      const hasNumberReference = /\b\d+/.test(content) && /\b\d+/.test(snapshot);
+      const hasProperNoun = /\b[A-Z][a-z]{3,}\b/.test(content) && /\b[A-Z][a-z]{3,}\b/.test(snapshot);
+      
+      if (overlap.length === 0 && !hasNumberReference && !hasProperNoun) {
+        guardResults.specificity_gate = { pass: false, reason: 'no_target_reference', reply_tokens: Array.from(replyTokens).slice(0, 5), target_tokens: Array.from(targetTokens).slice(0, 5) };
+        console.log(`[SPECIFICITY_GATE] FAIL: no_target_reference (no token overlap, number, or proper noun)`);
+        return { pass: false, reason: 'specificity_gate_no_reference', guard_results: guardResults };
+      }
+      
+      guardResults.specificity_gate = { pass: true, overlap_count: overlap.length, has_number: hasNumberReference, has_proper_noun: hasProperNoun };
+      console.log(`[SPECIFICITY_GATE] pass=true overlap=${overlap.length} number=${hasNumberReference} proper_noun=${hasProperNoun}`);
+    } else {
+      // No snapshot - fail closed
+      guardResults.specificity_gate = { pass: false, reason: 'missing_snapshot' };
+      console.log(`[SPECIFICITY_GATE] FAIL: missing_snapshot`);
+      return { pass: false, reason: 'specificity_gate_missing_snapshot', guard_results: guardResults };
+    }
+  } catch (specificityError: any) {
+    guardResults.specificity_gate = { pass: false, reason: 'check_error', error: specificityError.message };
+    console.log(`[SPECIFICITY_GATE] FAIL: check_error ${specificityError.message}`);
+    return { pass: false, reason: 'specificity_gate_error', guard_results: guardResults };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 10) ANCHOR CHECK - Reply must reference something from the target tweet
   // ═══════════════════════════════════════════════════════════════════════════
   // This is a DETERMINISTIC check (not LLM-based):
   // - Extract meaningful words (4+ chars) from both content and snapshot
@@ -1252,11 +1301,14 @@ export async function processPostingQueue(): Promise<void> {
     let repliesPostedThisCycle = 0;
     
     const config = getConfig();
-    // 🎯 STRICT RATE LIMIT: Max 1 post per hour = 2 posts every 2 hours (user requirement)
-    const maxContentPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 1);
-    const maxContentPerHour = Number.isFinite(maxContentPerHourRaw) ? maxContentPerHourRaw : 1;
-    const maxRepliesPerHourRaw = Number(config.REPLIES_PER_HOUR ?? 4);
-    const maxRepliesPerHour = Number.isFinite(maxRepliesPerHourRaw) ? maxRepliesPerHourRaw : 4;
+    // 🚀 RAMP MODE: Override quotas if enabled
+    const { getEffectiveQuotas } = await import('../utils/rampMode');
+    const defaultMaxContentPerHour = Number(config.MAX_POSTS_PER_HOUR ?? 1);
+    const defaultMaxRepliesPerHour = Number(config.REPLIES_PER_HOUR ?? 4);
+    const { maxPostsPerHour: maxContentPerHour, maxRepliesPerHour } = getEffectiveQuotas(
+      defaultMaxContentPerHour,
+      defaultMaxRepliesPerHour
+    );
     
     // 📊 QUEUE_LIMITS: Explicit logging of rate limit state
     console.log(`[QUEUE_LIMITS] canPostContent=${canPostContent} content_max=${maxContentPerHour}/hr replies_max=${maxRepliesPerHour}/hr REPLIES_ENABLED=${process.env.REPLIES_ENABLED !== 'false'}`);
@@ -1687,6 +1739,58 @@ export async function processPostingQueue(): Promise<void> {
       console.log(`[POSTING_QUEUE] 📊 Updated job_heartbeats: success (${successCount} posts)`);
     } catch (heartbeatError: any) {
       console.warn(`[POSTING_QUEUE] ⚠️ Failed to update job_heartbeats: ${heartbeatError.message}`);
+    }
+    
+    // 🚀 RAMP MODE SUMMARY LOG
+    try {
+      const { getRampConfig } = await import('../utils/rampMode');
+      const ramp = getRampConfig();
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      
+      // Count posts/replies in last hour
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { count: postsLastHour } = await supabase
+        .from('content_metadata')
+        .select('*', { count: 'exact', head: true })
+        .in('decision_type', ['single', 'thread'])
+        .eq('status', 'posted')
+        .gte('posted_at', oneHourAgo);
+      
+      const { count: repliesLastHour } = await supabase
+        .from('content_metadata')
+        .select('*', { count: 'exact', head: true })
+        .eq('decision_type', 'reply')
+        .eq('status', 'posted')
+        .gte('posted_at', oneHourAgo);
+      
+      // Count blocked replies by reason
+      const { data: blockedReplies } = await supabase
+        .from('content_generation_metadata_comprehensive')
+        .select('skip_reason')
+        .eq('decision_type', 'reply')
+        .eq('status', 'blocked')
+        .gte('updated_at', oneHourAgo);
+      
+      const blockedCounts = {
+        self_reply: blockedReplies?.filter(r => r.skip_reason === 'self_reply_blocked').length || 0,
+        reply_to_reply: blockedReplies?.filter(r => r.skip_reason?.includes('root') || r.skip_reason?.includes('reply')).length || 0,
+        freshness: blockedReplies?.filter(r => r.skip_reason?.includes('freshness') || r.skip_reason?.includes('too_old')).length || 0,
+        generic: blockedReplies?.filter(r => !['self_reply_blocked'].includes(r.skip_reason || '') && !r.skip_reason?.includes('root') && !r.skip_reason?.includes('freshness')).length || 0,
+      };
+      
+      // Count NOT_IN_DB tweets (ghost posts)
+      const { count: notInDbCount } = await supabase
+        .from('content_generation_metadata_comprehensive')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'posted')
+        .not('tweet_id', 'is', null)
+        .or('build_sha.is.null,build_sha.eq.dev,build_sha.eq.unknown')
+        .gte('posted_at', oneHourAgo);
+      
+      console.log(`[RAMP_MODE] ramp_enabled=${ramp.enabled} ramp_level=${ramp.level} posts_last_hour=${postsLastHour || 0} replies_last_hour=${repliesLastHour || 0} blocked_self_reply=${blockedCounts.self_reply} blocked_reply_to_reply=${blockedCounts.reply_to_reply} blocked_freshness=${blockedCounts.freshness} blocked_generic=${blockedCounts.generic} NOT_IN_DB_count=${notInDbCount || 0}`);
+    } catch (rampLogError: any) {
+      console.warn(`[RAMP_MODE] ⚠️ Failed to log ramp summary: ${rampLogError.message}`);
     }
     
   } catch (error: any) {

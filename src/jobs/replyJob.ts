@@ -40,9 +40,24 @@ const getReplyConfig = () => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   };
 
+  // 🚀 RAMP MODE: Override quotas if enabled (synchronous check)
+  const rampMode = process.env.RAMP_MODE === 'true';
+  const rampLevel = process.env.RAMP_LEVEL;
+  let effectiveMaxRepliesPerHour = toNumber(process.env.REPLIES_PER_HOUR, 4);
+  
+  if (rampMode) {
+    const level = rampLevel === '2' ? 2 : rampLevel === '3' ? 3 : 1;
+    const quotas: Record<1 | 2 | 3, { replies: number }> = {
+      1: { replies: 1 },
+      2: { replies: 2 },
+      3: { replies: 4 },
+    };
+    effectiveMaxRepliesPerHour = quotas[level].replies;
+  }
+  
   const config = {
     MIN_MINUTES_BETWEEN: toNumber(process.env.REPLY_MINUTES_BETWEEN, 15),
-    MAX_REPLIES_PER_HOUR: toNumber(process.env.REPLIES_PER_HOUR, 4),
+    MAX_REPLIES_PER_HOUR: effectiveMaxRepliesPerHour,
     MAX_REPLIES_PER_DAY: toNumber(process.env.REPLY_MAX_PER_DAY, 250),
     BATCH_SIZE: toNumber(process.env.REPLY_BATCH_SIZE, 1),
     STAGGER_BASE_MIN: toNumber(process.env.REPLY_STAGGER_BASE_MIN, 5),
