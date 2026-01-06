@@ -35,7 +35,9 @@ async function main() {
   // Use ISO timestamp format to avoid thread pattern detection (no "1/6/2026" format)
   // Include question mark to pass SUBSTANCE_GATE
   const isoTimestamp = new Date().toISOString().substring(0, 19).replace('T', ' ');
-  const content = `[CONTROLLED_REPLY_TEST_1] Have you tried adaptogens? They help your body adapt to stress. build_sha=${buildSha.substring(0, 12)} ts=${isoTimestamp}`;
+  // Use TEST_2 marker for external tweet test
+  const testMarker = targetTweetId === '2008491651329937601' ? '[CONTROLLED_REPLY_TEST_2]' : '[CONTROLLED_REPLY_TEST_1]';
+  const content = `${testMarker} Have you tried adaptogens? They help your body adapt to stress. build_sha=${buildSha.substring(0, 12)} ts=${isoTimestamp}`;
   
   if (content.length > 240) {
     console.error(`❌ Content too long: ${content.length} chars (max 240)`);

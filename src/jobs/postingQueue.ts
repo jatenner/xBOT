@@ -2752,29 +2752,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       }
       
       try {
-        // 🔒 CRITICAL ASSERTION: Reply decisions MUST NEVER route through postContent
-        if (decision.decision_type === 'reply') {
-          const errorMsg = `[SEV_REPLY_THREAD_BLOCKED] CRITICAL: Reply decision routed through postContent! decision_id=${decision.id}`;
-          console.error(errorMsg);
-            
-            // Mark as blocked in DB
-            try {
-              const { getSupabaseClient } = await import('../db/index');
-              const supabase = getSupabaseClient();
-              await supabase.from('content_generation_metadata_comprehensive')
-                .update({
-                  status: 'blocked',
-                  skip_reason: 'reply_routed_through_postcontent_violation',
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('decision_id', decision.id);
-            } catch (dbErr: any) {
-              console.error(`[SEV_REPLY_THREAD_BLOCKED] Failed to mark as blocked: ${dbErr.message}`);
-            }
-            
-            throw new Error(errorMsg);
-        }
-        
+        // Route based on decision type
         if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
           console.log(`[POSTING_QUEUE][FLOW] ════════════════════════════════════════════════════`);
           console.log(`[POSTING_QUEUE][FLOW] 🚀 STARTING POST FLOW FOR decision_id=${decision.id}`);

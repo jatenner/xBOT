@@ -822,3 +822,19 @@ No self-reply guardrail existed at harvester or execution time.
 
 ### Next: Controlled Reply Test #2 to external tweet
 
+
+## 2026-01-06 21:15 ET - SELF-REPLY GUARD IMPLEMENTATION COMPLETE
+
+### Changes Committed:
+1. ✅ Harvester filter: Skip self-replies in `realTwitterDiscovery.storeOpportunities()`
+2. ✅ Final gate: Block self-replies in `postingQueue.checkReplySafetyGates()`
+3. ✅ Atomic executor: Block self-replies in `atomicPostExecutor.executeAuthorizedPost()`
+4. ✅ Controlled test prevention: `insert-controlled-reply.ts` validates author unless `--allow-self-reply`
+5. ✅ Build SHA fix: Replaced `unknown_${Date.now()}` with actual SHA from env vars
+
+### Test Results:
+- ✅ Self-reply guard blocks our own tweets (tested with 2008543155772338592)
+- ✅ External tweet found for Controlled Reply Test #2: 2008491651329937601 (@official_esclub)
+
+### Next: Controlled Reply Test #2 to external tweet
+

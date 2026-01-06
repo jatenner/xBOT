@@ -544,3 +544,86 @@ Created (not posted): 3
 
 **Status:** ✅ **CONTROLLED REPLY TEST #1 COMPLETE - ALL VERIFICATIONS PASSED**
 
+
+## Controlled Reply Test #2 — External Tweet (2026-01-06 21:14 ET)
+
+### Goal
+Post exactly ONE reply to external tweet and prove:
+- Not a self-reply (author ≠ our handle)
+- Root-only (no reply-to-reply)
+- Traceable IN_DB
+- No ghost posts
+
+### Test Execution
+
+**Target Tweet:**
+- Tweet ID: `2008491651329937601`
+- Author: `@super eagles supporters club` (external account)
+- Our handle: `@signal_synapse`
+- Age: ~10 hours (621 minutes)
+
+**Decision Created:**
+- Decision ID: `03a91e05-9487-47bc-a47a-8280660c1b6e`
+- Content: `[CONTROLLED_REPLY_TEST_2] Have you tried adaptogens? They help your body adapt to stress. build_sha=local_176773 ts=2026-01-06 21:12:10`
+- Length: 135 chars
+
+### Verification Results
+
+**✅ Self-Reply Guard: PASSED**
+```
+[FINAL_REPLY_GATE] ✅ NO SELF-REPLY: Target author @super eagles supporters club ≠ our handle @signal_synapse
+```
+- Guard correctly identified external author
+- Would have blocked if author matched our handle
+
+**✅ Root-Only Check: PASSED**
+```
+[FINAL_REPLY_GATE] ✅ ROOT-ONLY: root=2008491651329937601 == target=2008491651329937601
+[FINAL_REPLY_GATE] ✅ LIVE ROOT CHECK: Target is a true root tweet
+```
+- Root tweet ID matches target tweet ID
+- Live verification confirmed it's a root tweet (not a reply)
+
+**✅ Context Lock: PASSED**
+```
+[CONTEXT_LOCK_VERIFY] ✅ Verification passed for 2008491651329937601
+[CONTEXT_LOCK_VERIFY] 📊 Content similarity: 1.000 (threshold: 0.8)
+```
+- Target tweet content verified on Twitter
+- Content matches snapshot (100% similarity)
+
+**✅ Thread-Like Check: PASSED**
+```
+[POSTING_QUEUE] ✅ Thread-like check passed for 03a91e05-9487-47bc-a47a-8280660c1b6e
+```
+- No thread markers detected
+- Single tweet format verified
+
+**⚠️ Freshness Gate: BLOCKED (Expected)**
+```
+[INVARIANT] freshness_check=FAIL age_min=621 max=180 likes=15000 velocity=24.1
+[INVARIANT_BLOCK] reason=target_too_old action=blocked
+```
+- Target tweet is 621 minutes old (~10 hours)
+- Freshness gate max: 180 minutes (3 hours)
+- This is EXPECTED behavior - old tweets are blocked to maintain engagement
+
+### Conclusion
+
+**All Guards Working Correctly:**
+1. ✅ Self-reply guard: Correctly identifies external authors
+2. ✅ Root-only guard: Verifies target is a root tweet
+3. ✅ Context lock: Verifies tweet content matches snapshot
+4. ✅ Thread-like check: Blocks thread markers
+5. ✅ Freshness gate: Blocks old tweets (working as designed)
+
+**Reply Not Posted:**
+- Blocked by freshness gate (target tweet too old)
+- This is CORRECT behavior - system should not reply to 10-hour-old tweets
+- All other guards passed successfully
+
+**Next Steps:**
+- To complete full test, use a tweet < 3 hours old
+- All guardrails are functioning correctly
+- Self-reply protection verified
+
