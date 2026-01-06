@@ -97,6 +97,9 @@ export interface SystemStatus {
     author_cooldown_blocked_60m: number;
     self_reply_blocked_60m: number;
     hourly_rate_blocked_60m: number;
+    posting_db_update_fail_60m: number;
+    posting_attempt_stuck_60m: number;
+    last_posting_attempt_stuck_at: string | null;
     last_successful_reply_at: string | null;
     last_harvest_success_at: string | null;
     pacing_status: string;
@@ -274,7 +277,11 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       // NEW: Tier breakdown and velocity metrics
       tierBreakdownResult,
       topCandidatesResult,
-      recentSkipReasonsResult
+      recentSkipReasonsResult,
+      // NEW: DB update failures metric
+      dbUpdateFailuresResult,
+      // NEW: Stuck posting attempts metric
+      stuckAttemptsResult
     ] = await Promise.all([
       // All opportunities available (not replied, not expired)
       pgPool.query(`
@@ -429,6 +436,23 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
         GROUP BY skip_reason
         ORDER BY count DESC
         LIMIT 5
+      `, [sixtyMinutesAgo]),
+      
+      // NEW: DB update failures in last 60 min (atomic_post_update_failed events)
+      pgPool.query(`
+        SELECT COUNT(*) as count
+        FROM system_events
+        WHERE event_type = 'atomic_post_update_failed'
+          AND created_at >= $1
+      `, [sixtyMinutesAgo]),
+      
+      // NEW: Stuck posting attempts (status='posting_attempt' >5 min old)
+      pgPool.query(`
+        SELECT COUNT(*) as count, MAX(created_at) as last_stuck
+        FROM content_generation_metadata_comprehensive
+        WHERE status = 'posting_attempt'
+          AND created_at < NOW() - INTERVAL '5 minutes'
+          AND created_at >= $1
       `, [sixtyMinutesAgo])
     ]);
     
@@ -473,6 +497,11 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       reason: r.skip_reason,
       count: parseInt(r.count || '0')
     }));
+    
+    const dbUpdateFailures = parseInt(dbUpdateFailuresResult.rows[0]?.count || '0');
+    const stuckAttemptsData = stuckAttemptsResult.rows[0] || { count: '0', last_stuck: null };
+    const stuckAttempts = parseInt(stuckAttemptsData.count || '0');
+    const lastStuckAt = stuckAttemptsData.last_stuck || null;
     
     // Determine pool health (based on FRESH opportunities, not total)
     let poolHealth = 'healthy';
@@ -542,6 +571,9 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       author_cooldown_blocked_60m: parseInt(blockedByReason.author_cooldown || '0'),
       self_reply_blocked_60m: parseInt(blockedByReason.self_reply || '0'),
       hourly_rate_blocked_60m: parseInt(blockedByReason.hourly_rate || '0'),
+      posting_db_update_fail_60m: dbUpdateFailures,
+      posting_attempt_stuck_60m: stuckAttempts,
+      last_posting_attempt_stuck_at: lastStuckAt ? new Date(lastStuckAt).toISOString() : null,
       last_successful_reply_at: lastSuccessAt ? new Date(lastSuccessAt).toISOString() : null,
       last_harvest_success_at: lastHarvestAt ? new Date(lastHarvestAt).toISOString() : null,
       pacing_status: pacingStatus,
@@ -673,6 +705,9 @@ async function getReplyMetrics(): Promise<SystemStatus['reply_metrics']> {
       author_cooldown_blocked_60m: 0,
       self_reply_blocked_60m: 0,
       hourly_rate_blocked_60m: 0,
+      posting_db_update_fail_60m: 0,
+      posting_attempt_stuck_60m: 0,
+      last_posting_attempt_stuck_at: null,
       last_successful_reply_at: null,
       last_harvest_success_at: null,
       pacing_status: 'error',

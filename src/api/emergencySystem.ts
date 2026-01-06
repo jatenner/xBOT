@@ -39,34 +39,21 @@ router.post('/emergency-post', async (req, res) => {
     });
     return;
     
-    // Dead code below - kept for reference
-    const poster = new UltimateTwitterPoster();
-    const result = await poster.postTweet(content);
-    const duration = Date.now() - startTime;
+    // 🚨 BYPASS BLOCKED: Dead code removed - all posting MUST go through postingQueue
+    // This code path is blocked to prevent bypassing PostingGuard
+    console.error(`[BYPASS_BLOCKED] 🚨 emergencySystem /emergency-post is blocked.`);
+    console.error(`[BYPASS_BLOCKED]   reason=All posting must go through postingQueue with PostingGuard`);
     
-    if (result.success) {
-      console.log(`✅ EMERGENCY_API: Posted successfully in ${duration}ms`);
-      
-      res.json({
-        success: true,
-        message: `Posted successfully via UltimateTwitterPoster`,
-        tweetId: result.tweetId,
-        method: 'ultimate',
-        performance: {
-          duration: duration
-        }
-      });
-    } else {
-      console.error(`❌ EMERGENCY_API: Failed: ${result.error}`);
-      
-      res.status(500).json({
-        success: false,
-        error: result.error,
-        performance: {
-          duration: duration
-        }
-      });
-    }
+    const duration = Date.now() - startTime;
+    console.error(`❌ EMERGENCY_API: Blocked - ${duration}ms`);
+    
+    res.status(403).json({
+      success: false,
+      error: 'BYPASS_BLOCKED: emergencySystem cannot post directly. Use postingQueue.ts',
+      performance: {
+        duration: duration
+      }
+    });
 
   } catch (error: any) {
     const duration = Date.now() - startTime;
@@ -170,21 +157,11 @@ router.post('/emergency-system-test', async (req, res) => {
         timestamp: new Date().toISOString()
       });
     } else {
-      // Step 4: Process existing queued content
-      const content = queuedContent[0];
-      const contentText = typeof content.content === 'string' ? content.content : String(content.content || '');
-      const poster = new UltimateTwitterPoster();
-      const result = await poster.postTweet(contentText);
-      
-      // Mark as posted
-      await supabase
-        .from('content_metadata')
-        .update({ status: 'posted' })
-        .eq('id', content.id);
-      
+      // 🚨 BYPASS BLOCKED: Cannot post directly
+      console.error(`[BYPASS_BLOCKED] 🚨 emergencySystem test post is blocked.`);
       res.json({
-        success: true,
-        message: 'System test completed - processed queued content',
+        success: false,
+        message: 'BYPASS_BLOCKED: emergencySystem cannot post directly. Use postingQueue.ts',
         contentGenerated: queuedContent.length,
         postedContent: result,
         timestamp: new Date().toISOString()

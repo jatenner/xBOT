@@ -642,6 +642,20 @@ export class JobManager {
         1440 * MINUTE, // Every 24 hours (daily reconciliation)
         120 * MINUTE // Start after 120 minutes (2 hours - after system is stable)
       );
+      
+      // 🔄 POSTING ATTEMPT RECONCILIATION: Clean up stuck posting_attempt rows (>5 min old)
+      // Runs every 10 minutes to ensure no rows stay stuck
+      this.scheduleStaggeredJob(
+        'posting_attempt_reconciliation',
+        async () => {
+          await this.safeExecute('posting_attempt_reconciliation', async () => {
+            const { reconcilePostingAttempts } = await import('../../scripts/reconcile-posting-attempts');
+            await reconcilePostingAttempts();
+          });
+        },
+        10 * MINUTE, // Every 10 minutes
+        2 * MINUTE // Start after 2 minutes
+      );
 
       // 💬 REPLY POSTING JOB - every 30 min (configurable via JOBS_REPLY_INTERVAL_MIN)
       // 🎯 CRITICAL: Generate and queue replies

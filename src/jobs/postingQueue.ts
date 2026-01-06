@@ -906,6 +906,12 @@ export async function processPostingQueue(): Promise<void> {
   const config = getConfig();
   const flags = getModeFlags(config);
   
+  // 🔒 CONTROLLED TEST MODE: Limit to exactly ONE post if POSTING_QUEUE_MAX=1
+  const maxPostsForThisRun = process.env.POSTING_QUEUE_MAX ? parseInt(process.env.POSTING_QUEUE_MAX, 10) : undefined;
+  if (maxPostsForThisRun === 1) {
+    console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_TEST_MODE: Limiting to exactly 1 post`);
+  }
+  
   log({ op: 'posting_queue_start' });
   
   // ═══════════════════════════════════════════════════════════════════════
@@ -1087,7 +1093,14 @@ export async function processPostingQueue(): Promise<void> {
       return;
     }
     
-    for (const decision of readyDecisions) {
+    // 🔒 CONTROLLED TEST MODE: Limit to exactly ONE post if POSTING_QUEUE_MAX=1
+    const maxPostsForThisRun = process.env.POSTING_QUEUE_MAX ? parseInt(process.env.POSTING_QUEUE_MAX, 10) : undefined;
+    const decisionsToProcess = maxPostsForThisRun === 1 ? readyDecisions.slice(0, 1) : readyDecisions;
+    if (maxPostsForThisRun === 1 && readyDecisions.length > 1) {
+      console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_TEST_MODE: Processing only 1 of ${readyDecisions.length} queued decisions`);
+    }
+    
+    for (const decision of decisionsToProcess) {
       try {
         // 🔥 CRITICAL: Check rate limit BEFORE each post (not just once at start!)
         const isReply = decision.decision_type === 'reply';

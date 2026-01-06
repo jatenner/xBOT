@@ -131,15 +131,22 @@ export async function executeAuthorizedPost(request: PostingRequest): Promise<Po
   console.log(`[POSTING_GUARD] 🚀 Executing post via UltimateTwitterPoster...`);
   
   try {
-    const { UltimateTwitterPoster } = await import('./UltimateTwitterPoster');
+    const { UltimateTwitterPoster, createPostingGuard } = await import('./UltimateTwitterPoster');
     const poster = new UltimateTwitterPoster();
+    
+    // 🔒 CREATE POSTING GUARD: Required for all posting operations
+    const guard = createPostingGuard({
+      decision_id,
+      pipeline_source,
+      job_run_id: job_run_id || `guard_${Date.now()}`,
+    });
     
     let result: { success: boolean; tweetId?: string; error?: string };
     
     if (decision_type === 'reply' && target_tweet_id) {
-      result = await poster.postReply(content, target_tweet_id);
+      result = await poster.postReply(content, target_tweet_id, guard);
     } else {
-      result = await poster.postTweet(content);
+      result = await poster.postTweet(content, guard);
     }
     
     if (!result.success) {

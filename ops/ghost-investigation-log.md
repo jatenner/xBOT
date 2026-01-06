@@ -213,3 +213,111 @@ pnpm exec tsx scripts/verify-not-in-db.ts --since-hours=0.25
 **Next Step:** Ready for controlled test post (requires enabling POSTING_ENABLED=true temporarily)
 
 ---
+
+## 2026-01-06 08:20:43 ET - CONTROLLED TEST #1 PREPARATION
+
+**Action:** STEP A - Confirm current state
+
+**Commands:**
+```bash
+# Run verifier for last 24 hours
+pnpm exec tsx scripts/verify-not-in-db.ts --since-hours=24
+
+# Check Railway posting variables
+railway variables | grep -E "POSTING_ENABLED|REPLIES_ENABLED|DRAIN_QUEUE|RAILWAY_GIT_COMMIT_SHA"
+
+# Get current git commit SHA
+git rev-parse HEAD
+
+# Check current time (ET)
+TZ='America/New_York' date '+%Y-%m-%d %H:%M:%S %Z'
+```
+
+**Key Output:**
+- ⚠️ Found 23 tweets with NULL/dev build_sha in last 24h (all from before monitoring period)
+- ✅ POSTING_ENABLED=false, REPLIES_ENABLED=false, DRAIN_QUEUE=true
+- ✅ RAILWAY_GIT_COMMIT_SHA=fdf00f1e32b67fa399f668d836c0a737e7
+- Current git SHA: dea084fa0e6fce5518fde154dd6147a5f2dffbc4
+- Current time: 2026-01-06 08:20:43 EST
+
+**Conclusion:**
+- Baseline established
+- Old NULL/dev build_sha tweets are from before fixes
+- Ready to prepare controlled test post
+
+**Next Step:** STEP B - Prepare controlled test post
+
+---
+
+## 2026-01-06 08:21:13 ET - CONTROLLED TEST #1 PREPARATION (STEP B)
+
+**Action:** STEP B - Prepare controlled test post
+
+**Commands:**
+```bash
+# Check queue status
+pnpm exec tsx scripts/check-queue-status.ts
+
+# Insert controlled test post
+pnpm exec tsx scripts/insert-controlled-test-post.ts
+
+# Verify queue
+pnpm exec tsx scripts/check-queue-status.ts
+```
+
+**Key Output:**
+- Queue had 1 existing item (marked as skipped)
+- ✅ Inserted controlled test post: decision_id=497a9126-e638-49ba-9420-192017d08f13
+- Content: "[CONTROLLED_TEST_1] build_sha=unknown_ ts=1/6/2026, 8:21:13 AM Testing single-writer control recovery..."
+- Queue now has 2 items (need to ensure only controlled test posts)
+
+**Conclusion:**
+- Controlled test post inserted successfully
+- Need to ensure only this post gets processed
+
+**Next Step:** STEP C - Execute one-post test
+
+---
+
+## 2026-01-06 08:22:00 ET - CONTROLLED TEST #1 EXECUTION (STEP C)
+
+**Action:** STEP C - Execute one-post test
+
+**Commands:**
+```bash
+# Set POSTING_QUEUE_MAX=1
+railway variables --set "POSTING_QUEUE_MAX=1"
+
+# Enable posting
+railway variables --set "POSTING_ENABLED=true"
+
+# Disable DRAIN_QUEUE
+railway variables --set "DRAIN_QUEUE=false"
+
+# Verify variables
+railway variables | grep -E "POSTING_ENABLED|REPLIES_ENABLED|DRAIN_QUEUE|POSTING_QUEUE_MAX"
+
+# Make post ready
+pnpm exec tsx scripts/make-post-ready.ts 497a9126-e638-49ba-9420-192017d08f13
+
+# Trigger posting queue
+POSTING_QUEUE_MAX=1 POSTING_ENABLED=true DRAIN_QUEUE=false pnpm exec tsx scripts/trigger-posting-direct.ts
+```
+
+**Key Output:**
+- ✅ POSTING_QUEUE_MAX=1 set
+- ✅ POSTING_ENABLED=true
+- ✅ DRAIN_QUEUE=false
+- ✅ REPLIES_ENABLED=false (correct)
+- ✅ Post made ready (scheduled_at set to 5 min ago)
+- ⚠️ Local trigger failed: Playwright browser not installed locally (expected)
+- ⚠️ Post attempted but timed out locally (expected - needs Railway)
+
+**Conclusion:**
+- Configuration correct
+- Local test shows controlled test mode working (🔒 CONTROLLED_TEST_MODE: Limiting to exactly 1 post)
+- Need to wait for Railway to process (runs every 5 minutes)
+
+**Next Step:** Wait for Railway to process, then verify in database
+
+---

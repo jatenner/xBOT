@@ -166,12 +166,18 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
       'seed_account_harvest',
       BrowserPriority.HARVESTING,
       async () => {
-        const browserModule = await import('../infra/playwright/browserManager');
-        const page = await browserModule.getAuthenticatedPage();
-        return await harvestSeedAccounts(page, {
-          max_tweets_per_account: 50,
-          max_accounts: 6, // Process 6 accounts per run
-        });
+        // Use UnifiedBrowserPool instead of deprecated browserManager
+        const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+        const pool = UnifiedBrowserPool.getInstance();
+        const page = await pool.acquirePage('seed_account_harvest');
+        try {
+          return await harvestSeedAccounts(page, {
+            max_tweets_per_account: 50,
+            max_accounts: 6, // Process 6 accounts per run
+          });
+        } finally {
+          await pool.releasePage(page);
+        }
       }
     );
     

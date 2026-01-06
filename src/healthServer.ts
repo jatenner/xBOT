@@ -1067,14 +1067,21 @@ app.post('/force-post', async (req, res) => {
     
     console.log('✅ CONTENT_GENERATED:', contentResult.content.substring(0, 100) + '...');
     
-    // Try to post with browser
-    const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
-    const postResult = await railwayPoster.postTweet(contentResult.content);
+    // 🚨 BYPASS BLOCKED: healthServer endpoints cannot post directly
+    // All posting MUST go through postingQueue.ts which enforces PostingGuard
+    console.error(`[BYPASS_BLOCKED] 🚨 healthServer /force-post is blocked.`);
+    console.error(`[BYPASS_BLOCKED]   reason=All posting must go through postingQueue with PostingGuard`);
+    console.error(`[BYPASS_BLOCKED]   stack=${new Error().stack}`);
+    
+    const postResult = {
+      success: false,
+      error: 'BYPASS_BLOCKED: healthServer cannot post directly. Use postingQueue.ts'
+    };
     
     res.json({
       success: postResult.success,
       content: contentResult.content,
-      tweetId: postResult.tweetId || null,
+      tweetId: (postResult as any).tweetId || null,
       error: postResult.error || null,
       timestamp: new Date().toISOString()
     });
@@ -1111,10 +1118,14 @@ app.post('/restart-browser', async (req, res) => {
     // Wait a moment for cleanup
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // Test new connection
-    try {
-      const { railwayPoster } = await import('./posting/railwayCompatiblePoster');
-      const testResult = await railwayPoster.postTweet('Browser connection test - please ignore');
+    // 🚨 BYPASS BLOCKED: healthServer endpoints cannot post directly
+    console.error(`[BYPASS_BLOCKED] 🚨 healthServer /restart-browser test post is blocked.`);
+    console.error(`[BYPASS_BLOCKED]   reason=All posting must go through postingQueue with PostingGuard`);
+    
+    const testResult = {
+      success: false,
+      error: 'BYPASS_BLOCKED: healthServer cannot post directly. Use postingQueue.ts'
+    };
       
       res.json({
         success: true,
