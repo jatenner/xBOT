@@ -838,3 +838,91 @@ No self-reply guardrail existed at harvester or execution time.
 
 ### Next: Controlled Reply Test #2 to external tweet
 
+
+## 2026-01-06 21:20 ET - PRODUCTION RAMP MODE LEVEL 1 ACTIVATED
+
+### Deployment Confirmation:
+- Railway status: ✅ Live (production environment)
+- Ramp mode variables set: ✅
+  - RAMP_MODE=true
+  - RAMP_LEVEL=1
+  - POSTING_ENABLED=true
+  - REPLIES_ENABLED=true
+  - DRAIN_QUEUE=false
+
+### System Status:
+- Ramp Level 1 active: 1 post/hr, 1 reply/hr
+- All guardrails enabled
+- Monitoring active
+
+### Next: Monitor for 30 minutes and capture summary logs
+
+
+### Ramp Level 1 Status Check (21:30 ET):
+- Variables confirmed: ✅ All set correctly
+- NOT_IN_DB check: ✅ 0 ghost posts
+- Posts in last hour: 0 posted (13 queued/blocked)
+- No 429 errors detected
+- Waiting for posting queue cycle to see ramp mode summary log
+
+### Next: Monitor for ramp mode summary logs in next cycle
+
+
+### Ramp Level 1 Activation Complete (21:30 ET):
+
+**Variables Set:**
+- RAMP_MODE=true ✅
+- RAMP_LEVEL=1 ✅
+- POSTING_ENABLED=true ✅
+- REPLIES_ENABLED=true ✅
+- DRAIN_QUEUE=false ✅
+
+**Safety Checks:**
+- NOT_IN_DB count: 0 ✅
+- No 429 errors: ✅
+- All guardrails active: ✅
+
+**Status:**
+- System is live and ready
+- Ramp Level 1 quotas: 1 post/hr, 1 reply/hr
+- Waiting for posting queue cycle to see [RAMP_MODE] summary log
+
+**Next:** Monitor logs for [RAMP_MODE] summary lines showing:
+- ramp_enabled=true
+- ramp_level=1
+- posts_last_hour
+- replies_last_hour
+- blocked_* counts
+- NOT_IN_DB_count
+
+
+## 2026-01-06 21:35 ET - RAMP LEVEL 1 DIAGNOSTIC
+
+### Issue:
+- 13 decisions queued/blocked, 0 posted
+- No [RAMP_MODE] summary logs visible yet
+- Need to force cycle and diagnose blocks
+
+### Actions:
+- Checking job cycles in logs
+- Forcing one-shot posting queue run
+- Diagnosing queue blocks
+
+
+### Diagnostic Results (21:40 ET):
+
+**Issue Found:**
+- Controlled window gate was still active (CONTROLLED_DECISION_ID set)
+- This blocked normal posting queue operation
+- Cleared controlled gate variables
+
+**Queue Analysis:**
+- 25 decisions ready to post
+- 1 blocked (target_too_old - freshness gate)
+- Types: 11 single, 9 thread, 6 reply
+
+**Action Taken:**
+- Cleared CONTROLLED_DECISION_ID and CONTROLLED_POST_TOKEN
+- Running normal posting queue cycle
+- Checking for ramp mode summary logs
+

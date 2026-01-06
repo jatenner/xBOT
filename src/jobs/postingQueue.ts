@@ -1210,7 +1210,8 @@ export async function processPostingQueue(): Promise<void> {
     // ═══════════════════════════════════════════════════════════════════════
     const controlledDecisionId = process.env.CONTROLLED_DECISION_ID;
     let controlledTokenLeaseOwner: string | null = null;
-    if (controlledDecisionId) {
+    // Only enable controlled gate if decision ID is set AND not empty
+    if (controlledDecisionId && controlledDecisionId.trim().length > 0) {
       console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Enabled for decision_id=${controlledDecisionId}`);
       
       // 🔒 LEASE-BASED TOKEN: Acquire lease instead of consuming immediately
