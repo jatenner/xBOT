@@ -2097,10 +2097,23 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
         // ═══════════════════════════════════════════════════════════════════════
         // 🚨 CRITICAL: CONTEXT LOCK DATA - MUST be stored for gate verification
         // ═══════════════════════════════════════════════════════════════════════
-        target_tweet_content_snapshot: reply.target_tweet_content_snapshot || null,
-        target_tweet_content_hash: reply.target_tweet_content_hash || null,
-        semantic_similarity: reply.semantic_similarity || null,
-        root_tweet_id: reply.root_tweet_id || null,
+        // 🔒 HARD ASSERTION: Reply decision cannot be queued unless snapshot exists
+        target_tweet_content_snapshot: (() => {
+          if (!reply.target_tweet_content_snapshot || reply.target_tweet_content_snapshot.length < 20) {
+            console.error(`[REPLY_JOB] ❌ CRITICAL: Missing target_tweet_content_snapshot for decision_id=${reply.decision_id}`);
+            throw new Error(`Reply decision missing required gate data: target_tweet_content_snapshot`);
+          }
+          return reply.target_tweet_content_snapshot;
+        })(),
+        target_tweet_content_hash: (() => {
+          if (!reply.target_tweet_content_hash) {
+            console.error(`[REPLY_JOB] ❌ CRITICAL: Missing target_tweet_content_hash for decision_id=${reply.decision_id}`);
+            throw new Error(`Reply decision missing required gate data: target_tweet_content_hash`);
+          }
+          return reply.target_tweet_content_hash;
+        })(),
+        semantic_similarity: reply.semantic_similarity ?? 0.75, // Default similarity if missing
+        root_tweet_id: reply.root_tweet_id || reply.target_tweet_id || null,
         
         // 🔒 PROVENANCE TRACKING - Required for debugging and auditing
         pipeline_source: 'replyJobEnhanced',

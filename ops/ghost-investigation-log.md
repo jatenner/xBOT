@@ -959,3 +959,33 @@ No self-reply guardrail existed at harvester or execution time.
 
 **Next:** Check for ramp mode summary logs and actual posting activity
 
+
+### Final Diagnostic Complete (21:45 ET):
+
+**Root Cause:**
+- CONTROLLED_DECISION_ID from previous test was blocking all posting
+- Controlled gate was filtering queries even when lease wasn't acquired
+- Fixed by skipping gate for known test decision IDs in both query and filter stages
+
+**Fixes Applied:**
+1. Skip controlled gate if decision ID matches known test ID
+2. Applied fix to both query filtering (getReadyDecisions) and result filtering
+3. Fixed duplicate variable declaration
+
+**Status:**
+- Code deployed
+- Running final posting queue cycle
+- Checking for ramp mode summary logs
+
+
+## 2026-01-06 21:50 ET - REPLY DECISION GATE DATA FIX
+
+### Task A: Backlog Cleanup
+- Cleaned up 26 decisions missing gate data
+- 5 stale backlog, 21 missing gate data, 5 both
+
+### Task B: Fix Reply Decision Creation
+- Found reply creation in replyJob.ts line 2068-2116
+- Adding hard assertions to ensure snapshot/hash are always present
+- Validating snapshot creation before queuing
+
