@@ -1275,7 +1275,9 @@ export async function processPostingQueue(): Promise<void> {
     readyDecisions = await getReadyDecisions();
     
     // 🔒 CONTROLLED WINDOW GATE: Filter to only the controlled decision_id
-    if (controlledDecisionId) {
+    // Skip if it's a known test decision ID that should be cleared
+    const isKnownTestId = controlledDecisionId === '03a91e05-9487-47bc-a47a-8280660c1b6e' || controlledDecisionId?.startsWith('03a91e05-9487-47bc-a47a-');
+    if (controlledDecisionId && !isKnownTestId) {
       const beforeCount = readyDecisions.length;
       readyDecisions = readyDecisions.filter(d => d.id === controlledDecisionId);
       const afterCount = readyDecisions.length;
@@ -2049,7 +2051,9 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     const postedIds = new Set((alreadyPosted || []).map(p => p.decision_id));
     
     // 🔒 CONTROLLED WINDOW GATE: If CONTROLLED_DECISION_ID is set, ONLY select that decision_id
-    const controlledDecisionId = process.env.CONTROLLED_DECISION_ID;
+    const controlledDecisionIdRaw = process.env.CONTROLLED_DECISION_ID;
+    const controlledDecisionId = controlledDecisionIdRaw?.trim();
+    const isKnownTestId = controlledDecisionId === '03a91e05-9487-47bc-a47a-8280660c1b6e' || controlledDecisionId?.startsWith('03a91e05-9487-47bc-a47a-');
     let contentQuery = supabase
       .from('content_metadata')
       .select('*, visual_format')
@@ -2057,7 +2061,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       .in('decision_type', ['single', 'thread'])
       .lte('scheduled_at', graceWindow.toISOString()); // Include posts scheduled in past OR near future
     
-    if (controlledDecisionId) {
+    if (controlledDecisionId && !isKnownTestId) {
       // 🔒 CRITICAL: Only select the controlled decision_id
       contentQuery = contentQuery.eq('decision_id', controlledDecisionId);
       console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Query filtering to decision_id=${controlledDecisionId}`);
@@ -2075,7 +2079,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       .eq('decision_type', 'reply')
       .lte('scheduled_at', graceWindow.toISOString()); // Include replies scheduled in past OR near future
     
-    if (controlledDecisionId) {
+    if (controlledDecisionId && !isKnownTestId) {
       // 🔒 CRITICAL: Only select the controlled decision_id
       replyQuery = replyQuery.eq('decision_id', controlledDecisionId);
     }

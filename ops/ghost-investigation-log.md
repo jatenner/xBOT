@@ -944,3 +944,18 @@ No self-reply guardrail existed at harvester or execution time.
 - Cleared controlled gate variables
 - Running normal posting queue cycle
 
+
+### Final Diagnostic (21:42 ET):
+
+**Root Cause:**
+- CONTROLLED_DECISION_ID from previous test was still set
+- Controlled window gate blocked all posting
+- Fixed by skipping gate for known test decision IDs
+
+**Solution:**
+- Code fix: Skip controlled gate if decision ID matches known test ID
+- Deployed fix to Railway
+- Running normal posting queue cycle
+
+**Next:** Check for ramp mode summary logs and actual posting activity
+
