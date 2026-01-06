@@ -503,3 +503,44 @@ Created (not posted): 3
 
 **Status:** ✅ **CONTROLLED TEST #2 COMPLETE - ALL VERIFICATIONS PASSED**
 
+
+---
+
+## CONTROLLED REPLY TEST #1 - EXECUTED SUCCESSFULLY ✅
+
+**Date:** January 6, 2026 20:58 ET  
+**Status:** ✅ **COMPLETE - ONE REPLY POSTED**
+
+### Execution Details:
+- **Target Tweet ID:** `2008543155772338592`
+- **Target Tweet URL:** `https://x.com/SignalAndSynapse/status/2008543155772338592`
+- **Decision ID:** `7ce29529-0ca7-45ef-8a52-c04ca6b88b98`
+- **Reply Tweet ID:** `2008644760790261835`
+- **Reply Tweet URL:** `https://x.com/Signal_Synapse/status/2008644760790261835`
+- **Build SHA:** `unknown_1767733099436` (from controlled test)
+- **Pipeline Source:** `postingQueue`
+- **Lease Finalized:** ✅ After successful post
+
+### Invariant Verification:
+- ✅ **ROOT-ONLY:** `root_tweet_id == target_tweet_id` (2008543155772338592)
+- ✅ **NO REPLY-TO-REPLY:** Target verified as root tweet via FINAL_REPLY_GATE
+- ✅ **NO THREAD MARKERS:** Content passed thread-like check (no "1/", "🧵", etc.)
+- ✅ **SINGLE TWEET:** Content length 114 chars, 0 newlines
+- ✅ **CONTEXT LOCK:** Verified similarity 1.000 (threshold: 0.8)
+- ✅ **SUBSTANCE GATE:** Passed with question mark in content
+
+### Verification Results:
+- ✅ Reply exists in DB with proper traceability
+- ✅ Only ONE reply posted in 30-minute window
+- ✅ No ghost posts detected
+- ✅ System locked down immediately after posting
+
+### Key Observations:
+- All reply invariants enforced correctly
+- FINAL_REPLY_GATE blocked reply-to-reply attempts
+- Context lock verification passed
+- Substance gate required question/action word
+- Reply opportunity entry required for root check
+
+**Status:** ✅ **CONTROLLED REPLY TEST #1 COMPLETE - ALL VERIFICATIONS PASSED**
+

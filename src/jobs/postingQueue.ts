@@ -455,6 +455,82 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
   
   console.log(`[FINAL_REPLY_GATE] ✅ LIVE ROOT CHECK: Target is a true root tweet`);
   
+  // ═══════════════════════════════════════════════════════════════════════
+  // GATE 0.6: NO SELF-REPLY GUARD (CRITICAL)
+  // ═══════════════════════════════════════════════════════════════════════
+  const ourHandle = (process.env.TWITTER_USERNAME || 'SignalAndSynapse').toLowerCase();
+  
+  // Check target_username from decision or reply_opportunities
+  let targetAuthor: string | null = null;
+  if (decision.target_username) {
+    targetAuthor = String(decision.target_username).toLowerCase().trim();
+  } else {
+    // Fetch from reply_opportunities if not in decision
+    const { data: oppData } = await supabase
+      .from('reply_opportunities')
+      .select('target_username')
+      .eq('target_tweet_id', targetTweetId)
+      .maybeSingle();
+    
+    if (oppData?.target_username) {
+      targetAuthor = String(oppData.target_username).toLowerCase().trim();
+    }
+  }
+  
+  // If still no author, fetch from Twitter (fail-closed)
+  if (!targetAuthor) {
+    try {
+      const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+      const pool = UnifiedBrowserPool.getInstance();
+      const page = await pool.acquirePage('self_reply_check');
+      
+      try {
+        await page.goto(`https://x.com/i/web/status/${targetTweetId}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        await page.waitForTimeout(2000);
+        
+        targetAuthor = await page.evaluate(() => {
+          const authorElement = document.querySelector('[data-testid="User-Name"] a');
+          return authorElement?.textContent?.replace('@', '').toLowerCase().trim() || null;
+        });
+        
+        console.log(`[FINAL_REPLY_GATE] 🔍 Fetched author from Twitter: @${targetAuthor || 'unknown'}`);
+      } finally {
+        await pool.releasePage(page);
+      }
+    } catch (fetchError: any) {
+      console.error(`[FINAL_REPLY_GATE] ⚠️ Could not fetch author for self-reply check: ${fetchError.message}`);
+      // Fail-closed: if we can't verify, block
+      await supabase.from('content_generation_metadata_comprehensive')
+        .update({ status: 'blocked', skip_reason: 'self_reply_check_failed' })
+        .eq('decision_id', decisionId);
+      return true; // SKIP
+    }
+  }
+  
+  if (targetAuthor && targetAuthor === ourHandle) {
+    console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: SELF-REPLY detected!`);
+    console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId}`);
+    console.error(`[FINAL_REPLY_GATE]   target=${targetTweetId}`);
+    console.error(`[FINAL_REPLY_GATE]   author=@${targetAuthor} (our handle: @${ourHandle})`);
+    console.error(`[FINAL_REPLY_GATE]   REASON: Cannot reply to our own tweets`);
+    
+    await supabase.from('content_generation_metadata_comprehensive')
+      .update({ status: 'blocked', skip_reason: 'self_reply_blocked' })
+      .eq('decision_id', decisionId);
+    
+    await supabase.from('system_events').insert({
+      event_type: 'self_reply_blocked',
+      severity: 'critical',
+      message: `Self-reply blocked: target tweet ${targetTweetId} is from our own account`,
+      event_data: { decision_id: decisionId, target_tweet_id: targetTweetId, target_author: targetAuthor },
+      created_at: new Date().toISOString()
+    });
+    
+    return true; // SKIP
+  }
+  
+  console.log(`[FINAL_REPLY_GATE] ✅ NO SELF-REPLY: Target author @${targetAuthor || 'unknown'} ≠ our handle @${ourHandle}`);
+  
   // ═══════════════════════════════════════════════════════════════════════    
   // GATE 1: Missing Fields Check + Snapshot Length         
   // ═══════════════════════════════════════════════════════════════════════
@@ -1334,6 +1410,7 @@ export async function processPostingQueue(): Promise<void> {
             if (isReply) repliesPostedThisCycle++;
             
             // 🔒 CONTROLLED WINDOW GATE: Finalize lease on success
+            const controlledToken = (global as any).__controlledToken;
             if (controlledTokenLeaseOwner && controlledToken && decision.id === controlledDecisionId) {
               console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Finalizing lease after successful post`);
               const { data: finalized, error: finalizeError } = await supabase
@@ -1358,6 +1435,7 @@ export async function processPostingQueue(): Promise<void> {
           }
         } catch (postError: any) {
           // 🔒 CONTROLLED WINDOW GATE: Release lease on failure (unless 429 retryable)
+          const controlledToken = (global as any).__controlledToken;
           if (controlledTokenLeaseOwner && controlledToken && decision.id === controlledDecisionId) {
             const is429Retryable = postError?.message?.includes('HTTP-429') || 
                                    postError?.message?.includes('code 88') ||
@@ -2674,11 +2752,10 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       }
       
       try {
-        if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
-          // 🔒 CRITICAL ASSERTION: Reply decisions MUST NEVER route through postContent
-          if (decision.decision_type === 'reply') {
-            const errorMsg = `[SEV_REPLY_THREAD_BLOCKED] CRITICAL: Reply decision routed through postContent! decision_id=${decision.id}`;
-            console.error(errorMsg);
+        // 🔒 CRITICAL ASSERTION: Reply decisions MUST NEVER route through postContent
+        if (decision.decision_type === 'reply') {
+          const errorMsg = `[SEV_REPLY_THREAD_BLOCKED] CRITICAL: Reply decision routed through postContent! decision_id=${decision.id}`;
+          console.error(errorMsg);
             
             // Mark as blocked in DB
             try {
@@ -2696,8 +2773,9 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             }
             
             throw new Error(errorMsg);
-          }
-          
+        }
+        
+        if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
           console.log(`[POSTING_QUEUE][FLOW] ════════════════════════════════════════════════════`);
           console.log(`[POSTING_QUEUE][FLOW] 🚀 STARTING POST FLOW FOR decision_id=${decision.id}`);
           console.log(`[POSTING_QUEUE][FLOW] Type: ${decision.decision_type}`);
@@ -2883,6 +2961,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             }
             console.log(`[POSTING_QUEUE] 💾 Saved ${tweetIds.length} thread tweet IDs to backup`);
           }
+          // End of single/thread block
         } else if (decision.decision_type === 'reply') {
           // ═══════════════════════════════════════════════════════════════════════
           // 🔒 REPLY SAFETY GATES - Run all checks, skip if any fail

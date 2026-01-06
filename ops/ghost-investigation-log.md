@@ -804,3 +804,21 @@ Controlled Test #2 demonstrates:
 
 **Status:** ✅ **TEST COMPLETE - TWEET POSTED SUCCESSFULLY**
 
+
+## 2026-01-06 21:00 ET - SELF-REPLY BUG FIX
+
+### Issue Identified:
+Bot replied to its own tweet (2008543155772338592). This is NOT ghosting - target_tweet_id was one of our tweets.
+
+### Root Cause:
+No self-reply guardrail existed at harvester or execution time.
+
+### Fixes Implemented:
+1. ✅ Harvester filter: Skip self-replies in `realTwitterDiscovery.storeOpportunities()`
+2. ✅ Final gate: Block self-replies in `postingQueue.checkReplySafetyGates()`
+3. ✅ Atomic executor: Block self-replies in `atomicPostExecutor.executeAuthorizedPost()`
+4. ✅ Controlled test prevention: `insert-controlled-reply.ts` validates author unless `--allow-self-reply`
+5. ✅ Build SHA fix: Replaced `unknown_${Date.now()}` with actual SHA from env vars
+
+### Next: Controlled Reply Test #2 to external tweet
+

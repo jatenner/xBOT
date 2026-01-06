@@ -28,6 +28,7 @@ interface PostAttemptMetadata {
   target_tweet_content_snapshot?: string;
   target_tweet_content_hash?: string;
   semantic_similarity?: number;
+  target_username?: string; // 🔒 For self-reply guard
 }
 
 interface ExecutePostResult {
@@ -248,7 +249,46 @@ export async function executeAuthorizedPost(
       };
     }
     
-    console.log(`[ATOMIC_POST] ✅ REPLY_GATE: All invariants passed`);
+    // INVARIANT 4: NO SELF-REPLY (CRITICAL)
+    const ourHandle = (process.env.TWITTER_USERNAME || 'SignalAndSynapse').toLowerCase();
+    const targetAuthor = metadata.target_username ? String(metadata.target_username).toLowerCase().trim() : null;
+    
+    if (targetAuthor && targetAuthor === ourHandle) {
+      console.error(`[ATOMIC_POST] ❌ REPLY_GATE_FAILED: SELF-REPLY detected`);
+      console.error(`[ATOMIC_POST]   target=${metadata.target_tweet_id}`);
+      console.error(`[ATOMIC_POST]   author=@${targetAuthor} (our handle: @${ourHandle})`);
+      
+      await supabase
+        .from('content_generation_metadata_comprehensive')
+        .update({
+          status: 'blocked',
+          skip_reason: 'reply_gate_self_reply_blocked',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('decision_id', decision_id);
+      
+      await supabase.from('system_events').insert({
+        event_type: 'reply_gate_blocked',
+        severity: 'critical',
+        message: `Reply blocked: SELF-REPLY (target is our own tweet)`,
+        event_data: {
+          decision_id,
+          decision_type,
+          pipeline_source,
+          target_tweet_id: metadata.target_tweet_id,
+          target_author: targetAuthor,
+          our_handle: ourHandle,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      return {
+        success: false,
+        error: 'REPLY_GATE_FAILED: SELF-REPLY blocked (cannot reply to our own tweets)',
+      };
+    }
+    
+    console.log(`[ATOMIC_POST] ✅ REPLY_GATE: All invariants passed (including NO SELF-REPLY)`);
   }
   
   // ═══════════════════════════════════════════════════════════════════════════

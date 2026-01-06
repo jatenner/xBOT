@@ -1564,15 +1564,24 @@ export class RealTwitterDiscovery {
           ? new Date(Date.now() - opp.posted_minutes_ago * 60 * 1000).toISOString()
           : new Date().toISOString();
         
-        // 🚨 HARD BLOCK: Detect if tweet content suggests it's a reply
-        // (belt-and-suspenders protection even though -filter:replies is in query)
-        const isReplyTweet = opp.tweet_content.toLowerCase().includes('replying to @') 
-          || opp.tweet_content.startsWith('@');
-        
-        if (isReplyTweet) {
-          console.log(`[REAL_DISCOVERY] 🚫 Skipping reply tweet ${opp.tweet_id} (content starts with @ or mentions 'replying to')`);
-          continue;
-        }
+      // 🚨 HARD BLOCK: Detect if tweet content suggests it's a reply
+      // (belt-and-suspenders protection even though -filter:replies is in query)
+      const isReplyTweet = opp.tweet_content.toLowerCase().includes('replying to @') 
+        || opp.tweet_content.startsWith('@');
+      
+      if (isReplyTweet) {
+        console.log(`[REAL_DISCOVERY] 🚫 Skipping reply tweet ${opp.tweet_id} (content starts with @ or mentions 'replying to')`);
+        continue;
+      }
+      
+      // 🔒 NO SELF-REPLY GUARD: Block replies to our own tweets
+      const ourHandle = (process.env.TWITTER_USERNAME || 'SignalAndSynapse').toLowerCase();
+      const targetAuthor = opp.tweet_author?.toLowerCase().trim();
+      
+      if (targetAuthor === ourHandle) {
+        console.log(`[REAL_DISCOVERY] 🚫 SKIP_SELF_REPLY: Skipping ${opp.tweet_id} (author @${opp.tweet_author} is our own account)`);
+        continue;
+      }
         
           const { data, error } = await supabase
           .from('reply_opportunities')
