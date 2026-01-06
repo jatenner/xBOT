@@ -282,17 +282,24 @@ pnpm exec tsx scripts/query-tweet-details.ts <tweet_id>
 Controlled Test #1 posted TWO tweets because `POSTING_QUEUE_MAX=1` limits per-run, not per-window. The scheduler ran `postingQueue` twice while `POSTING_ENABLED` was temporarily true, causing both runs to process posts.
 
 ### Solution Implemented:
-1. **Environment Variable Gate:** `CONTROLLED_DECISION_ID` (UUID)
-   - When set, `postingQueue` MUST only select/process that one `decision_id`
+1. **Query-Level Filtering:** `CONTROLLED_DECISION_ID` (UUID)
+   - When set, `getReadyDecisions()` filters at QUERY LEVEL (not after fetching)
+   - Both content posts AND replies are filtered by `decision_id` in the SQL query
+   - Prevents fetching unwanted decisions entirely (more efficient + safer)
    - If the queue run does not find that `decision_id` queued, it does nothing
    - After posting that `decision_id`, it immediately exits and does not process any other rows
 
 2. **DB-Backed One-Time Token:** `ops_control` table
    - Table: `ops_control` with fields: `key`, `value`, `updated_at`
    - Uses `key='controlled_post_token'` and stores a random token for the window
-   - `postingQueue` atomically consumes it using `consume_controlled_token()` RPC function
+   - `postingQueue` atomically consumes it using `consume_controlled_token()` RPC function BEFORE fetching decisions
    - If consume fails, `postingQueue` refuses to post and logs "CONTROLLED WINDOW ALREADY CONSUMED"
-   - Even if `postingQueue` runs twice, only the first run can post
+   - Even if `postingQueue` runs multiple times, only the first run can consume the token and post
+
+3. **Fail-Closed Ghost Protection:**
+   - Checks for NULL/dev/unknown `build_sha` in last hour BEFORE processing queue
+   - If ghost indicators detected, blocks ALL posting/replies (fail-closed)
+   - Prevents posting when system integrity is compromised
 
 3. **Enhanced Status Script:** `scripts/check-controlled-test-status.ts`
    - Shows how many queued posts existed at the time
@@ -307,10 +314,10 @@ Controlled Test #1 posted TWO tweets because `POSTING_QUEUE_MAX=1` limits per-ru
 
 ### Usage:
 ```bash
-# 1. Generate token
-pnpm exec tsx scripts/set-controlled-window-token.ts
+# 1. Start controlled window (generates token + validates decision_id)
+pnpm exec tsx scripts/start-controlled-window.ts <decision_id>
 
-# 2. Set Railway variables
+# 2. Set Railway variables (output from step 1)
 railway variables --set CONTROLLED_DECISION_ID=<decision_id>
 railway variables --set CONTROLLED_POST_TOKEN=<token_from_step_1>
 
