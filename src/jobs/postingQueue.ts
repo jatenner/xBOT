@@ -1045,6 +1045,40 @@ export async function processPostingQueue(): Promise<void> {
     // NOTE: Disabled temporarily to prevent over-generation
     // await ensureMinimumQueueDepth();
     
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🔒 CONTROLLED WINDOW GATE: Single-post test protection
+    // ═══════════════════════════════════════════════════════════════════════
+    const controlledDecisionId = process.env.CONTROLLED_DECISION_ID;
+    if (controlledDecisionId) {
+      console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Enabled for decision_id=${controlledDecisionId}`);
+      
+      // Check and atomically consume the controlled post token
+      const controlledToken = process.env.CONTROLLED_POST_TOKEN;
+      if (controlledToken) {
+        const { data: tokenConsumed, error: tokenError } = await supabase
+          .rpc('consume_controlled_token', { token_value: controlledToken });
+        
+        if (tokenError) {
+          console.error(`[POSTING_QUEUE] ❌ CONTROLLED_WINDOW_GATE: Token consumption failed: ${tokenError.message}`);
+          console.error(`[POSTING_QUEUE] 🔒 CONTROLLED WINDOW ALREADY CONSUMED or token invalid`);
+          log({ op: 'posting_queue', status: 'controlled_window_consumed' });
+          return; // Fail-closed: refuse to post if token consumption fails
+        }
+        
+        // RPC function returns boolean directly
+        if (!tokenConsumed || tokenConsumed === false) {
+          console.log(`[POSTING_QUEUE] 🔒 CONTROLLED WINDOW ALREADY CONSUMED - refusing to post`);
+          log({ op: 'posting_queue', status: 'controlled_window_consumed' });
+          return; // Token already consumed by another run
+        }
+        
+        console.log(`[POSTING_QUEUE] ✅ CONTROLLED_WINDOW_GATE: Token consumed successfully`);
+      } else {
+        console.warn(`[POSTING_QUEUE] ⚠️ CONTROLLED_DECISION_ID set but CONTROLLED_POST_TOKEN missing - gate disabled`);
+      }
+    }
+    // ═══════════════════════════════════════════════════════════════════════
+    
     // 2. Check rate limits - but DON'T block entire queue if only content is limited
     // checkPostingRateLimits only checks singles/threads - replies have separate limit
     const canPostContent = await checkPostingRateLimits();
@@ -1055,6 +1089,23 @@ export async function processPostingQueue(): Promise<void> {
     
     // 3. Get ready decisions from queue
     readyDecisions = await getReadyDecisions();
+    
+    // 🔒 CONTROLLED WINDOW GATE: Filter to only the controlled decision_id
+    if (controlledDecisionId) {
+      const beforeCount = readyDecisions.length;
+      readyDecisions = readyDecisions.filter(d => d.id === controlledDecisionId);
+      const afterCount = readyDecisions.length;
+      
+      if (beforeCount > 0 && afterCount === 0) {
+        console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Controlled decision_id ${controlledDecisionId} not found in queue (${beforeCount} other items queued)`);
+        log({ op: 'posting_queue', status: 'controlled_decision_not_found', queued_count: beforeCount });
+        return; // Do nothing if controlled decision not found
+      }
+      
+      if (afterCount > 0) {
+        console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Filtered to controlled decision_id (${beforeCount} → ${afterCount})`);
+      }
+    }
     const GRACE_MINUTES = parseInt(ENV.GRACE_MINUTES || '5', 10);
     
     if (readyDecisions.length === 0) {
@@ -1091,6 +1142,15 @@ export async function processPostingQueue(): Promise<void> {
       }
       console.log(`[POSTING_QUEUE] ✅ Drained ${readyDecisions.length} decisions`);
       return;
+    }
+    
+    // 🔒 CONTROLLED WINDOW GATE: If controlled decision is set, only process that one
+    if (controlledDecisionId && readyDecisions.length > 0) {
+      const controlledDecision = readyDecisions.find(d => d.id === controlledDecisionId);
+      if (controlledDecision) {
+        console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Processing ONLY controlled decision_id=${controlledDecisionId}`);
+        readyDecisions = [controlledDecision]; // Only this one decision
+      }
     }
     
     // 🔒 CONTROLLED TEST MODE: Limit to exactly ONE post if POSTING_QUEUE_MAX=1
@@ -1215,6 +1275,13 @@ export async function processPostingQueue(): Promise<void> {
           // Track what we posted this cycle
           if (isContent) contentPostedThisCycle++;
           if (isReply) repliesPostedThisCycle++;
+          
+          // 🔒 CONTROLLED WINDOW GATE: Exit immediately after posting controlled decision
+          if (controlledDecisionId && decision.id === controlledDecisionId) {
+            console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Controlled decision_id=${controlledDecisionId} posted successfully - EXITING immediately`);
+            log({ op: 'posting_queue', status: 'controlled_decision_posted', decision_id: controlledDecisionId });
+            return; // Exit immediately - do not process any other decisions
+          }
         }
         
       } catch (error: any) {

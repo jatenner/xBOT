@@ -487,3 +487,28 @@ pnpm exec tsx scripts/query-tweet-details.ts 2008543155772338592
 **Status:** ✅ **CONTROLLED TEST #1 COMPLETE**
 
 ---
+
+---
+
+## 2026-01-06 09:30:00 ET - CONTROLLED WINDOW GATE IMPLEMENTATION
+
+**Action:** Implement hard "Controlled Window Gate" to prevent multiple posts during controlled tests
+
+**Problem:** Controlled Test #1 posted TWO tweets because POSTING_QUEUE_MAX=1 limits per-run, not per-window. The scheduler ran postingQueue twice while POSTING_ENABLED was temporarily true.
+
+**Solution:**
+1. Added CONTROLLED_DECISION_ID env var support
+2. Created ops_control table with consume_controlled_token() RPC function
+3. Added controlled window gate logic to postingQueue.ts
+4. Enhanced check-controlled-test-status.ts to show queue status and posted decision_ids
+
+**Files Changed:**
+- supabase/migrations/20260106092255_ops_control_table.sql (NEW)
+- src/jobs/postingQueue.ts (controlled window gate logic)
+- scripts/set-controlled-window-token.ts (NEW)
+- scripts/check-controlled-test-status.ts (enhanced)
+- ops/SINGLE_WRITER_CONTROL_ACHIEVED.md (documentation)
+
+**Next Step:** Apply migration and test controlled window gate
+
+---
