@@ -343,3 +343,39 @@ railway variables --set DRAIN_QUEUE=true
 5. Verify exactly ONE tweet posted
 6. Lock back down immediately
 
+---
+
+## CONTROLLED TEST #2 - IN PROGRESS ⏳
+
+**Date:** January 6, 2026, 10:45:00 ET  
+**Status:** ⏳ **WAITING FOR RAILWAY DEPLOYMENT**
+
+### Test Setup:
+- ✅ Controlled test post created: `1e43a484-e5a8-48ed-bfb3-5d6e7358d6ba`
+- ✅ Token generated: `48177b6e8a6e7d8f6a2c6a4ca488aebf5f53f26a64b504c1cc43cfce9fc32dcc`
+- ✅ Railway variables set:
+  - `CONTROLLED_DECISION_ID=1e43a484-e5a8-48ed-bfb3-5d6e7358d6ba`
+  - `CONTROLLED_POST_TOKEN=48177b6e8a6e7d8f6a2c6a4ca488aebf5f53f26a64b504c1cc43cfce9fc32dcc`
+  - `POSTING_ENABLED=true`
+  - `DRAIN_QUEUE=false`
+- ✅ Other queued items marked as blocked
+- ✅ Latest code pushed and Railway deployment triggered
+
+### Current Status:
+- ⏳ Post still queued (waiting for Railway to process)
+- ⏳ Railway deployment in progress
+- ⏳ Need to wait for next postingQueue cycle
+
+### Expected Behavior:
+Once Railway processes with new code:
+1. Token consumed atomically
+2. Only controlled decision_id fetched
+3. Tweet posted
+4. Immediate exit (no other posts)
+
+### Verification Pending:
+- [ ] Check logs for controlled window gate activity
+- [ ] Verify tweet_id posted
+- [ ] Confirm only ONE tweet in last 15 minutes
+- [ ] Lock down immediately after verification
+
