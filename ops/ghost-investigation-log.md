@@ -542,3 +542,36 @@ pnpm exec tsx scripts/query-tweet-details.ts 2008543155772338592
 - Update documentation
 
 ---
+
+---
+
+## 2026-01-06 10:30:00 ET - OPS_CONTROL MIGRATION APPLIED ✅
+
+**Action:** Apply ops_control table migration to Railway database
+
+**STEP 1 - Database Connection Method:**
+- ✅ Bot uses Supabase client (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY)
+- ✅ Also has DATABASE_URL available
+- ✅ Railway env vars confirmed: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL all SET
+
+**STEP 2 - Migration Application:**
+- ✅ Attempted Supabase CLI: Not linked (Docker not running)
+- ✅ Applied via Railway run: `railway run -- pnpm exec tsx scripts/apply-migration-ops-control.ts`
+- ✅ Migration applied successfully
+- ✅ Table verified: ops_control exists
+- ✅ Function verified: consume_controlled_token exists
+
+**STEP 3 - Proof Queries:**
+- ✅ Table exists: `SELECT to_regclass('public.ops_control')` → Returns 'ops_control'
+- ✅ Function exists: `SELECT proname FROM pg_proc WHERE proname='consume_controlled_token'` → Returns function name
+- ✅ Table structure verified: key (TEXT PRIMARY KEY), value (TEXT NOT NULL), updated_at (TIMESTAMPTZ)
+
+**Scripts Created:**
+- scripts/apply-migration-ops-control.ts (applies migration via DATABASE_URL)
+- scripts/db-verify-ops-control.ts (verifies via DATABASE_URL)
+- scripts/verify-ops-control-supabase.ts (verifies via Supabase client)
+- scripts/proof-ops-control-migration.ts (proof queries)
+
+**Status:** ✅ MIGRATION APPLIED AND VERIFIED
+
+---
