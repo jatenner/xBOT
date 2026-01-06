@@ -639,3 +639,116 @@ pnpm exec tsx scripts/query-tweet-details.ts 2008543155772338592
 **Next:** Once deployed, Railway should process the controlled decision with gate active
 
 ---
+
+## 2026-01-06 20:00+ ET - Controlled Test #2 Debugging
+
+### Issue Identified
+- Token consumption keeps failing with "CONTROLLED WINDOW ALREADY CONSUMED"
+- Token consumption works locally but fails in Railway
+- Decision is queued and ready (status: queued)
+
+### Actions Taken
+1. Added detailed logging to `postingQueue.ts` for token consumption
+2. Created debugging scripts:
+   - `scripts/check-token-status.ts` - Check token in DB
+   - `scripts/test-token-consumption.ts` - Test token consumption locally
+   - `scripts/check-decision-queued.ts` - Verify decision is queued
+3. Generated fresh token: `155b10ace9a0077631e617c3c280b330c18686922a1ef69da8b2916bee9a08e7`
+4. Set token in Railway: `CONTROLLED_POST_TOKEN=155b10ace9a0077631e617c3c280b330c18686922a1ef69da8b2916bee9a08e7`
+
+### Current State
+- Decision ID: `1e43a484-e5a8-48ed-bfb3-5d6e7358d6ba`
+- Status: `queued`
+- Token in DB: Active and ready
+- Railway token: Set to fresh token
+- Posting enabled: `POSTING_ENABLED=true`
+- Replies disabled: `REPLIES_ENABLED=false`
+
+### Next Steps
+- Wait for next `postingQueue` cycle (runs every ~5 minutes)
+- Monitor logs for detailed token consumption output
+- Verify token consumption succeeds with new logging
+- If successful, verify tweet is posted and traceable in DB
+
+
+## 2026-01-06 20:40 ET - ROOT CAUSE IDENTIFIED
+
+### Problem
+PostingQueue was running every 5 minutes but NOT posting the controlled test tweet after 6 hours.
+
+### Investigation Steps
+1. ✅ Verified Railway variables: POSTING_ENABLED=true, CONTROLLED_DECISION_ID and CONTROLLED_POST_TOKEN set correctly
+2. ✅ Verified postingQueue IS running (logs show "JOB_POSTING: Starting... ✅ Completed successfully")
+3. ✅ Created one-shot runner script: `scripts/run-posting-queue-once.ts`
+4. ✅ Forced one-shot run via `railway run -- pnpm exec tsx scripts/run-posting-queue-once.ts`
+
+### Root Cause Found
+**BLOCKER: Twitter/X rate limiting and navigation timeout**
+
+The one-shot run revealed:
+- ✅ Token consumption: SUCCESS (`Token consumption result: true`)
+- ✅ Decision found: SUCCESS (`Filtered to controlled decision_id (1 → 1)`)
+- ✅ Rate limits: PASSED (`0/2 posts`)
+- ✅ Atomic prewrite: SUCCESS (`PREWRITE SUCCESS: DB row inserted`)
+- ❌ **Twitter navigation: FAILED**
+  - Error: `ApiError: https://api.x.com/1.1/account/settings.json HTTP-429 codes:[88]`
+  - Navigation elements not found after 120 seconds
+  - Timeout: `single_post timed out after 120000ms`
+
+### Why Scheduled Runs Show "CONTROLLED WINDOW ALREADY CONSUMED"
+The token was consumed successfully in a previous run, but the post failed due to Twitter timeout. The token is now marked as consumed, so subsequent scheduled runs refuse to post (by design - token is one-time use).
+
+### Evidence
+```
+[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Token consumption result: true
+[POSTING_QUEUE] ✅ CONTROLLED_WINDOW_GATE: Token consumed successfully
+[ATOMIC_POST] ✅ PREWRITE SUCCESS: DB row inserted
+[ULTIMATE_POSTER] Page error: ApiError: https://api.x.com/1.1/account/settings.json HTTP-429 codes:[88]
+[ULTIMATE_POSTER] ❌ Stage: navigation - Failed after 119471ms: Navigation elements not found
+[POSTING_QUEUE] ❌ POSTING FAILED: Playwright posting failed: single_post timed out after 120000ms
+```
+
+### Next Steps
+1. Reset controlled window token (generate fresh token)
+2. Investigate Twitter rate limiting (HTTP 429)
+3. Consider increasing navigation timeout or adding retry logic for rate limits
+4. Verify Twitter session is valid and not expired
+
+
+## 2026-01-06 21:00 ET - Lease-Based Token + 429 Retry Implementation
+
+### Problem
+One-time token consumption burned token on 429 errors, preventing retries.
+
+### Solution Implemented
+1. **Lease-Based Token System:**
+   - Migration: `supabase/migrations/20260106204000_ops_control_lease.sql`
+   - Added `lease_owner` and `lease_expires_at` columns to `ops_control`
+   - RPC functions:
+     - `acquire_controlled_token(token, owner, ttl)` - Acquire lease with TTL
+     - `finalize_controlled_token(token, owner)` - Finalize after success
+     - `release_controlled_token(token, owner)` - Release on failure
+
+2. **429-Aware Retry Logic:**
+   - Updated `UltimateTwitterPoster.isRecoverableError()` to detect 429 errors
+   - Added `is429Error()` helper method
+   - Exponential backoff for 429: 30s, 60s, 120s with ±30% jitter
+   - Increased overall timeout: 120s → 300s for retries
+   - Lease kept on 429 errors (allows retry within TTL)
+
+3. **Lease Management in postingQueue:**
+   - Acquire lease before posting
+   - Finalize lease on success
+   - Release lease on non-retryable failures
+   - Keep lease on 429 errors (retryable)
+
+4. **One-Shot Runner:**
+   - Created `scripts/run-controlled-post-once.ts`
+   - Acquires lease, runs postingQueue, handles finalization/release
+
+### Files Changed
+- `supabase/migrations/20260106204000_ops_control_lease.sql` (NEW)
+- `src/jobs/postingQueue.ts` (lease acquisition/finalization/release)
+- `src/posting/UltimateTwitterPoster.ts` (429 detection + backoff)
+- `scripts/run-controlled-post-once.ts` (NEW)
+

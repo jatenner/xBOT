@@ -275,8 +275,9 @@ export class UltimateTwitterPoster {
     // 🛡️ TIMEOUT PROTECTION: Overall timeout for entire postTweet operation (120 seconds max)
     // 🔥 FIX: Increased from 80s to 120s - Twitter can take 55-90s to complete posting
     const { withTimeout } = await import('../utils/operationTimeout');
-    const OVERALL_TIMEOUT_MS = 120000; // 120 seconds max for entire operation (including retries)
-
+    // 🔧 429-AWARE TIMEOUT: Increase timeout for retries (429 errors need more time)
+    const OVERALL_TIMEOUT_MS = 300000; // 300 seconds (5 min) max for entire operation with retries
+    
     return withTimeout(async () => {
       while (retryCount <= maxRetries) {
         try {
@@ -308,14 +309,27 @@ export class UltimateTwitterPoster {
           log({ op: 'ultimate_poster_attempt', outcome: 'error', attempt: retryCount + 1, error: error.message });
           
           const isRecoverable = this.isRecoverableError(error.message);
+          const is429 = this.is429Error(error);
           
           if (retryCount < maxRetries && isRecoverable) {
-            log({ op: 'ultimate_poster_retry', retry_count: retryCount, recoverable: true });
+            log({ op: 'ultimate_poster_retry', retry_count: retryCount, recoverable: true, is_429: is429 });
             await this.cleanup();
             retryCount++;
             
-            const delay = (retryCount) * 2000; // 2s, 4s delays
-            log({ op: 'ultimate_poster_delay', delay_ms: delay });
+            // 🔧 429-AWARE BACKOFF: Exponential backoff with jitter for 429 errors
+            let delay: number;
+            if (is429) {
+              // Exponential backoff: 30s, 60s, 120s with ±30% jitter
+              const baseDelays = [30000, 60000, 120000];
+              const baseDelay = baseDelays[Math.min(retryCount - 1, baseDelays.length - 1)];
+              const jitter = baseDelay * 0.3 * (Math.random() * 2 - 1); // ±30% jitter
+              delay = Math.max(30000, baseDelay + jitter); // Minimum 30s
+              console.log(`[ULTIMATE_POSTER] 🔄 429 backoff: retry ${retryCount}/${maxRetries} after ${Math.round(delay/1000)}s`);
+            } else {
+              delay = (retryCount) * 2000; // 2s, 4s delays for other errors
+            }
+            
+            log({ op: 'ultimate_poster_delay', delay_ms: delay, is_429: is429 });
             await new Promise(resolve => setTimeout(resolve, delay));
             
             continue;
@@ -358,10 +372,27 @@ export class UltimateTwitterPoster {
       'Network verification failed',
       'UI verification failed',
       'timeout.*exceeded', // 🔧 ADDED: Playwright timeout errors
-      'Navigation elements not found' // 🔧 ADDED: Our new error
+      'Navigation elements not found', // 🔧 ADDED: Our new error
+      'HTTP-429', // 🔧 ADDED: Rate limiting
+      'code 88', // 🔧 ADDED: X rate limit code
+      'rate limit', // 🔧 ADDED: Rate limit errors
+      'ApiError.*429' // 🔧 ADDED: API rate limit errors
     ];
     
-    return recoverableErrors.some(error => errorMessage.includes(error));
+    return recoverableErrors.some(error => {
+      const regex = new RegExp(error.replace('.*', '.*'), 'i');
+      return regex.test(errorMessage);
+    });
+  }
+  
+  private is429Error(error: any): boolean {
+    if (!error) return false;
+    const errorMessage = error.message || error.toString() || '';
+    return errorMessage.includes('HTTP-429') || 
+           errorMessage.includes('code 88') ||
+           errorMessage.includes('429') ||
+           (error.code && String(error.code).includes('429')) ||
+           (error.status === 429);
   }
 
   /**

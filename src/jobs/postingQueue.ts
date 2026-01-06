@@ -1084,34 +1084,43 @@ export async function processPostingQueue(): Promise<void> {
     // 🔒 CONTROLLED WINDOW GATE: Single-post test protection
     // ═══════════════════════════════════════════════════════════════════════
     const controlledDecisionId = process.env.CONTROLLED_DECISION_ID;
+    let controlledTokenLeaseOwner: string | null = null;
     if (controlledDecisionId) {
       console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Enabled for decision_id=${controlledDecisionId}`);
       
-      // Check and atomically consume the controlled post token
+      // 🔒 LEASE-BASED TOKEN: Acquire lease instead of consuming immediately
       const controlledToken = process.env.CONTROLLED_POST_TOKEN;
       if (controlledToken) {
-        console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Attempting token consumption (token: ${controlledToken.substring(0, 16)}...)`);
-        const { data: tokenConsumed, error: tokenError } = await supabase
-          .rpc('consume_controlled_token', { token_value: controlledToken });
+        // Generate unique owner ID for this run
+        controlledTokenLeaseOwner = `posting_queue_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const leaseTtlSeconds = 600; // 10 minutes lease
         
-        if (tokenError) {
-          console.error(`[POSTING_QUEUE] ❌ CONTROLLED_WINDOW_GATE: Token consumption failed: ${tokenError.message}`);
-          console.error(`[POSTING_QUEUE] ❌ Token error code: ${tokenError.code}`);
-          console.error(`[POSTING_QUEUE] 🔒 CONTROLLED WINDOW ALREADY CONSUMED or token invalid`);
-          log({ op: 'posting_queue', status: 'controlled_window_consumed', error: tokenError.message });
-          return; // Fail-closed: refuse to post if token consumption fails
+        console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Attempting lease acquisition (token: ${controlledToken.substring(0, 16)}..., owner: ${controlledTokenLeaseOwner.substring(0, 20)}...)`);
+        const { data: leaseAcquired, error: leaseError } = await supabase
+          .rpc('acquire_controlled_token', { 
+            token_value: controlledToken,
+            owner_id: controlledTokenLeaseOwner,
+            ttl_seconds: leaseTtlSeconds
+          });
+        
+        if (leaseError) {
+          console.error(`[POSTING_QUEUE] ❌ CONTROLLED_WINDOW_GATE: Lease acquisition failed: ${leaseError.message}`);
+          console.error(`[POSTING_QUEUE] ❌ Lease error code: ${leaseError.code}`);
+          console.error(`[POSTING_QUEUE] 🔒 CONTROLLED WINDOW LEASE UNAVAILABLE or token invalid`);
+          log({ op: 'posting_queue', status: 'controlled_window_lease_failed', error: leaseError.message });
+          return; // Fail-closed: refuse to post if lease acquisition fails
         }
         
-        console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Token consumption result: ${JSON.stringify(tokenConsumed)}`);
+        console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Lease acquisition result: ${JSON.stringify(leaseAcquired)}`);
         
         // RPC function returns boolean directly
-        if (!tokenConsumed || tokenConsumed === false) {
-          console.log(`[POSTING_QUEUE] 🔒 CONTROLLED WINDOW ALREADY CONSUMED - refusing to post (result: ${tokenConsumed})`);
-          log({ op: 'posting_queue', status: 'controlled_window_consumed', result: tokenConsumed });
-          return; // Token already consumed by another run
+        if (!leaseAcquired || leaseAcquired === false) {
+          console.log(`[POSTING_QUEUE] 🔒 CONTROLLED WINDOW LEASE UNAVAILABLE - refusing to post (result: ${leaseAcquired})`);
+          log({ op: 'posting_queue', status: 'controlled_window_lease_unavailable', result: leaseAcquired });
+          return; // Lease already held by another run or expired
         }
         
-        console.log(`[POSTING_QUEUE] ✅ CONTROLLED_WINDOW_GATE: Token consumed successfully`);
+        console.log(`[POSTING_QUEUE] ✅ CONTROLLED_WINDOW_GATE: Lease acquired successfully (TTL: ${leaseTtlSeconds}s)`);
       } else {
         console.warn(`[POSTING_QUEUE] ⚠️ CONTROLLED_DECISION_ID set but CONTROLLED_POST_TOKEN missing - gate disabled`);
       }
@@ -1307,20 +1316,67 @@ export async function processPostingQueue(): Promise<void> {
         }
         
         // Proceed with posting
-        const success = await processDecision(decision);
-        if (success) {
-          successCount++;
-          
-          // Track what we posted this cycle
-          if (isContent) contentPostedThisCycle++;
-          if (isReply) repliesPostedThisCycle++;
-          
-          // 🔒 CONTROLLED WINDOW GATE: Exit immediately after posting controlled decision
-          if (controlledDecisionId && decision.id === controlledDecisionId) {
-            console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Controlled decision_id=${controlledDecisionId} posted successfully - EXITING immediately`);
-            log({ op: 'posting_queue', status: 'controlled_decision_posted', decision_id: controlledDecisionId });
-            return; // Exit immediately - do not process any other decisions
+        let success = false;
+        try {
+          success = await processDecision(decision);
+          if (success) {
+            successCount++;
+            
+            // Track what we posted this cycle
+            if (isContent) contentPostedThisCycle++;
+            if (isReply) repliesPostedThisCycle++;
+            
+            // 🔒 CONTROLLED WINDOW GATE: Finalize lease on success
+            if (controlledTokenLeaseOwner && controlledToken && decision.id === controlledDecisionId) {
+              console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Finalizing lease after successful post`);
+              const { data: finalized, error: finalizeError } = await supabase
+                .rpc('finalize_controlled_token', { 
+                  token_value: controlledToken,
+                  owner_id: controlledTokenLeaseOwner
+                });
+              
+              if (finalizeError || !finalized) {
+                console.error(`[POSTING_QUEUE] ⚠️ CONTROLLED_WINDOW_GATE: Lease finalization failed: ${finalizeError?.message || 'unknown'}`);
+              } else {
+                console.log(`[POSTING_QUEUE] ✅ CONTROLLED_WINDOW_GATE: Lease finalized successfully`);
+              }
+            }
+            
+            // 🔒 CONTROLLED WINDOW GATE: Exit immediately after posting controlled decision
+            if (controlledDecisionId && decision.id === controlledDecisionId) {
+              console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Controlled decision_id=${controlledDecisionId} posted successfully - EXITING immediately`);
+              log({ op: 'posting_queue', status: 'controlled_decision_posted', decision_id: controlledDecisionId });
+              return; // Exit immediately - do not process any other decisions
+            }
           }
+        } catch (postError: any) {
+          // 🔒 CONTROLLED WINDOW GATE: Release lease on failure (unless 429 retryable)
+          if (controlledTokenLeaseOwner && controlledToken && decision.id === controlledDecisionId) {
+            const is429Retryable = postError?.message?.includes('HTTP-429') || 
+                                   postError?.message?.includes('code 88') ||
+                                   postError?.message?.includes('rate limit');
+            
+            if (is429Retryable) {
+              console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: 429 error detected - keeping lease for retry`);
+              // Don't release lease - allow retry within TTL
+            } else {
+              console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Releasing lease after non-retryable failure`);
+              const { data: released, error: releaseError } = await supabase
+                .rpc('release_controlled_token', { 
+                  token_value: controlledToken,
+                  owner_id: controlledTokenLeaseOwner
+                });
+              
+              if (releaseError || !released) {
+                console.error(`[POSTING_QUEUE] ⚠️ CONTROLLED_WINDOW_GATE: Lease release failed: ${releaseError?.message || 'unknown'}`);
+              } else {
+                console.log(`[POSTING_QUEUE] ✅ CONTROLLED_WINDOW_GATE: Lease released`);
+              }
+            }
+          }
+          
+          // Re-throw to maintain existing error handling
+          throw postError;
         }
         
       } catch (error: any) {
