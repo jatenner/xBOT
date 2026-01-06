@@ -2480,6 +2480,29 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       
       try {
         if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
+          // 🔒 CRITICAL ASSERTION: Reply decisions MUST NEVER route through postContent
+          if (decision.decision_type === 'reply') {
+            const errorMsg = `[SEV_REPLY_THREAD_BLOCKED] CRITICAL: Reply decision routed through postContent! decision_id=${decision.id}`;
+            console.error(errorMsg);
+            
+            // Mark as blocked in DB
+            try {
+              const { getSupabaseClient } = await import('../db/index');
+              const supabase = getSupabaseClient();
+              await supabase.from('content_generation_metadata_comprehensive')
+                .update({
+                  status: 'blocked',
+                  skip_reason: 'reply_routed_through_postcontent_violation',
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('decision_id', decision.id);
+            } catch (dbErr: any) {
+              console.error(`[SEV_REPLY_THREAD_BLOCKED] Failed to mark as blocked: ${dbErr.message}`);
+            }
+            
+            throw new Error(errorMsg);
+          }
+          
           console.log(`[POSTING_QUEUE][FLOW] ════════════════════════════════════════════════════`);
           console.log(`[POSTING_QUEUE][FLOW] 🚀 STARTING POST FLOW FOR decision_id=${decision.id}`);
           console.log(`[POSTING_QUEUE][FLOW] Type: ${decision.decision_type}`);
@@ -2491,7 +2514,11 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           
           let result;
           try {
-            result = await postContent(decision);
+            // 🔒 QUOTA ENFORCEMENT: Wrap content posting with advisory lock
+            const { withContentLock } = await import('../utils/contentRateLimiter');
+            result = await withContentLock(async () => {
+              return await postContent(decision);
+            });
             console.log(`[POSTING_QUEUE][FLOW] ✅ STEP 1/4 COMPLETE: Posted to Twitter`);
             console.log(`${logPrefix} 🔍 DEBUG: postContent returned successfully`);
             console.log(`${logPrefix} 🔍 DEBUG: result.tweetId=${result?.tweetId || 'MISSING'}, result.tweetUrl=${result?.tweetUrl || 'MISSING'}, result.tweetIds.length=${result?.tweetIds?.length || 0}`);
@@ -3465,6 +3492,29 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
 }
 
 async function postContent(decision: QueuedDecision): Promise<{ tweetId: string; tweetUrl: string; tweetIds?: string[] }> {
+  // 🔒 CRITICAL ASSERTION: Reply decisions MUST NEVER route through postContent
+  if (decision.decision_type === 'reply') {
+    const errorMsg = `[SEV_REPLY_THREAD_BLOCKED] CRITICAL: Reply decision routed through postContent! decision_id=${decision.id}`;
+    console.error(errorMsg);
+    
+    // Mark as blocked in DB
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('content_generation_metadata_comprehensive')
+        .update({
+          status: 'blocked',
+          skip_reason: 'reply_routed_through_postcontent_violation',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('decision_id', decision.id);
+    } catch (dbErr: any) {
+      console.error(`[SEV_REPLY_THREAD_BLOCKED] Failed to mark as blocked: ${dbErr.message}`);
+    }
+    
+    throw new Error(errorMsg);
+  }
+  
   console.log(`[CRITICAL] 🚀🚀🚀 postContent() CALLED - decision_id=${decision.id} type=${decision.decision_type}`);
   console.log(`[POSTING_QUEUE] 📝 Posting content: "${decision.content.substring(0, 50)}..."`);
   
@@ -3669,15 +3719,75 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         
         // 🔒 CREATE POSTING GUARD: Unforgeable authorization token
         const { createPostingGuard } = await import('../posting/UltimateTwitterPoster');
+        const { executeAuthorizedPost, getBuildSHA } = await import('../posting/atomicPostExecutor');
         const guard = createPostingGuard({
           decision_id: decision.id,
           pipeline_source: 'postingQueue',
           job_run_id: `posting_${Date.now()}`,
         });
         
+        // ⚛️ ATOMIC POST: Use executeAuthorizedPost() for DB-prewrite guarantee
+        const job_run_id = `posting_${Date.now()}`;
+        const build_sha = getBuildSHA();
+        
         // 🛡️ TIMEOUT PROTECTION: Adaptive timeout based on retry count
         const result = await withTimeout(
-          () => poster.postTweet(contentToPost, guard),
+          async () => {
+            const atomicResult = await executeAuthorizedPost(
+              poster,
+              guard,
+              {
+                decision_id: decision.id,
+                decision_type: decision.decision_type === 'single' ? 'single' : decision.decision_type === 'thread' ? 'thread' : 'single',
+                pipeline_source: 'postingQueue',
+                build_sha,
+                job_run_id,
+                content: contentToPost,
+              },
+              {
+                isReply: false,
+              }
+            );
+            
+            // 🔥 GUARDRAIL: If post succeeded but DB update failed, emit CRITICAL log
+            if (atomicResult.success && atomicResult.tweet_id) {
+              // Check if DB update succeeded by verifying row exists with tweet_id
+              const { getSupabaseClient } = await import('../db/index');
+              const supabase = getSupabaseClient();
+              const { data: dbRow } = await supabase
+                .from('content_generation_metadata_comprehensive')
+                .select('tweet_id, status')
+                .eq('decision_id', decision.id)
+                .single();
+              
+              if (!dbRow || dbRow.status !== 'posted' || dbRow.tweet_id !== atomicResult.tweet_id) {
+                console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Tweet posted but DB update may have failed!`);
+                console.error(`[POSTING_QUEUE]   tweet_id=${atomicResult.tweet_id} decision_id=${decision.id}`);
+                console.error(`[POSTING_QUEUE]   DB row status=${dbRow?.status || 'missing'} DB tweet_id=${dbRow?.tweet_id || 'missing'}`);
+                
+                // Log to system_events
+                await supabase.from('system_events').insert({
+                  event_type: 'atomic_post_update_failed',
+                  severity: 'critical',
+                  message: `Tweet posted but DB update verification failed`,
+                  event_data: {
+                    decision_id: decision.id,
+                    tweet_id: atomicResult.tweet_id,
+                    db_status: dbRow?.status || 'missing',
+                    db_tweet_id: dbRow?.tweet_id || 'missing',
+                  },
+                  created_at: new Date().toISOString(),
+                });
+              }
+            }
+            
+            return {
+              success: atomicResult.success,
+              tweetId: atomicResult.tweet_id,
+              tweetUrl: atomicResult.tweet_url,
+              error: atomicResult.error,
+            };
+          },
           { 
             timeoutMs: SINGLE_POST_TIMEOUT_MS, 
             operationName: 'single_post',
@@ -3694,12 +3804,12 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         await poster.dispose();
         
         if (!result.success || !result.tweetId) {
-          console.error(`[POSTING_QUEUE] ❌ Playwright posting failed: ${result.error}`);
-          throw new Error(result.error || 'Playwright posting failed');
+          console.error(`[POSTING_QUEUE] ❌ Atomic posting failed: ${result.error}`);
+          throw new Error(result.error || 'Atomic posting failed');
         }
         
         const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
-        const tweetUrl = `https://x.com/${username}/status/${result.tweetId}`;
+        const tweetUrl = result.tweetUrl || `https://x.com/${username}/status/${result.tweetId}`;
         
         console.log(`[POSTING_QUEUE] ✅ Tweet ID extracted: ${result.tweetId}`);
         console.log(`[POSTING_QUEUE] ✅ Tweet URL: ${tweetUrl}`);
@@ -3796,6 +3906,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       
       // 🔒 CREATE POSTING GUARD: Unforgeable authorization token
       const { createPostingGuard } = await import('../posting/UltimateTwitterPoster');
+      const { executeAuthorizedPost, getBuildSHA } = await import('../posting/atomicPostExecutor');
       const guard = createPostingGuard({
         decision_id: decision.id,
         pipeline_source: 'postingQueue_reply',
@@ -3807,30 +3918,89 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       const contentLines = (decision.content.match(/\n/g) || []).length + 1;
       console.log(`[REPLY_POST] mode=reply tweet_id=${decision.target_tweet_id} len=${contentLength} lines=${contentLines} used_thread_composer=false`);
 
-      const result = await poster.postReply(decision.content, decision.target_tweet_id, guard);
+      // ⚛️ ATOMIC POST: Use executeAuthorizedPost() for DB-prewrite guarantee
+      const job_run_id = `reply_${Date.now()}`;
+      const build_sha = getBuildSHA();
+      
+      const atomicResult = await executeAuthorizedPost(
+        poster,
+        guard,
+        {
+          decision_id: decision.id,
+          decision_type: 'reply',
+          pipeline_source: 'postingQueue_reply',
+          build_sha,
+          job_run_id,
+          content: decision.content,
+          target_tweet_id: decision.target_tweet_id,
+          root_tweet_id: decision.root_tweet_id,
+          target_tweet_content_snapshot: decision.target_tweet_content_snapshot,
+          target_tweet_content_hash: decision.target_tweet_content_hash,
+          semantic_similarity: decision.semantic_similarity,
+        },
+        {
+          isReply: true,
+          replyToTweetId: decision.target_tweet_id,
+        }
+      );
 
       // 🔥 CRITICAL: Validate result BEFORE any logging or processing
-      if (!result.success || !result.tweetId) {
-        console.log(`[REPLY_TRUTH] step=FAIL reason=playwright_returned_no_tweetid result=${JSON.stringify(result)}`);
-        throw new Error(result.error || 'Reply posting failed: no tweetId returned');
+      if (!atomicResult.success || !atomicResult.tweet_id) {
+        console.log(`[REPLY_TRUTH] step=FAIL reason=atomic_post_failed result=${JSON.stringify(atomicResult)}`);
+        throw new Error(atomicResult.error || 'Reply posting failed: no tweetId returned');
       }
 
-      if (result.tweetId === decision.target_tweet_id) {
+      if (atomicResult.tweet_id === decision.target_tweet_id) {
         console.log(`[REPLY_TRUTH] step=FAIL reason=id_extraction_bug got_parent_id=${decision.target_tweet_id}`);
         throw new Error(`Reply ID extraction bug: got parent ID ${decision.target_tweet_id} instead of new reply ID`);
       }
       
       // 🔥 VALIDATE: Ensure tweet ID is a valid numeric string (Twitter IDs are numeric)
-      if (!/^\d+$/.test(result.tweetId)) {
-        console.log(`[REPLY_TRUTH] step=FAIL reason=invalid_id_format tweet_id=${result.tweetId}`);
-        throw new Error(`Invalid reply ID format: ${result.tweetId} (expected numeric Twitter ID)`);
+      if (!/^\d+$/.test(atomicResult.tweet_id)) {
+        console.log(`[REPLY_TRUTH] step=FAIL reason=invalid_id_format tweet_id=${atomicResult.tweet_id}`);
+        throw new Error(`Invalid reply ID format: ${atomicResult.tweet_id} (expected numeric Twitter ID)`);
+      }
+
+      // 🔥 GUARDRAIL: If post succeeded but DB update failed, emit CRITICAL log
+      const { data: dbRow } = await supabase
+        .from('content_generation_metadata_comprehensive')
+        .select('tweet_id, status')
+        .eq('decision_id', decision.id)
+        .single();
+      
+      if (!dbRow || dbRow.status !== 'posted' || dbRow.tweet_id !== atomicResult.tweet_id) {
+        console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Reply posted but DB update may have failed!`);
+        console.error(`[POSTING_QUEUE]   tweet_id=${atomicResult.tweet_id} decision_id=${decision.id}`);
+        console.error(`[POSTING_QUEUE]   DB row status=${dbRow?.status || 'missing'} DB tweet_id=${dbRow?.tweet_id || 'missing'}`);
+        
+        // Log to system_events
+        await supabase.from('system_events').insert({
+          event_type: 'atomic_post_update_failed',
+          severity: 'critical',
+          message: `Reply posted but DB update verification failed`,
+          event_data: {
+            decision_id: decision.id,
+            tweet_id: atomicResult.tweet_id,
+            db_status: dbRow?.status || 'missing',
+            db_tweet_id: dbRow?.tweet_id || 'missing',
+          },
+          created_at: new Date().toISOString(),
+        });
       }
 
       // ✅ STEP 1: Tweet is on X, ID is captured
-      console.log(`[REPLY_TRUTH] step=POSTED_UI tweet_id=${result.tweetId} parent_id=${decision.target_tweet_id}`);
-      console.log(`[POSTING_QUEUE] ✅ Reply ID validated: ${result.tweetId} (≠ parent ${decision.target_tweet_id})`);
+      console.log(`[REPLY_TRUTH] step=POSTED_UI tweet_id=${atomicResult.tweet_id} parent_id=${decision.target_tweet_id}`);
+      console.log(`[POSTING_QUEUE] ✅ Reply ID validated: ${atomicResult.tweet_id} (≠ parent ${decision.target_tweet_id})`);
       const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
-      console.log(`[POSTING_QUEUE] 🔗 Reply URL: https://x.com/${username}/status/${result.tweetId}`);
+      const replyUrl = atomicResult.tweet_url || `https://x.com/${username}/status/${atomicResult.tweet_id}`;
+      console.log(`[POSTING_QUEUE] 🔗 Reply URL: ${replyUrl}`);
+      
+      // Map atomicResult to result format for compatibility
+      const result = {
+        success: true,
+        tweetId: atomicResult.tweet_id,
+        tweetUrl: replyUrl,
+      };
       
       // ✅ STEP 2: Write receipt IMMEDIATELY (fail-closed, cannot continue without this)
       const { writePostReceipt } = await import('../utils/postReceiptWriter');

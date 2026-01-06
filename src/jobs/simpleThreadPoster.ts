@@ -7,6 +7,7 @@
  */
 
 import { UltimateTwitterPoster, createPostingGuard, PostingGuard } from '../posting/UltimateTwitterPoster';
+import { executeAuthorizedPost, getBuildSHA } from '../posting/atomicPostExecutor';
 
 export interface SimpleThreadResult {
   success: boolean;
@@ -68,9 +69,35 @@ export class SimpleThreadPoster {
       console.log(`[SIMPLE_THREAD] 📝 Posting root tweet (1/${tweets.length})...`);
       console.log(`[SIMPLE_THREAD] 📄 Content: "${tweets[0].substring(0, 80)}..."`);
       
-      const rootResult = await poster.postTweet(tweets[0], guard);
+      // ⚛️ ATOMIC POST: Use executeAuthorizedPost() for DB-prewrite guarantee
+      // Generate a unique decision_id for this tweet in the thread
+      const rootDecisionId = `${decision_id}_root_${Date.now()}`;
+      const build_sha = getBuildSHA();
+      const job_run_id = `thread_root_${Date.now()}`;
       
-      if (!rootResult.success) {
+      const rootGuard = createPostingGuard({
+        decision_id: rootDecisionId,
+        pipeline_source: 'simpleThreadPoster',
+        job_run_id,
+      });
+      
+      const rootAtomicResult = await executeAuthorizedPost(
+        poster,
+        rootGuard,
+        {
+          decision_id: rootDecisionId,
+          decision_type: 'post',
+          pipeline_source: 'simpleThreadPoster',
+          build_sha,
+          job_run_id,
+          content: tweets[0],
+        },
+        {
+          isReply: false,
+        }
+      );
+      
+      if (!rootAtomicResult.success || !rootAtomicResult.tweet_id) {
         await poster.dispose();
         return {
           success: false,
@@ -78,11 +105,11 @@ export class SimpleThreadPoster {
           tweetUrl: '',
           tweetIds: [],
           mode: 'thread',
-          error: `Root tweet failed: ${rootResult.error}`
+          error: `Root tweet failed: ${rootAtomicResult.error}`
         };
       }
       
-      const rootTweetId = rootResult.tweetId || 'unknown';
+      const rootTweetId = rootAtomicResult.tweet_id;
       
       // 🚨 CRITICAL: Ensure we have a REAL tweet ID, not a placeholder!
       if (rootTweetId.startsWith('posted_') || rootTweetId === 'unknown') {
@@ -130,17 +157,40 @@ export class SimpleThreadPoster {
             await new Promise(r => setTimeout(r, 3000));
           }
           
-          // 🔒 CREATE NEW GUARD before each reply (guards expire after 60s)
+          // ⚛️ ATOMIC POST: Use executeAuthorizedPost() for DB-prewrite guarantee
+          // Generate a unique decision_id for this reply in the thread
+          const replyDecisionId = `${decision_id}_reply_${i}_${Date.now()}`;
+          const replyJobRunId = `thread_reply_${i}_${Date.now()}`;
+          
           guard = createPostingGuard({ 
-            decision_id: decision_id!, 
+            decision_id: replyDecisionId, 
             pipeline_source: 'simpleThreadPoster_reply',
-            job_run_id: `thread_reply_${i}_${Date.now()}`
+            job_run_id: replyJobRunId
           });
           
-          const replyResult = await poster.postReply(tweets[i], lastTweetId, guard);
+          // 🔒 CRITICAL: simpleThreadPoster is ONLY for thread content, NEVER for reply decisions
+          // This is a thread continuation (replying to previous tweet in thread), not a reply decision
+          // So we use decision_type='thread' not 'reply' for thread continuations
+          const replyAtomicResult = await executeAuthorizedPost(
+            poster,
+            guard,
+            {
+              decision_id: replyDecisionId,
+              decision_type: 'thread', // Thread continuation, not a reply decision
+              pipeline_source: 'simpleThreadPoster_thread_continuation',
+              build_sha: getBuildSHA(),
+              job_run_id: replyJobRunId,
+              content: tweets[i],
+              target_tweet_id: lastTweetId,
+            },
+            {
+              isReply: true,
+              replyToTweetId: lastTweetId,
+            }
+          );
           
-          if (!replyResult.success) {
-            console.error(`[SIMPLE_THREAD] ❌ Reply ${i + 1} failed: ${replyResult.error}`);
+          if (!replyAtomicResult.success || !replyAtomicResult.tweet_id) {
+            console.error(`[SIMPLE_THREAD] ❌ Reply ${i + 1} failed: ${replyAtomicResult.error}`);
             console.log(`[SIMPLE_THREAD] ⚠️ Stopping at ${i}/${tweets.length} tweets`);
             
             // Partial success - some tweets posted
@@ -152,11 +202,11 @@ export class SimpleThreadPoster {
               tweetIds: tweetIds,
               mode: 'partial_thread',
               note: `Partial thread: ${i}/${tweets.length} tweets posted`,
-              error: `Reply ${i + 1} failed: ${replyResult.error}`
+              error: `Reply ${i + 1} failed: ${replyAtomicResult.error}`
             };
           }
           
-          const replyTweetId = replyResult.tweetId || 'unknown';
+          const replyTweetId = replyAtomicResult.tweet_id;
           
           // Check if we got a real ID for the reply
           if (replyTweetId.startsWith('posted_') || replyTweetId === 'unknown') {

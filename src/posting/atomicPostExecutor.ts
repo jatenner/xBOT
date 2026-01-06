@@ -13,11 +13,11 @@
 
 import { getSupabaseClient } from '../db/index';
 import { UltimateTwitterPoster } from './UltimateTwitterPoster';
-import type { PostingGuard } from './PostingGuard';
+import type { PostingGuard } from './UltimateTwitterPoster';
 
 interface PostAttemptMetadata {
   decision_id: string;
-  decision_type: 'post' | 'reply';
+  decision_type: 'single' | 'thread' | 'reply';
   pipeline_source: string;
   build_sha: string;
   job_run_id: string;
@@ -112,29 +112,184 @@ export async function executeAuthorizedPost(
   console.log(`[ATOMIC_POST] ✅ PREWRITE SUCCESS: DB row inserted`);
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 2: POST - Call Twitter API
+  // 🔒 FINAL REPLY GATE - Enforce invariants BEFORE posting (fail-closed)
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (decision_type === 'reply') {
+    console.log(`[ATOMIC_POST] 🔒 FINAL_REPLY_GATE: Enforcing reply invariants...`);
+    
+    // INVARIANT 1: target_tweet_id must exist
+    if (!metadata.target_tweet_id) {
+      console.error(`[ATOMIC_POST] ❌ REPLY_GATE_FAILED: Missing target_tweet_id`);
+      await supabase
+        .from('content_generation_metadata_comprehensive')
+        .update({
+          status: 'blocked',
+          skip_reason: 'reply_gate_missing_target_tweet_id',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('decision_id', decision_id);
+      
+      await supabase.from('system_events').insert({
+        event_type: 'reply_gate_blocked',
+        severity: 'critical',
+        message: `Reply blocked: missing target_tweet_id`,
+        event_data: { decision_id, decision_type, pipeline_source },
+        created_at: new Date().toISOString(),
+      });
+      
+      return {
+        success: false,
+        error: 'REPLY_GATE_FAILED: Missing target_tweet_id',
+      };
+    }
+    
+    // INVARIANT 2: Content must NOT contain thread markers
+    const content = metadata.content || '';
+    const threadPatterns = [
+      /\b\d+\/\d+\b/,           // "2/6", "3/6"
+      /^\s*\d+\/\d+/,           // Starts with "1/5"
+      /🧵/,                      // Thread emoji
+      /\n.*\n/,                 // Multiple newlines (thread-like)
+    ];
+    
+    for (const pattern of threadPatterns) {
+      if (pattern.test(content)) {
+        const matched = content.match(pattern)?.[0] || '';
+        console.error(`[ATOMIC_POST] ❌ REPLY_GATE_FAILED: Thread-like content detected`);
+        console.error(`[ATOMIC_POST]   pattern=${pattern.source} matched="${matched.substring(0, 50)}"`);
+        
+        await supabase
+          .from('content_generation_metadata_comprehensive')
+          .update({
+            status: 'blocked',
+            skip_reason: `reply_gate_thread_marker: ${pattern.source}`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('decision_id', decision_id);
+        
+        await supabase.from('system_events').insert({
+          event_type: 'reply_gate_blocked',
+          severity: 'critical',
+          message: `Reply blocked: thread-like content`,
+          event_data: {
+            decision_id,
+            decision_type,
+            pipeline_source,
+            pattern: pattern.source,
+            matched: matched.substring(0, 100),
+          },
+          created_at: new Date().toISOString(),
+        });
+        
+        return {
+          success: false,
+          error: `REPLY_GATE_FAILED: Thread-like content detected (${pattern.source})`,
+        };
+      }
+    }
+    
+    // INVARIANT 3: root_tweet_id must equal target_tweet_id (ROOT-ONLY)
+    if (metadata.root_tweet_id && metadata.root_tweet_id !== metadata.target_tweet_id) {
+      console.error(`[ATOMIC_POST] ❌ REPLY_GATE_FAILED: ROOT-ONLY violation`);
+      console.error(`[ATOMIC_POST]   root=${metadata.root_tweet_id} target=${metadata.target_tweet_id}`);
+      
+      await supabase
+        .from('content_generation_metadata_comprehensive')
+        .update({
+          status: 'blocked',
+          skip_reason: 'reply_gate_root_only_violation',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('decision_id', decision_id);
+      
+      await supabase.from('system_events').insert({
+        event_type: 'reply_gate_blocked',
+        severity: 'critical',
+        message: `Reply blocked: ROOT-ONLY violation`,
+        event_data: {
+          decision_id,
+          decision_type,
+          pipeline_source,
+          root_tweet_id: metadata.root_tweet_id,
+          target_tweet_id: metadata.target_tweet_id,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      return {
+        success: false,
+        error: 'REPLY_GATE_FAILED: ROOT-ONLY violation (target is not root)',
+      };
+    }
+    
+    console.log(`[ATOMIC_POST] ✅ REPLY_GATE: All invariants passed`);
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 2: POST - Call Twitter API with timeout protection
   // ═══════════════════════════════════════════════════════════════════════════
   console.log(`[ATOMIC_POST] 🚀 POSTING: Calling Twitter API...`);
   
+  // Log posting attempt start
+  await supabase.from('system_events').insert({
+    event_type: 'posting_attempt_started',
+    severity: 'info',
+    message: `Starting atomic post execution`,
+    event_data: {
+      decision_id,
+      decision_type,
+      pipeline_source,
+    },
+    created_at: new Date().toISOString(),
+  });
+  
+  // Timeout: 4 minutes for single posts, 6 minutes for threads/replies
+  const POST_TIMEOUT_MS = options.isReply ? 240000 : 240000; // 4 minutes
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`Posting timeout after ${POST_TIMEOUT_MS/1000}s`));
+    }, POST_TIMEOUT_MS);
+  });
+  
   let postResult;
   try {
-    if (options.isReply && options.replyToTweetId) {
-      postResult = await poster.postReply(metadata.content, options.replyToTweetId, guard);
-    } else {
-      postResult = await poster.postTweet(metadata.content, guard);
-    }
+    const postingPromise = options.isReply && options.replyToTweetId
+      ? poster.postReply(metadata.content, options.replyToTweetId, guard)
+      : poster.postTweet(metadata.content, guard);
+    
+    // Race posting against timeout
+    postResult = await Promise.race([postingPromise, timeoutPromise]);
   } catch (error: any) {
     console.error(`[ATOMIC_POST] ❌ POSTING EXCEPTION: ${error.message}`);
+    
+    const isTimeout = error.message.includes('timeout');
+    const skipReason = isTimeout 
+      ? 'posting_timeout' 
+      : `posting_exception: ${error.message.substring(0, 200)}`;
     
     // Update DB row to status='failed'
     await supabase
       .from('content_generation_metadata_comprehensive')
       .update({
         status: 'failed',
-        skip_reason: `posting_exception: ${error.message}`,
+        skip_reason: skipReason,
         updated_at: new Date().toISOString(),
       })
       .eq('decision_id', decision_id);
+    
+    // Log failure event
+    await supabase.from('system_events').insert({
+      event_type: 'posting_attempt_failed',
+      severity: 'warning',
+      message: `Posting failed: ${error.message}`,
+      event_data: {
+        decision_id,
+        decision_type,
+        error: error.message,
+        is_timeout: isTimeout,
+      },
+      created_at: new Date().toISOString(),
+    });
     
     return {
       success: false,
@@ -168,12 +323,13 @@ export async function executeAuthorizedPost(
   // ═══════════════════════════════════════════════════════════════════════════
   console.log(`[ATOMIC_POST] 💾 UPDATE: Marking DB row as posted...`);
   
+  // Update DB row to status='posted' with tweet_id
+  // Note: tweet_url column does NOT exist in content_generation_metadata_comprehensive schema
   const { error: updateError } = await supabase
     .from('content_generation_metadata_comprehensive')
     .update({
       status: 'posted',
       tweet_id: postResult.tweetId,
-      tweet_url: postResult.tweetUrl,
       posted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
