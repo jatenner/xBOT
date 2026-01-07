@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 
 export interface SessionLoadResult {
   ok: boolean;
@@ -27,6 +28,18 @@ export class SessionLoader {
   static load(): SessionLoadResult {
     const sessionB64 = process.env.TWITTER_SESSION_B64?.trim();
     const canonicalPath = process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';
+    
+    // Calculate fingerprint (first 12 chars of SHA256)
+    const hasB64 = !!sessionB64;
+    const b64Len = sessionB64?.length || 0;
+    let b64Sha12 = 'none';
+    if (sessionB64) {
+      const sha256 = createHash('sha256').update(sessionB64).digest('hex');
+      b64Sha12 = sha256.substring(0, 12);
+    }
+    
+    // Log session fingerprint on load
+    console.log(`[SESSION] has_b64=${hasB64} b64_len=${b64Len} b64_sha12=${b64Sha12}`);
     
     // Ensure directory exists
     const dir = path.dirname(canonicalPath);
@@ -90,9 +103,13 @@ export class SessionLoader {
       const tempPath = canonicalPath + '.tmp';
       
       try {
-        fs.writeFileSync(tempPath, JSON.stringify(sessionData, null, 2));
+        const sessionJson = JSON.stringify(sessionData, null, 2);
+        fs.writeFileSync(tempPath, sessionJson);
         fs.renameSync(tempPath, canonicalPath);
         
+        // Log session file write
+        const fileBytes = Buffer.byteLength(sessionJson, 'utf8');
+        console.log(`[SESSION] wrote_session_file=${canonicalPath} cookies_count=${cookieCount} bytes=${fileBytes}`);
         console.log(`SESSION_LOADER: wrote valid session to ${canonicalPath} (cookies=${cookieCount})`);
         
         return {
