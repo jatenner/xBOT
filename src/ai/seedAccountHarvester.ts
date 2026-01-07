@@ -490,6 +490,25 @@ async function storeOpportunity(
 ): Promise<void> {
   const supabase = getSupabaseClient();
   
+  // Calculate velocity metrics (per minute)
+  const ageMinutes = Math.max(tweet.age_minutes, 1); // Avoid division by zero
+  const likesPerMin = tweet.like_count / ageMinutes;
+  const repliesPerMin = tweet.reply_count / ageMinutes;
+  const repostsPerMin = tweet.retweet_count / ageMinutes;
+  
+  // 🎯 HIGH-VALUE TIER ASSIGNMENT
+  // Tier_S: Fresh + high engagement (age<=90 AND (likes>=500 OR likes_per_min>=8))
+  // Tier_A: Good engagement (age<=180 AND (likes>=200 OR likes_per_min>=3))
+  // Tier_B: Otherwise
+  let valueTier: 'S' | 'A' | 'B';
+  if (tweet.age_minutes <= 90 && (tweet.like_count >= 500 || likesPerMin >= 8)) {
+    valueTier = 'S';
+  } else if (tweet.age_minutes <= 180 && (tweet.like_count >= 200 || likesPerMin >= 3)) {
+    valueTier = 'A';
+  } else {
+    valueTier = 'B';
+  }
+  
   // Calculate score (views-first)
   const baseMetric = tweet.view_count || tweet.like_count;
   const freshnessMultiplier = tweet.age_minutes < 30 ? 2.0 :
@@ -500,7 +519,10 @@ async function storeOpportunity(
   const velocityMultiplier = Math.min(Math.max(tweet.velocity / 10, 0.8), 2.0);
   const qualityMultiplier = quality.multiplier;
   
-  const score = baseMetric * freshnessMultiplier * velocityMultiplier * qualityMultiplier;
+  // Boost score for high-value tiers
+  const tierMultiplier = valueTier === 'S' ? 2.0 : valueTier === 'A' ? 1.5 : 1.0;
+  
+  const score = baseMetric * freshnessMultiplier * velocityMultiplier * qualityMultiplier * tierMultiplier;
   
   const { error } = await supabase
     .from('reply_opportunities')
@@ -520,8 +542,11 @@ async function storeOpportunity(
       is_root_tweet: true,
       is_reply_tweet: false,
       root_tweet_id: tweet.tweet_id,
-      tier,
-      harvest_tier: tier,
+      tier: valueTier, // Use high-value tier (S/A/B)
+      harvest_tier: tier, // Keep original harvest tier (A+/A/B/C/D)
+      likes_per_min: likesPerMin,
+      replies_per_min: repliesPerMin,
+      reposts_per_min: repostsPerMin,
       target_quality_score: quality.score,
       target_quality_tier: quality.quality_tier,
       target_quality_reasons: quality.reasons,              

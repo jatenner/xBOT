@@ -744,6 +744,39 @@ async function generateRealReplies(): Promise<void> {
   
   console.log(`[REPLY_JOB] 📊 Loaded ${allOpportunities.length} opportunities in batches`);
   
+  // 🎯 HIGH-VALUE TIER FILTERING: Tier_S first, then Tier_A, never Tier_B unless starvation
+  const tierSCandidates = allOpportunities.filter(opp => String(opp.tier || '').toUpperCase() === 'S');
+  const tierACandidates = allOpportunities.filter(opp => String(opp.tier || '').toUpperCase() === 'A');
+  const tierBCandidates = allOpportunities.filter(opp => String(opp.tier || '').toUpperCase() === 'B');
+  
+  console.log(`[REPLY_JOB] 🎯 Tier distribution: S=${tierSCandidates.length} A=${tierACandidates.length} B=${tierBCandidates.length}`);
+  
+  // Select tier-based candidates
+  let selectedOpportunities: any[] = [];
+  let tierUsed = '';
+  let tierReason = '';
+  
+  if (tierSCandidates.length > 0) {
+    selectedOpportunities = tierSCandidates;
+    tierUsed = 'S';
+    tierReason = 'Tier_S available (high-value: fresh + high engagement)';
+  } else if (tierACandidates.length > 0) {
+    selectedOpportunities = tierACandidates;
+    tierUsed = 'A';
+    tierReason = 'Tier_A available (good engagement, no Tier_S)';
+  } else if (tierBCandidates.length > 0) {
+    // Starvation mode: only top 1 Tier_B
+    selectedOpportunities = tierBCandidates.slice(0, 1);
+    tierUsed = 'B';
+    tierReason = 'STARVATION: Only Tier_B available, using top 1 candidate';
+    console.warn(`[REPLY_JOB] ⚠️ STARVATION MODE: No Tier_S/A available, using Tier_B (top 1 only)`);
+  } else {
+    console.log('[REPLY_JOB] ⚠️ No opportunities with valid tiers, waiting for harvester...');
+    return;
+  }
+  
+  console.log(`[REPLY_JOB] ✅ Selected ${selectedOpportunities.length} opportunities from tier=${tierUsed} reason=${tierReason}`);
+  
   const normalizeTierCounts = (opps: Array<{ tier?: string | null }>) =>
     opps.reduce<Record<string, number>>((acc, opp) => {
     const key = String(opp.tier || '').toUpperCase();
@@ -751,8 +784,8 @@ async function generateRealReplies(): Promise<void> {
     acc[key] = (acc[key] || 0) + 1;
     return acc;
     }, {});
-
-  const tierCounts = normalizeTierCounts(allOpportunities);
+  
+  const tierCounts = normalizeTierCounts(selectedOpportunities);
   const countTiers = (counts: Record<string, number>, ...tiers: string[]) =>
     tiers.reduce((sum, tier) => sum + (counts[tier] || 0), 0);
 
@@ -925,8 +958,8 @@ async function generateRealReplies(): Promise<void> {
   console.log(`[CANDIDATE_GATE] SUMMARY: kept=${candidateGateResults.kept} skipped_stale=${candidateGateResults.skipped_stale} skipped_low_velocity=${candidateGateResults.skipped_low_velocity}`);
   console.log(`[CANDIDATE_GATE] ═══════════════════════════════════════════════`);
   
-  // Sort by ranking score (velocity-weighted)
-  const sortedOpportunities = [...gatedOpportunities].sort((a, b) => {
+  // Sort by ranking score (velocity-weighted) - use selectedOpportunities instead of gatedOpportunities
+  const sortedOpportunities = [...selectedOpportunities].sort((a, b) => {
     const aRank = calculateRankingScore(a);
     const bRank = calculateRankingScore(b);
     return bRank.score - aRank.score;
