@@ -2,7 +2,92 @@
 
 **Purpose:** Safely resume autonomous posting with gradual ramp-up and monitoring
 
-**Last Updated:** 2026-01-06
+**Last Updated:** 2026-01-07
+
+---
+
+## 🔄 Refresh X Session State
+
+### When to Refresh
+
+Refresh the X (Twitter) session state when you see:
+- `[HARVESTER_AUTH] ok=false reason=login_wall`
+- Harvester timing out or returning 0 opportunities
+- Redirects to `/account/access` or `/i/flow/login`
+- Cloudflare challenge pages ("Just a moment...")
+
+### Steps to Refresh Locally
+
+1. **Run the refresh script:**
+   ```bash
+   pnpm exec tsx scripts/refresh-x-session.ts
+   ```
+
+2. **Follow the prompts:**
+   - Press any key to open browser
+   - Log in to X.com in the opened browser window
+   - Wait until you see your timeline/home feed
+   - Return to terminal and press Enter
+
+3. **Session will be saved to `./twitter_session.json`**
+
+4. **Base64 encode the session:**
+   ```bash
+   # macOS (copies to clipboard):
+   base64 -i twitter_session.json | pbcopy
+   
+   # Linux/Windows:
+   base64 twitter_session.json > twitter_session.b64
+   cat twitter_session.b64
+   ```
+
+### Steps to Update Railway Variable
+
+1. **Get the Railway command:**
+   ```bash
+   pnpm exec tsx scripts/print-railway-session-update.ts
+   ```
+
+2. **Update Railway environment variable:**
+   ```bash
+   railway variables --set "TWITTER_SESSION_B64=<paste_your_base64_here>"
+   ```
+   
+   ⚠️ **IMPORTANT:** Keep the quotes around the value!
+
+3. **Verify the update:**
+   ```bash
+   railway variables | grep TWITTER_SESSION_B64
+   ```
+
+### How to Verify Session Refresh
+
+1. **Test harvester:**
+   ```bash
+   railway run -- pnpm exec tsx scripts/debug-harvester.ts --minutes 240 --max-seeds 2 --dump-debug
+   ```
+
+2. **Success criteria:**
+   - `[HARVESTER_AUTH] ok=true`
+   - `tweets_found > 0`
+   - `Summary: X/Y opportunities stored` (where Y > 0)
+
+3. **Check opportunities:**
+   ```bash
+   railway run -- pnpm exec tsx scripts/opportunity-top.ts --minutes 180
+   ```
+
+4. **Check tier distribution logs:**
+   ```bash
+   railway logs --tail | grep "Tier distribution"
+   ```
+
+### Troubleshooting
+
+- **Browser doesn't open:** Ensure Playwright Chromium is installed (`pnpm install`)
+- **Login not detected:** Wait longer, ensure you're on home/timeline page
+- **Session still expired:** Try logging out and back in, then refresh again
+- **Railway var not updating:** Check quotes are correct, verify with `railway variables`
 
 ---
 
