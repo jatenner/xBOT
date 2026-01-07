@@ -102,10 +102,48 @@ export async function harvestSeedAccounts(
   total_stored: number;
   results: HarvestResult[];
 }> {
+  // 🗄️ DB-BACKED SEEDS: Query seed_accounts table if accounts not provided
+  let accountsToUse: string[] = [];
+  
+  if (options.accounts && options.accounts.length > 0) {
+    // Use provided accounts (override)
+    accountsToUse = options.accounts;
+  } else {
+    // Query DB for enabled seeds, ordered by priority (lower = higher priority)
+    const supabase = getSupabaseClient();
+    const seedsPerRun = parseInt(process.env.SEEDS_PER_RUN || '10', 10);
+    
+    const { data: dbSeeds, error: dbError } = await supabase
+      .from('seed_accounts')
+      .select('handle')
+      .eq('enabled', true)
+      .order('priority', { ascending: true })
+      .limit(seedsPerRun);
+    
+    if (dbError) {
+      console.warn(`[SEED_HARVEST] ⚠️ Failed to query seed_accounts: ${dbError.message}, falling back to hardcoded list`);
+      accountsToUse = SEED_ACCOUNTS.map(a => a.username);
+    } else if (dbSeeds && dbSeeds.length > 0) {
+      accountsToUse = dbSeeds.map(s => s.handle);
+      
+      // Log seed usage
+      const totalEnabled = await supabase
+        .from('seed_accounts')
+        .select('*', { count: 'exact', head: true })
+        .eq('enabled', true);
+      
+      const sample = accountsToUse.slice(0, 5).join(', ');
+      console.log(`[SEEDS] total_enabled=${totalEnabled.count || 0} using_this_run=${accountsToUse.length} sample=${sample}`);
+    } else {
+      // Fallback to hardcoded if DB is empty
+      console.warn(`[SEED_HARVEST] ⚠️ No enabled seeds in DB, falling back to hardcoded list`);
+      accountsToUse = SEED_ACCOUNTS.map(a => a.username);
+    }
+  }
+  
   const {
-    accounts = SEED_ACCOUNTS.map(a => a.username),
     max_tweets_per_account = 50,
-    max_accounts = 8,
+    max_accounts = seedsPerRun || 10,
   } = options;
   
   const results: HarvestResult[] = [];
@@ -113,10 +151,10 @@ export async function harvestSeedAccounts(
   let total_stored = 0;
   
   console.log(`[SEED_HARVEST] 🌱 Starting seed account harvest`);
-  console.log(`[SEED_HARVEST]   Accounts: ${accounts.slice(0, max_accounts).length}`);
+  console.log(`[SEED_HARVEST]   Accounts: ${accountsToUse.slice(0, max_accounts).length}`);
   console.log(`[SEED_HARVEST]   Max tweets per account: ${max_tweets_per_account}`);
   
-  const accountsToProcess = accounts.slice(0, max_accounts);
+  const accountsToProcess = accountsToUse.slice(0, max_accounts);
   
   for (const username of accountsToProcess) {
     try {
