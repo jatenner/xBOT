@@ -585,20 +585,26 @@ async function generateRealReplies(): Promise<void> {
     console.warn(`[REPLY_JOB] ⚠️ Opportunity pool below dynamic threshold (${poolCount} < ${HARVESTER_TRIGGER_THRESHOLD})`);
 
     if (sinceLastTrigger >= HARVESTER_COOLDOWN_MS || poolCount < HARVESTER_CRITICAL_THRESHOLD) {
-      console.log(`[REPLY_JOB] 🚨 Triggering harvesters (cooldown ${Math.max(0, cooldownRemaining)}ms remaining, critical=${poolCount < HARVESTER_CRITICAL_THRESHOLD})`);
-      lastHarvesterTriggerTs = now;
-      try {
-        const { tweetBasedHarvester } = await import('./tweetBasedHarvester');
-        console.log('[REPLY_JOB] 🌐 Running tweet-based harvester...');
-        await tweetBasedHarvester();
+      // 🚫 HARVESTING_ENABLED CHECK: Skip harvesting if disabled (Railway split architecture)
+      const harvestingEnabled = process.env.HARVESTING_ENABLED !== 'false';
+      if (!harvestingEnabled) {
+        console.log(`[REPLY_JOB] [HARVEST] disabled_by_env HARVESTING_ENABLED=false (harvesting runs locally, not on Railway)`);
+        console.log(`[REPLY_JOB] ⚠️ Pool below threshold but harvesting disabled - proceeding with available opportunities`);
+      } else {
+        console.log(`[REPLY_JOB] 🚨 Triggering harvesters (cooldown ${Math.max(0, cooldownRemaining)}ms remaining, critical=${poolCount < HARVESTER_CRITICAL_THRESHOLD})`);
+        lastHarvesterTriggerTs = now;
+        try {
+          const { tweetBasedHarvester } = await import('./tweetBasedHarvester');
+          console.log('[REPLY_JOB] 🌐 Running tweet-based harvester...');
+          await tweetBasedHarvester();
 
-        const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
-        console.log('[REPLY_JOB] 👥 Running mega-viral harvester...');
-        await replyOpportunityHarvester();
+          const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
+          console.log('[REPLY_JOB] 👥 Running mega-viral harvester...');
+          await replyOpportunityHarvester();
 
-        console.log('[REPLY_JOB] ✅ Harvester preflight complete');
+          console.log('[REPLY_JOB] ✅ Harvester preflight complete');
 
-        // 🔄 WAIT FOR HARVEST TO POPULATE POOL (fixes race condition)
+          // 🔄 WAIT FOR HARVEST TO POPULATE POOL (fixes race condition)
         const MAX_WAIT_MS = 90000; // 90 seconds max wait
         const POLL_INTERVAL_MS = 10000; // Check every 10 seconds
         const startPoolCount = poolCount;

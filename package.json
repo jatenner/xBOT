@@ -14,7 +14,8 @@
     "verify-truth-gap": "tsx scripts/verify-truth-gap.ts",
     "verify-ready": "tsx scripts/railway-ready-check.ts",
     "verify-ops": "tsx scripts/verify-ops.ts",
-    "verify-replies": "tsx scripts/verify-replies.ts"
+    "verify-replies": "tsx scripts/verify-replies.ts",
+    "harvest:once": "tsx scripts/run-harvester-once.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.4",

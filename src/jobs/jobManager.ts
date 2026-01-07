@@ -562,6 +562,13 @@ export class JobManager {
             delete process.env.HARVESTER_DEGRADED_MODE;
           }
           
+          // 🚫 HARVESTING_ENABLED CHECK: Skip harvesting if disabled (Railway split architecture)
+          const harvestingEnabled = process.env.HARVESTING_ENABLED !== 'false';
+          if (!harvestingEnabled) {
+            console.log('[JOB_MANAGER] [HARVEST] disabled_by_env HARVESTING_ENABLED=false (harvesting runs locally, not on Railway)');
+            return;
+          }
+
           console.log('[JOB_MANAGER] 🔥 HARVESTER: Job triggered, attempting to run...');
           try {
             await this.safeExecute('mega_viral_harvester', async () => {
