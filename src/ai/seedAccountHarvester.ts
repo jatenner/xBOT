@@ -293,12 +293,18 @@ async function extractTweetsFromProfile(page: Page, max_tweets: number): Promise
           let inReplyToTweetId: string | undefined;
           let conversationId: string | undefined;
           
-          if (replyingTo) {
+          if (isReply) {
             // Try to get parent tweet ID from "Replying to" link
-            const replyLink = replyingTo.querySelector('a[href*="/status/"]');
-            if (replyLink) {
-              const parentUrl = (replyLink as HTMLAnchorElement).href;
-              inReplyToTweetId = parentUrl.match(/\/status\/(\d+)/)?.[1];
+            const replyLink = card.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
+            if (replyLink && replyLink.href.includes('/status/')) {
+              // Check if this is a "Replying to" link (usually appears before the tweet content)
+              const replyToSection = card.querySelector('[data-testid="reply"]')?.closest('div');
+              if (replyToSection) {
+                const parentLink = replyToSection.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
+                if (parentLink) {
+                  inReplyToTweetId = parentLink.href.match(/\/status\/(\d+)/)?.[1];
+                }
+              }
             }
           }
           
