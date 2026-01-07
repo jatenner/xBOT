@@ -777,6 +777,10 @@ async function generateRealReplies(): Promise<void> {
   
   console.log(`[REPLY_JOB] ✅ Selected ${selectedOpportunities.length} opportunities from tier=${tierUsed} reason=${tierReason}`);
   
+  // Replace allOpportunities with selectedOpportunities for downstream processing
+  // This ensures we only process high-value tiers (S/A, or B in starvation mode)
+  const processedOpportunities = selectedOpportunities;
+  
   const normalizeTierCounts = (opps: Array<{ tier?: string | null }>) =>
     opps.reduce<Record<string, number>>((acc, opp) => {
     const key = String(opp.tier || '').toUpperCase();
@@ -785,7 +789,7 @@ async function generateRealReplies(): Promise<void> {
     return acc;
     }, {});
   
-  const tierCounts = normalizeTierCounts(selectedOpportunities);
+  const tierCounts = normalizeTierCounts(processedOpportunities);
   const countTiers = (counts: Record<string, number>, ...tiers: string[]) =>
     tiers.reduce((sum, tier) => sum + (counts[tier] || 0), 0);
 
@@ -794,7 +798,7 @@ async function generateRealReplies(): Promise<void> {
   const trendingCount = countTiers(tierCounts, 'TRENDING+', 'TRENDING', 'GOOD');
   const freshCount = countTiers(tierCounts, 'FRESH+', 'FRESH', 'GOLDEN', 'ACCEPTABLE');
 
-  console.log(`[REPLY_JOB] 📊 Opportunity pool: ${allOpportunities.length} total`);
+  console.log(`[REPLY_JOB] 📊 Opportunity pool: ${processedOpportunities.length} total (tier=${tierUsed})`);
   if (megaCount + viralCount + trendingCount + freshCount > 0) {
     console.log(`[REPLY_JOB]   🏆 MEGA (50K+ likes): ${megaCount}`);
     console.log(`[REPLY_JOB]   🚀 VIRAL (10K+ likes): ${viralCount}`);
@@ -831,7 +835,7 @@ async function generateRealReplies(): Promise<void> {
 
   // 🎯 Phase 3: Enhanced sorting with priority_score
   // First, fetch priority scores for all target usernames
-  const uniqueUsernames = [...new Set(allOpportunities.map(opp => String(opp.target_username || '').toLowerCase().trim()))];
+  const uniqueUsernames = [...new Set(processedOpportunities.map(opp => String(opp.target_username || '').toLowerCase().trim()))];
   const priorityMap = new Map<string, number>();
   
   if (uniqueUsernames.length > 0) {
@@ -917,7 +921,7 @@ async function generateRealReplies(): Promise<void> {
     kept: 0, skipped_stale: 0, skipped_low_velocity: 0
   };
   
-  const gatedOpportunities = allOpportunities.filter(opp => {
+  const gatedOpportunities = processedOpportunities.filter(opp => {
     const tweetId = opp.target_tweet_id || opp.tweet_id || 'unknown';
     const likes = Number(opp.like_count) || 0;
     const ageMin = Number(opp.posted_minutes_ago) || 9999;
