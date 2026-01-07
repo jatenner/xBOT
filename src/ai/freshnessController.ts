@@ -115,14 +115,19 @@ export function checkFreshness(
   // min_likes = 25 (age<=30), 75 (age<=90), 150 (age<=180)
   // Allow store if likes>=min_likes OR likes_per_min>=2
   let minLikes: number;
+  let ruleName: string;
   if (ageMinutes <= 30) {
     minLikes = 25;
+    ruleName = 'age<=30';
   } else if (ageMinutes <= 90) {
     minLikes = 75;
+    ruleName = 'age<=90';
   } else if (ageMinutes <= 180) {
     minLikes = 150;
+    ruleName = 'age<=180';
   } else {
     minLikes = 2500; // Fallback to original threshold for older tweets
+    ruleName = 'age>180';
   }
   
   const likesPerMin = ageMinutes > 0 ? likeCount / ageMinutes : 0;
@@ -130,7 +135,7 @@ export function checkFreshness(
   
   // Check dynamic min_likes OR velocity override
   if (likeCount < minLikes && !velocityOverride) {
-    return { pass: false, reason: `below_min_likes (${likeCount}<${minLikes}, velocity=${likesPerMin.toFixed(2)}<2)` };
+    return { pass: false, reason: `below_min_likes (${likeCount}<${minLikes}, velocity=${likesPerMin.toFixed(2)}<2, rule=${ruleName})` };
   }
   
   // Determine tier (using original thresholds for tier classification)

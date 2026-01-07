@@ -16,6 +16,7 @@ import { Page } from 'playwright';
 import { getSupabaseClient } from '../db/index';
 import { scoreTargetQuality } from './targetQualityFilter';
 import { checkFreshness } from './freshnessController';
+import { checkWhoami } from '../utils/whoamiAuth';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SEED ACCOUNTS (HIGH-VISIBILITY HEALTH/FITNESS/SCIENCE)
@@ -60,10 +61,10 @@ interface ScrapedTweet {
   author_name: string;
   author_followers?: number;
   tweet_content: string;
-  like_count: number;
-  reply_count: number;
-  retweet_count: number;
-  view_count?: number;
+  like_count: number | null; // Can be null if metrics unknown
+  reply_count: number | null;
+  retweet_count: number | null;
+  view_count?: number | null;
   tweet_posted_at: Date;
   age_minutes: number;
   velocity: number;
@@ -383,10 +384,10 @@ async function harvestAccount(
       }
       
       // Store
-      await storeOpportunity(tweet, quality, tier);
+      await storeOpportunity(tweet, quality, tier, 'normal', computedLikesPerMin ?? undefined, computedRepliesPerMin ?? undefined, computedRepostsPerMin ?? undefined, opportunityScore ?? undefined, 'known');
       result.stored_count++;
       
-      console.log(`[SEED_HARVEST] ✅ Stored: ${tweet.tweet_id} tier=${tier} quality=${quality.score}`);
+      console.log(`[SEED_HARVEST] ✅ Stored: ${tweet.tweet_id} tier=${tier} quality=${quality.score} likes=${tweet.like_count ?? 'null'}`);
     } catch (storeError: any) {
       console.error(`[SEED_HARVEST] ❌ Store failed for ${tweet.tweet_id}:`, storeError.message);
     }
@@ -516,19 +517,51 @@ async function extractTweetsFromProfile(page: Page, max_tweets: number): Promise
           // Check if retweet
           const isRetweet = Boolean(card.querySelector('[data-testid="socialContext"]')?.textContent?.includes('reposted'));
           
-          // Get metrics
-          const metrics = card.querySelectorAll('[role="group"] [data-testid*="count"]');
-          let replyCount = 0, retweetCount = 0, likeCount = 0, viewCount: number | undefined;
+          // Get metrics - try aria-label first (more reliable)
+          let replyCount: number | null = null, retweetCount: number | null = null, likeCount: number | null = null, viewCount: number | null = null;
           
-          metrics.forEach(metric => {
-            const text = metric.textContent || '';
-            const value = parseInt(text.replace(/[^0-9]/g, '')) || 0;
-            const testId = metric.getAttribute('data-testid') || '';
-            
-            if (testId.includes('reply')) replyCount = value;
-            if (testId.includes('retweet')) retweetCount = value;
-            if (testId.includes('like')) likeCount = value;
-          });
+          // Try aria-label approach first (more reliable for engagement counts)
+          const replyButton = card.querySelector('[data-testid="reply"]');
+          const retweetButton = card.querySelector('[data-testid="retweet"]');
+          const likeButton = card.querySelector('[data-testid="like"]');
+          
+          if (replyButton) {
+            const ariaLabel = replyButton.getAttribute('aria-label') || '';
+            const replyMatch = ariaLabel.match(/([\d,]+)/);
+            if (replyMatch) {
+              replyCount = parseInt(replyMatch[1].replace(/,/g, '')) || null;
+            }
+          }
+          
+          if (retweetButton) {
+            const ariaLabel = retweetButton.getAttribute('aria-label') || '';
+            const retweetMatch = ariaLabel.match(/([\d,]+)/);
+            if (retweetMatch) {
+              retweetCount = parseInt(retweetMatch[1].replace(/,/g, '')) || null;
+            }
+          }
+          
+          if (likeButton) {
+            const ariaLabel = likeButton.getAttribute('aria-label') || '';
+            const likeMatch = ariaLabel.match(/([\d,]+)/);
+            if (likeMatch) {
+              likeCount = parseInt(likeMatch[1].replace(/,/g, '')) || null;
+            }
+          }
+          
+          // Fallback to text content if aria-label didn't work
+          if (replyCount === null || retweetCount === null || likeCount === null) {
+            const metrics = card.querySelectorAll('[role="group"] [data-testid*="count"]');
+            metrics.forEach(metric => {
+              const text = metric.textContent || '';
+              const value = parseInt(text.replace(/[^0-9]/g, '')) || null;
+              const testId = metric.getAttribute('data-testid') || '';
+              
+              if (testId.includes('reply') && replyCount === null) replyCount = value;
+              if (testId.includes('retweet') && retweetCount === null) retweetCount = value;
+              if (testId.includes('like') && likeCount === null) likeCount = value;
+            });
+          }
           
           // Try to get view count (may not be available)
           const viewElement = Array.from(card.querySelectorAll('[role="group"] a')).find(
@@ -633,24 +666,35 @@ async function storeOpportunity(
   tweet: ScrapedTweet,
   quality: any,
   tier: string,
-  storedReason?: string
+  storedReason?: string,
+  likesPerMin?: number,
+  repliesPerMin?: number,
+  repostsPerMin?: number,
+  opportunityScore?: number,
+  metricsStatus?: 'known' | 'unknown'
 ): Promise<void> {
   const supabase = getSupabaseClient();
   
-  // Calculate velocity metrics (per minute)
+  // Calculate velocity metrics (per minute) - handle null metrics
   const ageMinutes = Math.max(tweet.age_minutes, 1); // Avoid division by zero
-  const likesPerMin = tweet.like_count / ageMinutes;
-  const repliesPerMin = tweet.reply_count / ageMinutes;
-  const repostsPerMin = tweet.retweet_count / ageMinutes;
+  const computedLikesPerMin = likesPerMin ?? (tweet.like_count !== null && tweet.like_count !== undefined ? tweet.like_count / ageMinutes : null);
+  const computedRepliesPerMin = repliesPerMin ?? (tweet.reply_count !== null && tweet.reply_count !== undefined ? tweet.reply_count / ageMinutes : null);
+  const computedRepostsPerMin = repostsPerMin ?? (tweet.retweet_count !== null && tweet.retweet_count !== undefined ? tweet.retweet_count / ageMinutes : null);
+  
+  // Determine metrics status
+  const finalMetricsStatus = metricsStatus || (tweet.like_count === null || tweet.like_count === undefined ? 'unknown' : 'known');
   
   // 🎯 HIGH-VALUE TIER ASSIGNMENT
   // Tier_S: Fresh + high engagement (age<=90 AND (likes>=500 OR likes_per_min>=8))
   // Tier_A: Good engagement (age<=180 AND (likes>=200 OR likes_per_min>=3))
-  // Tier_B: Otherwise
+  // Tier_B: Otherwise (or unknown metrics)
   let valueTier: 'S' | 'A' | 'B';
-  if (tweet.age_minutes <= 90 && (tweet.like_count >= 500 || likesPerMin >= 8)) {
+  if (finalMetricsStatus === 'unknown' || tweet.like_count === null || tweet.like_count === undefined) {
+    // Unknown metrics -> Tier B
+    valueTier = 'B';
+  } else if (tweet.age_minutes <= 90 && (tweet.like_count >= 500 || (computedLikesPerMin !== null && computedLikesPerMin >= 8))) {
     valueTier = 'S';
-  } else if (tweet.age_minutes <= 180 && (tweet.like_count >= 200 || likesPerMin >= 3)) {
+  } else if (tweet.age_minutes <= 180 && (tweet.like_count >= 200 || (computedLikesPerMin !== null && computedLikesPerMin >= 3))) {
     valueTier = 'A';
   } else {
     valueTier = 'B';
