@@ -356,6 +356,9 @@ export function scoreTargetQuality(
   // Clamp score
   score = Math.max(0, Math.min(100, score));
   
+  // Quality threshold (configurable via env, default 55)
+  const qualityThreshold = Number(process.env.TARGET_QUALITY_THRESHOLD) || 55;
+  
   // Determine tier
   let quality_tier: 'elite' | 'good' | 'blocked';
   let multiplier: number;
@@ -363,7 +366,7 @@ export function scoreTargetQuality(
   if (score >= 85) {
     quality_tier = 'elite';
     multiplier = 1.5;
-  } else if (score >= 70) {
+  } else if (score >= qualityThreshold) {
     quality_tier = 'good';
     multiplier = 1.2;
   } else {
@@ -371,11 +374,17 @@ export function scoreTargetQuality(
     multiplier = 0;
   }
   
+  // Log threshold at runtime (first call only)
+  if (!(globalThis as any).__quality_threshold_logged) {
+    console.log(`[QUALITY_FILTER] 🎯 Quality threshold: ${qualityThreshold} (env: ${process.env.TARGET_QUALITY_THRESHOLD || 'default'})`);
+    (globalThis as any).__quality_threshold_logged = true;
+  }
+  
   return {
     score,
-    pass: score >= 70,
+    pass: score >= qualityThreshold,
     reasons,
-    block_reason: score < 70 ? `quality_score_${score}_below_threshold` : undefined,
+    block_reason: score < qualityThreshold ? `quality_score_${score}_below_threshold` : undefined,
     quality_tier,
     multiplier,
   };

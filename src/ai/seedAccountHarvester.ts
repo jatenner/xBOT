@@ -208,7 +208,9 @@ async function harvestAccount(
   
   console.log(`[SEED_HARVEST] 🎯 @${username}: ${rootTweets.length} root tweets`);
   
-  // Store opportunities
+  // Store opportunities with quality/freshness filtering
+  const scoredTweets: Array<{ tweet: ScrapedTweet; quality: any; freshness: any; tier: string }> = [];
+  
   for (const tweet of rootTweets) {
     try {
       // Quality filter
@@ -220,23 +222,27 @@ async function harvestAccount(
         tweet.like_count
       );
       
+      // Freshness filter
+      const freshness = checkFreshness(tweet.like_count, tweet.age_minutes, tweet.velocity);
+      
+      // Determine tier
+      const tier = determineTier(tweet.like_count, tweet.view_count);
+      
+      // Store scored tweet for potential fallback
+      scoredTweets.push({ tweet, quality, freshness, tier });
+      
+      // Apply filters
       if (!quality.pass) {
         result.blocked_quality_count++;
         console.log(`[SEED_HARVEST] 🚫 Quality blocked: ${tweet.tweet_id} (score=${quality.score})`);
         continue;
       }
       
-      // Freshness filter
-      const freshness = checkFreshness(tweet.like_count, tweet.age_minutes, tweet.velocity);
-      
       if (!freshness.pass) {
         result.blocked_stale_count++;
         console.log(`[SEED_HARVEST] ⏱️ Stale: ${tweet.tweet_id} (${freshness.reason})`);
         continue;
       }
-      
-      // Determine tier
-      const tier = determineTier(tweet.like_count, tweet.view_count);
       
       // Store
       await storeOpportunity(tweet, quality, tier);
@@ -245,6 +251,37 @@ async function harvestAccount(
       console.log(`[SEED_HARVEST] ✅ Stored: ${tweet.tweet_id} tier=${tier} quality=${quality.score}`);
     } catch (storeError: any) {
       console.error(`[SEED_HARVEST] ❌ Store failed for ${tweet.tweet_id}:`, storeError.message);
+    }
+  }
+  
+  // 🚨 STARVATION PROTECTION: If we stored 0 opportunities, store top 2 highest-scoring tweets
+  if (result.stored_count === 0 && scoredTweets.length > 0) {
+    console.log(`[SEED_HARVEST] 🚨 STARVATION PROTECTION: Stored 0 opportunities, storing top 2 fallback candidates`);
+    
+    // Sort by quality score (highest first), then by freshness
+    const fallbackCandidates = scoredTweets
+      .filter(item => {
+        // Must pass freshness and min_likes checks (even if quality failed)
+        return item.freshness.pass;
+      })
+      .sort((a, b) => {
+        // Sort by quality score descending
+        if (b.quality.score !== a.quality.score) {
+          return b.quality.score - a.quality.score;
+        }
+        // Then by age (newer first)
+        return a.tweet.age_minutes - b.tweet.age_minutes;
+      })
+      .slice(0, 2);
+    
+    for (const item of fallbackCandidates) {
+      try {
+        await storeOpportunity(item.tweet, item.quality, item.tier, 'fallback_topN');
+        result.stored_count++;
+        console.log(`[SEED_HARVEST] ✅ Fallback stored: ${item.tweet.tweet_id} tier=${item.tier} quality=${item.quality.score}`);
+      } catch (storeError: any) {
+        console.error(`[SEED_HARVEST] ❌ Fallback store failed for ${item.tweet.tweet_id}:`, storeError.message);
+      }
     }
   }
   
@@ -490,6 +527,7 @@ async function storeOpportunity(
       harvest_source_detail: tweet.author_handle,
       target_in_reply_to_tweet_id: tweet.in_reply_to_tweet_id,
       target_conversation_id: tweet.conversation_id,
+      stored_reason: storedReason || 'normal',
     }, {
       onConflict: 'target_tweet_id',
     });
