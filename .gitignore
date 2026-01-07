@@ -90,6 +90,7 @@ data/twitter_session.json
 *session*.txt
 session_*.txt
 twitter_session*.json
+twitter_session.b64
 cookies_raw.txt
 cookies_export.json
 

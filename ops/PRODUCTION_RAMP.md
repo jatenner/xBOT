@@ -27,16 +27,33 @@ This prevents Railway from launching Playwright for harvesting. Logs will show:
 
 ### Local Harvester Setup
 
+**IMPORTANT: Sync Railway Environment Variables First**
+
+Before running local harvester, sync your local `.env` from Railway (source of truth):
+
+```bash
+# Pull Railway production env vars to local .env
+pnpm env:pull
+
+# Verify authentication with Railway session
+pnpm whoami:live
+
+# Run harvester with Railway env vars
+pnpm harvest:live
+```
+
 **Run harvester locally:**
 
 ```bash
-# One-time harvest
+# One-time harvest (uses local .env - ensure it's synced first!)
 pnpm harvest:once
 
 # Or with PM2 for continuous harvesting (every 2 hours)
 pm2 start pnpm --name xbot-harvester -- harvest:once
 pm2 save
 ```
+
+**Note:** Always run `pnpm whoami:live` before `pnpm harvest:live` to ensure your local `.env` matches Railway's `TWITTER_SESSION_B64`.
 
 **Verify harvesting:**
 1. Check opportunities in DB:

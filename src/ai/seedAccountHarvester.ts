@@ -234,6 +234,12 @@ async function harvestAccount(
   const profileUrl = `https://x.com/${username}`;
   console.log(`[SEED_HARVEST] 📍 Navigating to ${profileUrl}`);
   
+  let finalUrl = '';
+  let pageTitle = 'unknown';
+  let tweetsFound = 0;
+  let authOk = false;
+  let authReason = 'ok';
+  
   try {
     // Increased timeout for navigation
     await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -250,23 +256,32 @@ async function harvestAccount(
     // ═══════════════════════════════════════════════════════════════════════════
     // AUTH DIAGNOSTIC: Check authentication status using WHOAMI
     // ═══════════════════════════════════════════════════════════════════════════
-    const finalUrl = page.url();
-    const pageTitle = await page.title().catch(() => 'unknown');
+    finalUrl = page.url();
+    pageTitle = await page.title().catch(() => 'unknown');
+    
+    // Check for Cloudflare/account access wall
+    const isCloudflareWall = finalUrl.includes('/account/access') || pageTitle.toLowerCase().includes('just a moment');
+    if (isCloudflareWall) {
+      authReason = 'cloudflare_or_access_wall';
+      authOk = false;
+      console.log(`[SEED_RESULT] seed=${username} ok=false reason=${authReason} final_url=${finalUrl} title=${pageTitle} tweets_found=0`);
+      result.error = authReason;
+      return result; // Return early with structured failure
+    }
     
     // Extract tweets first to check if any found
     const tweets = await extractTweetsFromProfile(page, max_tweets);
     result.scraped_count = tweets.length;
-    const tweetsFound = tweets.length;
+    tweetsFound = tweets.length;
     
     // Check WHOAMI (more reliable auth check)
     const whoami = await checkWhoami(page);
     console.log(`[WHOAMI] logged_in=${whoami.logged_in} handle=${whoami.handle || 'unknown'} url=${whoami.url} title=${whoami.title} reason=${whoami.reason}`);
     
     // Determine auth status: If tweets found AND whoami says logged in => ok
-    const authOk = tweetsFound > 0 && whoami.logged_in;
+    authOk = tweetsFound > 0 && whoami.logged_in;
     
     // Determine reason if auth failed
-    let authReason = 'ok';
     if (!authOk) {
       if (!whoami.logged_in) {
         authReason = whoami.reason || 'not_logged_in';
@@ -280,13 +295,12 @@ async function harvestAccount(
     // Log auth diagnostic
     console.log(`[HARVESTER_AUTH] ok=${authOk} url=${finalUrl} tweets_found=${tweetsFound} reason=${authReason} whoami_logged_in=${whoami.logged_in}`);
     
-    // If auth failed, capture debug info
+    // If auth failed, capture debug info (but don't throw)
     if (!authOk) {
       console.error(`[HARVESTER_AUTH] ❌ Auth check failed for @${username}`);
       console.error(`[HARVESTER_AUTH]   Final URL: ${finalUrl}`);
       console.error(`[HARVESTER_AUTH]   Page title: ${pageTitle}`);
-      console.error(`[HARVESTER_AUTH]   Has login indicators: ${hasLoginIndicators}`);
-      console.error(`[HARVESTER_AUTH]   Has timeline container: ${hasTimelineContainer}`);
+      console.error(`[HARVESTER_AUTH]   WHOAMI logged_in: ${whoami.logged_in}`);
       console.error(`[HARVESTER_AUTH]   Tweets found: ${tweetsFound}`);
       
       try {
@@ -299,39 +313,50 @@ async function harvestAccount(
         
         // Dump HTML
         const htmlPath = '/tmp/harvester_auth_debug.html';
-        fs.writeFileSync(htmlPath, pageContent);
-        const htmlSize = fs.statSync(htmlPath).size;
-        console.log(`[HARVESTER_AUTH] 📄 HTML dumped: ${htmlPath} (${htmlSize} bytes)`);
-        console.log(`[HARVESTER_AUTH] 📄 First 300 chars of body: ${bodyText.substring(0, 300)}`);
+        const pageContent = await page.content().catch(() => '');
+        const bodyText = await page.evaluate(() => document.body?.textContent || '').catch(() => '');
+        if (pageContent) {
+          fs.writeFileSync(htmlPath, pageContent);
+          const htmlSize = fs.statSync(htmlPath).size;
+          console.log(`[HARVESTER_AUTH] 📄 HTML dumped: ${htmlPath} (${htmlSize} bytes)`);
+          if (bodyText) {
+            console.log(`[HARVESTER_AUTH] 📄 First 300 chars of body: ${bodyText.substring(0, 300)}`);
+          }
+        }
       } catch (debugError: any) {
         console.error(`[HARVESTER_AUTH] ⚠️ Failed to capture debug info: ${debugError.message}`);
       }
+      
+      // Return structured failure (don't throw)
+      console.log(`[SEED_RESULT] seed=${username} ok=false reason=${authReason} final_url=${finalUrl} title=${pageTitle} tweets_found=${tweetsFound}`);
+      result.error = authReason;
+      return result;
     }
     
     console.log(`[SEED_HARVEST] 📊 @${username}: Extracted ${tweets.length} tweets`);
     
     // Filter ROOT tweets only with TRUE verification
-  // A tweet is a root tweet ONLY if:
-  // 1. Not a reply (no in_reply_to_tweet_id)
-  // 2. Not a retweet
-  // 3. conversation_id == tweet_id (best effort)
-  const rootTweets = tweets.filter(t => {
-    // Hard rejection if in_reply_to is present
-    if (t.in_reply_to_tweet_id) {
-      console.log(`[SEED_HARVEST] 🚫 REJECTED ${t.tweet_id}: is a reply (in_reply_to=${t.in_reply_to_tweet_id})`);
-      return false;
-    }
-    // Reject retweets
-    if (t.is_retweet) {
-      return false;
-    }
-    // Reject if conversation_id != tweet_id (indicates thread participant)
-    if (t.conversation_id && t.conversation_id !== t.tweet_id && t.conversation_id !== 'unknown') {
-      console.log(`[SEED_HARVEST] 🚫 REJECTED ${t.tweet_id}: conversation_id mismatch`);
-      return false;
-    }
-    return t.is_root_tweet && !t.is_reply_tweet;
-  });
+    // A tweet is a root tweet ONLY if:
+    // 1. Not a reply (no in_reply_to_tweet_id)
+    // 2. Not a retweet
+    // 3. conversation_id == tweet_id (best effort)
+    const rootTweets = tweets.filter(t => {
+      // Hard rejection if in_reply_to is present
+      if (t.in_reply_to_tweet_id) {
+        console.log(`[SEED_HARVEST] 🚫 REJECTED ${t.tweet_id}: is a reply (in_reply_to=${t.in_reply_to_tweet_id})`);
+        return false;
+      }
+      // Reject retweets
+      if (t.is_retweet) {
+        return false;
+      }
+      // Reject if conversation_id != tweet_id (indicates thread participant)
+      if (t.conversation_id && t.conversation_id !== t.tweet_id && t.conversation_id !== 'unknown') {
+        console.log(`[SEED_HARVEST] 🚫 REJECTED ${t.tweet_id}: conversation_id mismatch`);
+        return false;
+      }
+      return t.is_root_tweet && !t.is_reply_tweet;
+    });
   result.root_only_count = rootTweets.length;
   result.blocked_reply_count = tweets.length - rootTweets.length;
   
@@ -429,11 +454,19 @@ async function harvestAccount(
     }
   }
   
-    result.blocked_reply_count = tweets.length - rootTweets.length;
-    
-    return result;
+  // Log successful seed result
+  console.log(`[SEED_RESULT] seed=${username} ok=true reason=ok final_url=${finalUrl} title=${pageTitle} tweets_found=${tweetsFound}`);
+  
+  return result;
   } catch (navError: any) {
-    throw new Error(`Navigation failed: ${navError.message}`);
+    // Don't throw - return structured failure
+    const errorReason = navError.message?.includes('timeout') ? 'navigation_timeout' : 
+                       navError.message?.includes('net::ERR') ? 'network_error' :
+                       'navigation_failed';
+    console.error(`[SEED_HARVEST] ❌ Navigation failed for @${username}: ${navError.message}`);
+    console.log(`[SEED_RESULT] seed=${username} ok=false reason=${errorReason} final_url=${finalUrl || 'unknown'} title=${pageTitle} tweets_found=0`);
+    result.error = errorReason;
+    return result;
   }
 }
 

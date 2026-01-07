@@ -14,11 +14,11 @@ async function main() {
   console.log('🔐 WHOAMI Check Script');
   console.log('═══════════════════════════════════════════════════════════\n');
 
-  // Check environment variable
+  // Check environment variable (without printing secrets)
   const hasB64 = !!process.env.TWITTER_SESSION_B64;
   const b64Len = process.env.TWITTER_SESSION_B64?.length || 0;
   console.log(`[ENV] TWITTER_SESSION_B64 present: ${hasB64}`);
-  console.log(`[ENV] TWITTER_SESSION_B64 length: ${b64Len}`);
+  console.log(`[ENV] TWITTER_SESSION_B64 length: ${b64Len} characters`);
 
   // Load session state (same as harvester)
   const sessionResult = await loadTwitterStorageState();
