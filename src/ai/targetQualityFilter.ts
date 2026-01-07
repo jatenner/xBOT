@@ -356,8 +356,8 @@ export function scoreTargetQuality(
   // Clamp score
   score = Math.max(0, Math.min(100, score));
   
-  // Quality threshold (configurable via env, default 55)
-  const qualityThreshold = Number(process.env.TARGET_QUALITY_THRESHOLD) || 55;
+  // Quality threshold (configurable via env, default 50)
+  const qualityThreshold = Number(process.env.TARGET_QUALITY_THRESHOLD) || 50;
   
   // Determine tier
   let quality_tier: 'elite' | 'good' | 'blocked';
