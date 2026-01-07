@@ -195,17 +195,91 @@ async function harvestAccount(
   console.log(`[SEED_HARVEST] 📍 Navigating to ${profileUrl}`);
   
   try {
-    await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // Increased timeout for navigation
+    await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    
+    // Wait for timeline container with increased timeout
+    try {
+      await page.waitForSelector('[data-testid="primaryColumn"], main, section', { timeout: 30000 });
+    } catch (waitError) {
+      console.warn(`[SEED_HARVEST] ⚠️ Timeline container not found after 30s, continuing anyway`);
+    }
+    
     await page.waitForTimeout(3000); // Let content load
-  } catch (navError: any) {
-    throw new Error(`Navigation failed: ${navError.message}`);
-  }
-  
-  // Extract tweets from DOM
-  const tweets = await extractTweetsFromProfile(page, max_tweets);
-  result.scraped_count = tweets.length;
-  
-  console.log(`[SEED_HARVEST] 📊 @${username}: Extracted ${tweets.length} tweets`);
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // AUTH DIAGNOSTIC: Check authentication status
+    // ═══════════════════════════════════════════════════════════════════════════
+    const finalUrl = page.url();
+    const pageTitle = await page.title().catch(() => 'unknown');
+    
+    // Check for login indicators
+    const pageContent = await page.content().catch(() => '');
+    const bodyText = await page.evaluate(() => document.body?.textContent || '').catch(() => '');
+    
+    const hasLoginIndicators = 
+      /Log in|Sign in|Create account|Enter your phone|Verify/i.test(bodyText) ||
+      finalUrl.includes('/i/flow/login') ||
+      finalUrl.includes('/login') ||
+      finalUrl.includes('/account/access');
+    
+    // Check for timeline container
+    const hasTimelineContainer = await page.evaluate(() => {
+      return !!(
+        document.querySelector('[data-testid="primaryColumn"]') ||
+        document.querySelector('main') ||
+        document.querySelector('section')
+      );
+    }).catch(() => false);
+    
+    // Extract tweets to check if any found
+    const tweets = await extractTweetsFromProfile(page, max_tweets);
+    result.scraped_count = tweets.length;
+    
+    const tweetsFound = tweets.length;
+    const authOk = !hasLoginIndicators && hasTimelineContainer && tweetsFound > 0;
+    
+    // Determine reason if auth failed
+    let authReason = 'ok';
+    if (!authOk) {
+      if (hasLoginIndicators) authReason = 'login_wall';
+      else if (!hasTimelineContainer) authReason = 'no_dom';
+      else if (tweetsFound === 0) authReason = 'no_tweets';
+      else authReason = 'unknown';
+    }
+    
+    // Log auth diagnostic
+    console.log(`[HARVESTER_AUTH] ok=${authOk} url=${finalUrl} tweets_found=${tweetsFound} reason=${authReason}`);
+    
+    // If auth failed, capture debug info
+    if (!authOk) {
+      console.error(`[HARVESTER_AUTH] ❌ Auth check failed for @${username}`);
+      console.error(`[HARVESTER_AUTH]   Final URL: ${finalUrl}`);
+      console.error(`[HARVESTER_AUTH]   Page title: ${pageTitle}`);
+      console.error(`[HARVESTER_AUTH]   Has login indicators: ${hasLoginIndicators}`);
+      console.error(`[HARVESTER_AUTH]   Has timeline container: ${hasTimelineContainer}`);
+      console.error(`[HARVESTER_AUTH]   Tweets found: ${tweetsFound}`);
+      
+      try {
+        // Take screenshot
+        const screenshotPath = '/tmp/harvester_auth_debug.png';
+        await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
+        const fs = await import('fs');
+        const screenshotSize = fs.existsSync(screenshotPath) ? fs.statSync(screenshotPath).size : 0;
+        console.log(`[HARVESTER_AUTH] 📸 Screenshot saved: ${screenshotPath} (${screenshotSize} bytes)`);
+        
+        // Dump HTML
+        const htmlPath = '/tmp/harvester_auth_debug.html';
+        fs.writeFileSync(htmlPath, pageContent);
+        const htmlSize = fs.statSync(htmlPath).size;
+        console.log(`[HARVESTER_AUTH] 📄 HTML dumped: ${htmlPath} (${htmlSize} bytes)`);
+        console.log(`[HARVESTER_AUTH] 📄 First 300 chars of body: ${bodyText.substring(0, 300)}`);
+      } catch (debugError: any) {
+        console.error(`[HARVESTER_AUTH] ⚠️ Failed to capture debug info: ${debugError.message}`);
+      }
+    }
+    
+    console.log(`[SEED_HARVEST] 📊 @${username}: Extracted ${tweets.length} tweets`);
   
   // Filter ROOT tweets only with TRUE verification
   // A tweet is a root tweet ONLY if:
@@ -328,6 +402,12 @@ async function extractTweetsFromProfile(page: Page, max_tweets: number): Promise
   // Scroll and collect tweets
   let scrollAttempts = 0;
   const maxScrollAttempts = 5;
+  
+  // Scroll loop with small waits to trigger tweet rendering (3 scrolls)
+  for (let scrollLoop = 0; scrollLoop < 3 && tweets.length < max_tweets; scrollLoop++) {
+    await page.evaluate(() => window.scrollBy(0, 500));
+    await page.waitForTimeout(1000); // Small wait to trigger rendering
+  }
   
   while (tweets.length < max_tweets && scrollAttempts < maxScrollAttempts) {
     // Extract visible tweets
