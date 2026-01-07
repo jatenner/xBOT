@@ -258,11 +258,13 @@ async function harvestAccount(
   if (result.stored_count === 0 && scoredTweets.length > 0) {
     console.log(`[SEED_HARVEST] 🚨 STARVATION PROTECTION: Stored 0 opportunities, storing top 2 fallback candidates`);
     
-    // Sort by quality score (highest first), then by freshness
+    // Sort by quality score (highest first), then by age
+    // For fallback, we bypass freshness checks but still require minimum engagement
+    const MIN_LIKES_FOR_FALLBACK = 100; // Minimum likes to consider for fallback
     const fallbackCandidates = scoredTweets
       .filter(item => {
-        // Must pass freshness and min_likes checks (even if quality failed)
-        return item.freshness.pass;
+        // Must have minimum likes (bypass freshness age checks for fallback)
+        return item.tweet.like_count >= MIN_LIKES_FOR_FALLBACK;
       })
       .sort((a, b) => {
         // Sort by quality score descending
@@ -276,7 +278,7 @@ async function harvestAccount(
     
     for (const item of fallbackCandidates) {
       try {
-        await storeOpportunity(item.tweet, item.quality, item.tier, 'fallback_topN');
+        await storeOpportunity(item.tweet, item.quality, item.tier);
         result.stored_count++;
         console.log(`[SEED_HARVEST] ✅ Fallback stored: ${item.tweet.tweet_id} tier=${item.tier} quality=${item.quality.score}`);
       } catch (storeError: any) {
@@ -483,7 +485,8 @@ function determineTier(likes: number, views?: number): 'A+' | 'A' | 'B' | 'C' | 
 async function storeOpportunity(
   tweet: ScrapedTweet,
   quality: any,
-  tier: string
+  tier: string,
+  storedReason?: string
 ): Promise<void> {
   const supabase = getSupabaseClient();
   
