@@ -6,6 +6,56 @@
 
 ---
 
+## Split Architecture: Railway + Local Harvester
+
+**IMPORTANT:** X blocks sessions in Railway environment. Harvesting runs locally, not on Railway.
+
+- **Railway:** Generation, posting, learning only (HARVESTING_ENABLED=false)
+- **Local/Residential:** Harvesting opportunities, writing to Supabase (HARVESTING_ENABLED=true or unset)
+
+### Railway Configuration
+
+Set `HARVESTING_ENABLED=false` on Railway:
+```bash
+railway variables --set "HARVESTING_ENABLED=false"
+```
+
+This prevents Railway from launching Playwright for harvesting. Logs will show:
+```
+[HARVEST] disabled_by_env HARVESTING_ENABLED=false (harvesting runs locally, not on Railway)
+```
+
+### Local Harvester Setup
+
+**Run harvester locally:**
+
+```bash
+# One-time harvest
+pnpm harvest:once
+
+# Or with PM2 for continuous harvesting (every 2 hours)
+pm2 start pnpm --name xbot-harvester -- harvest:once
+pm2 save
+```
+
+**Verify harvesting:**
+1. Check opportunities in DB:
+   ```bash
+   railway run -- pnpm exec tsx scripts/opportunity-top.ts --minutes 180
+   ```
+2. Confirm Railway replyJob consumes opportunities:
+   ```bash
+   railway run -- pnpm exec tsx scripts/run-reply-job-once.ts
+   railway run -- pnpm exec tsx scripts/run-posting-queue-once.ts
+   ```
+
+**Harvester Configuration:**
+- `SEEDS_PER_RUN`: Number of seed accounts to harvest per run (default: 10)
+- `MAX_TWEETS_PER_ACCOUNT`: Max tweets to scrape per account (default: 20)
+- `TWITTER_SESSION_B64`: Must be set locally (use `scripts/refresh-x-session.ts`)
+
+---
+
 ## 🔄 Refresh X Session State
 
 ### When to Refresh

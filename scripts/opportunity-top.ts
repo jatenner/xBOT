@@ -7,6 +7,10 @@ import { getSupabaseClient } from '../src/db/index';
 
 const minutesArg = process.argv.find(arg => arg.startsWith('--minutes='))?.replace('--minutes=', '') || process.argv[2] || '120';
 const minutes = parseInt(minutesArg, 10);
+if (isNaN(minutes) || minutes <= 0) {
+  console.error(`❌ Invalid minutes argument: ${minutesArg}`);
+  process.exit(1);
+}
 const cutoffTime = new Date(Date.now() - minutes * 60 * 1000);
 
 async function main() {

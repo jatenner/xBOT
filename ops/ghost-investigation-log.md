@@ -3501,3 +3501,55 @@ SESSION_LOADER: wrote valid session to ./twitter_session.json (cookies=13)
 3. If both use same session but both fail: X is blocking Railway IP/environment
 4. Consider alternate hosting or proxy solution
 
+
+---
+
+## Split Architecture: Railway + Local Harvester - COMPLETE - $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+**Goal:** Implement split architecture - Railway for generation/posting, local for harvesting
+
+**Task A: HARVESTING_ENABLED Flag**
+- ✅ Added env var HARVESTING_ENABLED (default true locally, false on Railway)
+- ✅ Added checks in replyOpportunityHarvester.ts (line 160)
+- ✅ Added checks in replyJob.ts (line 587)
+- ✅ Added checks in jobManager.ts (line 567)
+- ✅ Logs: [HARVEST] disabled_by_env when HARVESTING_ENABLED=false
+
+**Task B: Standalone Local Harvester Runner**
+- ✅ Created scripts/run-harvester-once.ts
+- ✅ Loads DB seeds, launches Playwright, harvests SEEDS_PER_RUN accounts
+- ✅ Stores opportunities to Supabase, prints stored_count and tier distribution
+- ✅ Exits with nonzero code if stored_count==0
+- ✅ Added package.json script: "harvest:once"
+
+**Task C: Runbook Update**
+- ✅ Updated ops/PRODUCTION_RAMP.md with split architecture section
+- ✅ Added Railway configuration (HARVESTING_ENABLED=false)
+- ✅ Added local harvester setup instructions
+- ✅ Added verification steps
+
+**Task D: Railway Deployment**
+- ✅ Committed: "ops: disable harvesting on Railway + add local harvester runner"
+- ✅ Deployed: railway up --detach
+- ✅ Set Railway var: HARVESTING_ENABLED=false
+- ✅ Verified logs show [HARVEST] disabled_by_env
+
+**Task E: Proof (Local + Railway)**
+- ✅ Local harvest: pnpm harvest:once
+- ✅ Railway opportunity check: scripts/opportunity-top.ts
+- ✅ Railway reply job: scripts/run-reply-job-once.ts
+- ✅ Railway posting queue: scripts/run-posting-queue-once.ts
+
+**Results:**
+- ✅ Railway logs show [HARVEST] disabled_by_env (no Playwright launches)
+- ✅ Local harvester runs successfully
+- ✅ Opportunities stored in Supabase
+- ✅ Railway replyJob consumes opportunities
+- ✅ Railway postingQueue processes replies
+
+**Conclusion:**
+- ✅ Split architecture implemented and working
+- ✅ Railway handles generation/posting/learning only
+- ✅ Local harvester writes opportunities to Supabase
+- ✅ System operational with split architecture
+

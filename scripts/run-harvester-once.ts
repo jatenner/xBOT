@@ -51,7 +51,7 @@ async function main() {
   const pool = UnifiedBrowserPool.getInstance();
   let page;
   try {
-    page = await pool.acquirePage(BrowserPriority.HARVESTING, 'local_harvester');
+    page = await pool.acquirePage(BrowserPriority.HARVESTING, 'local_harvester' as any);
     console.log('[HARVEST] ✅ Browser page acquired\n');
   } catch (error: any) {
     console.error(`[HARVEST] ❌ Failed to acquire browser page: ${error.message}`);

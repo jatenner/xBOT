@@ -156,6 +156,14 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   // ═══════════════════════════════════════════════════════════════════════════
   // Step 2.3: SEED ACCOUNT HARVESTER (PRIMARY SOURCE) 🌱
   // ═══════════════════════════════════════════════════════════════════════════
+
+  // 🚫 HARVESTING_ENABLED CHECK: Skip harvesting if disabled (Railway split architecture)
+  const harvestingEnabled = process.env.HARVESTING_ENABLED !== 'false';
+  if (!harvestingEnabled) {
+    console.log(`[HARVEST] disabled_by_env HARVESTING_ENABLED=false (harvesting runs locally, not on Railway)`);
+    return;
+  }
+
   let seedAccountOpportunities = 0;
   try {
     console.log(`[HARVESTER] 🌱 PRIMARY SOURCE: Seed account harvester`);
