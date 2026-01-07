@@ -54,27 +54,47 @@ async function main() {
   }
   console.log('');
   
-  // Step 3: Test harvesting from one seed account
-  console.log('=== STEP 3: Test Harvesting from Seed Account ===');
+  // Step 3: Test harvesting from seed accounts
+  console.log('=== STEP 3: Test Harvesting from Seed Accounts ===');
   const pool = UnifiedBrowserPool.getInstance();
   const page = await pool.acquirePage('debug_harvester');
   
   try {
-    // Test harvesting from first seed account
-    const testAccount = SEED_ACCOUNTS[0];
-    console.log(`Testing harvest from @${testAccount}...`);
-    
     const { harvestSeedAccounts: harvestFn } = await import('../src/ai/seedAccountHarvester');
-    const result = await harvestFn(page, {
-      accounts: [testAccount],
-      max_tweets_per_account: 20,
-      max_accounts: 1,
-    });
     
-    console.log(`\nHarvest Result:`);
-    console.log(`  Total scraped: ${result.total_scraped}`);
-    console.log(`  Total stored: ${result.total_stored}`);
-    console.log(`  Results: ${JSON.stringify(result.results, null, 2)}`);
+    // Check if --use-db-seeds flag is set
+    const useDbSeeds = process.argv.includes('--use-db-seeds');
+    const maxSeedsArg = process.argv.find(arg => arg.startsWith('--max-seeds='))?.replace('--max-seeds=', '') || process.argv.find(arg => arg.startsWith('--max-seeds')) && process.argv[process.argv.indexOf('--max-seeds') + 1];
+    const maxSeeds = maxSeedsArg ? parseInt(maxSeedsArg, 10) : 5;
+    
+    if (useDbSeeds) {
+      console.log(`Using DB seeds (max_seeds=${maxSeeds})...`);
+      // Don't pass accounts - let harvester query DB
+      const result = await harvestFn(page, {
+        max_tweets_per_account: 20,
+        max_accounts: maxSeeds,
+      });
+    
+      console.log(`\nHarvest Result:`);
+      console.log(`  Total scraped: ${result.total_scraped}`);
+      console.log(`  Total stored: ${result.total_stored}`);
+      console.log(`  Results: ${JSON.stringify(result.results, null, 2)}`);
+    } else {
+      // Test harvesting from first seed account (hardcoded)
+      const testAccount = SEED_ACCOUNTS[0];
+      console.log(`Testing harvest from @${testAccount} (hardcoded)...`);
+      
+      const result = await harvestFn(page, {
+        accounts: [testAccount],
+        max_tweets_per_account: 20,
+        max_accounts: 1,
+      });
+      
+      console.log(`\nHarvest Result:`);
+      console.log(`  Total scraped: ${result.total_scraped}`);
+      console.log(`  Total stored: ${result.total_stored}`);
+      console.log(`  Results: ${JSON.stringify(result.results, null, 2)}`);
+    }
     
     // Check what was stored
     if (result.total_stored > 0) {

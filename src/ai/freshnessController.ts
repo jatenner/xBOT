@@ -111,7 +111,29 @@ export function checkFreshness(
   ageMinutes: number,
   velocity: number
 ): { pass: boolean; reason: string; velocity_required?: number } {
-  // Determine tier
+  // 🎯 DYNAMIC MIN_LIKES: Age-based threshold with velocity override
+  // min_likes = 25 (age<=30), 75 (age<=90), 150 (age<=180)
+  // Allow store if likes>=min_likes OR likes_per_min>=2
+  let minLikes: number;
+  if (ageMinutes <= 30) {
+    minLikes = 25;
+  } else if (ageMinutes <= 90) {
+    minLikes = 75;
+  } else if (ageMinutes <= 180) {
+    minLikes = 150;
+  } else {
+    minLikes = 2500; // Fallback to original threshold for older tweets
+  }
+  
+  const likesPerMin = ageMinutes > 0 ? likeCount / ageMinutes : 0;
+  const velocityOverride = likesPerMin >= 2;
+  
+  // Check dynamic min_likes OR velocity override
+  if (likeCount < minLikes && !velocityOverride) {
+    return { pass: false, reason: `below_min_likes (${likeCount}<${minLikes}, velocity=${likesPerMin.toFixed(2)}<2)` };
+  }
+  
+  // Determine tier (using original thresholds for tier classification)
   let tier: 'A' | 'B' | 'C' | 'D';
   let defaultMax: number;
   let absoluteMax: number;
@@ -138,8 +160,11 @@ export function checkFreshness(
     absoluteMax = ABSOLUTE_TIER_D_MAX;
     currentMax = _state.current_tier_d_max;
   } else {
-    // Below 2.5K - reject
-    return { pass: false, reason: 'below_min_likes' };
+    // Below 2.5K but passed dynamic min_likes check - treat as Tier D
+    tier = 'D';
+    defaultMax = DEFAULT_TIER_D_MAX_AGE;
+    absoluteMax = ABSOLUTE_TIER_D_MAX;
+    currentMax = _state.current_tier_d_max;
   }
   
   // Within default strict limit - always pass
