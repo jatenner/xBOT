@@ -267,7 +267,21 @@ async function extractTweetsFromProfile(page: Page, max_tweets: number): Promise
   while (tweets.length < max_tweets && scrollAttempts < maxScrollAttempts) {
     // Extract visible tweets
     const newTweets = await page.evaluate(() => {
-      const tweetCards = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+      // Try multiple selectors (Twitter/X UI changes frequently)
+      let tweetCards = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+      
+      // Fallback selectors if primary doesn't work
+      if (tweetCards.length === 0) {
+        tweetCards = Array.from(document.querySelectorAll('article[role="article"]'));
+      }
+      if (tweetCards.length === 0) {
+        tweetCards = Array.from(document.querySelectorAll('div[data-testid="cellInnerDiv"]'));
+      }
+      if (tweetCards.length === 0) {
+        tweetCards = Array.from(document.querySelectorAll('div[data-testid="tweet"]'));
+      }
+      
+      console.log(`[SEED_HARVEST_DEBUG] Found ${tweetCards.length} tweet elements on page`);
       
       return tweetCards.map(card => {
         try {
