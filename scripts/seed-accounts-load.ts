@@ -274,7 +274,13 @@ async function main() {
         });
       
       if (error) {
-        console.error(`   ❌ Failed to load @${account.handle}: ${error.message}`);
+        // Check if table doesn't exist
+        if (error.message?.includes('relation') && error.message?.includes('does not exist')) {
+          console.error(`   ❌ Table seed_accounts does not exist. Please apply migration first.`);
+          console.error(`   Run: supabase migration up`);
+          process.exit(1);
+        }
+        console.error(`   ❌ Failed to load @${account.handle}: ${error.message || 'Unknown error'}`);
         errors++;
       } else {
         loaded++;

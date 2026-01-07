@@ -142,6 +142,7 @@ export async function harvestSeedAccounts(
     }
   }
   
+  const seedsPerRun = parseInt(process.env.SEEDS_PER_RUN || '10', 10);
   const {
     max_tweets_per_account = 50,
     max_accounts = seedsPerRun || 10,
@@ -247,48 +248,37 @@ async function harvestAccount(
     await page.waitForTimeout(3000); // Let content load
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // AUTH DIAGNOSTIC: Check authentication status
+    // AUTH DIAGNOSTIC: Check authentication status using WHOAMI
     // ═══════════════════════════════════════════════════════════════════════════
     const finalUrl = page.url();
     const pageTitle = await page.title().catch(() => 'unknown');
     
-    // Check for login indicators
-    const pageContent = await page.content().catch(() => '');
-    const bodyText = await page.evaluate(() => document.body?.textContent || '').catch(() => '');
-    
-    const hasLoginIndicators = 
-      /Log in|Sign in|Create account|Enter your phone|Verify/i.test(bodyText) ||
-      finalUrl.includes('/i/flow/login') ||
-      finalUrl.includes('/login') ||
-      finalUrl.includes('/account/access');
-    
-    // Check for timeline container
-    const hasTimelineContainer = await page.evaluate(() => {
-      return !!(
-        document.querySelector('[data-testid="primaryColumn"]') ||
-        document.querySelector('main') ||
-        document.querySelector('section')
-      );
-    }).catch(() => false);
-    
-    // Extract tweets to check if any found
+    // Extract tweets first to check if any found
     const tweets = await extractTweetsFromProfile(page, max_tweets);
     result.scraped_count = tweets.length;
-    
     const tweetsFound = tweets.length;
-    const authOk = !hasLoginIndicators && hasTimelineContainer && tweetsFound > 0;
+    
+    // Check WHOAMI (more reliable auth check)
+    const whoami = await checkWhoami(page);
+    console.log(`[WHOAMI] logged_in=${whoami.logged_in} handle=${whoami.handle || 'unknown'} url=${whoami.url} title=${whoami.title} reason=${whoami.reason}`);
+    
+    // Determine auth status: If tweets found AND whoami says logged in => ok
+    const authOk = tweetsFound > 0 && whoami.logged_in;
     
     // Determine reason if auth failed
     let authReason = 'ok';
     if (!authOk) {
-      if (hasLoginIndicators) authReason = 'login_wall';
-      else if (!hasTimelineContainer) authReason = 'no_dom';
-      else if (tweetsFound === 0) authReason = 'no_tweets';
-      else authReason = 'unknown';
+      if (!whoami.logged_in) {
+        authReason = whoami.reason || 'not_logged_in';
+      } else if (tweetsFound === 0) {
+        authReason = 'no_tweets';
+      } else {
+        authReason = 'unknown';
+      }
     }
     
     // Log auth diagnostic
-    console.log(`[HARVESTER_AUTH] ok=${authOk} url=${finalUrl} tweets_found=${tweetsFound} reason=${authReason}`);
+    console.log(`[HARVESTER_AUTH] ok=${authOk} url=${finalUrl} tweets_found=${tweetsFound} reason=${authReason} whoami_logged_in=${whoami.logged_in}`);
     
     // If auth failed, capture debug info
     if (!authOk) {
@@ -361,11 +351,11 @@ async function harvestAccount(
         tweet.like_count
       );
       
-      // Freshness filter
-      const freshness = checkFreshness(tweet.like_count, tweet.age_minutes, tweet.velocity);
+      // Freshness filter (handle null metrics)
+      const freshness = checkFreshness(tweet.like_count ?? 0, tweet.age_minutes, tweet.velocity);
       
-      // Determine tier
-      const tier = determineTier(tweet.like_count, tweet.view_count);
+      // Determine tier (handle null metrics)
+      const tier = determineTier(tweet.like_count ?? 0, tweet.view_count ?? undefined);
       
       // Store scored tweet for potential fallback
       scoredTweets.push({ tweet, quality, freshness, tier });
@@ -377,14 +367,27 @@ async function harvestAccount(
         continue;
       }
       
+      // If metrics are unknown (null), allow storage with special handling
+      if (tweet.like_count === null || tweet.like_count === undefined) {
+        // Store with unknown metrics - don't block by freshness
+        await storeOpportunity(tweet, quality, tier, 'normal', undefined, undefined, undefined, undefined, 'unknown');
+        result.stored_count++;
+        console.log(`[SEED_HARVEST] ✅ Stored (unknown metrics): ${tweet.tweet_id} tier=${tier} quality=${quality.score}`);
+        continue;
+      }
+      
       if (!freshness.pass) {
         result.blocked_stale_count++;
-        console.log(`[SEED_HARVEST] ⏱️ Stale: ${tweet.tweet_id} (${freshness.reason})`);
+        // Log detailed block reason
+        const ageMin = Math.round(tweet.age_minutes);
+        const computedMinLikes = ageMin <= 30 ? 25 : ageMin <= 90 ? 75 : ageMin <= 180 ? 150 : 2500;
+        const likesPerMin = tweet.age_minutes > 0 ? (tweet.like_count / tweet.age_minutes) : 0;
+        console.log(`[SEED_HARVEST] ⏱️ Stale: ${tweet.tweet_id} (${freshness.reason}) age=${ageMin}min computed_min_likes=${computedMinLikes} likes=${tweet.like_count} likes_per_min=${likesPerMin.toFixed(2)}`);
         continue;
       }
       
       // Store
-      await storeOpportunity(tweet, quality, tier, 'normal', computedLikesPerMin ?? undefined, computedRepliesPerMin ?? undefined, computedRepostsPerMin ?? undefined, opportunityScore ?? undefined, 'known');
+      await storeOpportunity(tweet, quality, tier, 'normal');
       result.stored_count++;
       
       console.log(`[SEED_HARVEST] ✅ Stored: ${tweet.tweet_id} tier=${tier} quality=${quality.score} likes=${tweet.like_count ?? 'null'}`);
@@ -746,7 +749,6 @@ async function storeOpportunity(
       harvest_source_detail: tweet.author_handle,
       target_in_reply_to_tweet_id: tweet.in_reply_to_tweet_id,
       target_conversation_id: tweet.conversation_id,
-      stored_reason: storedReason || 'normal',
     }, {
       onConflict: 'target_tweet_id',
     });
