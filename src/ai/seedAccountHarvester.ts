@@ -280,8 +280,8 @@ async function harvestAccount(
     }
     
     console.log(`[SEED_HARVEST] 📊 @${username}: Extracted ${tweets.length} tweets`);
-  
-  // Filter ROOT tweets only with TRUE verification
+    
+    // Filter ROOT tweets only with TRUE verification
   // A tweet is a root tweet ONLY if:
   // 1. Not a reply (no in_reply_to_tweet_id)
   // 2. Not a retweet
@@ -387,9 +387,12 @@ async function harvestAccount(
     }
   }
   
-  result.blocked_reply_count = tweets.length - rootTweets.length;
-  
-  return result;
+    result.blocked_reply_count = tweets.length - rootTweets.length;
+    
+    return result;
+  } catch (navError: any) {
+    throw new Error(`Navigation failed: ${navError.message}`);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
