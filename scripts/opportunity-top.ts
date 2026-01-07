@@ -18,7 +18,7 @@ async function main() {
   // Get top 10 opportunities ordered by opportunity_score
   const { data: opportunities, error } = await supabase
     .from('reply_opportunities')
-    .select('target_tweet_id, target_username, tweet_posted_at, like_count, reply_count, retweet_count, view_count, opportunity_score, is_root_tweet, is_reply_tweet, posted_minutes_ago, tier')
+    .select('target_tweet_id, target_username, tweet_posted_at, like_count, reply_count, retweet_count, view_count, opportunity_score, is_root_tweet, is_reply_tweet, posted_minutes_ago, tier, likes_per_min, replies_per_min, reposts_per_min, created_at')
     .eq('replied_to', false)
     .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
     .gte('tweet_posted_at', cutoffTime.toISOString())
@@ -39,17 +39,17 @@ async function main() {
   
   opportunities.forEach((opp, i) => {
     const age = opp.posted_minutes_ago || (opp.tweet_posted_at ? Math.round((Date.now() - new Date(opp.tweet_posted_at).getTime()) / (1000 * 60)) : 'unknown');
-    const velocity = opp.like_count && age && typeof age === 'number' ? (opp.like_count / Math.max(age, 10)).toFixed(1) : 'N/A';
+    const likesPerMin = opp.likes_per_min || (opp.like_count && age && typeof age === 'number' ? (opp.like_count / Math.max(age, 1)).toFixed(2) : 'N/A');
     const classification = opp.is_root_tweet ? 'ROOT' : opp.is_reply_tweet ? 'REPLY' : 'UNKNOWN';
     
     console.log(`${i + 1}. Tweet ID: ${opp.target_tweet_id}`);
     console.log(`   Author: @${opp.target_username}`);
+    console.log(`   Tier: ${opp.tier || 'B'}`);
     console.log(`   Age: ${age} minutes`);
     console.log(`   Engagement: ${opp.like_count || 0} likes, ${opp.reply_count || 0} replies, ${opp.retweet_count || 0} reposts`);
+    console.log(`   Likes/min: ${likesPerMin}`);
     console.log(`   Views: ${opp.view_count || 'N/A'}`);
-    console.log(`   Velocity: ${velocity} likes/min`);
     console.log(`   Score: ${opp.opportunity_score || 0}`);
-    console.log(`   Tier: ${opp.tier || 'N/A'}`);
     console.log(`   Classification: ${classification}`);
     console.log(`   URL: https://x.com/i/web/status/${opp.target_tweet_id}`);
     console.log('');

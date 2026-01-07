@@ -146,6 +146,32 @@ export async function harvestSeedAccounts(
   
   console.log(`[SEED_HARVEST] 🌾 Summary: ${total_stored}/${total_scraped} opportunities stored`);
   
+  // Log tier distribution for this harvest run
+  const supabase = getSupabaseClient();
+  const { data: recentOpps } = await supabase
+    .from('reply_opportunities')
+    .select('tier, target_tweet_id, target_username, like_count, posted_minutes_ago, likes_per_min, opportunity_score')
+    .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+    .order('opportunity_score', { ascending: false });
+  
+  if (recentOpps && recentOpps.length > 0) {
+    const tierDist: Record<string, number> = {};
+    for (const opp of recentOpps) {
+      const tier = String(opp.tier || 'B').toUpperCase();
+      tierDist[tier] = (tierDist[tier] || 0) + 1;
+    }
+    console.log(`[SEED_HARVEST] 📊 Tier distribution: S=${tierDist['S'] || 0} A=${tierDist['A'] || 0} B=${tierDist['B'] || 0}`);
+    
+    // Log top 5 Tier_S candidates
+    const tierS = recentOpps.filter(opp => String(opp.tier || '').toUpperCase() === 'S').slice(0, 5);
+    if (tierS.length > 0) {
+      console.log(`[SEED_HARVEST] 🏆 Top 5 Tier_S candidates:`);
+      tierS.forEach((opp, i) => {
+        console.log(`  ${i + 1}. @${opp.target_username} tweet_id=${opp.target_tweet_id} likes=${opp.like_count} age=${Math.round(opp.posted_minutes_ago || 0)}min likes/min=${(opp.likes_per_min || 0).toFixed(2)} score=${Math.round(opp.opportunity_score || 0)}`);
+      });
+    }
+  }
+  
   return { total_scraped, total_stored, results };
 }
 
