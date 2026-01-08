@@ -73,6 +73,32 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
       await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(3000); // Let results load
       
+      // Handle consent wall if present
+      try {
+        const consentSelectors = [
+          'button:has-text("Accept all cookies")',
+          'button:has-text("Accept")',
+          '[data-testid="cookieConsentAccept"]',
+          'button[aria-label*="Accept"]',
+        ];
+        
+        for (const selector of consentSelectors) {
+          try {
+            const button = await page.locator(selector).first();
+            if (await button.isVisible({ timeout: 2000 })) {
+              console.log(`[KEYWORD_FEED] 🍪 Clicking consent button: ${selector}`);
+              await button.click();
+              await page.waitForTimeout(2000);
+              break;
+            }
+          } catch (e) {
+            // Try next selector
+          }
+        }
+      } catch (e) {
+        // Consent wall handling failed, continue anyway
+      }
+      
       // DIAGNOSTICS: Check login status and walls
       const diagnostics = await page.evaluate(() => {
         const hasComposeBox = !!document.querySelector('[data-testid="tweetTextarea_0"]');
@@ -113,8 +139,28 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
         created_at: new Date().toISOString(),
       });
       
-      // If wall detected, log and return empty
-      if (diagnostics.wall_detected) {
+      // If consent wall detected, wait and retry
+      if (diagnostics.wall_detected && diagnostics.wall_type === 'consent') {
+        console.log(`[KEYWORD_FEED] ⚠️ Consent wall detected for "${keyword}", waiting and retrying...`);
+        await page.waitForTimeout(3000);
+        
+        const retryDiagnostics = await page.evaluate(() => {
+          const tweetContainers = document.querySelectorAll('article[data-testid="tweet"]');
+          return { tweet_containers_found: tweetContainers.length };
+        });
+        
+        if (retryDiagnostics.tweet_containers_found > 0) {
+          console.log(`[KEYWORD_FEED] ✅ Consent wall cleared, found ${retryDiagnostics.tweet_containers_found} tweets`);
+          diagnostics.tweet_containers_found = retryDiagnostics.tweet_containers_found;
+          diagnostics.wall_detected = false;
+        } else {
+          console.warn(`[KEYWORD_FEED] ⚠️ Consent wall still blocking "${keyword}"`);
+          return [];
+        }
+      }
+      
+      // If other wall detected, return empty
+      if (diagnostics.wall_detected && diagnostics.wall_type !== 'consent') {
         console.warn(`[KEYWORD_FEED] ⚠️ Wall detected for "${keyword}": ${diagnostics.wall_type}`);
         
         if (diagnostics.tweet_containers_found === 0) {

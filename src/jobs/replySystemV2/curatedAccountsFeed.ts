@@ -101,6 +101,33 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(3000); // Wait for timeline to load
       
+      // Handle consent wall if present
+      try {
+        // Try to find and click "Accept all cookies" or similar buttons
+        const consentSelectors = [
+          'button:has-text("Accept all cookies")',
+          'button:has-text("Accept")',
+          '[data-testid="cookieConsentAccept"]',
+          'button[aria-label*="Accept"]',
+        ];
+        
+        for (const selector of consentSelectors) {
+          try {
+            const button = await page.locator(selector).first();
+            if (await button.isVisible({ timeout: 2000 })) {
+              console.log(`[CURATED_FEED] 🍪 Clicking consent button: ${selector}`);
+              await button.click();
+              await page.waitForTimeout(2000);
+              break;
+            }
+          } catch (e) {
+            // Try next selector
+          }
+        }
+      } catch (e) {
+        // Consent wall handling failed, continue anyway
+      }
+      
       // DIAGNOSTICS: Check login status and walls
       const diagnostics = await page.evaluate(() => {
         const hasComposeBox = !!document.querySelector('[data-testid="tweetTextarea_0"]');
@@ -141,23 +168,35 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
         created_at: new Date().toISOString(),
       });
       
-      // If wall detected, log and return empty
-      if (diagnostics.wall_detected) {
+      // If consent wall still detected after handling, try to wait and retry
+      if (diagnostics.wall_detected && diagnostics.wall_type === 'consent') {
+        console.log(`[CURATED_FEED] ⚠️ Consent wall detected for @${username}, waiting and retrying...`);
+        await page.waitForTimeout(3000);
+        
+        // Re-check after wait
+        const retryDiagnostics = await page.evaluate(() => {
+          const tweetContainers = document.querySelectorAll('article[data-testid="tweet"]');
+          return { tweet_containers_found: tweetContainers.length };
+        });
+        
+        if (retryDiagnostics.tweet_containers_found > 0) {
+          console.log(`[CURATED_FEED] ✅ Consent wall cleared, found ${retryDiagnostics.tweet_containers_found} tweets`);
+          diagnostics.tweet_containers_found = retryDiagnostics.tweet_containers_found;
+          diagnostics.wall_detected = false;
+        } else {
+          console.warn(`[CURATED_FEED] ⚠️ Consent wall still blocking @${username}`);
+          return [];
+        }
+      }
+      
+      // If other wall detected (login, error, rate limit), return empty
+      if (diagnostics.wall_detected && diagnostics.wall_type !== 'consent') {
         console.warn(`[CURATED_FEED] ⚠️ Wall detected for @${username}: ${diagnostics.wall_type}`);
         
-        // Take screenshot if no tweets found
         if (diagnostics.tweet_containers_found === 0) {
           const screenshotPath = `/tmp/feed_wall_${username}_${Date.now()}.png`;
           await page.screenshot({ path: screenshotPath, fullPage: true });
           console.log(`[CURATED_FEED] 📸 Screenshot saved: ${screenshotPath}`);
-          
-          await supabase.from('system_events').insert({
-            event_type: 'reply_v2_feed_wall_screenshot',
-            severity: 'warning',
-            message: `Wall screenshot for @${username}`,
-            event_data: { username, wall_type: diagnostics.wall_type, screenshot_path: screenshotPath },
-            created_at: new Date().toISOString(),
-          });
         }
         
         return [];
