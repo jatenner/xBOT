@@ -372,6 +372,6 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
     } finally {
       await page.close();
     }
-  }, 1); // Low priority
+  }, 0); // High priority - feeds are critical for system operation
 }
 

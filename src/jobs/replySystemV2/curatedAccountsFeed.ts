@@ -422,6 +422,6 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
     } finally {
       await page.close();
     }
-  }, 1); // Low priority
+  }, 0); // High priority - feeds are critical for system operation
 }
 
