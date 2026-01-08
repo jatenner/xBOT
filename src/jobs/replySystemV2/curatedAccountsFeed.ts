@@ -105,15 +105,16 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       const diagnostics = await page.evaluate(() => {
         const hasComposeBox = !!document.querySelector('[data-testid="tweetTextarea_0"]');
         const hasAccountMenu = !!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
-        const hasLoginWall = !!document.querySelector('text=Sign in') || 
-                            document.body.textContent?.includes('Sign in') ||
+        const bodyText = document.body.textContent || '';
+        const hasLoginWall = bodyText.includes('Sign in') ||
+                            bodyText.includes('Log in') ||
                             !!document.querySelector('a[href*="/i/flow/login"]');
-        const hasConsentWall = document.body.textContent?.includes('Accept all cookies') ||
-                               document.body.textContent?.includes('Cookie');
-        const hasErrorWall = document.body.textContent?.includes('Something went wrong') ||
-                             document.body.textContent?.includes('Try again');
-        const hasRateLimit = document.body.textContent?.includes('rate limit') ||
-                            document.body.textContent?.includes('Too many requests');
+        const hasConsentWall = bodyText.includes('Accept all cookies') ||
+                               bodyText.includes('Cookie');
+        const hasErrorWall = bodyText.includes('Something went wrong') ||
+                             bodyText.includes('Try again');
+        const hasRateLimit = bodyText.includes('rate limit') ||
+                            bodyText.includes('Too many requests');
         
         const tweetContainers = document.querySelectorAll('article[data-testid="tweet"]');
         
