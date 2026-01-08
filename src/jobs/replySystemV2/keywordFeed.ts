@@ -62,6 +62,8 @@ export async function fetchKeywordFeed(): Promise<KeywordTweet[]> {
 async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Promise<KeywordTweet[]> {
   return await pool.withContext('keyword_feed', async (context) => {
     const page = await context.newPage();
+    const { getSupabaseClient } = await import('../../db/index');
+    const supabase = getSupabaseClient();
     
     try {
       // Search URL
@@ -71,11 +73,70 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
       await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(3000); // Let results load
       
+      // DIAGNOSTICS: Check login status and walls
+      const diagnostics = await page.evaluate(() => {
+        const hasComposeBox = !!document.querySelector('[data-testid="tweetTextarea_0"]');
+        const hasAccountMenu = !!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
+        const hasLoginWall = !!document.querySelector('text=Sign in') || 
+                            document.body.textContent?.includes('Sign in') ||
+                            !!document.querySelector('a[href*="/i/flow/login"]');
+        const hasConsentWall = document.body.textContent?.includes('Accept all cookies') ||
+                               document.body.textContent?.includes('Cookie');
+        const hasErrorWall = document.body.textContent?.includes('Something went wrong') ||
+                             document.body.textContent?.includes('Try again');
+        const hasRateLimit = document.body.textContent?.includes('rate limit') ||
+                            document.body.textContent?.includes('Too many requests');
+        
+        const tweetContainers = document.querySelectorAll('article[data-testid="tweet"]');
+        
+        return {
+          logged_in: hasComposeBox || hasAccountMenu,
+          wall_detected: hasLoginWall || hasConsentWall || hasErrorWall || hasRateLimit,
+          wall_type: hasLoginWall ? 'login' : hasConsentWall ? 'consent' : hasErrorWall ? 'error' : hasRateLimit ? 'rate_limit' : 'none',
+          tweet_containers_found: tweetContainers.length,
+        };
+      });
+      
+      console.log(`[KEYWORD_FEED] 🔍 Diagnostics for "${keyword}":`, diagnostics);
+      
+      // Log diagnostics
+      await supabase.from('system_events').insert({
+        event_type: 'reply_v2_feed_diagnostics',
+        severity: 'info',
+        message: `Feed diagnostics for keyword: ${keyword}`,
+        event_data: {
+          keyword,
+          url: searchUrl,
+          ...diagnostics,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      // If wall detected, log and return empty
+      if (diagnostics.wall_detected) {
+        console.warn(`[KEYWORD_FEED] ⚠️ Wall detected for "${keyword}": ${diagnostics.wall_type}`);
+        
+        if (diagnostics.tweet_containers_found === 0) {
+          const screenshotPath = `/tmp/feed_wall_keyword_${keyword}_${Date.now()}.png`;
+          await page.screenshot({ path: screenshotPath, fullPage: true });
+          console.log(`[KEYWORD_FEED] 📸 Screenshot saved: ${screenshotPath}`);
+        }
+        
+        return [];
+      }
+      
       // Wait for tweets to appear
       try {
         await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 });
       } catch (e) {
         console.warn(`[KEYWORD_FEED] ⚠️ No tweets found for "${keyword}" (selector timeout)`);
+        
+        if (diagnostics.tweet_containers_found === 0) {
+          const screenshotPath = `/tmp/feed_no_tweets_keyword_${keyword}_${Date.now()}.png`;
+          await page.screenshot({ path: screenshotPath, fullPage: true });
+          console.log(`[KEYWORD_FEED] 📸 Screenshot saved: ${screenshotPath}`);
+        }
+        
         return [];
       }
       
@@ -133,7 +194,23 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
         return results;
       }, { count: TWEETS_PER_KEYWORD, keyword });
       
-      console.log(`[KEYWORD_FEED] ✅ "${keyword}": fetched ${tweets.length} tweets`);
+      // Log extraction results
+      const extractedTweetIds = tweets.map(t => t.tweet_id);
+      console.log(`[KEYWORD_FEED] ✅ "${keyword}": fetched ${tweets.length} tweets, extracted ${extractedTweetIds.length} IDs`);
+      
+      await supabase.from('system_events').insert({
+        event_type: 'reply_v2_feed_extraction',
+        severity: 'info',
+        message: `Tweet extraction for keyword: ${keyword}`,
+        event_data: {
+          keyword,
+          tweet_containers_found: diagnostics.tweet_containers_found,
+          extracted_tweet_ids_count: extractedTweetIds.length,
+          extracted_tweet_ids: extractedTweetIds.slice(0, 5),
+        },
+        created_at: new Date().toISOString(),
+      });
+      
       return tweets;
     } catch (error: any) {
       console.error(`[KEYWORD_FEED] ❌ Error fetching "${keyword}": ${error.message}`);

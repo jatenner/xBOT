@@ -91,6 +91,8 @@ export async function fetchCuratedAccountsFeed(): Promise<CuratedTweet[]> {
 async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): Promise<CuratedTweet[]> {
   return await pool.withContext('curated_feed', async (context) => {
     const page = await context.newPage();
+    const { getSupabaseClient } = await import('../../db/index');
+    const supabase = getSupabaseClient();
     
     try {
       const profileUrl = `https://x.com/${username}`;
@@ -99,11 +101,80 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(3000); // Wait for timeline to load
       
+      // DIAGNOSTICS: Check login status and walls
+      const diagnostics = await page.evaluate(() => {
+        const hasComposeBox = !!document.querySelector('[data-testid="tweetTextarea_0"]');
+        const hasAccountMenu = !!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
+        const hasLoginWall = !!document.querySelector('text=Sign in') || 
+                            document.body.textContent?.includes('Sign in') ||
+                            !!document.querySelector('a[href*="/i/flow/login"]');
+        const hasConsentWall = document.body.textContent?.includes('Accept all cookies') ||
+                               document.body.textContent?.includes('Cookie');
+        const hasErrorWall = document.body.textContent?.includes('Something went wrong') ||
+                             document.body.textContent?.includes('Try again');
+        const hasRateLimit = document.body.textContent?.includes('rate limit') ||
+                            document.body.textContent?.includes('Too many requests');
+        
+        const tweetContainers = document.querySelectorAll('article[data-testid="tweet"]');
+        
+        return {
+          logged_in: hasComposeBox || hasAccountMenu,
+          wall_detected: hasLoginWall || hasConsentWall || hasErrorWall || hasRateLimit,
+          wall_type: hasLoginWall ? 'login' : hasConsentWall ? 'consent' : hasErrorWall ? 'error' : hasRateLimit ? 'rate_limit' : 'none',
+          tweet_containers_found: tweetContainers.length,
+        };
+      });
+      
+      console.log(`[CURATED_FEED] 🔍 Diagnostics for @${username}:`, diagnostics);
+      
+      // Log diagnostics to system_events
+      await supabase.from('system_events').insert({
+        event_type: 'reply_v2_feed_diagnostics',
+        severity: 'info',
+        message: `Feed diagnostics for @${username}`,
+        event_data: {
+          username,
+          url: profileUrl,
+          ...diagnostics,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      // If wall detected, log and return empty
+      if (diagnostics.wall_detected) {
+        console.warn(`[CURATED_FEED] ⚠️ Wall detected for @${username}: ${diagnostics.wall_type}`);
+        
+        // Take screenshot if no tweets found
+        if (diagnostics.tweet_containers_found === 0) {
+          const screenshotPath = `/tmp/feed_wall_${username}_${Date.now()}.png`;
+          await page.screenshot({ path: screenshotPath, fullPage: true });
+          console.log(`[CURATED_FEED] 📸 Screenshot saved: ${screenshotPath}`);
+          
+          await supabase.from('system_events').insert({
+            event_type: 'reply_v2_feed_wall_screenshot',
+            severity: 'warning',
+            message: `Wall screenshot for @${username}`,
+            event_data: { username, wall_type: diagnostics.wall_type, screenshot_path: screenshotPath },
+            created_at: new Date().toISOString(),
+          });
+        }
+        
+        return [];
+      }
+      
       // Wait for tweets to appear
       try {
         await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 });
       } catch (e) {
         console.warn(`[CURATED_FEED] ⚠️ No tweets found for @${username} (selector timeout)`);
+        
+        // Take screenshot if no tweets found
+        if (diagnostics.tweet_containers_found === 0) {
+          const screenshotPath = `/tmp/feed_no_tweets_${username}_${Date.now()}.png`;
+          await page.screenshot({ path: screenshotPath, fullPage: true });
+          console.log(`[CURATED_FEED] 📸 Screenshot saved: ${screenshotPath}`);
+        }
+        
         return [];
       }
       
@@ -156,7 +227,23 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
         return results;
       }, TWEETS_PER_ACCOUNT);
       
-      console.log(`[CURATED_FEED] ✅ @${username}: fetched ${tweets.length} tweets`);
+      // Log extraction results
+      const extractedTweetIds = tweets.map(t => t.tweet_id);
+      console.log(`[CURATED_FEED] ✅ @${username}: fetched ${tweets.length} tweets, extracted ${extractedTweetIds.length} IDs`);
+      
+      await supabase.from('system_events').insert({
+        event_type: 'reply_v2_feed_extraction',
+        severity: 'info',
+        message: `Tweet extraction for @${username}`,
+        event_data: {
+          username,
+          tweet_containers_found: diagnostics.tweet_containers_found,
+          extracted_tweet_ids_count: extractedTweetIds.length,
+          extracted_tweet_ids: extractedTweetIds.slice(0, 5), // First 5 IDs
+        },
+        created_at: new Date().toISOString(),
+      });
+      
       return tweets;
     } catch (error: any) {
       console.error(`[CURATED_FEED] ❌ Error fetching @${username}: ${error.message}`);
