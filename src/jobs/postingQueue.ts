@@ -3221,18 +3221,18 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             .single();
           
           if (decisionRow?.candidate_evaluation_id) {
-            const { data: eval } = await supabase
+            const { data: candidateEval } = await supabase
               .from('candidate_evaluations')
               .select('predicted_tier, candidate_tweet_id')
               .eq('id', decisionRow.candidate_evaluation_id)
               .single();
             
-            if (eval) {
+            if (candidateEval) {
               await trackReplyPerformance(
                 decision.id,
-                eval.candidate_tweet_id || decisionRow.target_tweet_id || '',
+                candidateEval.candidate_tweet_id || decisionRow.target_tweet_id || '',
                 tweetId,
-                eval.predicted_tier || 2
+                candidateEval.predicted_tier || 2
               );
             }
           }
