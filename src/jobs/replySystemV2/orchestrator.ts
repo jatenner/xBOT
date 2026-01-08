@@ -81,10 +81,10 @@ export async function fetchAndEvaluateCandidates(): Promise<{
     try {
       console.log(`[ORCHESTRATOR] 📡 Fetching from ${source.name}...`);
       
-      // Add timeout protection (2 minutes per source - faster fail)
+      // Add timeout protection (5 minutes per source - feeds need more time for multiple keywords/accounts)
       const fetchPromise = source.fetchFn();
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Fetch timeout for ${source.name} after 2 minutes`)), 2 * 60 * 1000);
+        setTimeout(() => reject(new Error(`Fetch timeout for ${source.name} after 5 minutes`)), 5 * 60 * 1000);
       });
       
       let tweets: any[] = [];
