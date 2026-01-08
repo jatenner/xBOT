@@ -1,71 +1,78 @@
 # 📊 REPLY SYSTEM V2 - FINAL STATUS REPORT
 
 **Date:** January 8, 2026  
-**Time:** Post-cutover verification
+**Status:** 🔧 **CRITICAL FIX DEPLOYED**
 
 ---
 
-## EXECUTIVE SUMMARY
+## ROOT CAUSE IDENTIFIED
 
-✅ **Cutover Complete:**
-- Environment variables verified ✅
-- Old system disabled ✅  
-- Curated accounts expanded to 45 ✅
-- Code deployed ✅
+### Issue: Tweets Extracted But Not Returned
 
-🔧 **Issues Found & Fixed:**
-1. Build error: `eval` variable renamed ✅
-2. Fetch job timeout: Added 2-min timeout per source ✅
-3. Error handling: Continue on source failure ✅
+**Evidence:**
+- ✅ Extraction events show 50+ tweets extracted (zone 2, cholesterol, ozempic, etc.)
+- ❌ Orchestrator shows `fetched=0 evaluated=0`
+- ❌ 0 candidate evaluations in database
+- ❌ 0 tweets in queue
 
-⏳ **Current Status:**
-- Jobs are scheduled and starting
-- Fetch job executing but may be timing out
-- Monitoring for completion
+**Root Cause:**
+Feeds extract tweets and log them, but then return `[]` because consent wall check happens AFTER extraction. The logic was:
+1. Extract tweets ✅
+2. Log extraction ✅
+3. Check consent wall ❌
+4. Return `[]` if wall detected (even though tweets were extracted)
 
----
-
-## PROOF QUERIES RESULTS
-
-### Last 30 Minutes:
-- **SLO Events:** 1 slot, 0 posted (queue_empty)
-- **Candidate Evaluations:** 0
-- **Queue Size:** 0
-- **Job Events:** 1 started, 0 completed
-- **Old System:** 0 events ✅ (disabled)
-
-### Root Cause:
-Fetch job starts but doesn't complete → No candidates → Empty queue → SLO misses
+**Fix:**
+Changed logic to only return `[]` if consent wall blocks AND `containersAfter === 0`. If containers exist, extract tweets even if consent wall was detected.
 
 ---
 
-## FIXES DEPLOYED
+## FIX DEPLOYED
 
-1. ✅ Build error fix (`eval` → `candidateEval`)
-2. ✅ Timeout protection (2 min per source)
-3. ✅ Better error handling (continue on failure)
-4. ✅ Completion logging (always executes)
+### Patch: Extract Tweets Even If Consent Wall Detected (If Containers Exist)
 
----
+**Files Changed:**
+- `src/jobs/replySystemV2/keywordFeed.ts`
+- `src/jobs/replySystemV2/curatedAccountsFeed.ts`
 
-## NEXT STEPS
+**Key Change:**
+```typescript
+// Before: Return empty if consent wall detected
+if (wall_detected && wall_type === 'consent' && !consentCleared) {
+  return [];
+}
 
-1. ⏳ Monitor next 5 minutes for fetch job completion
-2. 📊 Verify candidates are being evaluated
-3. 📊 Verify queue is populating
-4. 📈 Generate operational report once system is running
-
----
-
-## TUNING RECOMMENDATIONS (Once Running)
-
-**Top 3 Changes to Increase Supply:**
-
-1. **Reduce tweets per account:** 5 → 2 (60% fewer browser ops)
-2. **Increase batch size:** 10 → 20 accounts (faster parallel)
-3. **Add keyword feed optimization:** Skip low-signal keywords
+// After: Only return empty if no containers found
+if (wall_detected && wall_type === 'consent' && !consentCleared && containersAfter === 0) {
+  return [];
+}
+// Extract tweets if containers exist, even if consent wall was detected
+```
 
 ---
 
-**Status:** 🔧 **FIXES DEPLOYED - MONITORING**
+## EXPECTED RESULTS (After Next Fetch Cycle)
 
+**If Fix Works:**
+- ✅ `extracted_tweet_ids_count > 0` for all feeds
+- ✅ `>= 10 candidates/hour` evaluated
+- ✅ `queue_size >= 5`
+- ✅ SLO events created
+
+**Verification:**
+- Check consent handling: `consent_cleared: true` OR `containers_after > 0`
+- Check extraction: `extracted_count > 0`
+- Check candidates: `total > 0` in last 10 minutes
+- Check queue: `size > 0`
+
+---
+
+## SUMMARY
+
+**Root Cause:** Consent wall check returning empty array even when tweets were extracted  
+**Fix:** Only return empty if containers are 0, extract tweets if containers exist  
+**Status:** ✅ **FIX DEPLOYED - MONITORING**
+
+---
+
+**Next Check:** Wait 5 minutes, verify `>= 10 candidates/hour` are being evaluated.

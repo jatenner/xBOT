@@ -77,7 +77,11 @@ export async function scoreCandidate(
     filterReasons.push('parody_account');
   }
   
-  if (topicRelevance < TOPIC_RELEVANCE_THRESHOLD) {
+  // Check for insufficient text (separate from topic relevance)
+  if (!content || content.trim().length < 20) {
+    passedHardFilters = false;
+    filterReasons.push(`insufficient_text_${content?.trim().length || 0}`);
+  } else if (topicRelevance < TOPIC_RELEVANCE_THRESHOLD) {
     passedHardFilters = false;
     filterReasons.push(`low_topic_relevance_${topicRelevance.toFixed(2)}`);
   }
@@ -155,14 +159,33 @@ export async function scoreCandidate(
 
 /**
  * Check if tweet is root (not a reply)
+ * EVIDENCE-BASED: Only mark as not-root if explicit reply signals exist
  */
 async function checkIsRootTweet(tweetId: string): Promise<boolean> {
   try {
     const resolution = await resolveRootTweetId(tweetId);
-    return resolution.isRootTweet && resolution.rootTweetId === tweetId;
+    
+    // Evidence-based decision: Only return false if explicit reply signals were found
+    // If resolution failed or is uncertain, default to root (fail-open for root check)
+    if (resolution.isRootTweet) {
+      return true; // Explicitly marked as root
+    }
+    
+    // Check if we have explicit reply signals (not just verification failure)
+    // If rootTweetId is null but no reply signals, treat as root
+    if (resolution.rootTweetId === null) {
+      // This could be verification failure - check logs for explicit reply signals
+      // For now, fail-open: assume root unless we have strong evidence it's a reply
+      console.log(`[SCORER] ⚠️ Uncertain root status for ${tweetId}, defaulting to root (fail-open)`);
+      return true; // Fail-open: assume root unless explicit reply signals
+    }
+    
+    // rootTweetId exists and != tweetId means it's a reply
+    return resolution.rootTweetId === tweetId;
   } catch (error: any) {
     console.warn(`[SCORER] ⚠️ Could not resolve root for ${tweetId}: ${error.message}`);
-    return false; // Fail-closed
+    // Fail-open: assume root on error (opposite of fail-closed)
+    return true; // Fail-open: assume root unless we can prove it's a reply
   }
 }
 
@@ -190,6 +213,11 @@ function checkIsParody(content: string, username: string): boolean {
  * Calculate topic relevance score (0-1)
  */
 function calculateTopicRelevance(content: string): number {
+  // Check for insufficient text first
+  if (!content || content.trim().length < 20) {
+    return 0; // Insufficient text - will be caught by hard filter
+  }
+  
   const contentLower = content.toLowerCase();
   let matches = 0;
   

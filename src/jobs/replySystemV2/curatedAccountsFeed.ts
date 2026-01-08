@@ -381,9 +381,36 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
           
           const tweet_id = match[1];
           
-          // Extract content
-          const tweetText = article.querySelector('[data-testid="tweetText"]');
-          const content = tweetText?.textContent?.trim() || '';
+          // Extract content - ROBUST: Join spans, normalize whitespace
+          const tweetTextContainer = article.querySelector('[data-testid="tweetText"]');
+          let content = '';
+          if (tweetTextContainer) {
+            // Get all text nodes and spans within the container
+            const spans = tweetTextContainer.querySelectorAll('span');
+            const textParts: string[] = [];
+            spans.forEach(span => {
+              const text = span.textContent?.trim();
+              if (text && text.length > 0) {
+                textParts.push(text);
+              }
+            });
+            // Fallback to direct textContent if no spans found
+            if (textParts.length === 0) {
+              content = tweetTextContainer.textContent?.trim() || '';
+            } else {
+              // Join spans and normalize whitespace
+              content = textParts.join(' ').replace(/\s+/g, ' ').trim();
+            }
+          }
+          
+          // Skip replies on profile timelines (detect "Replying to" indicator)
+          const socialContext = article.querySelector('[data-testid="socialContext"]');
+          const hasReplyIndicator = socialContext ? 
+            /Replying to/i.test(socialContext.textContent || '') : false;
+          
+          if (hasReplyIndicator) {
+            continue; // Skip replies on profile timelines
+          }
           
           // Extract metrics
           const likeCount = article.querySelector('[data-testid="like"]')?.textContent?.trim() || '0';
