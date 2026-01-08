@@ -7,6 +7,7 @@
 
 import { getSupabaseClient } from '../../db/index';
 import { UnifiedBrowserPool } from '../../browser/UnifiedBrowserPool';
+import { Page } from 'playwright';
 
 const FETCH_INTERVAL_MINUTES = 5;
 const TWEETS_PER_ACCOUNT = 2; // Latest N tweets per account (reduced for faster completion)
@@ -19,6 +20,23 @@ export interface CuratedTweet {
   like_count?: number;
   reply_count?: number;
   retweet_count?: number;
+}
+
+/**
+ * 🔒 SAFE EVALUATE HELPER
+ * Enforces single payload object pattern to prevent scope errors
+ */
+async function safeEvaluate<T>(
+  page: Page,
+  fn: (payload: any) => T,
+  payload: Record<string, any> = {}
+): Promise<T> {
+  // Runtime assert: username must exist in payload if used
+  if (fn.toString().includes('username') && !payload.username) {
+    throw new Error(`safeEvaluate: username required in payload but missing. Payload keys: ${Object.keys(payload).join(', ')}`);
+  }
+  
+  return page.evaluate(fn, payload);
 }
 
 /**
@@ -94,8 +112,10 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
     const { getSupabaseClient } = await import('../../db/index');
     const supabase = getSupabaseClient();
     
+    let extractedCount = 0;
+    const profileUrl = `https://x.com/${username}`;
+    
     try {
-      const profileUrl = `https://x.com/${username}`;
       console.log(`[CURATED_FEED] 📡 Fetching from @${username}...`);
       
       await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -104,8 +124,10 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       // Handle consent wall if present - STRONGER APPROACH
       let consentCleared = false;
       let clickAttempted = 0;
-      let matchedSelector = null;
-      const containersBefore = await page.evaluate(() => {
+      let matchedSelector: string | null = null;
+      
+      // Get initial container count
+      const containersBefore = await safeEvaluate(page, () => {
         return document.querySelectorAll('article[data-testid="tweet"]').length;
       });
       
@@ -164,7 +186,7 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
             await page.waitForTimeout(500);
             await page.keyboard.press('Tab');
             await page.waitForTimeout(500);
-            const focused = await page.evaluate(() => {
+            const focused = await safeEvaluate(page, () => {
               const active = document.activeElement;
               return active?.textContent?.toLowerCase().includes('accept') || false;
             });
@@ -203,7 +225,7 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
               await page.waitForTimeout(2000); // Additional wait
               
               // Verify containers increased
-              const containersAfter = await page.evaluate(() => {
+              const containersAfter = await safeEvaluate(page, () => {
                 return document.querySelectorAll('article[data-testid="tweet"]').length;
               });
               
@@ -222,7 +244,7 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       }
       
       // Log consent handling results
-      const containersAfter = await page.evaluate(() => {
+      const containersAfter = await safeEvaluate(page, () => {
         return document.querySelectorAll('article[data-testid="tweet"]').length;
       });
       
@@ -242,7 +264,7 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       });
       
       // DIAGNOSTICS: Check login status and walls
-      const diagnostics = await page.evaluate(() => {
+      const diagnostics = await safeEvaluate(page, () => {
         const hasComposeBox = !!document.querySelector('[data-testid="tweetTextarea_0"]');
         const hasAccountMenu = !!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
         const bodyText = document.body.textContent || '';
@@ -336,15 +358,17 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       }
       
       // Scroll to load more tweets
-      await page.evaluate(() => window.scrollBy(0, 1000));
+      await safeEvaluate(page, () => {
+        window.scrollBy(0, 1000);
+      });
       await page.waitForTimeout(2000);
       
-      // Extract tweets (even if consent wall was detected but containers exist)
-      const tweets = await page.evaluate((count, authorUsername) => {
+      // Extract tweets (FIXED: use single payload object)
+      const tweets = await safeEvaluate(page, (payload: { count: number; username: string }) => {
         const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
         const results: any[] = [];
         
-        for (let i = 0; i < Math.min(articles.length, count); i++) {
+        for (let i = 0; i < Math.min(articles.length, payload.count); i++) {
           const article = articles[i];
           
           // Extract tweet ID
@@ -372,7 +396,7 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
           
           results.push({
             tweet_id,
-            author_username: authorUsername,
+            author_username: payload.username,
             content: content.substring(0, 500),
             posted_at,
             like_count: parseInt(likeCount.replace(/[^\d]/g, '')) || 0,
@@ -382,7 +406,9 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
         }
         
         return results;
-      }, TWEETS_PER_ACCOUNT, username);
+      }, { count: TWEETS_PER_ACCOUNT, username });
+      
+      extractedCount = tweets.length;
       
       // Log extraction results
       const extractedTweetIds = tweets.map(t => t.tweet_id);
@@ -394,6 +420,7 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
         message: `Tweet extraction for @${username}`,
         event_data: {
           username,
+          url: profileUrl,
           tweet_containers_found: diagnostics.tweet_containers_found,
           extracted_tweet_ids_count: extractedTweetIds.length,
           extracted_tweet_ids: extractedTweetIds.slice(0, 5), // First 5 IDs
@@ -404,6 +431,8 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       return tweets;
     } catch (error: any) {
       console.error(`[CURATED_FEED] ❌ Error fetching @${username}: ${error.message}`);
+      console.error(`[CURATED_FEED] 📊 Account stats: url=${profileUrl}, extracted=${extractedCount}`);
+      
       // Log to system_events
       try {
         const { getSupabaseClient } = await import('../../db/index');
@@ -412,7 +441,13 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
           event_type: 'reply_v2_feed_error',
           severity: 'warning',
           message: `Failed to fetch tweets from @${username}: ${error.message}`,
-          event_data: { username, error: error.message },
+          event_data: { 
+            username, 
+            url: profileUrl,
+            extracted_count: extractedCount,
+            error: error.message,
+            stack: error.stack?.substring(0, 500),
+          },
           created_at: new Date().toISOString(),
         });
       } catch (e) {
@@ -424,4 +459,3 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
     }
   }, 0); // High priority - feeds are critical for system operation
 }
-
