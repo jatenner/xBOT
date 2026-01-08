@@ -9,7 +9,7 @@ import { getSupabaseClient } from '../../db/index';
 import { UnifiedBrowserPool } from '../../browser/UnifiedBrowserPool';
 
 const FETCH_INTERVAL_MINUTES = 5;
-const TWEETS_PER_ACCOUNT = 5; // Latest N tweets per account
+const TWEETS_PER_ACCOUNT = 2; // Latest N tweets per account (reduced for faster completion)
 
 export interface CuratedTweet {
   tweet_id: string;
@@ -48,11 +48,17 @@ export async function fetchCuratedAccountsFeed(): Promise<CuratedTweet[]> {
   const tweets: CuratedTweet[] = [];
   
   // Fetch tweets from each account (in batches to avoid rate limits)
-  const batchSize = 10;
-  for (let i = 0; i < accounts.length; i += batchSize) {
-    const batch = accounts.slice(i, i + batchSize);
+  const batchSize = 5; // Reduced batch size to avoid browser crashes
+  const MAX_ACCOUNTS_TO_FETCH = 20; // Limit to top 20 accounts initially to avoid browser overload
+  
+  const accountsToFetch = accounts.slice(0, MAX_ACCOUNTS_TO_FETCH);
+  console.log(`[CURATED_FEED] 📊 Fetching from ${accountsToFetch.length} accounts (limited from ${accounts.length} total)`);
+  
+  for (let i = 0; i < accountsToFetch.length; i += batchSize) {
+    const batch = accountsToFetch.slice(i, i + batchSize);
     
-    await Promise.all(batch.map(async (account) => {
+    // Process sequentially within batch to avoid browser overload
+    for (const account of batch) {
       try {
         const accountTweets = await fetchAccountTweets(account.username, pool);
         tweets.push(...accountTweets);
@@ -64,12 +70,13 @@ export async function fetchCuratedAccountsFeed(): Promise<CuratedTweet[]> {
           .eq('username', account.username);
       } catch (error: any) {
         console.error(`[CURATED_FEED] ⚠️ Failed to fetch ${account.username}: ${error.message}`);
+        // Continue with next account
       }
-    }));
+    }
     
     // Rate limit: wait between batches
-    if (i + batchSize < accounts.length) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+    if (i + batchSize < accountsToFetch.length) {
+      await new Promise(resolve => setTimeout(resolve, 3000)); // Increased wait time
     }
   }
   

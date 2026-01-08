@@ -81,14 +81,28 @@ export async function fetchAndEvaluateCandidates(): Promise<{
     try {
       console.log(`[ORCHESTRATOR] 📡 Fetching from ${source.name}...`);
       
-      // Add timeout protection (5 minutes per source)
+      // Add timeout protection (2 minutes per source - faster fail)
       const fetchPromise = source.fetchFn();
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Fetch timeout for ${source.name} after 5 minutes`)), 5 * 60 * 1000);
+        setTimeout(() => reject(new Error(`Fetch timeout for ${source.name} after 2 minutes`)), 2 * 60 * 1000);
       });
       
-      const tweets = await Promise.race([fetchPromise, timeoutPromise]);
+      let tweets: any[] = [];
+      try {
+        tweets = await Promise.race([fetchPromise, timeoutPromise]);
+      } catch (timeoutError: any) {
+        console.error(`[ORCHESTRATOR] ⏱️ Timeout or error fetching ${source.name}: ${timeoutError.message}`);
+        // Continue with next source instead of failing entire job
+        continue;
+      }
+      
+      if (!Array.isArray(tweets)) {
+        console.warn(`[ORCHESTRATOR] ⚠️ ${source.name} returned non-array: ${typeof tweets}`);
+        tweets = [];
+      }
+      
       totalFetched += tweets.length;
+      console.log(`[ORCHESTRATOR] ✅ ${source.name}: fetched ${tweets.length} tweets`);
       
       // Get source record
       const { data: sourceRecord } = await supabase
