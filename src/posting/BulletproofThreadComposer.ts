@@ -99,8 +99,61 @@ export class BulletproofThreadComposer {
   /**
    * 🎯 MAIN METHOD: Post segments as connected thread
    */
-  static async post(segments: string[], decisionId?: string): Promise<ThreadPostResult> {
+  static async post(segments: string[], decisionId?: string, permit_id?: string): Promise<ThreadPostResult> {
     log({ op: 'thread_post_start', mode: 'composer', segments: segments.length });
+    
+    // 🔒 POSTING PERMIT CHECK (FINAL CHOKE POINT FOR THREADS)
+    if (!permit_id) {
+      const errorMsg = `[PERMIT_CHOKE] ❌ BLOCKED: No permit_id provided for thread. decisionId=${decisionId}`;
+      console.error(errorMsg);
+      console.error(`[PERMIT_CHOKE] Stack: ${new Error().stack}`);
+      
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'thread_posting_blocked_no_permit',
+        severity: 'critical',
+        message: `Thread posting blocked: No permit_id`,
+        event_data: {
+          decision_id: decisionId,
+          stack_trace: new Error().stack?.substring(0, 1000),
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      return {
+        success: false,
+        error: 'BLOCKED: No posting permit - thread posting requires permit_id',
+      };
+    }
+    
+    const { verifyPostingPermit } = await import('./postingPermit');
+    const permitCheck = await verifyPostingPermit(permit_id);
+    if (!permitCheck.valid) {
+      const errorMsg = `[PERMIT_CHOKE] ❌ BLOCKED: Permit not valid for thread. permit_id=${permit_id} error=${permitCheck.error}`;
+      console.error(errorMsg);
+      
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'thread_posting_blocked_invalid_permit',
+        severity: 'critical',
+        message: `Thread posting blocked: Permit not valid`,
+        event_data: {
+          permit_id,
+          decision_id: decisionId,
+          permit_error: permitCheck.error,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      return {
+        success: false,
+        error: `BLOCKED: Permit not valid (${permitCheck.error})`,
+      };
+    }
+    
+    console.log(`[PERMIT_CHOKE] ✅ Thread permit verified: ${permit_id} (status: ${permitCheck.permit?.status})`);
     
     const isThread = segments.length > 1;
     

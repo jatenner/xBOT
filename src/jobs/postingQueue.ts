@@ -436,13 +436,27 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
     return true; // SKIP
   }
   
-  if (!rootTweetId) {
-    console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: No root_tweet_id`);
+  // 🔒 FAIL-CLOSED: Block if root_tweet_id is null (resolver uncertainty)
+  if (!rootTweetId || rootTweetId === null) {
+    console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: root_tweet_id is NULL (resolver uncertainty)`);
     console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId} target=${targetTweetId}`);
+    console.error(`[FINAL_REPLY_GATE]   REASON: Resolver could not determine root - fail-closed to prevent deep reply chains`);
     
     await supabase.from('content_generation_metadata_comprehensive')
-      .update({ status: 'blocked', skip_reason: 'missing_root_tweet_id' })
+      .update({ status: 'blocked', skip_reason: 'root_resolution_failed_null' })
       .eq('decision_id', decisionId);
+    
+    await supabase.from('system_events').insert({
+      event_type: 'reply_gate_blocked',
+      severity: 'critical',
+      message: `Reply blocked: root_tweet_id is null (resolver uncertainty)`,
+      event_data: {
+        decision_id: decisionId,
+        target_tweet_id: targetTweetId,
+        reason: 'root_resolution_failed_null'
+      },
+      created_at: new Date().toISOString(),
+    });
     
     return true; // SKIP
   }
@@ -456,6 +470,19 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
     await supabase.from('content_generation_metadata_comprehensive')
       .update({ status: 'blocked', skip_reason: 'target_not_root_violation' })
       .eq('decision_id', decisionId);
+    
+    await supabase.from('system_events').insert({
+      event_type: 'reply_gate_blocked',
+      severity: 'critical',
+      message: `Reply blocked: ROOT-ONLY violation (target is reply, not root)`,
+      event_data: {
+        decision_id: decisionId,
+        root_tweet_id: rootTweetId,
+        target_tweet_id: targetTweetId,
+        reason: 'target_not_root_violation'
+      },
+      created_at: new Date().toISOString(),
+    });
     
     return true; // SKIP
   }
@@ -3167,6 +3194,50 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       
         // 🎉 TWEET IS LIVE! From this point on, we ALWAYS mark as posted
         postingSucceeded = true;
+        
+        // Update SLO event and track performance for replies
+        if (decision.decision_type === 'reply') {
+          const { updateSloEventAfterPosting } = await import('./replySystemV2/sloTracker');
+          const { trackReplyPerformance } = await import('./replySystemV2/performanceTracker');
+          
+          // Get permit_id
+          const { data: permit } = await supabase
+            .from('post_attempts')
+            .select('permit_id')
+            .eq('decision_id', decision.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (permit) {
+            await updateSloEventAfterPosting(decision.id, permit.permit_id, tweetId);
+          }
+          
+          // Get candidate evaluation for tier
+          const { data: decisionRow } = await supabase
+            .from('content_generation_metadata_comprehensive')
+            .select('candidate_evaluation_id, target_tweet_id')
+            .eq('decision_id', decision.id)
+            .single();
+          
+          if (decisionRow?.candidate_evaluation_id) {
+            const { data: eval } = await supabase
+              .from('candidate_evaluations')
+              .select('predicted_tier, candidate_tweet_id')
+              .eq('id', decisionRow.candidate_evaluation_id)
+              .single();
+            
+            if (eval) {
+              await trackReplyPerformance(
+                decision.id,
+                eval.candidate_tweet_id || decisionRow.target_tweet_id || '',
+                tweetId,
+                eval.predicted_tier || 2
+              );
+            }
+          }
+        }
+        
         console.log(`[POSTING_QUEUE] 🎉 TWEET POSTED SUCCESSFULLY: ${tweetId}`);
         console.log(`[POSTING_QUEUE] 🔗 Tweet URL: ${tweetUrl}`);
         console.log(`[POSTING_QUEUE] ⚠️ From this point on, all operations are best-effort only`);
@@ -3541,6 +3612,17 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             // 🔒 TRUTH CONTRACT: Log DB confirmation for replies
             if (decision.decision_type === 'reply') {
               console.log(`[REPLY_TRUTH] step=DB_CONFIRMED ok=true tweet_id=${saveResult.savedTweetIds[0] || tweetId} decision_id=${decision.id}`);
+              
+              // 🎯 Record reply in replied_tweets for deduplication
+              if (decision.target_tweet_id && decision.target_username) {
+                try {
+                  const { recordReply } = await import('../utils/replyDedupe');
+                  await recordReply(decision.target_tweet_id, decision.target_username, decision.id);
+                } catch (recordError: any) {
+                  console.warn(`[POSTING_QUEUE] ⚠️ Failed to record reply in replied_tweets: ${recordError.message}`);
+                  // Non-critical, don't fail the post
+                }
+              }
             }
             
             // ✅ EXPLICIT SUCCESS LOG: Log after DB save confirms post is complete
@@ -3992,6 +4074,33 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
           console.log(`[POSTING_QUEUE] 💡 No visual format specified, using thread as-is`);
         }
         
+        // 🎫 CREATE POSTING PERMIT FOR THREAD (prevent ghost posts)
+        const { createPostingPermit, verifyPostingPermit } = await import('../posting/postingPermit');
+        console.log(`[POSTING_QUEUE] 🎫 Creating posting permit for thread...`);
+        const permitResult = await createPostingPermit({
+          decision_id: decision.id,
+          decision_type: 'thread',
+          pipeline_source: 'postingQueue',
+          content_preview: formattedThreadParts[0]?.substring(0, 200) || '',
+          run_id: `thread_${Date.now()}`,
+        });
+        
+        if (!permitResult.success) {
+          const errorMsg = `[POSTING_QUEUE] ❌ BLOCKED: Failed to create posting permit for thread: ${permitResult.error}`;
+          console.error(errorMsg);
+          throw new Error(errorMsg);
+        }
+        
+        const permit_id = permitResult.permit_id;
+        const permitCheck = await verifyPostingPermit(permit_id);
+        if (!permitCheck.valid) {
+          const errorMsg = `[POSTING_QUEUE] ❌ BLOCKED: Permit not valid for thread: ${permitCheck.error}`;
+          console.error(errorMsg);
+          throw new Error(errorMsg);
+        }
+        
+        console.log(`[POSTING_QUEUE] ✅ Permit verified: ${permit_id} (status: ${permitCheck.permit?.status})`);
+        
         // 🚀 POST THREAD (using BulletproofThreadComposer - creates CONNECTED threads, not reply chains)
         console.log(`[POSTING_QUEUE] 🚀 Posting thread to Twitter via native composer...`);
         const { BulletproofThreadComposer } = await import('../posting/BulletproofThreadComposer');
@@ -4025,7 +4134,7 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         
         // 🛡️ TIMEOUT PROTECTION: Adaptive timeout based on retry count
         const result = await withTimeout(
-          () => BulletproofThreadComposer.post(formattedThreadParts, decision.id),
+          () => BulletproofThreadComposer.post(formattedThreadParts, decision.id, permit_id),
           { 
             timeoutMs: THREAD_POST_TIMEOUT_MS, 
             operationName: `thread_post_${thread_parts.length}_tweets`
@@ -4046,6 +4155,12 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         console.log(`[POSTING_QUEUE] ✅ Thread posted: ${result.mode}`);
         const rootTweetId = result.tweetIds?.[0] || result.rootTweetUrl?.split('/').pop() || '';
         const rootTweetUrl = result.rootTweetUrl || `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${rootTweetId}`;
+        
+        // 🎫 Mark permit as USED after successful thread posting
+        if (permit_id && rootTweetId) {
+          const { markPermitUsed } = await import('../posting/postingPermit');
+          await markPermitUsed(permit_id, rootTweetId);
+        }
         
         console.log(`[POSTING_QUEUE] 🔗 Root tweet: ${rootTweetId}`);
         console.log(`[POSTING_QUEUE] 📊 Tweet count: ${result.tweetIds?.length || 1}/${thread_parts.length}`);
@@ -4272,6 +4387,111 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   }
   
   console.log(`[POSTING_QUEUE] ✅ Duplicate check passed - no existing reply to ${decision.target_tweet_id}`);
+  
+  // 🔒 HARD PRE-POST GUARD: Navigate to tweet URL and detect if it's a reply
+  console.log(`[POSTING_QUEUE] 🔍 Pre-post guard: Verifying target tweet is root (not a reply)...`);
+  try {
+    const { UnifiedBrowserPool, BrowserPriority } = await import('../browser/UnifiedBrowserPool');
+    const pool = UnifiedBrowserPool.getInstance();
+    const page = await pool.acquirePage(BrowserPriority.REPLY_GENERATION);
+    
+    try {
+      const tweetUrl = `https://x.com/i/web/status/${decision.target_tweet_id}`;
+      await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(2000); // Wait for content to load
+      
+      // Detect if this is a reply by checking for "Replying to @..." indicator
+      const isReply = await page.evaluate(() => {
+        // Check for "Replying to" text
+        const replyingToIndicator = Array.from(document.querySelectorAll('*')).find(el => {
+          const text = el.textContent || '';
+          return text.includes('Replying to') || text.includes('Replying');
+        });
+        
+        // Check for conversation context (thread indicator)
+        const conversationContext = document.querySelector('[data-testid="reply"]')?.closest('article');
+        const hasMultipleTweets = document.querySelectorAll('article[data-testid="tweet"]').length > 1;
+        
+        // Check if URL contains conversation context
+        const url = window.location.href;
+        const isReplyUrl = url.includes('/status/') && hasMultipleTweets;
+        
+        return !!(replyingToIndicator || (conversationContext && hasMultipleTweets && isReplyUrl));
+      });
+      
+      if (isReply) {
+        console.error(`[POSTING_QUEUE] 🚫 BLOCKED: Target tweet ${decision.target_tweet_id} is a REPLY (detected via Twitter UI)`);
+        console.error(`[POSTING_QUEUE]   decision_id=${decision.id}`);
+        console.error(`[POSTING_QUEUE]   REASON: Pre-post guard detected "Replying to" indicator or conversation context`);
+        
+        // Mark as blocked
+        await supabase.from('content_generation_metadata_comprehensive')
+          .update({ status: 'blocked', skip_reason: 'pre_post_guard_reply_detected' })
+          .eq('decision_id', decision.id);
+        
+        // Log to system_events
+        await supabase.from('system_events').insert({
+          event_type: 'pre_post_guard_reply_blocked',
+          severity: 'critical',
+          message: `Pre-post guard blocked reply: target tweet ${decision.target_tweet_id} is a reply`,
+          event_data: {
+            decision_id: decision.id,
+            target_tweet_id: decision.target_tweet_id,
+            tweet_url: tweetUrl
+          },
+          created_at: new Date().toISOString()
+        });
+        
+        throw new Error(`Pre-post guard: Target tweet is a reply, not a root tweet`);
+      }
+      
+      console.log(`[POSTING_QUEUE] ✅ Pre-post guard passed: Target tweet is a root tweet`);
+    } finally {
+      await pool.releasePage(page);
+    }
+  } catch (guardError: any) {
+    if (guardError.message?.includes('Pre-post guard')) {
+      throw guardError; // Re-throw guard failures
+    }
+    console.warn(`[POSTING_QUEUE] ⚠️ Pre-post guard check failed (non-fatal): ${guardError.message}`);
+    // Continue if guard check fails (non-fatal, but log it)
+  }
+  
+  // 🔒 SELF-REPLY THREAD CHECK: Prevent replying to our own replies
+  const REPLY_THREAD_ENABLED = (process.env.REPLY_THREAD_ENABLED || 'false').toLowerCase() === 'true';
+  if (!REPLY_THREAD_ENABLED) {
+    // Check if target tweet is from our account
+    const { data: targetDecision } = await supabase
+      .from('content_generation_metadata_comprehensive')
+      .select('tweet_id, decision_type, target_username')
+      .eq('tweet_id', decision.target_tweet_id)
+      .maybeSingle();
+    
+    if (targetDecision && targetDecision.target_username === (process.env.TWITTER_USERNAME || 'SignalAndSynapse')) {
+      console.error(`[POSTING_QUEUE] 🚫 BLOCKED: Self-reply thread detected (REPLY_THREAD_ENABLED=false)`);
+      console.error(`[POSTING_QUEUE]   decision_id=${decision.id}`);
+      console.error(`[POSTING_QUEUE]   target_tweet_id=${decision.target_tweet_id} is our own tweet`);
+      console.error(`[POSTING_QUEUE]   REASON: Cannot reply to own replies unless REPLY_THREAD_ENABLED=true`);
+      
+      await supabase.from('content_generation_metadata_comprehensive')
+        .update({ status: 'blocked', skip_reason: 'self_reply_thread_blocked' })
+        .eq('decision_id', decision.id);
+      
+      await supabase.from('system_events').insert({
+        event_type: 'self_reply_thread_blocked',
+        severity: 'critical',
+        message: `Self-reply thread blocked: target tweet ${decision.target_tweet_id} is our own reply`,
+        event_data: {
+          decision_id: decision.id,
+          target_tweet_id: decision.target_tweet_id,
+          reply_thread_enabled: false
+        },
+        created_at: new Date().toISOString()
+      });
+      
+      throw new Error(`Self-reply thread blocked: REPLY_THREAD_ENABLED=false`);
+    }
+  }
   
   // ✅ Content is ALREADY formatted (done in replyJob before queueing)
   console.log(`[POSTING_QUEUE] 💡 Using pre-formatted reply content`);

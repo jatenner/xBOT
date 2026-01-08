@@ -292,6 +292,75 @@ export async function executeAuthorizedPost(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 1.5: POSTING PERMIT (Prevent ghost posts)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const { createPostingPermit, verifyPostingPermit, markPermitUsed, markPermitFailed } = await import('./postingPermit');
+  
+  console.log(`[ATOMIC_POST] 🎫 Creating posting permit...`);
+  const permitResult = await createPostingPermit({
+    decision_id,
+    decision_type,
+    pipeline_source,
+    content_preview: metadata.content.substring(0, 200),
+    target_tweet_id: metadata.target_tweet_id,
+    run_id: job_run_id,
+  });
+  
+  if (!permitResult.success) {
+    const errorMsg = `[ATOMIC_POST] ❌ BLOCKED: Failed to create posting permit: ${permitResult.error}`;
+    console.error(errorMsg);
+    
+    await supabase.from('system_events').insert({
+      event_type: 'atomic_post_blocked_no_permit',
+      severity: 'critical',
+      message: `Posting blocked: failed to create permit`,
+      event_data: {
+        decision_id,
+        decision_type,
+        pipeline_source,
+        permit_error: permitResult.error,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    return {
+      success: false,
+      error: `BLOCKED: Failed to create posting permit (${permitResult.error})`,
+    };
+  }
+  
+  const permit_id = permitResult.permit_id;
+  console.log(`[ATOMIC_POST] ✅ Permit created: ${permit_id}`);
+  
+  // Verify permit is APPROVED
+  const permitCheck = await verifyPostingPermit(permit_id);
+  if (!permitCheck.valid) {
+    const errorMsg = `[ATOMIC_POST] ❌ BLOCKED: Permit not valid: ${permitCheck.error}`;
+    console.error(errorMsg);
+    
+    await markPermitFailed(permit_id, permitCheck.error || 'Permit verification failed');
+    
+    await supabase.from('system_events').insert({
+      event_type: 'atomic_post_blocked_invalid_permit',
+      severity: 'critical',
+      message: `Posting blocked: permit not valid`,
+      event_data: {
+        decision_id,
+        permit_id,
+        permit_error: permitCheck.error,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    return {
+      success: false,
+      error: `BLOCKED: Permit not valid (${permitCheck.error})`,
+    };
+  }
+  
+  console.log(`[ATOMIC_POST] ✅ Permit verified: ${permit_id} (status: ${permitCheck.permit?.status})`);
+  
+  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 2: POST - Call Twitter API with timeout protection
   // ═══════════════════════════════════════════════════════════════════════════
   console.log(`[ATOMIC_POST] 🚀 POSTING: Calling Twitter API...`);
@@ -305,6 +374,7 @@ export async function executeAuthorizedPost(
       decision_id,
       decision_type,
       pipeline_source,
+      permit_id,
     },
     created_at: new Date().toISOString(),
   });
@@ -319,14 +389,23 @@ export async function executeAuthorizedPost(
   
   let postResult;
   try {
-    const postingPromise = options.isReply && options.replyToTweetId
-      ? poster.postReply(metadata.content, options.replyToTweetId, guard)
-      : poster.postTweet(metadata.content, guard);
+      // Add permit_id to guard before calling poster
+      const guardWithPermit = {
+        ...guard,
+        permit_id,
+      };
+      
+      const postingPromise = options.isReply && options.replyToTweetId
+      ? poster.postReply(metadata.content, options.replyToTweetId, guardWithPermit as any)
+      : poster.postTweet(metadata.content, guardWithPermit as any);
     
     // Race posting against timeout
     postResult = await Promise.race([postingPromise, timeoutPromise]);
   } catch (error: any) {
     console.error(`[ATOMIC_POST] ❌ POSTING EXCEPTION: ${error.message}`);
+    
+    // Mark permit as failed
+    await markPermitFailed(permit_id, error.message);
     
     const isTimeout = error.message.includes('timeout');
     const skipReason = isTimeout 
@@ -351,6 +430,7 @@ export async function executeAuthorizedPost(
       event_data: {
         decision_id,
         decision_type,
+        permit_id,
         error: error.message,
         is_timeout: isTimeout,
       },
@@ -365,6 +445,9 @@ export async function executeAuthorizedPost(
   
   if (!postResult.success || !postResult.tweetId) {
     console.error(`[ATOMIC_POST] ❌ POSTING FAILED: ${postResult.error || 'No tweetId returned'}`);
+    
+    // Mark permit as failed
+    await markPermitFailed(permit_id, postResult.error || 'No tweetId returned');
     
     // Update DB row to status='failed'
     await supabase
@@ -383,6 +466,9 @@ export async function executeAuthorizedPost(
   }
   
   console.log(`[ATOMIC_POST] ✅ POSTING SUCCESS: tweet_id=${postResult.tweetId}`);
+  
+  // Mark permit as USED
+  await markPermitUsed(permit_id, postResult.tweetId);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 3: UPDATE - Mark row as 'posted' with tweet_id

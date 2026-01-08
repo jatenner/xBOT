@@ -1,0 +1,6 @@
+{
+  "timestamp": "2026-01-08T16:09:34.791Z",
+  "error": "Cannot read properties of undefined (reading 'permit_id')",
+  "url": "https://x.com/home",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+}

@@ -8,7 +8,7 @@ import { getSupabaseClient } from '../db';
 
 export interface ResolvedReplyTarget {
   originalCandidateId: string;
-  rootTweetId: string;
+  rootTweetId: string | null; // null = cannot determine root (fail-closed)
   rootTweetUrl: string;
   rootTweetAuthor: string | null;
   rootTweetContent: string | null;

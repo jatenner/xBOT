@@ -7,7 +7,7 @@ import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
 
 export interface RootTweetResolution {
   originalTweetId: string;
-  rootTweetId: string;
+  rootTweetId: string | null; // null = cannot determine root (fail-closed)
   isRootTweet: boolean;
   rootTweetUrl: string;
   rootTweetAuthor: string | null;
@@ -16,6 +16,8 @@ export interface RootTweetResolution {
 
 /**
  * Resolve a tweet ID to its root tweet using Playwright permalink inspection
+ * 
+ * FAIL-CLOSED: On any uncertainty, returns isRootTweet=false to prevent replying to replies
  */
 export async function resolveRootTweetId(tweetId: string): Promise<RootTweetResolution> {
   const tweetUrl = `https://x.com/i/web/status/${tweetId}`;
@@ -24,42 +26,122 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
   
   const pool = UnifiedBrowserPool.getInstance();
   let page;
+  let resolutionAttempted = false;
+  let checksPerformed: string[] = [];
   
   try {
     page = await pool.acquirePage('resolve_root_tweet');
     
     await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForTimeout(2000); // Let page settle
+    resolutionAttempted = true;
     
-    // Check if this is a reply by looking for "Replying to" text
-    const isReply = await page.evaluate(() => {
-      const replyingTo = document.querySelector('[data-testid="reply"]') || 
-                         document.querySelector('a[href*="/status/"]');
-      return !!replyingTo;
+    // 🔒 ROBUST REPLY DETECTION: Multiple signals, no broad selectors
+    const replyDetection = await page.evaluate(() => {
+      const checks: { signal: string; found: boolean; details?: any }[] = [];
+      
+      // Check 1: Look for "Replying to @username" text (most reliable)
+      const replyingToText = Array.from(document.querySelectorAll('*')).find(el => {
+        const text = el.textContent || '';
+        return /Replying to\s+@/i.test(text);
+      });
+      checks.push({ 
+        signal: 'replying_to_text', 
+        found: !!replyingToText,
+        details: replyingToText ? (replyingToText.textContent?.substring(0, 50) || '') : undefined
+      });
+      
+      // Check 2: Look for social context element (Twitter's official indicator)
+      const socialContext = document.querySelector('[data-testid="socialContext"]');
+      checks.push({ 
+        signal: 'social_context', 
+        found: !!socialContext,
+        details: socialContext ? (socialContext.textContent?.substring(0, 50) || '') : undefined
+      });
+      
+      // Check 3: Check if main tweet article has reply indicator
+      const mainArticle = document.querySelector('article[data-testid="tweet"]:first-of-type');
+      const hasReplyIndicator = mainArticle ? 
+        Array.from(mainArticle.querySelectorAll('*')).some(el => {
+          const text = el.textContent || '';
+          return /Replying to/i.test(text);
+        }) : false;
+      checks.push({ 
+        signal: 'main_article_reply_indicator', 
+        found: hasReplyIndicator 
+      });
+      
+      // Check 4: Look for conversation thread structure (multiple articles = likely reply chain)
+      const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+      const hasMultipleArticles = articles.length > 1;
+      checks.push({ 
+        signal: 'multiple_articles', 
+        found: hasMultipleArticles,
+        details: articles.length 
+      });
+      
+      // Determine if reply: ANY positive signal = reply
+      const isReply = checks.some(c => c.found);
+      
+      return { isReply, checks };
     });
     
-    if (!isReply) {
-      // This is already a root tweet
-      console.log(`[REPLY_SELECT] ✅ ${tweetId} is already a root tweet`);
-      
-      const author = await page.evaluate(() => {
-        const authorElement = document.querySelector('[data-testid="User-Name"] a');
-        return authorElement?.textContent?.replace('@', '') || null;
+    checksPerformed = replyDetection.checks.map((c: any) => `${c.signal}=${c.found}`);
+    
+    if (!replyDetection.isReply) {
+      // This appears to be a root tweet - verify with additional checks
+      const verification = await page.evaluate(() => {
+        // Get main tweet article
+        const mainArticle = document.querySelector('article[data-testid="tweet"]:first-of-type');
+        if (!mainArticle) return { verified: false, reason: 'no_main_article' };
+        
+        // Check if this article's URL matches the tweet ID in URL
+        const articleLink = mainArticle.querySelector('a[href*="/status/"]');
+        const href = articleLink?.getAttribute('href') || '';
+        const match = href.match(/\/status\/(\d+)/);
+        const articleTweetId = match ? match[1] : null;
+        
+        // Extract author and content for return
+        const authorElement = mainArticle.querySelector('[data-testid="User-Name"] a');
+        const author = authorElement?.textContent?.replace('@', '') || null;
+        
+        const tweetText = mainArticle.querySelector('[data-testid="tweetText"]');
+        const content = tweetText?.textContent || null;
+        
+        return { 
+          verified: true, 
+          articleTweetId,
+          author,
+          content 
+        };
       });
       
-      const content = await page.evaluate(() => {
-        const tweetText = document.querySelector('[data-testid="tweetText"]');
-        return tweetText?.textContent || null;
-      });
-      
-      return {
-        originalTweetId: tweetId,
-        rootTweetId: tweetId,
-        isRootTweet: true,
-        rootTweetUrl: tweetUrl,
-        rootTweetAuthor: author,
-        rootTweetContent: content,
-      };
+      if (verification.verified) {
+        console.log(`[REPLY_SELECT] ✅ ${tweetId} confirmed as ROOT tweet (checks: ${checksPerformed.join(', ')})`);
+        
+        return {
+          originalTweetId: tweetId,
+          rootTweetId: tweetId,
+          isRootTweet: true,
+          rootTweetUrl: tweetUrl,
+          rootTweetAuthor: verification.author,
+          rootTweetContent: verification.content,
+        };
+      } else {
+        // Verification failed - fail closed
+        console.warn(`[REPLY_SELECT] ⚠️ Could not verify root status for ${tweetId} (reason: ${verification.reason || 'unknown'})`);
+        console.warn(`[REPLY_SELECT]   Checks performed: ${checksPerformed.join(', ')}`);
+        console.warn(`[REPLY_SELECT]   FAIL-CLOSED: Treating as reply to prevent deep reply chains`);
+        
+        return {
+          originalTweetId: tweetId,
+          rootTweetId: null, // Fail-closed: null = cannot determine root
+          isRootTweet: false, // Fail-closed: assume reply if uncertain
+          rootTweetUrl: tweetUrl,
+          rootTweetAuthor: null,
+          rootTweetContent: null,
+        };
+      }
     }
     
     // This is a reply, find the root tweet
@@ -90,8 +172,8 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
       return { rootId: null, author: null, content: null };
     });
     
-    if (rootTweetData.rootId) {
-      console.log(`[REPLY_SELECT] ✅ Resolved ${tweetId} → root ${rootTweetData.rootId}`);
+    if (rootTweetData.rootId && rootTweetData.rootId !== tweetId) {
+      console.log(`[REPLY_SELECT] ✅ Resolved ${tweetId} → root ${rootTweetData.rootId} (checks: ${checksPerformed.join(', ')})`);
       
       return {
         originalTweetId: tweetId,
@@ -103,12 +185,16 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
       };
     }
     
-    // Fallback: couldn't resolve, return original
-    console.warn(`[REPLY_SELECT] ⚠️ Could not resolve root for ${tweetId}, using original`);
+    // Could not resolve root - FAIL CLOSED
+    console.warn(`[REPLY_SELECT] ⚠️ Could not resolve root for ${tweetId}`);
+    console.warn(`[REPLY_SELECT]   Checks performed: ${checksPerformed.join(', ')}`);
+    console.warn(`[REPLY_SELECT]   Root ID extracted: ${rootTweetData.rootId || 'null'}`);
+    console.warn(`[REPLY_SELECT]   FAIL-CLOSED: Returning isRootTweet=false to prevent deep reply chains`);
+    
     return {
       originalTweetId: tweetId,
-      rootTweetId: tweetId,
-      isRootTweet: true, // Assume it's root if we can't determine
+      rootTweetId: null, // Fail-closed: null = cannot determine root
+      isRootTweet: false, // Fail-closed: assume reply if uncertain
       rootTweetUrl: tweetUrl,
       rootTweetAuthor: null,
       rootTweetContent: null,
@@ -116,12 +202,15 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
     
   } catch (error: any) {
     console.error(`[REPLY_SELECT] ❌ Error resolving root for ${tweetId}:`, error.message);
+    console.error(`[REPLY_SELECT]   Resolution attempted: ${resolutionAttempted}`);
+    console.error(`[REPLY_SELECT]   Checks performed: ${checksPerformed.length > 0 ? checksPerformed.join(', ') : 'none'}`);
+    console.error(`[REPLY_SELECT]   FAIL-CLOSED: Returning isRootTweet=false due to error`);
     
-    // Fallback: return original on error
+    // Fail-closed: return isRootTweet=false on error
     return {
       originalTweetId: tweetId,
-      rootTweetId: tweetId,
-      isRootTweet: true,
+      rootTweetId: null, // Fail-closed: null = cannot determine root
+      isRootTweet: false, // Fail-closed: assume reply if uncertain
       rootTweetUrl: tweetUrl,
       rootTweetAuthor: null,
       rootTweetContent: null,

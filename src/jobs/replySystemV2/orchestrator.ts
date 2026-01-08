@@ -1,0 +1,222 @@
+/**
+ * 🎼 REPLY SYSTEM V2 ORCHESTRATOR
+ * 
+ * Coordinates all components:
+ * 1. Fetch candidates from feeds
+ * 2. Score and filter candidates
+ * 3. Refresh queue
+ * 4. Schedule posts
+ */
+
+import 'dotenv/config';
+import { getSupabaseClient } from '../../db/index';
+import { fetchCuratedAccountsFeed } from './curatedAccountsFeed';
+import { fetchKeywordFeed } from './keywordFeed';
+import { fetchViralWatcherFeed } from './viralWatcherFeed';
+import { scoreCandidate } from './candidateScorer';
+import { refreshCandidateQueue } from './queueManager';
+
+/**
+ * Fetch candidates from all feeds and evaluate them
+ */
+export async function fetchAndEvaluateCandidates(): Promise<{
+  fetched: number;
+  evaluated: number;
+  passed_filters: number;
+  feed_run_id: string;
+}> {
+  console.log('[ORCHESTRATOR] 🎼 Fetching and evaluating candidates...');
+  
+  // Validate environment variables
+  if (!process.env.DATABASE_URL && !process.env.SUPABASE_URL) {
+    const errorMsg = '[ORCHESTRATOR] ❌ Missing required environment variables: DATABASE_URL or SUPABASE_URL';
+    console.error(errorMsg);
+    
+    // Log to system_events if possible
+    try {
+      const { getSupabaseClient } = await import('../../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'reply_v2_env_var_missing',
+        severity: 'critical',
+        message: errorMsg,
+        created_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      // If we can't log, at least throw
+    }
+    
+    throw new Error(errorMsg);
+  }
+  
+  const supabase = getSupabaseClient();
+  const feedRunId = `feed_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  console.log(`[ORCHESTRATOR] 🆔 Feed run ID: ${feedRunId}`);
+  
+  // Log job start to system_events
+  try {
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_fetch_job_started',
+      severity: 'info',
+      message: `Reply V2 fetch job started: feed_run_id=${feedRunId}`,
+      event_data: { feed_run_id: feedRunId },
+      created_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn(`[ORCHESTRATOR] Failed to log job start: ${(e as Error).message}`);
+  }
+  
+  let totalFetched = 0;
+  let totalEvaluated = 0;
+  let totalPassed = 0;
+  
+  // Fetch from all sources
+  const sources = [
+    { name: 'curated_accounts', fetchFn: fetchCuratedAccountsFeed },
+    { name: 'keyword_search', fetchFn: fetchKeywordFeed },
+    { name: 'viral_watcher', fetchFn: fetchViralWatcherFeed },
+  ];
+  
+  for (const source of sources) {
+    try {
+      console.log(`[ORCHESTRATOR] 📡 Fetching from ${source.name}...`);
+      
+      const tweets = await source.fetchFn();
+      totalFetched += tweets.length;
+      
+      // Get source record
+      const { data: sourceRecord } = await supabase
+        .from('candidate_sources')
+        .select('id')
+        .eq('source_type', source.name)
+        .single();
+      
+      const sourceId = sourceRecord?.id;
+      
+      // Evaluate each tweet
+      for (const tweet of tweets) {
+        try {
+          // Check if already evaluated
+          const { data: existing } = await supabase
+            .from('candidate_evaluations')
+            .select('id')
+            .eq('candidate_tweet_id', tweet.tweet_id)
+            .single();
+          
+          if (existing) {
+            continue; // Skip if already evaluated
+          }
+          
+          // Score candidate
+          const score = await scoreCandidate(
+            tweet.tweet_id,
+            tweet.author_username,
+            tweet.content,
+            tweet.posted_at,
+            tweet.like_count || 0,
+            tweet.reply_count || 0,
+            tweet.retweet_count || 0
+          );
+          
+          totalEvaluated++;
+          
+          if (score.passed_hard_filters) {
+            totalPassed++;
+          }
+          
+          // Store evaluation
+          await supabase
+            .from('candidate_evaluations')
+            .insert({
+              candidate_tweet_id: tweet.tweet_id,
+              candidate_author_username: tweet.author_username,
+              candidate_content: tweet.content,
+              candidate_posted_at: tweet.posted_at,
+              source_id: sourceId,
+              source_type: source.name,
+              source_feed_name: source.name,
+              feed_run_id: feedRunId, // 🆔 Traceability
+              is_root_tweet: score.is_root_tweet,
+              is_parody: score.is_parody,
+              topic_relevance_score: score.topic_relevance_score,
+              spam_score: score.spam_score,
+              velocity_score: score.velocity_score,
+              recency_score: score.recency_score,
+              author_signal_score: score.author_signal_score,
+              overall_score: score.overall_score,
+              passed_hard_filters: score.passed_hard_filters,
+              filter_reason: score.filter_reason,
+              predicted_24h_views: score.predicted_24h_views,
+              predicted_tier: score.predicted_tier,
+              status: score.passed_hard_filters ? 'evaluated' : 'blocked',
+            });
+          
+        } catch (error: any) {
+          console.error(`[ORCHESTRATOR] ⚠️ Failed to evaluate ${tweet.tweet_id}: ${error.message}`);
+        }
+      }
+      
+      // Update source last_fetched_at
+      if (sourceId) {
+        await supabase
+          .from('candidate_sources')
+          .update({ last_fetched_at: new Date().toISOString() })
+          .eq('id', sourceId);
+      }
+      
+    } catch (error: any) {
+      console.error(`[ORCHESTRATOR] ❌ Failed to fetch from ${source.name}: ${error.message}`);
+      
+      // Log error to system_events
+      try {
+        await supabase.from('system_events').insert({
+          event_type: 'reply_v2_fetch_job_error',
+          severity: 'error',
+          message: `Reply V2 fetch failed for ${source.name}: ${error.message}`,
+          event_data: { source_name: source.name, error: error.message, feed_run_id: feedRunId },
+          created_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        // Ignore logging errors
+      }
+    }
+  }
+  
+  console.log(`[ORCHESTRATOR] ✅ Fetched ${totalFetched} tweets, evaluated ${totalEvaluated}, passed ${totalPassed}`);
+  
+  // Log job completion to system_events
+  try {
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_fetch_job_completed',
+      severity: 'info',
+      message: `Reply V2 fetch job completed: fetched=${totalFetched} evaluated=${totalEvaluated} passed=${totalPassed}`,
+      event_data: { feed_run_id: feedRunId, fetched: totalFetched, evaluated: totalEvaluated, passed: totalPassed },
+      created_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn(`[ORCHESTRATOR] Failed to log job completion: ${(e as Error).message}`);
+  }
+  
+  return {
+    fetched: totalFetched,
+    evaluated: totalEvaluated,
+    passed_filters: totalPassed,
+    feed_run_id: feedRunId,
+  };
+}
+
+/**
+ * Run full cycle: fetch -> evaluate -> queue refresh
+ */
+export async function runFullCycle(): Promise<void> {
+  console.log('[ORCHESTRATOR] 🔄 Running full cycle...');
+  
+  // Step 1: Fetch and evaluate
+  const fetchResult = await fetchAndEvaluateCandidates();
+  
+  // Step 2: Refresh queue
+  const queueResult = await refreshCandidateQueue();
+  
+  console.log(`[ORCHESTRATOR] ✅ Cycle complete: ${fetchResult.evaluated} evaluated, ${queueResult.queued} queued`);
+}
+

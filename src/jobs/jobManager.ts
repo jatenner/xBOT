@@ -278,7 +278,9 @@ export class JobManager {
       'metrics_scraper',
       async () => {
           // 🚨 POSTING PRIORITY: Skip metrics scraping if disabled via env flag
-          if (process.env.DISABLE_METRICS_JOB === 'true') {
+          // 🔒 HARDENING: Default to false if not set (ensure metrics collection is enabled by default)
+          const disableMetricsJob = (process.env.DISABLE_METRICS_JOB || 'false').toLowerCase() === 'true';
+          if (disableMetricsJob) {
             console.log('[METRICS_SCRAPER] ⏭️ Skipped (DISABLE_METRICS_JOB=true)');
             await (await import('./jobHeartbeat')).recordJobSkip('metrics_scraper', 'disabled_via_env');
             return;
@@ -295,6 +297,101 @@ export class JobManager {
       },
       20 * MINUTE, // Every 20 minutes (balanced: was 6hr - too slow, was 10min - too aggressive)
       0 * MINUTE   // 🔥 START IMMEDIATELY on deploy (was 5min - too slow!)
+    );
+
+    // 👻 Ghost reconciliation - every 15 minutes (detect ghost tweets)
+    this.scheduleStaggeredJob(
+      'ghost_recon',
+      async () => {
+        await this.safeExecute('ghost_recon', async () => {
+          const { runGhostReconciliation } = await import('./ghostReconciliationJob');
+          const result = await runGhostReconciliation();
+          console.log(`[GHOST_RECON] ✅ Completed: checked=${result.checked} ghosts=${result.ghosts_found} inserted=${result.ghosts_inserted}`);
+        });
+      },
+      15 * MINUTE, // Every 15 minutes
+      5 * MINUTE   // Start after 5 minutes (let system stabilize)
+    );
+
+    // 🎼 Reply System V2 - fetch/evaluate/queue every 5 minutes
+    this.scheduleStaggeredJob(
+      'reply_v2_fetch',
+      async () => {
+        await this.safeExecute('reply_v2_fetch', async () => {
+          const { runFullCycle } = await import('./replySystemV2/orchestrator');
+          await runFullCycle();
+        });
+      },
+      5 * MINUTE, // Every 5 minutes
+      2 * MINUTE  // Start after 2 minutes
+    );
+
+    // ⏰ Reply System V2 - scheduled posting every 15 minutes
+    this.scheduleStaggeredJob(
+      'reply_v2_scheduler',
+      async () => {
+        await this.safeExecute('reply_v2_scheduler', async () => {
+          const { attemptScheduledReply } = await import('./replySystemV2/tieredScheduler');
+          const result = await attemptScheduledReply();
+          if (!result.posted) {
+            console.log(`[REPLY_V2_SCHEDULER] ⚠️ No reply posted: ${result.reason}`);
+          }
+        });
+      },
+      15 * MINUTE, // Every 15 minutes (target: 4 replies/hour)
+      3 * MINUTE   // Start after 3 minutes
+    );
+
+    // 📊 Reply System V2 - performance tracking every 30 minutes
+    this.scheduleStaggeredJob(
+      'reply_v2_performance',
+      async () => {
+        await this.safeExecute('reply_v2_performance', async () => {
+          const { updatePerformanceMetrics } = await import('./replySystemV2/performanceTracker');
+          await updatePerformanceMetrics();
+        });
+      },
+      30 * MINUTE, // Every 30 minutes
+      10 * MINUTE  // Start after 10 minutes
+    );
+
+    // 📊 Reply System V2 - hourly summary report
+    this.scheduleStaggeredJob(
+      'reply_v2_hourly_summary',
+      async () => {
+        await this.safeExecute('reply_v2_hourly_summary', async () => {
+          const { generateHourlySummary } = await import('./replySystemV2/summaryReporter');
+          await generateHourlySummary();
+        });
+      },
+      60 * MINUTE, // Every hour
+      5 * MINUTE   // Start after 5 minutes
+    );
+
+    // 📊 Reply System V2 - daily summary report
+    this.scheduleStaggeredJob(
+      'reply_v2_daily_summary',
+      async () => {
+        await this.safeExecute('reply_v2_daily_summary', async () => {
+          const { generateDailySummary } = await import('./replySystemV2/summaryReporter');
+          await generateDailySummary();
+        });
+      },
+      24 * 60 * MINUTE, // Daily
+      0 * MINUTE  // Start immediately (will check if it's a new day)
+    );
+
+    // 📈 Reply System V2 - weekly ratchet (every Monday)
+    this.scheduleStaggeredJob(
+      'reply_v2_ratchet',
+      async () => {
+        await this.safeExecute('reply_v2_ratchet', async () => {
+          const { replyRatchetJob } = await import('./replySystemV2/main');
+          await replyRatchetJob();
+        });
+      },
+      7 * 24 * 60 * MINUTE, // Weekly
+      0 * MINUTE  // Start immediately (will check if it's Monday)
     );
 
     // 📸 Follower snapshot job - every 30 minutes, offset 20 min
@@ -540,11 +637,12 @@ export class JobManager {
       console.log('💬 JOB_MANAGER: Reply jobs ENABLED - scheduling 6 jobs');
       console.log('═══════════════════════════════════════════════════════');
       
-      // 🔥 MEGA-VIRAL REPLY HARVESTER - every 2 hours (UPGRADED: AI filtering + 10K-250K tiers)
+      // 🔥 MEGA-VIRAL REPLY HARVESTER - configurable interval (UPGRADED: AI filtering + 10K-250K tiers)
       // Searches Twitter for truly massive viral health tweets only
       // Strategy: Broad discovery + AI health filtering + mega-viral thresholds
-      // Frequency: Every 2 hours = 12 harvests/day = 720 opportunities/day (7.5x buffer for 96 replies/day)
-      console.log('[JOB_MANAGER] 📋 Scheduling mega_viral_harvester (every 2 hours, offset 10min)');
+      // Frequency: Configurable via JOBS_HARVEST_INTERVAL_MIN (default: 15 min for production)
+      const harvestIntervalMin = config.JOBS_HARVEST_INTERVAL_MIN;
+      console.log(`[JOB_MANAGER] 📋 Scheduling mega_viral_harvester (every ${harvestIntervalMin} min, offset 10min)`);
       this.scheduleStaggeredJob(
         'mega_viral_harvester',
         async () => {
@@ -586,7 +684,7 @@ export class JobManager {
             console.warn('[JOB_MANAGER] ⚠️ HARVESTER: Error logged, will retry on next cycle');
           }
         },
-        120 * MINUTE, // Every 2 hours - ensures 720+ opportunities/day (safe buffer)
+        harvestIntervalMin * MINUTE, // Configurable interval (default: 15 min)
         10 * MINUTE // Start after 10 minutes
       );
       console.log('[JOB_MANAGER] ✅ mega_viral_harvester scheduled successfully');
@@ -1105,6 +1203,14 @@ export class JobManager {
     console.log(`   • Learn: ${flags.learnEnabled ? 'ENABLED' : 'DISABLED'}`);
     console.log(`   • Attribution: ENABLED (every 2h)`);
     
+    // 🔒 METRICS JOB HARDENING: Log DISABLE_METRICS_JOB status
+    const disableMetricsJob = process.env.DISABLE_METRICS_JOB === 'true';
+    const metricsJobScheduled = !disableMetricsJob;
+    console.log(`   • Metrics Scraper: ${metricsJobScheduled ? 'ENABLED' : 'DISABLED'} (DISABLE_METRICS_JOB=${process.env.DISABLE_METRICS_JOB || 'false'})`);
+    if (disableMetricsJob) {
+      console.warn(`   ⚠️  WARNING: Metrics scraper is DISABLED - metrics will not be collected!`);
+    }
+    
     if (USE_STAGGERED) {
       await this.startStaggeredJobs(config, modeFlags);
       return;
@@ -1470,7 +1576,7 @@ export class JobManager {
    * Get current job statistics
    */
   public getStats(): JobStats {
-    return { ...this.stats, heartbeats: getJobHeartbeats() };
+    return { ...this.stats };
   }
 
   /**

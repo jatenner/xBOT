@@ -73,7 +73,11 @@ export class CoreContentOrchestrator {
         topic: request.topic || 'health',
         angle: request.angle || 'general',
         tone: request.tone || 'informative',
-        model: request.model || 'gpt-4o-mini'
+        model: request.model || 'gpt-4o-mini',
+        relevance_score: (request as any).relevance_score,
+        replyability_score: (request as any).replyability_score,
+        // 🔒 NEW: Pass reply context for grounded replies
+        reply_context: (request as any).reply_context
       });
       
       return {

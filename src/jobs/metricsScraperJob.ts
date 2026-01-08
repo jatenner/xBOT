@@ -9,7 +9,6 @@ import { log } from '../lib/logger';
 import { getSupabaseClient } from '../db';
 import { BulletproofTwitterScraper } from '../scrapers/bulletproofTwitterScraper';
 import { ScrapingOrchestrator } from '../metrics/scrapingOrchestrator';
-import { Sentry } from '../observability/instrument';
 import { validatePostsForScraping, validateTweetIdForScraping } from './metricsScraperValidation';
 import { 
   calculateV2ObjectiveMetrics, 
@@ -64,14 +63,16 @@ export async function metricsScraperJob(): Promise<void> {
     console.warn('[METRICS_JOB] ⚠️ Memory check failed, continuing:', error);
   }
   
-  // Start Sentry span for performance tracking
-  return await Sentry.startSpan(
-    {
-      op: 'job',
-      name: 'metrics_scraper_job'
-    },
-    async (span) => {
+  // Get Sentry if available (optional)
+  let Sentry: any = null;
+  try {
+    Sentry = (await import('../observability/instrument')).Sentry;
+  } catch {
+    // Sentry not available, continue without it
+  }
   
+  // Execute job with optional Sentry span
+  const executeJob = async () => {
   try {
     const supabase = getSupabaseClient();
     
@@ -821,26 +822,113 @@ export async function metricsScraperJob(): Promise<void> {
       scrapeFailedCount
     });
     
-    // Record success metrics in Sentry
-    span.setAttributes({
-      'metrics.updated': updated,
-      'metrics.skipped': skipped,
-      'metrics.failed': failed,
-      'metrics.success_rate': updated / (updated + failed || 1)
-    });
+    // 🔒 HARDENING: Alert if 0 successful updates for >60 minutes
+    if (updated === 0 && posts.length > 0) {
+      console.warn(`[METRICS_JOB] ⚠️ WARNING: 0 metrics updated despite processing ${posts.length} posts`);
+      
+      // Check last successful update time
+      const { data: lastUpdate } = await supabase
+        .from('content_metadata')
+        .select('updated_at')
+        .not('actual_impressions', 'is', null)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (lastUpdate?.updated_at) {
+        const lastUpdateTime = new Date(lastUpdate.updated_at).getTime();
+        const minutesSinceLastUpdate = (Date.now() - lastUpdateTime) / (1000 * 60);
+        
+        if (minutesSinceLastUpdate > 60) {
+          const errorMsg = `[METRICS_JOB] 🚨 CRITICAL: Metrics scraper has 0 successful updates for ${Math.round(minutesSinceLastUpdate)} minutes!`;
+          console.error(errorMsg);
+          
+          // Send Discord alert
+          try {
+            const { sendDiscordAlert } = await import('../monitoring/discordAlerts');
+            await sendDiscordAlert(
+              `🚨 Metrics Scraper Failure\n\n` +
+              `• 0 metrics updated in this run\n` +
+              `• Last successful update: ${Math.round(minutesSinceLastUpdate)} minutes ago\n` +
+              `• Posts processed: ${posts.length}\n` +
+              `• Failed: ${failed}\n` +
+              `• Skipped: ${skipped}\n\n` +
+              `**Action Required:** Check metrics scraper logs and browser health.`,
+              true
+            );
+          } catch (alertError) {
+            console.error('[METRICS_JOB] Failed to send Discord alert:', alertError);
+          }
+          
+          // Log to system_events
+          try {
+            await supabase.from('system_events').insert({
+              event_type: 'metrics_scraper_stalled',
+              severity: 'critical',
+              event_data: {
+                minutes_since_last_update: Math.round(minutesSinceLastUpdate),
+                posts_processed: posts.length,
+                updated: 0,
+                failed,
+                skipped
+              },
+              created_at: new Date().toISOString()
+            });
+          } catch (dbError) {
+            // Non-critical
+          }
+        }
+      }
+    }
+    
+    // Record success metrics in Sentry (if span available)
+    // Note: span is only available when Sentry.startSpan is used
     
   } catch (error: any) {
     console.error('[METRICS_JOB] ❌ Metrics collection failed:', error.message);
     
-    // Capture error in Sentry
-    Sentry.captureException(error, {
-      tags: { job: 'metrics_scraper' },
-      extra: { error_message: error.message }
-    });
+    // 🔒 HARDENING: Alert on crash
+    try {
+      const { sendDiscordAlert } = await import('../monitoring/discordAlerts');
+      await sendDiscordAlert(
+        `🚨 Metrics Scraper Crashed\n\n` +
+        `• Error: ${error.message}\n` +
+        `• Stack: ${error.stack?.substring(0, 500) || 'N/A'}\n\n` +
+        `**Action Required:** Check metrics scraper logs and fix the error.`,
+        true
+      );
+    } catch (alertError) {
+      console.error('[METRICS_JOB] Failed to send Discord alert:', alertError);
+    }
+    
+    // Capture error in Sentry if available
+    if (Sentry?.captureException) {
+      try {
+        Sentry.captureException(error, {
+          tags: { job: 'metrics_scraper' },
+          extra: { error_message: error.message }
+        });
+      } catch (sentryError) {
+        // Ignore Sentry errors
+      }
+    }
     
     throw error;
   }
-  });
+  };
+  
+  // Execute with optional Sentry span
+  if (Sentry?.startSpan) {
+    return await Sentry.startSpan(
+      {
+        op: 'job',
+        name: 'metrics_scraper_job'
+      },
+      executeJob
+    );
+  } else {
+    return await executeJob();
+  }
 }
 
 /**

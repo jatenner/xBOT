@@ -48,6 +48,7 @@ const ConfigSchema = z.object({
   JOBS_REPLY_INTERVAL_MIN: z.number().default(30), // Replies every 30min (2 runs × 2 batch = 4 replies/hour)
   JOBS_LEARN_INTERVAL_MIN: z.number().default(60), // Learn every hour
   JOBS_POSTING_INTERVAL_MIN: z.number().default(5), // Check posting queue every 5 minutes
+  JOBS_HARVEST_INTERVAL_MIN: z.number().default(15), // Harvest opportunities every 15 min (configurable, was hardcoded 120 min)
   JOBS_VIRAL_THREAD_INTERVAL_MIN: z.number().default(1440), // Viral thread DAILY (24 hours)
   
   // Rate Limits - Environment-driven with smart defaults 🔥
@@ -120,6 +121,7 @@ export function loadConfig(): Config {
     JOBS_REPLY_INTERVAL_MIN: process.env.JOBS_REPLY_INTERVAL_MIN ? parseInt(process.env.JOBS_REPLY_INTERVAL_MIN) : undefined,
     JOBS_LEARN_INTERVAL_MIN: process.env.JOBS_LEARN_INTERVAL_MIN ? parseInt(process.env.JOBS_LEARN_INTERVAL_MIN) : undefined,
     JOBS_POSTING_INTERVAL_MIN: process.env.JOBS_POSTING_INTERVAL_MIN ? parseInt(process.env.JOBS_POSTING_INTERVAL_MIN) : undefined,
+    JOBS_HARVEST_INTERVAL_MIN: process.env.JOBS_HARVEST_INTERVAL_MIN ? parseInt(process.env.JOBS_HARVEST_INTERVAL_MIN) : undefined,
     
     MAX_POSTS_PER_HOUR: process.env.MAX_POSTS_PER_HOUR ? parseFloat(process.env.MAX_POSTS_PER_HOUR) : undefined,
     REPLIES_PER_HOUR: process.env.REPLIES_PER_HOUR ? parseInt(process.env.REPLIES_PER_HOUR) : undefined,
@@ -231,6 +233,7 @@ export function getRedactedConfig(config: Config): Partial<Config> {
     JOBS_AUTOSTART: config.JOBS_AUTOSTART,
     JOBS_PLAN_INTERVAL_MIN: config.JOBS_PLAN_INTERVAL_MIN,
     JOBS_REPLY_INTERVAL_MIN: config.JOBS_REPLY_INTERVAL_MIN,
+    JOBS_HARVEST_INTERVAL_MIN: config.JOBS_HARVEST_INTERVAL_MIN,
     JOBS_LEARN_INTERVAL_MIN: config.JOBS_LEARN_INTERVAL_MIN,
     // Secrets redacted
     DATABASE_URL: config.DATABASE_URL ? '[REDACTED]' : undefined,

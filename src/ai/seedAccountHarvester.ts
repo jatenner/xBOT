@@ -17,6 +17,8 @@ import { getSupabaseClient } from '../db/index';
 import { scoreTargetQuality } from './targetQualityFilter';
 import { checkFreshness } from './freshnessController';
 import { checkWhoami } from '../utils/whoamiAuth';
+import { computeRelevanceReplyabilityScores, HEALTH_AUTHORITY_ALLOWLIST, classifyDisallowedTweet } from './relevanceReplyabilityScorer';
+import { computeContextSimilarity, computeOpportunityScoreFinal } from './contextSimilarityScorer';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SEED ACCOUNTS (HIGH-VISIBILITY HEALTH/FITNESS/SCIENCE)
@@ -76,6 +78,12 @@ interface ScrapedTweet {
   conversation_id?: string;
 }
 
+interface StoredOpportunity {
+  relevance_score: number;
+  replyability_score: number;
+  author_handle: string;
+}
+
 interface HarvestResult {
   account: string;
   scraped_count: number;
@@ -84,6 +92,8 @@ interface HarvestResult {
   blocked_reply_count: number;
   blocked_quality_count: number;
   blocked_stale_count: number;
+  blocked_disallowed_count?: number; // Optional: count of disallowed tweets filtered
+  stored_opportunities?: StoredOpportunity[]; // Track stored opportunities with scores
   error?: string;
 }
 
@@ -103,46 +113,76 @@ export async function harvestSeedAccounts(
   total_stored: number;
   results: HarvestResult[];
 }> {
+  // 🎯 CONNECTIVITY PREFLIGHT: Check Supabase connectivity before starting
+  const supabaseClient = getSupabaseClient();
+  try {
+    const preflightUrl = process.env.SUPABASE_URL || 'unknown';
+    console.log(`[HARVEST_PREFLIGHT] Checking Supabase connectivity...`);
+    console.log(`[HARVEST_PREFLIGHT]   URL: ${preflightUrl.replace(/\/\/.*@/, '//***@')}`); // Hide credentials
+    
+    // Lightweight connectivity check
+    const { error: preflightError } = await supabaseClient
+      .from('seed_accounts')
+      .select('handle')
+      .limit(1);
+    
+    if (preflightError) {
+      console.error(`[HARVEST_PREFLIGHT] ❌ Connectivity check failed: ${preflightError.message}`);
+      console.error(`[HARVEST_PREFLIGHT]   Likely causes:`);
+      console.error(`[HARVEST_PREFLIGHT]     - SUPABASE_URL points to private Railway URL (unreachable from local)`);
+      console.error(`[HARVEST_PREFLIGHT]     - Network connectivity issue`);
+      console.error(`[HARVEST_PREFLIGHT]     - Invalid SUPABASE_SERVICE_ROLE_KEY`);
+      console.error(`[HARVEST_PREFLIGHT]   Continuing anyway (stats writes may fail)...`);
+    } else {
+      console.log(`[HARVEST_PREFLIGHT] ✅ Connectivity check passed`);
+    }
+  } catch (preflightErr: any) {
+    console.error(`[HARVEST_PREFLIGHT] ❌ Preflight exception: ${preflightErr.message}`);
+    if (preflightErr.message.includes('fetch failed') || preflightErr.message.includes('ETIMEDOUT')) {
+      console.error(`[HARVEST_PREFLIGHT]   Network error detected - check SUPABASE_URL is reachable`);
+    }
+    console.error(`[HARVEST_PREFLIGHT]   Continuing anyway (stats writes may fail)...`);
+  }
+  console.log('');
+  
   // 🗄️ DB-BACKED SEEDS: Query seed_accounts table if accounts not provided
   let accountsToUse: string[] = [];
+  const seedsPerRun = parseInt(process.env.SEEDS_PER_RUN || '10', 10);
   
   if (options.accounts && options.accounts.length > 0) {
     // Use provided accounts (override)
     accountsToUse = options.accounts;
   } else {
-    // Query DB for enabled seeds, ordered by priority (lower = higher priority)
-    const supabase = getSupabaseClient();
-    const seedsPerRun = parseInt(process.env.SEEDS_PER_RUN || '10', 10);
-    
-    const { data: dbSeeds, error: dbError } = await supabase
+    // Query DB for enabled seeds
+    const { data: dbSeeds, error: dbError } = await supabaseClient
       .from('seed_accounts')
       .select('handle')
-      .eq('enabled', true)
-      .order('priority', { ascending: true })
-      .limit(seedsPerRun);
+      .eq('enabled', true);
     
     if (dbError) {
       console.warn(`[SEED_HARVEST] ⚠️ Failed to query seed_accounts: ${dbError.message}, falling back to hardcoded list`);
       accountsToUse = SEED_ACCOUNTS.map(a => a.username);
     } else if (dbSeeds && dbSeeds.length > 0) {
-      accountsToUse = dbSeeds.map(s => s.handle);
+      const allEnabledSeeds = dbSeeds.map(s => s.handle);
+      
+      // Use weighted sampling if stats available
+      const { pickSeedsWeighted } = await import('../utils/seedSampling');
+      const { seeds: weightedSeeds } = await pickSeedsWeighted(allEnabledSeeds, seedsPerRun);
+      accountsToUse = weightedSeeds;
       
       // Log seed usage
-      const totalEnabled = await supabase
+      const totalEnabled = await supabaseClient
         .from('seed_accounts')
         .select('*', { count: 'exact', head: true })
         .eq('enabled', true);
       
-      const sample = accountsToUse.slice(0, 5).join(', ');
-      console.log(`[SEEDS] total_enabled=${totalEnabled.count || 0} using_this_run=${accountsToUse.length} sample=${sample}`);
+      console.log(`[SEEDS] total_enabled=${totalEnabled.count || 0} using_this_run=${accountsToUse.length}`);
     } else {
       // Fallback to hardcoded if DB is empty
       console.warn(`[SEED_HARVEST] ⚠️ No enabled seeds in DB, falling back to hardcoded list`);
-      accountsToUse = SEED_ACCOUNTS.map(a => a.username);
+      accountsToUse = SEED_ACCOUNTS.map(a => a.username).slice(0, seedsPerRun);
     }
   }
-  
-  const seedsPerRun = parseInt(process.env.SEEDS_PER_RUN || '10', 10);
   const {
     max_tweets_per_account = 50,
     max_accounts = seedsPerRun || 10,
@@ -158,6 +198,17 @@ export async function harvestSeedAccounts(
   
   const accountsToProcess = accountsToUse.slice(0, max_accounts);
   
+  // Track stats for batch update
+  const statsUpdates: Array<{
+    handle: string;
+    scraped_count: number;
+    stored_count: number;
+    tier1_pass: number;
+    tier2_pass: number;
+    tier3_pass: number;
+    disallowed_count: number;
+  }> = [];
+  
   for (const username of accountsToProcess) {
     try {
       const result = await harvestAccount(page, username, max_tweets_per_account);
@@ -165,6 +216,65 @@ export async function harvestSeedAccounts(
       total_scraped += result.scraped_count;
       total_stored += result.stored_count;
       
+      // 🎯 COMPUTE TIER PASSES FROM IN-MEMORY STORED OPPORTUNITIES
+      // Use same gate logic as replyJob for consistency
+      const { HEALTH_AUTHORITY_ALLOWLIST } = await import('./relevanceReplyabilityScorer');
+      
+      const GATE_TIERS = [
+        { tier: 1, relevance: 0.45, replyability: 0.35 },
+        { tier: 2, relevance: 0.45, replyability: 0.30 },
+        { tier: 3, relevance: 0.45, replyability: 0.25 },
+      ];
+      const HARD_FLOOR_RELEVANCE = 0.45;
+      const WHITELIST_EXEMPTION_MIN_RELEVANCE = 0.40;
+      
+      let tier1Pass = 0;
+      let tier2Pass = 0;
+      let tier3Pass = 0;
+      
+      if (result.stored_opportunities && result.stored_opportunities.length > 0) {
+        for (const opp of result.stored_opportunities) {
+          const relevanceScore = opp.relevance_score;
+          const replyabilityScore = opp.replyability_score;
+          const authorHandle = (opp.author_handle || '').toLowerCase().replace('@', '');
+          const isWhitelisted = HEALTH_AUTHORITY_ALLOWLIST.has(authorHandle);
+          
+          // HARD FLOOR: relevance < 0.45 => FAIL (unless whitelist exemption: 0.40-0.44)
+          let effectiveRelevance = relevanceScore;
+          
+          if (relevanceScore < HARD_FLOOR_RELEVANCE) {
+            // Check whitelist exemption: allow 0.40-0.44 for whitelisted authors
+            if (isWhitelisted && relevanceScore >= WHITELIST_EXEMPTION_MIN_RELEVANCE) {
+              effectiveRelevance = HARD_FLOOR_RELEVANCE; // Treat as meeting floor for tier checks
+            } else {
+              continue; // Below hard floor, skip
+            }
+          }
+          
+          // Try tiers in order (1 -> 2 -> 3) as fallback ladder
+          // Count highest tier that passes
+          for (const gate of GATE_TIERS) {
+            if (effectiveRelevance >= gate.relevance && replyabilityScore >= gate.replyability) {
+              if (gate.tier === 1) tier1Pass++;
+              else if (gate.tier === 2) tier2Pass++;
+              else if (gate.tier === 3) tier3Pass++;
+              break; // Count only highest tier
+            }
+          }
+        }
+      }
+      
+      statsUpdates.push({
+        handle: username,
+        scraped_count: result.scraped_count,
+        stored_count: result.stored_count,
+        tier1_pass: tier1Pass,
+        tier2_pass: tier2Pass,
+        tier3_pass: tier3Pass,
+        disallowed_count: 0, // Not tracked during harvest, leave as 0
+      });
+      
+      console.log(`[SEED_STATS] seed=@${username} scraped=${result.scraped_count} stored=${result.stored_count} tier1=${tier1Pass} tier2=${tier2Pass} tier3=${tier3Pass} disallowed=0`);
       console.log(`[SEED_HARVEST] ✅ @${username}: ${result.stored_count}/${result.scraped_count} stored`);
       
       // Small delay between accounts
@@ -184,15 +294,55 @@ export async function harvestSeedAccounts(
     }
   }
   
+  // Batch update seed stats (non-fatal, wrapped in try/catch)
+  if (statsUpdates.length > 0) {
+    for (const update of statsUpdates) {
+      try {
+        const { error: statsError } = await supabaseClient
+          .from('seed_account_stats')
+          .upsert({
+            handle: update.handle,
+            scraped_count: update.scraped_count,
+            stored_count: update.stored_count,
+            tier1_pass: update.tier1_pass,
+            tier2_pass: update.tier2_pass,
+            tier3_pass: update.tier3_pass,
+            disallowed_count: update.disallowed_count,
+            last_harvest_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'handle',
+          });
+        
+        if (statsError) {
+          console.warn(`[SEED_STATS] ⚠️ Failed to update stats for @${update.handle}: ${statsError.message}`);
+        }
+      } catch (statsErr: any) {
+        // Never throw - stats updates are non-critical
+        const errorMsg = statsErr.message || String(statsErr);
+        console.error(`[SEED_STATS] ❌ Exception updating stats for @${update.handle}: ${errorMsg}`);
+        
+        // Diagnose fetch failures
+        if (errorMsg.includes('fetch failed') || errorMsg.includes('ETIMEDOUT') || errorMsg.includes('TypeError')) {
+          const supabaseUrl = process.env.SUPABASE_URL || 'unknown';
+          console.error(`[SEED_STATS]   Network error - SUPABASE_URL: ${supabaseUrl.replace(/\/\/.*@/, '//***@')}`);
+          console.error(`[SEED_STATS]   Likely cause: URL unreachable (private Railway URL?) or network issue`);
+        }
+      }
+    }
+  }
+  
   console.log(`[SEED_HARVEST] 🌾 Summary: ${total_stored}/${total_scraped} opportunities stored`);
   
-  // Log tier distribution for this harvest run
+  // Log tier distribution + guardrail for relevance_score=0
   const supabase = getSupabaseClient();
   const { data: recentOpps } = await supabase
     .from('reply_opportunities')
-    .select('tier, target_tweet_id, target_username, like_count, posted_minutes_ago, likes_per_min, opportunity_score')
+    .select('tier, target_tweet_id, target_username, like_count, posted_minutes_ago, likes_per_min, opportunity_score, relevance_score, replyability_score, selection_reason')
+    .eq('selection_reason', 'harvest_v2')
     .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
-    .order('opportunity_score', { ascending: false });
+    .order('opportunity_score', { ascending: false })
+    .limit(50);
   
   if (recentOpps && recentOpps.length > 0) {
     const tierDist: Record<string, number> = {};
@@ -202,12 +352,24 @@ export async function harvestSeedAccounts(
     }
     console.log(`[SEED_HARVEST] 📊 Tier distribution: S=${tierDist['S'] || 0} A=${tierDist['A'] || 0} B=${tierDist['B'] || 0}`);
     
+    // 🚨 GUARDRAIL: Check relevance_score=0 percentage
+    const zeroRelevanceCount = recentOpps.filter(opp => (opp.relevance_score || 0) === 0).length;
+    const zeroRelevancePct = ((zeroRelevanceCount / recentOpps.length) * 100).toFixed(1);
+    if (zeroRelevanceCount > 0) {
+      console.warn(`[SEED_HARVEST] ⚠️ GUARDRAIL: ${zeroRelevanceCount}/${recentOpps.length} (${zeroRelevancePct}%) stored opportunities have relevance_score=0`);
+      if (parseFloat(zeroRelevancePct) > 50) {
+        console.error(`[SEED_HARVEST] 🚨 CRITICAL: >50% of stored opportunities have relevance_score=0 - scoring may be broken!`);
+      }
+    } else {
+      console.log(`[SEED_HARVEST] ✅ GUARDRAIL: All ${recentOpps.length} stored opportunities have relevance_score > 0`);
+    }
+    
     // Log top 5 Tier_S candidates
     const tierS = recentOpps.filter(opp => String(opp.tier || '').toUpperCase() === 'S').slice(0, 5);
     if (tierS.length > 0) {
       console.log(`[SEED_HARVEST] 🏆 Top 5 Tier_S candidates:`);
       tierS.forEach((opp, i) => {
-        console.log(`  ${i + 1}. @${opp.target_username} tweet_id=${opp.target_tweet_id} likes=${opp.like_count} age=${Math.round(opp.posted_minutes_ago || 0)}min likes/min=${(opp.likes_per_min || 0).toFixed(2)} score=${Math.round(opp.opportunity_score || 0)}`);
+        console.log(`  ${i + 1}. @${opp.target_username} tweet_id=${opp.target_tweet_id} likes=${opp.like_count} age=${Math.round(opp.posted_minutes_ago || 0)}min likes/min=${(opp.likes_per_min || 0).toFixed(2)} score=${Math.round(opp.opportunity_score || 0)} relevance=${(opp.relevance_score || 0).toFixed(2)}`);
       });
     }
   }
@@ -295,42 +457,154 @@ async function harvestAccount(
     // Log auth diagnostic
     console.log(`[HARVESTER_AUTH] ok=${authOk} url=${finalUrl} tweets_found=${tweetsFound} reason=${authReason} whoami_logged_in=${whoami.logged_in}`);
     
-    // If auth failed, capture debug info (but don't throw)
+    // If auth failed, check if retry is needed
     if (!authOk) {
-      console.error(`[HARVESTER_AUTH] ❌ Auth check failed for @${username}`);
-      console.error(`[HARVESTER_AUTH]   Final URL: ${finalUrl}`);
-      console.error(`[HARVESTER_AUTH]   Page title: ${pageTitle}`);
-      console.error(`[HARVESTER_AUTH]   WHOAMI logged_in: ${whoami.logged_in}`);
-      console.error(`[HARVESTER_AUTH]   Tweets found: ${tweetsFound}`);
-      
-      try {
-        // Take screenshot
-        const screenshotPath = '/tmp/harvester_auth_debug.png';
-        await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
-        const fs = await import('fs');
-        const screenshotSize = fs.existsSync(screenshotPath) ? fs.statSync(screenshotPath).size : 0;
-        console.log(`[HARVESTER_AUTH] 📸 Screenshot saved: ${screenshotPath} (${screenshotSize} bytes)`);
-        
-        // Dump HTML
-        const htmlPath = '/tmp/harvester_auth_debug.html';
+      // 🎯 RETRY LOGIC: If no_tweets and page shows errorContainer or problematic title, retry once
+      if (authReason === 'no_tweets' && whoami.logged_in) {
         const pageContent = await page.content().catch(() => '');
-        const bodyText = await page.evaluate(() => document.body?.textContent || '').catch(() => '');
-        if (pageContent) {
-          fs.writeFileSync(htmlPath, pageContent);
-          const htmlSize = fs.statSync(htmlPath).size;
-          console.log(`[HARVESTER_AUTH] 📄 HTML dumped: ${htmlPath} (${htmlSize} bytes)`);
-          if (bodyText) {
-            console.log(`[HARVESTER_AUTH] 📄 First 300 chars of body: ${bodyText.substring(0, 300)}`);
+        const hasErrorContainer = pageContent.includes('errorContainer') || pageContent.includes('error-container');
+        const isProfilePage = pageTitle.includes('Profile / X') || pageTitle.includes('Page not found / X') || pageTitle.includes('Something went wrong');
+        
+        if (hasErrorContainer || isProfilePage) {
+          console.log(`[SEED_HARVEST] 🔄 Retry: no_tweets with errorContainer/problematic title, reloading... retry=1`);
+          
+          let retrySuccess = false;
+          let retryPage = page;
+          
+          // Retry strategy 1: page.reload with domcontentloaded (faster, more reliable)
+          try {
+            await retryPage.reload({ waitUntil: 'domcontentloaded', timeout: 45000 });
+            await retryPage.waitForTimeout(2000); // Wait for content
+            
+            const retryTweets = await extractTweetsFromProfile(retryPage, max_tweets);
+            if (retryTweets.length > 0) {
+              console.log(`[SEED_HARVEST] ✅ Retry successful (reload): found ${retryTweets.length} tweets retry=1`);
+              tweets.length = 0;
+              tweets.push(...retryTweets);
+              result.scraped_count = tweets.length;
+              tweetsFound = tweets.length;
+              authOk = true;
+              authReason = 'ok';
+              finalUrl = retryPage.url();
+              pageTitle = await retryPage.title().catch(() => 'unknown');
+              retrySuccess = true;
+            }
+          } catch (reloadError: any) {
+            console.log(`[SEED_HARVEST] ⚠️ Retry reload failed: ${reloadError.message}, trying page.goto fallback retry=1`);
+            
+            // Retry strategy 2: page.goto with domcontentloaded
+            try {
+              await retryPage.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+              await retryPage.waitForTimeout(2000);
+              
+              const retryTweets2 = await extractTweetsFromProfile(retryPage, max_tweets);
+              if (retryTweets2.length > 0) {
+                console.log(`[SEED_HARVEST] ✅ Retry successful (goto): found ${retryTweets2.length} tweets retry=1`);
+                tweets.length = 0;
+                tweets.push(...retryTweets2);
+                result.scraped_count = tweets.length;
+                tweetsFound = tweets.length;
+                authOk = true;
+                authReason = 'ok';
+                finalUrl = retryPage.url();
+                pageTitle = await retryPage.title().catch(() => 'unknown');
+                retrySuccess = true;
+              }
+            } catch (gotoError: any) {
+              console.log(`[SEED_HARVEST] ⚠️ Retry goto failed: ${gotoError.message} retry=1`);
+              
+              // Retry strategy 3: Create new page from context (if page was closed)
+              try {
+                const context = retryPage.context();
+                if (!context) {
+                  throw new Error('Page context unavailable');
+                }
+                const browser = context.browser();
+                if (!browser || !browser.isConnected()) {
+                  throw new Error('Browser context disconnected');
+                }
+                const newPage = await context.newPage();
+                await newPage.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+                await newPage.waitForTimeout(2000);
+                
+                const retryTweets3 = await extractTweetsFromProfile(newPage, max_tweets);
+                if (retryTweets3.length > 0) {
+                  console.log(`[SEED_HARVEST] ✅ Retry successful (new page): found ${retryTweets3.length} tweets retry=1`);
+                  tweets.length = 0;
+                  tweets.push(...retryTweets3);
+                  result.scraped_count = tweets.length;
+                  tweetsFound = tweets.length;
+                  authOk = true;
+                  authReason = 'ok';
+                  finalUrl = newPage.url();
+                  pageTitle = await newPage.title().catch(() => 'unknown');
+                  // Note: We can't replace the page parameter, but extraction succeeded
+                  retrySuccess = true;
+                  // Don't close newPage - let caller handle lifecycle
+                } else {
+                  await newPage.close().catch(() => {}); // Clean up if no tweets found
+                }
+              } catch (newPageError: any) {
+                console.log(`[SEED_HARVEST] ⚠️ Retry new page failed: ${newPageError.message} retry=1`);
+              }
+            }
           }
+          
+          if (!retrySuccess) {
+            console.log(`[SEED_HARVEST] ⚠️ All retry strategies failed, marking as blocked_or_empty retry=1`);
+            console.log(`[SEED_RESULT] seed=${username} ok=false reason=blocked_or_empty retry=1 final_url=${finalUrl} title=${pageTitle} tweets_found=0`);
+            result.error = 'blocked_or_empty';
+            return result;
+          }
+          
+          // Update page reference if we created a new one
+          if (retryPage !== page) {
+            // Note: We can't replace the page parameter, but we'll continue with retryPage
+            // The caller should handle page lifecycle
+          }
+        } else {
+          // No retry needed, return failure
+          console.log(`[SEED_RESULT] seed=${username} ok=false reason=${authReason} final_url=${finalUrl} title=${pageTitle} tweets_found=${tweetsFound}`);
+          result.error = authReason;
+          return result;
         }
-      } catch (debugError: any) {
-        console.error(`[HARVESTER_AUTH] ⚠️ Failed to capture debug info: ${debugError.message}`);
+      } else {
+        // Not a retry case, return failure
+        console.error(`[HARVESTER_AUTH] ❌ Auth check failed for @${username}`);
+        console.error(`[HARVESTER_AUTH]   Final URL: ${finalUrl}`);
+        console.error(`[HARVESTER_AUTH]   Page title: ${pageTitle}`);
+        console.error(`[HARVESTER_AUTH]   WHOAMI logged_in: ${whoami.logged_in}`);
+        console.error(`[HARVESTER_AUTH]   Tweets found: ${tweetsFound}`);
+        
+        try {
+          // Take screenshot
+          const screenshotPath = '/tmp/harvester_auth_debug.png';
+          await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
+          const fs = await import('fs');
+          const screenshotSize = fs.existsSync(screenshotPath) ? fs.statSync(screenshotPath).size : 0;
+          console.log(`[HARVESTER_AUTH] 📸 Screenshot saved: ${screenshotPath} (${screenshotSize} bytes)`);
+          
+          // Dump HTML
+          const htmlPath = '/tmp/harvester_auth_debug.html';
+          const pageContent = await page.content().catch(() => '');
+          const bodyText = await page.evaluate(() => document.body?.textContent || '').catch(() => '');
+          if (pageContent) {
+            fs.writeFileSync(htmlPath, pageContent);
+            const htmlSize = fs.statSync(htmlPath).size;
+            console.log(`[HARVESTER_AUTH] 📄 HTML dumped: ${htmlPath} (${htmlSize} bytes)`);
+            if (bodyText) {
+              console.log(`[HARVESTER_AUTH] 📄 First 300 chars of body: ${bodyText.substring(0, 300)}`);
+            }
+          }
+        } catch (debugError: any) {
+          console.error(`[HARVESTER_AUTH] ⚠️ Failed to capture debug info: ${debugError.message}`);
+        }
+        
+        // Return structured failure (don't throw)
+        console.log(`[SEED_RESULT] seed=${username} ok=false reason=${authReason} final_url=${finalUrl} title=${pageTitle} tweets_found=${tweetsFound}`);
+        result.error = authReason;
+        return result;
       }
-      
-      // Return structured failure (don't throw)
-      console.log(`[SEED_RESULT] seed=${username} ok=false reason=${authReason} final_url=${finalUrl} title=${pageTitle} tweets_found=${tweetsFound}`);
-      result.error = authReason;
-      return result;
     }
     
     console.log(`[SEED_HARVEST] 📊 @${username}: Extracted ${tweets.length} tweets`);
@@ -364,6 +638,7 @@ async function harvestAccount(
   
   // Store opportunities with quality/freshness filtering
   const scoredTweets: Array<{ tweet: ScrapedTweet; quality: any; freshness: any; tier: string }> = [];
+  const storedOpportunities: StoredOpportunity[] = []; // Track stored opportunities for tier counting
   
   for (const tweet of rootTweets) {
     try {
@@ -392,12 +667,58 @@ async function harvestAccount(
         continue;
       }
       
+      // 🔒 NEGATIVE FILTERS: Skip ads/promos/political/memes/low-info tweets
+      const disallowedReason = classifyDisallowedTweet(
+        tweet.tweet_content,
+        tweet.author_handle,
+        tweet.tweet_url
+      );
+      
+      if (disallowedReason) {
+        result.blocked_disallowed_count = (result.blocked_disallowed_count || 0) + 1;
+        console.log(`[SEED_HARVEST] 🚫 Disallowed: ${tweet.tweet_id} reason=${disallowedReason}`);
+        continue;
+      }
+      
+      // Additional negative filters (political ragebait, meme accounts, low-info)
+      const textLower = tweet.tweet_content.toLowerCase();
+      
+      // Political ragebait filter
+      const politicalPatterns = [
+        /\b(trump|biden|election|democrat|republican|liberal|conservative|woke|cancel culture)\b/i,
+      ];
+      if (politicalPatterns.some(p => p.test(tweet.tweet_content)) && !HEALTH_AUTHORITY_ALLOWLIST.has(tweet.author_handle.toLowerCase())) {
+        result.blocked_disallowed_count = (result.blocked_disallowed_count || 0) + 1;
+        console.log(`[SEED_HARVEST] 🚫 Political ragebait: ${tweet.tweet_id}`);
+        continue;
+      }
+      
+      // Low-info tweet filter (very short, no substance)
+      if (tweet.tweet_content.trim().length < 30 && tweet.like_count !== null && tweet.like_count < 100) {
+        result.blocked_disallowed_count = (result.blocked_disallowed_count || 0) + 1;
+        console.log(`[SEED_HARVEST] 🚫 Low-info tweet: ${tweet.tweet_id} (too short + low engagement)`);
+        continue;
+      }
+      
+      // Compute relevance/replyability scores BEFORE storing (needed for tier counting)
+      const relevanceReplyability = computeRelevanceReplyabilityScores(
+        tweet.tweet_content,
+        tweet.author_handle,
+        tweet.tweet_url
+      );
+      
       // If metrics are unknown (null), allow storage with special handling
       if (tweet.like_count === null || tweet.like_count === undefined) {
         // Store with unknown metrics - don't block by freshness
-        await storeOpportunity(tweet, quality, tier, 'normal', undefined, undefined, undefined, undefined, 'unknown');
+        const storedScores = await storeOpportunity(tweet, quality, tier, 'normal', undefined, undefined, undefined, undefined, 'unknown', relevanceReplyability);
         result.stored_count++;
-        console.log(`[SEED_HARVEST] ✅ Stored (unknown metrics): ${tweet.tweet_id} tier=${tier} quality=${quality.score}`);
+        // Track stored opportunity with scores
+        storedOpportunities.push({
+          relevance_score: storedScores.relevance_score,
+          replyability_score: storedScores.replyability_score,
+          author_handle: tweet.author_handle,
+        });
+        console.log(`[SEED_HARVEST] ✅ Stored (unknown metrics): ${tweet.tweet_id} tier=${tier} quality=${quality.score} relevance=${storedScores.relevance_score.toFixed(2)} replyability=${storedScores.replyability_score.toFixed(2)}`);
         continue;
       }
       
@@ -412,10 +733,17 @@ async function harvestAccount(
       }
       
       // Store
-      await storeOpportunity(tweet, quality, tier, 'normal');
+      const storedScores = await storeOpportunity(tweet, quality, tier, 'normal', undefined, undefined, undefined, undefined, undefined, relevanceReplyability);
       result.stored_count++;
       
-      console.log(`[SEED_HARVEST] ✅ Stored: ${tweet.tweet_id} tier=${tier} quality=${quality.score} likes=${tweet.like_count ?? 'null'}`);
+      // Track stored opportunity with scores
+      storedOpportunities.push({
+        relevance_score: storedScores.relevance_score,
+        replyability_score: storedScores.replyability_score,
+        author_handle: tweet.author_handle,
+      });
+      
+      console.log(`[SEED_HARVEST] ✅ Stored: ${tweet.tweet_id} tier=${tier} quality=${quality.score} likes=${tweet.like_count ?? 'null'} relevance=${storedScores.relevance_score.toFixed(2)} replyability=${storedScores.replyability_score.toFixed(2)}`);
     } catch (storeError: any) {
       console.error(`[SEED_HARVEST] ❌ Store failed for ${tweet.tweet_id}:`, storeError.message);
     }
@@ -445,14 +773,31 @@ async function harvestAccount(
     
     for (const item of fallbackCandidates) {
       try {
-        await storeOpportunity(item.tweet, item.quality, item.tier);
+        // Compute scores for fallback opportunities
+        const fallbackScores = computeRelevanceReplyabilityScores(
+          item.tweet.tweet_content,
+          item.tweet.author_handle,
+          item.tweet.tweet_url
+        );
+        
+        const storedScores = await storeOpportunity(item.tweet, item.quality, item.tier, undefined, undefined, undefined, undefined, undefined, undefined, fallbackScores);
         result.stored_count++;
-        console.log(`[SEED_HARVEST] ✅ Fallback stored: ${item.tweet.tweet_id} tier=${item.tier} quality=${item.quality.score}`);
+        
+        // Track stored opportunity with scores
+        storedOpportunities.push({
+          relevance_score: storedScores.relevance_score,
+          replyability_score: storedScores.replyability_score,
+          author_handle: item.tweet.author_handle,
+        });
+        console.log(`[SEED_HARVEST] ✅ Fallback stored: ${item.tweet.tweet_id} tier=${item.tier} quality=${item.quality.score} relevance=${storedScores.relevance_score.toFixed(2)} replyability=${storedScores.replyability_score.toFixed(2)}`);
       } catch (storeError: any) {
         console.error(`[SEED_HARVEST] ❌ Fallback store failed for ${item.tweet.tweet_id}:`, storeError.message);
       }
     }
   }
+  
+  // Attach stored opportunities to result for tier counting
+  result.stored_opportunities = storedOpportunities;
   
   // Log successful seed result
   console.log(`[SEED_RESULT] seed=${username} ok=true reason=ok final_url=${finalUrl} title=${pageTitle} tweets_found=${tweetsFound}`);
@@ -698,6 +1043,64 @@ function determineTier(likes: number, views?: number): 'A+' | 'A' | 'B' | 'C' | 
 // STORAGE
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Normalize tier value to match DB constraint
+ * DB allows ONLY: 'TITAN' | 'ULTRA' | 'MEGA' | 'SUPER' | 'HIGH' | 'golden' | 'good' | 'acceptable'
+ * 
+ * Conservative mapping:
+ * - If already valid → keep it
+ * - Map common patterns (A+, A, B, C, D, S, SS, etc) → allowed values
+ * - Otherwise → default to 'acceptable'
+ * 
+ * @param rawTier The tier string to normalize
+ * @param isHighValueTier If true, treats S/A/B as high-value tiers; if false, treats as harvest tiers
+ * @returns One of the allowed DB tier values
+ */
+function normalizeTier(rawTier: string, isHighValueTier: boolean = false): 'TITAN' | 'ULTRA' | 'MEGA' | 'SUPER' | 'HIGH' | 'golden' | 'good' | 'acceptable' {
+  const tierStr = String(rawTier || '').trim();
+  const upperTier = tierStr.toUpperCase();
+  
+  // Allowed DB values (exact match, case-sensitive for legacy values)
+  const allowedTiers: Array<'TITAN' | 'ULTRA' | 'MEGA' | 'SUPER' | 'HIGH' | 'golden' | 'good' | 'acceptable'> = 
+    ['TITAN', 'ULTRA', 'MEGA', 'SUPER', 'HIGH', 'golden', 'good', 'acceptable'];
+  
+  // If already a valid DB tier, return as-is (preserve case for legacy values)
+  if (allowedTiers.includes(tierStr as any)) {
+    return tierStr as any;
+  }
+  
+  // Check uppercase match for case-insensitive comparison
+  if (upperTier === 'TITAN') return 'TITAN';
+  if (upperTier === 'ULTRA') return 'ULTRA';
+  if (upperTier === 'MEGA') return 'MEGA';
+  if (upperTier === 'SUPER') return 'SUPER';
+  if (upperTier === 'HIGH') return 'HIGH';
+  if (upperTier === 'GOLDEN') return 'golden';
+  if (upperTier === 'GOOD') return 'good';
+  if (upperTier === 'ACCEPTABLE') return 'acceptable';
+  
+  // Map high-value tiers (S/A/B) if flagged as such
+  if (isHighValueTier) {
+    if (upperTier === 'S' || upperTier === 'SS') return 'SUPER';      // High-value fresh opportunities
+    if (upperTier === 'A') return 'HIGH';       // Good engagement opportunities
+    if (upperTier === 'B') return 'acceptable'; // Fallback/unknown metrics
+  }
+  
+  // Map harvest tiers (A+/A/B/C/D) and other common patterns
+  if (upperTier === 'A+' || upperTier === 'A_PLUS') return 'ULTRA';
+  if (upperTier === 'A') return 'MEGA';
+  if (upperTier === 'B') return 'SUPER';
+  if (upperTier === 'C') return 'HIGH';
+  if (upperTier === 'D') return 'acceptable';
+  
+  // Handle single-letter variations
+  if (upperTier === 'S') return 'SUPER';
+  if (upperTier === 'SS' || upperTier === 'S+') return 'SUPER';
+  
+  // Default fallback - always return a valid value
+  return 'acceptable';
+}
+
 async function storeOpportunity(
   tweet: ScrapedTweet,
   quality: any,
@@ -707,12 +1110,17 @@ async function storeOpportunity(
   repliesPerMin?: number,
   repostsPerMin?: number,
   opportunityScore?: number,
-  metricsStatus?: 'known' | 'unknown'
-): Promise<void> {
+  metricsStatus?: 'known' | 'unknown',
+  precomputedScores?: { relevance_score: number; replyability_score: number }
+): Promise<{ relevance_score: number; replyability_score: number }> {
   const supabase = getSupabaseClient();
   
+  // 🔢 FIX: Ensure age_minutes is an INTEGER (not float/string)
+  const ageMinutesRaw = tweet.age_minutes || 0;
+  const ageMinutesInt = Math.floor(Math.max(ageMinutesRaw, 0)); // Always integer, never negative
+  
   // Calculate velocity metrics (per minute) - handle null metrics
-  const ageMinutes = Math.max(tweet.age_minutes, 1); // Avoid division by zero
+  const ageMinutes = Math.max(ageMinutesInt, 1); // Avoid division by zero
   const computedLikesPerMin = likesPerMin ?? (tweet.like_count !== null && tweet.like_count !== undefined ? tweet.like_count / ageMinutes : null);
   const computedRepliesPerMin = repliesPerMin ?? (tweet.reply_count !== null && tweet.reply_count !== undefined ? tweet.reply_count / ageMinutes : null);
   const computedRepostsPerMin = repostsPerMin ?? (tweet.retweet_count !== null && tweet.retweet_count !== undefined ? tweet.retweet_count / ageMinutes : null);
@@ -728,13 +1136,19 @@ async function storeOpportunity(
   if (finalMetricsStatus === 'unknown' || tweet.like_count === null || tweet.like_count === undefined) {
     // Unknown metrics -> Tier B
     valueTier = 'B';
-  } else if (tweet.age_minutes <= 90 && (tweet.like_count >= 500 || (computedLikesPerMin !== null && computedLikesPerMin >= 8))) {
+  } else if (ageMinutesInt <= 90 && (tweet.like_count >= 500 || (computedLikesPerMin !== null && computedLikesPerMin >= 8))) {
     valueTier = 'S';
-  } else if (tweet.age_minutes <= 180 && (tweet.like_count >= 200 || (computedLikesPerMin !== null && computedLikesPerMin >= 3))) {
+  } else if (ageMinutesInt <= 180 && (tweet.like_count >= 200 || (computedLikesPerMin !== null && computedLikesPerMin >= 3))) {
     valueTier = 'A';
   } else {
     valueTier = 'B';
   }
+  
+  // 🔧 FIX: Normalize tier to match DB constraint
+  // valueTier is always 'S' | 'A' | 'B' (high-value tiers)
+  // tier is the harvest tier (A+/A/B/C/D or similar)
+  const tierNormalized = normalizeTier(valueTier, true); // true = high-value tier
+  const harvestTierNormalized = normalizeTier(tier, false); // false = harvest tier
   
   // Calculate score (views-first)
   const baseMetric = tweet.view_count || tweet.like_count;
@@ -751,6 +1165,35 @@ async function storeOpportunity(
   
   const score = baseMetric * freshnessMultiplier * velocityMultiplier * qualityMultiplier * tierMultiplier;
   
+  // 🔢 FIX: Ensure all integer columns are integers
+  const likeCountInt = tweet.like_count !== null && tweet.like_count !== undefined ? Math.floor(tweet.like_count) : null;
+  const replyCountInt = tweet.reply_count !== null && tweet.reply_count !== undefined ? Math.floor(tweet.reply_count) : null;
+  const retweetCountInt = tweet.retweet_count !== null && tweet.retweet_count !== undefined ? Math.floor(tweet.retweet_count) : null;
+  const viewCountInt = tweet.view_count !== null && tweet.view_count !== undefined ? Math.floor(tweet.view_count) : null;
+  
+  // 🎯 COMPUTE RELEVANCE & REPLYABILITY SCORES
+  // Note: computeRelevanceReplyabilityScores internally passes relevanceScore to computeReplyabilityScore
+  // Use precomputed scores if provided (for consistency), otherwise compute here
+  const relevanceReplyability = precomputedScores || computeRelevanceReplyabilityScores(
+    tweet.tweet_content,
+    tweet.author_handle,
+    tweet.tweet_url
+  );
+  
+  // 🎯 COMPUTE CONTEXT SIMILARITY (brand anchor matching)
+  const contextSimilarity = computeContextSimilarity(tweet.tweet_content);
+  
+  // 🎯 COMPUTE FINAL OPPORTUNITY SCORE (weighted formula)
+  const opportunityScoreFinal = computeOpportunityScoreFinal(
+    relevanceReplyability.relevance_score,
+    relevanceReplyability.replyability_score,
+    contextSimilarity
+  );
+  
+  // 📊 STRUCTURED LOG BEFORE UPSERT (tier + scores, no secrets)
+  const tierSaved = tierNormalized; // What we actually save to DB
+  console.log(`[OPP_UPSERT] tweet_id=${tweet.tweet_id} tier_raw=${valueTier} tier_norm=${tierNormalized} tier_saved=${tierSaved} relevance=${relevanceReplyability.relevance_score.toFixed(2)} replyability=${relevanceReplyability.replyability_score.toFixed(2)} context_sim=${contextSimilarity.toFixed(2)} score_final=${opportunityScoreFinal.toFixed(2)}`);
+  
   const { error } = await supabase
     .from('reply_opportunities')
     .upsert({
@@ -758,19 +1201,24 @@ async function storeOpportunity(
       target_tweet_url: tweet.tweet_url,
       target_username: tweet.author_handle,
       target_tweet_content: tweet.tweet_content,
-      like_count: tweet.like_count,
-      reply_count: tweet.reply_count,
-      view_count: tweet.view_count,
+      like_count: likeCountInt,
+      reply_count: replyCountInt,
+      retweet_count: retweetCountInt,
+      view_count: viewCountInt,
       tweet_posted_at: tweet.tweet_posted_at.toISOString(),
-      posted_minutes_ago: tweet.age_minutes,
-      opportunity_score: score,
+      posted_minutes_ago: ageMinutesInt, // 🔢 FIX: Always integer
+      opportunity_score: score, // Legacy score (kept for compatibility)
+      relevance_score: relevanceReplyability.relevance_score,
+      replyability_score: relevanceReplyability.replyability_score,
+      context_similarity: contextSimilarity, // 🆕 NEW: Brand anchor similarity
+      opportunity_score_final: opportunityScoreFinal, // 🆕 NEW: Weighted final score
       status: 'pending',
       replied_to: false,
       is_root_tweet: true,
       is_reply_tweet: false,
       root_tweet_id: tweet.tweet_id,
-      tier: valueTier, // Use high-value tier (S/A/B)
-      harvest_tier: tier, // Keep original harvest tier (A+/A/B/C/D)
+      tier: tierSaved, // 🔧 FIX: Use tierSaved (normalized) - matches log
+      harvest_tier: harvestTierNormalized, // 🔧 FIX: Normalized harvest tier
       likes_per_min: likesPerMin,
       replies_per_min: repliesPerMin,
       reposts_per_min: repostsPerMin,
@@ -782,6 +1230,7 @@ async function storeOpportunity(
       harvest_source_detail: tweet.author_handle,
       target_in_reply_to_tweet_id: tweet.in_reply_to_tweet_id,
       target_conversation_id: tweet.conversation_id,
+      selection_reason: 'harvest_v2', // Track that this was harvested
     }, {
       onConflict: 'target_tweet_id',
     });
@@ -789,6 +1238,12 @@ async function storeOpportunity(
   if (error) {
     throw new Error(`DB upsert failed: ${error.message}`);
   }
+  
+  // Return scores for tier counting
+  return {
+    relevance_score: relevanceReplyability.relevance_score,
+    replyability_score: relevanceReplyability.replyability_score,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

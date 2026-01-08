@@ -17,10 +17,18 @@
     "verify-replies": "tsx scripts/verify-replies.ts",
     "harvest:once": "tsx scripts/run-harvester-once.ts",
     "session:export": "tsx scripts/export-session-from-chrome.ts",
+    "session:export:cdp": "tsx scripts/export-session-from-cdp.ts",
     "session:verify": "tsx scripts/verify-exported-session.ts",
     "env:pull": "tsx scripts/pull-railway-env.ts",
     "whoami:live": "pnpm env:pull && tsx scripts/whoami-check.ts",
-    "harvest:live": "pnpm env:pull && tsx scripts/run-harvester-once.ts"
+    "harvest:live": "pnpm env:pull && tsx scripts/run-harvester-once.ts",
+    "db:check:opps": "tsx scripts/db-check-opportunity-constraints.ts",
+    "seed:stats": "tsx scripts/seed-stats-top.ts",
+    "opps:backfill": "tsx scripts/backfill-opportunity-scores.ts",
+    "reply:dry": "DRY_RUN=true POSTING_ENABLED=false REPLIES_ENABLED=false tsx scripts/reply-once.ts",
+    "reply:once": "tsx scripts/reply-once.ts",
+    "reply:live": "pnpm env:pull && tsx scripts/reply-once.ts",
+    "metrics:once": "tsx scripts/metrics-once.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.4",

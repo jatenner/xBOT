@@ -385,6 +385,13 @@ async function checkTimeBetweenReplies(): Promise<{
 }
 
 export async function generateReplies(): Promise<void> {
+  // 🔒 REPLY SYSTEM V2 CUTOVER: Disable old system if V2 is enabled
+  if (process.env.REPLY_SYSTEM_VERSION === 'v2') {
+    console.log('[REPLY_JOB] ⏸️ Old reply system disabled (REPLY_SYSTEM_VERSION=v2). Use Reply System V2 instead.');
+    ReplyDiagnosticLogger.logCycleEnd(false, ['Old system disabled - Reply System V2 active']);
+    return;
+  }
+  
   ReplyDiagnosticLogger.logCycleStart();
   
   // ===========================================================
@@ -718,6 +725,8 @@ async function generateRealReplies(): Promise<void> {
       .from('reply_opportunities')
       .select('*')
       .eq('replied_to', false)
+      .eq('is_root_tweet', true) // 🔒 HARD GATE: Only root tweets (never replies)
+      .is('target_in_reply_to_tweet_id', null) // 🔒 HARD GATE: No in_reply_to (double-check)
       .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
       .gte('tweet_posted_at', freshnessThreshold) // 🔒 FRESH-ONLY: Max 180 min old
       .order('opportunity_score', { ascending: false }) // ✅ Phase 3: Sort by boosted opportunity_score
@@ -751,10 +760,35 @@ async function generateRealReplies(): Promise<void> {
   
   console.log(`[REPLY_JOB] 📊 Loaded ${allOpportunities.length} opportunities in batches`);
   
+  // 🔒 HARD GATE: Filter out any non-root tweets (safety check even if DB query filtered)
+  const rootOnlyOpportunities = allOpportunities.filter(opp => {
+    const isRoot = opp.is_root_tweet === true || opp.is_root_tweet === 1;
+    const hasInReplyTo = opp.target_in_reply_to_tweet_id || opp.in_reply_to_tweet_id;
+    
+    if (!isRoot || hasInReplyTo) {
+      console.log(`[REPLY_JOB] 🚫 SKIP_NON_ROOT tweet_id=${opp.target_tweet_id || opp.tweet_id} is_root=${isRoot} in_reply_to=${hasInReplyTo || 'null'} reason=not_root_tweet`);
+      return false;
+    }
+    return true;
+  });
+  
+  const skippedNonRoot = allOpportunities.length - rootOnlyOpportunities.length;
+  if (skippedNonRoot > 0) {
+    console.log(`[REPLY_JOB] 🔒 Root tweet gate: skipped ${skippedNonRoot} non-root tweets`);
+  }
+  
+  if (rootOnlyOpportunities.length === 0) {
+    console.log('[REPLY_JOB] ⚠️ No root tweet opportunities after filtering, waiting for harvester...');
+    return;
+  }
+  
+  // Replace allOpportunities with root-only opportunities
+  const allOpportunitiesFiltered = rootOnlyOpportunities;
+  
   // 🎯 HIGH-VALUE TIER FILTERING: Tier_S first, then Tier_A, never Tier_B unless starvation
-  const tierSCandidates = allOpportunities.filter(opp => String(opp.tier || '').toUpperCase() === 'S');
-  const tierACandidates = allOpportunities.filter(opp => String(opp.tier || '').toUpperCase() === 'A');
-  const tierBCandidates = allOpportunities.filter(opp => String(opp.tier || '').toUpperCase() === 'B');
+  const tierSCandidates = allOpportunitiesFiltered.filter(opp => String(opp.tier || '').toUpperCase() === 'S');
+  const tierACandidates = allOpportunitiesFiltered.filter(opp => String(opp.tier || '').toUpperCase() === 'A');
+  const tierBCandidates = allOpportunitiesFiltered.filter(opp => String(opp.tier || '').toUpperCase() === 'B');
   
   console.log(`[REPLY_JOB] 🎯 Tier distribution: S=${tierSCandidates.length} A=${tierACandidates.length} B=${tierBCandidates.length}`);
   
@@ -906,17 +940,31 @@ async function generateRealReplies(): Promise<void> {
     else if (ageMin <= 360) freshnessMultiplier = 0.7; // Getting old
     else freshnessMultiplier = 0.3;                    // Stale
     
-    // Health relevance boost
-    const healthScore = Number(opp.health_relevance_score) || 0;
-    const healthMultiplier = healthScore >= 7 ? 1.5 : healthScore >= 5 ? 1.2 : 1.0;
+    // 🎯 NEW: Relevance & Replyability scores (from relevanceReplyabilityScorer)
+    const relevanceScore = Number(opp.relevance_score) || 0;
+    const replyabilityScore = Number(opp.replyability_score) || 0;
+    
+    // Health niche weight: penalize off-niche mega tweets
+    let healthNicheWeight = 1.0;
+    if (relevanceScore >= 0.6) {
+      healthNicheWeight = 1.0; // High relevance = full weight
+    } else if (relevanceScore < 0.3) {
+      healthNicheWeight = 0.4; // Low relevance = heavy penalty
+    } else {
+      healthNicheWeight = 0.7; // Medium relevance = moderate penalty
+    }
     
     // Account priority from discovered_accounts
     const username = String(opp.target_username || '').toLowerCase().trim();
     const accountPriority = priorityMap.get(username) || 0;
     const priorityMultiplier = 1 + (accountPriority * 0.3);
     
-    // Final score: velocity-weighted ranking
-    const score = velocity * Math.log10(likes + 1) * freshnessMultiplier * healthMultiplier * priorityMultiplier;
+    // 🎯 NEW SCORE FORMULA: base_score * (0.25 + 0.75*relevance) * (0.25 + 0.75*replyability) * health_niche_weight
+    const baseScore = velocity * Math.log10(likes + 1) * freshnessMultiplier * priorityMultiplier;
+    const relevanceMultiplier = 0.25 + 0.75 * relevanceScore;
+    const replyabilityMultiplier = 0.25 + 0.75 * replyabilityScore;
+    
+    const score = baseScore * relevanceMultiplier * replyabilityMultiplier * healthNicheWeight;
     
     return { score, velocity, ageMin };
   }
@@ -990,48 +1038,161 @@ async function generateRealReplies(): Promise<void> {
   // These arrays are no longer needed after creating candidateOpportunities
   clearArrays(gatedOpportunities, sortedOpportunities);
 
-  // 🚨 CRITICAL FIX: Check for TWEET IDs we've already replied to (not just usernames!)
-  // This prevents multiple replies to the same tweet
-  const { data: alreadyRepliedTweets } = await supabaseClient
-    .from('content_metadata')
-    .select('target_tweet_id')
-    .eq('decision_type', 'reply')
-    .in('status', ['posted', 'queued', 'ready']);
-
-  const repliedTweetIds = new Set(
-    (alreadyRepliedTweets || [])
-      .map(r => r.target_tweet_id)
-      .filter(id => id)
-  );
-
-  console.log(`[REPLY_JOB] 🔒 Already replied to ${repliedTweetIds.size} unique tweets`);
+  // 🎯 NEW: Apply soft relevance/replyability gates (3 tiers) + do-not-reply checks
+  const { checkReplyAllowed } = await import('../utils/replyDedupe');
+  const { HEALTH_AUTHORITY_ALLOWLIST } = await import('../ai/relevanceReplyabilityScorer');
+  
+  // Gate tiers: All require relevance >= 0.45, tiers vary by replyability (fallback ladder)
+  const GATE_TIERS = [
+    { tier: 1, relevance: 0.45, replyability: 0.35 }, // Tier 1: High replyability
+    { tier: 2, relevance: 0.45, replyability: 0.30 }, // Tier 2: Medium replyability (fallback)
+    { tier: 3, relevance: 0.45, replyability: 0.25 }, // Tier 3: Lower replyability (starvation protection)
+  ];
+  
+  // HARD FLOOR: relevance < 0.45 => FAIL (unless whitelist exemption)
+  const HARD_FLOOR_RELEVANCE = 0.45;
+  const WHITELIST_EXEMPTION_MIN_RELEVANCE = 0.40; // Allow 0.40-0.44 for whitelisted authors
+  
+  console.log(`[REPLY_JOB] 🎯 Applying relevance/replyability gates (tier ladder: all require relevance>=${HARD_FLOOR_RELEVANCE}, tiers vary replyability)`);
 
   // 📊 DIAGNOSTIC COUNTERS - Track filter reasons
   let diagCounters = {
     total_candidates: candidateOpportunities.length,
     null_tweet_id: 0,
     already_replied: 0,
+    author_cap_exceeded: 0,
+    disallowed_tweet: 0,
+    low_relevance: 0,
+    low_replyability: 0,
     is_reply_tweet: 0,
     low_followers: 0,
     low_likes: 0,
     kept: 0
   };
 
-  const dbOpportunities = candidateOpportunities
-    .filter(opp => {
-      if (!opp.target_tweet_id) {
-        diagCounters.null_tweet_id++;
-        console.log(`[REPLY_JOB] ⚠️ Skipping opportunity with NULL tweet_id from @${opp.target_username}`);
-        return false;
-      }
-      if (repliedTweetIds.has(opp.target_tweet_id)) {
+  // Filter opportunities with soft gates (3 tiers)
+  const filteredOpportunities: any[] = [];
+  let gateTierUsed: number | null = null;
+  
+  // Track gate summary for observability
+  const gateSummary = {
+    tier1_pass: 0,
+    tier2_pass: 0,
+    tier3_pass: 0,
+    fail: 0,
+    whitelist_used: 0,
+    disallowed: 0,
+  };
+  
+  for (const opp of candidateOpportunities) {
+    if (!opp.target_tweet_id) {
+      diagCounters.null_tweet_id++;
+      continue;
+    }
+    
+    // 🎯 NEW: Check disallowed FIRST (always required, regardless of tier)
+    const replyCheck = await checkReplyAllowed(
+      opp.target_tweet_id,
+      opp.target_tweet_content || '',
+      opp.target_username || '',
+      opp.target_tweet_url
+    );
+    
+    if (!replyCheck.allowed) {
+      if (replyCheck.reason === 'already_replied') {
         diagCounters.already_replied++;
-        // Only log first few to avoid spam
-        if (diagCounters.already_replied <= 3) {
-          console.log(`[REPLY_JOB] ⏭️ Already replied to tweet ${opp.target_tweet_id} from @${opp.target_username}`);
-        }
-        return false;
+      } else if (replyCheck.reason?.includes('author_daily_cap')) {
+        diagCounters.author_cap_exceeded++;
+      } else if (replyCheck.reason) {
+        diagCounters.disallowed_tweet++;
+        gateSummary.disallowed++;
       }
+      if ((diagCounters.already_replied + diagCounters.author_cap_exceeded + diagCounters.disallowed_tweet) <= 5) {
+        console.log(`[REPLY_JOB] 🚫 ${replyCheck.reason}: @${opp.target_username} tweet_id=${opp.target_tweet_id}`);
+      }
+      continue;
+    }
+    
+    // 🎯 NEW: Gate tier ladder (try Tier 1, then Tier 2, then Tier 3)
+    const relevanceScore = Number(opp.relevance_score) || 0;
+    const replyabilityScore = Number(opp.replyability_score) || 0;
+    const authorHandle = (opp.target_username || '').toLowerCase().replace('@', '');
+    const isWhitelisted = HEALTH_AUTHORITY_ALLOWLIST.has(authorHandle);
+    
+    // HARD FLOOR: relevance < 0.45 => FAIL (unless whitelist exemption: 0.40-0.44)
+    let effectiveRelevance = relevanceScore;
+    let usedWhitelistExemption = false;
+    
+    if (relevanceScore < HARD_FLOOR_RELEVANCE) {
+      // Check whitelist exemption: allow 0.40-0.44 for whitelisted authors
+      if (isWhitelisted && relevanceScore >= WHITELIST_EXEMPTION_MIN_RELEVANCE) {
+        effectiveRelevance = HARD_FLOOR_RELEVANCE; // Treat as meeting floor for tier checks
+        usedWhitelistExemption = true;
+      } else {
+        diagCounters.low_relevance++;
+        if (diagCounters.low_relevance <= 3) {
+          console.log(`[REPLY_JOB] 🚫 Hard floor failed: @${opp.target_username} relevance=${relevanceScore.toFixed(2)} < ${HARD_FLOOR_RELEVANCE}${isWhitelisted ? ' (whitelisted but < 0.40)' : ''}`);
+        }
+        continue;
+      }
+    }
+    
+    // Try tiers in order (1 -> 2 -> 3) as fallback ladder
+    let passedGate = false;
+    let tierUsed = 0;
+    
+    for (const gate of GATE_TIERS) {
+      // All tiers require relevance >= 0.45 (or whitelist exemption), vary by replyability
+      if (effectiveRelevance >= gate.relevance && replyabilityScore >= gate.replyability) {
+        passedGate = true;
+        tierUsed = gate.tier;
+        
+        // Track gate summary
+        if (tierUsed === 1) gateSummary.tier1_pass++;
+        else if (tierUsed === 2) gateSummary.tier2_pass++;
+        else if (tierUsed === 3) gateSummary.tier3_pass++;
+        
+        if (usedWhitelistExemption) {
+          gateSummary.whitelist_used++;
+        }
+        
+        // Store tier and selection reason
+        (opp as any).gateTierUsed = tierUsed;
+        (opp as any).usedWhitelistExemption = usedWhitelistExemption;
+        
+        if (gateTierUsed === null) {
+          gateTierUsed = gate.tier;
+          const exemptionNote = usedWhitelistExemption ? ' (whitelist_exemption)' : '';
+          console.log(`[GATE_TIER] tier=${gate.tier} relevance=${relevanceScore.toFixed(2)} replyability=${replyabilityScore.toFixed(2)}${exemptionNote}`);
+        }
+        break; // Use highest tier that passes
+      }
+    }
+    
+    if (!passedGate) {
+      gateSummary.fail++;
+      diagCounters.low_relevance++;
+      if (diagCounters.low_relevance <= 3) {
+        console.log(`[REPLY_JOB] 🚫 Below all gate tiers: @${opp.target_username} relevance=${relevanceScore.toFixed(2)} replyability=${replyabilityScore.toFixed(2)}`);
+      }
+      continue;
+    }
+    
+    // Store whitelist exemption flag for logging
+    if (usedWhitelistExemption) {
+      (opp as any).whitelist_exemption = true;
+      (opp as any).effective_relevance = effectiveRelevance;
+    }
+    
+    filteredOpportunities.push(opp);
+  }
+  
+  if (gateTierUsed !== null) {
+    console.log(`[GATE_TIER] final_tier=${gateTierUsed} opportunities_passing=${filteredOpportunities.length}`);
+  }
+  
+  const dbOpportunities = filteredOpportunities
+    .filter(opp => {
       
       // 🚨 CRITICAL FILTER 0: Never reply to reply tweets (only target original posts)
       // Reply tweets typically start with "@username" at the beginning
@@ -1101,14 +1262,24 @@ async function generateRealReplies(): Promise<void> {
   console.log(`[REPLY_DIAG] fetched_from_db=${diagCounters.total_candidates}`);
   console.log(`[REPLY_DIAG] skipped_null_tweet_id=${diagCounters.null_tweet_id}`);
   console.log(`[REPLY_DIAG] skipped_already_replied=${diagCounters.already_replied}`);
+  console.log(`[REPLY_DIAG] skipped_author_cap_exceeded=${diagCounters.author_cap_exceeded}`);
+  console.log(`[REPLY_DIAG] skipped_disallowed_tweet=${diagCounters.disallowed_tweet}`);
+  console.log(`[REPLY_DIAG] skipped_below_gate_tiers=${diagCounters.low_relevance} (tried tiers 1/2/3)`);
   console.log(`[REPLY_DIAG] skipped_is_reply_tweet=${diagCounters.is_reply_tweet}`);
   console.log(`[REPLY_DIAG] skipped_low_followers=${diagCounters.low_followers} (min=10000)`);
   console.log(`[REPLY_DIAG] skipped_low_likes=${diagCounters.low_likes} (min=5000)`);
   console.log(`[REPLY_DIAG] kept_after_filters=${diagCounters.kept}`);
+  if (gateTierUsed !== null) {
+    console.log(`[REPLY_DIAG] gate_tier_used=${gateTierUsed}`);
+  }
   console.log('[REPLY_DIAG] ═══════════════════════════════════════');
   
   if (dbOpportunities.length === 0) {
     console.log('[REPLY_JOB] ⚠️ No opportunities kept after filtering');
+    // Check if it's because of gate tiers
+    if (diagCounters.low_relevance > 0) {
+      console.log(`[REPLY_JOB] 💡 No opportunities passed gate tiers (tried tiers 1/2/3, ${diagCounters.low_relevance} below all thresholds)`);
+    }
     return;
   }
   
@@ -1122,7 +1293,7 @@ async function generateRealReplies(): Promise<void> {
   if (dbOpportunities.length > 0) {
     console.log(`[REPLY_JOB]   🏆 MEGA: ${selectionMega} | 🚀 VIRAL: ${selectionViral} | 📈 TRENDING: ${selectionTrending} | 🔥 FRESH: ${selectionFresh}`);
   }
-  console.log(`[REPLY_JOB]   Filtered out ${repliedTweetIds.size} already-replied tweets`);
+  console.log(`[REPLY_JOB]   Filtered out ${diagCounters.already_replied} already-replied tweets`);
   
   // Log average engagement
   const avgLikes = dbOpportunities.reduce((sum, opp) => sum + (Number(opp.like_count) || 0), 0) / Math.max(dbOpportunities.length, 1);
@@ -1193,6 +1364,35 @@ async function generateRealReplies(): Promise<void> {
       continue;
     }
     
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🔒 PRE-RESOLUTION GATE: Fail-closed checks BEFORE any resolver/LLM calls
+    // ═══════════════════════════════════════════════════════════════════════
+    const oppAny = opp as any; // Type assertion for DB fields
+    const preGateChecks = {
+      has_in_reply_to: !!(oppAny.target_in_reply_to_tweet_id),
+      is_root_tweet: opp.is_root_tweet === true || opp.is_root_tweet === 1,
+      root_mismatch: opp.root_tweet_id && opp.root_tweet_id !== tweetId,
+    };
+    
+    // BLOCK if ANY pre-gate check fails
+    if (preGateChecks.has_in_reply_to) {
+      console.log(`[PRE_RESOLUTION_GATE] ⛔ BLOCKED: target=${tweetId} reason=target_in_reply_to_tweet_id_present in_reply_to=${oppAny.target_in_reply_to_tweet_id}`);
+      rootDiagCounters.skipped_is_reply_tweet++;
+      continue;
+    }
+    
+    if (!preGateChecks.is_root_tweet && opp.is_root_tweet !== undefined) {
+      console.log(`[PRE_RESOLUTION_GATE] ⛔ BLOCKED: target=${tweetId} reason=is_root_tweet_false is_root_tweet=${opp.is_root_tweet}`);
+      rootDiagCounters.skipped_is_reply_tweet++;
+      continue;
+    }
+    
+    if (preGateChecks.root_mismatch) {
+      console.log(`[PRE_RESOLUTION_GATE] ⛔ BLOCKED: target=${tweetId} reason=root_tweet_id_mismatch root=${opp.root_tweet_id} target=${tweetId}`);
+      rootDiagCounters.skipped_is_reply_tweet++;
+      continue;
+    }
+    
     // 🎯 OPTIMIZATION: If DB already has root_tweet_id and is_root_tweet=true, skip live resolution
     let resolved: any;
     if (opp.is_root_tweet === true && opp.root_tweet_id) {
@@ -1217,28 +1417,35 @@ async function generateRealReplies(): Promise<void> {
     }
     
     // ═══════════════════════════════════════════════════════════════════════
-    // 🔒 ROOT-ONLY ENFORCEMENT (FAIL-CLOSED)
+    // 🔒 ROOT-ONLY ENFORCEMENT (FAIL-CLOSED) - Post-resolution checks
     // ═══════════════════════════════════════════════════════════════════════
     const rootId = resolved.rootTweetId;
     const isReplyTweet = !resolved.isRootTweet;
     const rootMatchesTarget = rootId === tweetId;
     
+    // 🔒 FAIL-CLOSED: If resolver returned null rootTweetId, BLOCK
+    if (rootId === null) {
+      console.log(`[ROOT_ONLY] ⛔ BLOCKED: target=${tweetId} reason=resolver_returned_null_root (fail-closed)`);
+      rootDiagCounters.skipped_is_reply_tweet++;
+      continue;
+    }
+    
     // BLOCK if target is a reply (root != target)
     if (!rootMatchesTarget && !resolved.isRootTweet) {
-      console.log(`[ROOT_ONLY] target=${tweetId} root=${rootId} is_reply=true pass=false reason=target_is_reply_resolves_to_different_root`);
+      console.log(`[ROOT_ONLY] ⛔ BLOCKED: target=${tweetId} root=${rootId} is_reply=true pass=false reason=target_is_reply_resolves_to_different_root`);
       rootDiagCounters.skipped_is_reply_tweet++;
       continue;
     }
     
     // BLOCK if explicitly marked as reply tweet
     if (isReplyTweet) {
-      console.log(`[ROOT_ONLY] target=${tweetId} root=${rootId} is_reply=true pass=false reason=is_reply_tweet_flag`);
+      console.log(`[ROOT_ONLY] ⛔ BLOCKED: target=${tweetId} root=${rootId} is_reply=true pass=false reason=is_reply_tweet_flag`);
       rootDiagCounters.skipped_is_reply_tweet++;
       continue;
     }
     
     // PASS - confirmed root tweet
-    console.log(`[ROOT_ONLY] target=${tweetId} root=${rootId} is_reply=false pass=true reason=confirmed_root_tweet`);
+    console.log(`[ROOT_ONLY] ✅ PASSED: target=${tweetId} root=${rootId} is_reply=false pass=true reason=confirmed_root_tweet`);
     
     // Update opportunity with root data
     const resolvedOpp = {
@@ -1405,10 +1612,25 @@ async function generateRealReplies(): Promise<void> {
           continue; // Skip this opportunity
         }
         
+        // 🔒 CONTEXT FETCHING: Build full conversation context
+        const { buildReplyContext } = await import('../utils/replyContextBuilder');
+        const replyContext = await buildReplyContext(tweetIdFromUrl, target.account.username);
+        
+        // Use context text if available, fallback to parentText
+        const contextText = replyContext.root_tweet_text || parentText;
+        const quotedText = replyContext.quoted_tweet_text;
+        const threadPrevText = replyContext.thread_prev_text;
+        
         // Log context
         const parentExcerpt = parentText.substring(0, 80) + (parentText.length > 80 ? '...' : '');
-        console.log(`[REPLY_CONTEXT] ok=true parent_id=${tweetIdFromUrl} keywords=${keywords.join(', ')} content_length=${parentText.length}`);
+        console.log(`[REPLY_CONTEXT] ok=true parent_id=${tweetIdFromUrl} root_id=${replyContext.root_tweet_id || 'self'} keywords=${keywords.join(', ')} content_length=${parentText.length}`);
         console.log(`[REPLY_CONTEXT] parent_excerpt="${parentExcerpt}"`);
+        if (quotedText) {
+          console.log(`[REPLY_CONTEXT] quoted_text="${quotedText.substring(0, 60)}..."`);
+        }
+        if (replyContext.root_tweet_text && replyContext.root_tweet_id !== tweetIdFromUrl) {
+          console.log(`[REPLY_CONTEXT] root_text="${replyContext.root_tweet_text.substring(0, 60)}..."`);
+        }
         
         // 🔁 RETRY LOOP: Generate reply with quality gate (max 2 attempts)
         const MAX_GENERATION_ATTEMPTS = 2;
@@ -1434,9 +1656,21 @@ async function generateRealReplies(): Promise<void> {
             ];
             const chosenTemplate = templates[templateChoice];
             
+            // Build context string for prompt
+            let contextString = `TARGET_TWEET: "${parentText}"`;
+            if (quotedText) {
+              contextString += `\nQUOTED_TWEET: "${quotedText}"`;
+            }
+            if (replyContext.root_tweet_text && replyContext.root_tweet_id !== tweetIdFromUrl) {
+              contextString += `\nROOT_TWEET: "${replyContext.root_tweet_text}"`;
+            }
+            if (threadPrevText) {
+              contextString += `\nPREVIOUS_TWEET_IN_THREAD: "${threadPrevText}"`;
+            }
+            
             const explicitReplyPrompt = `You are replying to this tweet:
 
-ROOT_TWEET_TEXT: "${parentText}"
+${contextString}
 AUTHOR: @${target.account.username}
 KEY_TOPICS: ${keywords.join(', ')}
 
@@ -1476,6 +1710,7 @@ BAD EXAMPLES:
 Reply (1-3 lines, echo their point first):`;
             
             // Route through orchestratorRouter for generator-based replies
+            // Pass full context object for better reply generation
             const routerResponse = await routeContentGeneration({
               decision_type: 'reply',
               content_slot: 'reply',
@@ -1485,7 +1720,15 @@ Reply (1-3 lines, echo their point first):`;
               priority_score: priorityScore,
               target_username: target.account.username,
               target_tweet_content: parentText,
-              generator_name: replyGenerator
+              generator_name: replyGenerator,
+              // 🔒 NEW: Pass context for grounded replies
+              reply_context: {
+                target_text: parentText,
+                quoted_text: quotedText,
+                root_text: replyContext.root_tweet_text,
+                thread_prev_text: threadPrevText,
+                root_tweet_id: replyContext.root_tweet_id
+              }
             });
             
             // Extract content (handle array if returned)
@@ -1903,13 +2146,17 @@ Reply (1-3 lines, echo their point first):`;
         generator: replyGenerator
       });
       
-      // Mark opportunity as replied in database
+      // Mark opportunity as replied in database and update selection_reason
+      const gateTier = (opportunity as any).gateTierUsed || 0;
+      const selectionReason = gateTier > 0 ? `harvest_v2|selected_tier${gateTier}` : 'harvest_v2|selected_unknown';
+      
       await supabaseClient
         .from('reply_opportunities')
         .update({ 
           replied_to: true,
           reply_decision_id: decision_id,
-          status: 'replied'
+          status: 'replied',
+          selection_reason: selectionReason
         })
         .eq('target_tweet_id', reply.target_tweet_id);
       

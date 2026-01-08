@@ -10,10 +10,17 @@ import { getAiRoutingRule, isPhase4RoutingEnabled } from '../config/aiRoutingCon
 import { shouldUseExpertModel } from './BudgetController';
 
 /**
- * Extended request interface for routing (includes priority_score)
+ * Extended request interface for routing (includes priority_score and reply_context)
  */
 export interface RoutingRequest extends CoreContentRequest {
   priority_score?: number | null; // For replies - priority_score from discovered_accounts
+  reply_context?: { // For replies - full conversation context
+    target_text: string;
+    quoted_text?: string;
+    root_text?: string;
+    thread_prev_text?: string;
+    root_tweet_id?: string;
+  };
 }
 
 /**

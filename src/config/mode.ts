@@ -60,9 +60,7 @@ function checkLegacyConflicts(mode: UnifiedMode, env: NodeJS.ProcessEnv, conflic
     if (env.POSTING_DISABLED === 'true') {
       conflicts.push('MODE=live but POSTING_DISABLED=true (legacy). Posting remains enabled.');
     }
-    if (env.DRY_RUN === 'true') {
-      conflicts.push('MODE=live but DRY_RUN=true (legacy). Ignoring DRY_RUN flag.');
-    }
+    // DRY_RUN is authoritative and can coexist with MODE=live - no conflict warning
   } else if (mode === 'shadow' && env.LIVE_POSTS === 'true') {
     conflicts.push('MODE=shadow but LIVE_POSTS=true (legacy). Posting stays disabled.');
   }

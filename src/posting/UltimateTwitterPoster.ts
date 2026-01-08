@@ -34,6 +34,7 @@ export interface PostingGuard {
   readonly pipeline_source: string;
   readonly job_run_id: string;
   readonly created_at: number;
+  readonly permit_id?: string; // 🎫 Posting permit ID (required for posting)
 }
 
 /**
@@ -45,6 +46,7 @@ export function createPostingGuard(params: {
   decision_id: string;
   pipeline_source: string;
   job_run_id?: string;
+  permit_id?: string; // 🎫 Optional permit_id (will be added by atomicPostExecutor)
 }): PostingGuard {
   const guard: PostingGuard = {
     __secret: GUARD_SECRET,
@@ -52,6 +54,7 @@ export function createPostingGuard(params: {
     pipeline_source: params.pipeline_source,
     job_run_id: params.job_run_id || `job_${Date.now()}`,
     created_at: Date.now(),
+    permit_id: params.permit_id,
   };
   console.log(`[POSTING_GUARD] ✅ Guard created: decision_id=${params.decision_id} source=${params.pipeline_source}`);
   return guard;
@@ -285,7 +288,7 @@ export class UltimateTwitterPoster {
           await this.prepareForAttempt(retryCount);
           
           await this.ensureContext();
-          const result = await this.attemptPost(content);
+          const result = await this.attemptPost(content, validGuard);
         
           if (!result.success) {
             if (result.error?.includes('session expired') || result.error?.includes('not logged in')) {
@@ -425,7 +428,7 @@ export class UltimateTwitterPoster {
     }
   }
 
-  private async attemptPost(content: string): Promise<PostResult> {
+  private async attemptPost(content: string, validGuard: PostingGuard): Promise<PostResult> {
     if (!this.page) throw new Error('Page not initialized');
 
     const stageStartTimes: Record<string, number> = {};
@@ -556,7 +559,7 @@ export class UltimateTwitterPoster {
     console.log(`[ULTIMATE_POSTER] 🎯 Stage: submit - Starting`);
     try {
       // Post with network verification
-      result = await this.postWithNetworkVerification();
+      result = await this.postWithNetworkVerification(validGuard);
       const submitDuration = Date.now() - submitStartTime;
       console.log(`[ULTIMATE_POSTER] ✅ Stage: submit - Completed in ${submitDuration}ms`);
     } catch (submitError: any) {
@@ -716,7 +719,7 @@ export class UltimateTwitterPoster {
     throw new Error('No editable composer found with any selector - Twitter UI may have changed');
   }
 
-  private async postWithNetworkVerification(): Promise<PostResult> {
+  private async postWithNetworkVerification(validGuard: PostingGuard): Promise<PostResult> {
         if (!this.page) throw new Error('Page not initialized');
 
         console.log('ULTIMATE_POSTER: Setting up robust posting with fallback verification...');
@@ -839,6 +842,57 @@ export class UltimateTwitterPoster {
       }
     }
     
+    // 🔒 POSTING PERMIT CHECK (FINAL CHOKE POINT FOR SINGLE POSTS)
+    // This is the ONLY place where we click Post button for single tweets
+    const permit_id = validGuard.permit_id;
+    
+    if (!permit_id) {
+      const errorMsg = `[PERMIT_CHOKE] ❌ BLOCKED: No permit_id in guard. decision_id=${validGuard.decision_id}`;
+      console.error(errorMsg);
+      console.error(`[PERMIT_CHOKE] Stack: ${new Error().stack}`);
+      
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'posting_blocked_no_permit',
+        severity: 'critical',
+        message: `Posting blocked: No permit_id in guard`,
+        event_data: {
+          decision_id: validGuard.decision_id,
+          pipeline_source: validGuard.pipeline_source,
+          stack_trace: new Error().stack?.substring(0, 1000),
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      throw new Error('BLOCKED: No posting permit - posting requires permit_id');
+    }
+    
+    const { verifyPostingPermit } = await import('./postingPermit');
+    const permitCheck = await verifyPostingPermit(permit_id);
+    if (!permitCheck.valid) {
+      const errorMsg = `[PERMIT_CHOKE] ❌ BLOCKED: Permit not valid. permit_id=${permit_id} error=${permitCheck.error}`;
+      console.error(errorMsg);
+      
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'posting_blocked_invalid_permit',
+        severity: 'critical',
+        message: `Posting blocked: Permit not valid`,
+        event_data: {
+          permit_id,
+          decision_id: validGuard.decision_id,
+          permit_error: permitCheck.error,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      throw new Error(`BLOCKED: Permit not valid (${permitCheck.error})`);
+    }
+    
+    console.log(`[PERMIT_CHOKE] ✅ Permit verified: ${permit_id} (status: ${permitCheck.permit?.status})`);
+    
     // Try multiple click strategies to bypass overlay
     let clickSuccess = false;
     try {
@@ -847,7 +901,7 @@ export class UltimateTwitterPoster {
       await postButton.click({ timeout: 15000 }); // Increased from 5s → 15s
       this.clickFailures = 0; // Reset on success
       clickSuccess = true;
-      console.log('ULTIMATE_POSTER: ✅ Normal click succeeded');
+      console.log(`ULTIMATE_POSTER: ✅ Normal click succeeded (permit: ${permit_id})`);
     } catch (clickError: any) {
       this.clickFailures++;
       console.log(`ULTIMATE_POSTER: ❌ Normal click failed (${this.clickFailures}/${this.maxClickFailures}): ${clickError.message}`);
@@ -1816,6 +1870,61 @@ export class UltimateTwitterPoster {
 
         await this.page.waitForTimeout(400);
 
+        // 🔒 POSTING PERMIT CHECK (FINAL CHOKE POINT)
+        // This is the ONLY place where we click Post/Reply button
+        // Must verify permit exists and is APPROVED
+        const { verifyPostingPermit } = await import('./postingPermit');
+        const permit_id = (validGuard as any).permit_id;
+        
+        if (!permit_id) {
+          const errorMsg = `[PERMIT_CHOKE] ❌ BLOCKED: No permit_id in guard. decision_id=${validGuard.decision_id}`;
+          console.error(errorMsg);
+          console.error(`[PERMIT_CHOKE] Stack: ${new Error().stack}`);
+          
+          // Log to system_events
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          await supabase.from('system_events').insert({
+            event_type: 'posting_blocked_no_permit',
+            severity: 'critical',
+            message: `Posting blocked: No permit_id in guard`,
+            event_data: {
+              decision_id: validGuard.decision_id,
+              pipeline_source: validGuard.pipeline_source,
+              stack_trace: new Error().stack?.substring(0, 1000),
+            },
+            created_at: new Date().toISOString(),
+          });
+          
+          throw new Error('BLOCKED: No posting permit - posting requires permit_id');
+        }
+        
+        const permitCheck = await verifyPostingPermit(permit_id);
+        if (!permitCheck.valid) {
+          const errorMsg = `[PERMIT_CHOKE] ❌ BLOCKED: Permit not valid. permit_id=${permit_id} error=${permitCheck.error}`;
+          console.error(errorMsg);
+          console.error(`[PERMIT_CHOKE] Stack: ${new Error().stack}`);
+          
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          await supabase.from('system_events').insert({
+            event_type: 'posting_blocked_invalid_permit',
+            severity: 'critical',
+            message: `Posting blocked: Permit not valid`,
+            event_data: {
+              permit_id,
+              decision_id: validGuard.decision_id,
+              permit_error: permitCheck.error,
+              stack_trace: new Error().stack?.substring(0, 1000),
+            },
+            created_at: new Date().toISOString(),
+          });
+          
+          throw new Error(`BLOCKED: Permit not valid (${permitCheck.error})`);
+        }
+        
+        console.log(`[PERMIT_CHOKE] ✅ Permit verified: ${permit_id} (status: ${permitCheck.permit?.status})`);
+        
         // Find and click post button
         const postButtonSelectors = [
           '[data-testid="tweetButton"]',
@@ -1837,7 +1946,7 @@ export class UltimateTwitterPoster {
             await button.waitFor({ state: 'visible', timeout: 2000 });
             await button.click();
             posted = true;
-            console.log(`ULTIMATE_POSTER: Clicked post button: "${selector}"`);
+            console.log(`ULTIMATE_POSTER: Clicked post button: "${selector}" (permit: ${permit_id})`);
             break;
           } catch (e) {
             continue;
