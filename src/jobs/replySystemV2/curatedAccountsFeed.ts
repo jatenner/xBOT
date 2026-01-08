@@ -101,59 +101,145 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(3000); // Wait for timeline to load
       
-      // Handle consent wall if present
+      // Handle consent wall if present - STRONGER APPROACH
+      let consentCleared = false;
+      let clickAttempted = 0;
+      let matchedSelector = null;
+      const containersBefore = await page.evaluate(() => {
+        return document.querySelectorAll('article[data-testid="tweet"]').length;
+      });
+      
       try {
-        // Try multiple strategies to accept cookies
+        // Strategy 1: Text-based locators
         const strategies = [
-          // Strategy 1: Text-based locators
-          async () => {
+          { name: 'getByText Accept all cookies', fn: async () => {
             const acceptButton = page.getByText('Accept all cookies', { exact: false }).first();
             if (await acceptButton.isVisible({ timeout: 2000 })) {
               await acceptButton.click();
               return true;
             }
-          },
-          async () => {
+          }},
+          { name: 'getByText Accept', fn: async () => {
             const acceptButton = page.getByText('Accept', { exact: false }).first();
             if (await acceptButton.isVisible({ timeout: 2000 })) {
               await acceptButton.click();
               return true;
             }
-          },
-          // Strategy 2: Role-based
-          async () => {
+          }},
+          { name: 'getByRole button accept', fn: async () => {
             const acceptButton = page.getByRole('button', { name: /accept/i }).first();
             if (await acceptButton.isVisible({ timeout: 2000 })) {
               await acceptButton.click();
               return true;
             }
-          },
-          // Strategy 3: CSS selectors
-          async () => {
+          }},
+          { name: 'locator button filter accept', fn: async () => {
             const acceptButton = page.locator('button').filter({ hasText: /accept/i }).first();
             if (await acceptButton.isVisible({ timeout: 2000 })) {
               await acceptButton.click();
               return true;
             }
-          },
+          }},
+          // Strategy 2: Try iframe
+          { name: 'iframe accept button', fn: async () => {
+            const iframes = await page.locator('iframe').all();
+            for (const iframe of iframes) {
+              try {
+                const frame = await iframe.contentFrame();
+                if (frame) {
+                  const acceptButton = frame.getByText(/accept/i).first();
+                  if (await acceptButton.isVisible({ timeout: 1000 })) {
+                    await acceptButton.click();
+                    return true;
+                  }
+                }
+              } catch (e) {
+                // Try next iframe
+              }
+            }
+          }},
+          // Strategy 3: Keyboard interaction
+          { name: 'keyboard TAB+ENTER', fn: async () => {
+            await page.keyboard.press('Tab');
+            await page.waitForTimeout(500);
+            await page.keyboard.press('Tab');
+            await page.waitForTimeout(500);
+            const focused = await page.evaluate(() => {
+              const active = document.activeElement;
+              return active?.textContent?.toLowerCase().includes('accept') || false;
+            });
+            if (focused) {
+              await page.keyboard.press('Enter');
+              return true;
+            }
+          }},
+          // Strategy 4: Escape key to dismiss overlay
+          { name: 'escape key', fn: async () => {
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(1000);
+            return true;
+          }},
         ];
         
         for (const strategy of strategies) {
           try {
-            const clicked = await strategy();
+            clickAttempted++;
+            const clicked = await strategy.fn();
             if (clicked) {
-              console.log(`[CURATED_FEED] 🍪 Clicked consent button`);
-              await page.waitForTimeout(3000); // Wait for page to update
-              break;
+              matchedSelector = strategy.name;
+              console.log(`[CURATED_FEED] 🍪 Clicked consent button via: ${strategy.name}`);
+              
+              // Wait for overlay to be detached (not just clicked)
+              await page.waitForFunction(
+                () => {
+                  const overlays = document.querySelectorAll('[role="dialog"], [data-testid*="cookie"], [aria-label*="cookie"]');
+                  return overlays.length === 0;
+                },
+                { timeout: 5000 }
+              ).catch(() => {
+                // Overlay might not have role attributes, continue anyway
+              });
+              
+              await page.waitForTimeout(2000); // Additional wait
+              
+              // Verify containers increased
+              const containersAfter = await page.evaluate(() => {
+                return document.querySelectorAll('article[data-testid="tweet"]').length;
+              });
+              
+              if (containersAfter > containersBefore) {
+                consentCleared = true;
+                console.log(`[CURATED_FEED] ✅ Consent cleared: ${containersBefore} -> ${containersAfter} containers`);
+                break;
+              }
             }
           } catch (e) {
             // Try next strategy
           }
         }
       } catch (e) {
-        // Consent wall handling failed, continue anyway
         console.log(`[CURATED_FEED] ⚠️ Consent handling failed: ${(e as Error).message}`);
       }
+      
+      // Log consent handling results
+      const containersAfter = await page.evaluate(() => {
+        return document.querySelectorAll('article[data-testid="tweet"]').length;
+      });
+      
+      await supabase.from('system_events').insert({
+        event_type: 'reply_v2_feed_consent_handling',
+        severity: 'info',
+        message: `Consent handling for @${username}`,
+        event_data: {
+          username,
+          click_attempted: clickAttempted,
+          matched_selector: matchedSelector,
+          containers_before: containersBefore,
+          containers_after: containersAfter,
+          consent_cleared: consentCleared,
+        },
+        created_at: new Date().toISOString(),
+      });
       
       // DIAGNOSTICS: Check login status and walls
       const diagnostics = await page.evaluate(() => {
@@ -195,25 +281,33 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
         created_at: new Date().toISOString(),
       });
       
-      // If consent wall still detected after handling, try to wait and retry
-      if (diagnostics.wall_detected && diagnostics.wall_type === 'consent') {
-        console.log(`[CURATED_FEED] ⚠️ Consent wall detected for @${username}, waiting and retrying...`);
-        await page.waitForTimeout(3000);
+      // Update diagnostics with containers_after
+      diagnostics.tweet_containers_found = containersAfter;
+      
+      // If consent wall still detected after handling
+      if (diagnostics.wall_detected && diagnostics.wall_type === 'consent' && !consentCleared) {
+        console.warn(`[CURATED_FEED] ⚠️ Consent wall still blocking @${username} after ${clickAttempted} attempts`);
         
-        // Re-check after wait
-        const retryDiagnostics = await page.evaluate(() => {
-          const tweetContainers = document.querySelectorAll('article[data-testid="tweet"]');
-          return { tweet_containers_found: tweetContainers.length };
+        // Take screenshot on failure
+        const screenshotPath = `/tmp/feed_consent_failed_${username}_${Date.now()}.png`;
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log(`[CURATED_FEED] 📸 Screenshot saved: ${screenshotPath}`);
+        
+        await supabase.from('system_events').insert({
+          event_type: 'reply_v2_feed_consent_failed',
+          severity: 'warning',
+          message: `Consent wall failed to clear for @${username}`,
+          event_data: {
+            username,
+            screenshot_path: screenshotPath,
+            containers_before: containersBefore,
+            containers_after: containersAfter,
+            click_attempted: clickAttempted,
+          },
+          created_at: new Date().toISOString(),
         });
         
-        if (retryDiagnostics.tweet_containers_found > 0) {
-          console.log(`[CURATED_FEED] ✅ Consent wall cleared, found ${retryDiagnostics.tweet_containers_found} tweets`);
-          diagnostics.tweet_containers_found = retryDiagnostics.tweet_containers_found;
-          diagnostics.wall_detected = false;
-        } else {
-          console.warn(`[CURATED_FEED] ⚠️ Consent wall still blocking @${username}`);
-          return [];
-        }
+        return [];
       }
       
       // If other wall detected (login, error, rate limit), return empty
