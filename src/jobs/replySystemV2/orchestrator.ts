@@ -81,7 +81,13 @@ export async function fetchAndEvaluateCandidates(): Promise<{
     try {
       console.log(`[ORCHESTRATOR] 📡 Fetching from ${source.name}...`);
       
-      const tweets = await source.fetchFn();
+      // Add timeout protection (5 minutes per source)
+      const fetchPromise = source.fetchFn();
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Fetch timeout for ${source.name} after 5 minutes`)), 5 * 60 * 1000);
+      });
+      
+      const tweets = await Promise.race([fetchPromise, timeoutPromise]);
       totalFetched += tweets.length;
       
       // Get source record
@@ -166,6 +172,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
       
     } catch (error: any) {
       console.error(`[ORCHESTRATOR] ❌ Failed to fetch from ${source.name}: ${error.message}`);
+      console.error(`[ORCHESTRATOR] Stack: ${error.stack}`);
       
       // Log error to system_events
       try {
@@ -173,18 +180,21 @@ export async function fetchAndEvaluateCandidates(): Promise<{
           event_type: 'reply_v2_fetch_job_error',
           severity: 'error',
           message: `Reply V2 fetch failed for ${source.name}: ${error.message}`,
-          event_data: { source_name: source.name, error: error.message, feed_run_id: feedRunId },
+          event_data: { 
+            source_name: source.name, 
+            error: error.message, 
+            stack: error.stack?.substring(0, 500),
+            feed_run_id: feedRunId 
+          },
           created_at: new Date().toISOString(),
         });
       } catch (e) {
-        // Ignore logging errors
+        console.error(`[ORCHESTRATOR] Failed to log error: ${(e as Error).message}`);
       }
     }
   }
   
-  console.log(`[ORCHESTRATOR] ✅ Fetched ${totalFetched} tweets, evaluated ${totalEvaluated}, passed ${totalPassed}`);
-  
-  // Log job completion to system_events
+  // Always log completion, even if no candidates fetched
   try {
     await supabase.from('system_events').insert({
       event_type: 'reply_v2_fetch_job_completed',
@@ -194,8 +204,10 @@ export async function fetchAndEvaluateCandidates(): Promise<{
       created_at: new Date().toISOString(),
     });
   } catch (e) {
-    console.warn(`[ORCHESTRATOR] Failed to log job completion: ${(e as Error).message}`);
+    console.warn(`[ORCHESTRATOR] Failed to log completion: ${(e as Error).message}`);
   }
+  
+  console.log(`[ORCHESTRATOR] ✅ Fetched ${totalFetched} tweets, evaluated ${totalEvaluated}, passed ${totalPassed}`);
   
   return {
     fetched: totalFetched,
