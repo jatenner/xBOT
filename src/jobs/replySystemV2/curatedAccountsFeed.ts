@@ -284,11 +284,10 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       // Update diagnostics with containers_after
       diagnostics.tweet_containers_found = containersAfter;
       
-      // If consent wall still detected after handling
-      if (diagnostics.wall_detected && diagnostics.wall_type === 'consent' && !consentCleared) {
+      // If consent wall still detected after handling AND no containers found
+      if (diagnostics.wall_detected && diagnostics.wall_type === 'consent' && !consentCleared && containersAfter === 0) {
         console.warn(`[CURATED_FEED] ⚠️ Consent wall still blocking @${username} after ${clickAttempted} attempts`);
         
-        // Take screenshot on failure
         const screenshotPath = `/tmp/feed_consent_failed_${username}_${Date.now()}.png`;
         await page.screenshot({ path: screenshotPath, fullPage: true });
         console.log(`[CURATED_FEED] 📸 Screenshot saved: ${screenshotPath}`);
@@ -310,40 +309,37 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
         return [];
       }
       
-      // If other wall detected (login, error, rate limit), return empty
-      if (diagnostics.wall_detected && diagnostics.wall_type !== 'consent') {
+      // If other wall detected AND no containers, return empty
+      if (diagnostics.wall_detected && diagnostics.wall_type !== 'consent' && containersAfter === 0) {
         console.warn(`[CURATED_FEED] ⚠️ Wall detected for @${username}: ${diagnostics.wall_type}`);
         
-        if (diagnostics.tweet_containers_found === 0) {
-          const screenshotPath = `/tmp/feed_wall_${username}_${Date.now()}.png`;
-          await page.screenshot({ path: screenshotPath, fullPage: true });
-          console.log(`[CURATED_FEED] 📸 Screenshot saved: ${screenshotPath}`);
-        }
+        const screenshotPath = `/tmp/feed_wall_${username}_${Date.now()}.png`;
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log(`[CURATED_FEED] 📸 Screenshot saved: ${screenshotPath}`);
         
         return [];
       }
       
-      // Wait for tweets to appear
-      try {
-        await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 });
-      } catch (e) {
-        console.warn(`[CURATED_FEED] ⚠️ No tweets found for @${username} (selector timeout)`);
-        
-        // Take screenshot if no tweets found
-        if (diagnostics.tweet_containers_found === 0) {
+      // Wait for tweets to appear (if not already found)
+      if (containersAfter === 0) {
+        try {
+          await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 });
+        } catch (e) {
+          console.warn(`[CURATED_FEED] ⚠️ No tweets found for @${username} (selector timeout)`);
+          
           const screenshotPath = `/tmp/feed_no_tweets_${username}_${Date.now()}.png`;
           await page.screenshot({ path: screenshotPath, fullPage: true });
           console.log(`[CURATED_FEED] 📸 Screenshot saved: ${screenshotPath}`);
+          
+          return [];
         }
-        
-        return [];
       }
       
       // Scroll to load more tweets
       await page.evaluate(() => window.scrollBy(0, 1000));
       await page.waitForTimeout(2000);
       
-      // Extract tweets
+      // Extract tweets (even if consent wall was detected but containers exist)
       const tweets = await page.evaluate((count) => {
         const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
         const results: any[] = [];

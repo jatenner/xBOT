@@ -243,8 +243,8 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
       // Update diagnostics with containers_after
       diagnostics.tweet_containers_found = containersAfter;
       
-      // If consent wall still detected after handling
-      if (diagnostics.wall_detected && diagnostics.wall_type === 'consent' && !consentCleared) {
+      // If consent wall still detected after handling AND no containers found
+      if (diagnostics.wall_detected && diagnostics.wall_type === 'consent' && !consentCleared && containersAfter === 0) {
         console.warn(`[KEYWORD_FEED] ⚠️ Consent wall still blocking "${keyword}" after ${clickAttempted} attempts`);
         
         const screenshotPath = `/tmp/feed_consent_failed_keyword_${keyword}_${Date.now()}.png`;
@@ -268,39 +268,37 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
         return [];
       }
       
-      // If other wall detected, return empty
-      if (diagnostics.wall_detected && diagnostics.wall_type !== 'consent') {
+      // If other wall detected AND no containers, return empty
+      if (diagnostics.wall_detected && diagnostics.wall_type !== 'consent' && containersAfter === 0) {
         console.warn(`[KEYWORD_FEED] ⚠️ Wall detected for "${keyword}": ${diagnostics.wall_type}`);
         
-        if (diagnostics.tweet_containers_found === 0) {
-          const screenshotPath = `/tmp/feed_wall_keyword_${keyword}_${Date.now()}.png`;
-          await page.screenshot({ path: screenshotPath, fullPage: true });
-          console.log(`[KEYWORD_FEED] 📸 Screenshot saved: ${screenshotPath}`);
-        }
+        const screenshotPath = `/tmp/feed_wall_keyword_${keyword}_${Date.now()}.png`;
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log(`[KEYWORD_FEED] 📸 Screenshot saved: ${screenshotPath}`);
         
         return [];
       }
       
-      // Wait for tweets to appear
-      try {
-        await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 });
-      } catch (e) {
-        console.warn(`[KEYWORD_FEED] ⚠️ No tweets found for "${keyword}" (selector timeout)`);
-        
-        if (diagnostics.tweet_containers_found === 0) {
+      // Wait for tweets to appear (if not already found)
+      if (containersAfter === 0) {
+        try {
+          await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 });
+        } catch (e) {
+          console.warn(`[KEYWORD_FEED] ⚠️ No tweets found for "${keyword}" (selector timeout)`);
+          
           const screenshotPath = `/tmp/feed_no_tweets_keyword_${keyword}_${Date.now()}.png`;
           await page.screenshot({ path: screenshotPath, fullPage: true });
           console.log(`[KEYWORD_FEED] 📸 Screenshot saved: ${screenshotPath}`);
+          
+          return [];
         }
-        
-        return [];
       }
       
       // Scroll to load more tweets
       await page.evaluate(() => window.scrollBy(0, 1000));
       await page.waitForTimeout(2000);
       
-      // Extract tweets
+      // Extract tweets (even if consent wall was detected but containers exist)
       const tweets = await page.evaluate(({ count, keyword }) => {
         const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
         const results: any[] = [];
