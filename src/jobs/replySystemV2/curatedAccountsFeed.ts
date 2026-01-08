@@ -340,7 +340,7 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       await page.waitForTimeout(2000);
       
       // Extract tweets (even if consent wall was detected but containers exist)
-      const tweets = await page.evaluate((count) => {
+      const tweets = await page.evaluate((count, authorUsername) => {
         const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
         const results: any[] = [];
         
@@ -372,7 +372,7 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
           
           results.push({
             tweet_id,
-            author_username: username,
+            author_username: authorUsername,
             content: content.substring(0, 500),
             posted_at,
             like_count: parseInt(likeCount.replace(/[^\d]/g, '')) || 0,
@@ -382,7 +382,7 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
         }
         
         return results;
-      }, TWEETS_PER_ACCOUNT);
+      }, TWEETS_PER_ACCOUNT, username);
       
       // Log extraction results
       const extractedTweetIds = tweets.map(t => t.tweet_id);
