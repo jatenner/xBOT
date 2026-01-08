@@ -66,8 +66,22 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
     try {
       // Search URL
       const searchUrl = `https://x.com/search?q=${encodeURIComponent(keyword)}&src=typed_query&f=live`;
+      console.log(`[KEYWORD_FEED] 🔍 Searching for: ${keyword}`);
+      
       await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(3000); // Let results load
+      
+      // Wait for tweets to appear
+      try {
+        await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 });
+      } catch (e) {
+        console.warn(`[KEYWORD_FEED] ⚠️ No tweets found for "${keyword}" (selector timeout)`);
+        return [];
+      }
+      
+      // Scroll to load more tweets
+      await page.evaluate(() => window.scrollBy(0, 1000));
+      await page.waitForTimeout(2000);
       
       // Extract tweets
       const tweets = await page.evaluate(({ count, keyword }) => {
@@ -119,7 +133,11 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
         return results;
       }, { count: TWEETS_PER_KEYWORD, keyword });
       
+      console.log(`[KEYWORD_FEED] ✅ "${keyword}": fetched ${tweets.length} tweets`);
       return tweets;
+    } catch (error: any) {
+      console.error(`[KEYWORD_FEED] ❌ Error fetching "${keyword}": ${error.message}`);
+      return [];
     } finally {
       await page.close();
     }

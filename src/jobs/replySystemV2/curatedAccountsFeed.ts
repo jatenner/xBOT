@@ -94,7 +94,21 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
     
     try {
       const profileUrl = `https://x.com/${username}`;
+      console.log(`[CURATED_FEED] 📡 Fetching from @${username}...`);
+      
       await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(3000); // Wait for timeline to load
+      
+      // Wait for tweets to appear
+      try {
+        await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 });
+      } catch (e) {
+        console.warn(`[CURATED_FEED] ⚠️ No tweets found for @${username} (selector timeout)`);
+        return [];
+      }
+      
+      // Scroll to load more tweets
+      await page.evaluate(() => window.scrollBy(0, 1000));
       await page.waitForTimeout(2000);
       
       // Extract tweets
@@ -142,7 +156,25 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
         return results;
       }, TWEETS_PER_ACCOUNT);
       
+      console.log(`[CURATED_FEED] ✅ @${username}: fetched ${tweets.length} tweets`);
       return tweets;
+    } catch (error: any) {
+      console.error(`[CURATED_FEED] ❌ Error fetching @${username}: ${error.message}`);
+      // Log to system_events
+      try {
+        const { getSupabaseClient } = await import('../../db/index');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'reply_v2_feed_error',
+          severity: 'warning',
+          message: `Failed to fetch tweets from @${username}: ${error.message}`,
+          event_data: { username, error: error.message },
+          created_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        // Ignore logging errors
+      }
+      return [];
     } finally {
       await page.close();
     }
