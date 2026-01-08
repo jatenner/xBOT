@@ -75,28 +75,51 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
       
       // Handle consent wall if present
       try {
-        const consentSelectors = [
-          'button:has-text("Accept all cookies")',
-          'button:has-text("Accept")',
-          '[data-testid="cookieConsentAccept"]',
-          'button[aria-label*="Accept"]',
+        const strategies = [
+          async () => {
+            const acceptButton = page.getByText('Accept all cookies', { exact: false }).first();
+            if (await acceptButton.isVisible({ timeout: 2000 })) {
+              await acceptButton.click();
+              return true;
+            }
+          },
+          async () => {
+            const acceptButton = page.getByText('Accept', { exact: false }).first();
+            if (await acceptButton.isVisible({ timeout: 2000 })) {
+              await acceptButton.click();
+              return true;
+            }
+          },
+          async () => {
+            const acceptButton = page.getByRole('button', { name: /accept/i }).first();
+            if (await acceptButton.isVisible({ timeout: 2000 })) {
+              await acceptButton.click();
+              return true;
+            }
+          },
+          async () => {
+            const acceptButton = page.locator('button').filter({ hasText: /accept/i }).first();
+            if (await acceptButton.isVisible({ timeout: 2000 })) {
+              await acceptButton.click();
+              return true;
+            }
+          },
         ];
         
-        for (const selector of consentSelectors) {
+        for (const strategy of strategies) {
           try {
-            const button = await page.locator(selector).first();
-            if (await button.isVisible({ timeout: 2000 })) {
-              console.log(`[KEYWORD_FEED] 🍪 Clicking consent button: ${selector}`);
-              await button.click();
-              await page.waitForTimeout(2000);
+            const clicked = await strategy();
+            if (clicked) {
+              console.log(`[KEYWORD_FEED] 🍪 Clicked consent button`);
+              await page.waitForTimeout(3000);
               break;
             }
           } catch (e) {
-            // Try next selector
+            // Try next strategy
           }
         }
       } catch (e) {
-        // Consent wall handling failed, continue anyway
+        console.log(`[KEYWORD_FEED] ⚠️ Consent handling failed: ${(e as Error).message}`);
       }
       
       // DIAGNOSTICS: Check login status and walls

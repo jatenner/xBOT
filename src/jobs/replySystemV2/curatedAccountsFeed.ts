@@ -103,29 +103,56 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       
       // Handle consent wall if present
       try {
-        // Try to find and click "Accept all cookies" or similar buttons
-        const consentSelectors = [
-          'button:has-text("Accept all cookies")',
-          'button:has-text("Accept")',
-          '[data-testid="cookieConsentAccept"]',
-          'button[aria-label*="Accept"]',
+        // Try multiple strategies to accept cookies
+        const strategies = [
+          // Strategy 1: Text-based locators
+          async () => {
+            const acceptButton = page.getByText('Accept all cookies', { exact: false }).first();
+            if (await acceptButton.isVisible({ timeout: 2000 })) {
+              await acceptButton.click();
+              return true;
+            }
+          },
+          async () => {
+            const acceptButton = page.getByText('Accept', { exact: false }).first();
+            if (await acceptButton.isVisible({ timeout: 2000 })) {
+              await acceptButton.click();
+              return true;
+            }
+          },
+          // Strategy 2: Role-based
+          async () => {
+            const acceptButton = page.getByRole('button', { name: /accept/i }).first();
+            if (await acceptButton.isVisible({ timeout: 2000 })) {
+              await acceptButton.click();
+              return true;
+            }
+          },
+          // Strategy 3: CSS selectors
+          async () => {
+            const acceptButton = page.locator('button').filter({ hasText: /accept/i }).first();
+            if (await acceptButton.isVisible({ timeout: 2000 })) {
+              await acceptButton.click();
+              return true;
+            }
+          },
         ];
         
-        for (const selector of consentSelectors) {
+        for (const strategy of strategies) {
           try {
-            const button = await page.locator(selector).first();
-            if (await button.isVisible({ timeout: 2000 })) {
-              console.log(`[CURATED_FEED] 🍪 Clicking consent button: ${selector}`);
-              await button.click();
-              await page.waitForTimeout(2000);
+            const clicked = await strategy();
+            if (clicked) {
+              console.log(`[CURATED_FEED] 🍪 Clicked consent button`);
+              await page.waitForTimeout(3000); // Wait for page to update
               break;
             }
           } catch (e) {
-            // Try next selector
+            // Try next strategy
           }
         }
       } catch (e) {
         // Consent wall handling failed, continue anyway
+        console.log(`[CURATED_FEED] ⚠️ Consent handling failed: ${(e as Error).message}`);
       }
       
       // DIAGNOSTICS: Check login status and walls
