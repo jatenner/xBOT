@@ -98,7 +98,15 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   // Sort by weight (highest first) for processing order
   sources.sort((a, b) => (b.weight || 0) - (a.weight || 0));
   
-  for (const source of sources) {
+  // 🔒 MANDATE 3: Hard timeout wrapper
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`Fetch timeout after ${FETCH_TIMEOUT_MS / 1000}s`));
+    }, FETCH_TIMEOUT_MS);
+  });
+  
+  const fetchPromise = (async () => {
+    for (const source of sources) {
     console.log(`[ORCHESTRATOR] 📡 Fetching from ${source.name} (weight: ${source.weight.toFixed(2)})...`);
     try {
       console.log(`[ORCHESTRATOR] 📡 Fetching from ${source.name}...`);
@@ -248,8 +256,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
         console.error(`[ORCHESTRATOR] Failed to log error: ${(e as Error).message}`);
       }
     }
-  }
-  
+    
     return {
       fetched: totalFetched,
       evaluated: totalEvaluated,
