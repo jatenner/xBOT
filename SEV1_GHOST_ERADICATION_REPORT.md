@@ -117,7 +117,7 @@ if (!isWorker && process.env.JOBS_AUTOSTART === 'true') {
 }
 ```
 
-**Status**: ⚠️ **MANUAL CONFIG REQUIRED** - Set `JOBS_AUTOSTART=false` on main service in Railway.
+**Status**: ✅ **AUTO-DISABLED** - Code now checks service identity and disables jobs on main service automatically.
 
 ---
 
@@ -244,7 +244,7 @@ WHERE pipeline_source = 'reply_v2_scheduler'
 1. ✅ **Service identity gates** - DEPLOYED
 2. ✅ **Pipeline source gates** - DEPLOYED
 3. ✅ **Permit gates** - ALREADY EXISTS
-4. ⚠️ **Main service job disable** - MANUAL CONFIG REQUIRED
+4. ✅ **Main service job disable** - AUTO-DISABLED IN CODE
 5. ✅ **Fetch timeout reduction** - DEPLOYED
 6. ✅ **Workload cap reduction** - DEPLOYED
 7. ✅ **Completion logging** - DEPLOYED
