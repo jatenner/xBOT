@@ -872,6 +872,34 @@ export class BulletproofThreadComposer {
   private static async postViaReplies(page: Page, segments: string[], pool: any, permit_id?: string): Promise<{ rootUrl: string; tweetIds: string[] }> {
     console.log('🔗 THREAD_REPLY_CHAIN: Starting reply chain fallback...');
     
+    // 🔒 SEV1 GHOST ERADICATION: Service identity check (WORKER ONLY)
+    const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
+    const role = process.env.ROLE || 'unknown';
+    const isWorker = serviceName.toLowerCase().includes('worker') || role.toLowerCase() === 'worker';
+    
+    if (!isWorker) {
+      const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. service=${serviceName} role=${role}`;
+      console.error(errorMsg);
+      
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'posting_blocked_wrong_service',
+        severity: 'critical',
+        message: `Reply chain blocked: Not running on worker service`,
+        event_data: {
+          service_name: serviceName,
+          role: role,
+          git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
+          reason: 'not_worker_service',
+          stack_trace: new Error().stack?.substring(0, 1000),
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      throw new Error('BLOCKED: Posting only allowed from worker service');
+    }
+    
     // 🔒 PERMIT CHECK: Reply chain fallback must have permit
     if (!permit_id) {
       const errorMsg = `[PERMIT_CHOKE] ❌ BLOCKED: Reply chain fallback requires permit_id`;

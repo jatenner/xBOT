@@ -842,6 +842,66 @@ export class UltimateTwitterPoster {
       }
     }
     
+    // 🔒 SEV1 GHOST ERADICATION: Service identity check (WORKER ONLY)
+    const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
+    const role = process.env.ROLE || 'unknown';
+    const isWorker = serviceName.toLowerCase().includes('worker') || role.toLowerCase() === 'worker';
+    
+    if (!isWorker) {
+      const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. service=${serviceName} role=${role}`;
+      console.error(errorMsg);
+      console.error(`[SEV1_GHOST_BLOCK] Stack: ${new Error().stack}`);
+      
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'posting_blocked_wrong_service',
+        severity: 'critical',
+        message: `Posting blocked: Not running on worker service`,
+        event_data: {
+          service_name: serviceName,
+          role: role,
+          decision_id: validGuard.decision_id,
+          pipeline_source: validGuard.pipeline_source,
+          git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
+          run_id: validGuard.job_run_id,
+          reason: 'not_worker_service',
+          stack_trace: new Error().stack?.substring(0, 1000),
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      throw new Error('BLOCKED: Posting only allowed from worker service');
+    }
+    
+    // 🔒 SEV1 GHOST ERADICATION: Pipeline source must be reply_v2_scheduler
+    if (validGuard.pipeline_source !== 'reply_v2_scheduler') {
+      const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Invalid pipeline_source. source=${validGuard.pipeline_source} required=reply_v2_scheduler`;
+      console.error(errorMsg);
+      console.error(`[SEV1_GHOST_BLOCK] Stack: ${new Error().stack}`);
+      
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'posting_blocked_wrong_service',
+        severity: 'critical',
+        message: `Posting blocked: Invalid pipeline_source`,
+        event_data: {
+          service_name: serviceName,
+          role: role,
+          decision_id: validGuard.decision_id,
+          pipeline_source: validGuard.pipeline_source,
+          git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
+          run_id: validGuard.job_run_id,
+          reason: 'invalid_pipeline_source',
+          stack_trace: new Error().stack?.substring(0, 1000),
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      throw new Error(`BLOCKED: Only reply_v2_scheduler allowed, got ${validGuard.pipeline_source}`);
+    }
+    
     // 🔒 POSTING PERMIT CHECK (FINAL CHOKE POINT FOR SINGLE POSTS)
     // This is the ONLY place where we click Post button for single tweets
     const permit_id = validGuard.permit_id;
@@ -1870,6 +1930,66 @@ export class UltimateTwitterPoster {
 
         await this.page.waitForTimeout(400);
 
+        // 🔒 SEV1 GHOST ERADICATION: Service identity check (WORKER ONLY)
+        const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
+        const role = process.env.ROLE || 'unknown';
+        const isWorker = serviceName.toLowerCase().includes('worker') || role.toLowerCase() === 'worker';
+        
+        if (!isWorker) {
+          const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. service=${serviceName} role=${role}`;
+          console.error(errorMsg);
+          console.error(`[SEV1_GHOST_BLOCK] Stack: ${new Error().stack}`);
+          
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          await supabase.from('system_events').insert({
+            event_type: 'posting_blocked_wrong_service',
+            severity: 'critical',
+            message: `Posting blocked: Not running on worker service`,
+            event_data: {
+              service_name: serviceName,
+              role: role,
+              decision_id: validGuard.decision_id,
+              pipeline_source: validGuard.pipeline_source,
+              git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
+              run_id: validGuard.job_run_id,
+              reason: 'not_worker_service',
+              stack_trace: new Error().stack?.substring(0, 1000),
+            },
+            created_at: new Date().toISOString(),
+          });
+          
+          throw new Error('BLOCKED: Posting only allowed from worker service');
+        }
+        
+        // 🔒 SEV1 GHOST ERADICATION: Pipeline source must be reply_v2_scheduler
+        if (validGuard.pipeline_source !== 'reply_v2_scheduler') {
+          const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Invalid pipeline_source. source=${validGuard.pipeline_source} required=reply_v2_scheduler`;
+          console.error(errorMsg);
+          console.error(`[SEV1_GHOST_BLOCK] Stack: ${new Error().stack}`);
+          
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          await supabase.from('system_events').insert({
+            event_type: 'posting_blocked_wrong_service',
+            severity: 'critical',
+            message: `Posting blocked: Invalid pipeline_source`,
+            event_data: {
+              service_name: serviceName,
+              role: role,
+              decision_id: validGuard.decision_id,
+              pipeline_source: validGuard.pipeline_source,
+              git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
+              run_id: validGuard.job_run_id,
+              reason: 'invalid_pipeline_source',
+              stack_trace: new Error().stack?.substring(0, 1000),
+            },
+            created_at: new Date().toISOString(),
+          });
+          
+          throw new Error(`BLOCKED: Only reply_v2_scheduler allowed, got ${validGuard.pipeline_source}`);
+        }
+        
         // 🔒 POSTING PERMIT CHECK (FINAL CHOKE POINT)
         // This is the ONLY place where we click Post/Reply button
         // Must verify permit exists and is APPROVED
