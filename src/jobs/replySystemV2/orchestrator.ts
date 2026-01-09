@@ -70,14 +70,36 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   let totalEvaluated = 0;
   let totalPassed = 0;
   
-  // Fetch from all sources
+  // Get control plane state for feed weights
+  const { data: controlState } = await supabase
+    .from('control_plane_state')
+    .select('feed_weights')
+    .is('expires_at', null)
+    .order('effective_at', { ascending: false })
+    .limit(1)
+    .single();
+  
+  const feedWeights = controlState?.feed_weights || {
+    curated_accounts: 0.5,
+    keyword_search: 0.3,
+    viral_watcher: 0.2
+  };
+  
+  console.log(`[ORCHESTRATOR] 🎛️ Using feed weights: ${JSON.stringify(feedWeights)}`);
+  
+  // Fetch from all sources (feed weights used for logging/prioritization, but all feeds run)
+  // TODO: Future optimization - skip low-weight feeds if queue is full
   const sources = [
-    { name: 'curated_accounts', fetchFn: fetchCuratedAccountsFeed },
-    { name: 'keyword_search', fetchFn: fetchKeywordFeed },
-    { name: 'viral_watcher', fetchFn: fetchViralWatcherFeed },
+    { name: 'curated_accounts', fetchFn: fetchCuratedAccountsFeed, weight: feedWeights.curated_accounts || 0.5 },
+    { name: 'keyword_search', fetchFn: fetchKeywordFeed, weight: feedWeights.keyword_search || 0.3 },
+    { name: 'viral_watcher', fetchFn: fetchViralWatcherFeed, weight: feedWeights.viral_watcher || 0.2 },
   ];
   
+  // Sort by weight (highest first) for processing order
+  sources.sort((a, b) => (b.weight || 0) - (a.weight || 0));
+  
   for (const source of sources) {
+    console.log(`[ORCHESTRATOR] 📡 Fetching from ${source.name} (weight: ${source.weight.toFixed(2)})...`);
     try {
       console.log(`[ORCHESTRATOR] 📡 Fetching from ${source.name}...`);
       
