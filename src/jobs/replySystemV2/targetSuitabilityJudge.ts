@@ -139,7 +139,7 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     }
     
     // Validate decision structure
-    if (!decision.decision || !decision.relevance !== undefined) {
+    if (!decision.decision || decision.relevance === undefined) {
       throw new Error(`Invalid judge response structure: ${JSON.stringify(decision)}`);
     }
     
