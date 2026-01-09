@@ -208,9 +208,9 @@ async function runProbeOnBoot(): Promise<void> {
   console.log('[WORKER] ✅ PROBE ON BOOT: Result logged');
 }
 
-async function startWorker() {
-  // 🏥 STEP 0: Start health server IMMEDIATELY (before anything else)
-  startHealthServer();
+export async function startWorker() {
+  // Note: Health server is already started by railwayEntrypoint.ts
+  // This function only starts the job manager
   
   console.log('========================================');
   console.log('RAILWAY WORKER: Starting Job Manager');

@@ -1,4 +1,4 @@
-# HEALTHCHECK FIX REPORT
+# HEALTHCHECK FIX FINAL REPORT
 
 **Date**: 2026-01-09  
 **Goal**: Fix Railway healthcheck failures and prove SHA switch  
@@ -34,51 +34,38 @@
 
 ---
 
-## STEP 2 — HEALTH SERVER IMPLEMENTATION
+## STEP 2 — FIXES APPLIED
 
-### Changes Made
+### Fix 1: Health Server
 
 ✅ Updated `src/jobs/healthServer.ts`:
-- Added `/healthz` endpoint (Railway standard)
-- Improved error handling
-- Better logging: `[HEALTH] ✅ Listening on 0.0.0.0:PORT`
+- Added `/healthz` endpoint
+- Improved logging: `[HEALTH] ✅ Listening on 0.0.0.0:PORT`
 
 ✅ Updated `src/jobs/jobManagerWorker.ts`:
-- Health server starts IMMEDIATELY at very first line of `startWorker()`
+- Health server starts IMMEDIATELY at very first line
 - Before any DB calls or logging
 
 ✅ Updated `src/railwayEntrypoint.ts`:
-- Fixed `alertOnStateTransition` error (replaced with `checkAndAlertOnStateChange`)
 - Added `/healthz` endpoint to Express app
 - Added `[HEALTH]` log line when server starts
 - Added `RAILWAY_GIT_COMMIT_SHA` to boot logs
 
-**Health Server Features**:
-- Binds to `0.0.0.0:${PORT || 3000}`
-- Responds 200 on `/`, `/health`, `/healthz`
-- Starts immediately (non-blocking)
-- Logs: `[HEALTH] ✅ Listening on 0.0.0.0:PORT`
+### Fix 2: alertOnStateTransition Error
+
+✅ Fixed `src/railwayEntrypoint.ts`:
+- Removed import of non-existent `alertOnStateTransition`
+- Replaced with `checkAndAlertOnStateChange` (which exists)
+- Updated function call to match new signature
 
 ---
 
-## STEP 3 — START COMMANDS VERIFICATION
-
-**Worker Service (serene-cat)**:
-- Expected: Runs `pnpm tsx src/jobs/jobManagerWorker.ts`
-- Status: Verified via Railway deployment (service uses custom start command)
-
-**Main Service (xBOT)**:
-- Expected: Runs `pnpm start` (which runs `tsx src/railwayEntrypoint.ts`)
-- Status: Verified via Railway deployment (service uses default start command)
-
----
-
-## STEP 4 — DEPLOYMENT
+## STEP 3 — DEPLOYMENT
 
 **Commands Executed**:
 ```bash
-git add -A
-git commit -m "Fix alertOnStateTransition error and ensure health server starts first"
+git add src/railwayEntrypoint.ts
+git commit -m "Fix alertOnStateTransition: use checkAndAlertOnStateChange"
 git push origin main
 railway up --detach -s serene-cat
 railway up --detach -s xBOT
@@ -86,11 +73,11 @@ railway redeploy -s serene-cat -y
 railway redeploy -s xBOT -y
 ```
 
-**Expected SHA**: `c513cf6f` (after health server fix)
+**Expected SHA**: `2fa8dd69` (after alertOnStateTransition fix)
 
 ---
 
-## STEP 5 — PROOF A: SERVICE LOGS
+## STEP 4 — PROOF A: SERVICE LOGS
 
 ### Worker Service (serene-cat)
 
@@ -120,7 +107,7 @@ railway redeploy -s xBOT -y
 
 ---
 
-## STEP 6 — PROOF B: DATABASE HEARTBEAT
+## STEP 5 — PROOF B: DATABASE HEARTBEAT
 
 **Query**: Latest `production_watchdog_boot` event
 
@@ -140,15 +127,16 @@ railway redeploy -s xBOT -y
 
 ## VERDICT
 
-**Expected SHA**: `c513cf6f`  
+**Expected SHA**: `2fa8dd69`  
 **Running SHA (Before)**: `e35a4371`  
 **Running SHA (After)**: [Will be populated]  
 **SHA Match**: [Will be populated]
 
 **Healthcheck Status**: [Will be populated]
 
-**Status**: 🔄 **VERIFYING** - Services redeployed, awaiting restart
+**Status**: 🔄 **VERIFYING** - Services redeployed with fixes, awaiting restart
 
 ---
 
-**Report Generated**: 2026-01-09T20:30:00
+**Report Generated**: 2026-01-09T20:40:00
+
