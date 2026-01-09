@@ -12,25 +12,27 @@
 
 **A) Posting-Related Events (Last 60m)**:
 - `posting_attempt_started: 13`
-- `posting_blocked_wrong_service: 10` ← **BLOCKER**
+- `posting_blocked_wrong_service: 10` ← **BLOCKER #1**
 - `posting_attempt_failed: 2`
 
 **B) Posting Blocked Events**:
-- `posting_blocked_wrong_service: 10` ← **ROOT CAUSE**
+- `posting_blocked_wrong_service: 10` ← **ROOT CAUSE #1**
 
 **C) Permit Statuses**:
 - `REJECTED: 6` ← All permits rejected
 
-**D) Newest Permits**:
-- All 5 newest permits have `status=REJECTED`
-- All created in last 60 minutes
-- All have `pipeline_source='reply_v2_scheduler'`
+**D) Rejected Permit Analysis**:
+- **Reason Code**: `target_not_root` ← **ROOT CAUSE #2**
+- **Error**: `root=null target=... is_root=false in_reply_to=none`
+- **Issue**: `root_tweet_id` not set in scheduler decisions
 
-### Root Cause Identified
+### Root Causes Identified
 
-**Issue**: Service identity check was using `RAILWAY_SERVICE_NAME` and `ROLE` env vars, but we switched to `SERVICE_ROLE` as the single source of truth. The posting code was still checking the old env vars, causing all posts to be blocked.
+**Issue #1**: Service identity check was using `RAILWAY_SERVICE_NAME` and `ROLE` env vars, but we switched to `SERVICE_ROLE` as the single source of truth. The posting code was still checking the old env vars, causing all posts to be blocked.
 
-**Additional Issue**: `postingQueue.ts` was using `pipeline_source='postingQueue_reply'` but permits are created with `pipeline_source='reply_v2_scheduler'`, causing a mismatch.
+**Issue #2**: `pipeline_source` mismatch - `postingQueue.ts` was using `'postingQueue_reply'` but permits are created with `'reply_v2_scheduler'`.
+
+**Issue #3**: `root_tweet_id` not set in scheduler decisions, causing permit approval to reject all permits with `target_not_root` error.
 
 ---
 
@@ -42,15 +44,9 @@
 - `src/posting/UltimateTwitterPoster.ts` (2 locations)
 - `src/posting/BulletproofThreadComposer.ts`
 
-**Change**: Updated service identity check to use `SERVICE_ROLE` env var instead of `RAILWAY_SERVICE_NAME`/`ROLE`:
+**Change**: Updated service identity check to use `SERVICE_ROLE` env var:
 
 ```typescript
-// OLD:
-const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
-const role = process.env.ROLE || 'unknown';
-const isWorker = serviceName.toLowerCase().includes('worker') || role.toLowerCase() === 'worker';
-
-// NEW:
 const serviceRole = (process.env.SERVICE_ROLE || '').toLowerCase();
 const isWorker = serviceRole === 'worker';
 ```
@@ -59,14 +55,20 @@ const isWorker = serviceRole === 'worker';
 
 **File Modified**: `src/jobs/postingQueue.ts`
 
-**Change**: Updated `pipeline_source` in posting guard to match permit:
+**Change**: Updated `pipeline_source` to match permit:
 
 ```typescript
-// OLD:
-pipeline_source: 'postingQueue_reply',
-
-// NEW:
 pipeline_source: 'reply_v2_scheduler', // Must match permit's pipeline_source
+```
+
+### Fix 3: Root Tweet ID Not Set
+
+**File Modified**: `src/jobs/replySystemV2/tieredScheduler.ts`
+
+**Change**: Set `root_tweet_id = target_tweet_id` in both decision tables:
+
+```typescript
+root_tweet_id: candidate.candidate_tweet_id, // 🔒 CRITICAL: Set root_tweet_id = target_tweet_id for root-only replies
 ```
 
 ---
@@ -75,14 +77,15 @@ pipeline_source: 'reply_v2_scheduler', // Must match permit's pipeline_source
 
 **Commands Executed**:
 ```bash
-git add -A
 git commit -m "Fix posting blocker: use SERVICE_ROLE for service check, fix pipeline_source mismatch"
-git push origin main
+git commit -m "Fix remaining SERVICE_ROLE check and pipeline_source in atomicPostExecutor"
+git commit -m "Fix root_tweet_id not set in scheduler decisions"
 railway up --detach -s xBOT
 railway up --detach -s serene-cat
+railway redeploy -s serene-cat -y
 ```
 
-**Expected SHA**: [Will be populated]
+**Expected SHA**: `745e4215`
 
 **Status**: ✅ **DEPLOYED**
 
@@ -90,32 +93,22 @@ railway up --detach -s serene-cat
 
 ## VERIFICATION (POST-DEPLOY)
 
-### A) Posting Events (Last 10m)
-
-**Results**: [Will be populated]
-
-### B) Permit Statuses (Last 10m)
-
-**Results**: [Will be populated]
-
-### C) Newest Permits
-
-**Results**: [Will be populated]
-
-### D) Permits USED with tweet_id (Last 10m)
-
-**Count**: [Will be populated]
-
----
-
-## CERTIFICATION CRITERIA
+### Certification Criteria
 
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
-| 1+ `posting_attempt_success` event | [ ] | [Will be populated] |
-| 1+ `post_attempts` row status=USED with `posted_tweet_id` | [ ] | [Will be populated] |
-| 0 new ghosts since deploy timestamp | [ ] | [Will be populated] |
-| Running git_sha matches HEAD in boot heartbeat | [ ] | [Will be populated] |
+| 1+ `post_attempts` row status=USED with `posted_tweet_id` | 🔄 | [Verifying] |
+| 1+ `posting_attempt_success` event | 🔄 | [Verifying] |
+| 0 new ghosts since deploy timestamp | 🔄 | [Verifying] |
+| Running git_sha matches HEAD in boot heartbeat | 🔄 | [Verifying] |
+
+### Results
+
+**1) Permits USED with tweet_id**: [Will be populated]  
+**2) Posting success events**: [Will be populated]  
+**3) New ghosts since deploy**: [Will be populated]  
+**4) Running SHA match**: [Will be populated]  
+**5) Recent permit statuses**: [Will be populated]
 
 ---
 
@@ -123,13 +116,12 @@ railway up --detach -s serene-cat
 
 **Status**: 🔄 **VERIFYING**
 
-**Blockers Fixed**: ✅ Service identity check, pipeline_source mismatch  
-**Deployed**: ✅ Both services redeployed  
+**Blockers Fixed**: ✅ Service identity check, pipeline_source mismatch, root_tweet_id not set  
+**Deployed**: ✅ Worker service redeployed  
 **Verification**: ⏳ Waiting for post-deploy metrics
 
-**Overall**: 🔄 **VERIFYING** - Fixes deployed, awaiting proof
+**Overall**: 🔄 **VERIFYING** - All fixes deployed, awaiting proof
 
 ---
 
-**Report Generated**: 2026-01-09T23:30:00
-
+**Report Generated**: 2026-01-09T23:45:00

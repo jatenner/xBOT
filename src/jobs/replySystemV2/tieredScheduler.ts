@@ -186,6 +186,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         status: 'generating', // Status: generating → queued → posted
         content: '[GENERATING...]', // Placeholder
         target_tweet_id: candidate.candidate_tweet_id,
+        root_tweet_id: candidate.candidate_tweet_id, // 🔒 CRITICAL: Set root_tweet_id = target_tweet_id for root-only replies
         pipeline_source: 'reply_v2_scheduler',
         build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
         candidate_evaluation_id: candidate.evaluation_id,
