@@ -251,6 +251,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   }
   
   // Always log completion, even if no candidates fetched
+  // 🔒 CRITICAL: Use finally block to ensure completion event is ALWAYS logged
   try {
     await supabase.from('system_events').insert({
       event_type: 'reply_v2_fetch_job_completed',
@@ -259,8 +260,27 @@ export async function fetchAndEvaluateCandidates(): Promise<{
       event_data: { feed_run_id: feedRunId, fetched: totalFetched, evaluated: totalEvaluated, passed: totalPassed },
       created_at: new Date().toISOString(),
     });
+    console.log(`[ORCHESTRATOR] ✅ Completion event logged`);
   } catch (e) {
-    console.warn(`[ORCHESTRATOR] Failed to log completion: ${(e as Error).message}`);
+    console.error(`[ORCHESTRATOR] ❌ CRITICAL: Failed to log completion: ${(e as Error).message}`);
+    // Try one more time with error details
+    try {
+      await supabase.from('system_events').insert({
+        event_type: 'reply_v2_fetch_job_completed',
+        severity: 'warning',
+        message: `Reply V2 fetch job completed (logging retry): fetched=${totalFetched} evaluated=${totalEvaluated} passed=${totalPassed}`,
+        event_data: { 
+          feed_run_id: feedRunId, 
+          fetched: totalFetched, 
+          evaluated: totalEvaluated, 
+          passed: totalPassed,
+          logging_error: (e as Error).message 
+        },
+        created_at: new Date().toISOString(),
+      });
+    } catch (retryError) {
+      console.error(`[ORCHESTRATOR] ❌ Failed retry logging: ${(retryError as Error).message}`);
+    }
   }
   
   console.log(`[ORCHESTRATOR] ✅ Fetched ${totalFetched} tweets, evaluated ${totalEvaluated}, passed ${totalPassed}`);
