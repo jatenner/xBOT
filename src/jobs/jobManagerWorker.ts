@@ -1,10 +1,70 @@
 /**
  * 🔧 RAILWAY WORKER SERVICE
  * Dedicated worker process that ONLY runs jobManager
- * Use this if main service isn't starting jobs properly
+ * Worker-first architecture for reliable job scheduling
  */
 
 import 'dotenv/config';
+import { getSupabaseClient } from '../db/index';
+
+async function probeDatabase(): Promise<void> {
+  console.log('[WORKER] 🔍 Probing database connectivity...');
+  const supabase = getSupabaseClient();
+  
+  try {
+    // Attempt simple INSERT to verify DB connectivity
+    const testEvent = {
+      event_type: 'worker_db_probe',
+      severity: 'info',
+      message: 'Worker DB connectivity probe',
+      event_data: {
+        worker_started_at: new Date().toISOString(),
+        git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || 'unknown',
+      },
+      created_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from('system_events').insert(testEvent);
+    
+    if (error) {
+      console.error('[WORKER] ❌ Database probe FAILED:');
+      console.error(`  Error Code: ${error.code || 'UNKNOWN'}`);
+      console.error(`  Error Message: ${error.message}`);
+      console.error(`  Error Details: ${JSON.stringify(error)}`);
+      
+      // Check for specific error types
+      if (error.message?.includes('SSL') || error.message?.includes('certificate')) {
+        console.error('[WORKER] ❌ SSL/Certificate error detected');
+      }
+      if (error.message?.includes('ECONNREFUSED') || error.message?.includes('connection')) {
+        console.error('[WORKER] ❌ Connection refused - database unreachable');
+      }
+      if (error.message?.includes('timeout')) {
+        console.error('[WORKER] ❌ Connection timeout');
+      }
+      
+      console.error('[WORKER] 💀 FAILING FAST - Database unreachable');
+      process.exit(1);
+    }
+    
+    console.log('[WORKER] ✅ Database connectivity verified');
+  } catch (error: any) {
+    console.error('[WORKER] ❌ Database probe exception:');
+    console.error(`  Error: ${error.message}`);
+    console.error(`  Stack: ${error.stack}`);
+    
+    if (error.code === 'ECONNREFUSED') {
+      console.error('[WORKER] ❌ Connection refused - check DATABASE_URL');
+    } else if (error.code === 'ENOTFOUND') {
+      console.error('[WORKER] ❌ DNS resolution failed - check DATABASE_URL hostname');
+    } else if (error.message?.includes('SSL')) {
+      console.error('[WORKER] ❌ SSL error - check certificate configuration');
+    }
+    
+    console.error('[WORKER] 💀 FAILING FAST - Database unreachable');
+    process.exit(1);
+  }
+}
 
 async function startWorker() {
   console.log('========================================');
@@ -21,44 +81,72 @@ async function startWorker() {
     ? false 
     : (process.env.JOBS_AUTOSTART === 'true' || process.env.RAILWAY_ENVIRONMENT_NAME === 'production');
   console.log(`Computed JOBS_AUTOSTART: ${computedJobsAutostart}`);
-  console.log(`MODE: ${process.env.MODE || 'NOT SET'}\n`);
+  console.log(`MODE: ${process.env.MODE || 'NOT SET'}`);
+  console.log(`DATABASE_URL: ${process.env.DATABASE_URL ? 'SET (' + process.env.DATABASE_URL.substring(0, 20) + '...)' : 'NOT SET'}\n`);
+  
+  // Step 1: Probe database connectivity (fail fast if unreachable)
+  await probeDatabase();
   
   try {
-    // Import and start job manager
+    // Step 2: Import and start job manager (this will start watchdog + boot heartbeat)
     const { JobManager } = await import('./jobManager');
     const jobManager = JobManager.getInstance();
     
-    console.log('🕒 WORKER: Calling jobManager.startJobs()...');
+    console.log('[WORKER] 🕒 Calling jobManager.startJobs()...');
+    console.log('[WORKER] 🕒 This will start: jobs + watchdog + boot heartbeat');
+    
     await jobManager.startJobs();
     
-    console.log('✅ WORKER: Job Manager started successfully');
-    console.log('🕒 WORKER: Jobs are now running. Worker will stay alive to keep jobs active.');
+    console.log('[WORKER] ✅ Job Manager started successfully');
+    console.log('[WORKER] 🕒 Jobs are now running. Worker will stay alive to keep jobs active.');
+    console.log('[WORKER] 📊 Watchdog will write reports every 5 minutes');
     
-    // Keep process alive
+    // Step 3: Keep process alive
     process.on('SIGTERM', () => {
-      console.log('🕒 WORKER: SIGTERM received, shutting down gracefully...');
+      console.log('[WORKER] 🕒 SIGTERM received, shutting down gracefully...');
       process.exit(0);
     });
     
     process.on('SIGINT', () => {
-      console.log('🕒 WORKER: SIGINT received, shutting down gracefully...');
+      console.log('[WORKER] 🕒 SIGINT received, shutting down gracefully...');
       process.exit(0);
     });
     
-    // Keep alive
+    // Keep alive heartbeat
+    let heartbeatCount = 0;
     setInterval(() => {
-      // Heartbeat - jobs are managed by timers, this just keeps process alive
+      heartbeatCount++;
+      if (heartbeatCount % 5 === 0) {
+        console.log(`[WORKER] 💓 Worker alive (${heartbeatCount} minutes)`);
+      }
     }, 60000);
     
+    console.log('[WORKER] ✅ Worker started successfully and keeping process alive');
+    
   } catch (error: any) {
-    console.error('❌ WORKER: Failed to start job manager:', error.message);
-    console.error(error.stack);
+    console.error('[WORKER] ❌ Failed to start job manager:', error.message);
+    console.error('[WORKER] Stack:', error.stack);
+    
+    // Write error to system_events if possible
+    try {
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'worker_startup_failed',
+        severity: 'critical',
+        message: `Worker failed to start: ${error.message}`,
+        event_data: { error: error.message, stack: error.stack },
+        created_at: new Date().toISOString(),
+      });
+    } catch (logError) {
+      // Ignore logging errors
+    }
+    
     process.exit(1);
   }
 }
 
 startWorker().catch((error) => {
-  console.error('❌ WORKER: Fatal error:', error);
+  console.error('[WORKER] ❌ Fatal error:', error);
   process.exit(1);
 });
 
