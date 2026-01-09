@@ -145,7 +145,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
             totalPassed++;
           }
           
-          // Store evaluation
+          // Store evaluation (with AI judge decision if available)
           await supabase
             .from('candidate_evaluations')
             .insert({
@@ -170,6 +170,25 @@ export async function fetchAndEvaluateCandidates(): Promise<{
               predicted_24h_views: score.predicted_24h_views,
               predicted_tier: score.predicted_tier,
               status: score.passed_hard_filters ? 'evaluated' : 'blocked',
+              // AI Judge fields
+              ai_judge_decision: score.judge_decision ? {
+                relevance: score.judge_decision.relevance,
+                replyability: score.judge_decision.replyability,
+                momentum: score.judge_decision.momentum,
+                audience_fit: score.judge_decision.audience_fit,
+                spam_risk: score.judge_decision.spam_risk,
+                expected_views_bucket: score.judge_decision.expected_views_bucket,
+                decision: score.judge_decision.decision,
+                reasons: score.judge_decision.reasons
+              } : null,
+              judge_relevance: score.judge_decision?.relevance,
+              judge_replyability: score.judge_decision?.replyability,
+              judge_momentum: score.judge_decision?.momentum,
+              judge_audience_fit: score.judge_decision?.audience_fit,
+              judge_spam_risk: score.judge_decision?.spam_risk,
+              judge_expected_views_bucket: score.judge_decision?.expected_views_bucket,
+              judge_decision: score.judge_decision?.decision,
+              judge_reasons: score.judge_decision?.reasons,
             });
           
         } catch (error: any) {
