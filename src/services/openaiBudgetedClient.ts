@@ -193,7 +193,8 @@ export class OpenAIBudgetedClient {
     const maxOutputTokens = optimizedParams.max_tokens || 1000;
     const estimatedCost = calculateTokenCost(model, estimatedTokens, maxOutputTokens);
     
-    return this.withBudgetGuard(
+    const startTime = Date.now();
+    const response = await this.withBudgetGuard(
       'chat.completions.create',
       async () => {
         // Wrap OpenAI call in retry logic with exponential backoff
@@ -207,6 +208,34 @@ export class OpenAIBudgetedClient {
       estimatedCost,
       model
     );
+    
+    // Log LLM usage automatically
+    const latency_ms = Date.now() - startTime;
+    const usage = response.usage;
+    if (usage) {
+      try {
+        const { logLLMUsage } = await import('./llmCostLogger');
+        await logLLMUsage({
+          model,
+          purpose: metadata.purpose,
+          input_tokens: usage.prompt_tokens || 0,
+          output_tokens: usage.completion_tokens || 0,
+          latency_ms,
+          trace_ids: {
+            request_id: metadata.requestId || '',
+            ...(metadata as any).trace_ids || {}
+          },
+          request_metadata: {
+            priority: metadata.priority,
+            ...(metadata as any).request_metadata || {}
+          }
+        });
+      } catch (logError: any) {
+        console.warn(`[LLM_COST] Failed to log usage: ${logError.message}`);
+      }
+    }
+    
+    return response;
   }
   
   /**
