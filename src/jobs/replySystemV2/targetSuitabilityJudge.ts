@@ -44,7 +44,7 @@ export async function judgeTargetSuitability(
   const { data: controlState } = await supabase
     .from('control_plane_state')
     .select('acceptance_threshold, exploration_rate')
-    .where('expires_at', 'is', null)
+    .is('expires_at', null)
     .order('effective_at', { ascending: false })
     .limit(1)
     .single();
