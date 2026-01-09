@@ -6,6 +6,7 @@
 
 import 'dotenv/config';
 import { getSupabaseClient } from '../db/index';
+import { startHealthServer } from './healthServer';
 
 async function probeDatabase(): Promise<void> {
   console.log('[WORKER] 🔍 Probing database connectivity...');
@@ -217,6 +218,7 @@ async function startWorker() {
   console.log(`RAILWAY_GIT_COMMIT_SHA: ${process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT SET'}`);
   console.log(`RAILWAY_ENVIRONMENT_NAME: ${process.env.RAILWAY_ENVIRONMENT_NAME || 'NOT SET'}`);
   console.log(`NODE_ENV: ${process.env.NODE_ENV || 'NOT SET'}`);
+  console.log(`PORT: ${process.env.PORT || 'NOT SET (defaulting to 3000)'}`);
   console.log(`JOBS_AUTOSTART env var: "${process.env.JOBS_AUTOSTART || 'NOT SET'}"`);
   const computedJobsAutostart = process.env.JOBS_AUTOSTART === 'false' 
     ? false 
@@ -225,6 +227,9 @@ async function startWorker() {
   console.log(`RUN_REPLY_V2_PROBE_ON_BOOT: ${process.env.RUN_REPLY_V2_PROBE_ON_BOOT || 'NOT SET'}`);
   console.log(`MODE: ${process.env.MODE || 'NOT SET'}`);
   console.log(`DATABASE_URL: ${process.env.DATABASE_URL ? 'SET (' + process.env.DATABASE_URL.substring(0, 20) + '...)' : 'NOT SET'}\n`);
+  
+  // Step 0: Start health server (must be first for Railway healthcheck)
+  startHealthServer();
   
   // Step 1: Probe database connectivity (fail fast if unreachable)
   await probeDatabase();
@@ -295,6 +300,37 @@ async function startWorker() {
     process.exit(1);
   }
 }
+
+// Defensive error handlers
+process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  console.error('[WORKER] ❌ Unhandled Rejection:', reason);
+  console.error('[WORKER] Stack:', reason?.stack || 'N/A');
+  // Don't exit - let the process continue
+});
+
+process.on('uncaughtException', (error: Error) => {
+  console.error('[WORKER] ❌ Uncaught Exception:', error.message);
+  console.error('[WORKER] Stack:', error.stack);
+  // Log to DB if possible, then exit
+  getSupabaseClient()
+    .from('system_events')
+    .insert({
+      event_type: 'worker_uncaught_exception',
+      severity: 'critical',
+      message: `Worker uncaught exception: ${error.message}`,
+      event_data: { error: error.message, stack: error.stack?.substring(0, 1000) },
+      created_at: new Date().toISOString(),
+    })
+    .then(() => {
+      console.error('[WORKER] Error logged to DB');
+    })
+    .catch(() => {
+      // Ignore logging errors
+    })
+    .finally(() => {
+      process.exit(1);
+    });
+});
 
 startWorker().catch((error) => {
   console.error('[WORKER] ❌ Fatal error:', error);
