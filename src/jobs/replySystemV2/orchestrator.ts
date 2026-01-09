@@ -25,7 +25,12 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   passed_filters: number;
   feed_run_id: string;
 }> {
-  console.log('[ORCHESTRATOR] 🎼 Fetching and evaluating candidates...');
+  const supabase = getSupabaseClient();
+  const feedRunId = `feed_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const startTime = Date.now();
+  const FETCH_TIMEOUT_MS = 6 * 60 * 1000; // 6 minutes hard timeout
+  
+  console.log(`[ORCHESTRATOR] 🎼 Fetching and evaluating candidates: feed_run_id=${feedRunId}`);
   
   // Validate environment variables
   if (!process.env.DATABASE_URL && !process.env.SUPABASE_URL) {
@@ -34,8 +39,6 @@ export async function fetchAndEvaluateCandidates(): Promise<{
     
     // Log to system_events if possible
     try {
-      const { getSupabaseClient } = await import('../../db/index');
-      const supabase = getSupabaseClient();
       await supabase.from('system_events').insert({
         event_type: 'reply_v2_env_var_missing',
         severity: 'critical',
@@ -48,10 +51,6 @@ export async function fetchAndEvaluateCandidates(): Promise<{
     
     throw new Error(errorMsg);
   }
-  
-  const supabase = getSupabaseClient();
-  const feedRunId = `feed_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  console.log(`[ORCHESTRATOR] 🆔 Feed run ID: ${feedRunId}`);
   
   // Log job start to system_events
   try {
@@ -69,6 +68,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   let totalFetched = 0;
   let totalEvaluated = 0;
   let totalPassed = 0;
+  let fetchError: Error | null = null;
   
   // Get control plane state for feed weights
   const { data: controlState } = await supabase
@@ -250,47 +250,91 @@ export async function fetchAndEvaluateCandidates(): Promise<{
     }
   }
   
-  // Always log completion, even if no candidates fetched
-  // 🔒 CRITICAL: Use finally block to ensure completion event is ALWAYS logged
+    return {
+      fetched: totalFetched,
+      evaluated: totalEvaluated,
+      passed_filters: totalPassed,
+      feed_run_id: feedRunId,
+    };
+  })();
+  
+  // Race fetch against timeout
   try {
-    await supabase.from('system_events').insert({
-      event_type: 'reply_v2_fetch_job_completed',
-      severity: 'info',
-      message: `Reply V2 fetch job completed: fetched=${totalFetched} evaluated=${totalEvaluated} passed=${totalPassed}`,
-      event_data: { feed_run_id: feedRunId, fetched: totalFetched, evaluated: totalEvaluated, passed: totalPassed },
-      created_at: new Date().toISOString(),
-    });
-    console.log(`[ORCHESTRATOR] ✅ Completion event logged`);
-  } catch (e) {
-    console.error(`[ORCHESTRATOR] ❌ CRITICAL: Failed to log completion: ${(e as Error).message}`);
-    // Try one more time with error details
-    try {
-      await supabase.from('system_events').insert({
-        event_type: 'reply_v2_fetch_job_completed',
-        severity: 'warning',
-        message: `Reply V2 fetch job completed (logging retry): fetched=${totalFetched} evaluated=${totalEvaluated} passed=${totalPassed}`,
-        event_data: { 
-          feed_run_id: feedRunId, 
-          fetched: totalFetched, 
-          evaluated: totalEvaluated, 
-          passed: totalPassed,
-          logging_error: (e as Error).message 
-        },
-        created_at: new Date().toISOString(),
-      });
-    } catch (retryError) {
-      console.error(`[ORCHESTRATOR] ❌ Failed retry logging: ${(retryError as Error).message}`);
+    const result = await Promise.race([fetchPromise, timeoutPromise]);
+    fetchError = null;
+    return result;
+  } catch (error: any) {
+    fetchError = error;
+    throw error;
+  } finally {
+    // 🔒 MANDATE 3: ALWAYS log completion/failure in finally block
+    const duration = Date.now() - startTime;
+    
+    if (fetchError) {
+      // Log failure
+      try {
+        await supabase.from('system_events').insert({
+          event_type: 'reply_v2_fetch_job_failed',
+          severity: 'error',
+          message: `Reply V2 fetch job failed: ${fetchError.message}`,
+          event_data: {
+            feed_run_id: feedRunId,
+            error: fetchError.message,
+            stack: fetchError.stack?.substring(0, 1000),
+            duration_ms: duration,
+            fetched: totalFetched,
+            evaluated: totalEvaluated,
+            passed: totalPassed,
+          },
+          created_at: new Date().toISOString(),
+        });
+        console.log(`[ORCHESTRATOR] ✅ Failure event logged`);
+      } catch (e) {
+        console.error(`[ORCHESTRATOR] ❌ Failed to log failure: ${(e as Error).message}`);
+      }
+    } else {
+      // Log completion
+      try {
+        await supabase.from('system_events').insert({
+          event_type: 'reply_v2_fetch_job_completed',
+          severity: 'info',
+          message: `Reply V2 fetch job completed: fetched=${totalFetched} evaluated=${totalEvaluated} passed=${totalPassed}`,
+          event_data: {
+            feed_run_id: feedRunId,
+            fetched: totalFetched,
+            evaluated: totalEvaluated,
+            passed: totalPassed,
+            duration_ms: duration,
+          },
+          created_at: new Date().toISOString(),
+        });
+        console.log(`[ORCHESTRATOR] ✅ Completion event logged`);
+      } catch (e) {
+        console.error(`[ORCHESTRATOR] ❌ CRITICAL: Failed to log completion: ${(e as Error).message}`);
+        // Try one more time with error details
+        try {
+          await supabase.from('system_events').insert({
+            event_type: 'reply_v2_fetch_job_completed',
+            severity: 'warning',
+            message: `Reply V2 fetch job completed (logging retry): fetched=${totalFetched} evaluated=${totalEvaluated} passed=${totalPassed}`,
+            event_data: {
+              feed_run_id: feedRunId,
+              fetched: totalFetched,
+              evaluated: totalEvaluated,
+              passed: totalPassed,
+              duration_ms: duration,
+              logging_error: (e as Error).message,
+            },
+            created_at: new Date().toISOString(),
+          });
+        } catch (retryError) {
+          console.error(`[ORCHESTRATOR] ❌ Failed retry logging: ${(retryError as Error).message}`);
+        }
+      }
     }
+    
+    console.log(`[ORCHESTRATOR] ✅ Fetched ${totalFetched} tweets, evaluated ${totalEvaluated}, passed ${totalPassed} (${duration}ms)`);
   }
-  
-  console.log(`[ORCHESTRATOR] ✅ Fetched ${totalFetched} tweets, evaluated ${totalEvaluated}, passed ${totalPassed}`);
-  
-  return {
-    fetched: totalFetched,
-    evaluated: totalEvaluated,
-    passed_filters: totalPassed,
-    feed_run_id: feedRunId,
-  };
 }
 
 /**
