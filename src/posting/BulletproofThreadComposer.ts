@@ -1000,6 +1000,26 @@ export class BulletproofThreadComposer {
       await replyFocusResult.element!.type(segments[i], { delay: 10 });
       await this.verifyTextBoxHas(page, 0, segments[i]);
       
+      // 🔒 LOG REPLY CLICK ATTEMPT: Log every attempt to click Post/Reply in reply chain
+      try {
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'reply_chain_click_attempt',
+          severity: 'info',
+          message: `Attempting to click Post/Reply in reply chain fallback`,
+          event_data: {
+            permit_id: permit_id,
+            segment_index: i,
+            total_segments: segments.length,
+            git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
+          },
+          created_at: new Date().toISOString(),
+        }).catch(() => {}); // Non-critical logging
+      } catch (logError) {
+        // Non-critical
+      }
+      
       // Try post via common tweet buttons OR kb shortcut
       const sendSelectors = [
         '[data-testid="tweetButtonInline"]',
