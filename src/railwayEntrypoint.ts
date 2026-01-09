@@ -73,16 +73,13 @@ console.log(`PORT: ${process.env.PORT || 'NOT SET (defaulting to 3000)'}`);
 console.log(`JOBS_AUTOSTART env var: "${process.env.JOBS_AUTOSTART || 'NOT SET'}"`);
 console.log('========================================\n');
 
-// Determine service type
-const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || '';
-const role = process.env.ROLE || '';
-const isWorkerService = serviceName.toLowerCase().includes('worker') || 
-                        serviceName.toLowerCase().includes('serene-cat') ||
-                        role.toLowerCase() === 'worker';
+// Determine service type from SERVICE_ROLE env var (single source of truth)
+const serviceRole = (process.env.SERVICE_ROLE || '').toLowerCase();
+const isWorkerService = serviceRole === 'worker';
 
 console.log(`[BOOT] Service type: ${isWorkerService ? 'WORKER' : 'MAIN'}`);
-console.log(`[BOOT] Service name: ${serviceName || 'unknown'}`);
-console.log(`[BOOT] Role: ${role || 'unknown'}`);
+console.log(`[BOOT] SERVICE_ROLE: ${process.env.SERVICE_ROLE || 'NOT SET (defaulting to MAIN)'}`);
+console.log(`[BOOT] Service name: ${process.env.RAILWAY_SERVICE_NAME || 'unknown'}`);
 
 // Background initialization (NON-BLOCKING - health server already running)
 setImmediate(async () => {
