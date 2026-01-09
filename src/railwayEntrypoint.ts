@@ -294,6 +294,16 @@ setImmediate(async () => {
       console.log('[BOOT] jobs_started ok');
       bootState.jobsOk = true;
       
+      // Start production watchdog
+      try {
+        const { getWatchdog } = await import('./jobs/productionWatchdog');
+        const watchdog = getWatchdog();
+        await watchdog.start();
+        console.log('[BOOT] watchdog_started ok');
+      } catch (watchdogError: any) {
+        console.warn('[BOOT] watchdog_start failed:', watchdogError.message);
+      }
+      
     } catch (jobError: any) {
       console.error('[BOOT] ⚠️ jobs_start error:', jobError.message);
       console.error('[BOOT] stack:', jobError.stack);
