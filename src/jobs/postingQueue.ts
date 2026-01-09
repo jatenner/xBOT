@@ -4538,7 +4538,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
         {
           decision_id: decision.id,
           decision_type: 'reply',
-          pipeline_source: 'postingQueue_reply',
+          pipeline_source: 'reply_v2_scheduler', // Must match permit's pipeline_source
           build_sha,
           job_run_id,
           content: decision.content,
