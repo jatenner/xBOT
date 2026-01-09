@@ -48,6 +48,23 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   
   console.log('[SCHEDULER] ⏰ Attempting scheduled reply...');
   
+  // 🔒 MANDATE 3: Reset stuck "selected" candidates BEFORE selecting new one
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const { count: stuckCount } = await supabase
+    .from('reply_candidate_queue')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'selected')
+    .lt('selected_at', tenMinutesAgo);
+  
+  if ((stuckCount || 0) > 0) {
+    console.log(`[SCHEDULER] 🔧 Resetting ${stuckCount} stuck "selected" candidates...`);
+    await supabase
+      .from('reply_candidate_queue')
+      .update({ status: 'queued', selected_at: null, scheduler_run_id: null })
+      .eq('status', 'selected')
+      .lt('selected_at', tenMinutesAgo);
+  }
+  
   // Round to nearest 15-min slot
   const slotMinutes = Math.floor(slotTime.getMinutes() / 15) * 15;
   slotTime.setMinutes(slotMinutes, 0, 0);
