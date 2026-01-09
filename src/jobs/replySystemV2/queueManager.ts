@@ -18,6 +18,18 @@ export async function refreshCandidateQueue(): Promise<{
   queued: number;
   expired: number;
 }> {
+  const supabase = getSupabaseClient();
+  
+  // Get current control plane state for shortlist_size
+  const { data: controlState } = await supabase
+    .from('control_plane_state')
+    .select('shortlist_size')
+    .is('expires_at', null)
+    .order('effective_at', { ascending: false })
+    .limit(1)
+    .single();
+  
+  const shortlistSize = controlState?.shortlist_size || 25;
   console.log('[QUEUE_MANAGER] 📋 Refreshing candidate queue...');
   
   const supabase = getSupabaseClient();

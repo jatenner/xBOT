@@ -6,6 +6,7 @@
 
 import { getSupabaseClient } from '../../db/index';
 import { resolveRootTweetId } from '../../utils/resolveRootTweet';
+import { judgeTargetSuitability, JudgeDecision } from './targetSuitabilityJudge';
 
 const TOPIC_RELEVANCE_THRESHOLD = 0.6; // Minimum topic relevance score
 const SPAM_THRESHOLD = 0.7; // Maximum spam score (higher = more spam)
@@ -41,6 +42,7 @@ export interface CandidateScore {
   filter_reason: string;
   predicted_24h_views: number;
   predicted_tier: number;
+  judge_decision?: JudgeDecision; // AI judge decision if available
 }
 
 /**
@@ -113,9 +115,10 @@ export async function scoreCandidate(
   const now = Date.now();
   const ageMinutes = (now - postedTime) / (1000 * 60);
   
-  const velocityScore = calculateVelocityScore(likeCount, replyCount, retweetCount, ageMinutes);
+  // Use judge scores if available, otherwise calculate heuristically
+  const velocityScore = judgeDecision?.momentum ?? calculateVelocityScore(likeCount, replyCount, retweetCount, ageMinutes);
   const recencyScore = calculateRecencyScore(ageMinutes);
-  const authorSignalScore = await calculateAuthorSignalScore(authorUsername);
+  const authorSignalScore = judgeDecision?.audience_fit ?? await calculateAuthorSignalScore(authorUsername);
   
   // Composite score (weighted)
   const overallScore = (
@@ -126,8 +129,20 @@ export async function scoreCandidate(
     authorSignalScore * 0.1
   ) * 100; // Scale to 0-100
   
-  // Predict 24h views (simple heuristic)
-  const predicted24hViews = predict24hViews(likeCount, replyCount, retweetCount, ageMinutes);
+  // Predict 24h views (use judge bucket if available)
+  let predicted24hViews: number;
+  if (judgeDecision?.expected_views_bucket) {
+    // Map judge bucket to numeric estimate
+    const bucketEstimates: Record<string, number> = {
+      'low': 500,
+      'medium': 1500,
+      'high': 5000,
+      'viral': 20000
+    };
+    predicted24hViews = bucketEstimates[judgeDecision.expected_views_bucket] || predict24hViews(likeCount, replyCount, retweetCount, ageMinutes);
+  } else {
+    predicted24hViews = predict24hViews(likeCount, replyCount, retweetCount, ageMinutes);
+  }
   
   // Determine tier
   let predictedTier = 4; // Block always
@@ -139,7 +154,12 @@ export async function scoreCandidate(
     predictedTier = 3; // Tier 3: >=500 views
   }
   
-  console.log(`[SCORER] ✅ Scored: ${tweetId} score=${overallScore.toFixed(2)} tier=${predictedTier} predicted_views=${predicted24hViews}`);
+  // If judge says "explore", downgrade tier but still allow
+  if (judgeDecision?.decision === 'explore') {
+    predictedTier = Math.min(predictedTier + 1, 3); // Downgrade by 1 tier, max tier 3
+  }
+  
+  console.log(`[SCORER] ✅ Scored: ${tweetId} score=${overallScore.toFixed(2)} tier=${predictedTier} predicted_views=${predicted24hViews} judge=${judgeDecision?.decision || 'none'}`);
   
   return {
     is_root_tweet: isRoot,
@@ -151,7 +171,7 @@ export async function scoreCandidate(
     author_signal_score: authorSignalScore,
     overall_score: overallScore,
     passed_hard_filters: true,
-    filter_reason: 'passed_all_filters',
+    filter_reason: judgeDecision ? `judge_${judgeDecision.decision}` : 'passed_all_filters',
     predicted_24h_views: predicted24hViews,
     predicted_tier: predictedTier,
   };

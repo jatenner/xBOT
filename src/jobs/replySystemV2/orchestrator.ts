@@ -127,7 +127,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
             continue; // Skip if already evaluated
           }
           
-          // Score candidate
+          // Score candidate (with feed_run_id for traceability)
           const score = await scoreCandidate(
             tweet.tweet_id,
             tweet.author_username,
@@ -135,7 +135,8 @@ export async function fetchAndEvaluateCandidates(): Promise<{
             tweet.posted_at,
             tweet.like_count || 0,
             tweet.reply_count || 0,
-            tweet.retweet_count || 0
+            tweet.retweet_count || 0,
+            feedRunId
           );
           
           totalEvaluated++;
