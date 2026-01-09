@@ -121,7 +121,34 @@ export class JobManager {
       isRunning = true;
       try {
         await logTimerFired(phase);
+        console.log(`🕒 JOB_${name.toUpperCase()}: Timer fired (${phase}), calling jobFn...`);
         await jobFn();
+        console.log(`✅ JOB_${name.toUpperCase()}: Job function completed successfully`);
+      } catch (error: any) {
+        console.error(`❌ JOB_${name.toUpperCase()}: Job function failed:`, error?.message || String(error));
+        console.error(`❌ JOB_${name.toUpperCase()}: Stack:`, error?.stack);
+        
+        // Log to DB for visibility
+        try {
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          await supabase.from('system_events').insert({
+            event_type: `${name}_job_execution_failed`,
+            severity: 'error',
+            message: `Job execution failed after timer fired: ${error?.message || String(error)}`,
+            event_data: {
+              job_name: name,
+              phase,
+              error: error?.message || String(error),
+              stack: error?.stack?.substring(0, 500),
+            },
+            created_at: new Date().toISOString(),
+          });
+        } catch (dbError) {
+          // Non-critical
+        }
+        
+        throw error; // Re-throw to let safeExecute handle retries
       } finally {
         isRunning = false;
       }
