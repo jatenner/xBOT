@@ -120,7 +120,6 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   console.log(`[SCHEDULER] 🎯 Selected candidate: ${candidate.candidate_tweet_id} (tier ${tier})`);
   
   // 🔒 MANDATE 1: Create decision + permit IMMEDIATELY after selection, BEFORE generation
-  const supabase = getSupabaseClient();
   let decisionId: string;
   let permit_id: string;
   let queueId: string | undefined;
