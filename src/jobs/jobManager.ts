@@ -86,11 +86,14 @@ export class JobManager {
     log({ op: 'job_schedule', job: name, initial_delay_s: Math.round(initialDelayMs / 1000), interval_min: Math.round(intervalMs / 60000) });
     
     // Schedule first run after initial delay
+    console.log(`🕒 JOB_MANAGER: Scheduling ${name} - initial delay: ${Math.round(initialDelayMs / 1000)}s, interval: ${Math.round(intervalMs / 60000)}min`);
     const initialTimer = setTimeout(async () => {
       try {
+        console.log(`🕒 JOB_MANAGER: ${name} initial timer fired - executing job...`);
         await executeJob('initial'); // First execution
         
         // Then set up recurring interval
+        console.log(`🕒 JOB_MANAGER: ${name} initial run complete - setting up recurring timer...`);
         const recurringTimer = setInterval(async () => {
           try {
             await executeJob('recurring');
@@ -99,13 +102,16 @@ export class JobManager {
           }
         }, intervalMs);
         this.timers.set(name, recurringTimer);
+        console.log(`✅ JOB_MANAGER: ${name} recurring timer set (interval: ${Math.round(intervalMs / 60000)}min)`);
       } catch (error) {
         console.error(`❌ JOB_${name.toUpperCase()}: Initial execution failed:`, error?.message || String(error));
+        console.error(`❌ JOB_${name.toUpperCase()}: Stack:`, error?.stack);
       }
     }, initialDelayMs);
     
     // Store initial timer (will be replaced by recurring timer after first run)
     this.timers.set(`${name}_initial`, initialTimer);
+    console.log(`✅ JOB_MANAGER: ${name} initial timer scheduled (fires in ${Math.round(initialDelayMs / 1000)}s)`);
   }
 
   /**
@@ -314,12 +320,17 @@ export class JobManager {
     );
 
     // 🎼 Reply System V2 - fetch/evaluate/queue every 5 minutes
+    console.log('[JOB_MANAGER] 🎼 Scheduling reply_v2_fetch job (interval: 5min, initial delay: 2min)');
     this.scheduleStaggeredJob(
       'reply_v2_fetch',
       async () => {
+        console.log('[JOB_MANAGER] 🎼 reply_v2_fetch job timer fired - calling safeExecute...');
         await this.safeExecute('reply_v2_fetch', async () => {
+          console.log('[JOB_MANAGER] 🎼 reply_v2_fetch safeExecute started - importing orchestrator...');
           const { runFullCycle } = await import('./replySystemV2/orchestrator');
+          console.log('[JOB_MANAGER] 🎼 reply_v2_fetch orchestrator imported - calling runFullCycle...');
           await runFullCycle();
+          console.log('[JOB_MANAGER] 🎼 reply_v2_fetch runFullCycle completed');
         });
       },
       5 * MINUTE, // Every 5 minutes
