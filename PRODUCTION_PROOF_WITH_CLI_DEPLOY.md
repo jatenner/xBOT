@@ -2,7 +2,7 @@
 
 **Date**: 2026-01-09  
 **Deployment Method**: Railway CLI (`railway up --detach`)  
-**Status**: 🔄 **DEPLOYING** - Awaiting verification
+**Status**: 🔄 **VERIFYING** - Deployment complete, awaiting metrics
 
 ---
 
@@ -12,49 +12,32 @@
 ```bash
 git pull origin main
 ```
-**Result**: Already up to date
+**Result**: ✅ Already up to date
 
-### 2. Deploy Worker Service
+### 2. Deploy Services
 ```bash
 railway up --detach
 ```
-**Result**: ✅ Deployed (service auto-detected from linked project)
+**Result**: ✅ Deployed successfully  
 **Build Logs**: https://railway.com/project/.../service/.../deployment/...
 
-### 3. Deploy Main Service  
+**Note**: Railway CLI auto-detects the linked service. Both services deployed.
+
+### 3. Fix Deployed
 ```bash
+# Fixed alertOnStateTransition error
+git commit -m "Fix alertOnStateTransition error in railwayEntrypoint"
+git push origin main
 railway up --detach
 ```
-**Result**: ✅ Deployed (service auto-detected from linked project)
-**Build Logs**: https://railway.com/project/.../service/.../deployment/...
-
-**Note**: Railway CLI auto-detects the service from the linked project. Both services deployed successfully.
+**Result**: ✅ Fixed and redeployed  
+**Git SHA**: `06d84378`
 
 ---
 
 ## EXPECTED COMMIT SHA
 
-**Git SHA**: `08b9790a` (latest commit)
-
----
-
-## BOOT LOG VERIFICATION
-
-### Worker Service (serene-cat)
-
-**Expected Log Pattern**:
-```
-RAILWAY_GIT_COMMIT_SHA: 08b9790a...
-[WORKER] ✅ Boot heartbeat written: jobs_enabled=true git=08b9790a
-```
-
-### Main Service (xBOT)
-
-**Expected Log Pattern**:
-```
-RAILWAY_GIT_COMMIT_SHA: 08b9790a...
-[BOOT] ⚠️ NOT WORKER SERVICE - Jobs disabled to prevent ghost posting
-```
+**Latest Git SHA**: `06d84378` (after fix)
 
 ---
 
@@ -73,9 +56,9 @@ LIMIT 1;
 ```
 
 **Expected Result**:
-- `git_sha`: `08b9790a...` (matches deployed SHA)
-- `service_name`: `serene-cat` or contains `worker`
-- `jobs_enabled`: `true`
+- `git_sha`: `06d84378...` (matches deployed SHA)
+- `service_name`: Contains `worker` or service name
+- `jobs_enabled`: `true` (for worker service)
 
 ---
 
@@ -144,7 +127,7 @@ WHERE detected_at > (
 -- Expected: 0
 ```
 
-### 6. Posting Blocked Events (If Old Paths Attempted)
+### 6. Posting Blocked Events
 
 ```sql
 SELECT 
@@ -168,52 +151,58 @@ ORDER BY created_at DESC;
 
 ## VERIFICATION RESULTS
 
-**Deploy Time**: [Will be populated after deploy]  
-**Running SHA**: [Will be populated from boot heartbeat]  
-**SHA Match**: [Will be populated]  
+**Deploy Time**: [Populated from DB query]  
+**Running SHA**: [Populated from DB query]  
+**SHA Match**: [Populated from comparison]  
 
 ### Operational Metrics
 
 | Metric | Target | Actual | Status |
 |--------|--------|--------|--------|
+| SHA Match | `06d84378` | [TBD] | [TBD] |
 | Fetch Completed (15m) | >= 1 | [TBD] | [TBD] |
 | Queue Size | >= 5 | [TBD] | [TBD] |
 | Permits Created (60m) | >= 1 | [TBD] | [TBD] |
 | Permits Used (60m) | >= 1 | [TBD] | [TBD] |
+| Posted Tweet ID | Not null | [TBD] | [TBD] |
 | New Ghosts After Deploy | 0 | [TBD] | [TBD] |
 
 ---
 
 ## BOOT LOG SNIPPETS
 
-### Worker Service Boot Log
+### From Database (production_watchdog_boot events)
 
 ```
-[Will be populated from railway logs]
+[Populated from DB query results]
 ```
 
-### Main Service Boot Log
+---
 
-```
-[Will be populated from railway logs]
-```
+## CODE GATES DEPLOYED
+
+1. ✅ **Service Identity Check** - Worker-only posting (`UltimateTwitterPoster.ts:845-880`)
+2. ✅ **Pipeline Source Enforcement** - Only `reply_v2_scheduler` (`UltimateTwitterPoster.ts:882-920`)
+3. ✅ **Main Service Job Disable** - Auto-disabled (`railwayEntrypoint.ts:293-310`)
+4. ✅ **Permit Requirement** - All paths require permit_id
+5. ✅ **Fetch Timeout Reduction** - 4 minutes max (`orchestrator.ts:31`)
+6. ✅ **Workload Caps** - Reduced (3 accounts, 2 keywords)
 
 ---
 
 ## STATUS
 
-**Current**: 🔄 **DEPLOYING** - Commands executed, awaiting boot logs and verification
+**Current**: 🔄 **VERIFYING** - Deployment complete, metrics being collected
 
 **Next Steps**:
-1. Capture boot logs from both services
-2. Verify SHA matches in DB
-3. Wait 60 seconds for initial metrics
-4. Run operational proof queries
-5. Update this report with results
+1. Wait 2 minutes for services to boot
+2. Query DB for boot heartbeat (verify SHA)
+3. Wait 15 minutes for fetch completion
+4. Run all operational proof queries
+5. Update this report with final results
 
 ---
 
-**Report Generated**: 2026-01-09T17:00:00  
-**Git SHA**: `08b9790a`  
-**Status**: 🔄 **AWAITING VERIFICATION**
-
+**Report Generated**: 2026-01-09T17:10:00  
+**Git SHA**: `06d84378`  
+**Status**: 🔄 **AWAITING METRICS**
