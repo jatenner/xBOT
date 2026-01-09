@@ -269,8 +269,8 @@ async function alertGhostTweets(ghosts: GhostTweet[]): Promise<void> {
   for (const ghost of ghosts) {
     await supabase.from('system_events').insert({
       event_type: 'ghost_tweet_detected',
-      severity: 'critical',
-      message: `Ghost tweet detected: ${ghost.tweet_id} (posted on X but missing in DB)`,
+      severity: 'critical', // 🔒 MANDATE 4: High-severity event
+      message: `🚨 GHOST TWEET DETECTED: ${ghost.tweet_id} (posted on X but missing in DB)`,
       event_data: {
         tweet_id: ghost.tweet_id,
         content_preview: ghost.content.substring(0, 100),
@@ -278,6 +278,7 @@ async function alertGhostTweets(ghosts: GhostTweet[]): Promise<void> {
         origin_commit_sha: git_sha,
         origin_service_name: railway_service_name,
         detected_at: new Date().toISOString(),
+        detection_time: new Date().toISOString(), // 🔒 MANDATE 4: Detection time
       },
       created_at: new Date().toISOString(),
     });

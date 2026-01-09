@@ -229,9 +229,13 @@ async function startWorker() {
   // Step 1: Probe database connectivity (fail fast if unreachable)
   await probeDatabase();
   
-  // 🔒 PROBE ON BOOT: Run one-time probe if flag is set
-  if (process.env.RUN_REPLY_V2_PROBE_ON_BOOT === 'true') {
-    await runProbeOnBoot();
+  // 🔒 AUTO-PROBE: Check and run probe automatically (no env flag needed)
+  try {
+    const { checkAndRunAutoProbe } = await import('./replySystemV2/autoProbe');
+    await checkAndRunAutoProbe();
+  } catch (error: any) {
+    console.error('[WORKER] ⚠️ Auto-probe check failed:', error.message);
+    // Non-critical - continue startup
   }
   
   try {

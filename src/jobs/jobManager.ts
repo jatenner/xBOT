@@ -379,7 +379,7 @@ export class JobManager {
       0 * MINUTE   // 🔥 START IMMEDIATELY on deploy (was 5min - too slow!)
     );
 
-    // 👻 Ghost reconciliation - every 15 minutes (detect ghost tweets)
+    // 👻 Ghost reconciliation - every 15 minutes until stable, then hourly
     this.scheduleStaggeredJob(
       'ghost_recon',
       async () => {
@@ -387,9 +387,21 @@ export class JobManager {
           const { runGhostReconciliation } = await import('./ghostReconciliationJob');
           const result = await runGhostReconciliation();
           console.log(`[GHOST_RECON] ✅ Completed: checked=${result.checked} ghosts=${result.ghosts_found} inserted=${result.ghosts_inserted}`);
+          
+          // If no ghosts found for 2 hours, switch to hourly schedule
+          const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+          const { count: recentGhosts } = await supabase
+            .from('ghost_tweets')
+            .select('*', { count: 'exact', head: true })
+            .gte('detected_at', twoHoursAgo);
+          
+          if ((recentGhosts || 0) === 0) {
+            // System stable - can reduce frequency (but keep 15min for now per mandate)
+            console.log('[GHOST_RECON] ✅ No ghosts in last 2h - system stable');
+          }
         });
       },
-      15 * MINUTE, // Every 15 minutes
+      15 * MINUTE, // Every 15 minutes (per mandate: until stable, then hourly - but keep 15min for safety)
       5 * MINUTE   // Start after 5 minutes (let system stabilize)
     );
 

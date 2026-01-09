@@ -301,6 +301,12 @@ export async function fetchAndEvaluateCandidates(): Promise<{
             success: false,
             partial: false,
             reason_code: 'fetch_timeout',
+            stage_timings: {
+              browser_acquire_ms: 0, // Will be populated by feed sources
+              nav_ms: 0,
+              extract_ms: 0,
+              db_ms: 0,
+            },
           },
           created_at: new Date().toISOString(),
         });
@@ -361,7 +367,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
 }
 
 /**
- * Run full cycle: fetch -> evaluate -> queue refresh
+ * Run full cycle: fetch -> evaluate -> queue refresh + auto-repair
  */
 export async function runFullCycle(): Promise<void> {
   console.log('[ORCHESTRATOR] 🔄 Running full cycle...');
@@ -372,6 +378,36 @@ export async function runFullCycle(): Promise<void> {
   // Step 2: Refresh queue
   const queueResult = await refreshCandidateQueue();
   
-  console.log(`[ORCHESTRATOR] ✅ Cycle complete: ${fetchResult.evaluated} evaluated, ${queueResult.queued} queued`);
+  // 🔒 MANDATE 3: Queue health auto-repair
+  const supabase = getSupabaseClient();
+  const { count: queueSize } = await supabase
+    .from('reply_candidate_queue')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'queued')
+    .gt('expires_at', new Date().toISOString());
+  
+  if ((queueSize || 0) < 5) {
+    console.log(`[ORCHESTRATOR] 🔧 Queue size ${queueSize} < 5, triggering immediate refill...`);
+    await refreshCandidateQueue(); // Refill immediately
+  }
+  
+  // Reset stuck "selected" candidates (after 10 minutes)
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const { count: stuckCount } = await supabase
+    .from('reply_candidate_queue')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'selected')
+    .lt('selected_at', tenMinutesAgo);
+  
+  if ((stuckCount || 0) > 0) {
+    console.log(`[ORCHESTRATOR] 🔧 Resetting ${stuckCount} stuck "selected" candidates...`);
+    await supabase
+      .from('reply_candidate_queue')
+      .update({ status: 'queued', selected_at: null, scheduler_run_id: null })
+      .eq('status', 'selected')
+      .lt('selected_at', tenMinutesAgo);
+  }
+  
+  console.log(`[ORCHESTRATOR] ✅ Cycle complete: ${fetchResult.evaluated} evaluated, ${queueResult.queued} queued, queue_size=${queueSize}`);
 }
 
