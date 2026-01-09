@@ -30,9 +30,7 @@ export async function refreshCandidateQueue(): Promise<{
     .single();
   
   const shortlistSize = controlState?.shortlist_size || 25;
-  console.log('[QUEUE_MANAGER] 📋 Refreshing candidate queue...');
-  
-  const supabase = getSupabaseClient();
+  console.log('[QUEUE_MANAGER] 📋 Refreshing candidate queue (shortlist_size: ' + shortlistSize + ')...');
   
   // Step 1: Expire old queue entries
   const { data: expired } = await supabase
