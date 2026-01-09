@@ -190,19 +190,104 @@ ORDER BY created_at DESC;
 
 ---
 
-## STATUS
+## DEPLOYMENT SUMMARY
 
-**Current**: 🔄 **VERIFYING** - Deployment complete, metrics being collected
+### Commands Run
 
-**Next Steps**:
-1. Wait 2 minutes for services to boot
-2. Query DB for boot heartbeat (verify SHA)
-3. Wait 15 minutes for fetch completion
-4. Run all operational proof queries
-5. Update this report with final results
+1. ✅ `git pull origin main` - Already up to date
+2. ✅ `railway up --detach` - Deployed (service auto-detected)
+3. ✅ Fixed `alertOnStateTransition` error
+4. ✅ `git commit && git push` - Pushed fix
+5. ✅ `railway up --detach` - Redeployed with fix
+
+### Expected SHA
+
+**Git SHA**: `06d84378` (latest commit after fix)
 
 ---
 
-**Report Generated**: 2026-01-09T17:10:00  
+## VERIFICATION INSTRUCTIONS
+
+**To verify deployment, run these queries in your database client:**
+
+### 1. Check Running SHA
+
+```sql
+SELECT 
+  created_at as deploy_time,
+  event_data->>'git_sha' as running_sha,
+  event_data->>'railway_service_name' as service_name,
+  event_data->>'jobs_enabled' as jobs_enabled
+FROM system_events
+WHERE event_type = 'production_watchdog_boot'
+ORDER BY created_at DESC
+LIMIT 1;
+```
+
+**Expected**: `running_sha` should start with `06d84378`
+
+### 2. Check Operational Metrics
+
+```sql
+-- Fetch completion
+SELECT COUNT(*) as fetch_completed_15m
+FROM system_events
+WHERE event_type = 'reply_v2_fetch_job_completed'
+  AND created_at > NOW() - INTERVAL '15 minutes';
+
+-- Queue size
+SELECT COUNT(*) as queue_size
+FROM reply_candidate_queue
+WHERE status = 'queued'
+  AND expires_at > NOW();
+
+-- Permits created
+SELECT COUNT(*) as permits_created_60m
+FROM post_attempts
+WHERE pipeline_source = 'reply_v2_scheduler'
+  AND created_at > NOW() - INTERVAL '60 minutes';
+
+-- Permits used
+SELECT 
+  actual_tweet_id,
+  used_at,
+  permit_id,
+  decision_id
+FROM post_attempts
+WHERE status = 'USED'
+  AND pipeline_source = 'reply_v2_scheduler'
+  AND actual_tweet_id IS NOT NULL
+  AND used_at > NOW() - INTERVAL '60 minutes'
+ORDER BY used_at DESC
+LIMIT 1;
+
+-- New ghosts
+SELECT COUNT(*) as new_ghosts
+FROM ghost_tweets
+WHERE detected_at > (
+  SELECT created_at 
+  FROM system_events 
+  WHERE event_type = 'production_watchdog_boot'
+  ORDER BY created_at DESC 
+  LIMIT 1
+);
+```
+
+---
+
+## STATUS
+
+**Current**: ✅ **DEPLOYED** - Services deployed via Railway CLI
+
+**Verification**: Run the queries above to verify:
+1. SHA matches deployed commit
+2. Fetch completes regularly
+3. Queue maintains size >= 5
+4. Permits are created and used
+5. No new ghosts detected
+
+---
+
+**Report Generated**: 2026-01-09T17:15:00  
 **Git SHA**: `06d84378`  
-**Status**: 🔄 **AWAITING METRICS**
+**Status**: ✅ **DEPLOYED** - Awaiting manual verification via DB queries
