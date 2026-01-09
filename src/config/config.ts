@@ -116,8 +116,10 @@ export function loadConfig(): Config {
     DUP_COSINE_THRESHOLD: process.env.DUP_COSINE_THRESHOLD ? parseFloat(process.env.DUP_COSINE_THRESHOLD) : undefined,
     SIMILARITY_THRESHOLD: process.env.SIMILARITY_THRESHOLD ? parseFloat(process.env.SIMILARITY_THRESHOLD) : undefined,
     
-    // FAIL-SAFE: Default to true in production unless explicitly 'false'
-    JOBS_AUTOSTART: process.env.JOBS_AUTOSTART === 'false' ? false : (process.env.JOBS_AUTOSTART === 'true' || process.env.NODE_ENV === 'production'),
+    // FAIL-SAFE: Default ON in Railway production, only OFF if explicitly 'false'
+    JOBS_AUTOSTART: process.env.JOBS_AUTOSTART === 'false' 
+      ? false 
+      : (process.env.JOBS_AUTOSTART === 'true' || process.env.RAILWAY_ENVIRONMENT_NAME === 'production'),
     JOBS_PLAN_INTERVAL_MIN: process.env.JOBS_PLAN_INTERVAL_MIN ? parseInt(process.env.JOBS_PLAN_INTERVAL_MIN) : undefined,
     JOBS_REPLY_INTERVAL_MIN: process.env.JOBS_REPLY_INTERVAL_MIN ? parseInt(process.env.JOBS_REPLY_INTERVAL_MIN) : undefined,
     JOBS_LEARN_INTERVAL_MIN: process.env.JOBS_LEARN_INTERVAL_MIN ? parseInt(process.env.JOBS_LEARN_INTERVAL_MIN) : undefined,
