@@ -17,7 +17,7 @@ const HEALTH_KEYWORDS = [
 
 const FETCH_INTERVAL_MINUTES = 5;
 const TWEETS_PER_KEYWORD = 10; // Top N tweets per keyword
-const KEYWORDS_PER_RUN = 3; // Hard cap: process only 3 keywords per run
+const KEYWORDS_PER_RUN = 2; // Hard cap: reduced to 2 keywords per run for faster completion
 
 export interface KeywordTweet {
   tweet_id: string;

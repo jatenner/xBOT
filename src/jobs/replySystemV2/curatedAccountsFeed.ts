@@ -45,7 +45,7 @@ async function safeEvaluate<T>(
 export async function fetchCuratedAccountsFeed(): Promise<CuratedTweet[]> {
   const startTime = Date.now();
   const SOURCE_TIMEOUT_MS = 90 * 1000; // 90 seconds per source
-  const ACCOUNTS_PER_RUN = 5; // Hard cap: process only 5 accounts per run
+  const ACCOUNTS_PER_RUN = 3; // Hard cap: reduced to 3 accounts per run for faster completion
   
   console.log(`[CURATED_FEED] 📋 Fetching tweets from curated accounts (bounded: ${ACCOUNTS_PER_RUN} accounts/run)...`);
   
