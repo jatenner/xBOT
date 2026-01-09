@@ -331,6 +331,21 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     };
   } catch (error: any) {
     console.error(`[SCHEDULER] ❌ Failed to post reply: ${error.message}`);
+    console.error(`[SCHEDULER] Stack: ${error.stack}`);
+    
+    // 🔒 CRITICAL: Reset candidate status to 'queued' on failure so it can be retried
+    try {
+      await supabase
+        .from('reply_candidate_queue')
+        .update({ 
+          status: 'queued',
+          selected_at: null, // Clear selection timestamp
+        })
+        .eq('candidate_tweet_id', candidate.candidate_tweet_id);
+      console.log(`[SCHEDULER] ✅ Reset candidate ${candidate.candidate_tweet_id} to queued status`);
+    } catch (resetError: any) {
+      console.error(`[SCHEDULER] ❌ Failed to reset candidate status: ${resetError.message}`);
+    }
     
     // Log SLO event for failure
     await supabase
@@ -351,13 +366,20 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         slo_target: TARGET_REPLIES_PER_HOUR,
       });
     
-    // Log job error to system_events
+    // Log job error to system_events with full stack trace
     try {
       await supabase.from('system_events').insert({
         event_type: 'reply_v2_scheduler_job_error',
         severity: 'error',
         message: `Reply V2 scheduler job error: ${error.message}`,
-        event_data: { scheduler_run_id: schedulerRunId, error: error.message, posted: false },
+        event_data: { 
+          scheduler_run_id: schedulerRunId, 
+          error: error.message,
+          stack: error.stack?.substring(0, 1000),
+          candidate_tweet_id: candidate.candidate_tweet_id,
+          tier,
+          posted: false 
+        },
         created_at: new Date().toISOString(),
       });
     } catch (e) {
