@@ -1,289 +1,272 @@
 /**
  * 🏆 PRODUCTION PROOF GOLD FINAL
- * Final proof check with complete trace chain
+ * Executable proof script that runs with Railway prod env vars
+ * Outputs PASS/FAIL table for all critical checks
  */
 
 import 'dotenv/config';
 import { getSupabaseClient } from '../src/db/index';
 
-async function productionProofGoldFinal() {
+interface ProofResult {
+  check: string;
+  status: 'PASS' | 'FAIL';
+  details: string;
+  count?: number;
+}
+
+async function productionProofGoldFinal(): Promise<void> {
   const supabase = getSupabaseClient();
-  const results: any = {};
-  
-  console.log('========================================');
-  console.log('PRODUCTION PROOF GOLD FINAL');
-  console.log('========================================\n');
-  
-  const fifteenMinAgo = new Date(Date.now() - 15 * 60000).toISOString();
-  const probeTime = new Date(Date.now() - 10 * 60000).toISOString(); // 10 minutes ago (after probe)
-  
-  // 1. Confirm deploy (git_sha)
-  console.log('1. Deploy Confirmation');
-  console.log('-'.repeat(40));
-  
-  const { data: bootEvent } = await supabase
+  // Use Railway deployment SHA (RAILWAY_GIT_COMMIT_SHA) or fallback to git HEAD
+  const railwaySha = process.env.RAILWAY_GIT_COMMIT_SHA;
+  const gitSha = process.env.GIT_SHA;
+  // Accept either Railway SHA or git SHA (Railway may use different SHA format)
+  const expectedSha = railwaySha || gitSha || 'unknown';
+  const results: ProofResult[] = [];
+
+  console.log('=== PRODUCTION PROOF GOLD FINAL ===\n');
+  console.log(`Railway SHA: ${railwaySha ? railwaySha.substring(0, 8) : 'NOT SET'}`);
+  console.log(`Git SHA: ${gitSha ? gitSha.substring(0, 8) : 'NOT SET'}`);
+  console.log(`Expected SHA: ${expectedSha.substring(0, 8)}\n`);
+
+  // A) Running SHA proof
+  const { data: latestBoot } = await supabase
     .from('system_events')
     .select('created_at, event_data')
     .eq('event_type', 'production_watchdog_boot')
     .order('created_at', { ascending: false })
     .limit(1)
     .single();
-  
-  if (bootEvent) {
-    const gitSha = (bootEvent.event_data as any)?.git_sha || 'unknown';
-    results.git_sha = gitSha;
-    results.boot_time = bootEvent.created_at;
-    console.log(`Git SHA: ${gitSha}`);
-    console.log(`Boot Time: ${bootEvent.created_at}`);
-    console.log(`Status: ${gitSha.startsWith('ae8397b0') || gitSha.length >= 7 ? '✅ PASS' : '⚠️  CHECK'}\n`);
+
+  if (latestBoot) {
+    const bootData = latestBoot.event_data as any;
+    const runningSha = (bootData.git_sha || '').substring(0, 8);
+    // Match if Railway SHA matches OR git SHA matches (Railway may use different SHA)
+    const shaMatch = railwaySha 
+      ? runningSha === railwaySha.substring(0, 8)
+      : gitSha
+        ? runningSha === gitSha.substring(0, 8)
+        : false;
+    
+    results.push({
+      check: 'A) Running SHA proof',
+      status: shaMatch ? 'PASS' : 'FAIL',
+      details: `Running: ${runningSha}, Expected: ${expectedSha.substring(0, 8)}${railwaySha ? ` (Railway: ${railwaySha.substring(0, 8)})` : ''}`,
+    });
   } else {
-    results.git_sha = 'NOT FOUND';
-    console.log('Boot event not found\n');
+    results.push({
+      check: 'A) Running SHA proof',
+      status: 'FAIL',
+      details: 'No boot heartbeat found',
+    });
   }
+
+  // B) Worker-only posting proof
+  const deployTime = latestBoot?.created_at || new Date(0).toISOString();
+  const { count: blockedEvents } = await supabase
+    .from('system_events')
+    .select('*', { count: 'exact', head: true })
+    .eq('event_type', 'posting_blocked_wrong_service')
+    .gte('created_at', deployTime);
+
+  // Check for successful posts from non-worker
+  const { data: nonWorkerPosts } = await supabase
+    .from('post_attempts')
+    .select('permit_id, created_at, pipeline_source')
+    .not('pipeline_source', 'eq', 'reply_v2_scheduler')
+    .gte('created_at', deployTime)
+    .limit(1);
+
+  const workerOnlyPass = (blockedEvents || 0) >= 0 && !nonWorkerPosts;
+  results.push({
+    check: 'B) Worker-only posting proof',
+    status: workerOnlyPass ? 'PASS' : 'FAIL',
+    details: `Blocked events: ${blockedEvents || 0}, Non-worker posts: ${nonWorkerPosts ? 1 : 0}`,
+    count: blockedEvents || 0,
+  });
+
+  // C) Jobs ticking proof
+  const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   
-  // 2. Fetch completion
-  console.log('2. Fetch Completion');
-  console.log('-'.repeat(40));
-  
+  const { count: watchdogReports } = await supabase
+    .from('system_events')
+    .select('*', { count: 'exact', head: true })
+    .eq('event_type', 'production_watchdog_report')
+    .gte('created_at', fifteenMinAgo);
+
   const { count: fetchStarted } = await supabase
     .from('system_events')
     .select('*', { count: 'exact', head: true })
     .eq('event_type', 'reply_v2_fetch_job_started')
     .gte('created_at', fifteenMinAgo);
-  
+
   const { count: fetchCompleted } = await supabase
     .from('system_events')
     .select('*', { count: 'exact', head: true })
     .eq('event_type', 'reply_v2_fetch_job_completed')
     .gte('created_at', fifteenMinAgo);
-  
-  const { count: fetchFailed } = await supabase
-    .from('system_events')
-    .select('*', { count: 'exact', head: true })
-    .eq('event_type', 'reply_v2_fetch_job_failed')
-    .gte('created_at', fifteenMinAgo);
-  
-  results.fetch = {
-    started: fetchStarted || 0,
-    completed: fetchCompleted || 0,
-    failed: fetchFailed || 0,
-    pass: (fetchCompleted || 0) >= 1,
-  };
-  
-  console.log(`Fetch started: ${results.fetch.started} (target: >=1)`);
-  console.log(`Fetch completed: ${results.fetch.completed} (target: >=1)`);
-  console.log(`Fetch failed: ${results.fetch.failed}`);
-  console.log(`Status: ${results.fetch.pass ? '✅ PASS' : '❌ FAIL'}\n`);
-  
-  // 3. Probe result
-  console.log('3. Probe Result');
-  console.log('-'.repeat(40));
-  
-  const { data: probeResult } = await supabase
-    .from('system_events')
-    .select('created_at, event_data')
-    .eq('event_type', 'reply_v2_probe_boot_result')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
-  
-  if (probeResult) {
-    const probeData = probeResult.event_data as any;
-    results.probe = {
-      posted: probeData.posted || false,
-      decision_id: probeData.decision_id || null,
-      permit_id: probeData.permit_id || null,
-      posted_tweet_id: probeData.posted_tweet_id || null,
-      candidate_tweet_id: probeData.candidate_tweet_id || null,
-      reason: probeData.reason || probeData.failure_reason || null,
-      queue_size_before: probeData.queue_size_before || 0,
-      queue_size_after: probeData.queue_size_after || 0,
-      probe_run_id: probeData.probe_run_id || null,
-    };
-    
-    console.log(`Probe Run ID: ${results.probe.probe_run_id}`);
-    console.log(`Posted: ${results.probe.posted}`);
-    console.log(`Decision ID: ${results.probe.decision_id || 'N/A'}`);
-    console.log(`Permit ID: ${results.probe.permit_id || 'N/A'}`);
-    console.log(`Posted Tweet ID: ${results.probe.posted_tweet_id || 'N/A'}`);
-    console.log(`Reason: ${results.probe.reason || 'N/A'}`);
-    console.log(`Queue Size Before: ${results.probe.queue_size_before}`);
-    console.log(`Queue Size After: ${results.probe.queue_size_after}`);
-    console.log(`Status: ${results.probe.posted ? '✅ PASS' : '⚠️  FAILED'}\n`);
-  } else {
-    results.probe = null;
-    console.log('Probe result not found\n');
-  }
-  
-  // 4. Trace chain (if posted)
-  console.log('4. Trace Chain');
-  console.log('-'.repeat(40));
-  
-  if (results.probe?.posted_tweet_id) {
-    const tweetId = results.probe.posted_tweet_id;
-    
-    // Get permit
-    const { data: permit } = await supabase
-      .from('post_attempts')
-      .select('*')
-      .eq('actual_tweet_id', tweetId)
-      .order('used_at', { ascending: false })
-      .limit(1)
-      .single();
-    
-    if (permit) {
-      results.trace_chain = {
-        permit_id: permit.permit_id,
-        decision_id: permit.decision_id,
-        posted_tweet_id: permit.actual_tweet_id,
-        pipeline_source: permit.pipeline_source,
-        target_is_root: permit.target_is_root,
-        reason_code: permit.reason_code,
-      };
-      
-      // Get decision
-      const { data: decision } = await supabase
-        .from('content_generation_metadata_comprehensive')
-        .select('*')
-        .eq('decision_id', permit.decision_id)
-        .single();
-      
-      if (decision) {
-        results.trace_chain.candidate_evaluation_id = decision.candidate_evaluation_id;
-        results.trace_chain.queue_id = decision.queue_id;
-        results.trace_chain.scheduler_run_id = decision.scheduler_run_id;
-      }
-      
-      // Check click attempt event
-      const { data: clickEvent } = await supabase
-        .from('system_events')
-        .select('*')
-        .or(`event_data->>permit_id.eq.${permit.permit_id},event_data->>tweet_id.eq.${tweetId}`)
-        .eq('event_type', 'post_reply_click_attempt')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-      
-      results.trace_chain.click_attempt_logged = !!clickEvent;
-      
-      console.log('Trace chain:');
-      console.log(`  Candidate Evaluation ID: ${results.trace_chain.candidate_evaluation_id || 'N/A'}`);
-      console.log(`  Queue ID: ${results.trace_chain.queue_id || 'N/A'}`);
-      console.log(`  Scheduler Run ID: ${results.trace_chain.scheduler_run_id || 'N/A'}`);
-      console.log(`  Decision ID: ${results.trace_chain.decision_id}`);
-      console.log(`  Permit ID: ${results.trace_chain.permit_id}`);
-      console.log(`  Posted Tweet ID: ${results.trace_chain.posted_tweet_id}`);
-      console.log(`  Pipeline Source: ${results.trace_chain.pipeline_source}`);
-      console.log(`  Target is Root: ${results.trace_chain.target_is_root}`);
-      console.log(`  Reason Code: ${results.trace_chain.reason_code || 'NULL'}`);
-      console.log(`  Click Attempt Logged: ${results.trace_chain.click_attempt_logged ? '✅ YES' : '❌ NO'}`);
-      
-      const allLinksExist = 
-        results.trace_chain.candidate_evaluation_id &&
-        results.trace_chain.queue_id &&
-        results.trace_chain.scheduler_run_id &&
-        results.trace_chain.decision_id &&
-        results.trace_chain.permit_id &&
-        results.trace_chain.posted_tweet_id;
-      
-      results.trace_chain_complete = !!allLinksExist;
-      console.log(`\nTrace chain complete: ${allLinksExist ? '✅ YES' : '❌ NO'}`);
-    } else {
-      results.trace_chain = null;
-      console.log('Permit not found for posted tweet');
-    }
-  } else {
-    results.trace_chain = null;
-    console.log('No posted tweet found');
-  }
-  
-  console.log('');
-  
-  // 5. Queue size
-  console.log('5. Queue Size');
-  console.log('-'.repeat(40));
-  
+
+  const jobsTickingPass = (watchdogReports || 0) > 0 && (fetchStarted || 0) > 0 && (fetchCompleted || 0) > 0;
+  results.push({
+    check: 'C) Jobs ticking proof',
+    status: jobsTickingPass ? 'PASS' : 'FAIL',
+    details: `Watchdog: ${watchdogReports || 0}, Fetch started: ${fetchStarted || 0}, Fetch completed: ${fetchCompleted || 0}`,
+    count: watchdogReports || 0,
+  });
+
+  // D) Pipeline proof
   const { count: queueSize } = await supabase
     .from('reply_candidate_queue')
     .select('*', { count: 'exact', head: true })
     .eq('status', 'queued')
     .gt('expires_at', new Date().toISOString());
+
+  const sixtyMinAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   
-  results.queue_size = queueSize || 0;
-  console.log(`Queue size: ${results.queue_size}`);
-  console.log(`Status: ${results.queue_size >= 0 ? '✅ PASS' : '❌ FAIL'}\n`);
-  
-  // 6. Ghost reconciliation
-  console.log('6. Ghost Reconciliation');
-  console.log('-'.repeat(40));
-  
+  const { count: schedulerStarted } = await supabase
+    .from('system_events')
+    .select('*', { count: 'exact', head: true })
+    .eq('event_type', 'reply_v2_scheduler_job_started')
+    .gte('created_at', sixtyMinAgo);
+
+  const { count: permitsCreated } = await supabase
+    .from('post_attempts')
+    .select('*', { count: 'exact', head: true })
+    .eq('pipeline_source', 'reply_v2_scheduler')
+    .gte('created_at', sixtyMinAgo);
+
+  const { data: permitsUsed } = await supabase
+    .from('post_attempts')
+    .select('actual_tweet_id, used_at')
+    .eq('status', 'USED')
+    .eq('pipeline_source', 'reply_v2_scheduler')
+    .not('actual_tweet_id', 'is', null)
+    .gte('used_at', sixtyMinAgo)
+    .limit(1)
+    .single();
+
+  const pipelinePass = (queueSize || 0) >= 5 && (schedulerStarted || 0) > 0 && (permitsCreated || 0) > 0 && !!permitsUsed;
+  results.push({
+    check: 'D) Pipeline proof',
+    status: pipelinePass ? 'PASS' : 'FAIL',
+    details: `Queue: ${queueSize || 0}, Scheduler: ${schedulerStarted || 0}, Permits created: ${permitsCreated || 0}, Permits used: ${permitsUsed ? 1 : 0}`,
+    count: queueSize || 0,
+  });
+
+  // E) Ghost proof
   const { count: newGhosts } = await supabase
     .from('ghost_tweets')
     .select('*', { count: 'exact', head: true })
-    .gte('detected_at', probeTime);
-  
-  const { data: recentGhosts } = await supabase
-    .from('ghost_tweets')
-    .select('tweet_id, detected_at, reason')
-    .gte('detected_at', probeTime)
-    .order('detected_at', { ascending: false })
-    .limit(10);
-  
-  results.ghosts_new = newGhosts || 0;
-  console.log(`New ghosts (after probe): ${results.ghosts_new} (target: 0)`);
-  
-  if (recentGhosts && recentGhosts.length > 0) {
-    console.log('Recent ghosts:');
-    recentGhosts.forEach(g => {
-      console.log(`  ${g.tweet_id} (${g.detected_at}): ${g.reason || 'N/A'}`);
+    .gte('detected_at', deployTime);
+
+  const ghostPass = (newGhosts || 0) === 0;
+  results.push({
+    check: 'E) Ghost proof',
+    status: ghostPass ? 'PASS' : 'FAIL',
+    details: `New ghosts since deploy: ${newGhosts || 0}`,
+    count: newGhosts || 0,
+  });
+
+  // Print results table
+  console.log('=== PROOF RESULTS TABLE ===\n');
+  console.log('| Check | Status | Details |');
+  console.log('|-------|--------|---------|');
+  results.forEach(r => {
+    const statusIcon = r.status === 'PASS' ? '✅' : '❌';
+    console.log(`| ${r.check} | ${statusIcon} ${r.status} | ${r.details} |`);
+  });
+
+  // Overall verdict
+  const allPass = results.every(r => r.status === 'PASS');
+  console.log(`\n=== OVERALL VERDICT ===`);
+  console.log(`Status: ${allPass ? '✅ OPERATIONAL' : '❌ NOT OPERATIONAL'}`);
+
+  // Identify blocker
+  const failedChecks = results.filter(r => r.status === 'FAIL');
+  if (failedChecks.length > 0) {
+    console.log(`\n=== CURRENT BLOCKER ===`);
+    console.log(`${failedChecks[0].check}: ${failedChecks[0].details}`);
+  }
+
+  // If fetch fails, show error details
+  if (!jobsTickingPass && (fetchStarted || 0) > 0 && (fetchCompleted || 0) === 0) {
+    const { data: fetchFailure } = await supabase
+      .from('system_events')
+      .select('created_at, event_data, message')
+      .eq('event_type', 'reply_v2_fetch_job_failed')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (fetchFailure) {
+      const failureData = fetchFailure.event_data as any;
+      console.log(`\n=== FETCH FAILURE DETAILS ===`);
+      console.log(`Time: ${fetchFailure.created_at}`);
+      console.log(`Error: ${failureData.error || fetchFailure.message}`);
+      console.log(`Stack: ${failureData.stack?.substring(0, 500) || 'N/A'}`);
+    }
+  }
+
+  // If queue is 0, show evaluation details
+  if ((queueSize || 0) === 0 && (fetchCompleted || 0) > 0) {
+    const { count: evaluations } = await supabase
+      .from('candidate_evaluations')
+      .select('*', { count: 'exact', head: true })
+      .gte('created_at', fifteenMinAgo);
+
+    const { data: rejectionReasons } = await supabase
+      .from('candidate_evaluations')
+      .select('filter_reason')
+      .gte('created_at', fifteenMinAgo)
+      .limit(10);
+
+    console.log(`\n=== QUEUE DIAGNOSIS ===`);
+    console.log(`Evaluations (15m): ${evaluations || 0}`);
+    console.log(`Top rejection reasons:`);
+    rejectionReasons?.forEach((r, i) => {
+      console.log(`  ${i + 1}. ${r.filter_reason || 'N/A'}`);
     });
   }
-  
-  console.log(`Status: ${results.ghosts_new === 0 ? '✅ PASS' : '❌ FAIL'}\n`);
-  
-  // Summary
-  console.log('========================================');
-  console.log('SUMMARY');
-  console.log('========================================\n');
-  
-  const allPassed = 
-    results.fetch.pass &&
-    results.probe !== null &&
-    (results.probe.posted ? results.trace_chain_complete : true) &&
-    results.ghosts_new === 0;
-  
-  console.log(`Git SHA: ${results.git_sha}`);
-  console.log(`Fetch: ${results.fetch.pass ? '✅' : '❌'} (${results.fetch.started} started, ${results.fetch.completed} completed)`);
-  console.log(`Probe: ${results.probe ? (results.probe.posted ? '✅ POSTED' : '⚠️  FAILED') : '❌ NOT FOUND'}`);
-  if (results.probe?.posted) {
-    console.log(`  Posted Tweet ID: ${results.probe.posted_tweet_id}`);
-    console.log(`  Trace Chain: ${results.trace_chain_complete ? '✅ COMPLETE' : '❌ INCOMPLETE'}`);
-  } else if (results.probe) {
-    console.log(`  Failure Reason: ${results.probe.reason || 'N/A'}`);
+
+  // If permits not created, show scheduler details
+  if ((permitsCreated || 0) === 0 && (queueSize || 0) >= 5) {
+    const { data: schedulerFailure } = await supabase
+      .from('system_events')
+      .select('created_at, event_data, message')
+      .eq('event_type', 'reply_v2_scheduler_job_failed')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (schedulerFailure) {
+      const failureData = schedulerFailure.event_data as any;
+      console.log(`\n=== SCHEDULER FAILURE DETAILS ===`);
+      console.log(`Time: ${schedulerFailure.created_at}`);
+      console.log(`Error: ${failureData.error || schedulerFailure.message}`);
+      console.log(`Stack: ${failureData.stack?.substring(0, 500) || 'N/A'}`);
+    }
+
+    // Show candidate status distribution
+    const { data: candidateStatuses } = await supabase
+      .from('reply_candidate_queue')
+      .select('status')
+      .limit(100);
+
+    const statusCounts: Record<string, number> = {};
+    candidateStatuses?.forEach(c => {
+      statusCounts[c.status] = (statusCounts[c.status] || 0) + 1;
+    });
+
+    console.log(`\n=== CANDIDATE STATUS DISTRIBUTION ===`);
+    Object.entries(statusCounts).forEach(([status, count]) => {
+      console.log(`  ${status}: ${count}`);
+    });
   }
-  console.log(`Queue Size: ${results.queue_size}`);
-  console.log(`Ghosts (new): ${results.ghosts_new === 0 ? '✅' : '❌'} (${results.ghosts_new})`);
-  
-  console.log(`\n${allPassed ? '✅ OPERATIONAL' : '❌ NOT OPERATIONAL'}`);
-  
-  if (!allPassed) {
-    const blockers: string[] = [];
-    if (!results.fetch.pass) blockers.push(`Fetch incomplete (${results.fetch.started} started, ${results.fetch.completed} completed)`);
-    if (!results.probe) blockers.push('Probe result not found');
-    if (results.probe && !results.probe.posted) blockers.push(`Probe failed: ${results.probe.reason || 'N/A'}`);
-    if (results.probe?.posted && !results.trace_chain_complete) blockers.push('Trace chain incomplete');
-    if (results.ghosts_new > 0) blockers.push(`${results.ghosts_new} new ghosts`);
-    
-    console.log(`\nBlocking reasons: ${blockers.join(', ')}`);
-  }
-  
-  return results;
+
+  process.exit(allPass ? 0 : 1);
 }
 
-productionProofGoldFinal().then(results => {
-  process.exit(0);
-}).catch(err => {
-  console.error('Error:', err);
+productionProofGoldFinal().catch((error) => {
+  console.error('❌ Proof script failed:', error.message);
+  console.error('Stack:', error.stack);
   process.exit(1);
 });
-
