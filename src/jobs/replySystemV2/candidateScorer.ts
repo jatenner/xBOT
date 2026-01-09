@@ -55,7 +55,8 @@ export async function scoreCandidate(
   postedAt: string,
   likeCount: number = 0,
   replyCount: number = 0,
-  retweetCount: number = 0
+  retweetCount: number = 0,
+  feedRunId?: string
 ): Promise<CandidateScore> {
   console.log(`[SCORER] 🎯 Scoring candidate: ${tweetId} by @${authorUsername}`);
   
@@ -246,6 +247,7 @@ export async function scoreCandidate(
     filter_reason: judgeDecision ? `judge_${judgeDecision.decision}` : 'passed_all_filters',
     predicted_24h_views: predicted24hViews,
     predicted_tier: predictedTier,
+    judge_decision: judgeDecision || undefined,
   };
 }
 
