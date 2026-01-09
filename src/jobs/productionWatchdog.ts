@@ -32,6 +32,9 @@ export class ProductionWatchdog {
     this.isRunning = true;
     console.log('[WATCHDOG] 🐕 Starting production watchdog (5 min interval)');
 
+    // Immediate boot heartbeat
+    await this.writeBootHeartbeat();
+
     // Initial check
     await this.checkAndReport();
 
@@ -53,6 +56,42 @@ export class ProductionWatchdog {
     }
     this.isRunning = false;
     console.log('[WATCHDOG] Stopped');
+  }
+
+  private async writeBootHeartbeat(): Promise<void> {
+    const supabase = getSupabaseClient();
+    const now = new Date();
+    const gitSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+    const railwayEnv = process.env.RAILWAY_ENVIRONMENT_NAME || 'unknown';
+    const nodeEnv = process.env.NODE_ENV || 'unknown';
+    
+    // Compute jobs_enabled
+    const jobsEnabled = process.env.JOBS_AUTOSTART === 'false' 
+      ? false 
+      : (process.env.JOBS_AUTOSTART === 'true' || process.env.RAILWAY_ENVIRONMENT_NAME === 'production');
+
+    const bootState = {
+      jobs_enabled: jobsEnabled,
+      git_sha: gitSha,
+      railway_environment: railwayEnv,
+      node_env: nodeEnv,
+      jobs_autostart_env: process.env.JOBS_AUTOSTART || 'NOT SET',
+      boot_time: now.toISOString(),
+      status: 'BOOTING',
+    };
+
+    try {
+      await supabase.from('system_events').insert({
+        event_type: 'production_watchdog_boot',
+        severity: 'info',
+        message: `Watchdog boot: jobs_enabled=${jobsEnabled} git_sha=${gitSha.substring(0, 8)} env=${railwayEnv}`,
+        event_data: bootState,
+        created_at: now.toISOString(),
+      });
+      console.log(`[WATCHDOG] ✅ Boot heartbeat written: jobs_enabled=${jobsEnabled} git=${gitSha.substring(0, 8)}`);
+    } catch (error: any) {
+      console.error('[WATCHDOG] ❌ Failed to write boot heartbeat:', error.message);
+    }
   }
 
   private async checkAndReport(): Promise<void> {

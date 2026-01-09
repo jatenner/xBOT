@@ -1209,6 +1209,16 @@ export class JobManager {
     
     console.log('🕒 JOB_MANAGER: Job scheduling ENABLED - proceeding to start jobs...');
 
+    // Start production watchdog (same codepath as job scheduling)
+    try {
+      const { getWatchdog } = await import('./productionWatchdog');
+      const watchdog = getWatchdog();
+      await watchdog.start();
+      console.log('🕒 JOB_MANAGER: Production watchdog started');
+    } catch (watchdogError: any) {
+      console.warn('🕒 JOB_MANAGER: Watchdog start failed:', watchdogError.message);
+    }
+
     // 🎯 FEATURE FLAG: Choose scheduling strategy
     const USE_STAGGERED = process.env.USE_STAGGERED_SCHEDULING !== 'false'; // Default ON
     

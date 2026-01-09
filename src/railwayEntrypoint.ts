@@ -14,6 +14,17 @@ const buildSha = process.env.GIT_SHA ||
                  `local-${Date.now()}`;
 const version = process.env.npm_package_version || '1.0.0';
 
+// Boot logging: Railway environment info
+console.log('========================================');
+console.log('RAILWAY BOOT INFO');
+console.log('========================================');
+console.log(`RAILWAY_GIT_COMMIT_SHA: ${process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT SET'}`);
+console.log(`RAILWAY_ENVIRONMENT_NAME: ${process.env.RAILWAY_ENVIRONMENT_NAME || 'NOT SET'}`);
+console.log(`NODE_ENV: ${process.env.NODE_ENV || 'NOT SET'}`);
+console.log(`JOBS_AUTOSTART env var: "${process.env.JOBS_AUTOSTART || 'NOT SET'}"`);
+console.log(`Computed JOBS_AUTOSTART: ${process.env.JOBS_AUTOSTART === 'false' ? false : (process.env.JOBS_AUTOSTART === 'true' || process.env.RAILWAY_ENVIRONMENT_NAME === 'production')}`);
+console.log('========================================\n');
+
 interface BootState {
   ready: boolean;
   degraded: boolean;
