@@ -369,13 +369,21 @@ setInterval(() => {
     bootState.degraded = true;
   }
   
-  // Alert on state transitions
+  // Alert on state transitions (non-blocking)
   if (bootState.degraded !== lastDegradedState) {
     const message = bootState.degraded
       ? `🚨 System degraded: ${bootState.stalled ? `stalled jobs: ${stalledJobs.join(', ')}` : bootState.lastError || 'unknown'}`
       : `✅ System recovered`;
     
-    alertOnStateTransition(bootState.degraded, lastDegradedState, message, bootState.degraded);
+    // Non-blocking alert (don't fail if alert function doesn't exist)
+    try {
+      const { alertOnStateTransition } = await import('./monitoring/discordAlerts');
+      if (typeof alertOnStateTransition === 'function') {
+        alertOnStateTransition(bootState.degraded, lastDegradedState, message, bootState.degraded).catch(() => {});
+      }
+    } catch (e) {
+      // Ignore alert errors - non-critical
+    }
     lastDegradedState = bootState.degraded;
   }
   
