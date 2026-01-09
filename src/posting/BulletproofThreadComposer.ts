@@ -187,7 +187,7 @@ export class BulletproofThreadComposer {
         console.log(`[THREAD_COMPOSER][TIMEOUT] 🎯 Posting attempt ${attempt}/${maxRetries} - Using adaptive timeout: ${timeoutMs/1000}s`);
         
         const result = await Promise.race([
-          this.postWithContext(segments, attempt, threadDecisionId).then(r => {
+          this.postWithContext(segments, attempt, threadDecisionId, permit_id).then(r => {
             // Store page reference for autopsy if needed
             return r;
           }),
