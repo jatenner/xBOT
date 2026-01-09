@@ -107,8 +107,8 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   
   const fetchPromise = (async () => {
     for (const source of sources) {
-    console.log(`[ORCHESTRATOR] 📡 Fetching from ${source.name} (weight: ${source.weight.toFixed(2)})...`);
-    try {
+      console.log(`[ORCHESTRATOR] 📡 Fetching from ${source.name} (weight: ${source.weight.toFixed(2)})...`);
+      try {
       console.log(`[ORCHESTRATOR] 📡 Fetching from ${source.name}...`);
       
       // Add timeout protection (5 minutes per source - feeds need more time for multiple keywords/accounts)
@@ -255,6 +255,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
       } catch (e) {
         console.error(`[ORCHESTRATOR] Failed to log error: ${(e as Error).message}`);
       }
+    }
     }
     
     return {
