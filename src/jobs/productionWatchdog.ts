@@ -189,47 +189,105 @@ export class ProductionWatchdog {
   }
 
   private async checkAndHeal(): Promise<void> {
+    const now = new Date();
+    const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
     const supabase = getSupabaseClient();
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-    
+
     // Check if reply_v2_fetch has run in last 10 minutes
-    const { data: recentFetch } = await supabase
+    const { data: lastFetch } = await supabase
       .from('system_events')
       .select('created_at')
       .eq('event_type', 'reply_v2_fetch_job_started')
-      .gte('created_at', tenMinutesAgo.toISOString())
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
-    
-    if (!recentFetch) {
-      console.log('[WATCHDOG] 🚨 SELF-HEAL: No reply_v2_fetch_job_started in last 10 minutes - triggering manual run...');
-      
+
+    const fetchStalled = !lastFetch || new Date(lastFetch.created_at) < tenMinutesAgo;
+
+    if (fetchStalled) {
+      console.log('[WATCHDOG] 🔧 Fetch job stalled - attempting self-heal...');
+      this.consecutiveStalls++;
+
+      // Log self-heal attempt
       try {
-        // Log self-heal attempt
         await supabase.from('system_events').insert({
-          event_type: 'watchdog_self_heal_triggered',
+          event_type: 'watchdog_self_heal',
           severity: 'warning',
-          message: 'Watchdog triggered manual reply_v2_fetch run due to stall',
+          message: `Watchdog self-heal: triggering reply_v2_fetch (last run: ${lastFetch?.created_at || 'never'})`,
           event_data: {
-            last_fetch_started: this.lastFetchStarted?.toISOString() || 'never',
-            heal_time: new Date().toISOString(),
+            job_name: 'reply_v2_fetch',
+            last_fetch_started: lastFetch?.created_at || null,
+            consecutive_stalls: this.consecutiveStalls,
+            heal_triggered_at: now.toISOString(),
           },
-          created_at: new Date().toISOString(),
+          created_at: now.toISOString(),
         });
-        
-        // Trigger fetch job manually (non-blocking)
-        const { runFullCycle } = await import('./replySystemV2/orchestrator');
-        runFullCycle()
-          .then(() => {
-            console.log('[WATCHDOG] ✅ Self-heal: reply_v2_fetch completed');
-          })
-          .catch((error: any) => {
-            console.error('[WATCHDOG] ❌ Self-heal: reply_v2_fetch failed:', error.message);
-          });
-      } catch (error: any) {
-        console.error('[WATCHDOG] ❌ Self-heal failed:', error.message);
+      } catch (e) {
+        // Non-critical
       }
+
+      // Self-heal: trigger fetch job immediately (non-posting, safe to run)
+      try {
+        const { JobManager } = await import('./jobManager');
+        const jobManager = JobManager.getInstance();
+        console.log('[WATCHDOG] 🔧 Calling runJobNow("reply_v2_fetch")...');
+        await jobManager.runJobNow('reply_v2_fetch');
+        console.log('[WATCHDOG] ✅ Self-heal: fetch job triggered successfully');
+
+        // Log success
+        try {
+          await supabase.from('system_events').insert({
+            event_type: 'watchdog_self_heal_success',
+            severity: 'info',
+            message: 'Watchdog self-heal: reply_v2_fetch triggered successfully',
+            event_data: {
+              job_name: 'reply_v2_fetch',
+              healed_at: new Date().toISOString(),
+            },
+            created_at: new Date().toISOString(),
+          });
+        } catch (e) {
+          // Non-critical
+        }
+      } catch (healError: any) {
+        console.error('[WATCHDOG] ❌ Self-heal failed:', healError.message);
+        console.error('[WATCHDOG] Stack:', healError.stack);
+
+        // Log failure
+        try {
+          await supabase.from('system_events').insert({
+            event_type: 'watchdog_self_heal_failed',
+            severity: 'error',
+            message: `Watchdog self-heal failed: ${healError.message}`,
+            event_data: {
+              job_name: 'reply_v2_fetch',
+              error: healError.message,
+              stack: healError.stack?.substring(0, 500),
+              failed_at: now.toISOString(),
+            },
+            created_at: now.toISOString(),
+          });
+        } catch (e) {
+          // Non-critical
+        }
+
+        // Escalate if still stalled after heal attempt
+        if (this.consecutiveStalls >= 2) {
+          console.error('[WATCHDOG] 🚨 STALLED: No fetch runs for 20+ minutes - ESCALATING');
+          try {
+            await supabase.from('system_events').insert({
+              event_type: 'production_watchdog_escalation',
+              severity: 'critical',
+              message: `Jobs appear stalled: last_fetch=${lastFetch?.created_at || 'never'} consecutive_stalls=${this.consecutiveStalls}`,
+              created_at: new Date().toISOString(),
+            });
+          } catch (e) {
+            // Non-critical
+          }
+        }
+      }
+    } else {
+      this.consecutiveStalls = 0;
     }
   }
 }

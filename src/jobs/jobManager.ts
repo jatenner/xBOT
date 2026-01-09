@@ -69,6 +69,49 @@ export class JobManager {
     initialDelayMs: number
   ): void {
     let isRunning = false;
+    
+    // 🔍 TIMER TRACKING: Log timer scheduling to DB
+    const logTimerScheduled = async () => {
+      try {
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'timer_scheduled',
+          severity: 'info',
+          message: `Timer scheduled: ${name}`,
+          event_data: {
+            job_name: name,
+            initial_delay_ms: initialDelayMs,
+            interval_ms: intervalMs,
+            scheduled_at: new Date().toISOString(),
+          },
+          created_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        // Non-critical - continue
+      }
+    };
+    
+    const logTimerFired = async (phase: 'initial' | 'recurring') => {
+      try {
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'timer_fired',
+          severity: 'info',
+          message: `Timer fired: ${name} (${phase})`,
+          event_data: {
+            job_name: name,
+            phase,
+            fired_at: new Date().toISOString(),
+          },
+          created_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        // Non-critical - continue
+      }
+    };
+    
     const executeJob = async (phase: 'initial' | 'recurring') => {
       if (isRunning) {
         console.warn(`⏳ JOB_${name.toUpperCase()}: Previous run still executing, skipping ${phase} trigger`);
@@ -77,6 +120,7 @@ export class JobManager {
       }
       isRunning = true;
       try {
+        await logTimerFired(phase);
         await jobFn();
       } finally {
         isRunning = false;
@@ -84,6 +128,9 @@ export class JobManager {
     };
 
     log({ op: 'job_schedule', job: name, initial_delay_s: Math.round(initialDelayMs / 1000), interval_min: Math.round(intervalMs / 60000) });
+    
+    // Log timer scheduling to DB
+    logTimerScheduled().catch(() => {});
     
     // Schedule first run after initial delay
     console.log(`🕒 JOB_MANAGER: Scheduling ${name} - initial delay: ${Math.round(initialDelayMs / 1000)}s, interval: ${Math.round(intervalMs / 60000)}min`);
@@ -1939,7 +1986,7 @@ export class JobManager {
   /**
    * Force run a specific job (for testing/manual trigger)
    */
-  public async runJobNow(jobName: 'plan' | 'reply' | 'reply_posting' | 'posting' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn' | 'trainPredictor' | 'account_discovery' | 'metrics_scraper' | 'reply_metrics_scraper' | 'mega_viral_harvester' | 'peer_scraper'): Promise<void> {
+  public async runJobNow(jobName: 'plan' | 'reply' | 'reply_posting' | 'posting' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn' | 'trainPredictor' | 'account_discovery' | 'metrics_scraper' | 'reply_metrics_scraper' | 'mega_viral_harvester' | 'peer_scraper' | 'reply_v2_fetch'): Promise<void> {
     console.log(`🔄 JOB_MANAGER: Force running ${jobName} job...`);
     
     switch (jobName) {
@@ -2042,6 +2089,13 @@ export class JobManager {
         await this.safeExecute('peer_scraper', async () => {
           const { peerScraperJob } = await import('./peerScraperJob');
           await peerScraperJob();
+        });
+        break;
+      
+      case 'reply_v2_fetch':
+        await this.safeExecute('reply_v2_fetch', async () => {
+          const { runFullCycle } = await import('./replySystemV2/orchestrator');
+          await runFullCycle();
         });
         break;
     }

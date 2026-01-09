@@ -98,68 +98,6 @@ async function startWorker() {
     await jobManager.startJobs();
     
     console.log('[WORKER] ✅ Job Manager started successfully');
-    
-    // 🔥 GUARANTEE: Immediately run reply_v2_fetch once to ensure it works
-    // This is a non-posting dry run - only fetch/evaluate/queue, no posting
-    console.log('[WORKER] 🔥 GUARANTEE: Running initial reply_v2_fetch to verify it works...');
-    console.log('[WORKER] 🔥 This will fetch/evaluate/queue candidates (no posting)');
-    
-    // Run initial fetch in background (non-blocking) so worker startup completes
-    setImmediate(async () => {
-      try {
-        console.log('[WORKER] 🔥 Initial fetch: Importing orchestrator...');
-        const { runFullCycle } = await import('./replySystemV2/orchestrator');
-        console.log('[WORKER] 🔥 Initial fetch: Orchestrator imported, calling runFullCycle...');
-        
-        const startTime = Date.now();
-        await runFullCycle();
-        const duration = Date.now() - startTime;
-        
-        console.log(`[WORKER] ✅ Initial reply_v2_fetch completed successfully (${duration}ms)`);
-        
-        // Log to system_events for proof
-        const supabase = getSupabaseClient();
-        const { error: logError } = await supabase.from('system_events').insert({
-          event_type: 'worker_initial_fetch_completed',
-          severity: 'info',
-          message: `Worker initial reply_v2_fetch completed successfully (${duration}ms)`,
-          event_data: {
-            worker_started_at: new Date().toISOString(),
-            git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || 'unknown',
-            duration_ms: duration,
-          },
-          created_at: new Date().toISOString(),
-        });
-        
-        if (logError) {
-          console.error('[WORKER] ⚠️ Failed to log initial fetch completion:', logError.message);
-        }
-      } catch (error: any) {
-        console.error('[WORKER] ❌ Initial reply_v2_fetch failed:', error.message);
-        console.error('[WORKER] Error type:', error.constructor.name);
-        console.error('[WORKER] Stack:', error.stack);
-        
-        // Log error to system_events
-        try {
-          const supabase = getSupabaseClient();
-          await supabase.from('system_events').insert({
-            event_type: 'worker_initial_fetch_failed',
-            severity: 'error',
-            message: `Worker initial reply_v2_fetch failed: ${error.message}`,
-            event_data: {
-              error: error.message,
-              error_type: error.constructor.name,
-              stack: error.stack?.substring(0, 1000),
-              git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || 'unknown',
-            },
-            created_at: new Date().toISOString(),
-          });
-        } catch (logError: any) {
-          console.error('[WORKER] ❌ Failed to log initial fetch error:', logError.message);
-        }
-      }
-    });
-    
     console.log('[WORKER] 🕒 Jobs are now running. Worker will stay alive to keep jobs active.');
     console.log('[WORKER] 📊 Watchdog will write reports every 5 minutes');
     
