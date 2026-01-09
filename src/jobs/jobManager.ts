@@ -355,26 +355,34 @@ export class JobManager {
       10 * MINUTE  // Start after 10 minutes
     );
 
-    // 📊 Reply System V2 - hourly summary report
+    // 📊 Reply System V2 - hourly summary report + control plane adjustment
     this.scheduleStaggeredJob(
       'reply_v2_hourly_summary',
       async () => {
         await this.safeExecute('reply_v2_hourly_summary', async () => {
           const { generateHourlySummary } = await import('./replySystemV2/summaryReporter');
           await generateHourlySummary();
+          
+          // Run hourly control plane adjustment
+          const { runHourlyControlPlane } = await import('./replySystemV2/controlPlaneAgent');
+          await runHourlyControlPlane();
         });
       },
       60 * MINUTE, // Every hour
       5 * MINUTE   // Start after 5 minutes
     );
 
-    // 📊 Reply System V2 - daily summary report
+    // 📊 Reply System V2 - daily summary report + control plane adjustment
     this.scheduleStaggeredJob(
       'reply_v2_daily_summary',
       async () => {
         await this.safeExecute('reply_v2_daily_summary', async () => {
           const { generateDailySummary } = await import('./replySystemV2/summaryReporter');
           await generateDailySummary();
+          
+          // Run daily control plane adjustment
+          const { runDailyControlPlane } = await import('./replySystemV2/controlPlaneAgent');
+          await runDailyControlPlane();
         });
       },
       24 * 60 * MINUTE, // Daily

@@ -55,7 +55,7 @@ export async function refreshCandidateQueue(): Promise<{
     .eq('passed_hard_filters', true)
     .gte('predicted_tier', 2) // Only tier 1-3 (exclude tier 4)
     .order('overall_score', { ascending: false })
-    .limit(QUEUE_SIZE * 2); // Get more than needed to account for duplicates
+    .limit(shortlistSize * 2); // Get more than needed to account for duplicates
   
   if (!topCandidates || topCandidates.length === 0) {
     console.log('[QUEUE_MANAGER] ⚠️ No candidates available for queue');
@@ -83,7 +83,7 @@ export async function refreshCandidateQueue(): Promise<{
     }
     
     // Skip if we have enough
-    if (queuedCount >= QUEUE_SIZE) {
+    if (queuedCount >= shortlistSize) {
       break;
     }
     
