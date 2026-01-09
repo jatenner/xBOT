@@ -1,7 +1,8 @@
 /**
  * 🏥 HEALTH SERVER
  * Minimal HTTP server for Railway healthchecks
- * Must not block job scheduling
+ * Must start IMMEDIATELY on boot BEFORE any DB calls
+ * Must not block startup (non-blocking)
  */
 
 import { createServer, Server } from 'http';
@@ -14,13 +15,18 @@ export function startHealthServer(): void {
     return;
   }
 
-  const port = process.env.PORT || 3000;
+  const port = parseInt(process.env.PORT || '3000', 10);
   const host = '0.0.0.0';
 
+  console.log(`[HEALTH] Starting health server on ${host}:${port}...`);
+
   healthServer = createServer((req, res) => {
-    // Only respond to healthcheck endpoints
-    if (req.url === '/' || req.url === '/health') {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
+    // Respond to healthcheck endpoints
+    if (req.url === '/' || req.url === '/health' || req.url === '/healthz') {
+      res.writeHead(200, { 
+        'Content-Type': 'text/plain',
+        'Cache-Control': 'no-cache'
+      });
       res.end('ok');
     } else {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
