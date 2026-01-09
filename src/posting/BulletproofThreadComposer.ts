@@ -123,6 +123,7 @@ export class BulletproofThreadComposer {
       
       return {
         success: false,
+        mode: 'composer',
         error: 'BLOCKED: No posting permit - thread posting requires permit_id',
       };
     }
@@ -149,6 +150,7 @@ export class BulletproofThreadComposer {
       
       return {
         success: false,
+        mode: 'composer',
         error: `BLOCKED: Permit not valid (${permitCheck.error})`,
       };
     }
@@ -568,7 +570,7 @@ export class BulletproofThreadComposer {
   /**
    * 🔥 FIXED: Use UnifiedBrowserPool (same as single posts - AUTHENTICATED!)
    */
-  private static async postWithContext(segments: string[], attempt: number, decisionId?: string | null): Promise<ThreadPostResult> {
+  private static async postWithContext(segments: string[], attempt: number, decisionId?: string | null, permit_id?: string): Promise<ThreadPostResult> {
     const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
     const pool = UnifiedBrowserPool.getInstance();
     const threadDecisionId = decisionId || 'unknown';
