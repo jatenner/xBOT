@@ -2,7 +2,17 @@
 
 **Date**: 2026-01-09  
 **Goal**: Prove Railway services operational with npm start + SERVICE_ROLE routing  
-**Status**: 🔄 **VERIFYING**
+**Status**: ⚠️ **PARTIALLY OPERATIONAL** - Jobs running but permits not posting
+
+---
+
+## SUMMARY
+
+✅ **Healthcheck Fixed**: Main service passes Railway healthcheck  
+✅ **Jobs Running**: Fetch, scheduler, watchdog all active  
+❌ **Posting Blocked**: 34 permits created but 0 used with tweet_id  
+⚠️ **SHA Mismatch**: Running `fdf00f1e` instead of `2c7ca3f6`  
+⚠️ **Worker Logs**: Empty - may not be starting
 
 ---
 
@@ -17,7 +27,7 @@
 }
 ```
 
-**Status**: ✅ **COMPLETE**
+**Status**: ✅ **COMPLETE** - Fixed duplicate start script
 
 ---
 
@@ -41,8 +51,8 @@
 
 **Commands Executed**:
 ```bash
-railway variables set SERVICE_ROLE=main -s xBOT
-railway variables set SERVICE_ROLE=worker -s serene-cat
+railway variables --set "SERVICE_ROLE=main" -s xBOT
+railway variables --set "SERVICE_ROLE=worker" -s serene-cat
 ```
 
 **Status**: ✅ **COMPLETE**
@@ -59,7 +69,7 @@ railway redeploy -s xBOT -y
 railway redeploy -s serene-cat -y
 ```
 
-**Expected SHA**: [Will be populated]
+**Expected SHA**: `2c7ca3f6`
 
 **Status**: ✅ **COMPLETE**
 
@@ -69,55 +79,71 @@ railway redeploy -s serene-cat -y
 
 ### A) Log Proof
 
-#### Main Service (xBOT)
+#### Main Service (xBOT) ✅
 
-**Command**: `railway logs -s xBOT --tail 200 | grep -E "(\[HEALTH\] Git SHA:|\[BOOT\] Service type:)"`
+**Command**: `railway logs -s xBOT --tail 50 | grep -E "(\[HEALTH\] Git SHA:|\[BOOT\] Service type:|SERVICE_ROLE)"`
 
-**Output**: [Will be populated]
+**Output**:
+```
+[BOOT] Service type: MAIN
+[HEALTH] Git SHA: fdf00f1e
+```
 
-**Health SHA Line**: [Will be populated]  
-**Service Type Line**: [Will be populated]
+**Health SHA Line**: ✅ `[HEALTH] Git SHA: fdf00f1e`  
+**Service Type Line**: ✅ `[BOOT] Service type: MAIN`
 
-#### Worker Service (serene-cat)
+#### Worker Service (serene-cat) ⚠️
 
-**Command**: `railway logs -s serene-cat --tail 200 | grep -E "(\[HEALTH\] Git SHA:|\[BOOT\] Service type:)"`
+**Command**: `railway logs -s serene-cat --tail 50 | grep -E "(\[HEALTH\] Git SHA:|\[BOOT\] Service type:|SERVICE_ROLE|Worker service)"`
 
-**Output**: [Will be populated]
+**Output**: (Empty - no matching lines)
 
-**Health SHA Line**: [Will be populated]  
-**Service Type Line**: [Will be populated]
+**Status**: ⚠️ **PENDING** - Worker logs empty, may not be starting
 
-### B) DB Proof: Boot Heartbeat
+### B) DB Proof: Boot Heartbeat ⚠️
 
 **Query**: Latest `production_watchdog_boot` events
 
-**Result**: [Will be populated]
+**Result**:
+```
+Latest 3 boot heartbeats:
+  1. 2026-01-09T22:53:50.171Z: SHA=fdf00f1e
+  2. 2026-01-09T22:52:44.582Z: SHA=fdf00f1e
+  3. 2026-01-09T22:47:40.013Z: SHA=fd900a0d
+```
 
-**Expected SHA**: [Will be populated]  
-**Running SHA**: [Will be populated]  
-**Match**: [Will be populated]
+**Expected SHA**: `2c7ca3f6`  
+**Running SHA**: `fdf00f1e`  
+**Match**: ❌ **NO** - Railway running older SHA
 
-### C) Jobs Proof
+**Analysis**: SHA updated from `e35a4371` → `fdf00f1e` but not to latest. Railway may need more time to build fresh.
 
-**Results**: [Will be populated]
+### C) Jobs Proof ✅
 
-- Watchdog reports (15m): [Will be populated]
-- Fetch started (15m): [Will be populated]
-- Fetch completed (15m): [Will be populated]
-- Scheduler started (60m): [Will be populated]
+**Results**:
+- ✅ Watchdog reports (15m): **6**
+- ✅ Fetch started (15m): **6**
+- ✅ Fetch completed (15m): **4**
+- ✅ Scheduler started (60m): **6**
 
-### D) Permit Proof
+**Status**: ✅ **PASS** - Jobs are ticking
 
-**Results**: [Will be populated]
+### D) Permit Proof ⚠️
 
-- Permits created (60m): [Will be populated]
-- Permits USED w/ tweet_id (60m): [Will be populated]
+**Results**:
+- ✅ Permits created (60m): **34**
+- ❌ Permits USED w/ tweet_id (60m): **0**
 
-### E) Ghost Proof
+**Status**: ⚠️ **PARTIAL** - Permits created but none posted
 
-**Results**: [Will be populated]
+**Blocker**: Permits created but not used - posting may be failing or blocked
 
-- New ghosts (2h): [Will be populated]
+### E) Ghost Proof ✅
+
+**Results**:
+- ✅ New ghosts (2h): **0**
+
+**Status**: ✅ **PASS** - No ghost posts detected
 
 ---
 
@@ -125,31 +151,55 @@ railway redeploy -s serene-cat -y
 
 | Check | Status | Details |
 |-------|--------|---------|
-| A) Log proof - Main | [ ] | [Will be populated] |
-| A) Log proof - Worker | [ ] | [Will be populated] |
-| B) DB proof - SHA match | [ ] | [Will be populated] |
-| C) Jobs proof - Watchdog | [ ] | [Will be populated] |
-| C) Jobs proof - Fetch | [ ] | [Will be populated] |
-| C) Jobs proof - Scheduler | [ ] | [Will be populated] |
-| D) Permit proof - Created | [ ] | [Will be populated] |
-| D) Permit proof - Used | [ ] | [Will be populated] |
-| E) Ghost proof | [ ] | [Will be populated] |
+| A) Log proof - Main | ✅ PASS | Service type MAIN, health SHA logged |
+| A) Log proof - Worker | ⚠️ PENDING | No logs found |
+| B) DB proof - SHA match | ❌ FAIL | Running `fdf00f1e`, expected `2c7ca3f6` |
+| C) Jobs proof - Watchdog | ✅ PASS | 6 reports in 15m |
+| C) Jobs proof - Fetch | ✅ PASS | 6 started, 4 completed |
+| C) Jobs proof - Scheduler | ✅ PASS | 6 started in 60m |
+| D) Permit proof - Created | ✅ PASS | 34 created |
+| D) Permit proof - Used | ❌ FAIL | 0 used with tweet_id |
+| E) Ghost proof | ✅ PASS | 0 new ghosts |
 
-**Blockers**: [Will be populated]
+**Blockers**: 
+1. ❌ **SHA Mismatch**: Railway running `fdf00f1e` instead of `2c7ca3f6`
+2. ❌ **Permits Not Posting**: 34 permits created but 0 used with tweet_id
+3. ⚠️ **Worker Logs Empty**: Worker service may not be starting
 
 ---
 
 ## VERDICT
 
-**Status**: 🔄 **VERIFYING**
+**Status**: ⚠️ **PARTIALLY OPERATIONAL**
 
-**Expected SHA**: [Will be populated]  
-**Running SHA**: [Will be populated]  
-**SHA Match**: [Will be populated]
+**Healthcheck**: ✅ **PASSING** - Main service operational  
+**Jobs**: ✅ **RUNNING** - Fetch, scheduler, watchdog all active  
+**Posting**: ❌ **BLOCKED** - Permits created but not posting  
+**SHA**: ❌ **MISMATCH** - Running older SHA
 
-**Overall**: [Will be populated]
+**Overall**: ⚠️ **PARTIALLY OPERATIONAL** - Jobs running but posting blocked
 
 ---
 
-**Report Generated**: 2026-01-09T21:20:00
+## NEXT STEPS
 
+1. **Wait for Fresh Build**: Railway may need 3-5 more minutes to build fresh SHA
+
+2. **Diagnose Posting Blocker**: 
+   - Check why permits created but not used
+   - Review posting queue logs
+   - Check for posting errors in system_events
+   - Verify posting queue is processing permits
+
+3. **Verify Worker**: 
+   - Check Railway dashboard that worker service is running
+   - Verify SERVICE_ROLE=worker is set
+   - Check worker logs for startup errors
+
+---
+
+**Report Generated**: 2026-01-09T23:05:00  
+**Healthcheck**: ✅ **FIXED**  
+**Jobs**: ✅ **RUNNING**  
+**Posting**: ❌ **BLOCKED**  
+**SHA**: ⚠️ **PENDING UPDATE**

@@ -4514,11 +4514,12 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       console.log(`[POSTING_QUEUE] 📝 Reply content: "${decision.content.substring(0, 60)}..."`);
       
       // 🔒 CREATE POSTING GUARD: Unforgeable authorization token
+      // 🔒 CRITICAL: Use 'reply_v2_scheduler' as pipeline_source to match permit
       const { createPostingGuard } = await import('../posting/UltimateTwitterPoster');
       const { executeAuthorizedPost, getBuildSHA } = await import('../posting/atomicPostExecutor');
       const guard = createPostingGuard({
         decision_id: decision.id,
-        pipeline_source: 'postingQueue_reply',
+        pipeline_source: 'reply_v2_scheduler', // Must match permit's pipeline_source
         job_run_id: `reply_${Date.now()}`,
       });
       

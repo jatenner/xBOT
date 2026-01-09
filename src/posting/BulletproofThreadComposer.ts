@@ -872,13 +872,12 @@ export class BulletproofThreadComposer {
   private static async postViaReplies(page: Page, segments: string[], pool: any, permit_id?: string): Promise<{ rootUrl: string; tweetIds: string[] }> {
     console.log('🔗 THREAD_REPLY_CHAIN: Starting reply chain fallback...');
     
-    // 🔒 SEV1 GHOST ERADICATION: Service identity check (WORKER ONLY)
-    const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
-    const role = process.env.ROLE || 'unknown';
-    const isWorker = serviceName.toLowerCase().includes('worker') || role.toLowerCase() === 'worker';
+    // 🔒 SERVICE_ROLE CHECK: Use SERVICE_ROLE env var (single source of truth)
+    const serviceRole = (process.env.SERVICE_ROLE || '').toLowerCase();
+    const isWorker = serviceRole === 'worker';
     
     if (!isWorker) {
-      const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. service=${serviceName} role=${role}`;
+      const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. SERVICE_ROLE=${process.env.SERVICE_ROLE || 'NOT SET'}`;
       console.error(errorMsg);
       
       const { getSupabaseClient } = await import('../db/index');
@@ -888,8 +887,8 @@ export class BulletproofThreadComposer {
         severity: 'critical',
         message: `Reply chain blocked: Not running on worker service`,
         event_data: {
-          service_name: serviceName,
-          role: role,
+          service_role: process.env.SERVICE_ROLE || 'NOT SET',
+          service_name: process.env.RAILWAY_SERVICE_NAME || 'unknown',
           git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
           reason: 'not_worker_service',
           stack_trace: new Error().stack?.substring(0, 1000),
@@ -897,7 +896,7 @@ export class BulletproofThreadComposer {
         created_at: new Date().toISOString(),
       });
       
-      throw new Error('BLOCKED: Posting only allowed from worker service');
+      throw new Error('BLOCKED: Posting only allowed from worker service (SERVICE_ROLE=worker)');
     }
     
     // 🔒 PERMIT CHECK: Reply chain fallback must have permit

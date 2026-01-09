@@ -843,12 +843,12 @@ export class UltimateTwitterPoster {
     }
     
     // 🔒 SEV1 GHOST ERADICATION: Service identity check (WORKER ONLY)
-    const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
-    const role = process.env.ROLE || 'unknown';
-    const isWorker = serviceName.toLowerCase().includes('worker') || role.toLowerCase() === 'worker';
+    // 🔒 SERVICE_ROLE CHECK: Use SERVICE_ROLE env var (single source of truth)
+    const serviceRole = (process.env.SERVICE_ROLE || '').toLowerCase();
+    const isWorker = serviceRole === 'worker';
     
     if (!isWorker) {
-      const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. service=${serviceName} role=${role}`;
+      const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. SERVICE_ROLE=${process.env.SERVICE_ROLE || 'NOT SET'}`;
       console.error(errorMsg);
       console.error(`[SEV1_GHOST_BLOCK] Stack: ${new Error().stack}`);
       
@@ -859,8 +859,8 @@ export class UltimateTwitterPoster {
         severity: 'critical',
         message: `Posting blocked: Not running on worker service`,
         event_data: {
-          service_name: serviceName,
-          role: role,
+          service_role: process.env.SERVICE_ROLE || 'NOT SET',
+          service_name: process.env.RAILWAY_SERVICE_NAME || 'unknown',
           decision_id: validGuard.decision_id,
           pipeline_source: validGuard.pipeline_source,
           git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
@@ -871,7 +871,7 @@ export class UltimateTwitterPoster {
         created_at: new Date().toISOString(),
       });
       
-      throw new Error('BLOCKED: Posting only allowed from worker service');
+      throw new Error('BLOCKED: Posting only allowed from worker service (SERVICE_ROLE=worker)');
     }
     
     // 🔒 SEV1 GHOST ERADICATION: Pipeline source must be reply_v2_scheduler
@@ -1930,13 +1930,12 @@ export class UltimateTwitterPoster {
 
         await this.page.waitForTimeout(400);
 
-        // 🔒 SEV1 GHOST ERADICATION: Service identity check (WORKER ONLY)
-        const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
-        const role = process.env.ROLE || 'unknown';
-        const isWorker = serviceName.toLowerCase().includes('worker') || role.toLowerCase() === 'worker';
+        // 🔒 SERVICE_ROLE CHECK: Use SERVICE_ROLE env var (single source of truth)
+        const serviceRole = (process.env.SERVICE_ROLE || '').toLowerCase();
+        const isWorker = serviceRole === 'worker';
         
         if (!isWorker) {
-          const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. service=${serviceName} role=${role}`;
+          const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. SERVICE_ROLE=${process.env.SERVICE_ROLE || 'NOT SET'}`;
           console.error(errorMsg);
           console.error(`[SEV1_GHOST_BLOCK] Stack: ${new Error().stack}`);
           
@@ -1947,8 +1946,8 @@ export class UltimateTwitterPoster {
             severity: 'critical',
             message: `Posting blocked: Not running on worker service`,
             event_data: {
-              service_name: serviceName,
-              role: role,
+              service_role: process.env.SERVICE_ROLE || 'NOT SET',
+              service_name: process.env.RAILWAY_SERVICE_NAME || 'unknown',
               decision_id: validGuard.decision_id,
               pipeline_source: validGuard.pipeline_source,
               git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
@@ -1959,7 +1958,7 @@ export class UltimateTwitterPoster {
             created_at: new Date().toISOString(),
           });
           
-          throw new Error('BLOCKED: Posting only allowed from worker service');
+          throw new Error('BLOCKED: Posting only allowed from worker service (SERVICE_ROLE=worker)');
         }
         
         // 🔒 SEV1 GHOST ERADICATION: Pipeline source must be reply_v2_scheduler
