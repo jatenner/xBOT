@@ -379,11 +379,13 @@ export class JobManager {
       0 * MINUTE   // 🔥 START IMMEDIATELY on deploy (was 5min - too slow!)
     );
 
-    // 👻 Ghost reconciliation - every 15 minutes until stable, then hourly
+    // 👻 Ghost reconciliation - every 15 minutes (per mandate: until stable, then hourly)
     this.scheduleStaggeredJob(
       'ghost_recon',
       async () => {
         await this.safeExecute('ghost_recon', async () => {
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
           const { runGhostReconciliation } = await import('./ghostReconciliationJob');
           const result = await runGhostReconciliation();
           console.log(`[GHOST_RECON] ✅ Completed: checked=${result.checked} ghosts=${result.ghosts_found} inserted=${result.ghosts_inserted}`);
@@ -403,6 +405,19 @@ export class JobManager {
       },
       15 * MINUTE, // Every 15 minutes (per mandate: until stable, then hourly - but keep 15min for safety)
       5 * MINUTE   // Start after 5 minutes (let system stabilize)
+    );
+    
+    // 📊 Production proof rollup - every 10 minutes (dashboard)
+    this.scheduleStaggeredJob(
+      'production_proof_rollup',
+      async () => {
+        await this.safeExecute('production_proof_rollup', async () => {
+          const { runProductionProofRollup } = await import('./replySystemV2/productionProofRollup');
+          await runProductionProofRollup();
+        });
+      },
+      10 * MINUTE, // Every 10 minutes
+      1 * MINUTE   // Start after 1 minute
     );
 
     // 🎼 Reply System V2 - fetch/evaluate/queue every 5 minutes
