@@ -81,16 +81,23 @@ export class ProductionWatchdog {
     };
 
     try {
-      await supabase.from('system_events').insert({
+      const { error } = await supabase.from('system_events').insert({
         event_type: 'production_watchdog_boot',
         severity: 'info',
         message: `Watchdog boot: jobs_enabled=${jobsEnabled} git_sha=${gitSha.substring(0, 8)} env=${railwayEnv}`,
         event_data: bootState,
         created_at: now.toISOString(),
       });
-      console.log(`[WATCHDOG] ✅ Boot heartbeat written: jobs_enabled=${jobsEnabled} git=${gitSha.substring(0, 8)}`);
+      
+      if (error) {
+        console.error('[WATCHDOG] ❌ Failed to write boot heartbeat:', error.message);
+        console.error('[WATCHDOG] Error details:', JSON.stringify(error));
+      } else {
+        console.log(`[WATCHDOG] ✅ Boot heartbeat written: jobs_enabled=${jobsEnabled} git=${gitSha.substring(0, 8)}`);
+      }
     } catch (error: any) {
-      console.error('[WATCHDOG] ❌ Failed to write boot heartbeat:', error.message);
+      console.error('[WATCHDOG] ❌ Exception writing boot heartbeat:', error.message);
+      console.error('[WATCHDOG] Stack:', error.stack);
     }
   }
 
