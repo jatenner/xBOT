@@ -656,7 +656,7 @@ export class BulletproofThreadComposer {
             // FALLBACK: Try reply chain if native composer fails
             try {
               console.log('⚠️ Native composer failed, trying reply chain as fallback...');
-              const replyResult = await this.postViaReplies(page, segments, pool);
+              const replyResult = await this.postViaReplies(page, segments, pool, permit_id);
               console.log('THREAD_PUBLISH_OK mode=reply_chain');
               
               // ✅ IMPORTANT: Release page back to pool
@@ -865,9 +865,56 @@ export class BulletproofThreadComposer {
 
   /**
    * 🔗 POST via reply chain (fallback)
+   * ⚠️ WARNING: This method posts replies directly - must only be used for thread continuation, not initial replies to external tweets
    */
-  private static async postViaReplies(page: Page, segments: string[], pool: any): Promise<{ rootUrl: string; tweetIds: string[] }> {
+  private static async postViaReplies(page: Page, segments: string[], pool: any, permit_id?: string): Promise<{ rootUrl: string; tweetIds: string[] }> {
     console.log('🔗 THREAD_REPLY_CHAIN: Starting reply chain fallback...');
+    
+    // 🔒 PERMIT CHECK: Reply chain fallback must have permit
+    if (!permit_id) {
+      const errorMsg = `[PERMIT_CHOKE] ❌ BLOCKED: Reply chain fallback requires permit_id`;
+      console.error(errorMsg);
+      
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'reply_chain_fallback_blocked_no_permit',
+        severity: 'critical',
+        message: `Reply chain fallback blocked: No permit_id`,
+        event_data: {
+          segments_count: segments.length,
+          stack_trace: new Error().stack?.substring(0, 1000),
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      throw new Error('BLOCKED: Reply chain fallback requires permit_id');
+    }
+    
+    // Verify permit is APPROVED
+    const { verifyPostingPermit } = await import('./postingPermit');
+    const permitCheck = await verifyPostingPermit(permit_id);
+    if (!permitCheck.valid) {
+      const errorMsg = `[PERMIT_CHOKE] ❌ BLOCKED: Permit not valid for reply chain: ${permitCheck.error}`;
+      console.error(errorMsg);
+      
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'reply_chain_fallback_blocked_invalid_permit',
+        severity: 'critical',
+        message: `Reply chain fallback blocked: Invalid permit`,
+        event_data: {
+          permit_id,
+          permit_error: permitCheck.error,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      throw new Error(`BLOCKED: Permit not valid (${permitCheck.error})`);
+    }
+    
+    console.log(`[PERMIT_CHOKE] ✅ Reply chain permit verified: ${permit_id}`);
     
     const tweetIds: string[] = [];
     let currentTweetUrl: string; // Track the last posted tweet URL
