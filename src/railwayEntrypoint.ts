@@ -384,9 +384,9 @@ setInterval(() => {
     
     // Non-blocking alert (don't fail if alert function doesn't exist)
     try {
-      const { alertOnStateTransition } = await import('./monitoring/discordAlerts');
-      if (typeof alertOnStateTransition === 'function') {
-        alertOnStateTransition(bootState.degraded, lastDegradedState, message, bootState.degraded).catch(() => {});
+      const { checkAndAlertOnStateChange } = await import('./monitoring/discordAlerts');
+      if (typeof checkAndAlertOnStateChange === 'function') {
+        await checkAndAlertOnStateChange(bootState.degraded, message).catch(() => {});
       }
     } catch (e) {
       // Ignore alert errors - non-critical
