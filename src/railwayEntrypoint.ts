@@ -294,34 +294,49 @@ setImmediate(async () => {
     console.log('[BOOT] jobs_start attempt');
     console.log(`[BOOT] JOBS_AUTOSTART env var: "${process.env.JOBS_AUTOSTART}" (type: ${typeof process.env.JOBS_AUTOSTART})`);
     console.log(`[BOOT] JOBS_AUTOSTART === 'true': ${process.env.JOBS_AUTOSTART === 'true'}`);
-    try {
-      // Import and start the job manager directly
-      const { JobManager } = await import('./jobs/jobManager');
-      const jobManager = JobManager.getInstance();
-      
-      console.log('[BOOT] JOB_MANAGER starting...');
-      await jobManager.startJobs();
-      
-      console.log('[BOOT] jobs_started ok');
-      bootState.jobsOk = true;
-      
-      // Start production watchdog
-      try {
-        const { getWatchdog } = await import('./jobs/productionWatchdog');
-        const watchdog = getWatchdog();
-        await watchdog.start();
-        console.log('[BOOT] watchdog_started ok');
-      } catch (watchdogError: any) {
-        console.warn('[BOOT] watchdog_start failed:', watchdogError.message);
-      }
-      
-    } catch (jobError: any) {
-      console.error('[BOOT] ⚠️ jobs_start error:', jobError.message);
-      console.error('[BOOT] stack:', jobError.stack);
-      console.error('[BOOT] continuing with server only (no jobs)...');
-      bootState.degraded = true;
-      bootState.lastError = `Job manager failed: ${jobError.message}`;
+    
+    // 🔒 SEV1 GHOST ERADICATION: Disable jobs on main service (worker-only)
+    const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
+    const role = process.env.ROLE || 'unknown';
+    const isWorker = serviceName.toLowerCase().includes('worker') || role.toLowerCase() === 'worker';
+    
+    if (!isWorker) {
+      console.warn('[BOOT] ⚠️ NOT WORKER SERVICE - Jobs disabled to prevent ghost posting');
+      console.warn(`[BOOT] Service: ${serviceName}, Role: ${role}`);
+      console.warn('[BOOT] Only worker service should run jobs. Set JOBS_AUTOSTART=false on main service.');
       bootState.jobsOk = false;
+      bootState.degraded = true;
+      bootState.lastError = 'Jobs disabled on main service (worker-only)';
+    } else {
+      try {
+        // Import and start the job manager directly
+        const { JobManager } = await import('./jobs/jobManager');
+        const jobManager = JobManager.getInstance();
+        
+        console.log('[BOOT] JOB_MANAGER starting...');
+        await jobManager.startJobs();
+      
+        console.log('[BOOT] jobs_started ok');
+        bootState.jobsOk = true;
+        
+        // Start production watchdog
+        try {
+          const { getWatchdog } = await import('./jobs/productionWatchdog');
+          const watchdog = getWatchdog();
+          await watchdog.start();
+          console.log('[BOOT] watchdog_started ok');
+        } catch (watchdogError: any) {
+          console.warn('[BOOT] watchdog_start failed:', watchdogError.message);
+        }
+        
+      } catch (jobError: any) {
+        console.error('[BOOT] ⚠️ jobs_start error:', jobError.message);
+        console.error('[BOOT] stack:', jobError.stack);
+        console.error('[BOOT] continuing with server only (no jobs)...');
+        bootState.degraded = true;
+        bootState.lastError = `Job manager failed: ${jobError.message}`;
+        bootState.jobsOk = false;
+      }
     }
     
     // Step 6: Mark as ready
