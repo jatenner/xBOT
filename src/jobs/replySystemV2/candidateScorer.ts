@@ -59,13 +59,12 @@ export async function scoreCandidate(
 ): Promise<CandidateScore> {
   console.log(`[SCORER] 🎯 Scoring candidate: ${tweetId} by @${authorUsername}`);
   
-  // Hard filters
+  // Hard filters (SAFETY RAILS: Never relaxed)
   const isRoot = await checkIsRootTweet(tweetId);
   const isParody = checkIsParody(content, authorUsername);
-  const topicRelevance = calculateTopicRelevance(content);
   const spamScore = calculateSpamScore(content);
   
-  // Hard filter check
+  // Hard filter check (absolute filters)
   let passedHardFilters = true;
   const filterReasons: string[] = [];
   
@@ -79,18 +78,90 @@ export async function scoreCandidate(
     filterReasons.push('parody_account');
   }
   
-  // Check for insufficient text (separate from topic relevance)
-  if (!content || content.trim().length < 20) {
-    passedHardFilters = false;
-    filterReasons.push(`insufficient_text_${content?.trim().length || 0}`);
-  } else if (topicRelevance < TOPIC_RELEVANCE_THRESHOLD) {
-    passedHardFilters = false;
-    filterReasons.push(`low_topic_relevance_${topicRelevance.toFixed(2)}`);
-  }
-  
   if (spamScore > SPAM_THRESHOLD) {
     passedHardFilters = false;
     filterReasons.push(`high_spam_score_${spamScore.toFixed(2)}`);
+  }
+  
+  // Check for insufficient text
+  if (!content || content.trim().length < 20) {
+    passedHardFilters = false;
+    filterReasons.push(`insufficient_text_${content?.trim().length || 0}`);
+  }
+  
+  // If hard filters fail, return early (before judge call to save cost)
+  if (!passedHardFilters) {
+    return {
+      is_root_tweet: isRoot,
+      is_parody: isParody,
+      topic_relevance_score: 0,
+      spam_score: spamScore,
+      velocity_score: 0,
+      recency_score: 0,
+      author_signal_score: 0,
+      overall_score: 0,
+      passed_hard_filters: false,
+      filter_reason: filterReasons.join(', '),
+      predicted_24h_views: 0,
+      predicted_tier: 4,
+    };
+  }
+  
+  // AI JUDGE: Get intelligent suitability judgment (only if hard filters pass)
+  let judgeDecision: JudgeDecision | null = null;
+  try {
+    judgeDecision = await judgeTargetSuitability(
+      tweetId,
+      authorUsername,
+      content,
+      likeCount,
+      replyCount,
+      retweetCount,
+      postedAt,
+      { candidate_id: tweetId, feed_run_id: feedRunId }
+    );
+    console.log(`[SCORER] ✅ Judge decision for ${tweetId}: ${judgeDecision.decision} (relevance=${judgeDecision.relevance.toFixed(2)}, replyability=${judgeDecision.replyability.toFixed(2)})`);
+  } catch (error: any) {
+    console.warn(`[SCORER] ⚠️ Judge failed for ${tweetId}: ${error.message}, falling back to heuristic`);
+  }
+  
+  // Use judge relevance if available, otherwise fall back to heuristic
+  const topicRelevance = judgeDecision?.relevance ?? calculateTopicRelevance(content);
+  
+  // Get current control plane state for adaptive threshold
+  const supabase = getSupabaseClient();
+  const { data: controlState } = await supabase
+    .from('control_plane_state')
+    .select('acceptance_threshold')
+    .is('expires_at', null)
+    .order('effective_at', { ascending: false })
+    .limit(1)
+    .single();
+  
+  const adaptiveThreshold = controlState?.acceptance_threshold || TOPIC_RELEVANCE_THRESHOLD;
+  console.log(`[SCORER] 📊 Using adaptive threshold: ${adaptiveThreshold.toFixed(2)} (from control plane, default=${TOPIC_RELEVANCE_THRESHOLD})`);
+  
+  // Apply judge decision or adaptive threshold
+  if (judgeDecision) {
+    // Use judge decision
+    if (judgeDecision.decision === 'reject') {
+      passedHardFilters = false;
+      filterReasons.push(`judge_reject: ${judgeDecision.reasons}`);
+    } else if (judgeDecision.decision === 'explore') {
+      // Exploration candidates pass but with lower tier (handled below)
+      // Check if relevance still meets minimum threshold (70% of adaptive threshold)
+      if (judgeDecision.relevance < adaptiveThreshold * 0.7) {
+        passedHardFilters = false;
+        filterReasons.push(`judge_explore_relevance_too_low_${judgeDecision.relevance.toFixed(2)}_min_${(adaptiveThreshold * 0.7).toFixed(2)}`);
+      }
+    }
+    // 'accept' => continue
+  } else {
+    // Fallback to adaptive threshold (heuristic topic relevance)
+    if (topicRelevance < adaptiveThreshold) {
+      passedHardFilters = false;
+      filterReasons.push(`low_topic_relevance_${topicRelevance.toFixed(2)}_threshold_${adaptiveThreshold.toFixed(2)}`);
+    }
   }
   
   if (!passedHardFilters) {
@@ -107,6 +178,7 @@ export async function scoreCandidate(
       filter_reason: filterReasons.join(', '),
       predicted_24h_views: 0,
       predicted_tier: 4,
+      judge_decision: judgeDecision || undefined,
     };
   }
   
