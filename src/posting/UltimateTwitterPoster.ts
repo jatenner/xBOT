@@ -1925,6 +1925,28 @@ export class UltimateTwitterPoster {
         
         console.log(`[PERMIT_CHOKE] ✅ Permit verified: ${permit_id} (status: ${permitCheck.permit?.status})`);
         
+        // 🔒 LOG POST ATTEMPT: Log every attempt to click Post/Reply
+        try {
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          await supabase.from('system_events').insert({
+            event_type: 'post_reply_click_attempt',
+            severity: 'info',
+            message: `Attempting to click Post/Reply button`,
+            event_data: {
+              decision_id: validGuard.decision_id,
+              permit_id: permit_id,
+              target_tweet_id: replyToTweetId,
+              pipeline_source: validGuard.pipeline_source,
+              git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
+              run_id: validGuard.job_run_id,
+            },
+            created_at: new Date().toISOString(),
+          }).catch(() => {}); // Non-critical logging
+        } catch (logError) {
+          // Non-critical - continue even if logging fails
+        }
+        
         // Find and click post button
         const postButtonSelectors = [
           '[data-testid="tweetButton"]',
