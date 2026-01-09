@@ -24,11 +24,29 @@ export interface SchedulerResult {
  * Attempt to post ONE reply from queue
  */
 export async function attemptScheduledReply(): Promise<SchedulerResult> {
-  console.log('[SCHEDULER] ⏰ Attempting scheduled reply...');
-  
   const supabase = getSupabaseClient();
   const schedulerRunId = `scheduler_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const slotTime = new Date();
+  
+  // 🔒 CRITICAL: Log job start IMMEDIATELY (before any work)
+  try {
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_scheduler_job_started',
+      severity: 'info',
+      message: `Reply V2 scheduler job started: scheduler_run_id=${schedulerRunId}`,
+      event_data: {
+        scheduler_run_id: schedulerRunId,
+        slot_time: slotTime.toISOString(),
+      },
+      created_at: new Date().toISOString(),
+    });
+    console.log(`[SCHEDULER] ✅ Job start logged: ${schedulerRunId}`);
+  } catch (logError: any) {
+    console.error(`[SCHEDULER] ❌ Failed to log job start: ${logError.message}`);
+    // Continue anyway - logging failure shouldn't block scheduler
+  }
+  
+  console.log('[SCHEDULER] ⏰ Attempting scheduled reply...');
   
   // Round to nearest 15-min slot
   const slotMinutes = Math.floor(slotTime.getMinutes() / 15) * 15;
@@ -201,7 +219,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         content: replyContent,
         target_tweet_id: candidate.candidate_tweet_id,
         scheduled_at: new Date().toISOString(),
-        pipeline_source: 'tiered_scheduler',
+        pipeline_source: 'reply_v2_scheduler',
         build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
         quality_score: candidate.overall_score / 100,
         candidate_evaluation_id: candidate.evaluation_id, // 🆔 Traceability
@@ -218,12 +236,33 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         status: 'queued',
         content: replyContent,
         target_tweet_id: candidate.candidate_tweet_id,
-        pipeline_source: 'tiered_scheduler',
+        pipeline_source: 'reply_v2_scheduler',
         build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
         candidate_evaluation_id: candidate.evaluation_id, // 🆔 Traceability
         queue_id: queueId, // 🆔 Traceability
         scheduler_run_id: schedulerRunId, // 🆔 Traceability
       });
+    
+    // 🎫 CREATE POSTING PERMIT IMMEDIATELY (before queuing)
+    const { createPostingPermit } = await import('../../posting/postingPermit');
+    console.log(`[SCHEDULER] 🎫 Creating posting permit for reply...`);
+    const permitResult = await createPostingPermit({
+      decision_id: decisionId,
+      decision_type: 'reply',
+      pipeline_source: 'reply_v2_scheduler',
+      content_preview: replyContent.substring(0, 200),
+      target_tweet_id: candidate.candidate_tweet_id,
+      run_id: schedulerRunId,
+    });
+    
+    if (!permitResult.success) {
+      const errorMsg = `[SCHEDULER] ❌ BLOCKED: Failed to create posting permit: ${permitResult.error}`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    const permit_id = permitResult.permit_id;
+    console.log(`[SCHEDULER] ✅ Permit created: ${permit_id}`);
     
     const replyDecisionId = decisionId;
     

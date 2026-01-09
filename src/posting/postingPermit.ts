@@ -134,6 +134,50 @@ export async function approvePostingPermit(permit_id: string): Promise<{ success
       return { success: false, error: 'Decision not found' };
     }
     
+    // 🔒 PIPELINE SOURCE ALLOWLIST: For replies, only reply_v2_scheduler allowed
+    if (permit.decision_type === 'reply') {
+      const allowedSources = ['reply_v2_scheduler'];
+      const permitSource = permit.pipeline_source || decision?.pipeline_source;
+      
+      if (!permitSource || !allowedSources.includes(permitSource)) {
+        const reason = `invalid_pipeline_source: source=${permitSource} allowed=${allowedSources.join(',')}`;
+        
+        await supabase
+          .from('post_attempts')
+          .update({ 
+            status: 'REJECTED', 
+            error_message: reason,
+            reason_code: 'invalid_pipeline_source',
+            pipeline_source: permitSource || 'unknown' // Store for audit
+          })
+          .eq('permit_id', permit_id);
+        
+        await supabase.from('system_events').insert({
+          event_type: 'permit_rejected_invalid_pipeline_source',
+          severity: 'critical',
+          message: `Permit rejected: Invalid pipeline_source for reply`,
+          event_data: {
+            permit_id,
+            decision_id: permit.decision_id,
+            pipeline_source: permitSource || 'unknown',
+            allowed_sources: allowedSources,
+            reason_code: 'invalid_pipeline_source',
+          },
+          created_at: new Date().toISOString(),
+        });
+        
+        return { success: false, error: reason };
+      }
+      
+      // Store pipeline_source on permit if not present
+      if (!permit.pipeline_source && permitSource) {
+        await supabase
+          .from('post_attempts')
+          .update({ pipeline_source: permitSource })
+          .eq('permit_id', permit_id);
+      }
+    }
+    
     // 🔒 ROOT-ONLY ENFORCEMENT: For replies, target MUST be root
     if (permit.decision_type === 'reply' && permit.target_tweet_id) {
       const targetTweetId = permit.target_tweet_id;
