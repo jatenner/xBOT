@@ -209,27 +209,27 @@ async function runProbeOnBoot(): Promise<void> {
 }
 
 async function startWorker() {
+  // 🏥 STEP 0: Start health server IMMEDIATELY (before anything else)
+  startHealthServer();
+  
   console.log('========================================');
   console.log('RAILWAY WORKER: Starting Job Manager');
   console.log('========================================\n');
   
   // Boot logging: Railway environment info
-  console.log('RAILWAY BOOT INFO:');
-  console.log(`RAILWAY_GIT_COMMIT_SHA: ${process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT SET'}`);
-  console.log(`RAILWAY_ENVIRONMENT_NAME: ${process.env.RAILWAY_ENVIRONMENT_NAME || 'NOT SET'}`);
-  console.log(`NODE_ENV: ${process.env.NODE_ENV || 'NOT SET'}`);
-  console.log(`PORT: ${process.env.PORT || 'NOT SET (defaulting to 3000)'}`);
-  console.log(`JOBS_AUTOSTART env var: "${process.env.JOBS_AUTOSTART || 'NOT SET'}"`);
+  console.log('[BOOT] RAILWAY_GIT_COMMIT_SHA:', process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT SET');
+  console.log('[BOOT] RAILWAY_ENVIRONMENT_NAME:', process.env.RAILWAY_ENVIRONMENT_NAME || 'NOT SET');
+  console.log('[BOOT] NODE_ENV:', process.env.NODE_ENV || 'NOT SET');
+  console.log('[BOOT] PORT:', process.env.PORT || 'NOT SET (defaulting to 3000)');
+  console.log('[BOOT] JOBS_AUTOSTART env var:', process.env.JOBS_AUTOSTART || 'NOT SET');
   const computedJobsAutostart = process.env.JOBS_AUTOSTART === 'false' 
     ? false 
     : (process.env.JOBS_AUTOSTART === 'true' || process.env.RAILWAY_ENVIRONMENT_NAME === 'production');
-  console.log(`Computed JOBS_AUTOSTART: ${computedJobsAutostart}`);
-  console.log(`RUN_REPLY_V2_PROBE_ON_BOOT: ${process.env.RUN_REPLY_V2_PROBE_ON_BOOT || 'NOT SET'}`);
-  console.log(`MODE: ${process.env.MODE || 'NOT SET'}`);
-  console.log(`DATABASE_URL: ${process.env.DATABASE_URL ? 'SET (' + process.env.DATABASE_URL.substring(0, 20) + '...)' : 'NOT SET'}\n`);
-  
-  // Step 0: Start health server (must be first for Railway healthcheck)
-  startHealthServer();
+  console.log('[BOOT] Computed JOBS_AUTOSTART:', computedJobsAutostart);
+  console.log('[BOOT] RUN_REPLY_V2_PROBE_ON_BOOT:', process.env.RUN_REPLY_V2_PROBE_ON_BOOT || 'NOT SET');
+  console.log('[BOOT] MODE:', process.env.MODE || 'NOT SET');
+  console.log('[BOOT] DATABASE_URL:', process.env.DATABASE_URL ? 'SET (' + process.env.DATABASE_URL.substring(0, 20) + '...)' : 'NOT SET');
+  console.log('');
   
   // Step 1: Probe database connectivity (fail fast if unreachable)
   await probeDatabase();

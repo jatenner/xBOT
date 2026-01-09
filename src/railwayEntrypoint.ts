@@ -4,7 +4,7 @@
 
 import express from 'express';
 import { getJobHeartbeats, getStalledJobs } from './jobs/jobHeartbeatRegistry';
-import { sendDiscordAlert, alertOnStateTransition } from './monitoring/discordAlerts';
+import { sendDiscordAlert } from './monitoring/discordAlerts';
 import { requireAdminToken, triggerPostingQueue, triggerReplyJob, triggerPlanJob, triggerHarvester } from './server/adminEndpoints';
 
 // Get build info from env or fallback
@@ -203,11 +203,18 @@ app.get('/ready', (req, res) => {
   });
 });
 
+// 🏥 Add /healthz endpoint for Railway healthcheck
+app.get('/healthz', (req, res) => {
+  res.status(200).send('ok');
+});
+
 // Start server immediately
 app.listen(PORT, HOST, () => {
+  console.log(`[HEALTH] ✅ Listening on ${HOST}:${PORT}`);
   console.log(`[BOOT] listening host=${HOST} port=${PORT}`);
   console.log(`[BOOT] buildSha=${buildSha} version=${version}`);
-  console.log('[BOOT] /status and /ready routes active');
+  console.log(`[BOOT] RAILWAY_GIT_COMMIT_SHA=${process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT SET'}`);
+  console.log('[BOOT] /status, /ready, and /healthz routes active');
 });
 
 // Background initialization (NON-BLOCKING)
