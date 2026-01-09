@@ -79,6 +79,7 @@ demo_*.js
 check_*.js
 *.test.js
 .env.backup
+.env.bak
 
 # Browser and session files
 browsers/

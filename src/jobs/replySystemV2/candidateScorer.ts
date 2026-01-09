@@ -110,6 +110,7 @@ export async function scoreCandidate(
   
   // AI JUDGE: Get intelligent suitability judgment (only if hard filters pass)
   let judgeDecision: JudgeDecision | null = null;
+  console.log(`[SCORER] 🎯 Calling AI judge for ${tweetId} (feedRunId: ${feedRunId || 'undefined'})`);
   try {
     judgeDecision = await judgeTargetSuitability(
       tweetId,
@@ -123,7 +124,20 @@ export async function scoreCandidate(
     );
     console.log(`[SCORER] ✅ Judge decision for ${tweetId}: ${judgeDecision.decision} (relevance=${judgeDecision.relevance.toFixed(2)}, replyability=${judgeDecision.replyability.toFixed(2)})`);
   } catch (error: any) {
-    console.warn(`[SCORER] ⚠️ Judge failed for ${tweetId}: ${error.message}, falling back to heuristic`);
+    console.error(`[SCORER] ❌ Judge failed for ${tweetId}: ${error.message}`, error.stack);
+    // Log to system_events for visibility
+    try {
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'judge_call_failed',
+        severity: 'warning',
+        message: `Judge failed for ${tweetId}: ${error.message}`,
+        event_data: { tweet_id: tweetId, error: error.message, stack: error.stack },
+        created_at: new Date().toISOString(),
+      });
+    } catch (logError) {
+      // Ignore logging errors
+    }
   }
   
   // Use judge relevance if available, otherwise fall back to heuristic
