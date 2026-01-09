@@ -40,67 +40,151 @@ async function safeEvaluate<T>(
 }
 
 /**
- * Fetch latest tweets from curated accounts
+ * Fetch latest tweets from curated accounts (BOUNDED: N accounts per run with cursor rotation)
  */
 export async function fetchCuratedAccountsFeed(): Promise<CuratedTweet[]> {
-  console.log('[CURATED_FEED] 📋 Fetching tweets from curated accounts...');
+  const startTime = Date.now();
+  const SOURCE_TIMEOUT_MS = 90 * 1000; // 90 seconds per source
+  const ACCOUNTS_PER_RUN = 5; // Hard cap: process only 5 accounts per run
+  
+  console.log(`[CURATED_FEED] 📋 Fetching tweets from curated accounts (bounded: ${ACCOUNTS_PER_RUN} accounts/run)...`);
   
   const supabase = getSupabaseClient();
+  const pool = UnifiedBrowserPool.getInstance();
+  const tweets: CuratedTweet[] = [];
   
-  // Get enabled curated accounts
-  const { data: accounts, error: accountsError } = await supabase
+  // 🔒 MANDATE 1: Get cursor and rotate
+  const { data: cursor } = await supabase
+    .from('feed_cursors')
+    .select('cursor_value, metadata')
+    .eq('feed_name', 'curated_accounts')
+    .single();
+  
+  const cursorIndex = parseInt(cursor?.cursor_value || '0', 10);
+  const accountsPerRun = cursor?.metadata?.accounts_per_run || ACCOUNTS_PER_RUN;
+  
+  console.log(`[CURATED_FEED] 📍 Cursor position: ${cursorIndex} (processing ${accountsPerRun} accounts)`);
+  
+  // Get all enabled accounts (ordered by signal_score)
+  const { data: allAccounts, error: accountsError } = await supabase
     .from('curated_accounts')
     .select('username, signal_score')
     .eq('enabled', true)
-    .order('signal_score', { ascending: false })
-    .limit(500); // Top 500 by signal score
+    .order('signal_score', { ascending: false });
   
-  if (accountsError || !accounts || accounts.length === 0) {
+  if (accountsError || !allAccounts || allAccounts.length === 0) {
     console.error(`[CURATED_FEED] ❌ No curated accounts found: ${accountsError?.message}`);
     return [];
   }
   
-  console.log(`[CURATED_FEED] ✅ Found ${accounts.length} curated accounts`);
+  // Get accounts for this run (rotate via cursor)
+  const accountsToFetch = allAccounts.slice(cursorIndex, cursorIndex + accountsPerRun);
+  const nextCursorIndex = (cursorIndex + accountsPerRun) % allAccounts.length;
   
-  const pool = UnifiedBrowserPool.getInstance();
-  const tweets: CuratedTweet[] = [];
+  console.log(`[CURATED_FEED] 📊 Processing accounts ${cursorIndex}-${cursorIndex + accountsPerRun - 1} of ${allAccounts.length} total`);
   
-  // Fetch tweets from each account (in batches to avoid rate limits)
-  const batchSize = 5; // Reduced batch size to avoid browser crashes
-  const MAX_ACCOUNTS_TO_FETCH = 20; // Limit to top 20 accounts initially to avoid browser overload
+  // 🔒 MANDATE 2: Per-source timebox (90s)
+  const sourceTimeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`Curated feed timeout after ${SOURCE_TIMEOUT_MS / 1000}s`));
+    }, SOURCE_TIMEOUT_MS);
+  });
   
-  const accountsToFetch = accounts.slice(0, MAX_ACCOUNTS_TO_FETCH);
-  console.log(`[CURATED_FEED] 📊 Fetching from ${accountsToFetch.length} accounts (limited from ${accounts.length} total)`);
-  
-  for (let i = 0; i < accountsToFetch.length; i += batchSize) {
-    const batch = accountsToFetch.slice(i, i + batchSize);
+  const fetchPromise = (async () => {
+    let browserAcquireMs = 0;
+    let navigationMs = 0;
+    let extractionMs = 0;
+    let dbWriteMs = 0;
     
-    // Process sequentially within batch to avoid browser overload
-    for (const account of batch) {
+    // Process accounts sequentially (no batching to stay within timebox)
+    for (const account of accountsToFetch) {
+      const accountStartTime = Date.now();
+      
       try {
+        // Browser acquire timing
+        const browserStart = Date.now();
         const accountTweets = await fetchAccountTweets(account.username, pool);
+        browserAcquireMs += Date.now() - browserStart;
+        
         tweets.push(...accountTweets);
         
-        // Update last_fetched_at
+        // DB write timing
+        const dbStart = Date.now();
         await supabase
           .from('curated_accounts')
           .update({ last_tweet_fetched_at: new Date().toISOString() })
           .eq('username', account.username);
+        dbWriteMs += Date.now() - dbStart;
+        
+        const accountDuration = Date.now() - accountStartTime;
+        console.log(`[CURATED_FEED] ✅ @${account.username}: ${accountTweets.length} tweets (${accountDuration}ms)`);
+        
       } catch (error: any) {
         console.error(`[CURATED_FEED] ⚠️ Failed to fetch ${account.username}: ${error.message}`);
         // Continue with next account
       }
     }
     
-    // Rate limit: wait between batches
-    if (i + batchSize < accountsToFetch.length) {
-      await new Promise(resolve => setTimeout(resolve, 3000)); // Increased wait time
-    }
+    // Update cursor for next run
+    await supabase
+      .from('feed_cursors')
+      .upsert({
+        feed_name: 'curated_accounts',
+        cursor_value: nextCursorIndex.toString(),
+        last_updated_at: new Date().toISOString(),
+        metadata: { accounts_per_run: accountsPerRun },
+      });
+    
+    return { tweets, timings: { browserAcquireMs, navigationMs, extractionMs, dbWriteMs } };
+  })();
+  
+  try {
+    const result = await Promise.race([fetchPromise, sourceTimeoutPromise]);
+    const duration = Date.now() - startTime;
+    
+    // 🔒 MANDATE 4: Log diagnostics
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_feed_source_completed',
+      severity: 'info',
+      message: `Curated feed completed: ${result.tweets.length} tweets in ${duration}ms`,
+      event_data: {
+        feed_name: 'curated_accounts',
+        tweets_fetched: result.tweets.length,
+        accounts_processed: accountsToFetch.length,
+        cursor_index: cursorIndex,
+        next_cursor_index: nextCursorIndex,
+        duration_ms: duration,
+        timings: result.timings,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    console.log(`[CURATED_FEED] ✅ Fetched ${result.tweets.length} tweets from ${accountsToFetch.length} accounts (${duration}ms)`);
+    return result.tweets;
+    
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    console.error(`[CURATED_FEED] ⏱️ Timeout or error: ${error.message} (${duration}ms)`);
+    
+    // Log timeout
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_feed_source_timeout',
+      severity: 'warning',
+      message: `Curated feed timeout: ${error.message}`,
+      event_data: {
+        feed_name: 'curated_accounts',
+        tweets_fetched: tweets.length,
+        accounts_processed: accountsToFetch.length,
+        cursor_index: cursorIndex,
+        duration_ms: duration,
+        error: error.message,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    // Return partial results
+    return tweets;
   }
-  
-  console.log(`[CURATED_FEED] ✅ Fetched ${tweets.length} tweets from ${accounts.length} accounts`);
-  
-  return tweets;
 }
 
 /**
@@ -114,12 +198,21 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
     
     let extractedCount = 0;
     const profileUrl = `https://x.com/${username}`;
+    const timings = {
+      browserAcquireMs: 0,
+      navigationMs: 0,
+      extractionMs: 0,
+      dbWriteMs: 0,
+    };
     
     try {
       console.log(`[CURATED_FEED] 📡 Fetching from @${username}...`);
       
+      // 🔒 MANDATE 4: Track navigation timing
+      const navStart = Date.now();
       await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(3000); // Wait for timeline to load
+      timings.navigationMs = Date.now() - navStart;
       
       // Handle consent wall if present - STRONGER APPROACH
       let consentCleared = false;
@@ -363,6 +456,8 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       });
       await page.waitForTimeout(2000);
       
+      // 🔒 MANDATE 4: Track extraction timing
+      const extractStart = Date.now();
       // Extract tweets (FIXED: use single payload object)
       const tweets = await safeEvaluate(page, (payload: { count: number; username: string }) => {
         const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
@@ -435,9 +530,10 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
         return results;
       }, { count: TWEETS_PER_ACCOUNT, username });
       
+      timings.extractionMs = Date.now() - extractStart;
       extractedCount = tweets.length;
       
-      // Log extraction results
+      // 🔒 MANDATE 4: Log extraction results with timings
       const extractedTweetIds = tweets.map(t => t.tweet_id);
       console.log(`[CURATED_FEED] ✅ @${username}: fetched ${tweets.length} tweets, extracted ${extractedTweetIds.length} IDs`);
       
@@ -451,6 +547,12 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
           tweet_containers_found: diagnostics.tweet_containers_found,
           extracted_tweet_ids_count: extractedTweetIds.length,
           extracted_tweet_ids: extractedTweetIds.slice(0, 5), // First 5 IDs
+          timings: {
+            browser_acquire_ms: timings.browserAcquireMs,
+            navigation_ms: timings.navigationMs,
+            extraction_ms: timings.extractionMs,
+            db_write_ms: timings.dbWriteMs,
+          },
         },
         created_at: new Date().toISOString(),
       });

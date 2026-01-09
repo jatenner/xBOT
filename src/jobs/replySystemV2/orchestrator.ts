@@ -277,6 +277,11 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   } finally {
     // 🔒 MANDATE 3: ALWAYS log completion/failure in finally block
     const duration = Date.now() - startTime;
+    const result = await fetchPromise.catch(() => null);
+    
+    // Determine if partial completion
+    const isPartial = result ? (result.partial_sources.length > 0 || result.failed_sources.length > 0) : false;
+    const success = !fetchError && !isPartial;
     
     if (fetchError) {
       // Log failure
@@ -293,6 +298,9 @@ export async function fetchAndEvaluateCandidates(): Promise<{
             fetched: totalFetched,
             evaluated: totalEvaluated,
             passed: totalPassed,
+            success: false,
+            partial: false,
+            reason_code: 'fetch_timeout',
           },
           created_at: new Date().toISOString(),
         });
@@ -301,22 +309,27 @@ export async function fetchAndEvaluateCandidates(): Promise<{
         console.error(`[ORCHESTRATOR] ❌ Failed to log failure: ${(e as Error).message}`);
       }
     } else {
-      // Log completion
+      // 🔒 MANDATE 3: Log completion (treat partial as completion)
       try {
         await supabase.from('system_events').insert({
           event_type: 'reply_v2_fetch_job_completed',
-          severity: 'info',
-          message: `Reply V2 fetch job completed: fetched=${totalFetched} evaluated=${totalEvaluated} passed=${totalPassed}`,
+          severity: isPartial ? 'warning' : 'info',
+          message: `Reply V2 fetch job completed: fetched=${totalFetched} evaluated=${totalEvaluated} passed=${totalPassed}${isPartial ? ' (PARTIAL)' : ''}`,
           event_data: {
             feed_run_id: feedRunId,
             fetched: totalFetched,
             evaluated: totalEvaluated,
             passed: totalPassed,
             duration_ms: duration,
+            success: success,
+            partial: isPartial,
+            partial_sources: partialSourcesList,
+            failed_sources: failedSourcesList,
+            reason_code: isPartial ? 'partial_completion' : 'success',
           },
           created_at: new Date().toISOString(),
         });
-        console.log(`[ORCHESTRATOR] ✅ Completion event logged`);
+        console.log(`[ORCHESTRATOR] ✅ Completion event logged (success=${success}, partial=${isPartial})`);
       } catch (e) {
         console.error(`[ORCHESTRATOR] ❌ CRITICAL: Failed to log completion: ${(e as Error).message}`);
         // Try one more time with error details
@@ -331,6 +344,8 @@ export async function fetchAndEvaluateCandidates(): Promise<{
               evaluated: totalEvaluated,
               passed: totalPassed,
               duration_ms: duration,
+              success: success,
+              partial: isPartial,
               logging_error: (e as Error).message,
             },
             created_at: new Date().toISOString(),
@@ -341,7 +356,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
       }
     }
     
-    console.log(`[ORCHESTRATOR] ✅ Fetched ${totalFetched} tweets, evaluated ${totalEvaluated}, passed ${totalPassed} (${duration}ms)`);
+    console.log(`[ORCHESTRATOR] ✅ Fetched ${totalFetched} tweets, evaluated ${totalEvaluated}, passed ${totalPassed} (${duration}ms, success=${success}, partial=${isPartial})`);
   }
 }
 

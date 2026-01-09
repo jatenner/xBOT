@@ -17,6 +17,7 @@ const HEALTH_KEYWORDS = [
 
 const FETCH_INTERVAL_MINUTES = 5;
 const TWEETS_PER_KEYWORD = 10; // Top N tweets per keyword
+const KEYWORDS_PER_RUN = 3; // Hard cap: process only 3 keywords per run
 
 export interface KeywordTweet {
   tweet_id: string;
@@ -30,30 +31,132 @@ export interface KeywordTweet {
 }
 
 /**
- * Fetch tweets for health keywords
+ * Fetch tweets for health keywords (BOUNDED: M keywords per run with cursor rotation)
  */
 export async function fetchKeywordFeed(): Promise<KeywordTweet[]> {
-  console.log('[KEYWORD_FEED] 🔍 Fetching tweets for health keywords...');
+  const startTime = Date.now();
+  const SOURCE_TIMEOUT_MS = 90 * 1000; // 90 seconds per source
   
+  console.log(`[KEYWORD_FEED] 🔍 Fetching tweets for health keywords (bounded: ${KEYWORDS_PER_RUN} keywords/run)...`);
+  
+  const supabase = getSupabaseClient();
   const pool = UnifiedBrowserPool.getInstance();
   const tweets: KeywordTweet[] = [];
   
-  // Fetch tweets for each keyword
-  for (const keyword of HEALTH_KEYWORDS) {
-    try {
-      const keywordTweets = await fetchKeywordTweets(keyword, pool);
-      tweets.push(...keywordTweets);
+  // 🔒 MANDATE 1: Get cursor and rotate
+  const { data: cursor } = await supabase
+    .from('feed_cursors')
+    .select('cursor_value, metadata')
+    .eq('feed_name', 'keyword_search')
+    .single();
+  
+  const cursorIndex = parseInt(cursor?.cursor_value || '0', 10);
+  const keywordsPerRun = cursor?.metadata?.keywords_per_run || KEYWORDS_PER_RUN;
+  
+  console.log(`[KEYWORD_FEED] 📍 Cursor position: ${cursorIndex} (processing ${keywordsPerRun} keywords)`);
+  
+  // Get keywords for this run (rotate via cursor)
+  const keywordsToFetch = HEALTH_KEYWORDS.slice(cursorIndex, cursorIndex + keywordsPerRun);
+  const nextCursorIndex = (cursorIndex + keywordsPerRun) % HEALTH_KEYWORDS.length;
+  
+  console.log(`[KEYWORD_FEED] 📊 Processing keywords ${cursorIndex}-${cursorIndex + keywordsPerRun - 1} of ${HEALTH_KEYWORDS.length} total`);
+  
+  // 🔒 MANDATE 2: Per-source timebox (90s)
+  const sourceTimeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`Keyword feed timeout after ${SOURCE_TIMEOUT_MS / 1000}s`));
+    }, SOURCE_TIMEOUT_MS);
+  });
+  
+  const fetchPromise = (async () => {
+    let browserAcquireMs = 0;
+    let navigationMs = 0;
+    let extractionMs = 0;
+    let dbWriteMs = 0;
+    
+    // Fetch tweets for each keyword sequentially
+    for (const keyword of keywordsToFetch) {
+      const keywordStartTime = Date.now();
       
-      // Rate limit: wait between keywords
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } catch (error: any) {
-      console.error(`[KEYWORD_FEED] ⚠️ Failed to fetch keyword "${keyword}": ${error.message}`);
+      try {
+        const browserStart = Date.now();
+        const keywordTweets = await fetchKeywordTweets(keyword, pool);
+        browserAcquireMs += Date.now() - browserStart;
+        
+        tweets.push(...keywordTweets);
+        
+        const keywordDuration = Date.now() - keywordStartTime;
+        console.log(`[KEYWORD_FEED] ✅ "${keyword}": ${keywordTweets.length} tweets (${keywordDuration}ms)`);
+        
+        // Rate limit: wait between keywords
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+      } catch (error: any) {
+        console.error(`[KEYWORD_FEED] ⚠️ Failed to fetch keyword "${keyword}": ${error.message}`);
+        // Continue with next keyword
+      }
     }
+    
+    // Update cursor for next run
+    await supabase
+      .from('feed_cursors')
+      .upsert({
+        feed_name: 'keyword_search',
+        cursor_value: nextCursorIndex.toString(),
+        last_updated_at: new Date().toISOString(),
+        metadata: { keywords_per_run: keywordsPerRun },
+      });
+    
+    return { tweets, timings: { browserAcquireMs, navigationMs, extractionMs, dbWriteMs } };
+  })();
+  
+  try {
+    const result = await Promise.race([fetchPromise, sourceTimeoutPromise]);
+    const duration = Date.now() - startTime;
+    
+    // 🔒 MANDATE 4: Log diagnostics
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_feed_source_completed',
+      severity: 'info',
+      message: `Keyword feed completed: ${result.tweets.length} tweets in ${duration}ms`,
+      event_data: {
+        feed_name: 'keyword_search',
+        tweets_fetched: result.tweets.length,
+        keywords_processed: keywordsToFetch.length,
+        cursor_index: cursorIndex,
+        next_cursor_index: nextCursorIndex,
+        duration_ms: duration,
+        timings: result.timings,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    console.log(`[KEYWORD_FEED] ✅ Fetched ${result.tweets.length} tweets for ${keywordsToFetch.length} keywords (${duration}ms)`);
+    return result.tweets;
+    
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    console.error(`[KEYWORD_FEED] ⏱️ Timeout or error: ${error.message} (${duration}ms)`);
+    
+    // Log timeout
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_feed_source_timeout',
+      severity: 'warning',
+      message: `Keyword feed timeout: ${error.message}`,
+      event_data: {
+        feed_name: 'keyword_search',
+        tweets_fetched: tweets.length,
+        keywords_processed: keywordsToFetch.length,
+        cursor_index: cursorIndex,
+        duration_ms: duration,
+        error: error.message,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    // Return partial results
+    return tweets;
   }
-  
-  console.log(`[KEYWORD_FEED] ✅ Fetched ${tweets.length} tweets for ${HEALTH_KEYWORDS.length} keywords`);
-  
-  return tweets;
 }
 
 /**
