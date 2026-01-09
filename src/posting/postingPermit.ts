@@ -122,7 +122,7 @@ export async function approvePostingPermit(permit_id: string): Promise<{ success
     // Validate decision exists
     const { data: decision } = await supabase
       .from('content_generation_metadata_comprehensive')
-      .select('decision_id, status, target_tweet_id, root_tweet_id, decision_type')
+      .select('decision_id, status, target_tweet_id, root_tweet_id, decision_type, pipeline_source')
       .eq('decision_id', permit.decision_id)
       .single();
     
