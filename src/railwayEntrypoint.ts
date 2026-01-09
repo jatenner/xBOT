@@ -281,11 +281,14 @@ setImmediate(async () => {
     
     // Step 5: Start the main application system (jobs/scheduler)
     console.log('[BOOT] jobs_start attempt');
+    console.log(`[BOOT] JOBS_AUTOSTART env var: "${process.env.JOBS_AUTOSTART}" (type: ${typeof process.env.JOBS_AUTOSTART})`);
+    console.log(`[BOOT] JOBS_AUTOSTART === 'true': ${process.env.JOBS_AUTOSTART === 'true'}`);
     try {
       // Import and start the job manager directly
       const { JobManager } = await import('./jobs/jobManager');
       const jobManager = JobManager.getInstance();
       
+      console.log('[BOOT] JOB_MANAGER starting...');
       await jobManager.startJobs();
       
       console.log('[BOOT] jobs_started ok');

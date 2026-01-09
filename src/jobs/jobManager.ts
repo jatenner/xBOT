@@ -1182,6 +1182,10 @@ export class JobManager {
    * FAIL-FAST: If MODE=live and posting job doesn't register, exit with error
    */
   public async startJobs(): Promise<void> {
+    console.log('🕒 JOB_MANAGER: startJobs() called');
+    console.log(`🕒 JOB_MANAGER: process.env.JOBS_AUTOSTART = "${process.env.JOBS_AUTOSTART}"`);
+    console.log(`🕒 JOB_MANAGER: process.env.JOBS_AUTOSTART === 'true' = ${process.env.JOBS_AUTOSTART === 'true'}`);
+    
     if (this.isRunning) {
       console.log('⚠️ JOB_MANAGER: Jobs already running');
       return;
@@ -1193,11 +1197,17 @@ export class JobManager {
 
     const config = getConfig();
     const modeFlags = getModeFlags(config);
+    
+    console.log(`🕒 JOB_MANAGER: config.JOBS_AUTOSTART = ${config.JOBS_AUTOSTART}`);
+    console.log(`🕒 JOB_MANAGER: modeFlags.enableJobScheduling = ${modeFlags.enableJobScheduling}`);
 
     if (!modeFlags.enableJobScheduling) {
       console.log('🕒 JOB_MANAGER: Job scheduling disabled (JOBS_AUTOSTART=false)');
+      console.log('🕒 JOB_MANAGER: This means jobs will NOT run. Check Railway Variables: JOBS_AUTOSTART must be exactly "true"');
       return;
     }
+    
+    console.log('🕒 JOB_MANAGER: Job scheduling ENABLED - proceeding to start jobs...');
 
     // 🎯 FEATURE FLAG: Choose scheduling strategy
     const USE_STAGGERED = process.env.USE_STAGGERED_SCHEDULING !== 'false'; // Default ON
