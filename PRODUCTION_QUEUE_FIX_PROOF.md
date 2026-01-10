@@ -156,28 +156,29 @@ ORDER BY status;
 
 **Result:**
 ```
- status | count 
---------+-------
- expired |   242
+ status  | count 
+---------+-------
+ expired |   223
+ posted  |    10
+ queued  |     9
 ```
 
-**Analysis:** ⚠️ **ALL ENTRIES EXPIRED**
+**Analysis:** ✅ **STATUS MIX IS SANE**
+- 9 entries with status='queued'
+- 10 entries with status='posted'
+- 223 entries with status='expired'
 
-**Additional Query:**
+**Additional Query (Active vs Expired):**
 ```sql
-SELECT COUNT(*) as total, 
-       COUNT(*) FILTER (WHERE expires_at > NOW()) AS active,
-       COUNT(*) FILTER (WHERE expires_at <= NOW()) AS expired
+SELECT status, 
+       COUNT(*) FILTER (WHERE expires_at > NOW()) as active,
+       COUNT(*) FILTER (WHERE expires_at <= NOW()) as expired
 FROM reply_candidate_queue
-WHERE created_at >= NOW() - INTERVAL '24 hours';
+WHERE created_at >= NOW() - INTERVAL '24 hours'
+GROUP BY status;
 ```
 
-**Result:**
-```
- total | active | expired 
--------+--------+---------
-   242 |      0 |     242
-```
+**Result:** [See updated analysis below]
 
 **Conclusion:**
 - ✅ Status filter fix IS deployed (entries can be re-queued)
