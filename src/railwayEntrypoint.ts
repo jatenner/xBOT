@@ -70,7 +70,7 @@ console.log(`RAILWAY_GIT_COMMIT_SHA: ${process.env.RAILWAY_GIT_COMMIT_SHA || 'NO
 console.log(`RAILWAY_ENVIRONMENT_NAME: ${process.env.RAILWAY_ENVIRONMENT_NAME || 'NOT SET'}`);
 console.log(`RAILWAY_SERVICE_NAME: ${process.env.RAILWAY_SERVICE_NAME || 'NOT SET'}`);
 console.log(`NODE_ENV: ${process.env.NODE_ENV || 'NOT SET'}`);
-console.log(`PORT: ${process.env.PORT || 'NOT SET (defaulting to 3000)'}`);
+console.log(`PORT: ${process.env.PORT || 'NOT SET (defaulting to 8080)'}`);
 console.log(`JOBS_AUTOSTART env var: "${process.env.JOBS_AUTOSTART || 'NOT SET'}"`);
 console.log('========================================\n');
 
