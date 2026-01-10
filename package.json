@@ -2,9 +2,9 @@
   "name": "xbot",
   "version": "1.0.0",
   "scripts": {
-    "start": "pnpm tsx src/railwayEntrypoint.ts",
+    "build": "tsc",
+    "start": "node dist/src/railwayEntrypoint.js",
     "dev": "tsx watch src/main.ts",
-    "build": "mkdir -p dist && echo 'dist placeholder for Docker COPY'",
     "post-now": "tsx scripts/post-immediately.ts",
     "check": "tsx scripts/live-system-check.ts",
     "analyze": "tsx scripts/analyze-posting-issues.ts",

@@ -16,7 +16,7 @@ function startHealthServer(): void {
     return;
   }
 
-  const port = parseInt(process.env.PORT || '3000', 10);
+  const port = parseInt(process.env.PORT || '8080', 10);
   const host = '0.0.0.0';
   const gitSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
   const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
@@ -47,6 +47,7 @@ function startHealthServer(): void {
     console.log(`[HEALTH] ✅ Listening on ${host}:${port}`);
     console.log(`[HEALTH] Git SHA: ${gitSha.substring(0, 8)}`);
     console.log(`[HEALTH] Service: ${serviceName}`);
+    console.log(`[HEALTH] Healthcheck endpoint: http://${host}:${port}/status`);
   });
 
   healthServer.on('error', (error: NodeJS.ErrnoException) => {
@@ -89,7 +90,7 @@ setImmediate(async () => {
 
     if (isWorkerService) {
       // WORKER SERVICE: Start job manager
-      console.log('[BOOT] Starting worker service (job manager)...');
+      console.log('[BOOT] Starting worker jobs AFTER health is up...');
       
       // Import and start worker
       const { startWorker } = await import('./jobs/jobManagerWorker');
@@ -105,7 +106,7 @@ setImmediate(async () => {
       try {
         const express = require('express');
         const app = express();
-        const PORT = parseInt(process.env.PORT || '3000', 10);
+        const PORT = parseInt(process.env.PORT || '8080', 10);
         const HOST = '0.0.0.0';
         
         app.use(express.json());

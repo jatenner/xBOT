@@ -18,7 +18,8 @@
     "declaration": false,
     "sourceMap": true,
     "incremental": true,
-    "noEmitOnError": false
+    "noEmitOnError": false,
+    "downlevelIteration": true
   },
   "include": [
     "src",
@@ -30,6 +31,7 @@
     "**/*.test.ts",
     "**/*.spec.ts",
     "tests/**/*",
-    "test_*.js"
+    "test_*.js",
+    "src/healthServer.ts"
   ]
 }

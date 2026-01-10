@@ -15,8 +15,8 @@ COPY . .
 # Ensure required directories exist (prevent COPY failures in production stage)
 RUN mkdir -p dist public supabase
 
-# Build TypeScript (creates empty dist folder for compatibility)
-RUN npm run build || true
+# Build TypeScript to dist/
+RUN npm run build
 
 # Production stage
 FROM mcr.microsoft.com/playwright:v1.57.0-noble
@@ -26,21 +26,21 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies (tsx and typescript are now in dependencies)
+# Install production dependencies only (no devDependencies needed)
 RUN npm ci --omit=dev --no-audit
 
-# Copy source code (needed for tsx runtime)
-COPY --from=builder /app/src ./src
-
+# Copy compiled JavaScript from dist/ (no source needed)
+COPY --from=builder /app/dist ./dist
 # Copy supporting directories (guaranteed to exist from builder stage)
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/supabase ./supabase
-COPY --from=builder /app/dist ./dist
+# Copy package.json for node to resolve dependencies
+COPY --from=builder /app/package.json ./package.json
 
 # Expose port (Railway sets PORT env var)
 EXPOSE 8080
 
-# Start application via npm start (runs tsx src/railwayEntrypoint.ts)
-# Entrypoint starts server immediately, then runs background init
+# Start application via npm start (runs node dist/src/railwayEntrypoint.js)
+# Entrypoint starts health server immediately, then runs background init
 CMD ["npm", "start"]
 
