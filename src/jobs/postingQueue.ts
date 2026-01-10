@@ -2148,7 +2148,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     // 🔒 CONTROLLED WINDOW GATE: If CONTROLLED_DECISION_ID is set, ONLY select that decision_id for replies too
     // 🔒 MANDATE 2: CERT MODE - Hard filter for reply decisions only
-    const certMode = process.env.POSTING_QUEUE_CERT_MODE === 'true';
+    // Note: certMode is declared at function start, don't redeclare here
     
     let replyQuery = supabase
       .from('content_metadata')
