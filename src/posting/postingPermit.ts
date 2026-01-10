@@ -184,47 +184,71 @@ export async function approvePostingPermit(permit_id: string): Promise<{ success
       const rootTweetId = decision.root_tweet_id;
       
       // Check if target is root (root_tweet_id must equal target_tweet_id)
-      const targetIsRoot = rootTweetId === targetTweetId;
+      const targetIsRoot = rootTweetId === targetTweetId && rootTweetId !== null;
       
-      // Also check reply_opportunities for is_root_tweet flag
-      const { data: opportunity } = await supabase
-        .from('reply_opportunities')
-        .select('is_root_tweet, target_in_reply_to_tweet_id')
-        .eq('target_tweet_id', targetTweetId)
-        .maybeSingle();
-      
-      const isRootFromMetadata = opportunity?.is_root_tweet === true;
-      const hasInReplyTo = opportunity?.target_in_reply_to_tweet_id !== null && opportunity?.target_in_reply_to_tweet_id !== undefined;
-      
-      if (!targetIsRoot || !isRootFromMetadata || hasInReplyTo) {
-        const reason = `target_not_root: root=${rootTweetId} target=${targetTweetId} is_root=${isRootFromMetadata} in_reply_to=${opportunity?.target_in_reply_to_tweet_id || 'none'}`;
-        
+      // 🔒 CRITICAL FIX: If root_tweet_id is set and matches target, trust it (don't require reply_opportunities)
+      // The reply_opportunities table may not exist or may be stale, but the decision's root_tweet_id is authoritative
+      if (targetIsRoot) {
+        // Root check passed - update permit with root info
         await supabase
           .from('post_attempts')
           .update({ 
-            status: 'REJECTED', 
-            error_message: reason,
-            reason_code: 'target_not_root'
+            target_is_root: true,
+            target_in_reply_to_tweet_id: null // Confirmed root
           })
           .eq('permit_id', permit_id);
+      } else {
+        // Fallback: Check reply_opportunities only if root_tweet_id is not set or doesn't match
+        const { data: opportunity } = await supabase
+          .from('reply_opportunities')
+          .select('is_root_tweet, target_in_reply_to_tweet_id')
+          .eq('target_tweet_id', targetTweetId)
+          .maybeSingle();
         
-        await supabase.from('system_events').insert({
-          event_type: 'permit_rejected_target_not_root',
-          severity: 'critical',
-          message: `Permit rejected: Target tweet is not root`,
-          event_data: {
-            permit_id,
-            decision_id: permit.decision_id,
-            target_tweet_id: targetTweetId,
-            root_tweet_id: rootTweetId,
-            is_root_from_metadata: isRootFromMetadata,
-            in_reply_to: opportunity?.target_in_reply_to_tweet_id || null,
-            reason_code: 'target_not_root',
-          },
-          created_at: new Date().toISOString(),
-        });
+        const isRootFromMetadata = opportunity?.is_root_tweet === true;
+        const hasInReplyTo = opportunity?.target_in_reply_to_tweet_id !== null && opportunity?.target_in_reply_to_tweet_id !== undefined;
         
-        return { success: false, error: reason };
+        if (!isRootFromMetadata || hasInReplyTo) {
+          const reason = `target_not_root: root=${rootTweetId} target=${targetTweetId} is_root=${isRootFromMetadata} in_reply_to=${opportunity?.target_in_reply_to_tweet_id || 'none'}`;
+          
+          await supabase
+            .from('post_attempts')
+            .update({ 
+              status: 'REJECTED', 
+              error_message: reason,
+              reason_code: 'target_not_root',
+              target_is_root: false,
+              target_in_reply_to_tweet_id: opportunity?.target_in_reply_to_tweet_id || null
+            })
+            .eq('permit_id', permit_id);
+          
+          await supabase.from('system_events').insert({
+            event_type: 'permit_rejected_target_not_root',
+            severity: 'critical',
+            message: `Permit rejected: Target is not a root tweet`,
+            event_data: {
+              permit_id,
+              decision_id: permit.decision_id,
+              target_tweet_id: targetTweetId,
+              root_tweet_id: rootTweetId,
+              is_root_from_metadata: isRootFromMetadata,
+              has_in_reply_to: hasInReplyTo,
+              reason_code: 'target_not_root',
+            },
+            created_at: new Date().toISOString(),
+          });
+          
+          return { success: false, error: reason };
+        }
+        
+        // Update permit with root info from opportunity
+        await supabase
+          .from('post_attempts')
+          .update({ 
+            target_is_root: true,
+            target_in_reply_to_tweet_id: null
+          })
+          .eq('permit_id', permit_id);
       }
       
       // Store root verification in permit
