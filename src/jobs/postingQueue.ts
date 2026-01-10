@@ -137,10 +137,26 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
         console.log(`[INVARIANT] freshness_check=pass age_min=${Math.round(ageMinutes)} max=${maxAgeMin} likes=${likeCount} velocity=${velocity.toFixed(1)}`);
       }
     } else {
-      // No opportunity found - fail closed
-      guardResults.root_check = { pass: false, reason: 'opportunity_not_found' };
-      console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=unknown reason=opportunity_not_found`);
-      return { pass: false, reason: 'opportunity_not_found', guard_results: guardResults };
+      // No opportunity found - check if this is from reply_v2_scheduler (CERT_MODE or normal scheduler)
+      // For scheduler decisions, we already verified root in FINAL_REPLY_GATE, so allow posting
+      // Fetch pipeline_source from DB if not in decision object
+      const pipelineSource = decision.pipeline_source || (await supabase
+        .from('content_metadata')
+        .select('pipeline_source')
+        .eq('decision_id', decisionId)
+        .single()
+        .then(r => r.data?.pipeline_source));
+      
+      if (pipelineSource === 'reply_v2_scheduler') {
+        console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=verified_by_scheduler reason=scheduler_decision_no_opportunity_required`);
+        guardResults.root_check = { pass: true, reason: 'scheduler_verified_root' };
+        // Skip freshness check for scheduler decisions (they're already filtered by age in fetch)
+      } else {
+        // No opportunity found - fail closed for non-scheduler decisions
+        guardResults.root_check = { pass: false, reason: 'opportunity_not_found' };
+        console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=unknown reason=opportunity_not_found pipeline_source=${pipelineSource || 'unknown'}`);
+        return { pass: false, reason: 'opportunity_not_found', guard_results: guardResults };
+      }
     }
   } catch (lookupError: any) {
     console.warn(`[INVARIANT] ⚠️ DB lookup failed: ${lookupError.message}`);
@@ -618,6 +634,13 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
   ];
   
   const missingFields = requiredFields.filter(field => {
+    // Special handling for semantic_similarity (may be in features JSONB)
+    if (field === 'semantic_similarity') {
+      const value = decision[field] || (decision.features as any)?.semantic_similarity;
+      if (value === null || value === undefined) return true;
+      return false;
+    }
+    
     const value = decision[field];
     if (value === null || value === undefined) return true;
     if (typeof value === 'string' && value.trim() === '') return true;
@@ -625,7 +648,7 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
   });
   
   if (missingFields.length > 0) {
-    const fieldValues = missingFields.reduce((acc, f) => ({ ...acc, [f]: decision[f] }), {});
+    const fieldValues = missingFields.reduce((acc, f) => ({ ...acc, [f]: decision[f] || (f === 'semantic_similarity' ? (decision.features as any)?.semantic_similarity : null) }), {});
     console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: Missing gate data`);
     console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId}`);
     console.error(`[FINAL_REPLY_GATE]   missing=${JSON.stringify(missingFields)}`);
@@ -655,13 +678,19 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
   }
   
   // ═══════════════════════════════════════════════════════════════════════
-  // GATE 1.5: SEMANTIC SIMILARITY THRESHOLD (>= 0.25)
+  // GATE 1.5: SEMANTIC SIMILARITY THRESHOLD (>= 0.25, relaxed to 0.0 for fallback replies)
   // ═══════════════════════════════════════════════════════════════════════
-  const similarity = parseFloat(decision.semantic_similarity) || 0;
+  // semantic_similarity may be in decision.semantic_similarity (comprehensive table) or decision.features.semantic_similarity (metadata table)
+  const similarity = parseFloat(decision.semantic_similarity) || parseFloat((decision.features as any)?.semantic_similarity) || 0;
   const MIN_SIMILARITY = 0.25;
+  const MIN_SIMILARITY_FALLBACK = 0.0; // 🔒 TASK 3: Fallback replies passed grounding check, relax similarity threshold
   
-  if (similarity < MIN_SIMILARITY) {
-    console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: Low semantic similarity (${similarity.toFixed(2)} < ${MIN_SIMILARITY})`);
+  // Check if this is a fallback reply (from features JSONB)
+  const isFallback = (decision.features as any)?.is_fallback === true;
+  const effectiveMinSimilarity = isFallback ? MIN_SIMILARITY_FALLBACK : MIN_SIMILARITY;
+  
+  if (similarity < effectiveMinSimilarity) {
+    console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: Low semantic similarity (${similarity.toFixed(2)} < ${effectiveMinSimilarity})${isFallback ? ' [FALLBACK]' : ''}`);
     console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId}`);
     
     await supabase.from('content_generation_metadata_comprehensive')
@@ -669,6 +698,10 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
       .eq('decision_id', decisionId);
     
     return true; // SKIP
+  }
+  
+  if (isFallback && similarity < MIN_SIMILARITY) {
+    console.log(`[FINAL_REPLY_GATE] ⚠️ Fallback reply: similarity ${similarity.toFixed(2)} < ${MIN_SIMILARITY} but >= ${MIN_SIMILARITY_FALLBACK} (relaxed threshold)`);
   }
   
   console.log(`[FINAL_REPLY_GATE] ✅ All required fields present, snapshot=${snapshotLen} chars, similarity=${similarity.toFixed(2)}`);
@@ -683,7 +716,8 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
     const contextVerification = await verifyContextLock(
       decision.target_tweet_id,
       decision.target_tweet_content_snapshot,
-      decision.target_tweet_content_hash
+      decision.target_tweet_content_hash,
+      decision.target_tweet_content_prefix_hash // 🔒 TASK 2: Pass prefix hash for fallback matching
     );
     
     if (!contextVerification.pass) {
@@ -1063,6 +1097,14 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
   const gitSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
   const serviceRole = process.env.SERVICE_ROLE || 'unknown';
   
+  // 🔒 TASK 2: Run deferral healer before processing queue
+  try {
+    const { healDeferrals } = await import('./deferralHealer');
+    await healDeferrals(certMode);
+  } catch (healError: any) {
+    console.warn(`[POSTING_QUEUE] ⚠️ Deferral healer failed (non-critical): ${healError.message}`);
+  }
+  
   // 🔒 MANDATE 1: Instrumentation - Log queue start
   await supabase.from('system_events').insert({
     event_type: 'posting_queue_started',
@@ -1334,7 +1376,7 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     }
     
     // 3. Get ready decisions from queue
-    readyDecisions = await getReadyDecisions(certMode);
+    readyDecisions = await getReadyDecisions(certMode, maxItems);
     
     // 🔒 CONTROLLED WINDOW GATE: Filter to only the controlled decision_id
     // Skip if it's a known test decision ID that should be cleared
@@ -2105,7 +2147,7 @@ async function checkPostingRateLimits(): Promise<boolean> {
   }
 }
 
-async function getReadyDecisions(): Promise<QueuedDecision[]> {
+async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<QueuedDecision[]> {
   try {
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
@@ -2149,7 +2191,6 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     
     // 🔒 CONTROLLED WINDOW GATE: If CONTROLLED_DECISION_ID is set, ONLY select that decision_id for replies too
     // 🔒 MANDATE 2: CERT MODE - Hard filter for reply decisions only
-    // Note: certMode is declared at function start, don't redeclare here
     
     let replyQuery = supabase
       .from('content_metadata')
@@ -2210,7 +2251,7 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       });
       
       console.log(`[POSTING_QUEUE] ⏭️  Noop: ${reason}`);
-      return; // Exit early if no candidates
+      return []; // Exit early if no candidates - return empty array, not undefined
     }
     
     // 🔒 CERT MODE: Limit to maxItems
@@ -2454,7 +2495,10 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     // RETRY DEFERRAL: Respect future retry windows so one failure can't monopolize queue
     const nowTs = now.getTime();
     const decisionsExceededRetries: { id: string; type: string; retryCount: number }[] = [];
-    const throttledRows = filteredRows.filter(row => {
+    
+    // 🔒 TASK 2: Process deferrals with TTL check (async - converted from filter)
+    const throttledRows: typeof filteredRows = [];
+    for (const row of filteredRows) {
       const decisionId = String(row.decision_id ?? '');
       const features = (row.features || {}) as any;
       const retryCount = Number(features?.retry_count || 0);
@@ -2473,16 +2517,56 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
           `[POSTING_QUEUE] ❌ ${decisionType} ${decisionId} exceeded max retries (${retryCount}/${maxRetries})`
         );
         decisionsExceededRetries.push({ id: decisionId, type: decisionType, retryCount });
-        return false;
+        continue;
       }
 
       if (retryCount > 0 && scheduledTs > nowTs) {
+        // 🔒 TASK 2: Check if deferral expired (TTL)
+        const ttlMinutes = certMode ? 30 : 120; // 30min cert / 2h normal
+        const deferralAge = scheduledTs - nowTs; // Positive if future
+        const ttlMs = ttlMinutes * 60 * 1000;
+        
+        // If deferral is in the future but older than TTL, it's expired
+        if (deferralAge > 0 && deferralAge > ttlMs) {
+          // Deferral expired - clear it
+          console.log(`[POSTING_QUEUE] ⏰ Deferral expired (TTL ${ttlMinutes}min) for ${decisionId}, clearing...`);
+          await supabase
+            .from('content_metadata')
+            .update({
+              scheduled_at: now.toISOString(),
+              features: {
+                ...features,
+                retry_count: 0,
+                deferral_expired_at: now.toISOString(),
+              }
+            })
+            .eq('decision_id', decisionId);
+          throttledRows.push(row); // Allow processing
+          continue;
+        }
+        
+        // 🔒 TASK 2: Log deferral event
+        try {
+          const { logDeferral } = await import('./deferralHealer');
+          const { data: permit } = await supabase
+            .from('post_attempts')
+            .select('permit_id')
+            .eq('decision_id', decisionId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
+          await logDeferral(decisionId, permit?.permit_id || null, 'retry_scheduled', certMode);
+        } catch (logError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Failed to log deferral (non-critical): ${logError.message}`);
+        }
+        
         console.log(`[POSTING_QUEUE] ⏳ Skipping retry ${decisionId} until ${row.scheduled_at} (retry #${retryCount})`);
-        return false;
+        continue;
       }
 
-      return true;
-    });
+      throttledRows.push(row);
+    }
 
     if (throttledRows.length !== filteredRows.length) {
       console.log(`[POSTING_QUEUE] ⏳ Retry deferral removed ${filteredRows.length - throttledRows.length} items from this loop`);
@@ -3488,6 +3572,15 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             
               const shouldForceReset = /timeout|session/i.test(postError.message || '');
               const existingForceReset = Boolean((metadata?.features as any)?.force_session_reset);
+              // 🔒 TASK 2: Get permit_id for logging
+              const { data: permitForLog } = await supabase
+                .from('post_attempts')
+                .select('permit_id')
+                .eq('decision_id', decision.id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              
               await supabase
                 .from('content_metadata')
                 .update({
@@ -3503,6 +3596,10 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
                   }
                 })
                 .eq('decision_id', decision.id);
+              
+              // 🔒 TASK 2: Log deferral event
+              const { logDeferral } = await import('./deferralHealer');
+              await logDeferral(decision.id, permitForLog?.permit_id || null, postError.message, false);
             
               await updatePostingMetrics('error');
               return false; // Don't mark as failed, will retry
@@ -4713,8 +4810,17 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       console.log(`[REPLY_TRUTH] step=RECEIPT_OK receipt_id=${receiptResult.receipt_id}`);          
       console.log(`[REPLY_TRUTH] ✅ Durable proof of posting saved to post_receipts`);              
 
-      // 📊 LOG TO SYSTEM_EVENTS: reply_posted
+      // 📊 LOG TO SYSTEM_EVENTS: reply_posted + posting_attempt_success
       try {
+        const { data: permitForEvent } = await supabase
+          .from('post_attempts')
+          .select('permit_id, pipeline_source')
+          .eq('decision_id', decision.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        // Log reply_posted (existing)
         await supabase.from('system_events').insert({
           event_type: 'reply_posted',
           severity: 'info',
@@ -4728,8 +4834,34 @@ async function postReply(decision: QueuedDecision): Promise<string> {
           },
           created_at: new Date().toISOString()
         });
+        
+        // 🔒 TASK 1: Log posting_attempt_success (standardized)
+        try {
+          const { data: decisionMeta } = await supabase
+            .from('content_metadata')
+            .select('pipeline_source')
+            .eq('decision_id', decision.id)
+            .maybeSingle();
+          
+          await supabase.from('system_events').insert({
+            event_type: 'posting_attempt_success',
+            severity: 'info',
+            message: `Reply posted successfully: decision_id=${decision.id} tweet_id=${result.tweetId}`,
+            event_data: {
+              decision_id: decision.id,
+              permit_id: permitForEvent?.permit_id || null,
+              tweet_id: result.tweetId,
+              pipeline_source: permitForEvent?.pipeline_source || decisionMeta?.pipeline_source || 'unknown',
+              service_role: process.env.RAILWAY_SERVICE_NAME || 'xBOT',
+              git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
+            },
+            created_at: new Date().toISOString(),
+          });
+        } catch (successEventError: any) {
+          console.warn(`[SYSTEM_EVENTS] Failed to log posting_attempt_success:`, successEventError.message);
+        }
       } catch (eventError) {
-        console.warn(`[SYSTEM_EVENTS] Failed to log reply_posted:`, eventError);
+        console.warn(`[SYSTEM_EVENTS] Failed to log events:`, eventError);
       }
 
       await poster.dispose();

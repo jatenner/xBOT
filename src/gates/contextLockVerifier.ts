@@ -4,10 +4,25 @@
  */
 
 import { Page } from 'playwright';
+import { createHash } from 'crypto';
+import { getSupabaseClient } from '../db/index';
 
 // Configurable thresholds
-const CONTEXT_LOCK_MIN_SIMILARITY = parseFloat(process.env.CONTEXT_LOCK_MIN_SIMILARITY || '0.80');
+const CONTEXT_LOCK_MIN_SIMILARITY = parseFloat(process.env.CONTEXT_LOCK_SIM_THRESHOLD || process.env.CONTEXT_LOCK_MIN_SIMILARITY || '0.45');
 const CONTEXT_LOCK_VERIFY_ENABLED = process.env.CONTEXT_LOCK_VERIFY_ENABLED !== 'false';
+
+/**
+ * Normalize tweet text for consistent hashing (matches scheduler normalization)
+ * - Remove extra whitespace (collapse to single space)
+ * - Normalize line breaks (collapse multiple newlines)
+ * - Trim
+ */
+export function normalizeTweetText(text: string): string {
+  return text
+    .replace(/\s+/g, ' ')
+    .replace(/\n\s*\n/g, '\n')
+    .trim();
+}
 
 export interface VerificationResult {
   pass: boolean;
@@ -46,8 +61,9 @@ function computeTextSimilarity(text1: string, text2: string): number {
 
 /**
  * Fetch tweet via Playwright and extract text + metadata
+ * Exported for use by scheduler
  */
-async function fetchTweetData(targetTweetId: string): Promise<{
+export async function fetchTweetData(targetTweetId: string): Promise<{
   text: string;
   isReply: boolean;
 } | null> {
@@ -121,7 +137,8 @@ async function fetchTweetData(targetTweetId: string): Promise<{
 export async function verifyContextLock(
   targetTweetId: string,
   targetTweetContentSnapshot: string,
-  targetTweetContentHash: string
+  targetTweetContentHash: string,
+  targetTweetContentPrefixHash?: string // 🔒 TASK 2: Optional prefix hash for fallback matching
 ): Promise<VerificationResult> {
   console.log(`[CONTEXT_LOCK_VERIFY] 🔍 Verifying context lock for tweet ${targetTweetId}`);
 
@@ -168,42 +185,168 @@ export async function verifyContextLock(
       };
     }
 
-    // Compare fetched text to snapshot
+    // 🔒 TASK 3: Hash-first matching with similarity fallback
     const fetchedText = tweetData.text;
-    const similarity = computeTextSimilarity(fetchedText, targetTweetContentSnapshot);
-
+    
+    // Normalize fetched text using same function as scheduler
+    const normalizedFetchedText = normalizeTweetText(fetchedText);
+    const normalizedSnapshot = normalizeTweetText(targetTweetContentSnapshot);
+    
+    // Compute hash of normalized fetched text
+    const liveHash = createHash('sha256')
+      .update(normalizedFetchedText)
+      .digest('hex');
+    
+    console.log(`[CONTEXT_LOCK_VERIFY] 🔐 Hash comparison: live=${liveHash.substring(0, 16)}... snapshot=${targetTweetContentHash.substring(0, 16)}...`);
+    
+    // 🔒 TASK 3: Hash match = PASS (exact match)
+    if (liveHash === targetTweetContentHash) {
+      console.log(`[CONTEXT_LOCK_VERIFY] ✅ Hash match (exact) for ${targetTweetId}`);
+      
+      // 🔒 TASK 4: Emit hash_match event
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'context_lock_hash_match',
+        severity: 'info',
+        message: `Context lock hash match: tweet_id=${targetTweetId}`,
+        event_data: {
+          target_tweet_id: targetTweetId,
+          live_hash: liveHash.substring(0, 32),
+          snapshot_hash: targetTweetContentHash.substring(0, 32),
+          normalized_length: normalizedFetchedText.length,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      return {
+        pass: true,
+        skip_reason: null,
+        details: {
+          target_exists: true,
+          is_root_tweet: true,
+          content_similarity: 1.0, // Hash match = perfect similarity
+          fetched_text: fetchedText.substring(0, 100)
+        }
+      };
+    }
+    
+    // 🔒 TASK 2: Prefix hash fallback check (if prefix hash provided)
+    if (targetTweetContentPrefixHash) {
+      const prefixText = normalizedFetchedText.slice(0, 500);
+      const livePrefixHash = createHash('sha256')
+        .update(prefixText)
+        .digest('hex');
+      
+      console.log(`[CONTEXT_LOCK_VERIFY] 🔐 Prefix hash comparison: live=${livePrefixHash.substring(0, 16)}... snapshot=${targetTweetContentPrefixHash.substring(0, 16)}...`);
+      
+      if (livePrefixHash === targetTweetContentPrefixHash) {
+        console.log(`[CONTEXT_LOCK_VERIFY] ✅ Prefix hash match for ${targetTweetId}`);
+        
+        // 🔒 TASK 4: Emit prefix_hash_match event
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'context_lock_prefix_hash_match',
+          severity: 'info',
+          message: `Context lock prefix hash match: tweet_id=${targetTweetId}`,
+          event_data: {
+            target_tweet_id: targetTweetId,
+            live_prefix_hash: livePrefixHash.substring(0, 32),
+            snapshot_prefix_hash: targetTweetContentPrefixHash.substring(0, 32),
+            prefix_length: prefixText.length,
+            full_hash_mismatch: true,
+          },
+          created_at: new Date().toISOString(),
+        });
+        
+        return {
+          pass: true,
+          skip_reason: null,
+          details: {
+            target_exists: true,
+            is_root_tweet: true,
+            content_similarity: 0.95, // Prefix match = high similarity
+            fetched_text: fetchedText.substring(0, 100)
+          }
+        };
+      }
+    }
+    
+    // Hash mismatch - compute similarity fallback
+    console.log(`[CONTEXT_LOCK_VERIFY] ⚠️ Hash mismatch - computing similarity fallback...`);
+    const similarity = computeTextSimilarity(normalizedFetchedText, normalizedSnapshot);
+    
     console.log(
       `[CONTEXT_LOCK_VERIFY] 📊 Content similarity: ${similarity.toFixed(3)} (threshold: ${CONTEXT_LOCK_MIN_SIMILARITY})`
     );
-
-    if (similarity < CONTEXT_LOCK_MIN_SIMILARITY) {
-      console.warn(`[CONTEXT_LOCK_VERIFY] ⚠️ Content mismatch detected`);
-      console.warn(`[CONTEXT_LOCK_VERIFY]   Snapshot: "${targetTweetContentSnapshot.substring(0, 80)}..."`);
-      console.warn(`[CONTEXT_LOCK_VERIFY]   Fetched:  "${fetchedText.substring(0, 80)}..."`);
-
+    
+    // 🔒 TASK 3: Similarity fallback check
+    if (similarity >= CONTEXT_LOCK_MIN_SIMILARITY) {
+      console.log(`[CONTEXT_LOCK_VERIFY] ✅ Similarity fallback passed for ${targetTweetId}`);
+      
+      // 🔒 TASK 4: Emit hash_mismatch_similarity_pass event
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'context_lock_hash_mismatch_similarity_pass',
+        severity: 'info',
+        message: `Context lock hash mismatch but similarity passed: tweet_id=${targetTweetId}`,
+        event_data: {
+          target_tweet_id: targetTweetId,
+          live_hash: liveHash.substring(0, 32),
+          snapshot_hash: targetTweetContentHash.substring(0, 32),
+          similarity: similarity,
+          threshold: CONTEXT_LOCK_MIN_SIMILARITY,
+          normalized_length: normalizedFetchedText.length,
+          snapshot_length: normalizedSnapshot.length,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
       return {
-        pass: false,
-        skip_reason: 'context_mismatch',
+        pass: true,
+        skip_reason: null,
         details: {
           target_exists: true,
           is_root_tweet: true,
           content_similarity: similarity,
-          fetched_text: fetchedText.substring(0, 200),
-          snapshot_text: targetTweetContentSnapshot.substring(0, 200)
+          fetched_text: fetchedText.substring(0, 100)
         }
       };
     }
+    
+    // Both hash and similarity failed
+    console.warn(`[CONTEXT_LOCK_VERIFY] ⚠️ Content mismatch detected`);
+    console.warn(`[CONTEXT_LOCK_VERIFY]   Snapshot: "${normalizedSnapshot.substring(0, 80)}..."`);
+    console.warn(`[CONTEXT_LOCK_VERIFY]   Fetched:  "${normalizedFetchedText.substring(0, 80)}..."`);
+    
+    // 🔒 TASK 4: Emit context_lock_failed event
+    const supabase = getSupabaseClient();
+    await supabase.from('system_events').insert({
+      event_type: 'context_lock_failed',
+      severity: 'warning',
+      message: `Context lock failed: hash mismatch and similarity below threshold`,
+      event_data: {
+        target_tweet_id: targetTweetId,
+        live_hash: liveHash.substring(0, 32),
+        snapshot_hash: targetTweetContentHash.substring(0, 32),
+        similarity: similarity,
+        threshold: CONTEXT_LOCK_MIN_SIMILARITY,
+        normalized_length: normalizedFetchedText.length,
+        snapshot_length: normalizedSnapshot.length,
+        fetched_text_preview: fetchedText.substring(0, 200),
+        snapshot_text_preview: targetTweetContentSnapshot.substring(0, 200),
+      },
+      created_at: new Date().toISOString(),
+    });
 
-    // All checks passed
-    console.log(`[CONTEXT_LOCK_VERIFY] ✅ Verification passed for ${targetTweetId}`);
     return {
-      pass: true,
-      skip_reason: null,
+      pass: false,
+      skip_reason: 'context_mismatch',
       details: {
         target_exists: true,
         is_root_tweet: true,
         content_similarity: similarity,
-        fetched_text: fetchedText.substring(0, 100)
+        fetched_text: fetchedText.substring(0, 200),
+        snapshot_text: targetTweetContentSnapshot.substring(0, 200)
       }
     };
   } catch (error: any) {

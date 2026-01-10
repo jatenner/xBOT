@@ -90,6 +90,60 @@ export async function scoreCandidate(
     filterReasons.push(`insufficient_text_${content?.trim().length || 0}`);
   }
   
+  // 🔒 TASK 2: Momentum + Audience Fit filters (before AI judge to save cost)
+  const postedTime = new Date(postedAt).getTime();
+  const now = Date.now();
+  const ageMinutes = (now - postedTime) / (1000 * 60);
+  
+  // Calculate velocity and reply_rate early
+  const likesPerMinute = ageMinutes >= 1 ? likeCount / ageMinutes : likeCount;
+  const likesPerHour = likesPerMinute * 60;
+  const replyRate = ageMinutes >= 1 ? replyCount / ageMinutes : replyCount;
+  const retweetRate = ageMinutes >= 1 ? retweetCount / ageMinutes : retweetCount;
+  
+  // 🔒 TASK 2: Enhanced momentum signals
+  // Velocity = likes per minute (or likes per hour) since posted_at
+  // High velocity indicates trending/momentum
+  const MIN_LIKES_PER_HOUR = 2; // At least 2 likes/hour indicates some engagement
+  const MIN_LIKES_PER_MINUTE = 0.05; // For very recent tweets (< 10 min), require higher rate
+  
+  // Reject low-velocity tweets (not gaining momentum)
+  if (ageMinutes > 30) {
+    // For tweets >30 min old, require minimum hourly velocity
+    if (likesPerHour < MIN_LIKES_PER_HOUR) {
+      passedHardFilters = false;
+      filterReasons.push(`rejected_low_velocity_${likesPerHour.toFixed(2)}_likes_per_hour`);
+    }
+  } else if (ageMinutes > 10) {
+    // For tweets 10-30 min old, require minimum per-minute velocity
+    if (likesPerMinute < MIN_LIKES_PER_MINUTE) {
+      passedHardFilters = false;
+      filterReasons.push(`rejected_low_velocity_${likesPerMinute.toFixed(3)}_likes_per_min`);
+    }
+  }
+  // Tweets <10 min old: give them time (no velocity filter)
+  
+  // 🔒 TASK 2: Reject low-conversation tweets (no replies = no conversation opportunity)
+  const MIN_REPLY_RATE = 0.01; // At least 0.01 replies/min (1 reply per 100 min)
+  if (ageMinutes > 60 && replyCount === 0 && replyRate < MIN_REPLY_RATE) {
+    // Only reject if >1 hour old with 0 replies (personal/low-engagement tweet)
+    passedHardFilters = false;
+    filterReasons.push(`rejected_low_conversation_${replyRate.toFixed(3)}_replies_per_min`);
+  }
+  
+  // 🔒 TASK 2: Reject low-expected-views tweets (based on current engagement)
+  // Estimate 24h views: current_views * (24h / age_hours) * decay_factor
+  const ageHours = ageMinutes / 60;
+  const estimated24hViews = ageHours > 0 
+    ? (likeCount + replyCount + retweetCount) * (24 / ageHours) * 0.3 // Decay factor 0.3
+    : (likeCount + replyCount + retweetCount) * 50; // Very new: optimistic multiplier
+  
+  const MIN_EXPECTED_VIEWS = 500; // Minimum expected 24h views
+  if (ageMinutes > 60 && estimated24hViews < MIN_EXPECTED_VIEWS) {
+    passedHardFilters = false;
+    filterReasons.push(`rejected_low_expected_views_${Math.round(estimated24hViews)}_est_24h`);
+  }
+  
   // If hard filters fail, return early (before judge call to save cost)
   if (!passedHardFilters) {
     return {
@@ -197,23 +251,24 @@ export async function scoreCandidate(
     };
   }
   
-  // Calculate scores
-  const postedTime = new Date(postedAt).getTime();
-  const now = Date.now();
-  const ageMinutes = (now - postedTime) / (1000 * 60);
-  
+  // Calculate scores (ageMinutes already calculated above)
   // Use judge scores if available, otherwise calculate heuristically
   const velocityScore = judgeDecision?.momentum ?? calculateVelocityScore(likeCount, replyCount, retweetCount, ageMinutes);
   const recencyScore = calculateRecencyScore(ageMinutes);
   const authorSignalScore = judgeDecision?.audience_fit ?? await calculateAuthorSignalScore(authorUsername);
   
-  // Composite score (weighted)
+  // 🔒 TASK 2: Improved composite score - prioritize momentum + recency + audience fit
+  // Higher weight for velocity (momentum), reply_rate (conversation), and recency (timing matters)
+  // Boost score for high reply_rate (indicates active conversation = better for replies)
+  const conversationBoost = Math.min(replyRate * 10, 0.15); // Up to +15% boost for high reply_rate
+  
   const overallScore = (
-    topicRelevance * 0.3 +
-    (1 - spamScore) * 0.2 + // Invert spam score (lower spam = higher score)
-    velocityScore * 0.3 +
-    recencyScore * 0.1 +
-    authorSignalScore * 0.1
+    topicRelevance * 0.25 + // Topic relevance (25%)
+    (1 - spamScore) * 0.15 + // Anti-spam (15%)
+    velocityScore * 0.35 + // Velocity/momentum (35% - highest weight)
+    recencyScore * 0.15 + // Recency (15% - timing matters)
+    authorSignalScore * 0.10 + // Author signal/audience fit (10%)
+    conversationBoost // Conversation boost (up to +15% for high reply_rate)
   ) * 100; // Scale to 0-100
   
   // Predict 24h views (use judge bucket if available)
@@ -357,7 +412,12 @@ function calculateSpamScore(content: string): number {
 }
 
 /**
- * Calculate velocity score (0-1)
+ * Calculate velocity score (0-1) - IMPROVED: Momentum + Audience Fit
+ * 
+ * Prioritizes:
+ * - High velocity (likes per minute/hour)
+ * - High reply_rate (replies per minute - indicates conversation)
+ * - Recency bonus
  */
 function calculateVelocityScore(
   likes: number,
@@ -367,11 +427,23 @@ function calculateVelocityScore(
 ): number {
   if (ageMinutes < 1) ageMinutes = 1; // Avoid division by zero
   
-  const totalEngagement = likes + replies + retweets;
-  const velocity = totalEngagement / ageMinutes;
+  // 🔒 TASK 2: Separate velocity signals
+  const likesPerMinute = likes / ageMinutes;
+  const likesPerHour = likesPerMinute * 60;
+  const replyRate = replies / ageMinutes; // Replies per minute (conversation signal)
+  const retweetRate = retweets / ageMinutes;
   
-  // Normalize: velocity > 10 per minute = score 1.0
-  return Math.min(velocity / 10, 1.0);
+  // Weighted velocity: prioritize likes + reply_rate (conversation)
+  // High reply_rate indicates active conversation (better for replies)
+  const conversationSignal = replyRate * 2; // 2x weight for replies (conversation)
+  const engagementVelocity = likesPerMinute + conversationSignal + retweetRate * 0.5;
+  
+  // Normalize: velocity > 5 per minute = score 1.0 (lowered threshold for better signal)
+  // For very recent tweets (< 5 min), boost score
+  const baseScore = Math.min(engagementVelocity / 5, 1.0);
+  const recencyBoost = ageMinutes < 5 ? 0.2 : 0; // +20% boost for very recent
+  
+  return Math.min(baseScore + recencyBoost, 1.0);
 }
 
 /**
@@ -383,12 +455,18 @@ function calculateRecencyScore(ageMinutes: number): number {
 }
 
 /**
- * Calculate author signal score (0-1)
+ * Calculate author signal score (0-1) - IMPROVED: Momentum + Audience Fit
+ * 
+ * Uses:
+ * - discovered_accounts.priority_score (if available)
+ * - discovered_accounts.performance_tier
+ * - Account age / verified status (proxy for authority)
+ * - Engagement history
  */
 async function calculateAuthorSignalScore(username: string): Promise<number> {
   const supabase = getSupabaseClient();
   
-  // Check if in curated accounts
+  // Check if in curated accounts (highest priority)
   const { data: curated } = await supabase
     .from('curated_accounts')
     .select('signal_score')
@@ -400,8 +478,51 @@ async function calculateAuthorSignalScore(username: string): Promise<number> {
     return curated.signal_score || 0.5;
   }
   
-  // Default signal score for unknown accounts
-  return 0.3;
+  // 🔒 TASK 2: Check discovered_accounts for performance signals
+  const { data: discovered } = await supabase
+    .from('discovered_accounts')
+    .select('priority_score, performance_tier, verified, follower_count, avg_followers_per_reply')
+    .eq('username', username)
+    .single();
+  
+  if (discovered) {
+    // Use priority_score if available (0-1 scale)
+    if (discovered.priority_score && discovered.priority_score > 0) {
+      return Math.min(discovered.priority_score, 1.0);
+    }
+    
+    // Use performance_tier as proxy
+    const tierScores: Record<string, number> = {
+      'excellent': 0.9,
+      'good': 0.7,
+      'moderate': 0.5,
+      'poor': 0.3,
+    };
+    
+    if (discovered.performance_tier && tierScores[discovered.performance_tier]) {
+      let score = tierScores[discovered.performance_tier];
+      
+      // Boost for verified accounts
+      if (discovered.verified) {
+        score = Math.min(score + 0.1, 1.0);
+      }
+      
+      // Boost for high follower count (proxy for authority)
+      if (discovered.follower_count && discovered.follower_count > 10000) {
+        score = Math.min(score + 0.1, 1.0);
+      }
+      
+      // Boost for high avg_followers_per_reply (proven performance)
+      if (discovered.avg_followers_per_reply && discovered.avg_followers_per_reply > 10) {
+        score = Math.min(score + 0.1, 1.0);
+      }
+      
+      return Math.min(score, 1.0);
+    }
+  }
+  
+  // Default signal score for unknown accounts (lower to prioritize discovered accounts)
+  return 0.2;
 }
 
 /**

@@ -13,6 +13,7 @@ import { getSupabaseClient } from '../../db/index';
 import { fetchCuratedAccountsFeed } from './curatedAccountsFeed';
 import { fetchKeywordFeed } from './keywordFeed';
 import { fetchViralWatcherFeed } from './viralWatcherFeed';
+import { fetchDiscoveredAccountsFeed } from './discoveredAccountsFeed';
 import { scoreCandidate } from './candidateScorer';
 import { refreshCandidateQueue } from './queueManager';
 
@@ -74,17 +75,19 @@ export async function fetchAndEvaluateCandidates(): Promise<{
     .single();
   
   const feedWeights = controlState?.feed_weights || {
-    curated_accounts: 0.5,
-    keyword_search: 0.3,
-    viral_watcher: 0.2
+    curated_accounts: 0.35, // Reduced from 0.4
+    keyword_search: 0.30,
+    viral_watcher: 0.20,
+    discovered_accounts: 0.15, // 🔒 TASK 3: 15% from discovered accounts (10-20% range)
   };
   
   console.log(`[ORCHESTRATOR] 🎛️ Using feed weights: ${JSON.stringify(feedWeights)}`);
   
   const sources = [
-    { name: 'curated_accounts', fetchFn: fetchCuratedAccountsFeed, weight: feedWeights.curated_accounts || 0.5 },
+    { name: 'curated_accounts', fetchFn: fetchCuratedAccountsFeed, weight: feedWeights.curated_accounts || 0.4 },
     { name: 'keyword_search', fetchFn: fetchKeywordFeed, weight: feedWeights.keyword_search || 0.3 },
     { name: 'viral_watcher', fetchFn: fetchViralWatcherFeed, weight: feedWeights.viral_watcher || 0.2 },
+    { name: 'discovered_accounts', fetchFn: fetchDiscoveredAccountsFeed, weight: feedWeights.discovered_accounts || 0.1 }, // 🔒 TASK 3: New source
   ];
   
   // Sort by weight (highest first) for processing order
@@ -401,8 +404,40 @@ export async function runFullCycle(): Promise<void> {
   // Step 2: Refresh queue
   const queueResult = await refreshCandidateQueue();
   
-  // 🔒 MANDATE 3: Queue health auto-repair
+  // 🔒 TASK 3: Run account discovery periodically (every 6 hours)
   const supabase = getSupabaseClient();
+  const { data: lastDiscovery } = await supabase
+    .from('system_events')
+    .select('created_at')
+    .eq('event_type', 'account_discovery_completed')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+  
+  const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+  const shouldRunDiscovery = !lastDiscovery || lastDiscovery.created_at < sixHoursAgo;
+  
+  if (shouldRunDiscovery) {
+    console.log('[ORCHESTRATOR] 🔍 Running account discovery...');
+    try {
+      const { runAccountDiscovery } = await import('./accountDiscovery');
+      const discoveryResult = await runAccountDiscovery();
+      console.log(`[ORCHESTRATOR] ✅ Account discovery: ${discoveryResult.high_performers.discovered + discoveryResult.curated_replies.discovered} new, ${discoveryResult.high_performers.updated + discoveryResult.curated_replies.updated} updated`);
+      
+      // Log discovery completion
+      await supabase.from('system_events').insert({
+        event_type: 'account_discovery_completed',
+        severity: 'info',
+        message: `Account discovery completed: ${discoveryResult.high_performers.discovered + discoveryResult.curated_replies.discovered} new accounts`,
+        event_data: discoveryResult,
+        created_at: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      console.error(`[ORCHESTRATOR] ⚠️ Account discovery failed: ${error.message}`);
+    }
+  }
+  
+  // 🔒 MANDATE 3: Queue health auto-repair
   const { count: queueSize } = await supabase
     .from('reply_candidate_queue')
     .select('*', { count: 'exact', head: true })

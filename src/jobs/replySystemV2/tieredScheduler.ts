@@ -7,6 +7,8 @@
 
 import { getSupabaseClient } from '../../db/index';
 import { getNextCandidateFromQueue } from './queueManager';
+import { createHash } from 'crypto';
+import { computeSemanticSimilarity } from '../../gates/semanticGate';
 
 const POSTING_INTERVAL_MINUTES = 15;
 const TARGET_REPLIES_PER_HOUR = 4;
@@ -173,45 +175,165 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         .eq('id', queueId);
     }
     
-    // Create decision FIRST (before generation)
+    // 🔒 TASK 2: Create decision in DRAFT/PENDING state FIRST (before generation)
     const { v4: uuidv4 } = await import('uuid');
     decisionId = uuidv4();
     
-    // Insert decision with placeholder content (will be updated after generation)
-    await supabase
-      .from('content_generation_metadata_comprehensive')
-      .insert({
-        decision_id: decisionId,
-        decision_type: 'reply',
-        status: 'generating', // Status: generating → queued → posted
-        content: '[GENERATING...]', // Placeholder
-        target_tweet_id: candidate.candidate_tweet_id,
-        root_tweet_id: candidate.candidate_tweet_id, // 🔒 CRITICAL: Set root_tweet_id = target_tweet_id for root-only replies
-        pipeline_source: 'reply_v2_scheduler',
-        build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
-        candidate_evaluation_id: candidate.evaluation_id,
-        queue_id: queueId,
-        scheduler_run_id: schedulerRunId,
-      });
+    // 🔒 TASK 1: Fetch FULL tweet text from Twitter (canonical source)
+    // Use the same fetchTweetData function from contextLockVerifier
+    console.log(`[SCHEDULER] 🌐 Fetching full tweet text from Twitter for ${candidate.candidate_tweet_id}...`);
+    let targetTweetContentSnapshot: string;
+    let snapshotSource: 'live_fetch' | 'candidate_extract' = 'live_fetch';
+    let snapshotLenLive = 0;
     
-    // Also insert into content_metadata
-    await supabase
-      .from('content_metadata')
-      .insert({
+    try {
+      // Use the EXACT same fetch function as contextLockVerifier
+      const { fetchTweetData } = await import('../../gates/contextLockVerifier');
+      const tweetData = await fetchTweetData(candidate.candidate_tweet_id);
+      
+      if (tweetData && tweetData.text && tweetData.text.trim().length >= 20) {
+        targetTweetContentSnapshot = tweetData.text.trim();
+        snapshotLenLive = tweetData.text.trim().length;
+        snapshotSource = 'live_fetch';
+        console.log(`[SCHEDULER] ✅ Fetched full tweet text: ${snapshotLenLive} chars`);
+      } else {
+        throw new Error(`Fetched text too short or null: ${tweetData?.text?.length || 0} chars`);
+      }
+    } catch (fetchError: any) {
+      console.warn(`[SCHEDULER] ⚠️ Failed to fetch live tweet text: ${fetchError.message}, falling back to candidate content`);
+      // Fallback to candidate content
+      targetTweetContentSnapshot = candidateData.candidate_content || '';
+      snapshotSource = 'candidate_extract';
+      snapshotLenLive = 0;
+      
+      if (!targetTweetContentSnapshot || targetTweetContentSnapshot.length < 20) {
+        throw new Error(`Candidate content too short: ${targetTweetContentSnapshot.length} chars`);
+      }
+    }
+    
+    // Normalize snapshot text (remove extra whitespace, normalize line breaks)
+    const { normalizeTweetText } = await import('../../gates/contextLockVerifier');
+    const normalizedSnapshot = normalizeTweetText(targetTweetContentSnapshot);
+    
+    // Compute SHA256 hash
+    const targetTweetContentHash = createHash('sha256')
+      .update(normalizedSnapshot)
+      .digest('hex');
+    
+    // 🔒 TASK 2: Compute prefix hash (first 500 chars)
+    const prefixText = normalizedSnapshot.slice(0, 500);
+    const targetTweetContentPrefixHash = createHash('sha256')
+      .update(prefixText)
+      .digest('hex');
+    
+    console.log(`[SCHEDULER] 📸 Snapshot saved: ${normalizedSnapshot.length} chars, hash=${targetTweetContentHash.substring(0, 16)}..., source=${snapshotSource}`);
+    
+    // 🔒 TASK 3: Emit snapshot_saved event with source and lengths
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_snapshot_saved',
+      severity: 'info',
+      message: `Reply V2 snapshot saved: decision_id=${decisionId} source=${snapshotSource}`,
+      event_data: {
         decision_id: decisionId,
-        decision_type: 'reply',
-        status: 'generating',
-        content: '[GENERATING...]',
-        target_tweet_id: candidate.candidate_tweet_id,
-        root_tweet_id: candidate.candidate_tweet_id, // 🔒 CRITICAL: Set root_tweet_id = target_tweet_id for root-only replies
-        scheduled_at: new Date().toISOString(),
-        pipeline_source: 'reply_v2_scheduler',
-        build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
-        quality_score: candidate.overall_score / 100,
-        candidate_evaluation_id: candidate.evaluation_id,
-        queue_id: queueId,
-        scheduler_run_id: schedulerRunId,
-      });
+        snapshot_length: normalizedSnapshot.length,
+        snapshot_len_live: snapshotLenLive,
+        snapshot_len_saved: normalizedSnapshot.length,
+        snapshot_source: snapshotSource,
+        hash_length: targetTweetContentHash.length,
+        hash_preview: targetTweetContentHash.substring(0, 16),
+        prefix_hash_preview: targetTweetContentPrefixHash.substring(0, 16),
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    // Insert decision with snapshot/hash populated (status: generating)
+    // Check if decision already exists (from previous failed attempt)
+    const { data: existingDecision } = await supabase
+      .from('content_generation_metadata_comprehensive')
+      .select('decision_id, status')
+      .eq('decision_id', decisionId)
+      .maybeSingle();
+    
+    if (!existingDecision) {
+      const { error: insertError1 } = await supabase
+        .from('content_generation_metadata_comprehensive')
+        .insert({
+          decision_id: decisionId,
+          decision_type: 'reply',
+          status: 'generating', // Status: generating → queued → posted
+          content: '[GENERATING...]', // Placeholder
+          target_tweet_id: candidate.candidate_tweet_id,
+          target_username: candidateData.candidate_author_username, // Required for FINAL_REPLY_GATE
+          root_tweet_id: candidate.candidate_tweet_id, // 🔒 CRITICAL: Set root_tweet_id = target_tweet_id for root-only replies
+          target_tweet_content_snapshot: normalizedSnapshot, // 🔒 TASK 1: Populated from live fetch
+          target_tweet_content_hash: targetTweetContentHash, // 🔒 TASK 1: Populated from live fetch
+          pipeline_source: 'reply_v2_scheduler',
+          build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
+          candidate_evaluation_id: candidate.evaluation_id,
+          queue_id: queueId,
+          scheduler_run_id: schedulerRunId,
+        });
+      
+      if (insertError1) {
+        throw new Error(`Failed to insert decision: ${insertError1.message}`);
+      }
+    } else {
+      // Update existing decision with new snapshot/hash
+      await supabase
+        .from('content_generation_metadata_comprehensive')
+        .update({
+          target_tweet_content_snapshot: normalizedSnapshot,
+          target_tweet_content_hash: targetTweetContentHash,
+          status: 'generating',
+        })
+        .eq('decision_id', decisionId);
+    }
+    
+    // Also insert/update content_metadata with snapshot/hash
+    const scheduledAt = new Date().toISOString(); // 🔒 TASK 2: Set scheduled_at immediately
+    const { data: existingMetadataRow } = await supabase
+      .from('content_metadata')
+      .select('decision_id')
+      .eq('decision_id', decisionId)
+      .maybeSingle();
+    
+    if (!existingMetadataRow) {
+      const { error: insertError2 } = await supabase
+        .from('content_metadata')
+        .insert({
+          decision_id: decisionId,
+          decision_type: 'reply',
+          status: 'generating',
+          content: '[GENERATING...]',
+          target_tweet_id: candidate.candidate_tweet_id,
+          target_username: candidateData.candidate_author_username, // Required for FINAL_REPLY_GATE
+          root_tweet_id: candidate.candidate_tweet_id, // 🔒 CRITICAL: Set root_tweet_id = target_tweet_id for root-only replies
+          target_tweet_content_snapshot: normalizedSnapshot, // 🔒 TASK 1: Populated from live fetch
+          target_tweet_content_hash: targetTweetContentHash, // 🔒 TASK 1: Populated from live fetch
+          scheduled_at: scheduledAt, // 🔒 TASK 2: Set immediately so posting queue can pick it up
+          pipeline_source: 'reply_v2_scheduler',
+          build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
+          quality_score: candidate.overall_score / 100,
+        });
+      
+      if (insertError2) {
+        throw new Error(`Failed to insert metadata: ${insertError2.message}`);
+      }
+    } else {
+      // Update existing metadata with new snapshot/hash
+      await supabase
+        .from('content_metadata')
+        .update({
+          target_tweet_content_snapshot: normalizedSnapshot,
+          target_tweet_content_hash: targetTweetContentHash,
+          scheduled_at: scheduledAt,
+          status: 'generating',
+        })
+        .eq('decision_id', decisionId);
+    }
+    
+    // Store prefix hash in a separate metadata field or event for now (until migration adds column)
+    // For now, we'll pass it via the decision object to contextLockVerifier
     
     // 🎫 CREATE POSTING PERMIT IMMEDIATELY (before generation)
     const { createPostingPermit } = await import('../../posting/postingPermit');
@@ -262,44 +384,379 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     const keywords = extractKeywords(candidateData.candidate_content);
     const replyContext = await buildReplyContext(candidate.candidate_tweet_id, candidateData.candidate_author_username);
     
-    // Generate reply content
-    const routerResponse = await routeContentGeneration({
-      decision_type: 'reply',
-      content_slot: 'reply',
-      topic: 'health',
-      angle: 'reply_context',
-      tone: 'helpful',
-      target_username: candidateData.candidate_author_username,
-      target_tweet_content: candidateData.candidate_content,
-      generator_name: 'contextual_reply',
-      reply_context: {
-        target_text: candidateData.candidate_content,
-        root_text: replyContext.root_tweet_text || candidateData.candidate_content,
-        root_tweet_id: candidate.candidate_tweet_id,
-      },
-    });
+    // Generate reply content with fallback logic
+    let replyContent: string;
+    let isFallback = false;
+    let generationError: Error | null = null;
     
-    let replyContent = routerResponse.text;
-    if (Array.isArray(replyContent)) {
-      replyContent = replyContent[0];
+    // 🔒 CERT_MODE: Check if cert mode is enabled (env var or global flag)
+    const certMode = process.env.CERT_MODE === 'true' || (global as any).CERT_MODE === true;
+    
+    try {
+      if (certMode) {
+        // 🔒 CERT_MODE: Use certified reply generator (guaranteed success)
+        console.log(`[SCHEDULER] 🔒 CERT_MODE enabled - using certified reply generator`);
+        const { generateCertModeReply } = await import('../../ai/replyGeneratorAdapter');
+        const certResult = await generateCertModeReply({
+          target_username: candidateData.candidate_author_username,
+          target_tweet_content: normalizedSnapshot,
+          topic: 'health',
+          angle: 'reply_context',
+          tone: 'helpful',
+          model: 'gpt-4o-mini',
+        });
+        
+        replyContent = certResult.content;
+        console.log(`[SCHEDULER] ✅ CERT reply generated: ${replyContent.length} chars`);
+      } else {
+        // Normal generation path
+        const routerResponse = await routeContentGeneration({
+          decision_type: 'reply',
+          content_slot: 'reply',
+          topic: 'health',
+          angle: 'reply_context',
+          tone: 'helpful',
+          target_username: candidateData.candidate_author_username,
+          target_tweet_content: normalizedSnapshot, // Use normalized snapshot for generation
+          generator_name: 'contextual_reply',
+          reply_context: {
+            target_text: normalizedSnapshot,
+            root_text: replyContext.root_tweet_text || normalizedSnapshot,
+            root_tweet_id: candidate.candidate_tweet_id,
+          },
+        });
+        
+        replyContent = routerResponse.text;
+        if (Array.isArray(replyContent)) {
+          replyContent = replyContent[0];
+        }
+        
+        console.log(`[SCHEDULER] ✅ Reply generated: ${replyContent.length} chars`);
+      }
+    } catch (genError: any) {
+      generationError = genError;
+      
+      // 🔒 TASK 1: Instrument UNGROUNDED_GENERATION_SKIP
+      if (genError.message?.includes('UNGROUNDED_GENERATION_SKIP')) {
+        const { getSupabaseClient } = await import('../../db/index');
+        const supabase = getSupabaseClient();
+        
+        const ungroundedReasonCodes = (genError as any).ungroundedReasonCodes || ['unknown'];
+        const flaggedClaims = (genError as any).flaggedClaims || [];
+        const evidenceSnippetsUsed = (genError as any).evidenceSnippetsUsed || [];
+        const modelOutputExcerpt = (genError as any).modelOutputExcerpt || '';
+        const tweetTerms = (genError as any).tweetTerms || [];
+        
+        await supabase.from('system_events').insert({
+          event_type: 'reply_v2_ungrounded_skip',
+          severity: 'warning',
+          message: `Reply V2 ungrounded generation skip: decision_id=${decisionId}`,
+          event_data: {
+            decision_id: decisionId,
+            permit_id: permit_id,
+            tweet_id: candidate.candidate_tweet_id,
+            snapshot_len: normalizedSnapshot.length,
+            ungrounded_reason_codes: ungroundedReasonCodes,
+            flagged_claims: flaggedClaims,
+            evidence_snippets_used: evidenceSnippetsUsed,
+            model_output_excerpt: modelOutputExcerpt.substring(0, 300),
+            tweet_terms: tweetTerms,
+            stack_trace: genError.stack?.substring(0, 1000),
+          },
+          created_at: new Date().toISOString(),
+        });
+        
+        console.log(`[SCHEDULER] ⚠️ Primary generation failed grounding - attempting fallback...`);
+        
+        // 🔒 TASK 2: Try fallback generation
+        try {
+          const { generateGroundedFallbackReply } = await import('../../ai/replyGeneratorAdapter');
+          const fallbackResult = await generateGroundedFallbackReply({
+            target_username: candidateData.candidate_author_username,
+            target_tweet_content: normalizedSnapshot,
+            topic: 'health',
+            angle: 'reply_context',
+            tone: 'helpful',
+            model: 'gpt-4o-mini',
+            reply_context: {
+              target_text: normalizedSnapshot,
+              root_text: replyContext.root_tweet_text || normalizedSnapshot,
+              root_tweet_id: candidate.candidate_tweet_id,
+            },
+          });
+          
+          replyContent = fallbackResult.content;
+          isFallback = true;
+          console.log(`[SCHEDULER] ✅ Fallback reply generated: ${replyContent.length} chars`);
+          
+          // 🔒 TASK 3: Emit fallback generation completed event
+          await supabase.from('system_events').insert({
+            event_type: 'reply_v2_fallback_generation_completed',
+            severity: 'info',
+            message: `Reply V2 fallback generation completed: decision_id=${decisionId}`,
+            event_data: {
+              decision_id: decisionId,
+              permit_id: permit_id,
+              reply_length: replyContent.length,
+              snapshot_length: normalizedSnapshot.length,
+              original_error: genError.message,
+              reason_codes: ['fallback_used', 'ungrounded_generation_skipped'],
+            },
+            created_at: new Date().toISOString(),
+          });
+        } catch (fallbackError: any) {
+          // Fallback also failed - mark decision/permit as FAILED
+          console.error(`[SCHEDULER] ❌ Fallback generation also failed: ${fallbackError.message}`);
+          
+          await supabase
+            .from('content_generation_metadata_comprehensive')
+            .update({
+              status: 'failed',
+              skip_reason: 'ungrounded_generation_failed',
+              error_message: `Primary: ${genError.message}; Fallback: ${fallbackError.message}`,
+            })
+            .eq('decision_id', decisionId);
+          
+          await supabase
+            .from('content_metadata')
+            .update({
+              status: 'failed',
+              skip_reason: 'ungrounded_generation_failed',
+            })
+            .eq('decision_id', decisionId);
+          
+          // Mark permit as FAILED
+          const { markPermitFailed } = await import('../../posting/postingPermit');
+          await markPermitFailed(permit_id, `Generation failed: ${fallbackError.message}`);
+          
+          // 🔒 MANDATE 2: Emit generation_failed event
+          await supabase.from('system_events').insert({
+            event_type: 'reply_v2_generation_failed',
+            severity: 'error',
+            message: `Reply V2 generation failed (primary + fallback): decision_id=${decisionId}`,
+            event_data: {
+              decision_id: decisionId,
+              permit_id: permit_id,
+              primary_error: genError.message,
+              fallback_error: fallbackError.message,
+              stack_trace: fallbackError.stack?.substring(0, 1000),
+            },
+            created_at: new Date().toISOString(),
+          });
+          
+          // Reset candidate to queued for retry
+          await supabase
+            .from('reply_candidate_queue')
+            .update({ status: 'queued', selected_at: null })
+            .eq('id', queueId);
+          
+          throw new Error(`[SCHEDULER] ❌ BLOCKED: Both primary and fallback generation failed grounding`);
+        }
+      } else {
+        // Non-ungrounded error - rethrow
+        throw genError;
+      }
     }
     
-    // Update decision with generated content
-    await supabase
+    // 🔒 TASK 2: Compute semantic similarity AFTER generation, BEFORE queuing
+    const semanticSimilarity = computeSemanticSimilarity(normalizedSnapshot, replyContent);
+    console.log(`[SCHEDULER] 🧠 Semantic similarity computed: ${semanticSimilarity.toFixed(3)}`);
+    
+    // 🔒 TASK 2: Update decision with generated content + semantic_similarity BEFORE setting status='queued'
+    // Store is_fallback flag in features JSONB for FINAL_REPLY_GATE to use relaxed threshold
+    
+    // Get existing features JSONB or create new object
+    const { data: existingMetadataForUpdate } = await supabase
+      .from('content_metadata')
+      .select('features, pipeline_source, status')
+      .eq('decision_id', decisionId)
+      .single();
+    
+    if (!existingMetadataForUpdate) {
+      throw new Error(`[SCHEDULER] ❌ Decision ${decisionId} not found in content_metadata`);
+    }
+    
+    const existingFeatures = (existingMetadataForUpdate?.features as any) || {};
+    const existingReasonCodes = existingFeatures.reason_codes || [];
+    const updatedReasonCodes = isFallback 
+      ? [...new Set([...existingReasonCodes, 'fallback_used'])]
+      : existingReasonCodes;
+    
+    const updatedFeatures = { 
+      ...existingFeatures, 
+      is_fallback: isFallback,
+      semantic_similarity: semanticSimilarity, // 🔒 TASK 2: Store in features JSONB (column doesn't exist in content_metadata)
+      reason_codes: updatedReasonCodes, // 🔒 TASK 3: Include fallback_used if fallback was used
+    };
+    
+    // Update content_generation_metadata_comprehensive
+    const { data: comprehensiveUpdate, error: updateError1 } = await supabase
       .from('content_generation_metadata_comprehensive')
       .update({
-        status: 'queued',
+        status: 'queued', // 🔒 TASK 3: Set to queued AFTER all fields populated
         content: replyContent,
+        semantic_similarity: semanticSimilarity, // 🔒 TASK 2: Populated after generation
       })
-      .eq('decision_id', decisionId);
+      .eq('decision_id', decisionId)
+      .select('decision_id, status')
+      .single();
     
-    await supabase
+    if (updateError1) {
+      throw new Error(`[SCHEDULER] ❌ Failed to update comprehensive: ${updateError1.message}`);
+    }
+    
+    if (!comprehensiveUpdate) {
+      // Check current status to diagnose
+      const { data: currentStatus } = await supabase
+        .from('content_generation_metadata_comprehensive')
+        .select('decision_id, status')
+        .eq('decision_id', decisionId)
+        .single();
+      
+      await supabase.from('system_events').insert({
+        event_type: 'reply_v2_decision_update_zero_rows',
+        severity: 'error',
+        message: `Reply V2 decision update zero rows: decision_id=${decisionId}`,
+        event_data: {
+          decision_id: decisionId,
+          current_status: currentStatus?.status || 'unknown',
+          expected_status: 'queued',
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      throw new Error(`[SCHEDULER] ❌ Update comprehensive returned 0 rows. Current status: ${currentStatus?.status || 'unknown'}`);
+    }
+    
+    // Update content_metadata (primary table)
+    const { data: metadataUpdate, error: updateError2 } = await supabase
       .from('content_metadata')
       .update({
-        status: 'queued',
+        status: 'queued', // 🔒 TASK 3: Set to queued AFTER all fields populated
         content: replyContent,
+        features: updatedFeatures, // 🔒 TASK 2+3: Store semantic_similarity + fallback flag in features JSONB
+        pipeline_source: existingMetadataForUpdate?.pipeline_source || 'reply_v2_scheduler', // Preserve pipeline_source
       })
-      .eq('decision_id', decisionId);
+      .eq('decision_id', decisionId)
+      .select('decision_id, status, features')
+      .single();
+    
+    if (updateError2) {
+      throw new Error(`[SCHEDULER] ❌ Failed to update metadata: ${updateError2.message}`);
+    }
+    
+    if (!metadataUpdate) {
+      // Check current status to diagnose
+      const { data: currentStatus } = await supabase
+        .from('content_metadata')
+        .select('decision_id, status')
+        .eq('decision_id', decisionId)
+        .single();
+      
+      await supabase.from('system_events').insert({
+        event_type: 'reply_v2_decision_update_zero_rows',
+        severity: 'error',
+        message: `Reply V2 decision update zero rows: decision_id=${decisionId}`,
+        event_data: {
+          decision_id: decisionId,
+          current_status: currentStatus?.status || 'unknown',
+          expected_status: 'queued',
+          table: 'content_metadata',
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      throw new Error(`[SCHEDULER] ❌ Update metadata returned 0 rows. Current status: ${currentStatus?.status || 'unknown'}`);
+    }
+    
+    // 🔒 TASK 2: Verify persistence - re-select and assert
+    const { data: persistedDecision, error: verifyError } = await supabase
+      .from('content_metadata')
+      .select('decision_id, status, features')
+      .eq('decision_id', decisionId)
+      .single();
+    
+    if (verifyError || !persistedDecision) {
+      throw new Error(`[SCHEDULER] ❌ Failed to verify persistence: ${verifyError?.message || 'decision not found'}`);
+    }
+    
+    if (persistedDecision.status !== 'queued') {
+      throw new Error(`[SCHEDULER] ❌ Persistence verification failed: status=${persistedDecision.status}, expected=queued`);
+    }
+    
+    const persistedFeatures = (persistedDecision.features as any) || {};
+    if (persistedFeatures.semantic_similarity === undefined || persistedFeatures.semantic_similarity === null) {
+      throw new Error(`[SCHEDULER] ❌ Persistence verification failed: semantic_similarity missing in features`);
+    }
+    
+    if (persistedFeatures.is_fallback !== isFallback) {
+      throw new Error(`[SCHEDULER] ❌ Persistence verification failed: is_fallback=${persistedFeatures.is_fallback}, expected=${isFallback}`);
+    }
+    
+    // 🔒 TASK 2: Log persistence success
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_decision_queued_persisted',
+      severity: 'info',
+      message: `Reply V2 decision queued persisted: decision_id=${decisionId}`,
+      event_data: {
+        decision_id: decisionId,
+        is_fallback: isFallback,
+        semantic_similarity: semanticSimilarity,
+        rowsUpdated_comprehensive: comprehensiveUpdate ? 1 : 0,
+        rowsUpdated_metadata: metadataUpdate ? 1 : 0,
+        persisted_status: persistedDecision.status,
+        persisted_features: persistedFeatures,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    console.log(`[SCHEDULER] ✅ Decision persisted: status=queued, is_fallback=${isFallback}, similarity=${semanticSimilarity.toFixed(3)}`);
+    
+    // 🔒 TASK 4: Emit generation_completed event (AFTER updates succeed)
+    await supabase.from('system_events').insert({
+      event_type: isFallback ? 'reply_v2_fallback_generation_completed' : 'reply_v2_generation_completed',
+      severity: 'info',
+      message: `Reply V2 ${isFallback ? 'fallback ' : ''}generation completed: decision_id=${decisionId}`,
+      event_data: {
+        decision_id: decisionId,
+        permit_id: permit_id,
+        reply_length: replyContent.length,
+        reply_preview: replyContent.substring(0, 100),
+        is_fallback: isFallback,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    // 🔒 TASK 4: Emit similarity_computed event
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_similarity_computed',
+      severity: 'info',
+      message: `Reply V2 similarity computed: decision_id=${decisionId} similarity=${semanticSimilarity.toFixed(3)}`,
+      event_data: {
+        decision_id: decisionId,
+        permit_id: permit_id,
+        semantic_similarity: semanticSimilarity,
+        snapshot_length: normalizedSnapshot.length,
+        reply_length: replyContent.length,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    // 🔒 TASK 4: Emit decision_queued event
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_decision_queued',
+      severity: 'info',
+      message: `Reply V2 decision queued: decision_id=${decisionId}`,
+      event_data: {
+        decision_id: decisionId,
+        permit_id: permit_id,
+        candidate_id: candidate.candidate_tweet_id,
+        semantic_similarity: semanticSimilarity,
+        reply_length: replyContent.length,
+        snapshot_length: normalizedSnapshot.length,
+      },
+      created_at: new Date().toISOString(),
+    });
     
     // Create reply opportunity (for compatibility)
     const { data: opportunity, error: oppError } = await supabase

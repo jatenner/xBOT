@@ -43,6 +43,30 @@ export async function createPostingPermit(params: {
 }): Promise<{ permit_id: string; success: boolean; error?: string }> {
   const supabase = getSupabaseClient();
   
+  // 🔒 TASK 4: Check for existing APPROVED permit first (reuse instead of duplicate)
+  const { data: existingPermit } = await supabase
+    .from('post_attempts')
+    .select('permit_id, status, actual_tweet_id')
+    .eq('decision_id', params.decision_id)
+    .eq('status', 'APPROVED')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  
+  if (existingPermit) {
+    // If permit already used (has tweet_id), don't reuse
+    if (existingPermit.actual_tweet_id) {
+      console.log(`[POSTING_PERMIT] ⚠️ Existing permit ${existingPermit.permit_id} already used (has tweet_id)`);
+      // Continue to create new permit below
+    } else {
+      console.log(`[POSTING_PERMIT] ♻️ Reusing existing APPROVED permit: ${existingPermit.permit_id} for decision_id=${params.decision_id}`);
+      return {
+        permit_id: existingPermit.permit_id,
+        success: true,
+      };
+    }
+  }
+  
   const permit_id = `permit_${Date.now()}_${uuidv4().substring(0, 8)}`;
   
   // Get origin info
@@ -67,6 +91,27 @@ export async function createPostingPermit(params: {
       });
     
     if (error) {
+      // If duplicate key error, try to reuse existing permit
+      if (error.message?.includes('idx_post_attempts_approved_decision') || error.message?.includes('duplicate key')) {
+        console.log(`[POSTING_PERMIT] ⚠️ Duplicate permit detected, attempting to reuse existing...`);
+        const { data: existingPermitRetry } = await supabase
+          .from('post_attempts')
+          .select('permit_id, status, actual_tweet_id')
+          .eq('decision_id', params.decision_id)
+          .eq('status', 'APPROVED')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (existingPermitRetry && !existingPermitRetry.actual_tweet_id) {
+          console.log(`[POSTING_PERMIT] ♻️ Reusing existing APPROVED permit after duplicate error: ${existingPermitRetry.permit_id}`);
+          return {
+            permit_id: existingPermitRetry.permit_id,
+            success: true,
+          };
+        }
+      }
+      
       console.error(`[POSTING_PERMIT] ❌ Failed to create permit: ${error.message}`);
       return { permit_id, success: false, error: error.message };
     }
