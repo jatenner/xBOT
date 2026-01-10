@@ -1093,7 +1093,10 @@ const POSTING_QUEUE_MAX_ITEMS = parseInt(process.env.POSTING_QUEUE_MAX_ITEMS || 
 
 export async function processPostingQueue(options?: { certMode?: boolean; maxItems?: number }): Promise<void> {
   const certMode = options?.certMode || process.env.POSTING_QUEUE_CERT_MODE === 'true';
-  const maxItems = options?.maxItems || (certMode ? 1 : undefined);
+  // Use explicit maxItems if provided, otherwise use env var (unless certMode, then 1)
+  const maxItems = options?.maxItems !== undefined 
+    ? options.maxItems 
+    : (certMode ? 1 : POSTING_QUEUE_MAX_ITEMS);
   
   const { getSupabaseClient } = await import('../db/index');
   const supabase = getSupabaseClient();
