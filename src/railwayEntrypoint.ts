@@ -73,17 +73,20 @@ console.log(`PORT: ${process.env.PORT || 'NOT SET (defaulting to 3000)'}`);
 console.log(`JOBS_AUTOSTART env var: "${process.env.JOBS_AUTOSTART || 'NOT SET'}"`);
 console.log('========================================\n');
 
-// Determine service type from SERVICE_ROLE env var (single source of truth)
-const serviceRole = (process.env.SERVICE_ROLE || '').toLowerCase();
-const isWorkerService = serviceRole === 'worker';
-
-console.log(`[BOOT] Service type: ${isWorkerService ? 'WORKER' : 'MAIN'}`);
-console.log(`[BOOT] SERVICE_ROLE: ${process.env.SERVICE_ROLE || 'NOT SET (defaulting to MAIN)'}`);
-console.log(`[BOOT] Service name: ${process.env.RAILWAY_SERVICE_NAME || 'unknown'}`);
-
 // Background initialization (NON-BLOCKING - health server already running)
 setImmediate(async () => {
   try {
+    // Determine service type using role resolver (single source of truth)
+    const { resolveServiceRole } = await import('./utils/serviceRoleResolver');
+    const roleInfo = resolveServiceRole();
+    const isWorkerService = roleInfo.role === 'worker';
+
+    console.log(`[BOOT] Service type: ${isWorkerService ? 'WORKER' : 'MAIN'}`);
+    console.log(`[BOOT] Resolved role: ${roleInfo.role} (source: ${roleInfo.source})`);
+    console.log(`[BOOT] SERVICE_ROLE: ${roleInfo.raw.SERVICE_ROLE || 'NOT SET'}`);
+    console.log(`[BOOT] RAILWAY_SERVICE_NAME: ${roleInfo.raw.RAILWAY_SERVICE_NAME || 'NOT SET'}`);
+    console.log(`[BOOT] Service name: ${process.env.RAILWAY_SERVICE_NAME || 'unknown'}`);
+
     if (isWorkerService) {
       // WORKER SERVICE: Start job manager
       console.log('[BOOT] Starting worker service (job manager)...');

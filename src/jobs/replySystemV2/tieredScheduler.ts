@@ -10,9 +10,11 @@ import { getNextCandidateFromQueue } from './queueManager';
 import { createHash } from 'crypto';
 import { computeSemanticSimilarity } from '../../gates/semanticGate';
 
-const POSTING_INTERVAL_MINUTES = 15;
+// 🔒 TASK 4: Throughput knobs via env vars (safe, reversible)
+const REPLY_V2_TICK_SECONDS = parseInt(process.env.REPLY_V2_TICK_SECONDS || '900', 10); // Default: 15 min (900s)
+const POSTING_INTERVAL_MINUTES = REPLY_V2_TICK_SECONDS / 60;
 const TARGET_REPLIES_PER_HOUR = 4;
-const TARGET_REPLIES_PER_15MIN = 1; // 4 per hour = 1 per 15 min
+const TARGET_REPLIES_PER_TICK = Math.floor((TARGET_REPLIES_PER_HOUR * REPLY_V2_TICK_SECONDS) / 3600); // Replies per tick
 
 export interface SchedulerResult {
   posted: boolean;

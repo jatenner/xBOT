@@ -438,7 +438,9 @@ export class JobManager {
       2 * MINUTE  // Start after 2 minutes
     );
 
-    // ⏰ Reply System V2 - scheduled posting every 15 minutes
+    // ⏰ Reply System V2 - scheduled posting (configurable via REPLY_V2_TICK_SECONDS)
+    const REPLY_V2_TICK_SECONDS = parseInt(process.env.REPLY_V2_TICK_SECONDS || '900', 10); // Default: 15 min
+    const REPLY_V2_TICK_MS = REPLY_V2_TICK_SECONDS * 1000;
     this.scheduleStaggeredJob(
       'reply_v2_scheduler',
       async () => {
@@ -450,7 +452,7 @@ export class JobManager {
           }
         });
       },
-      15 * MINUTE, // Every 15 minutes (target: 4 replies/hour)
+      REPLY_V2_TICK_MS, // Configurable via REPLY_V2_TICK_SECONDS (default: 15 min = 4 replies/hour)
       3 * MINUTE   // Start after 3 minutes
     );
 

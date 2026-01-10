@@ -1088,6 +1088,9 @@ export function getCircuitBreakerStatus(): {
   return status;
 }
 
+// 🔒 TASK 4: Throughput knob via env var (safe, reversible)
+const POSTING_QUEUE_MAX_ITEMS = parseInt(process.env.POSTING_QUEUE_MAX_ITEMS || '2', 10); // Default: 2
+
 export async function processPostingQueue(options?: { certMode?: boolean; maxItems?: number }): Promise<void> {
   const certMode = options?.certMode || process.env.POSTING_QUEUE_CERT_MODE === 'true';
   const maxItems = options?.maxItems || (certMode ? 1 : undefined);
@@ -1095,7 +1098,9 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
   const { getSupabaseClient } = await import('../db/index');
   const supabase = getSupabaseClient();
   const gitSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
-  const serviceRole = process.env.SERVICE_ROLE || 'unknown';
+  const { getServiceRoleInfo } = await import('../utils/serviceRoleResolver');
+  const roleInfo = getServiceRoleInfo();
+  const serviceRole = roleInfo.role;
   
   // 🔒 TASK 2: Run deferral healer before processing queue
   try {

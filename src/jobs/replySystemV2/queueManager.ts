@@ -7,7 +7,9 @@
 
 import { getSupabaseClient } from '../../db/index';
 
-const QUEUE_SIZE = 25; // Top N candidates
+// 🔒 TASK 4: Throughput knobs via env vars (safe, reversible)
+const REPLY_V2_MAX_QUEUE_PER_TICK = parseInt(process.env.REPLY_V2_MAX_QUEUE_PER_TICK || '25', 10); // Default: 25
+const QUEUE_SIZE = REPLY_V2_MAX_QUEUE_PER_TICK; // Top N candidates
 const DEFAULT_TTL_MINUTES = 60; // Default TTL
 
 /**

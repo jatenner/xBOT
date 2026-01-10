@@ -128,8 +128,14 @@ export async function fetchAndEvaluateCandidates(): Promise<{
         
         const sourceId = sourceRecord?.id;
         
+        // 🔒 TASK 4: Limit evaluations per tick (throughput knob)
+        const REPLY_V2_MAX_EVAL_PER_TICK = parseInt(process.env.REPLY_V2_MAX_EVAL_PER_TICK || '0', 10); // 0 = unlimited
+        const tweetsToEvaluate = REPLY_V2_MAX_EVAL_PER_TICK > 0 
+          ? tweets.slice(0, REPLY_V2_MAX_EVAL_PER_TICK)
+          : tweets;
+        
         // Evaluate each tweet
-        for (const tweet of tweets) {
+        for (const tweet of tweetsToEvaluate) {
           try {
             // Check if already evaluated
             const { data: existing } = await supabase

@@ -34,6 +34,17 @@ interface FunnelMetrics {
   views_24h_p50: number;
   views_24h_p95: number;
   success_rate_1000_views: number;
+  // Bottleneck analysis
+  acceptance_rates: {
+    fetched_to_evaluated: number;
+    evaluated_to_hardpass: number;
+    hardpass_to_queued: number;
+    queued_to_permit: number;
+    permit_to_used: number;
+    used_to_posted: number;
+  };
+  bottleneck_stage: string;
+  top_reject_reasons: Array<{ reason: string; count: number }>;
 }
 
 export async function getFunnelMetrics(hours: number): Promise<FunnelMetrics> {
@@ -223,12 +234,75 @@ export async function getFunnelMetrics(hours: number): Promise<FunnelMetrics> {
   const successCount = views24hSorted.filter(v => v >= 1000).length;
   const successRate = views24hSorted.length > 0 ? (successCount / views24hSorted.length) * 100 : 0;
   
+  // 🔒 TASK 3: Bottleneck analysis - acceptance rates per stage
+  const fetched = fetchStarted?.length || 0;
+  const evaluatedCount = evaluated || 0;
+  const hardpass = passedHardFilters || 0;
+  
+  // Get queued count
+  const { count: queued } = await supabase
+    .from('reply_candidate_queue')
+    .select('*', { count: 'exact', head: true })
+    .gte('created_at', since)
+    .eq('status', 'queued');
+  
+  const queuedCount = queued || 0;
+  const permitCount = permitsApproved || 0;
+  const usedCount = permitsUsed || 0;
+  const postedCount = replyPosted || 0;
+  
+  // Calculate acceptance rates
+  const acceptanceRates = {
+    fetched_to_evaluated: fetched > 0 ? (evaluatedCount / fetched) * 100 : 0,
+    evaluated_to_hardpass: evaluatedCount > 0 ? (hardpass / evaluatedCount) * 100 : 0,
+    hardpass_to_queued: hardpass > 0 ? (queuedCount / hardpass) * 100 : 0,
+    queued_to_permit: queuedCount > 0 ? (permitCount / queuedCount) * 100 : 0,
+    permit_to_used: permitCount > 0 ? (usedCount / permitCount) * 100 : 0,
+    used_to_posted: usedCount > 0 ? (postedCount / usedCount) * 100 : 0,
+  };
+  
+  // Find bottleneck (smallest conversion rate)
+  const rates = [
+    { stage: 'fetched→evaluated', rate: acceptanceRates.fetched_to_evaluated },
+    { stage: 'evaluated→hardpass', rate: acceptanceRates.evaluated_to_hardpass },
+    { stage: 'hardpass→queued', rate: acceptanceRates.hardpass_to_queued },
+    { stage: 'queued→permit', rate: acceptanceRates.queued_to_permit },
+    { stage: 'permit→used', rate: acceptanceRates.permit_to_used },
+    { stage: 'used→posted', rate: acceptanceRates.used_to_posted },
+  ];
+  
+  const bottleneck = rates.reduce((min, curr) => 
+    curr.rate < min.rate ? curr : min
+  , rates[0]);
+  
+  // 🔒 TASK 3: Top reject reasons
+  const { data: rejectedCandidates } = await supabase
+    .from('candidate_evaluations')
+    .select('filter_reason')
+    .eq('passed_hard_filters', false)
+    .gte('created_at', since)
+    .limit(1000);
+  
+  const rejectReasonCounts = new Map<string, number>();
+  rejectedCandidates?.forEach(c => {
+    if (c.filter_reason) {
+      // Extract primary reason (first part before comma)
+      const primaryReason = c.filter_reason.split(',')[0].trim();
+      rejectReasonCounts.set(primaryReason, (rejectReasonCounts.get(primaryReason) || 0) + 1);
+    }
+  });
+  
+  const topRejectReasons = Array.from(rejectReasonCounts.entries())
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+  
   return {
     period: `${hours}h`,
     fetch_started: fetchStarted?.length || 0,
     fetch_completed: fetchCompleted?.length || 0,
     fetch_avg_duration_ms: Math.round(avgDuration),
-    candidates_evaluated: evaluated || 0,
+    candidates_evaluated: evaluatedCount || 0,
     passed_hard_filters: passedHardFilters || 0,
     passed_ai_judge: passedAIJudge || 0,
     queue_size_min: queueMin,
@@ -249,6 +323,9 @@ export async function getFunnelMetrics(hours: number): Promise<FunnelMetrics> {
     views_24h_p50: views24hP50,
     views_24h_p95: views24hP95,
     success_rate_1000_views: Math.round(successRate * 10) / 10,
+    acceptance_rates: acceptanceRates,
+    bottleneck_stage: bottleneck.stage,
+    top_reject_reasons: topRejectReasons,
   };
 }
 
@@ -283,6 +360,27 @@ async function main() {
   console.log(`| Views 4h (p50/p95) | ${metrics6h.views_4h_p50}/${metrics6h.views_4h_p95} | ${metrics24h.views_4h_p50}/${metrics24h.views_4h_p95} |`);
   console.log(`| Views 24h (p50/p95) | ${metrics6h.views_24h_p50}/${metrics6h.views_24h_p95} | ${metrics24h.views_24h_p50}/${metrics24h.views_24h_p95} |`);
   console.log(`| Success rate (>=1000 views) | ${metrics6h.success_rate_1000_views}% | ${metrics24h.success_rate_1000_views}% |`);
+  
+  // 🔒 TASK 3: Bottleneck analysis
+  console.log('\n=== BOTTLENECK ANALYSIS (24h) ===\n');
+  console.log('| Stage | Acceptance Rate |');
+  console.log('|-------|-----------------|');
+  console.log(`| Fetched → Evaluated | ${metrics24h.acceptance_rates.fetched_to_evaluated.toFixed(1)}% |`);
+  console.log(`| Evaluated → Hard Pass | ${metrics24h.acceptance_rates.evaluated_to_hardpass.toFixed(1)}% |`);
+  console.log(`| Hard Pass → Queued | ${metrics24h.acceptance_rates.hardpass_to_queued.toFixed(1)}% |`);
+  console.log(`| Queued → Permit | ${metrics24h.acceptance_rates.queued_to_permit.toFixed(1)}% |`);
+  console.log(`| Permit → Used | ${metrics24h.acceptance_rates.permit_to_used.toFixed(1)}% |`);
+  console.log(`| Used → Posted | ${metrics24h.acceptance_rates.used_to_posted.toFixed(1)}% |`);
+  const bottleneckRate = rates.find(r => r.stage === metrics24h.bottleneck_stage)?.rate || 0;
+  console.log(`\n🔴 BOTTLENECK: ${metrics24h.bottleneck_stage} (${bottleneckRate.toFixed(1)}%)`);
+  
+  // Top reject reasons
+  console.log('\n=== TOP 5 REJECT REASONS (24h) ===\n');
+  console.log('| Rank | Reason | Count |');
+  console.log('|------|--------|-------|');
+  metrics24h.top_reject_reasons.forEach((r, i) => {
+    console.log(`| ${i + 1} | ${r.reason.substring(0, 50)} | ${r.count} |`);
+  });
   
   process.exit(0);
 }

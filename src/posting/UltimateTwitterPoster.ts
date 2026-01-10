@@ -843,11 +843,9 @@ export class UltimateTwitterPoster {
     }
     
     // 🔒 SEV1 GHOST ERADICATION: Service identity check (WORKER ONLY)
-    // 🔒 SERVICE_ROLE CHECK: Use SERVICE_ROLE env var (single source of truth)
-    // Fallback to RAILWAY_SERVICE_NAME if SERVICE_ROLE not set (for Railway compatibility)
-    const serviceRole = (process.env.SERVICE_ROLE || '').toLowerCase();
-    const serviceName = (process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || '').toLowerCase();
-    const isWorker = serviceRole === 'worker' || serviceName === 'serene-cat' || serviceName.includes('worker');
+    // 🔒 SERVICE_ROLE CHECK: Use role resolver (single source of truth)
+    const { isWorkerService } = await import('../utils/serviceRoleResolver');
+    const isWorker = isWorkerService();
     
     if (!isWorker) {
       const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. SERVICE_ROLE=${process.env.SERVICE_ROLE || 'NOT SET'}`;
@@ -1932,10 +1930,9 @@ export class UltimateTwitterPoster {
 
         await this.page.waitForTimeout(400);
 
-        // 🔒 SERVICE_ROLE CHECK: Use SERVICE_ROLE env var (single source of truth)
-        const serviceRole = (process.env.SERVICE_ROLE || '').toLowerCase();
-        const serviceName = (process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || '').toLowerCase();
-        const isWorker = serviceRole === 'worker' || serviceName === 'serene-cat' || serviceName.includes('worker');
+        // 🔒 SERVICE_ROLE CHECK: Use role resolver (single source of truth)
+        const { isWorkerService } = await import('../utils/serviceRoleResolver');
+        const isWorker = isWorkerService();
         
         if (!isWorker) {
           const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. SERVICE_ROLE=${process.env.SERVICE_ROLE || 'NOT SET'}`;
