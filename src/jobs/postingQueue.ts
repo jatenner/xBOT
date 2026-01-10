@@ -1058,6 +1058,7 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
   const certMode = options?.certMode || process.env.POSTING_QUEUE_CERT_MODE === 'true';
   const maxItems = options?.maxItems || (certMode ? 1 : undefined);
   
+  const { getSupabaseClient } = await import('../db/index');
   const supabase = getSupabaseClient();
   const gitSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
   const serviceRole = process.env.SERVICE_ROLE || 'unknown';
