@@ -2176,13 +2176,21 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
     const data = certMode 
       ? [...(replyPosts || [])] // CERT MODE: Only replies
       : [...(contentPosts || []), ...(replyPosts || [])]; // Normal mode: content + replies
-    const error = contentError || replyError;
+    const error = certMode ? replyError : (contentError || replyError);
     
-    const certMode = process.env.POSTING_QUEUE_CERT_MODE === 'true';
+    // 🔒 CERT MODE: Filter out any non-reply decisions that slipped through
+    const filteredData = certMode 
+      ? data.filter(d => d.decision_type === 'reply' && d.pipeline_source === 'reply_v2_scheduler')
+      : data;
+    
+    if (certMode && filteredData.length !== data.length) {
+      console.warn(`[POSTING_QUEUE] ⚠️  CERT MODE: Filtered out ${data.length - filteredData.length} non-reply decisions`);
+    }
+    
     console.log(`[POSTING_QUEUE] 📊 Content posts: ${certMode ? 0 : (contentPosts?.length || 0)}, Replies: ${replyPosts?.length || 0} (cert_mode=${certMode})`);
     
     // 🔒 MANDATE 1: Log noop if no candidates
-    if (data.length === 0) {
+    if (filteredData.length === 0) {
       const reason = certMode 
         ? 'no_reply_candidates_with_reply_v2_scheduler'
         : (contentPosts?.length === 0 && replyPosts?.length === 0 ? 'no_candidates' : 'all_filtered');
@@ -2244,11 +2252,15 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       
       // Within same priority level, maintain scheduled order (FIFO)
       return new Date(String(a.scheduled_at)).getTime() - new Date(String(b.scheduled_at)).getTime();
-    });
+      });
+      return sorted;
+    })();
     
-    const prioritizedThreads = data.filter(d => d.decision_type === 'thread').length;
-    const prioritizedReplies = data.filter(d => d.decision_type === 'reply').length;
-    const singles = data.filter(d => d.decision_type === 'single').length;
+    const finalData = sortedData;
+    
+    const prioritizedThreads = finalData.filter(d => d.decision_type === 'thread').length;
+    const prioritizedReplies = finalData.filter(d => d.decision_type === 'reply').length;
+    const singles = finalData.filter(d => d.decision_type === 'single').length;
     
     if (prioritizedThreads > 0 || prioritizedReplies > 0) {
       console.log(`[POSTING_QUEUE] 🎯 Queue order: ${prioritizedThreads} threads → ${prioritizedReplies} replies → ${singles} singles`);
