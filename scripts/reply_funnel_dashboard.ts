@@ -238,7 +238,7 @@ export async function getFunnelMetrics(hours: number): Promise<FunnelMetrics> {
   
   // 🔒 TASK 3: Bottleneck analysis - acceptance rates per stage
   const fetched = fetchStarted?.length || 0;
-  const evaluatedCount = evaluated || 0;
+  // evaluatedCount already declared above from query
   const hardpass = passedHardFilters || 0;
   
   // Get queued count
