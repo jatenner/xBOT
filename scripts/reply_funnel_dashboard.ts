@@ -79,10 +79,12 @@ export async function getFunnelMetrics(hours: number): Promise<FunnelMetrics> {
   const avgDuration = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
   
   // Candidates evaluated
-  const { count: evaluatedCount } = await supabase
+  const { count: evaluatedCountQuery } = await supabase
     .from('candidate_evaluations')
     .select('*', { count: 'exact', head: true })
     .gte('created_at', since);
+  
+  const evaluatedCount = evaluatedCountQuery || 0;
   
   const { count: passedHardFilters } = await supabase
     .from('candidate_evaluations')
