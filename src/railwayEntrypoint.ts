@@ -16,7 +16,7 @@ function startHealthServer(): void {
     return;
   }
 
-  const port = parseInt(process.env.PORT || '8080', 10);
+  const port = Number(process.env.PORT ?? 3000);
   const host = '0.0.0.0';
   const gitSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
   const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
@@ -44,10 +44,9 @@ function startHealthServer(): void {
   });
 
   healthServer.listen(port, host, () => {
-    console.log(`[HEALTH] ✅ Listening on ${host}:${port}`);
+    console.log(`[HEALTH] listening on ${host}:${port}`);
     console.log(`[HEALTH] Git SHA: ${gitSha.substring(0, 8)}`);
     console.log(`[HEALTH] Service: ${serviceName}`);
-    console.log(`[HEALTH] Healthcheck endpoint: http://${host}:${port}/status`);
   });
 
   healthServer.on('error', (error: NodeJS.ErrnoException) => {
@@ -62,17 +61,7 @@ function startHealthServer(): void {
 // Start health server IMMEDIATELY
 startHealthServer();
 
-// Boot logging: Railway environment info
-console.log('========================================');
-console.log('RAILWAY BOOT INFO');
-console.log('========================================');
-console.log(`RAILWAY_GIT_COMMIT_SHA: ${process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT SET'}`);
-console.log(`RAILWAY_ENVIRONMENT_NAME: ${process.env.RAILWAY_ENVIRONMENT_NAME || 'NOT SET'}`);
-console.log(`RAILWAY_SERVICE_NAME: ${process.env.RAILWAY_SERVICE_NAME || 'NOT SET'}`);
-console.log(`NODE_ENV: ${process.env.NODE_ENV || 'NOT SET'}`);
-console.log(`PORT: ${process.env.PORT || 'NOT SET (defaulting to 8080)'}`);
-console.log(`JOBS_AUTOSTART env var: "${process.env.JOBS_AUTOSTART || 'NOT SET'}"`);
-console.log('========================================\n');
+// Minimal boot logging (health server already started)
 
 // Background initialization (NON-BLOCKING - health server already running)
 setImmediate(async () => {
@@ -106,7 +95,7 @@ setImmediate(async () => {
       try {
         const express = require('express');
         const app = express();
-        const PORT = parseInt(process.env.PORT || '8080', 10);
+        const PORT = Number(process.env.PORT ?? 3000);
         const HOST = '0.0.0.0';
         
         app.use(express.json());

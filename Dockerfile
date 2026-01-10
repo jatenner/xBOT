@@ -37,8 +37,8 @@ COPY --from=builder /app/supabase ./supabase
 # Copy package.json for node to resolve dependencies
 COPY --from=builder /app/package.json ./package.json
 
-# Expose port (Railway sets PORT env var)
-EXPOSE 8080
+# Expose port (Railway sets PORT env var dynamically)
+EXPOSE 3000
 
 # Start application via npm start (runs node dist/src/railwayEntrypoint.js)
 # Entrypoint starts health server immediately, then runs background init
