@@ -1334,7 +1334,7 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     }
     
     // 3. Get ready decisions from queue
-    readyDecisions = await getReadyDecisions();
+    readyDecisions = await getReadyDecisions(certMode);
     
     // 🔒 CONTROLLED WINDOW GATE: Filter to only the controlled decision_id
     // Skip if it's a known test decision ID that should be cleared
