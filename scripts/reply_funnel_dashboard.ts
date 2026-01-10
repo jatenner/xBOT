@@ -79,7 +79,7 @@ export async function getFunnelMetrics(hours: number): Promise<FunnelMetrics> {
   const avgDuration = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
   
   // Candidates evaluated
-  const { count: evaluated } = await supabase
+  const { count: evaluatedCount } = await supabase
     .from('candidate_evaluations')
     .select('*', { count: 'exact', head: true })
     .gte('created_at', since);
@@ -371,7 +371,19 @@ async function main() {
   console.log(`| Queued → Permit | ${metrics24h.acceptance_rates.queued_to_permit.toFixed(1)}% |`);
   console.log(`| Permit → Used | ${metrics24h.acceptance_rates.permit_to_used.toFixed(1)}% |`);
   console.log(`| Used → Posted | ${metrics24h.acceptance_rates.used_to_posted.toFixed(1)}% |`);
-  const bottleneckRate = rates.find(r => r.stage === metrics24h.bottleneck_stage)?.rate || 0;
+  
+  // Calculate bottleneck rate from acceptance_rates
+  const bottleneckStageKey = metrics24h.bottleneck_stage.replace('→', '_to_').toLowerCase().replace(' ', '_');
+  const bottleneckRateMap: Record<string, keyof typeof metrics24h.acceptance_rates> = {
+    'fetched_to_evaluated': 'fetched_to_evaluated',
+    'evaluated_to_hardpass': 'evaluated_to_hardpass',
+    'hardpass_to_queued': 'hardpass_to_queued',
+    'queued_to_permit': 'queued_to_permit',
+    'permit_to_used': 'permit_to_used',
+    'used_to_posted': 'used_to_posted',
+  };
+  const bottleneckKey = bottleneckStageKey.replace('hard_pass', 'hardpass');
+  const bottleneckRate = metrics24h.acceptance_rates[bottleneckRateMap[bottleneckKey] || 'fetched_to_evaluated'] || 0;
   console.log(`\n🔴 BOTTLENECK: ${metrics24h.bottleneck_stage} (${bottleneckRate.toFixed(1)}%)`);
   
   // Top reject reasons
