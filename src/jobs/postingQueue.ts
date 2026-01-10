@@ -1054,7 +1054,30 @@ export function getCircuitBreakerStatus(): {
   return status;
 }
 
-export async function processPostingQueue(): Promise<void> {
+export async function processPostingQueue(options?: { certMode?: boolean; maxItems?: number }): Promise<void> {
+  const certMode = options?.certMode || process.env.POSTING_QUEUE_CERT_MODE === 'true';
+  const maxItems = options?.maxItems || (certMode ? 1 : undefined);
+  
+  const supabase = getSupabaseClient();
+  const gitSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+  const serviceRole = process.env.SERVICE_ROLE || 'unknown';
+  
+  // 🔒 MANDATE 1: Instrumentation - Log queue start
+  await supabase.from('system_events').insert({
+    event_type: 'posting_queue_started',
+    severity: 'info',
+    message: `Posting queue started: cert_mode=${certMode} max_items=${maxItems || 'unlimited'}`,
+    event_data: {
+      git_sha: gitSha,
+      service_role: serviceRole,
+      cert_mode: certMode,
+      max_items: maxItems,
+      started_at: new Date().toISOString(),
+    },
+    created_at: new Date().toISOString(),
+  });
+  
+  console.log(`[POSTING_QUEUE] 🚀 Starting posting queue (cert_mode=${certMode}, max_items=${maxItems || 'unlimited'})`);
   const config = getConfig();
   const flags = getModeFlags(config);
   
@@ -2124,12 +2147,21 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       .limit(10); // Get up to 10 content posts
     
     // 🔒 CONTROLLED WINDOW GATE: If CONTROLLED_DECISION_ID is set, ONLY select that decision_id for replies too
+    // 🔒 MANDATE 2: CERT MODE - Hard filter for reply decisions only
+    const certMode = process.env.POSTING_QUEUE_CERT_MODE === 'true';
+    
     let replyQuery = supabase
       .from('content_metadata')
       .select('*, visual_format')
       .eq('status', 'queued')
       .eq('decision_type', 'reply')
       .lte('scheduled_at', graceWindow.toISOString()); // Include replies scheduled in past OR near future
+    
+    // 🔒 CERT MODE: Only select replies with reply_v2_scheduler pipeline_source
+    if (certMode) {
+      replyQuery = replyQuery.eq('pipeline_source', 'reply_v2_scheduler');
+      console.log(`[POSTING_QUEUE] 🔒 CERT MODE: Filtering to reply_v2_scheduler pipeline_source only`);
+    }
     
     if (controlledDecisionId && !isKnownTestId) {
       // 🔒 CRITICAL: Only select the controlled decision_id
@@ -2140,15 +2172,47 @@ async function getReadyDecisions(): Promise<QueuedDecision[]> {
       .order('scheduled_at', { ascending: true })
       .limit(10); // Get up to 10 replies
     
-    // Combine: prioritize content, then replies
-    const data = [...(contentPosts || []), ...(replyPosts || [])];
+    // 🔒 CERT MODE: Only include replies, exclude threads/singles
+    const data = certMode 
+      ? [...(replyPosts || [])] // CERT MODE: Only replies
+      : [...(contentPosts || []), ...(replyPosts || [])]; // Normal mode: content + replies
     const error = contentError || replyError;
     
-    console.log(`[POSTING_QUEUE] 📊 Content posts: ${contentPosts?.length || 0}, Replies: ${replyPosts?.length || 0}`);
+    const certMode = process.env.POSTING_QUEUE_CERT_MODE === 'true';
+    console.log(`[POSTING_QUEUE] 📊 Content posts: ${certMode ? 0 : (contentPosts?.length || 0)}, Replies: ${replyPosts?.length || 0} (cert_mode=${certMode})`);
+    
+    // 🔒 MANDATE 1: Log noop if no candidates
+    if (data.length === 0) {
+      const reason = certMode 
+        ? 'no_reply_candidates_with_reply_v2_scheduler'
+        : (contentPosts?.length === 0 && replyPosts?.length === 0 ? 'no_candidates' : 'all_filtered');
+      
+      await supabase.from('system_events').insert({
+        event_type: 'posting_queue_noop',
+        severity: 'info',
+        message: `Posting queue noop: ${reason}`,
+        event_data: {
+          reason,
+          cert_mode: certMode,
+          content_count: contentPosts?.length || 0,
+          reply_count: replyPosts?.length || 0,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      console.log(`[POSTING_QUEUE] ⏭️  Noop: ${reason}`);
+      return; // Exit early if no candidates
+    }
+    
+    // 🔒 CERT MODE: Limit to maxItems
+    const decisionsToProcess = maxItems ? filteredData.slice(0, maxItems) : filteredData;
     
     // 🧵 DYNAMIC PRIORITY SYSTEM: Fresh threads first, failed threads drop priority
     // This prevents failed threads from blocking the queue forever
-    data.sort((a, b) => {
+    // 🔒 CERT MODE: Skip sorting (only replies, already ordered by scheduled_at)
+    const sortedData = certMode ? decisionsToProcess : (() => {
+      const sorted = [...decisionsToProcess];
+      sorted.sort((a, b) => {
       // Get retry counts from features
       const aRetries = ((a.features as any)?.retry_count || 0);
       const bRetries = ((b.features as any)?.retry_count || 0);
