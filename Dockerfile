@@ -1,14 +1,14 @@
 # Multi-stage build for xBOT with proper Playwright support
-# Base stage: Enable corepack and prepare pnpm
+# Base stage: Setup pnpm via corepack
 FROM node:20.18.1-bullseye-slim AS base
 
 WORKDIR /app
 
-# Enable corepack and prepare pnpm@10.18.2
+# Enable corepack and prepare pnpm
 RUN corepack enable && corepack prepare pnpm@10.18.2 --activate
 
-# Verify pnpm is available
-RUN pnpm --version
+# Verify pnpm installation
+RUN pnpm --version && command -v pnpm
 
 # Builder stage: Install deps and build TypeScript
 FROM base AS builder
@@ -28,16 +28,16 @@ RUN mkdir -p dist public supabase
 # Build TypeScript to dist/
 RUN pnpm run build
 
-# Production stage: Use Playwright base + activate corepack for pnpm
+# Production stage: Use Playwright base + setup pnpm via corepack
 FROM mcr.microsoft.com/playwright:v1.57.0-noble AS runner
 
 WORKDIR /app
 
-# Enable corepack and prepare pnpm@10.18.2 (Playwright image has Node.js)
+# Enable corepack and prepare pnpm (Playwright image has Node.js)
 RUN corepack enable && corepack prepare pnpm@10.18.2 --activate
 
-# Verify pnpm is available
-RUN pnpm --version
+# Verify pnpm installation
+RUN pnpm --version && command -v pnpm
 
 # Copy package files and pnpm lockfile
 COPY package.json pnpm-lock.yaml ./
