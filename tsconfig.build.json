@@ -1,11 +1,25 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": ".",
-    "noEmit": false,
+    "module": "commonjs",
+    "target": "ES2020",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "strict": false,
     "skipLibCheck": true,
-    "noEmitOnError": false
+    "lib": ["ES2020", "DOM"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+    "moduleResolution": "node",
+    "forceConsistentCasingInFileNames": true,
+    "declaration": false,
+    "sourceMap": true,
+    "incremental": true,
+    "noEmitOnError": false,
+    "downlevelIteration": true
   },
   "include": [
     "src/railwayEntrypoint.ts"
@@ -25,6 +39,7 @@
     "src/utils/pipelineTest.ts",
     "src/migrations/runtimeRunner.ts",
     "src/core/autonomousController.ts",
-    "src/jobs/truthIntegrityJob.ts"
+    "src/jobs/truthIntegrityJob.ts",
+    "src/observability/instrument.ts"
   ]
 }

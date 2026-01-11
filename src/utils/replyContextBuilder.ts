@@ -9,7 +9,8 @@
  */
 
 import { getSupabaseClient } from '../db/index';
-import { UnifiedBrowserPool, BrowserPriority } from '../browser/UnifiedBrowserPool';
+import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
+import { BrowserPriority } from '../browser/BrowserSemaphore';
 
 export interface ReplyContext {
   target_tweet_id: string;
@@ -100,7 +101,7 @@ async function fetchTweetFromTwitter(tweetId: string): Promise<{
 } | null> {
   try {
     const pool = UnifiedBrowserPool.getInstance();
-    const { page } = await pool.acquirePage(BrowserPriority.REPLY_GENERATION);
+    const page = await pool.acquirePage('reply_context_fetch');
     
     try {
       const tweetUrl = `https://x.com/i/web/status/${tweetId}`;

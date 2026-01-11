@@ -1031,7 +1031,7 @@ export class BulletproofThreadComposer {
       try {
         const { getSupabaseClient } = await import('../db/index');
         const supabase = getSupabaseClient();
-        await supabase.from('system_events').insert({
+        const logPromise = supabase.from('system_events').insert({
           event_type: 'reply_chain_click_attempt',
           severity: 'info',
           message: `Attempting to click Post/Reply in reply chain fallback`,
@@ -1042,7 +1042,8 @@ export class BulletproofThreadComposer {
             git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
           },
           created_at: new Date().toISOString(),
-        }).catch(() => {}); // Non-critical logging
+        });
+        Promise.resolve(logPromise).catch(() => {}); // Non-critical logging
       } catch (logError) {
         // Non-critical
       }

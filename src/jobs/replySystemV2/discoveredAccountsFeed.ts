@@ -39,8 +39,8 @@ export async function fetchDiscoveredAccountsFeed(): Promise<DiscoveredTweet[]> 
   const { data: discoveredAccounts, error: accountsError } = await supabase
     .from('discovered_accounts')
     .select('username, priority_score, performance_tier, last_updated, total_replies_count')
-    .order('priority_score', { ascending: false, nullsLast: true })
-    .order('last_updated', { ascending: false, nullsLast: true }) // Recent activity first
+    .order('priority_score', { ascending: false, nullsFirst: false })
+    .order('last_updated', { ascending: false, nullsFirst: false }) // Recent activity first
     .limit(ACCOUNTS_PER_RUN * 5); // Get more than needed to account for failures
   
   if (accountsError || !discoveredAccounts || discoveredAccounts.length === 0) {
@@ -61,8 +61,7 @@ export async function fetchDiscoveredAccountsFeed(): Promise<DiscoveredTweet[]> 
   });
   
   const fetchPromise = (async () => {
-    const browser = await pool.acquire({ priority: 'normal' });
-    const page = await browser.newPage();
+    const page = await pool.acquirePage('discovered_accounts_fetch');
     
     try {
       for (const account of accountsToFetch) {
@@ -146,8 +145,7 @@ export async function fetchDiscoveredAccountsFeed(): Promise<DiscoveredTweet[]> 
         }
       }
     } finally {
-      await page.close();
-      await pool.release(browser);
+      await pool.releasePage(page);
     }
     
     return tweets;

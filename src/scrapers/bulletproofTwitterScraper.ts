@@ -351,7 +351,7 @@ export class BulletproofTwitterScraper {
         // (Twitter shows parent tweet first when displaying a reply)
         const articles = document.querySelectorAll('article[data-testid="tweet"]');
         
-        for (const article of articles) {
+        for (const article of Array.from(articles)) {
           // Look for status link within THIS article
           const link = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement;
           if (!link) continue;

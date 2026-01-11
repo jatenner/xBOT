@@ -82,9 +82,9 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
   guardResults.length_check = { pass: true, length: content.length, max: MAX_REPLY_LENGTH };
   
   // 3) ROOT-ONLY CHECK - Structural (from DB metadata)
+  const { getSupabaseClient } = await import('../db/index');
+  const supabase = getSupabaseClient();
   try {
-    const { getSupabaseClient } = await import('../db/index');
-    const supabase = getSupabaseClient();
     
     // Check reply_opportunities for is_root_tweet metadata
     const { data: opportunity } = await supabase
@@ -4573,9 +4573,9 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   // 🔒 HARD PRE-POST GUARD: Navigate to tweet URL and detect if it's a reply
   console.log(`[POSTING_QUEUE] 🔍 Pre-post guard: Verifying target tweet is root (not a reply)...`);
   try {
-    const { UnifiedBrowserPool, BrowserPriority } = await import('../browser/UnifiedBrowserPool');
+    const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
     const pool = UnifiedBrowserPool.getInstance();
-    const page = await pool.acquirePage(BrowserPriority.REPLY_GENERATION);
+    const page = await pool.acquirePage('pre_post_guard_verify');
     
     try {
       const tweetUrl = `https://x.com/i/web/status/${decision.target_tweet_id}`;

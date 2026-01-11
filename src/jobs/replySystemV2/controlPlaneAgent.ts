@@ -291,10 +291,18 @@ Return ONLY valid JSON, no markdown.`;
     const state = JSON.parse(content);
     
     // Normalize feed weights
-    const totalWeight = Object.values(state.feed_weights || {}).reduce((sum: number, w: any) => sum + w, 0);
+    const feedWeights = state.feed_weights || {};
+    const weightValues: any[] = Object.values(feedWeights);
+    const totalWeight: number = weightValues.reduce((sum: number, w: any) => {
+      const num = typeof w === 'number' ? w : 0;
+      return sum + num;
+    }, 0);
     if (totalWeight > 0) {
-      Object.keys(state.feed_weights).forEach(key => {
-        state.feed_weights[key] = state.feed_weights[key] / totalWeight;
+      Object.keys(feedWeights).forEach(key => {
+        const weight = feedWeights[key];
+        if (typeof weight === 'number') {
+          feedWeights[key] = weight / totalWeight;
+        }
       });
     }
     

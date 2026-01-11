@@ -312,15 +312,17 @@ process.on('uncaughtException', (error: Error) => {
   console.error('[WORKER] ❌ Uncaught Exception:', error.message);
   console.error('[WORKER] Stack:', error.stack);
   // Log to DB if possible, then exit
-  getSupabaseClient()
-    .from('system_events')
-    .insert({
-      event_type: 'worker_uncaught_exception',
-      severity: 'critical',
-      message: `Worker uncaught exception: ${error.message}`,
-      event_data: { error: error.message, stack: error.stack?.substring(0, 1000) },
-      created_at: new Date().toISOString(),
-    })
+  Promise.resolve(
+    getSupabaseClient()
+      .from('system_events')
+      .insert({
+        event_type: 'worker_uncaught_exception',
+        severity: 'critical',
+        message: `Worker uncaught exception: ${error.message}`,
+        event_data: { error: error.message, stack: error.stack?.substring(0, 1000) },
+        created_at: new Date().toISOString(),
+      })
+  )
     .then(() => {
       console.error('[WORKER] Error logged to DB');
     })

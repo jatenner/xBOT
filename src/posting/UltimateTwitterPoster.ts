@@ -882,13 +882,15 @@ export class UltimateTwitterPoster {
       
       const { getSupabaseClient } = await import('../db/index');
       const supabase = getSupabaseClient();
+      const { getServiceRoleInfo } = await import('../utils/serviceRoleResolver');
+      const roleInfo = getServiceRoleInfo();
       await supabase.from('system_events').insert({
         event_type: 'posting_blocked_wrong_service',
         severity: 'critical',
         message: `Posting blocked: Invalid pipeline_source`,
         event_data: {
-          service_name: serviceName,
-          role: role,
+          service_name: process.env.RAILWAY_SERVICE_NAME || 'unknown',
+          role: roleInfo.role,
           decision_id: validGuard.decision_id,
           pipeline_source: validGuard.pipeline_source,
           git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
@@ -1969,13 +1971,15 @@ export class UltimateTwitterPoster {
           
           const { getSupabaseClient } = await import('../db/index');
           const supabase = getSupabaseClient();
+          const { getServiceRoleInfo } = await import('../utils/serviceRoleResolver');
+          const roleInfo = getServiceRoleInfo();
           await supabase.from('system_events').insert({
             event_type: 'posting_blocked_wrong_service',
             severity: 'critical',
             message: `Posting blocked: Invalid pipeline_source`,
             event_data: {
-              service_name: serviceName,
-              role: role,
+              service_name: process.env.RAILWAY_SERVICE_NAME || 'unknown',
+              role: roleInfo.role,
               decision_id: validGuard.decision_id,
               pipeline_source: validGuard.pipeline_source,
               git_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
@@ -2048,7 +2052,7 @@ export class UltimateTwitterPoster {
         try {
           const { getSupabaseClient } = await import('../db/index');
           const supabase = getSupabaseClient();
-          await supabase.from('system_events').insert({
+          const logPromise = supabase.from('system_events').insert({
             event_type: 'post_reply_click_attempt',
             severity: 'info',
             message: `Attempting to click Post/Reply button`,
@@ -2061,7 +2065,8 @@ export class UltimateTwitterPoster {
               run_id: validGuard.job_run_id,
             },
             created_at: new Date().toISOString(),
-          }).catch(() => {}); // Non-critical logging
+          });
+          Promise.resolve(logPromise).catch(() => {}); // Non-critical logging
         } catch (logError) {
           // Non-critical - continue even if logging fails
         }

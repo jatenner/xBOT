@@ -185,7 +185,7 @@ async function scrapeRecentTweets(): Promise<Array<{ tweetId: string; content: s
         const tweetElements = document.querySelectorAll('[data-testid="tweet"]');
         const results: Array<{ tweetId: string; content: string }> = [];
         
-        for (const tweetEl of tweetElements) {
+        for (const tweetEl of Array.from(tweetElements)) {
           try {
             // Extract tweet ID from link
             const linkEl = tweetEl.querySelector('a[href*="/status/"]');
