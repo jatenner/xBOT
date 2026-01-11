@@ -15,6 +15,8 @@
     "dist",
     "tests/**",
     "test_*.js",
-    "src/healthServer.ts"
+    "src/healthServer.ts",
+    "src/utils/storageUtils.ts",
+    "src/utils/systemAudit.ts"
   ]
 }
