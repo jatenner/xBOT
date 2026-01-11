@@ -1,18 +1,14 @@
 # Multi-stage build for xBOT with proper Playwright support
-# Base stage: Install pnpm once
+# Base stage: Enable corepack and prepare pnpm
 FROM node:20.18.1-bullseye-slim AS base
 
 WORKDIR /app
 
-# Force npm global prefix to /usr/local
-ENV NPM_CONFIG_PREFIX=/usr/local
-ENV PATH=/usr/local/bin:$PATH
+# Enable corepack and prepare pnpm@10.18.2
+RUN corepack enable && corepack prepare pnpm@10.18.2 --activate
 
-# Install pnpm and verify installation
-RUN npm i -g pnpm@10.18.2 && pnpm --version && npm config get prefix && command -v pnpm
-
-# Disable corepack (non-critical, allow failure)
-RUN corepack disable || true
+# Verify pnpm is available
+RUN pnpm --version
 
 # Builder stage: Install deps and build TypeScript
 FROM base AS builder
@@ -32,17 +28,16 @@ RUN mkdir -p dist public supabase
 # Build TypeScript to dist/
 RUN pnpm run build
 
-# Production stage: Use Playwright base + pnpm from base
+# Production stage: Use Playwright base + activate corepack for pnpm
 FROM mcr.microsoft.com/playwright:v1.57.0-noble AS runner
 
 WORKDIR /app
 
-# Copy pnpm installation from base stage
-COPY --from=base /usr/local/bin/pnpm /usr/local/bin/pnpm
-COPY --from=base /usr/local/lib/node_modules/pnpm /usr/local/lib/node_modules/pnpm
+# Enable corepack and prepare pnpm@10.18.2 (Playwright image has Node.js)
+RUN corepack enable && corepack prepare pnpm@10.18.2 --activate
 
-# Ensure pnpm is in PATH
-ENV PATH=/usr/local/bin:$PATH
+# Verify pnpm is available
+RUN pnpm --version
 
 # Copy package files and pnpm lockfile
 COPY package.json pnpm-lock.yaml ./
