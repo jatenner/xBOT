@@ -6,9 +6,17 @@
 
 import 'dotenv/config';
 import { createServer, Server } from 'http';
+import { randomUUID } from 'crypto';
+import * as os from 'os';
 
 // 🏥 STEP 0: Start health server IMMEDIATELY (before anything else)
 let healthServer: Server | null = null;
+
+// Generate boot_id once at process start (anti-lie field)
+const bootId = randomUUID();
+const bootTime = new Date().toISOString();
+const hostname = os.hostname();
+const pid = process.pid;
 
 function startHealthServer(): void {
   if (healthServer) {
@@ -22,6 +30,10 @@ function startHealthServer(): void {
   const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
 
   console.log(`[HEALTH] Starting health server on ${host}:${port}...`);
+  console.log(`[HEALTH] Boot ID: ${bootId}`);
+  console.log(`[HEALTH] Boot time: ${bootTime}`);
+  console.log(`[HEALTH] Hostname: ${hostname}`);
+  console.log(`[HEALTH] PID: ${pid}`);
 
   healthServer = createServer((req, res) => {
     // Respond to healthcheck endpoints
@@ -35,7 +47,19 @@ function startHealthServer(): void {
         status: 'healthy',
         git_sha: gitSha,
         service_name: serviceName,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        // Anti-lie fields
+        boot_id: bootId,
+        boot_time: bootTime,
+        hostname: hostname,
+        pid: pid,
+        git_sha_env: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'missing',
+        railway_git_commit_sha: process.env.RAILWAY_GIT_COMMIT_SHA || 'missing',
+        railway_git_author: process.env.RAILWAY_GIT_AUTHOR || 'missing',
+        railway_git_branch: process.env.RAILWAY_GIT_BRANCH || 'missing',
+        railway_git_commit_message: process.env.RAILWAY_GIT_COMMIT_MESSAGE || 'missing',
+        railway_service_name: process.env.RAILWAY_SERVICE_NAME || 'missing',
+        railway_environment: process.env.RAILWAY_ENVIRONMENT || 'missing'
       }));
     } else {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -47,7 +71,13 @@ function startHealthServer(): void {
     console.log(`[HEALTH] Starting health server on ${host}:${port}...`);
     console.log(`[HEALTH] ✅ Listening on ${host}:${port}`);
     console.log(`[HEALTH] Git SHA: ${gitSha.substring(0, 8)}`);
+    console.log(`[HEALTH] Git SHA (full): ${gitSha}`);
     console.log(`[HEALTH] Service: ${serviceName}`);
+    console.log(`[HEALTH] Boot ID: ${bootId}`);
+    console.log(`[HEALTH] Boot time: ${bootTime}`);
+    console.log(`[HEALTH] Hostname: ${hostname}`);
+    console.log(`[HEALTH] PID: ${pid}`);
+    console.log(`[HEALTH] RAILWAY_GIT_COMMIT_SHA: ${process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT SET'}`);
     console.log(`[HEALTH] Healthcheck endpoint: http://${host}:${port}/status`);
   });
 
