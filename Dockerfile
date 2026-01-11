@@ -1,5 +1,6 @@
 # Multi-stage build for xBOT with proper Playwright support
-FROM node:20.18.1-bullseye-slim AS builder
+# Base stage: Install pnpm once
+FROM node:20.18.1-bullseye-slim AS base
 
 WORKDIR /app
 
@@ -13,11 +14,14 @@ RUN npm i -g pnpm@10.18.2 && pnpm --version && npm config get prefix && command 
 # Disable corepack (non-critical, allow failure)
 RUN corepack disable || true
 
+# Builder stage: Install deps and build TypeScript
+FROM base AS builder
+
 # Copy package files and pnpm lockfile
 COPY package.json pnpm-lock.yaml ./
 
 # Install ALL dependencies (including TypeScript for build)
-RUN /usr/local/bin/pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY . .
@@ -26,31 +30,28 @@ COPY . .
 RUN mkdir -p dist public supabase
 
 # Build TypeScript to dist/
-RUN /usr/local/bin/pnpm run build
+RUN pnpm run build
 
-# Production stage
-FROM mcr.microsoft.com/playwright:v1.57.0-noble
+# Production stage: Use Playwright base + pnpm from base
+FROM mcr.microsoft.com/playwright:v1.57.0-noble AS runner
 
 WORKDIR /app
 
-# Force npm global prefix to /usr/local
-ENV NPM_CONFIG_PREFIX=/usr/local
+# Copy pnpm installation from base stage
+COPY --from=base /usr/local/bin/pnpm /usr/local/bin/pnpm
+COPY --from=base /usr/local/lib/node_modules/pnpm /usr/local/lib/node_modules/pnpm
+
+# Ensure pnpm is in PATH
 ENV PATH=/usr/local/bin:$PATH
-
-# Install pnpm and verify installation
-RUN npm i -g pnpm@10.18.2 && pnpm --version && npm config get prefix && command -v pnpm
-
-# Disable corepack (non-critical, allow failure)
-RUN corepack disable || true
 
 # Copy package files and pnpm lockfile
 COPY package.json pnpm-lock.yaml ./
 
 # Install production dependencies only (no devDependencies needed)
-RUN /usr/local/bin/pnpm install --prod --frozen-lockfile
+RUN pnpm install --prod --frozen-lockfile
 
 # Prune production dependencies (remove devDependencies)
-RUN /usr/local/bin/pnpm prune --prod
+RUN pnpm prune --prod
 
 # Copy compiled JavaScript from dist/ (no source needed)
 COPY --from=builder /app/dist ./dist
@@ -67,4 +68,3 @@ EXPOSE 8080
 # Start application directly (runs node dist/src/railwayEntrypoint.js)
 # Entrypoint starts health server immediately, then runs background init
 CMD ["node", "dist/src/railwayEntrypoint.js"]
-
