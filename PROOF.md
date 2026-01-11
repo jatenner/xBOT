@@ -385,9 +385,12 @@ $ railway logs -s xBOT --tail 250 | grep -E "\[HEALTH\]|Listening|8080|status|St
 ### serene-cat (Worker Service) Logs
 
 ```bash
-$ railway logs -s serene-cat --tail 250 | grep -E "\[HEALTH\]|Listening|8080|status|Starting Container|RAILWAY_GIT|SCHEDULER|reply_v2"
-[HEALTH] ✅ Listening on 0.0.0.0:8080
-[SCHEDULER] ⏰ Attempting scheduled reply...
+$ railway logs -s serene-cat --tail 250 | grep -E "Starting Container|\[HEALTH\]|Listening|JOB_MANAGER.*reply_v2"
+Starting Container
+[JOB_MANAGER] 🎼 reply_v2_fetch job timer fired - calling safeExecute...
+[JOB_MANAGER] 🎼 reply_v2_fetch safeExecute started - importing orchestrator...
+[JOB_MANAGER] 🎼 reply_v2_fetch orchestrator imported - calling runFullCycle...
+[POSTING_QUEUE] ✅ Permit verified: permit_1768155453908_a26d195c (status: APPROVED)
 ```
 
 ### Build Status
