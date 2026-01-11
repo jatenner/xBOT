@@ -51,8 +51,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/supabase ./supabase
 # Copy package.json for runtime
 COPY --from=builder /app/package.json ./package.json
-# Copy pruned node_modules from current stage (prod-only)
-COPY node_modules ./node_modules
+# node_modules already installed in this stage via pnpm install --prod above
 
 # Expose port (Railway sets PORT env var dynamically)
 EXPOSE 8080
