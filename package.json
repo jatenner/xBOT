@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "packageManager": "pnpm@10.18.2",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json 2>&1 | tee /tmp/build.log; BUILD_EXIT=${PIPESTATUS[0]}; if [ $BUILD_EXIT -eq 0 ] || [ -f dist/src/railwayEntrypoint.js ]; then echo '✅ Build completed - entrypoint exists'; exit 0; else echo '❌ Build failed - entrypoint missing'; exit 1; fi",
+    "build": "tsc -p tsconfig.build.json > /tmp/build.log 2>&1; BUILD_EXIT=$?; cat /tmp/build.log; if [ \"$BUILD_EXIT\" -eq 0 ] || [ -f dist/src/railwayEntrypoint.js ]; then echo '✅ Build completed - entrypoint exists'; exit 0; else echo '❌ Build failed - entrypoint missing'; exit 1; fi",
     "start": "node dist/src/railwayEntrypoint.js",
     "smoke:local": "bash scripts/smoke_local.sh",
     "smoke:docker": "bash scripts/smoke_docker.sh",
