@@ -265,4 +265,11 @@ If Railway has GitHub webhook enabled:
 
 ---
 
-**Final Status:** ❌ **MISMATCH** - Railway running `fdf00f1e`, local HEAD is `395ab163`. Railway likely connected to GitHub and deploying from a different branch/commit than `origin/main`.
+**Final Status:** ❌ **MISMATCH** - Railway running `fdf00f1e`, local HEAD is `395ab163` (now `638f5b7a` after proof commit). Railway likely connected to GitHub and deploying from a different branch/commit than `origin/main`, or builds are still in progress.
+
+**Next Steps:**
+1. Check Railway dashboard for active deployments: `https://railway.com/project/c987ff2e-2bc7-4c65-9187-11c1a82d4ac1`
+2. Verify GitHub integration settings in Railway dashboard
+3. If GitHub integration is enabled, ensure it's tracking `main` branch
+4. Manually trigger redeploy from Railway dashboard if CLI deploys are being ignored
+5. Wait additional time for builds to complete (Railway builds can take 5-10 minutes)
