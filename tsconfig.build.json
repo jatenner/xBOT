@@ -5,18 +5,26 @@
     "rootDir": ".",
     "noEmit": false,
     "skipLibCheck": true,
-    "noEmitOnError": false,
-    "noResolve": false
+    "noEmitOnError": false
   },
-  "files": ["src/railwayEntrypoint.ts"],
+  "include": [
+    "src/railwayEntrypoint.ts"
+  ],
   "exclude": [
     "scripts/**",
     "src/agents/**",
     "src/test/**",
     "src/testing/**",
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
     "src/healthServer.ts",
     "src/utils/systemAudit.ts",
     "src/utils/storageUtils.ts",
-    "src/utils/replyContextBuilder.ts"
+    "src/utils/replyContextBuilder.ts",
+    "src/utils/pipelineTest.ts",
+    "src/migrations/runtimeRunner.ts",
+    "src/core/autonomousController.ts",
+    "src/jobs/truthIntegrityJob.ts"
   ]
 }
