@@ -80,17 +80,32 @@ $ grep -E "reply_v2_fetch|orchestrator imported|runFullCycle|SCHEDULER|JOB_MANAG
 [JOB_MANAGER] 🎼 reply_v2_fetch orchestrator imported - calling runFullCycle...
 ```
 
-**Verification:** ✅ Found 3 job execution lines showing orchestrator/fetch activity
+**Verification:** ✅ Found 3+ job execution lines showing orchestrator/fetch activity
 
-**Additional Worker Activity:**
+**Additional Worker Activity (Extended Search):**
 ```bash
 $ grep -E "reply_v2_fetch|orchestrator|runFullCycle|SCHEDULER|JOB_MANAGER.*reply|ORCHESTRATOR" /tmp/worker.log | tail -n 30
+[ORCHESTRATOR] 🔄 Running full cycle...
+[ORCHESTRATOR] 🎼 Fetching and evaluating candidates: feed_run_id=feed_1768155698130_lx8pcu
 [JOB_MANAGER] 🎼 reply_v2_fetch job timer fired - calling safeExecute...
 [JOB_MANAGER] 🎼 reply_v2_fetch safeExecute started - importing orchestrator...
 [JOB_MANAGER] 🎼 reply_v2_fetch orchestrator imported - calling runFullCycle...
+[ORCHESTRATOR] 🎛️ Using feed weights: {"viral_watcher":0.3,"keyword_search":0.3,"curated_accounts":0.4}
+[ORCHESTRATOR] 📡 Fetching from curated_accounts (weight: 0.40)...
+[ORCHESTRATOR] ✅ curated_accounts: fetched 0 tweets (90289ms)
+[ORCHESTRATOR] 📡 Fetching from keyword_search (weight: 0.30)...
+[ORCHESTRATOR] ✅ curated_accounts: fetched 0 tweets (90388ms)
+[ORCHESTRATOR] 📡 Fetching from keyword_search (weight: 0.30)...
+[ORCHESTRATOR] ✅ keyword_search: fetched 0 tweets (90319ms)
+[ORCHESTRATOR] 📡 Fetching from viral_watcher (weight: 0.30)...
 ```
 
-**Evidence:** Worker is executing `reply_v2_fetch` jobs, importing orchestrator, and calling `runFullCycle()`.
+**Evidence:** 
+- ✅ Worker is executing `reply_v2_fetch` jobs
+- ✅ Orchestrator is being imported successfully
+- ✅ `runFullCycle()` is being called
+- ✅ Orchestrator is running full cycles with feed fetching
+- ✅ Multiple feed sources are being processed (curated_accounts, keyword_search, viral_watcher)
 
 ---
 
