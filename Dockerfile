@@ -3,11 +3,14 @@ FROM node:20.18.1-bullseye-slim AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Enable corepack for pnpm support
+RUN corepack enable
+
+# Copy package files and pnpm lockfile
+COPY package.json pnpm-lock.yaml ./
 
 # Install ALL dependencies (including TypeScript for build)
-RUN npm ci --no-audit
+RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY . .
@@ -23,11 +26,14 @@ FROM mcr.microsoft.com/playwright:v1.57.0-noble
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Enable corepack for pnpm support
+RUN corepack enable
+
+# Copy package files and pnpm lockfile
+COPY package.json pnpm-lock.yaml ./
 
 # Install production dependencies only (no devDependencies needed)
-RUN npm ci --omit=dev --no-audit
+RUN pnpm install --prod --frozen-lockfile
 
 # Copy compiled JavaScript from dist/ (no source needed)
 COPY --from=builder /app/dist ./dist
