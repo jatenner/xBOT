@@ -17,6 +17,7 @@
     "test_*.js",
     "src/healthServer.ts",
     "src/utils/storageUtils.ts",
-    "src/utils/systemAudit.ts"
+    "src/utils/systemAudit.ts",
+    "src/utils/replyContextBuilder.ts"
   ]
 }
