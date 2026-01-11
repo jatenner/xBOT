@@ -3,8 +3,8 @@ FROM node:20.18.1-bullseye-slim AS builder
 
 WORKDIR /app
 
-# Enable corepack for pnpm support
-RUN corepack enable
+# Install pnpm directly (avoid corepack keyid issues)
+RUN npm install -g pnpm@10.18.2
 
 # Copy package files and pnpm lockfile
 COPY package.json pnpm-lock.yaml ./
@@ -26,8 +26,8 @@ FROM mcr.microsoft.com/playwright:v1.57.0-noble
 
 WORKDIR /app
 
-# Enable corepack for pnpm support
-RUN corepack enable
+# Install pnpm directly (avoid corepack keyid issues)
+RUN npm install -g pnpm@10.18.2
 
 # Copy package files and pnpm lockfile
 COPY package.json pnpm-lock.yaml ./
