@@ -190,7 +190,7 @@ $ curl -sSf https://xbot-production-844b.up.railway.app/status | cat
 
 ## Conclusion: MISMATCH
 
-**Status:** ❌ **MISMATCH** - Railway services are running SHA `fdf00f1e`, not local HEAD `395ab163`
+**Status:** ❌ **MISMATCH** - Railway services are running SHA `fdf00f1e`, not local HEAD `395ab163` (now `054d17c6` after proof updates)
 
 ### Analysis
 
@@ -265,11 +265,45 @@ If Railway has GitHub webhook enabled:
 
 ---
 
-**Final Status:** ❌ **MISMATCH** - Railway running `fdf00f1e`, local HEAD is `395ab163` (now `638f5b7a` after proof commit). Railway likely connected to GitHub and deploying from a different branch/commit than `origin/main`, or builds are still in progress.
+**Final Status:** ❌ **MISMATCH** - Railway running `fdf00f1e`, local HEAD is `054d17c6`. After 4+ minutes of waiting, Railway services have not updated to the new commit.
 
-**Next Steps:**
-1. Check Railway dashboard for active deployments: `https://railway.com/project/c987ff2e-2bc7-4c65-9187-11c1a82d4ac1`
-2. Verify GitHub integration settings in Railway dashboard
-3. If GitHub integration is enabled, ensure it's tracking `main` branch
-4. Manually trigger redeploy from Railway dashboard if CLI deploys are being ignored
-5. Wait additional time for builds to complete (Railway builds can take 5-10 minutes)
+### Root Cause: Railway GitHub Integration Override
+
+**Evidence:**
+- ✅ Local HEAD: `054d17c6` (pushed to `origin/main`)
+- ✅ `origin/main`: `054d17c6` (verified)
+- ✅ CLI deployments triggered: `railway up` commands executed
+- ❌ Runtime SHA: Still `fdf00f1e` after 4+ minutes
+- ❌ No new deployment logs showing `054d17c6` or `395ab163`
+
+**Conclusion:** Railway services are **connected to GitHub** and auto-deploying from GitHub webhooks, **ignoring CLI `railway up` commands**. Railway is likely tracking a specific commit or branch in GitHub that differs from `origin/main`.
+
+### Exact Railway Settings to Change
+
+**Path 1: Service Source Configuration**
+- Navigate to: `Railway Dashboard → Project → Service (xBOT or serene-cat) → Settings → Source`
+- **Setting:** `Branch` or `Commit`
+- **Current:** Likely set to a specific commit (`fdf00f1e`) or different branch
+- **Action:** Change to `main` branch or manually select commit `054d17c6`
+
+**Path 2: GitHub Integration Settings**
+- Navigate to: `Railway Dashboard → Project → Settings → GitHub`
+- **Setting:** `Auto Deploy` or `Branch`
+- **Current:** Likely enabled and tracking a different branch/commit
+- **Action:** 
+  - Option A: Disable auto-deploy to allow CLI deploys
+  - Option B: Change tracked branch to `main`
+
+**Path 3: Manual Redeploy**
+- Navigate to: `Railway Dashboard → Project → Service → Deployments`
+- **Action:** Click "Redeploy" and select commit `054d17c6` or latest from `main` branch
+
+### Alternative: Force Deploy via Railway CLI
+
+If Railway CLI supports forcing a specific commit:
+```bash
+railway redeploy -s xBOT --commit 054d17c6
+railway redeploy -s serene-cat --commit 054d17c6
+```
+
+**Note:** Railway CLI `redeploy` command may require specific flags. Check `railway redeploy --help` for commit selection options.
