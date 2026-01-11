@@ -5,7 +5,7 @@ nixPkgs = ["nodejs-20_x", "chromium"]
 cmds = ["npm ci --legacy-peer-deps"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["npm ci --legacy-peer-deps", "npm run build"]
 
 [start]
-cmd = "npm start"
+cmd = "node dist/src/railwayEntrypoint.js"
