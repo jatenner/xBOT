@@ -3,14 +3,12 @@ FROM node:20.18.1-bullseye-slim AS builder
 
 WORKDIR /app
 
-# Install pnpm and create symlink in /usr/local/bin (robust install)
-RUN npm install -g pnpm@10.18.2 \
-    && PNPM_BIN="$(npm bin -g)" \
-    && echo "PNPM_BIN=$PNPM_BIN" \
-    && ls -la "$PNPM_BIN" \
-    && mkdir -p /usr/local/bin \
-    && ln -sf "$PNPM_BIN/pnpm" /usr/local/bin/pnpm \
-    && /usr/local/bin/pnpm --version
+# Force npm global prefix to /usr/local
+ENV NPM_CONFIG_PREFIX=/usr/local
+ENV PATH=/usr/local/bin:$PATH
+
+# Install pnpm and verify installation
+RUN npm i -g pnpm@10.18.2 && /usr/local/bin/pnpm --version && npm config get prefix && npm bin -g
 
 # Disable corepack (non-critical, allow failure)
 RUN corepack disable || true
@@ -35,14 +33,12 @@ FROM mcr.microsoft.com/playwright:v1.57.0-noble
 
 WORKDIR /app
 
-# Install pnpm and create symlink in /usr/local/bin (robust install)
-RUN npm install -g pnpm@10.18.2 \
-    && PNPM_BIN="$(npm bin -g)" \
-    && echo "PNPM_BIN=$PNPM_BIN" \
-    && ls -la "$PNPM_BIN" \
-    && mkdir -p /usr/local/bin \
-    && ln -sf "$PNPM_BIN/pnpm" /usr/local/bin/pnpm \
-    && /usr/local/bin/pnpm --version
+# Force npm global prefix to /usr/local
+ENV NPM_CONFIG_PREFIX=/usr/local
+ENV PATH=/usr/local/bin:$PATH
+
+# Install pnpm and verify installation
+RUN npm i -g pnpm@10.18.2 && /usr/local/bin/pnpm --version && npm config get prefix && npm bin -g
 
 # Disable corepack (non-critical, allow failure)
 RUN corepack disable || true
