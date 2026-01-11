@@ -876,7 +876,9 @@ export class JobManager {
         'posting_attempt_reconciliation',
         async () => {
           await this.safeExecute('posting_attempt_reconciliation', async () => {
-            const { reconcilePostingAttempts } = await import('../../scripts/reconcile-posting-attempts');
+            // Runtime-only import (TypeScript cannot statically resolve this)
+            const scriptPath = '../../scripts/reconcile-posting-attempts';
+            const { reconcilePostingAttempts } = await import(scriptPath);
             await reconcilePostingAttempts();
           });
         },
