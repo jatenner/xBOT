@@ -26,7 +26,8 @@ function startHealthServer(): void {
 
   const port = Number(process.env.PORT ?? 8080);
   const host = '0.0.0.0';
-  const gitSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+  // Prefer APP_VERSION (set at build time) over Railway's env vars for deterministic versioning
+  const gitSha = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
   const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
 
   console.log(`[HEALTH] Starting health server on ${host}:${port}...`);
@@ -34,6 +35,8 @@ function startHealthServer(): void {
   console.log(`[HEALTH] Boot time: ${bootTime}`);
   console.log(`[HEALTH] Hostname: ${hostname}`);
   console.log(`[HEALTH] PID: ${pid}`);
+  console.log(`[HEALTH] APP_VERSION: ${process.env.APP_VERSION || 'NOT SET'}`);
+  console.log(`[HEALTH] RAILWAY_GIT_COMMIT_SHA: ${process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT SET'}`);
 
   healthServer = createServer((req, res) => {
     // Respond to healthcheck endpoints
@@ -46,6 +49,7 @@ function startHealthServer(): void {
         ok: true,
         status: 'healthy',
         git_sha: gitSha,
+        app_version: process.env.APP_VERSION || 'unknown',
         service_name: serviceName,
         timestamp: new Date().toISOString(),
         // Anti-lie fields
@@ -72,12 +76,13 @@ function startHealthServer(): void {
     console.log(`[HEALTH] ✅ Listening on ${host}:${port}`);
     console.log(`[HEALTH] Git SHA: ${gitSha.substring(0, 8)}`);
     console.log(`[HEALTH] Git SHA (full): ${gitSha}`);
-    console.log(`[HEALTH] Service: ${serviceName}`);
+    console.log(`[HEALTH] APP_VERSION: ${process.env.APP_VERSION || 'NOT SET'}`);
+    console.log(`[HEALTH] RAILWAY_GIT_COMMIT_SHA: ${process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT SET'}`);
     console.log(`[HEALTH] Boot ID: ${bootId}`);
+    console.log(`[HEALTH] Service: ${serviceName}`);
     console.log(`[HEALTH] Boot time: ${bootTime}`);
     console.log(`[HEALTH] Hostname: ${hostname}`);
     console.log(`[HEALTH] PID: ${pid}`);
-    console.log(`[HEALTH] RAILWAY_GIT_COMMIT_SHA: ${process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT SET'}`);
     console.log(`[HEALTH] Healthcheck endpoint: http://${host}:${port}/status`);
   });
 

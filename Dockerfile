@@ -31,6 +31,10 @@ RUN pnpm run build
 # Production stage: Use Playwright base + install pnpm via npm
 FROM mcr.microsoft.com/playwright:v1.57.0-noble AS runner
 
+# Accept APP_VERSION build arg (defaults to unknown)
+ARG APP_VERSION=unknown
+ENV APP_VERSION=$APP_VERSION
+
 WORKDIR /app
 
 # Install pnpm via npm (avoid corepack keyid issues)
