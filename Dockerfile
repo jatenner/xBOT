@@ -8,7 +8,7 @@ ENV NPM_CONFIG_PREFIX=/usr/local
 ENV PATH=/usr/local/bin:$PATH
 
 # Install pnpm and verify installation
-RUN npm i -g pnpm@10.18.2 && /usr/local/bin/pnpm --version && npm config get prefix && npm bin -g
+RUN npm i -g pnpm@10.18.2 && pnpm --version && npm config get prefix && command -v pnpm
 
 # Disable corepack (non-critical, allow failure)
 RUN corepack disable || true
@@ -38,7 +38,7 @@ ENV NPM_CONFIG_PREFIX=/usr/local
 ENV PATH=/usr/local/bin:$PATH
 
 # Install pnpm and verify installation
-RUN npm i -g pnpm@10.18.2 && /usr/local/bin/pnpm --version && npm config get prefix && npm bin -g
+RUN npm i -g pnpm@10.18.2 && pnpm --version && npm config get prefix && command -v pnpm
 
 # Disable corepack (non-critical, allow failure)
 RUN corepack disable || true
