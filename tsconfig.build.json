@@ -1,23 +1,11 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
     "noEmit": false,
-    "outDir": "dist"
+    "skipLibCheck": true,
+    "noEmitOnError": false
   },
-  "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "scripts/**",
-    "**/*.test.ts",
-    "**/*.spec.ts",
-    "node_modules",
-    "dist",
-    "tests/**",
-    "test_*.js",
-    "src/healthServer.ts",
-    "src/utils/storageUtils.ts",
-    "src/utils/systemAudit.ts",
-    "src/utils/replyContextBuilder.ts"
-  ]
+  "files": ["src/railwayEntrypoint.ts"]
 }

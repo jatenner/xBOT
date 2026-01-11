@@ -6,7 +6,7 @@
 
 import 'dotenv/config';
 import { getSupabaseClient } from '../db/index';
-import { startHealthServer } from './healthServer';
+// Health server is started by railwayEntrypoint.ts, no need to import here
 
 async function probeDatabase(): Promise<void> {
   console.log('[WORKER] 🔍 Probing database connectivity...');
