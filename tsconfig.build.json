@@ -1,22 +1,19 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "dist",
     "noEmit": false,
-    "skipLibCheck": true,
-    "noEmitOnError": false
+    "outDir": "dist"
   },
   "include": [
     "src/**/*.ts"
   ],
   "exclude": [
     "scripts/**",
-    "src/app/**",
-    "src/**/*.tsx",
-    "src/scripts/**",
     "**/*.test.ts",
     "**/*.spec.ts",
     "node_modules",
-    "dist"
+    "dist",
+    "tests/**",
+    "test_*.js"
   ]
 }
