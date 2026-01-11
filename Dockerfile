@@ -34,11 +34,12 @@ COPY --from=builder /app/dist ./dist
 # Copy supporting directories (guaranteed to exist from builder stage)
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/supabase ./supabase
-# Copy package.json for node to resolve dependencies
+# Copy package.json and node_modules for runtime dependencies
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/node_modules ./node_modules
 
 # Expose port (Railway sets PORT env var dynamically)
-EXPOSE 3000
+EXPOSE 8080
 
 # Start application via npm start (runs node dist/src/railwayEntrypoint.js)
 # Entrypoint starts health server immediately, then runs background init

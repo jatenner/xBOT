@@ -4,6 +4,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/src/railwayEntrypoint.js",
+    "smoke:local": "bash scripts/smoke_local.sh",
+    "smoke:docker": "bash scripts/smoke_docker.sh",
     "dev": "tsx watch src/main.ts",
     "post-now": "tsx scripts/post-immediately.ts",
     "check": "tsx scripts/live-system-check.ts",

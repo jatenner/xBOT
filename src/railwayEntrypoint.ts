@@ -16,7 +16,7 @@ function startHealthServer(): void {
     return;
   }
 
-  const port = Number(process.env.PORT ?? 3000);
+  const port = Number(process.env.PORT ?? 8080);
   const host = '0.0.0.0';
   const gitSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
   const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
@@ -44,9 +44,11 @@ function startHealthServer(): void {
   });
 
   healthServer.listen(port, host, () => {
-    console.log(`[HEALTH] listening on ${host}:${port}`);
+    console.log(`[HEALTH] Starting health server on ${host}:${port}...`);
+    console.log(`[HEALTH] ✅ Listening on ${host}:${port}`);
     console.log(`[HEALTH] Git SHA: ${gitSha.substring(0, 8)}`);
     console.log(`[HEALTH] Service: ${serviceName}`);
+    console.log(`[HEALTH] Healthcheck endpoint: http://${host}:${port}/status`);
   });
 
   healthServer.on('error', (error: NodeJS.ErrnoException) => {
