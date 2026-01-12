@@ -4559,6 +4559,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   }
   
   // 🎯 PIPELINE STAGES: Mark posting started
+  const { getSupabaseClient } = await import('../db/index');
+  const supabase = getSupabaseClient();
   const postingStartedAt = new Date().toISOString();
   await supabase
     .from('reply_decisions')
