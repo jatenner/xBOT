@@ -42,12 +42,18 @@ function startHealthServer(): void {
     // Respond to healthcheck endpoints
     if (req.url === '/status' || req.url === '/health' || req.url === '/healthz') {
       // Get session path info
-      let sessionPathInfo: any = {};
+      let sessionPathInfo: any = {
+        resolvedPath: 'unknown',
+        exists: false,
+        size: null,
+        mtime: null,
+        writable: false,
+      };
       try {
         const { getSessionPathInfo } = await import('./utils/sessionPathResolver');
         sessionPathInfo = getSessionPathInfo();
       } catch (e: any) {
-        sessionPathInfo = { error: e.message };
+        console.warn(`[HEALTH] Could not get session path info: ${e.message}`);
       }
       
       res.writeHead(200, { 
