@@ -256,13 +256,15 @@ export class UnifiedBrowserPool {
         const waitTime = Date.now() - queuedAt;
         console.error(`[BROWSER_POOL] ⏱️ QUEUE TIMEOUT: ${operationName} waited ${Math.round(waitTime/1000)}s (timeout: ${timeoutMs/1000}s)`);
         console.error(`[BROWSER_POOL] 📊 Current: ${this.queue.length} queued, ${this.getActiveCount()} active`);
-        const poolStats = {
+        const timeoutPoolStats = {
+          queue_len: this.queue.length,
           active: this.getActiveCount(),
           idle: this.contexts.size - this.getActiveCount(),
-          queue: this.queue.length,
+          max_contexts: this.MAX_CONTEXTS,
         };
         const operationType = isCriticalOperation ? 'CRITICAL' : (operationName.includes('resolve_root_tweet') ? 'ANCESTRY' : 'background');
-        console.error(`[BROWSER_POOL] 🚨 Priority: ${priority} (${operationType}) pool=${JSON.stringify(poolStats)}`);
+        console.error(`[BROWSER_POOL] 🚨 Priority: ${priority} (${operationType}) pool=${JSON.stringify(timeoutPoolStats)}`);
+        console.error(`[BROWSER_POOL] ⏱️ QUEUE TIMEOUT DETAILS: ${JSON.stringify(timeoutPoolStats)}`);
         
         // Remove from queue
         const index = this.queue.findIndex(op => op.id === operationId);
@@ -271,13 +273,6 @@ export class UnifiedBrowserPool {
           this.metrics.queuedOperations--;
         }
         
-        const poolStats = {
-          queue_len: this.queue.length,
-          active: this.getActiveCount(),
-          idle: this.contexts.size - this.getActiveCount(),
-          max_contexts: this.MAX_CONTEXTS,
-        };
-        console.error(`[BROWSER_POOL] ⏱️ QUEUE TIMEOUT DETAILS: ${JSON.stringify(poolStats)}`);
         reject(new Error(`Queue timeout after ${Math.round(waitTime/1000)}s - pool overloaded (priority: ${priority}, timeout: ${timeoutMs/1000}s, queue_len=${this.queue.length}, active=${this.getActiveCount()}/${this.MAX_CONTEXTS})`));
       }, timeoutMs);
       
