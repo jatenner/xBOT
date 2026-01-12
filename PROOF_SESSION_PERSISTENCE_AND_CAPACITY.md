@@ -476,7 +476,30 @@ $ railway run -s xBOT -- pnpm exec tsx scripts/force-create-session-state.ts
 - Expected: 30%+ reduction in ANCESTRY_TIMEOUT
 - Expected: CONSENT_WALL < 10% after session file exists
 
+### Final Status
+
+**Session File:**
+- Path: `/app/data/twitter_session.json` (fallback, `/data` doesn't exist)
+- Status: Boot seeding attempted but timed out (pool overloaded)
+- Action: Boot seeding runs in background, may complete after service starts
+
+**Throttling:**
+- `REPLY_V2_MAX_EVAL_PER_TICK=15` (deployed)
+- `BROWSER_MAX_QUEUE_DEPTH=30` (deployed)
+- `BROWSER_MAX_CONTEXTS=7` (deployed)
+
+**Current Metrics (last_1h):**
+- ANCESTRY_TIMEOUT: 28 (increased from baseline 18)
+- ANCESTRY_ERROR: 5 (decreased from baseline 12)
+- CONSENT_WALL: 6 (15.38% rate)
+
+**Analysis:**
+- ANCESTRY_TIMEOUT increased despite throttling (likely due to more cycles)
+- ANCESTRY_ERROR decreased (58% reduction)
+- CONSENT_WALL stable but still above 10% target
+
 **Next Steps:**
-1. Monitor boot logs for session file creation
-2. Wait for next evaluation cycle to measure throttling impact
-3. Verify ANCESTRY_TIMEOUT reduction and CONSENT_WALL decrease
+1. Reduce `REPLY_V2_MAX_EVAL_PER_TICK` to 10 or lower
+2. Monitor boot logs for session file creation completion
+3. Wait for steady state to measure CONSENT_WALL reduction after session file exists
+4. Consider reducing `BROWSER_MAX_QUEUE_DEPTH` to 20 if timeouts persist
