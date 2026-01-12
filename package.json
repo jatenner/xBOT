@@ -19,6 +19,7 @@
     "verify-ops": "tsx scripts/verify-ops.ts",
     "verify-replies": "tsx scripts/verify-replies.ts",
     "inspect:tweet": "tsx scripts/inspect-tweet.ts",
+    "validate:fail-closed": "tsx scripts/validate-fail-closed.ts",
     "harvest:once": "tsx scripts/run-harvester-once.ts",
     "session:export": "tsx scripts/export-session-from-chrome.ts",
     "session:export:cdp": "tsx scripts/export-session-from-cdp.ts",

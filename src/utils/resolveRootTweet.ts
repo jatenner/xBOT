@@ -12,6 +12,11 @@ export interface RootTweetResolution {
   rootTweetUrl: string;
   rootTweetAuthor: string | null;
   rootTweetContent: string | null;
+  // 🔒 FAIL-CLOSED: Status and confidence tracking
+  status: 'OK' | 'UNCERTAIN' | 'ERROR';
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  method: 'explicit_signals' | 'verification' | 'fallback' | 'error';
+  signals: string[]; // List of signals checked (e.g., ['replying_to_text=false', 'social_context=false'])
 }
 
 /**
@@ -126,21 +131,28 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
           rootTweetUrl: tweetUrl,
           rootTweetAuthor: verification.author,
           rootTweetContent: verification.content,
+          status: 'OK',
+          confidence: 'HIGH',
+          method: 'verification',
+          signals: checksPerformed,
         };
       } else {
-        // Verification failed BUT no explicit reply signals found
-        // FAIL-OPEN: Default to root unless we have explicit reply signals
+        // Verification failed - FAIL-CLOSED: Cannot confirm root status
         console.log(`[REPLY_SELECT] ⚠️ Could not verify root status for ${tweetId} (reason: ${verification.reason || 'unknown'})`);
         console.log(`[REPLY_SELECT]   Checks performed: ${checksPerformed.join(', ')}`);
-        console.log(`[REPLY_SELECT]   No explicit reply signals found - FAIL-OPEN: Treating as root`);
+        console.log(`[REPLY_SELECT]   FAIL-CLOSED: Treating as UNCERTAIN (will DENY)`);
         
         return {
           originalTweetId: tweetId,
-          rootTweetId: tweetId, // Fail-open: assume root
-          isRootTweet: true, // Fail-open: assume root unless explicit reply signals
+          rootTweetId: null, // Fail-closed: cannot determine root
+          isRootTweet: false, // Fail-closed: cannot confirm root
           rootTweetUrl: tweetUrl,
           rootTweetAuthor: verification.author || null,
           rootTweetContent: verification.content || null,
+          status: 'UNCERTAIN',
+          confidence: 'LOW',
+          method: 'verification',
+          signals: checksPerformed,
         };
       }
     }
@@ -183,39 +195,50 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
         rootTweetUrl: `https://x.com/i/web/status/${rootTweetData.rootId}`,
         rootTweetAuthor: rootTweetData.author,
         rootTweetContent: rootTweetData.content,
+        status: 'OK',
+        confidence: 'HIGH',
+        method: 'explicit_signals',
+        signals: checksPerformed,
       };
     }
     
-    // Could not resolve root - but no explicit reply signals found
-    // FAIL-OPEN: Default to root unless we have explicit reply signals
+    // Could not resolve root - FAIL-CLOSED: Cannot determine root
     console.log(`[REPLY_SELECT] ⚠️ Could not resolve root for ${tweetId}`);
     console.log(`[REPLY_SELECT]   Checks performed: ${checksPerformed.join(', ')}`);
     console.log(`[REPLY_SELECT]   Root ID extracted: ${rootTweetData.rootId || 'null'}`);
-    console.log(`[REPLY_SELECT]   No explicit reply signals - FAIL-OPEN: Treating as root`);
+    console.log(`[REPLY_SELECT]   FAIL-CLOSED: Treating as UNCERTAIN (will DENY)`);
     
     return {
       originalTweetId: tweetId,
-      rootTweetId: tweetId, // Fail-open: assume root
-      isRootTweet: true, // Fail-open: assume root unless explicit reply signals
+      rootTweetId: null, // Fail-closed: cannot determine root
+      isRootTweet: false, // Fail-closed: cannot confirm root
       rootTweetUrl: tweetUrl,
       rootTweetAuthor: rootTweetData.author || null,
       rootTweetContent: rootTweetData.content || null,
+      status: 'UNCERTAIN',
+      confidence: 'LOW',
+      method: 'fallback',
+      signals: checksPerformed,
     };
     
   } catch (error: any) {
     console.error(`[REPLY_SELECT] ❌ Error resolving root for ${tweetId}:`, error.message);
     console.error(`[REPLY_SELECT]   Resolution attempted: ${resolutionAttempted}`);
     console.error(`[REPLY_SELECT]   Checks performed: ${checksPerformed.length > 0 ? checksPerformed.join(', ') : 'none'}`);
-    console.error(`[REPLY_SELECT]   FAIL-OPEN: Returning isRootTweet=true due to error (assume root)`);
+    console.error(`[REPLY_SELECT]   FAIL-CLOSED: Returning ERROR status (will DENY)`);
     
-    // Fail-open: return isRootTweet=true on error (assume root unless proven otherwise)
+    // Fail-closed: return ERROR status on error (will DENY)
     return {
       originalTweetId: tweetId,
-      rootTweetId: tweetId, // Fail-open: assume root
-      isRootTweet: true, // Fail-open: assume root unless explicit reply signals
+      rootTweetId: null, // Fail-closed: cannot determine root
+      isRootTweet: false, // Fail-closed: cannot confirm root
       rootTweetUrl: tweetUrl,
       rootTweetAuthor: null,
       rootTweetContent: null,
+      status: 'ERROR',
+      confidence: 'LOW',
+      method: 'error',
+      signals: checksPerformed,
     };
   } finally {
     if (page) {

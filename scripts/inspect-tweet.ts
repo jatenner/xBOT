@@ -22,9 +22,13 @@ async function inspectTweet(tweetId: string) {
     const ancestry = await resolveTweetAncestry(tweetId);
     console.log(`  Target Tweet ID: ${ancestry.targetTweetId}`);
     console.log(`  Target In Reply To: ${ancestry.targetInReplyToTweetId || 'NONE (root tweet)'}`);
-    console.log(`  Root Tweet ID: ${ancestry.rootTweetId}`);
-    console.log(`  Ancestry Depth: ${ancestry.ancestryDepth} (0 = root, 1+ = reply depth)`);
+    console.log(`  Root Tweet ID: ${ancestry.rootTweetId ?? 'NULL (cannot determine)'}`);
+    console.log(`  Ancestry Depth: ${ancestry.ancestryDepth ?? 'NULL (cannot determine)'} (0 = root, 1+ = reply depth)`);
     console.log(`  Is Root: ${ancestry.isRoot ? '✅ YES' : '❌ NO'}`);
+    console.log(`\n  🔒 Status: ${ancestry.status} (${ancestry.status === 'OK' ? '✅ Confident' : ancestry.status === 'UNCERTAIN' ? '⚠️ Uncertain' : '❌ Error'})`);
+    console.log(`  Confidence: ${ancestry.confidence}`);
+    console.log(`  Method: ${ancestry.method}`);
+    console.log(`  Signals: [${ancestry.signals.join(', ')}]`);
     
     // 2. Check if bot would allow
     const allowCheck = shouldAllowReply(ancestry);

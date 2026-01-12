@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS reply_decisions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  decision_id uuid REFERENCES content_metadata(decision_id),
+  decision_id uuid, -- Optional reference to content_metadata(decision_id)
   created_at timestamptz NOT NULL DEFAULT now(),
   
   -- Tweet identifiers
