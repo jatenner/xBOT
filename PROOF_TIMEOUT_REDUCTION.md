@@ -195,16 +195,16 @@ $ railway run -s xBOT -- bash -lc "test -d /data && echo '✅ /data exists' || e
 $ curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{session_path_resolved, session_path_exists, session_path_size_bytes}'
 ```
 
-**Output:**
+**Output (Latest):**
 ```json
 {
-  "session_path_resolved": null,
-  "session_path_exists": null,
+  "session_path_resolved": "/data/twitter_session.json",
+  "session_path_exists": false,
   "session_path_size_bytes": null
 }
 ```
 
-**Status:** Fields are null (code deployed but endpoint may need refresh or error in path info retrieval). Boot logs should show resolved path.
+**Status:** Path correctly resolved to `/data/twitter_session.json` (even though `/data` doesn't exist, resolver checks it first). File doesn't exist yet (will be created during normal operation).
 
 ### Metrics After (last_1h)
 
@@ -230,11 +230,17 @@ TOTAL decisions: 38
 
 | Metric | Baseline | Current | Change | Target |
 |--------|----------|---------|--------|--------|
-| CONSENT_WALL (last_1h) | 4 (10.53%) | 5 (13.51%) | +25% | < 5% |
+| CONSENT_WALL (last_1h) | 4 (10.53%) | 4 (11.11%) | +6% | < 5% |
 | ANCESTRY_TIMEOUT (last_1h) | 30 | 31 | +3% | ≤ 15 (50% reduction) |
 | ANCESTRY_ERROR (last_1h) | 4 | 0 | -100% | - |
 | ANCESTRY_SKIPPED_OVERLOAD (last_1h) | 0 | 0 | - | - |
 | ANCESTRY_PLAYWRIGHT_DROPPED (last_1h) | 0 | 1 | +1 | - |
+
+**Analysis:**
+- ✅ ANCESTRY_ERROR: Eliminated (4 → 0)
+- ⚠️ ANCESTRY_TIMEOUT: Slight increase (30 → 31, +3%)
+- ⚠️ CONSENT_WALL: Stable (4, 11.11% rate)
+- ✅ Pool health: Enhanced metrics working (detailed fields populated)
 
 **Status:** 
 - ✅ Pool health metrics enhanced and truthful
