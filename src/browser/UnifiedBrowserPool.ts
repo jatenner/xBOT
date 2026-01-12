@@ -229,6 +229,14 @@ export class UnifiedBrowserPool {
       ? Math.max(this.QUEUE_WAIT_TIMEOUT * 5, 300000) // 🔥 ENHANCEMENT: 5x timeout or 5min min for critical/ID extraction ops
       : this.QUEUE_WAIT_TIMEOUT; // Normal timeout for background jobs
     
+    // 🎯 THROTTLE: Hard cap on queue depth to prevent overload
+    const MAX_QUEUE_DEPTH = parseInt(process.env.BROWSER_MAX_QUEUE_DEPTH || '30', 10); // Default 30
+    if (this.queue.length >= MAX_QUEUE_DEPTH) {
+      console.warn(`[BROWSER_POOL][THROTTLE] Queue depth ${this.queue.length} >= ${MAX_QUEUE_DEPTH}, rejecting ${operationName}`);
+      this.metrics.totalOperations++; // Count as attempted but dropped
+      return Promise.reject(new Error(`Queue depth limit exceeded (${this.queue.length}/${MAX_QUEUE_DEPTH})`));
+    }
+    
     // 🚨 POSTING PRIORITY GUARD: Drop background operations when queue is deep and posting is waiting
     const POSTING_PRIORITY_THRESHOLD = 3; // Drop background ops if queue depth exceeds this
     const isBackgroundOperation = priority > 1; // Priority > 1 means background (metrics, vi_scrape, etc.)

@@ -280,6 +280,7 @@ function startHealthServer(): void {
 startHealthServer();
 
 // Log session file status at boot (for consent persistence verification)
+// 🎯 SEED SESSION ON BOOT: If SEED_SESSION_ON_BOOT=true and file doesn't exist, create it
 setImmediate(async () => {
   try {
     const { getSessionPathInfo } = await import('./utils/sessionPathResolver');
@@ -295,6 +296,38 @@ setImmediate(async () => {
       console.log(`[BOOT] Session file last modified: ${info.mtime}`);
     } else {
       console.log(`[BOOT] Session file not found - will be created on first consent acceptance`);
+      
+      // 🎯 SEED SESSION ON BOOT: Create session file if SEED_SESSION_ON_BOOT=true
+      if (process.env.SEED_SESSION_ON_BOOT === 'true') {
+        console.log(`[BOOT] SEED_SESSION_ON_BOOT=true - creating session file...`);
+        try {
+          const { UnifiedBrowserPool } = await import('./browser/UnifiedBrowserPool');
+          const pool = UnifiedBrowserPool.getInstance();
+          const testUrl = 'https://x.com/DrBryanJohnson';
+          
+          await pool.withContext('boot_session_seed', async (context) => {
+            const page = await context.newPage();
+            await page.goto(testUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.waitForTimeout(3000);
+            
+            const { ensureConsentAccepted, saveTwitterState } = await import('./playwright/twitterSession');
+            await ensureConsentAccepted(page, async () => {
+              await page.goto(testUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+              await page.waitForTimeout(3000);
+            });
+            
+            const saved = await saveTwitterState(context);
+            if (saved) {
+              const infoAfter = getSessionPathInfo();
+              console.log(`[BOOT] ✅ Session file created: ${infoAfter.resolvedPath}, size=${infoAfter.size} bytes`);
+            } else {
+              console.warn(`[BOOT] ⚠️ Failed to save session file`);
+            }
+          });
+        } catch (seedError: any) {
+          console.error(`[BOOT] ❌ Failed to seed session: ${seedError.message}`);
+        }
+      }
     }
   } catch (error: any) {
     console.warn(`[BOOT] Could not check session file status: ${error.message}`);
