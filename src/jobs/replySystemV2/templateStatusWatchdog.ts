@@ -10,7 +10,7 @@ import { getSupabaseClient } from '../../db';
 const STALE_THRESHOLD_MINUTES = 10;
 
 /**
- * Mark stale PENDING rows as FAILED
+ * Mark stale PENDING rows as FAILED (stage-aware)
  */
 export async function markStalePendingRows(): Promise<{
   checked: number;
@@ -24,7 +24,7 @@ export async function markStalePendingRows(): Promise<{
   
   const { data: staleRows, error: findError } = await supabase
     .from('reply_decisions')
-    .select('id, decision_id, target_tweet_id, created_at')
+    .select('id, decision_id, target_tweet_id, created_at, template_selected_at, generation_started_at, generation_completed_at, posting_started_at, posted_reply_tweet_id')
     .eq('decision', 'ALLOW')
     .eq('template_status', 'PENDING')
     .lt('created_at', staleThreshold);
@@ -45,11 +45,27 @@ export async function markStalePendingRows(): Promise<{
   
   for (const row of staleRows) {
     try {
+      // 🎯 PIPELINE STAGES: Determine exact failure stage
+      let pipelineErrorReason: string;
+      if (!row.template_selected_at) {
+        pipelineErrorReason = 'TEMPLATE_SELECTION_TIMEOUT';
+      } else if (!row.generation_started_at) {
+        pipelineErrorReason = 'GENERATION_NOT_STARTED_TIMEOUT';
+      } else if (!row.generation_completed_at) {
+        pipelineErrorReason = 'GENERATION_TIMEOUT';
+      } else if (!row.posted_reply_tweet_id) {
+        pipelineErrorReason = 'POSTING_TIMEOUT';
+      } else {
+        // Should not happen - has posted_reply_tweet_id but still PENDING
+        pipelineErrorReason = 'UNEXPECTED_STATE';
+      }
+      
       const { error: updateError } = await supabase
         .from('reply_decisions')
         .update({
           template_status: 'FAILED',
-          template_error_reason: 'TEMPLATE_SELECTION_TIMEOUT',
+          template_error_reason: pipelineErrorReason,
+          pipeline_error_reason: pipelineErrorReason, // 🎯 PIPELINE STAGES
         })
         .eq('id', row.id);
       
@@ -58,7 +74,7 @@ export async function markStalePendingRows(): Promise<{
         errors++;
       } else {
         markedFailed++;
-        console.log(`[TEMPLATE_WATCHDOG] ✅ Marked decision_id=${row.decision_id || 'N/A'} (id=${row.id}) as FAILED: TEMPLATE_SELECTION_TIMEOUT`);
+        console.log(`[TEMPLATE_WATCHDOG] ✅ Marked decision_id=${row.decision_id || 'N/A'} (id=${row.id}) as FAILED: ${pipelineErrorReason}`);
       }
     } catch (error: any) {
       console.error(`[TEMPLATE_WATCHDOG] ❌ Exception marking row ${row.id}: ${error.message}`);

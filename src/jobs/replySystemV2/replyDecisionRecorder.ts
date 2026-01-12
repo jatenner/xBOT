@@ -46,6 +46,14 @@ export interface ReplyDecisionRecord {
   prompt_version?: string | null; // Prompt version/template version used - NULL if not selected yet
   template_status?: 'PENDING' | 'SET' | 'FAILED'; // Template selection status
   template_error_reason?: string | null; // Reason for FAILED status (e.g., TEMPLATE_SELECTION_TIMEOUT, UPDATE_FAILED)
+  // 🎯 PIPELINE STAGES: Stage timestamps
+  scored_at?: string; // ISO timestamp when decision row created
+  template_selected_at?: string; // ISO timestamp when template selected
+  generation_started_at?: string; // ISO timestamp when generation started
+  generation_completed_at?: string; // ISO timestamp when generation completed
+  posting_started_at?: string; // ISO timestamp when posting started
+  posting_completed_at?: string; // ISO timestamp when posting completed
+  pipeline_error_reason?: string | null; // Specific pipeline stage error
   trace_id?: string; // feed_run_id, scheduler_run_id, etc.
   job_run_id?: string;
   pipeline_source?: string;
@@ -341,6 +349,14 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
       prompt_version: record.prompt_version || null, // 🎨 QUALITY TRACKING (NULL if not selected)
       template_status: record.template_status || 'PENDING', // 🎨 QUALITY TRACKING
       template_error_reason: (record as any).template_error_reason || null, // 🎨 QUALITY TRACKING
+      // 🎯 PIPELINE STAGES: Stage timestamps
+      scored_at: record.scored_at || null,
+      template_selected_at: record.template_selected_at || null,
+      generation_started_at: record.generation_started_at || null,
+      generation_completed_at: record.generation_completed_at || null,
+      posting_started_at: record.posting_started_at || null,
+      posting_completed_at: record.posting_completed_at || null,
+      pipeline_error_reason: record.pipeline_error_reason || null,
       trace_id: record.trace_id || null,
       job_run_id: record.job_run_id || null,
       pipeline_source: record.pipeline_source || null,

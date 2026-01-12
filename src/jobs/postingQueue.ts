@@ -4558,6 +4558,15 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     throw new Error(errorMsg);
   }
   
+  // 🎯 PIPELINE STAGES: Mark posting started
+  const postingStartedAt = new Date().toISOString();
+  await supabase
+    .from('reply_decisions')
+    .update({ posting_started_at: postingStartedAt })
+    .eq('decision_id', decision.id);
+  
+  console.log(`[POSTING_QUEUE] 🎯 Pipeline stage: posting_started_at=${postingStartedAt} for decision_id=${decision.id}`);
+  
   // Record ALLOW decision (will update with posted_reply_tweet_id after success)
   await recordReplyDecision({
     decision_id: decision.id,
@@ -4947,13 +4956,18 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       // ✅ STEP 3: Return tweet ID (receipt is saved, can proceed to DB save)
       // 🔍 FORENSIC PIPELINE: Update decision record with posted tweet ID
       // 🎨 QUALITY TRACKING: Update template_id and prompt_version if not already set
+      // 🎯 PIPELINE STAGES: Mark posting completed
+      const postingCompletedAt = new Date().toISOString();
       await supabase
         .from('reply_decisions')
         .update({
           posted_reply_tweet_id: result.tweetId,
           playwright_post_attempted: true,
+          posting_completed_at: postingCompletedAt, // 🎯 PIPELINE STAGES
         })
         .eq('decision_id', decision.id);
+      
+      console.log(`[POSTING_QUEUE] 🎯 Pipeline stage: posting_completed_at=${postingCompletedAt} for decision_id=${decision.id}`);
       
       console.log(`[REPLY_TRUTH] step=RETURN_TWEETID tweet_id=${result.tweetId}`);
       return result.tweetId;
