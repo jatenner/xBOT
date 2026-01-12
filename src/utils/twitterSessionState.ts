@@ -254,7 +254,12 @@ export async function saveStorageState(
     // Ensure directory exists (with recursive mkdir)
     const dir = path.dirname(savePath);
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+      } catch (mkdirError: any) {
+        console.error(`[CONSENT_WALL] ❌ Failed to create directory ${dir}: ${mkdirError.message}`);
+        throw mkdirError;
+      }
     }
     
     // Normalize before saving
