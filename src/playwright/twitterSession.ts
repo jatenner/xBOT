@@ -126,8 +126,12 @@ export async function detectConsentWall(page: Page): Promise<ConsentWallResult> 
     };
   });
   
+  // Only detect consent wall if containers are missing (wall is actually blocking)
+  const containers = diagnostics.tweet_containers_found || 0;
+  const actuallyBlocked = diagnostics.wall_detected && diagnostics.wall_type === 'consent' && containers === 0;
+  
   return {
-    detected: diagnostics.wall_detected && diagnostics.wall_type === 'consent',
+    detected: actuallyBlocked,
     cleared: false,
     attempts: 0,
     wallType: diagnostics.wall_type as any,
@@ -144,76 +148,106 @@ export async function acceptConsentWall(page: Page, maxAttempts: number = 3): Pr
   });
   
   const strategies = [
+    // Strategy 1: Direct button text matches (most reliable)
     { name: 'getByText Accept all cookies', fn: async () => {
-      const button = page.getByText('Accept all cookies', { exact: false }).first();
-      if (await button.isVisible({ timeout: 2000 })) {
-        await button.click();
-        return true;
-      }
+      try {
+        const button = page.getByText('Accept all cookies', { exact: false }).first();
+        if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await button.click({ timeout: 2000 });
+          return true;
+        }
+      } catch {}
+      return false;
     }},
     { name: 'getByText Accept cookies', fn: async () => {
-      const button = page.getByText('Accept cookies', { exact: false }).first();
-      if (await button.isVisible({ timeout: 2000 })) {
-        await button.click();
-        return true;
-      }
+      try {
+        const button = page.getByText('Accept cookies', { exact: false }).first();
+        if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await button.click({ timeout: 2000 });
+          return true;
+        }
+      } catch {}
+      return false;
     }},
     { name: 'getByText Accept', fn: async () => {
-      const button = page.getByText('Accept', { exact: false }).first();
-      if (await button.isVisible({ timeout: 2000 })) {
-        await button.click();
-        return true;
-      }
+      try {
+        // More specific: look for Accept button in dialog/modal context
+        const button = page.locator('[role="dialog"] button, [data-testid*="cookie"] button, button').filter({ hasText: /^Accept$/i }).first();
+        if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await button.click({ timeout: 2000 });
+          return true;
+        }
+      } catch {}
+      return false;
     }},
     { name: 'getByRole button accept', fn: async () => {
-      const button = page.getByRole('button', { name: /accept/i }).first();
-      if (await button.isVisible({ timeout: 2000 })) {
-        await button.click();
-        return true;
-      }
+      try {
+        const button = page.getByRole('button', { name: /accept/i }).first();
+        if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await button.click({ timeout: 2000 });
+          return true;
+        }
+      } catch {}
+      return false;
     }},
     { name: 'locator button filter accept', fn: async () => {
-      const button = page.locator('button').filter({ hasText: /accept/i }).first();
-      if (await button.isVisible({ timeout: 2000 })) {
-        await button.click();
-        return true;
-      }
-    }},
-    { name: 'iframe accept button', fn: async () => {
-      const iframes = await page.locator('iframe').all();
-      for (const iframe of iframes) {
-        try {
-          const frame = await iframe.contentFrame();
-          if (frame) {
-            const button = frame.getByText(/accept/i).first();
-            if (await button.isVisible({ timeout: 1000 })) {
-              await button.click();
-              return true;
-            }
-          }
-        } catch (e) {
-          // Try next iframe
+      try {
+        const button = page.locator('button').filter({ hasText: /accept/i }).first();
+        if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await button.click({ timeout: 2000 });
+          return true;
         }
-      }
+      } catch {}
+      return false;
     }},
+    // Strategy 2: Iframe handling
+    { name: 'iframe accept button', fn: async () => {
+      try {
+        const iframes = await page.locator('iframe').all();
+        for (const iframe of iframes) {
+          try {
+            const frame = await iframe.contentFrame();
+            if (frame) {
+              const button = frame.getByText(/accept/i).first();
+              if (await button.isVisible({ timeout: 1000 }).catch(() => false)) {
+                await button.click({ timeout: 1000 });
+                return true;
+              }
+            }
+          } catch (e) {
+            // Try next iframe
+          }
+        }
+      } catch {}
+      return false;
+    }},
+    // Strategy 3: Keyboard navigation (less reliable)
     { name: 'keyboard TAB+ENTER', fn: async () => {
-      await page.keyboard.press('Tab');
-      await page.waitForTimeout(500);
-      await page.keyboard.press('Tab');
-      await page.waitForTimeout(500);
-      const focused = await page.evaluate(() => {
-        const active = document.activeElement;
-        return active?.textContent?.toLowerCase().includes('accept') || false;
-      });
-      if (focused) {
-        await page.keyboard.press('Enter');
-        return true;
-      }
+      try {
+        await page.keyboard.press('Tab');
+        await page.waitForTimeout(500);
+        await page.keyboard.press('Tab');
+        await page.waitForTimeout(500);
+        const focused = await page.evaluate(() => {
+          const active = document.activeElement;
+          return active?.textContent?.toLowerCase().includes('accept') || false;
+        });
+        if (focused) {
+          await page.keyboard.press('Enter');
+          return true;
+        }
+      } catch {}
+      return false;
     }},
+    // Strategy 4: Escape key (last resort, often doesn't work)
     { name: 'escape key', fn: async () => {
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(1000);
-      return true;
+      try {
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(1000);
+        // Don't return true - escape might not actually accept, just check containers
+        return false; // Let container check determine success
+      } catch {}
+      return false;
     }},
   ];
   
@@ -288,14 +322,24 @@ export async function ensureConsentAccepted(
   page: Page,
   retryAction?: () => Promise<void>
 ): Promise<ConsentWallResult> {
-  // Detect consent wall
-  const detection = await detectConsentWall(page);
+  // Check containers first - if containers exist, no consent wall blocking
+  const containersBefore = await page.evaluate(() => {
+    return document.querySelectorAll('article[data-testid="tweet"]').length;
+  });
   
-  if (!detection.detected) {
-    return { detected: false, cleared: false, attempts: 0 };
+  if (containersBefore > 0) {
+    // Containers exist - no consent wall blocking, but check if wall text is present (might be dismissed already)
+    const detection = await detectConsentWall(page);
+    if (!detection.detected) {
+      return { detected: false, cleared: false, attempts: 0 };
+    }
+    // Wall text present but containers exist - might be a dismissed overlay, skip handling
+    console.log(`[CONSENT_WALL] ℹ️ Consent wall text detected but containers exist (${containersBefore}) - likely already dismissed`);
+    return { detected: false, cleared: true, attempts: 0 };
   }
   
-  console.log(`[CONSENT_WALL] 🚧 Consent wall detected, attempting to clear...`);
+  // No containers - consent wall is blocking
+  console.log(`[CONSENT_WALL] 🚧 Consent wall detected (containers=0), attempting to clear...`);
   
   // Accept consent wall
   const result = await acceptConsentWall(page, 3);
