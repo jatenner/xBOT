@@ -115,8 +115,35 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
     visited.add(currentTweetId);
     
     try {
-      const resolution = await resolveRootTweetId(currentTweetId);
+      let resolution = await resolveRootTweetId(currentTweetId);
       lastResolution = resolution;
+      
+      // 🎯 RETRY LOGIC: If ERROR and transient (timeout/dropped), retry once with backoff
+      if (resolution.status === 'ERROR' && resolution.error) {
+        const errorMsg = resolution.error.toLowerCase();
+        const isTransient = 
+          errorMsg.includes('timeout') || 
+          errorMsg.includes('queue timeout') ||
+          errorMsg.includes('pool overloaded') ||
+          errorMsg.includes('dropped') ||
+          errorMsg.includes('disconnected') ||
+          errorMsg.includes('browser has been closed');
+        
+        if (isTransient && depth === 0) {
+          // Only retry at top level (not in recursion)
+          console.log(`[ANCESTRY] 🔄 Transient error detected, retrying once with backoff...`);
+          await new Promise(resolve => setTimeout(resolve, 2000)); // 2s backoff
+          
+          try {
+            resolution = await resolveRootTweetId(currentTweetId);
+            lastResolution = resolution;
+            console.log(`[ANCESTRY] ✅ Retry result: status=${resolution.status}, method=${resolution.method}`);
+          } catch (retryError: any) {
+            console.warn(`[ANCESTRY] ⚠️ Retry also failed: ${retryError.message}`);
+            // Continue with original error
+          }
+        }
+      }
       
       // 🔒 FAIL-CLOSED: If resolution is UNCERTAIN or ERROR, propagate it
       if (resolution.status === 'UNCERTAIN' || resolution.status === 'ERROR') {
@@ -390,8 +417,24 @@ export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; rea
     const statusReason = ancestry.status === 'UNCERTAIN' 
       ? 'ANCESTRY_UNCERTAIN_FAIL_CLOSED'
       : 'ANCESTRY_ERROR_FAIL_CLOSED';
-    const denyReasonCode = ancestry.status === 'UNCERTAIN' ? 'ANCESTRY_UNCERTAIN' : 'ANCESTRY_ERROR';
-    console.log(`[REPLY_DECISION] 🚫 DENY: ${statusReason} status=${ancestry.status} target=${ancestry.targetTweetId} method=${ancestry.method}`);
+    
+    // 🎯 SPECIFIC ERROR BUCKETS: Map error to specific deny_reason_code
+    let denyReasonCode: string = ancestry.status === 'UNCERTAIN' ? 'ANCESTRY_UNCERTAIN' : 'ANCESTRY_ERROR';
+    
+    if (ancestry.status === 'ERROR' && ancestry.error) {
+      const errorLower = ancestry.error.toLowerCase();
+      if (errorLower.includes('timeout') || errorLower.includes('queue timeout') || errorLower.includes('pool overloaded')) {
+        denyReasonCode = 'ANCESTRY_TIMEOUT';
+      } else if (errorLower.includes('dropped') || errorLower.includes('disconnected') || errorLower.includes('browser has been closed')) {
+        denyReasonCode = 'ANCESTRY_PLAYWRIGHT_DROPPED';
+      } else if (errorLower.includes('navigation') || errorLower.includes('nav_fail') || errorLower.includes('goto failed')) {
+        denyReasonCode = 'ANCESTRY_NAV_FAIL';
+      } else if (errorLower.includes('parse') || errorLower.includes('extraction failed') || errorLower.includes('dom query failed')) {
+        denyReasonCode = 'ANCESTRY_PARSE_FAIL';
+      }
+    }
+    
+    console.log(`[REPLY_DECISION] 🚫 DENY: ${statusReason} status=${ancestry.status} target=${ancestry.targetTweetId} method=${ancestry.method} code=${denyReasonCode}`);
     return {
       allow: false,
       reason: `${statusReason}: status=${ancestry.status}, target=${ancestry.targetTweetId}, method=${ancestry.method}${ancestry.error ? `, error=${ancestry.error}` : ''}`,

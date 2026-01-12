@@ -27,7 +27,9 @@ export class SessionLoader {
    */
   static load(): SessionLoadResult {
     const sessionB64 = process.env.TWITTER_SESSION_B64?.trim();
-    const canonicalPath = process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';
+    // Railway volumes are typically mounted at /data, fallback to /app/data for local/dev
+    const canonicalPath = process.env.SESSION_CANONICAL_PATH || 
+      (process.env.RAILWAY_ENVIRONMENT ? '/data/twitter_session.json' : '/app/data/twitter_session.json');
     
     // Calculate fingerprint (first 12 chars of SHA256)
     const hasB64 = !!sessionB64;

@@ -291,6 +291,18 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
           method: 'consent_wall_blocked',
         }));
         
+        // 🎯 FAILURE DETAILS: Include variant, screenshot, HTML snippet
+        const failureDetail = consentResult.variant || consentResult.screenshotPath || consentResult.htmlSnippet
+          ? JSON.stringify({
+              variant: consentResult.variant,
+              screenshotPath: consentResult.screenshotPath,
+              htmlSnippet: consentResult.htmlSnippet?.substring(0, 200), // Truncate HTML
+              attempts: clickAttempted,
+              selectorMatched: matchedSelector,
+              keyword: keyword,
+            })
+          : undefined;
+        
         await recordReplyDecision({
           target_tweet_id: consentWallTweetId,
           target_in_reply_to_tweet_id: null,
@@ -298,7 +310,7 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
           ancestry_depth: -1,
           is_root: false,
           decision: 'DENY',
-          reason: `Consent wall blocked feed fetch for keyword: ${keyword} (attempts=${clickAttempted}, selector=${matchedSelector || 'none'}, containers_before=${containersBefore}, containers_after=${containersAfter})`,
+          reason: `Consent wall blocked feed fetch for keyword: ${keyword} (attempts=${clickAttempted}, selector=${matchedSelector || 'none'}, containers_before=${containersBefore}, containers_after=${containersAfter}${consentResult.variant ? `, variant=${consentResult.variant}` : ''})${failureDetail ? ` [details: ${failureDetail.substring(0, 100)}]` : ''}`,
           deny_reason_code: 'CONSENT_WALL', // 🎯 ANALYTICS: Structured deny reason
           status: ancestry.status,
           confidence: ancestry.confidence,

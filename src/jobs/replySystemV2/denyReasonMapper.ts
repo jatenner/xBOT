@@ -6,6 +6,10 @@ export type DenyReasonCode =
   | 'NON_ROOT'
   | 'ANCESTRY_UNCERTAIN'
   | 'ANCESTRY_ERROR'
+  | 'ANCESTRY_TIMEOUT'
+  | 'ANCESTRY_PLAYWRIGHT_DROPPED'
+  | 'ANCESTRY_NAV_FAIL'
+  | 'ANCESTRY_PARSE_FAIL'
   | 'LOW_RELEVANCE'
   | 'LOW_AUTHOR_SIGNAL'
   | 'LOW_QUALITY_SCORE'
@@ -26,10 +30,26 @@ export function mapFilterReasonToDenyCode(filterReason: string): DenyReasonCode 
     return 'NON_ROOT';
   }
   
-  // Ancestry failures
+  // Ancestry failures - specific buckets
   if (reasonLower.includes('ancestry_uncertain') || reasonLower.includes('uncertain')) {
     return 'ANCESTRY_UNCERTAIN';
   }
+  
+  // Transient errors (can retry)
+  if (reasonLower.includes('timeout') || reasonLower.includes('queue timeout') || reasonLower.includes('pool overloaded')) {
+    return 'ANCESTRY_TIMEOUT';
+  }
+  if (reasonLower.includes('dropped') || reasonLower.includes('disconnected') || reasonLower.includes('browser has been closed')) {
+    return 'ANCESTRY_PLAYWRIGHT_DROPPED';
+  }
+  if (reasonLower.includes('navigation') || reasonLower.includes('nav_fail') || reasonLower.includes('goto failed')) {
+    return 'ANCESTRY_NAV_FAIL';
+  }
+  if (reasonLower.includes('parse') || reasonLower.includes('extraction failed') || reasonLower.includes('dom query failed')) {
+    return 'ANCESTRY_PARSE_FAIL';
+  }
+  
+  // Generic ancestry error (fallback)
   if (reasonLower.includes('ancestry_error') || reasonLower.includes('error') || reasonLower.includes('method_unknown')) {
     return 'ANCESTRY_ERROR';
   }

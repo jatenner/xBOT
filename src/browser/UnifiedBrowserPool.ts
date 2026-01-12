@@ -704,7 +704,9 @@ export class UnifiedBrowserPool {
   }
 
   private getSessionCanonicalPath(): string {
-    return process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';
+    // Railway volumes are typically mounted at /data, fallback to /app/data for local/dev
+    return process.env.SESSION_CANONICAL_PATH || 
+      (process.env.RAILWAY_ENVIRONMENT ? '/data/twitter_session.json' : '/app/data/twitter_session.json');
   }
 
   private computeSessionSignatures(): { envHash: string | null; fileSignature: string | null } {

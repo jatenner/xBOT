@@ -326,6 +326,18 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
           method: 'consent_wall_blocked',
         }));
         
+        // 🎯 FAILURE DETAILS: Include variant, screenshot, HTML snippet
+        const failureDetail = consentResult.variant || consentResult.screenshotPath || consentResult.htmlSnippet
+          ? JSON.stringify({
+              variant: consentResult.variant,
+              screenshotPath: consentResult.screenshotPath,
+              htmlSnippet: consentResult.htmlSnippet?.substring(0, 200), // Truncate HTML
+              attempts: clickAttempted,
+              selectorMatched: matchedSelector,
+              url: profileUrl,
+            })
+          : undefined;
+        
         await recordReplyDecision({
           target_tweet_id: consentWallTweetId,
           target_in_reply_to_tweet_id: null,
@@ -333,7 +345,7 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
           ancestry_depth: -1,
           is_root: false,
           decision: 'DENY',
-          reason: `Consent wall blocked feed fetch for @${username} (attempts=${clickAttempted}, selector=${matchedSelector || 'none'}, containers_before=${containersBefore}, containers_after=${containersAfter})`,
+          reason: `Consent wall blocked feed fetch for @${username} (attempts=${clickAttempted}, selector=${matchedSelector || 'none'}, containers_before=${containersBefore}, containers_after=${containersAfter}${consentResult.variant ? `, variant=${consentResult.variant}` : ''})`,
           deny_reason_code: 'CONSENT_WALL', // 🎯 ANALYTICS: Structured deny reason
           status: ancestry.status,
           confidence: ancestry.confidence,

@@ -14,7 +14,9 @@ import fs from 'fs';
 import { loadTwitterStorageState, saveStorageState, cloneStorageState, type TwitterStorageState } from '../utils/twitterSessionState';
 import { SessionLoader } from '../utils/sessionLoader';
 
-const CANONICAL_PATH = process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';
+// Railway volumes are typically mounted at /data, fallback to /app/data for local/dev
+const CANONICAL_PATH = process.env.SESSION_CANONICAL_PATH || 
+  (process.env.RAILWAY_ENVIRONMENT ? '/data/twitter_session.json' : '/app/data/twitter_session.json');
 
 export interface ConsentWallResult {
   detected: boolean;
@@ -23,6 +25,9 @@ export interface ConsentWallResult {
   matchedSelector?: string;
   wallType?: 'consent' | 'login' | 'error' | 'rate_limit' | 'none';
   detail?: string;
+  variant?: string; // Variant detected (e.g., 'iframe', 'overlay', 'banner')
+  screenshotPath?: string; // Path to screenshot if failed
+  htmlSnippet?: string; // Small HTML snippet for debugging
 }
 
 /**
@@ -304,13 +309,61 @@ export async function acceptConsentWall(page: Page, maxAttempts: number = 3): Pr
     return document.querySelectorAll('article[data-testid="tweet"]').length;
   });
   
+  const cleared = containersAfter > containersBefore;
+  
+  // If not cleared, capture failure details
+  let screenshotPath: string | undefined;
+  let htmlSnippet: string | undefined;
+  let variant: string | undefined;
+  
+  if (!cleared) {
+    // Capture screenshot for debugging
+    try {
+      screenshotPath = `/tmp/consent_wall_failed_${Date.now()}.png`;
+      await page.screenshot({ path: screenshotPath, fullPage: false });
+      console.log(`[CONSENT_WALL] 📸 Screenshot saved: ${screenshotPath}`);
+    } catch (e: any) {
+      console.warn(`[CONSENT_WALL] ⚠️ Failed to capture screenshot: ${e.message}`);
+    }
+    
+    // Capture HTML snippet (small, for debugging)
+    try {
+      htmlSnippet = await page.evaluate(() => {
+        const dialogs = document.querySelectorAll('[role="dialog"], [data-testid*="cookie"], [aria-label*="cookie"]');
+        if (dialogs.length > 0) {
+          return dialogs[0].outerHTML.substring(0, 500); // First 500 chars
+        }
+        return document.body.innerHTML.substring(0, 500);
+      });
+    } catch (e: any) {
+      console.warn(`[CONSENT_WALL] ⚠️ Failed to capture HTML: ${e.message}`);
+    }
+    
+    // Detect variant
+    try {
+      const hasIframe = await page.locator('iframe').count() > 0;
+      const hasDialog = await page.locator('[role="dialog"]').count() > 0;
+      const hasBanner = await page.locator('[data-testid*="cookie"]').count() > 0;
+      
+      if (hasIframe) variant = 'iframe';
+      else if (hasDialog) variant = 'dialog';
+      else if (hasBanner) variant = 'banner';
+      else variant = 'unknown';
+    } catch (e) {
+      variant = 'unknown';
+    }
+  }
+  
   return {
     detected: true,
-    cleared: containersAfter > containersBefore,
+    cleared,
     attempts,
     matchedSelector: matchedSelector || undefined,
     wallType: 'consent',
     detail: containersAfter === 0 ? 'No containers found after attempts' : `Containers: ${containersBefore} -> ${containersAfter}`,
+    variant,
+    screenshotPath,
+    htmlSnippet,
   };
 }
 

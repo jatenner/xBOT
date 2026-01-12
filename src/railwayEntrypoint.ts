@@ -137,9 +137,40 @@ function startHealthServer(): void {
         const consentWallCount1h = denyReasonBreakdown1h['CONSENT_WALL'] || 0;
         const consentWallRate1h = total1h > 0 ? ((consentWallCount1h / total1h) * 100).toFixed(2) + '%' : '0%';
         
+        // 🎯 ANALYTICS: Consent wall failures by variant (parse from reason field)
+        const consentWallFailuresByVariant1h: Record<string, number> = {};
+        const consentWallFailuresByVariant24h: Record<string, number> = {};
+        
+        (last1hData || []).forEach((r: any) => {
+          if (r.decision === 'DENY' && r.deny_reason_code === 'CONSENT_WALL' && r.reason) {
+            const variantMatch = r.reason.match(/variant=(\w+)/);
+            if (variantMatch) {
+              const variant = variantMatch[1];
+              consentWallFailuresByVariant1h[variant] = (consentWallFailuresByVariant1h[variant] || 0) + 1;
+            } else {
+              consentWallFailuresByVariant1h['unknown'] = (consentWallFailuresByVariant1h['unknown'] || 0) + 1;
+            }
+          }
+        });
+        
+        (last24hData || []).forEach((r: any) => {
+          if (r.decision === 'DENY' && r.deny_reason_code === 'CONSENT_WALL' && r.reason) {
+            const variantMatch = r.reason.match(/variant=(\w+)/);
+            if (variantMatch) {
+              const variant = variantMatch[1];
+              consentWallFailuresByVariant24h[variant] = (consentWallFailuresByVariant24h[variant] || 0) + 1;
+            } else {
+              consentWallFailuresByVariant24h['unknown'] = (consentWallFailuresByVariant24h['unknown'] || 0) + 1;
+            }
+          }
+        });
+        
         // 🎯 WARNING: Log if consent wall rate is high
         if (consentWallCount1h > 0) {
           console.warn(`[METRICS] ⚠️ Consent wall detected: ${consentWallCount1h} in last 1h (${consentWallRate1h})`);
+          if (Object.keys(consentWallFailuresByVariant1h).length > 0) {
+            console.warn(`[METRICS] ⚠️ Consent wall variants: ${JSON.stringify(consentWallFailuresByVariant1h)}`);
+          }
         }
         
         res.writeHead(200, { 
@@ -159,6 +190,7 @@ function startHealthServer(): void {
             method_breakdown: methodBreakdown24h,
             deny_reason_breakdown: denyReasonBreakdown24h, // 🎯 ANALYTICS: Deny reason breakdown
             consent_wall_rate: consentWallRate24h, // 🎯 ANALYTICS: Consent wall rate
+            consent_wall_failures_by_variant: consentWallFailuresByVariant24h, // 🎯 ANALYTICS: Consent wall failures by variant
           },
           last_1h: {
             total: total1h,
@@ -171,6 +203,7 @@ function startHealthServer(): void {
             cache_hit_rate: total1h > 0 ? ((cacheHits1h / total1h) * 100).toFixed(1) + '%' : '0%',
             deny_reason_breakdown: denyReasonBreakdown1h, // 🎯 ANALYTICS: Deny reason breakdown
             consent_wall_rate: consentWallRate1h, // 🎯 ANALYTICS: Consent wall rate
+            consent_wall_failures_by_variant: consentWallFailuresByVariant1h, // 🎯 ANALYTICS: Consent wall failures by variant
           },
           timestamp: new Date().toISOString(),
         }));
@@ -210,6 +243,33 @@ function startHealthServer(): void {
 
 // Start health server IMMEDIATELY
 startHealthServer();
+
+// Log session file status at boot (for consent persistence verification)
+setImmediate(async () => {
+  try {
+    const { getSessionPath, sessionFileExists } = await import('./playwright/twitterSession');
+    const fs = await import('fs');
+    const sessionPath = getSessionPath();
+    const exists = sessionFileExists();
+    
+    console.log(`[BOOT] Session file path: ${sessionPath}`);
+    console.log(`[BOOT] Session file exists: ${exists}`);
+    
+    if (exists) {
+      try {
+        const stats = fs.statSync(sessionPath);
+        console.log(`[BOOT] Session file size: ${stats.size} bytes`);
+        console.log(`[BOOT] Session file last modified: ${stats.mtime.toISOString()}`);
+      } catch (e: any) {
+        console.warn(`[BOOT] Could not stat session file: ${e.message}`);
+      }
+    } else {
+      console.log(`[BOOT] Session file not found - will be created on first consent acceptance`);
+    }
+  } catch (error: any) {
+    console.warn(`[BOOT] Could not check session file status: ${error.message}`);
+  }
+});
 
 // Minimal boot logging (health server already started)
 
