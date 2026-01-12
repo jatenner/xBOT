@@ -4519,6 +4519,57 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     throw new Error('Replies paused via PAUSE_REPLIES env flag');
   }
   
+  // 🔍 FORENSIC PIPELINE: Final ancestry check before posting
+  const { resolveTweetAncestry, recordReplyDecision, shouldAllowReply } = await import('./replySystemV2/replyDecisionRecorder');
+  const ancestry = await resolveTweetAncestry(decision.target_tweet_id || '');
+  const allowCheck = shouldAllowReply(ancestry);
+  
+  // Get trace info from decision metadata if available
+  const traceId = (decision as any).scheduler_run_id || (decision as any).feed_run_id || null;
+  const jobRunId = (decision as any).job_run_id || null;
+  const pipelineSource = (decision as any).pipeline_source || 'posting_queue';
+  
+  // 🔒 HARD INVARIANT: Final gate - deny non-root replies
+  if (!allowCheck.allow) {
+    const errorMsg = `FINAL_GATE_BLOCKED: ${allowCheck.reason}`;
+    console.error(`[POSTING_QUEUE] 🚫 ${errorMsg}`);
+    
+    // Record DENY decision
+    await recordReplyDecision({
+      decision_id: decision.id,
+      target_tweet_id: decision.target_tweet_id || '',
+      target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
+      root_tweet_id: ancestry.rootTweetId,
+      ancestry_depth: ancestry.ancestryDepth,
+      is_root: ancestry.isRoot,
+      decision: 'DENY',
+      reason: `Final gate: ${allowCheck.reason}`,
+      trace_id: traceId,
+      job_run_id: jobRunId,
+      pipeline_source: pipelineSource,
+      playwright_post_attempted: false,
+      error: errorMsg,
+    });
+    
+    throw new Error(errorMsg);
+  }
+  
+  // Record ALLOW decision (will update with posted_reply_tweet_id after success)
+  await recordReplyDecision({
+    decision_id: decision.id,
+    target_tweet_id: decision.target_tweet_id || '',
+    target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
+    root_tweet_id: ancestry.rootTweetId,
+    ancestry_depth: ancestry.ancestryDepth,
+    is_root: ancestry.isRoot,
+    decision: 'ALLOW',
+    reason: allowCheck.reason,
+    trace_id: traceId,
+    job_run_id: jobRunId,
+    pipeline_source: pipelineSource,
+    playwright_post_attempted: true,
+  });
+  
   // NOTE: Invariant checks now happen in processDecision BEFORE calling postReply
   // This allows graceful skip (not crash) on invariant failures
   
@@ -4886,6 +4937,32 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       }
 
       // ✅ STEP 3: Return tweet ID (receipt is saved, can proceed to DB save)
+      // 🔍 FORENSIC PIPELINE: Update decision record with posted tweet ID
+      try {
+        const { recordReplyDecision } = await import('./replySystemV2/replyDecisionRecorder');
+        // Get trace info from decision metadata if available
+        const traceId = (decision as any).scheduler_run_id || (decision as any).feed_run_id || null;
+        const jobRunId = (decision as any).job_run_id || null;
+        const pipelineSource = (decision as any).pipeline_source || 'posting_queue';
+        
+        await recordReplyDecision({
+          decision_id: decision.id,
+          target_tweet_id: decision.target_tweet_id || '',
+          root_tweet_id: decision.root_tweet_id || decision.target_tweet_id || '',
+          ancestry_depth: 0, // Will be updated if we have ancestry data
+          is_root: true, // Assumed true if we got here
+          decision: 'ALLOW',
+          reason: 'Reply posted successfully',
+          trace_id: traceId,
+          job_run_id: jobRunId,
+          pipeline_source: pipelineSource,
+          playwright_post_attempted: true,
+          posted_reply_tweet_id: result.tweetId,
+        });
+      } catch (recordError: any) {
+        console.warn(`[POSTING_QUEUE] ⚠️ Failed to update decision record: ${recordError.message}`);
+      }
+      
       console.log(`[REPLY_TRUTH] step=RETURN_TWEETID tweet_id=${result.tweetId}`);
       return result.tweetId;
     } catch (innerError: any) {

@@ -248,6 +248,32 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       created_at: new Date().toISOString(),
     });
     
+    // 🔍 FORENSIC PIPELINE: Resolve ancestry and record decision
+    const { resolveTweetAncestry, recordReplyDecision, shouldAllowReply } = await import('./replyDecisionRecorder');
+    const ancestry = await resolveTweetAncestry(candidate.candidate_tweet_id);
+    const allowCheck = shouldAllowReply(ancestry);
+    
+    // Record decision BEFORE inserting into content_metadata
+    await recordReplyDecision({
+      decision_id: decisionId,
+      target_tweet_id: candidate.candidate_tweet_id,
+      target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
+      root_tweet_id: ancestry.rootTweetId,
+      ancestry_depth: ancestry.ancestryDepth,
+      is_root: ancestry.isRoot,
+      decision: allowCheck.allow ? 'ALLOW' : 'DENY',
+      reason: allowCheck.reason,
+      trace_id: schedulerRunId,
+      job_run_id: schedulerRunId,
+      pipeline_source: 'reply_v2_scheduler',
+    });
+    
+    // 🔒 HARD INVARIANT: Deny non-root replies
+    if (!allowCheck.allow) {
+      console.error(`[SCHEDULER] 🚫 DENY: ${allowCheck.reason}`);
+      throw new Error(`Non-root reply blocked: ${allowCheck.reason}`);
+    }
+    
     // Insert decision with snapshot/hash populated (status: generating)
     // Check if decision already exists (from previous failed attempt)
     const { data: existingDecision } = await supabase
@@ -266,7 +292,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           content: '[GENERATING...]', // Placeholder
           target_tweet_id: candidate.candidate_tweet_id,
           target_username: candidateData.candidate_author_username, // Required for FINAL_REPLY_GATE
-          root_tweet_id: candidate.candidate_tweet_id, // 🔒 CRITICAL: Set root_tweet_id = target_tweet_id for root-only replies
+          root_tweet_id: ancestry.rootTweetId, // 🔒 CRITICAL: Use resolved root tweet ID
           target_tweet_content_snapshot: normalizedSnapshot, // 🔒 TASK 1: Populated from live fetch
           target_tweet_content_hash: targetTweetContentHash, // 🔒 TASK 1: Populated from live fetch
           pipeline_source: 'reply_v2_scheduler',
@@ -309,7 +335,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           content: '[GENERATING...]',
           target_tweet_id: candidate.candidate_tweet_id,
           target_username: candidateData.candidate_author_username, // Required for FINAL_REPLY_GATE
-          root_tweet_id: candidate.candidate_tweet_id, // 🔒 CRITICAL: Set root_tweet_id = target_tweet_id for root-only replies
+          root_tweet_id: ancestry.rootTweetId, // 🔒 CRITICAL: Use resolved root tweet ID
           target_tweet_content_snapshot: normalizedSnapshot, // 🔒 TASK 1: Populated from live fetch
           target_tweet_content_hash: targetTweetContentHash, // 🔒 TASK 1: Populated from live fetch
           scheduled_at: scheduledAt, // 🔒 TASK 2: Set immediately so posting queue can pick it up
