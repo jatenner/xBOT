@@ -326,7 +326,13 @@ TOTAL decisions: 36
 $ railway run -s xBOT -- bash -lc "ls -la /data || echo 'Directory /data does not exist'"
 ```
 
-**Output:** (Pending execution)
+**Output:**
+```
+ls: /data: No such file or directory
+Directory /data does not exist
+```
+
+**Finding:** `/data` directory doesn't exist in Railway. Path resolver falls back to `/app/data/twitter_session.json`.
 
 ### Session File Creation in Railway
 
@@ -334,7 +340,19 @@ $ railway run -s xBOT -- bash -lc "ls -la /data || echo 'Directory /data does no
 $ railway run -s xBOT -- pnpm exec tsx scripts/force-create-session-state.ts
 ```
 
-**Output:** (Pending execution)
+**Output:**
+```
+📋 BEFORE:
+   Resolved path: /data/twitter_session.json
+   File exists: false
+   Directory writable: false
+
+[CONSENT_WALL] ⚠️ Failed to save storageState: ENOENT: no such file or directory, mkdir '/data'
+   Saved: false
+❌ Failed to save session state
+```
+
+**Finding:** Script failed because `/data` doesn't exist and `SESSION_CANONICAL_PATH` was set to `/data/twitter_session.json`. Unset env var to use `/app/data` fallback.
 
 ### Boot-Time Session Seeding
 
@@ -345,10 +363,14 @@ $ railway run -s xBOT -- pnpm exec tsx scripts/force-create-session-state.ts
 
 **Boot Logs:**
 ```
+[BOOT] Session file exists: false
 [BOOT] Session file not found - will be created on first consent acceptance
 [BOOT] SEED_SESSION_ON_BOOT=true - creating session file...
-[BOOT] ✅ Session file created: /data/twitter_session.json, size=XXXX bytes
 ```
+
+**Status:** Boot seeding started but completion logs not visible. May be running asynchronously or encountering errors.
+
+**Action Taken:** Unset `SESSION_CANONICAL_PATH` to use `/app/data` fallback (writable in Railway containers).
 
 ### Throttling Implementation
 
@@ -374,11 +396,11 @@ $ railway run -s xBOT -- pnpm exec tsx scripts/force-create-session-state.ts
   "last_1h": {
     "total": 39,
     "deny_reason_breakdown": {
-      "CONSENT_WALL": 7,
-      "ANCESTRY_ERROR": 10,
-      "ANCESTRY_TIMEOUT": 22
+      "CONSENT_WALL": 6,
+      "ANCESTRY_ERROR": 12,
+      "ANCESTRY_TIMEOUT": 18
     },
-    "consent_wall_rate": "17.95%",
+    "consent_wall_rate": "16.67%",
     "pool_health": {
       "queue_len": 0,
       "active": 0,
@@ -389,20 +411,20 @@ $ railway run -s xBOT -- pnpm exec tsx scripts/force-create-session-state.ts
 }
 ```
 
-### Metrics After Throttling
+### Metrics After Throttling (Current)
 
 ```json
 {
   "last_1h": {
     "total": 39,
     "deny_reason_breakdown": {
-      "CONSENT_WALL": 7,
-      "ANCESTRY_ERROR": 10,
-      "ANCESTRY_TIMEOUT": 22
+      "CONSENT_WALL": 6,
+      "ANCESTRY_ERROR": 5,
+      "ANCESTRY_TIMEOUT": 28
     },
-    "consent_wall_rate": "17.95%",
+    "consent_wall_rate": "15.38%",
     "pool_health": {
-      "queue_len": 0,
+      "queue_len": 1,
       "active": 0,
       "idle": 0,
       "max_contexts": 7
@@ -411,7 +433,21 @@ $ railway run -s xBOT -- pnpm exec tsx scripts/force-create-session-state.ts
 }
 ```
 
-**Note:** Metrics are from same time period. Need to wait for new evaluation cycle to see impact.
+**Analysis:**
+- ANCESTRY_TIMEOUT: Increased from 18 → 28 (56% increase, not reduction)
+- ANCESTRY_ERROR: Decreased from 12 → 5 (58% reduction)
+- CONSENT_WALL: Stable at 6 (15.38% rate)
+- Pool health: `max_contexts: 7` confirmed, `queue_len: 1` (low)
+
+**Root Cause:** ANCESTRY_TIMEOUT increased likely due to:
+1. More evaluation cycles running (more candidates being processed)
+2. Throttling may need adjustment (15 per tick may still be too high)
+3. Queue depth cap (30) may be allowing too many concurrent operations
+
+**Next Steps:**
+1. Reduce `REPLY_V2_MAX_EVAL_PER_TICK` to 10 or lower
+2. Monitor queue depth during evaluation cycles
+3. Consider reducing `BROWSER_MAX_QUEUE_DEPTH` to 20
 
 ---
 
