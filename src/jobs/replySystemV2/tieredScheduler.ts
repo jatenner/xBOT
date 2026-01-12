@@ -558,6 +558,18 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           isFallback = true;
           console.log(`[SCHEDULER] ✅ Fallback reply generated: ${replyContent.length} chars`);
           
+          // 🎨 QUALITY TRACKING: Update template status even for fallback (template was selected)
+          await supabase
+            .from('reply_decisions')
+            .update({
+              template_id: templateSelection.template_id,
+              prompt_version: promptVersion,
+              template_status: 'SET',
+              template_error_reason: null,
+            })
+            .eq('decision_id', decisionId);
+          console.log(`[SCHEDULER] 🎨 Updated template tracking (fallback): template_id=${templateSelection.template_id}, template_status=SET`);
+          
           // 🔒 TASK 3: Emit fallback generation completed event
           await supabase.from('system_events').insert({
             event_type: 'reply_v2_fallback_generation_completed',
@@ -782,28 +794,84 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     console.log(`[SCHEDULER] ✅ Decision persisted: status=queued, is_fallback=${isFallback}, similarity=${semanticSimilarity.toFixed(3)}`);
     
     // 🎨 QUALITY TRACKING: Update reply_decisions with template_id and prompt_version
+    // 🔒 DETERMINISTIC UPDATE: Use decision_id as primary key (guaranteed to exist)
     try {
-      const { error: updateError } = await supabase
+      const { data: updateResult, error: updateError } = await supabase
         .from('reply_decisions')
         .update({
           template_id: templateSelection.template_id,
           prompt_version: promptVersion,
           template_status: 'SET',
+          template_error_reason: null, // Clear any previous error
         })
-        .eq('decision_id', decisionId);
+        .eq('decision_id', decisionId)
+        .select('id');
       
       if (updateError) {
-        console.warn(`[SCHEDULER] ⚠️ Failed to update template tracking: ${updateError.message}`);
+        console.error(`[SCHEDULER] ❌ Failed to update template tracking: ${updateError.message}`);
+        // Mark as failed with error reason
+        await supabase
+          .from('reply_decisions')
+          .update({ 
+            template_status: 'FAILED',
+            template_error_reason: `UPDATE_FAILED: ${updateError.message}`,
+          })
+          .eq('decision_id', decisionId);
+        throw new Error(`Template tracking update failed: ${updateError.message}`);
+      } else if (!updateResult || updateResult.length === 0) {
+        // No rows updated - decision_id might not match
+        console.error(`[SCHEDULER] ❌ No rows updated for decision_id=${decisionId} - row may not exist or decision_id mismatch`);
+        // Try to find the row by target_tweet_id as fallback
+        const { data: fallbackResult } = await supabase
+          .from('reply_decisions')
+          .select('id, decision_id, target_tweet_id')
+          .eq('target_tweet_id', candidate.candidate_tweet_id)
+          .eq('decision', 'ALLOW')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (fallbackResult) {
+          console.log(`[SCHEDULER] 🔍 Found row by target_tweet_id: id=${fallbackResult.id}, decision_id=${fallbackResult.decision_id}`);
+          // Update using the found id
+          await supabase
+            .from('reply_decisions')
+            .update({
+              template_id: templateSelection.template_id,
+              prompt_version: promptVersion,
+              template_status: 'SET',
+              template_error_reason: null,
+            })
+            .eq('id', fallbackResult.id);
+          console.log(`[SCHEDULER] 🎨 Updated reply_decisions (fallback) with template_id=${templateSelection.template_id}, template_status=SET`);
+        } else {
+          // Mark as failed - row not found
+          await supabase
+            .from('reply_decisions')
+            .update({ 
+              template_status: 'FAILED',
+              template_error_reason: 'ROW_NOT_FOUND: decision_id mismatch or row deleted',
+            })
+            .eq('decision_id', decisionId);
+          console.error(`[SCHEDULER] ❌ Could not find reply_decisions row for decision_id=${decisionId}`);
+        }
       } else {
-        console.log(`[SCHEDULER] 🎨 Updated reply_decisions with template_id=${templateSelection.template_id}, prompt_version=${promptVersion}, template_status=SET`);
+        console.log(`[SCHEDULER] 🎨 ✅ Updated reply_decisions: decision_id=${decisionId}, template_id=${templateSelection.template_id}, prompt_version=${promptVersion}, template_status=SET`);
       }
     } catch (error: any) {
-      console.warn(`[SCHEDULER] ⚠️ Error updating template tracking: ${error.message}`);
-      // Mark as failed
-      await supabase
-        .from('reply_decisions')
-        .update({ template_status: 'FAILED' })
-        .eq('decision_id', decisionId);
+      console.error(`[SCHEDULER] ❌ Error updating template tracking: ${error.message}`);
+      // Mark as failed with error reason
+      try {
+        await supabase
+          .from('reply_decisions')
+          .update({ 
+            template_status: 'FAILED',
+            template_error_reason: `EXCEPTION: ${error.message}`,
+          })
+          .eq('decision_id', decisionId);
+      } catch (markFailedError: any) {
+        console.error(`[SCHEDULER] ❌ Failed to mark as FAILED: ${markFailedError.message}`);
+      }
     }
     
     // 🔒 TASK 4: Emit generation_completed event (AFTER updates succeed)
@@ -938,6 +1006,30 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     };
   } catch (error: any) {
     console.error(`[SCHEDULER] ❌ Failed to post reply: ${error.message}`);
+    
+    // 🎨 QUALITY TRACKING: If we have a decisionId, mark template status as FAILED if still PENDING
+    if (decisionId) {
+      try {
+        const { data: currentStatus } = await supabase
+          .from('reply_decisions')
+          .select('template_status')
+          .eq('decision_id', decisionId)
+          .single();
+        
+        if (currentStatus?.template_status === 'PENDING') {
+          await supabase
+            .from('reply_decisions')
+            .update({
+              template_status: 'FAILED',
+              template_error_reason: `SCHEDULER_ERROR: ${error.message}`,
+            })
+            .eq('decision_id', decisionId);
+          console.log(`[SCHEDULER] 🎨 Marked template_status=FAILED due to scheduler error`);
+        }
+      } catch (statusError: any) {
+        console.warn(`[SCHEDULER] ⚠️ Failed to update template status: ${statusError.message}`);
+      }
+    }
     console.error(`[SCHEDULER] Stack: ${error.stack}`);
     
     // 🔒 MANDATE 2: Emit 'reply_v2_generation_failed' event

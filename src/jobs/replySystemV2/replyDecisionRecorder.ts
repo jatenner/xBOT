@@ -45,6 +45,7 @@ export interface ReplyDecisionRecord {
   template_id?: string | null; // Template used (e.g., 'explanation', 'actionable') - NULL if not selected yet
   prompt_version?: string | null; // Prompt version/template version used - NULL if not selected yet
   template_status?: 'PENDING' | 'SET' | 'FAILED'; // Template selection status
+  template_error_reason?: string | null; // Reason for FAILED status (e.g., TEMPLATE_SELECTION_TIMEOUT, UPDATE_FAILED)
   trace_id?: string; // feed_run_id, scheduler_run_id, etc.
   job_run_id?: string;
   pipeline_source?: string;
@@ -339,6 +340,7 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
       template_id: record.template_id || null, // 🎨 QUALITY TRACKING (NULL if not selected)
       prompt_version: record.prompt_version || null, // 🎨 QUALITY TRACKING (NULL if not selected)
       template_status: record.template_status || 'PENDING', // 🎨 QUALITY TRACKING
+      template_error_reason: (record as any).template_error_reason || null, // 🎨 QUALITY TRACKING
       trace_id: record.trace_id || null,
       job_run_id: record.job_run_id || null,
       pipeline_source: record.pipeline_source || null,
