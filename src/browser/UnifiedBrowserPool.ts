@@ -99,7 +99,11 @@ export class UnifiedBrowserPool {
     contextsCreated: 0,
     contextsClosed: 0,
     successfulOperations: 0,
-    failedOperations: 0
+    failedOperations: 0,
+    averageWaitTime: 0,
+    totalWaitTime: 0,
+    waitTimeSamples: 0,
+    timeoutsLast1h: 0,
   };
   private resourceFailureCount = 0;
   
