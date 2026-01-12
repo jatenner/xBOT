@@ -198,13 +198,13 @@ $ curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{session_pa
 **Output:**
 ```json
 {
-  "session_path_resolved": "/app/data/twitter_session.json",
-  "session_path_exists": false,
+  "session_path_resolved": null,
+  "session_path_exists": null,
   "session_path_size_bytes": null
 }
 ```
 
-**Status:** Path correctly resolved to `/app/data/twitter_session.json` (fallback, `/data` not available).
+**Status:** Fields are null (code deployed but endpoint may need refresh or error in path info retrieval). Boot logs should show resolved path.
 
 ### Metrics After (last_1h)
 
