@@ -271,7 +271,14 @@ export class UnifiedBrowserPool {
           this.metrics.queuedOperations--;
         }
         
-        reject(new Error(`Queue timeout after ${Math.round(waitTime/1000)}s - pool overloaded (priority: ${priority}, timeout: ${timeoutMs/1000}s)`));
+        const poolStats = {
+          queue_len: this.queue.length,
+          active: this.getActiveCount(),
+          idle: this.contexts.size - this.getActiveCount(),
+          max_contexts: this.MAX_CONTEXTS,
+        };
+        console.error(`[BROWSER_POOL] ⏱️ QUEUE TIMEOUT DETAILS: ${JSON.stringify(poolStats)}`);
+        reject(new Error(`Queue timeout after ${Math.round(waitTime/1000)}s - pool overloaded (priority: ${priority}, timeout: ${timeoutMs/1000}s, queue_len=${this.queue.length}, active=${this.getActiveCount()}/${this.MAX_CONTEXTS})`));
       }, timeoutMs);
       
       // Wrap operation to clear timeout when it starts

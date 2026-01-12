@@ -35,6 +35,23 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   
   console.log(`[ORCHESTRATOR] 🎼 Fetching and evaluating candidates: feed_run_id=${feedRunId}`);
   
+  // 🎯 COOLDOWN: Check if feeds should be paused
+  const { getConsentWallCooldown } = await import('../../utils/consentWallCooldown');
+  const cooldown = getConsentWallCooldown();
+  const cooldownStatus = cooldown.getStatus();
+  
+  if (cooldownStatus.active) {
+    console.warn(`[ORCHESTRATOR] ⏸️ Feed fetching paused: consent wall cooldown active (${cooldownStatus.remainingSeconds}s remaining, ${cooldownStatus.recentWalls} recent walls)`);
+    return {
+      fetched: 0,
+      evaluated: 0,
+      passed_filters: 0,
+      feed_run_id: feedRunId,
+      partial_sources: [],
+      failed_sources: [],
+    };
+  }
+  
   // Validate environment
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY not set');

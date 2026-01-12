@@ -132,6 +132,23 @@ function startHealthServer(): void {
           return acc;
         }, {});
         
+        // 🎯 POOL HEALTH: Get browser pool stats
+        let poolHealth: any = {};
+        try {
+          const { UnifiedBrowserPool } = await import('./browser/UnifiedBrowserPool');
+          const pool = UnifiedBrowserPool.getInstance();
+          // Access private methods via any cast (for metrics)
+          const poolAny = pool as any;
+          poolHealth = {
+            queue_len: poolAny.queue?.length || 0,
+            active: poolAny.getActiveCount?.() || 0,
+            idle: (poolAny.contexts?.size || 0) - (poolAny.getActiveCount?.() || 0),
+            max_contexts: poolAny.MAX_CONTEXTS || 0,
+          };
+        } catch (e: any) {
+          poolHealth = { error: e.message };
+        }
+        
         const total1h = last1hData?.length || 0;
         const allow1h = last1hData?.filter(r => r.decision === 'ALLOW').length || 0;
         const deny1h = last1hData?.filter(r => r.decision === 'DENY').length || 0;
@@ -207,6 +224,7 @@ function startHealthServer(): void {
             deny_reason_breakdown: denyReasonBreakdown24h, // 🎯 ANALYTICS: Deny reason breakdown
             consent_wall_rate: consentWallRate24h, // 🎯 ANALYTICS: Consent wall rate
             consent_wall_failures_by_variant: consentWallFailuresByVariant24h, // 🎯 ANALYTICS: Consent wall failures by variant
+            pool_health: poolHealth, // 🎯 POOL HEALTH: Browser pool stats
           },
           last_1h: {
             total: total1h,
@@ -220,6 +238,7 @@ function startHealthServer(): void {
             deny_reason_breakdown: denyReasonBreakdown1h, // 🎯 ANALYTICS: Deny reason breakdown
             consent_wall_rate: consentWallRate1h, // 🎯 ANALYTICS: Consent wall rate
             consent_wall_failures_by_variant: consentWallFailuresByVariant1h, // 🎯 ANALYTICS: Consent wall failures by variant
+            pool_health: poolHealth, // 🎯 POOL HEALTH: Browser pool stats
           },
           timestamp: new Date().toISOString(),
         }));

@@ -303,6 +303,10 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
             })
           : undefined;
         
+        // 🎯 COOLDOWN: Record consent wall for cooldown tracking
+        const { getConsentWallCooldown } = await import('../../utils/consentWallCooldown');
+        getConsentWallCooldown().recordWall();
+        
         await recordReplyDecision({
           target_tweet_id: consentWallTweetId,
           target_in_reply_to_tweet_id: null,
