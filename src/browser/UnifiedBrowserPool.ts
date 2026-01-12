@@ -256,7 +256,13 @@ export class UnifiedBrowserPool {
         const waitTime = Date.now() - queuedAt;
         console.error(`[BROWSER_POOL] ⏱️ QUEUE TIMEOUT: ${operationName} waited ${Math.round(waitTime/1000)}s (timeout: ${timeoutMs/1000}s)`);
         console.error(`[BROWSER_POOL] 📊 Current: ${this.queue.length} queued, ${this.getActiveCount()} active`);
-        console.error(`[BROWSER_POOL] 🚨 Priority: ${priority} (${isCriticalOperation ? 'CRITICAL' : 'background'})`);
+        const poolStats = {
+          active: this.getActiveCount(),
+          idle: this.contexts.size - this.getActiveCount(),
+          queue: this.queue.length,
+        };
+        const operationType = isCriticalOperation ? 'CRITICAL' : (operationName.includes('resolve_root_tweet') ? 'ANCESTRY' : 'background');
+        console.error(`[BROWSER_POOL] 🚨 Priority: ${priority} (${operationType}) pool=${JSON.stringify(poolStats)}`);
         
         // Remove from queue
         const index = this.queue.findIndex(op => op.id === operationId);
@@ -704,11 +710,8 @@ export class UnifiedBrowserPool {
   }
 
   private getSessionCanonicalPath(): string {
-    // Railway volumes are typically mounted at /data, fallback to /app/data for local/dev
-    // Check for Railway environment: RAILWAY_ENVIRONMENT or RAILWAY_SERVICE_NAME
-    const isRailway = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_SERVICE_NAME);
-    return process.env.SESSION_CANONICAL_PATH || 
-      (isRailway ? '/data/twitter_session.json' : '/app/data/twitter_session.json');
+    const { resolveSessionPath } = require('../utils/sessionPathResolver');
+    return resolveSessionPath();
   }
 
   private computeSessionSignatures(): { envHash: string | null; fileSignature: string | null } {

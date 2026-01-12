@@ -14,11 +14,7 @@ import fs from 'fs';
 import { loadTwitterStorageState, saveStorageState, cloneStorageState, type TwitterStorageState } from '../utils/twitterSessionState';
 import { SessionLoader } from '../utils/sessionLoader';
 
-// Railway volumes are typically mounted at /data, fallback to /app/data for local/dev
-// Check for Railway environment: RAILWAY_ENVIRONMENT or RAILWAY_SERVICE_NAME
-const isRailway = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_SERVICE_NAME);
-const CANONICAL_PATH = process.env.SESSION_CANONICAL_PATH || 
-  (isRailway ? '/data/twitter_session.json' : '/app/data/twitter_session.json');
+import { resolveSessionPath } from '../utils/sessionPathResolver';
 
 export interface ConsentWallResult {
   detected: boolean;
@@ -36,7 +32,7 @@ export interface ConsentWallResult {
  * Get the canonical session file path (consistent across all contexts)
  */
 export function getSessionPath(): string {
-  return CANONICAL_PATH;
+  return resolveSessionPath();
 }
 
 /**
@@ -44,7 +40,7 @@ export function getSessionPath(): string {
  */
 export function sessionFileExists(): boolean {
   try {
-    return fs.existsSync(CANONICAL_PATH);
+    return fs.existsSync(resolveSessionPath());
   } catch {
     return false;
   }
@@ -55,15 +51,16 @@ export function sessionFileExists(): boolean {
  * Returns undefined if no state available (will log warning)
  */
 export async function loadTwitterState(): Promise<TwitterStorageState | undefined> {
+  const sessionPath = resolveSessionPath();
   const exists = sessionFileExists();
   if (!exists) {
-    console.log(`[TWITTER_SESSION] ⚠️ Session file not found at ${CANONICAL_PATH} - will re-acquire state`);
+    console.log(`[TWITTER_SESSION] ⚠️ Session file not found at ${sessionPath} - will re-acquire state`);
   }
   
   const result = await loadTwitterStorageState();
   
   if (result.storageState && result.cookieCount > 0) {
-    console.log(`[TWITTER_SESSION] ✅ Loaded storageState from ${result.source} (${result.cookieCount} cookies, path=${CANONICAL_PATH})`);
+    console.log(`[TWITTER_SESSION] ✅ Loaded storageState from ${result.source} (${result.cookieCount} cookies, path=${sessionPath})`);
     return cloneStorageState(result.storageState);
   }
   
@@ -77,7 +74,8 @@ export async function loadTwitterState(): Promise<TwitterStorageState | undefine
  */
 export async function saveTwitterState(context: BrowserContext): Promise<boolean> {
   try {
-    const savedPath = await saveStorageState(context, CANONICAL_PATH);
+    const sessionPath = resolveSessionPath();
+    const savedPath = await saveStorageState(context, sessionPath);
     if (savedPath) {
       console.log(`[TWITTER_SESSION] ✅ Persisted storageState to ${savedPath}`);
       return true;

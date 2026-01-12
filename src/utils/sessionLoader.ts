@@ -27,11 +27,8 @@ export class SessionLoader {
    */
   static load(): SessionLoadResult {
     const sessionB64 = process.env.TWITTER_SESSION_B64?.trim();
-    // Railway volumes are typically mounted at /data, fallback to /app/data for local/dev
-    // Check for Railway environment: RAILWAY_ENVIRONMENT or RAILWAY_SERVICE_NAME
-    const isRailway = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_SERVICE_NAME);
-    const canonicalPath = process.env.SESSION_CANONICAL_PATH || 
-      (isRailway ? '/data/twitter_session.json' : '/app/data/twitter_session.json');
+    const { resolveSessionPath } = require('./sessionPathResolver');
+    const canonicalPath = resolveSessionPath();
     
     // Calculate fingerprint (first 12 chars of SHA256)
     const hasB64 = !!sessionB64;
@@ -181,7 +178,8 @@ export class SessionLoader {
    */
   static saveStorageStateBack(storageState: SessionData): void {
     try {
-      const canonicalPath = process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';
+      const { resolveSessionPath } = require('./sessionPathResolver');
+      const canonicalPath = resolveSessionPath();
       const dir = path.dirname(canonicalPath);
       
       // Ensure directory exists

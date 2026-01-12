@@ -4,6 +4,7 @@
  */
 
 import { UnifiedBrowserPool } from '../browser/UnifiedBrowserPool';
+import { withAncestryLimit } from './ancestryConcurrencyLimiter';
 
 export interface RootTweetResolution {
   originalTweetId: string;
@@ -32,17 +33,19 @@ export interface RootTweetResolution {
  * FAIL-CLOSED: On any uncertainty, returns isRootTweet=false to prevent replying to replies
  */
 export async function resolveRootTweetId(tweetId: string): Promise<RootTweetResolution> {
-  const tweetUrl = `https://x.com/i/web/status/${tweetId}`;
-  
-  console.log(`[REPLY_SELECT] Resolving root for tweet ${tweetId}...`);
-  
-  const pool = UnifiedBrowserPool.getInstance();
-  let page;
-  let resolutionAttempted = false;
-  let checksPerformed: string[] = [];
-  
-  try {
-    page = await pool.acquirePage('resolve_root_tweet');
+  // 🎯 CONCURRENCY LIMIT: Wrap in limiter to prevent pool overload
+  return withAncestryLimit(async () => {
+    const tweetUrl = `https://x.com/i/web/status/${tweetId}`;
+    
+    console.log(`[REPLY_SELECT] Resolving root for tweet ${tweetId}...`);
+    
+    const pool = UnifiedBrowserPool.getInstance();
+    let page;
+    let resolutionAttempted = false;
+    let checksPerformed: string[] = [];
+    
+    try {
+      page = await pool.acquirePage('resolve_root_tweet');
     
     await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
     await page.waitForTimeout(3000); // Let page settle (increased for JSON extraction)
@@ -290,6 +293,7 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
       await pool.releasePage(page);
     }
   }
+  });
 }
 
 /**

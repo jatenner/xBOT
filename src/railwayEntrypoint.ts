@@ -41,6 +41,15 @@ function startHealthServer(): void {
   healthServer = createServer(async (req, res) => {
     // Respond to healthcheck endpoints
     if (req.url === '/status' || req.url === '/health' || req.url === '/healthz') {
+      // Get session path info
+      let sessionPathInfo: any = {};
+      try {
+        const { getSessionPathInfo } = await import('./utils/sessionPathResolver');
+        sessionPathInfo = getSessionPathInfo();
+      } catch (e: any) {
+        sessionPathInfo = { error: e.message };
+      }
+      
       res.writeHead(200, { 
         'Content-Type': 'application/json',
         'Cache-Control': 'no-cache'
@@ -63,7 +72,14 @@ function startHealthServer(): void {
         railway_git_branch: process.env.RAILWAY_GIT_BRANCH || 'missing',
         railway_git_commit_message: process.env.RAILWAY_GIT_COMMIT_MESSAGE || 'missing',
         railway_service_name: process.env.RAILWAY_SERVICE_NAME || 'missing',
-        railway_environment: process.env.RAILWAY_ENVIRONMENT || 'missing'
+        railway_environment: process.env.RAILWAY_ENVIRONMENT || 'missing',
+        // Session path info
+        session_canonical_path_env: process.env.SESSION_CANONICAL_PATH || '(not set)',
+        session_path: sessionPathInfo.resolvedPath || 'unknown',
+        session_file_exists: sessionPathInfo.exists || false,
+        session_file_size: sessionPathInfo.size || null,
+        session_file_mtime: sessionPathInfo.mtime || null,
+        session_directory_writable: sessionPathInfo.writable || false,
       }));
     } else if (req.url === '/metrics/replies') {
       // Reply decisions metrics endpoint
@@ -247,22 +263,17 @@ startHealthServer();
 // Log session file status at boot (for consent persistence verification)
 setImmediate(async () => {
   try {
-    const { getSessionPath, sessionFileExists } = await import('./playwright/twitterSession');
-    const fs = await import('fs');
-    const sessionPath = getSessionPath();
-    const exists = sessionFileExists();
+    const { getSessionPathInfo } = await import('./utils/sessionPathResolver');
+    const info = getSessionPathInfo();
     
-    console.log(`[BOOT] Session file path: ${sessionPath}`);
-    console.log(`[BOOT] Session file exists: ${exists}`);
+    console.log(`[BOOT] SESSION_CANONICAL_PATH env: ${info.envVar || '(not set)'}`);
+    console.log(`[BOOT] Resolved session path: ${info.resolvedPath}`);
+    console.log(`[BOOT] Session file exists: ${info.exists}`);
+    console.log(`[BOOT] Directory writable: ${info.writable}`);
     
-    if (exists) {
-      try {
-        const stats = fs.statSync(sessionPath);
-        console.log(`[BOOT] Session file size: ${stats.size} bytes`);
-        console.log(`[BOOT] Session file last modified: ${stats.mtime.toISOString()}`);
-      } catch (e: any) {
-        console.warn(`[BOOT] Could not stat session file: ${e.message}`);
-      }
+    if (info.exists && info.size !== undefined && info.mtime) {
+      console.log(`[BOOT] Session file size: ${info.size} bytes`);
+      console.log(`[BOOT] Session file last modified: ${info.mtime}`);
     } else {
       console.log(`[BOOT] Session file not found - will be created on first consent acceptance`);
     }

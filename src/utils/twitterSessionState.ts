@@ -246,8 +246,9 @@ export async function saveStorageState(
   try {
     const storageState = await context.storageState();
     
-    // Use canonical path: SESSION_CANONICAL_PATH or default Railway path
-    const canonicalPath = process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';
+    // Use canonical path resolver
+    const { resolveSessionPath } = require('./sessionPathResolver');
+    const canonicalPath = resolveSessionPath();
     const savePath = customPath || canonicalPath;
     
     // Ensure directory exists
