@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 import { join } from 'path';
 import { SessionLoader } from './sessionLoader';
 import type { BrowserContext } from 'playwright';

@@ -298,35 +298,50 @@ setImmediate(async () => {
       console.log(`[BOOT] Session file not found - will be created on first consent acceptance`);
       
       // 🎯 SEED SESSION ON BOOT: Create session file if SEED_SESSION_ON_BOOT=true
+      // Run in background with timeout to avoid blocking boot
       if (process.env.SEED_SESSION_ON_BOOT === 'true') {
-        console.log(`[BOOT] SEED_SESSION_ON_BOOT=true - creating session file...`);
-        try {
-          const { UnifiedBrowserPool } = await import('./browser/UnifiedBrowserPool');
-          const pool = UnifiedBrowserPool.getInstance();
-          const testUrl = 'https://x.com/DrBryanJohnson';
-          
-          await pool.withContext('boot_session_seed', async (context) => {
-            const page = await context.newPage();
-            await page.goto(testUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            await page.waitForTimeout(3000);
+        console.log(`[BOOT] SEED_SESSION_ON_BOOT=true - creating session file in background...`);
+        // Run in background (don't await) to avoid blocking boot
+        (async () => {
+          try {
+            // Wait a bit for services to initialize
+            await new Promise(resolve => setTimeout(resolve, 5000));
             
-            const { ensureConsentAccepted, saveTwitterState } = await import('./playwright/twitterSession');
-            await ensureConsentAccepted(page, async () => {
-              await page.goto(testUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-              await page.waitForTimeout(3000);
+            const { UnifiedBrowserPool } = await import('./browser/UnifiedBrowserPool');
+            const pool = UnifiedBrowserPool.getInstance();
+            const testUrl = 'https://x.com/DrBryanJohnson';
+            
+            // Use shorter timeout for boot seeding (30s instead of default)
+            const seedPromise = pool.withContext('boot_session_seed', async (context) => {
+              const page = await context.newPage();
+              await page.goto(testUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+              await page.waitForTimeout(2000);
+              
+              const { ensureConsentAccepted, saveTwitterState } = await import('./playwright/twitterSession');
+              await ensureConsentAccepted(page, async () => {
+                await page.goto(testUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+                await page.waitForTimeout(2000);
+              });
+              
+              const saved = await saveTwitterState(context);
+              if (saved) {
+                const infoAfter = getSessionPathInfo();
+                console.log(`[BOOT] ✅ Session file created: ${infoAfter.resolvedPath}, size=${infoAfter.size} bytes`);
+              } else {
+                console.warn(`[BOOT] ⚠️ Failed to save session file`);
+              }
             });
             
-            const saved = await saveTwitterState(context);
-            if (saved) {
-              const infoAfter = getSessionPathInfo();
-              console.log(`[BOOT] ✅ Session file created: ${infoAfter.resolvedPath}, size=${infoAfter.size} bytes`);
-            } else {
-              console.warn(`[BOOT] ⚠️ Failed to save session file`);
-            }
-          });
-        } catch (seedError: any) {
-          console.error(`[BOOT] ❌ Failed to seed session: ${seedError.message}`);
-        }
+            // Timeout after 60s
+            await Promise.race([
+              seedPromise,
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Boot seeding timeout')), 60000))
+            ]);
+          } catch (seedError: any) {
+            console.error(`[BOOT] ❌ Failed to seed session: ${seedError.message}`);
+            // Don't throw - boot seeding failure shouldn't block service startup
+          }
+        })();
       }
     }
   } catch (error: any) {
