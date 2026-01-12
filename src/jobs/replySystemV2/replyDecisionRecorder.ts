@@ -35,7 +35,7 @@ export interface ReplyDecisionRecord {
   is_root: boolean;
   decision: 'ALLOW' | 'DENY';
   reason?: string;
-  deny_reason_code?: string | null; // 🎯 ANALYTICS: Structured deny reason code (NON_ROOT, ANCESTRY_UNCERTAIN, ANCESTRY_ERROR, LOW_RELEVANCE, LOW_AUTHOR_SIGNAL, LOW_QUALITY_SCORE, CONSENT_WALL, DUPLICATE_TOPIC, RATE_LIMITED, NO_CANDIDATES, OTHER)
+  deny_reason_code?: string | null; // 🎯 ANALYTICS: Structured deny reason code (NON_ROOT, ANCESTRY_UNCERTAIN, ANCESTRY_ERROR, ANCESTRY_TIMEOUT, ANCESTRY_PLAYWRIGHT_DROPPED, ANCESTRY_NAV_FAIL, ANCESTRY_PARSE_FAIL, LOW_RELEVANCE, LOW_AUTHOR_SIGNAL, LOW_QUALITY_SCORE, CONSENT_WALL, DUPLICATE_TOPIC, RATE_LIMITED, NO_CANDIDATES, OTHER)
   // 🔒 REQUIRED: Status, confidence, method must always be provided
   status: 'OK' | 'UNCERTAIN' | 'ERROR';
   confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
