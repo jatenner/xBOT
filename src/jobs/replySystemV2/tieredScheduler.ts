@@ -263,7 +263,10 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       is_root: ancestry.isRoot,
       decision: allowCheck.allow ? 'ALLOW' : 'DENY',
       reason: allowCheck.reason,
-      method: ancestry.method,
+      status: ancestry.status, // 🔒 REQUIRED
+      confidence: ancestry.confidence, // 🔒 REQUIRED
+      method: ancestry.method || 'unknown', // 🔒 REQUIRED
+      cache_hit: ancestry.method?.startsWith('cache:') || false,
       trace_id: schedulerRunId,
       job_run_id: schedulerRunId,
       pipeline_source: 'reply_v2_scheduler',

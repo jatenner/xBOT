@@ -75,27 +75,41 @@ function startHealthServer(): void {
         const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
         const last1h = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
         
+        // 🔒 TRUTHFUL: Compute from columns, not reason parsing
         const { data: last24hData } = await supabase
           .from('reply_decisions')
-          .select('decision, reason')
+          .select('decision, status, method, cache_hit')
           .gte('created_at', last24h);
         
         const { data: last1hData } = await supabase
           .from('reply_decisions')
-          .select('decision, reason')
+          .select('decision, status, method, cache_hit')
           .gte('created_at', last1h);
         
         const total24h = last24hData?.length || 0;
         const allow24h = last24hData?.filter(r => r.decision === 'ALLOW').length || 0;
         const deny24h = last24hData?.filter(r => r.decision === 'DENY').length || 0;
-        const uncertain24h = last24hData?.filter(r => r.reason?.includes('ANCESTRY_UNCERTAIN_FAIL_CLOSED')).length || 0;
-        const error24h = last24hData?.filter(r => r.reason?.includes('ANCESTRY_ERROR_FAIL_CLOSED')).length || 0;
+        const uncertain24h = last24hData?.filter(r => r.status === 'UNCERTAIN').length || 0;
+        const error24h = last24hData?.filter(r => r.status === 'ERROR').length || 0;
+        const ok24h = last24hData?.filter(r => r.status === 'OK').length || 0;
+        const cacheHits24h = last24hData?.filter(r => r.cache_hit === true).length || 0;
+        
+        // Method breakdown
+        const methodBreakdown24h = (last24hData || []).reduce((acc: Record<string, { allow: number; deny: number }>, r) => {
+          const method = r.method || 'unknown';
+          if (!acc[method]) acc[method] = { allow: 0, deny: 0 };
+          if (r.decision === 'ALLOW') acc[method].allow++;
+          else acc[method].deny++;
+          return acc;
+        }, {});
         
         const total1h = last1hData?.length || 0;
         const allow1h = last1hData?.filter(r => r.decision === 'ALLOW').length || 0;
         const deny1h = last1hData?.filter(r => r.decision === 'DENY').length || 0;
-        const uncertain1h = last1hData?.filter(r => r.reason?.includes('ANCESTRY_UNCERTAIN_FAIL_CLOSED')).length || 0;
-        const error1h = last1hData?.filter(r => r.reason?.includes('ANCESTRY_ERROR_FAIL_CLOSED')).length || 0;
+        const uncertain1h = last1hData?.filter(r => r.status === 'UNCERTAIN').length || 0;
+        const error1h = last1hData?.filter(r => r.status === 'ERROR').length || 0;
+        const ok1h = last1hData?.filter(r => r.status === 'OK').length || 0;
+        const cacheHits1h = last1hData?.filter(r => r.cache_hit === true).length || 0;
         
         res.writeHead(200, { 
           'Content-Type': 'application/json',
@@ -108,6 +122,10 @@ function startHealthServer(): void {
             deny: deny24h,
             uncertain: uncertain24h,
             error: error24h,
+            ok: ok24h,
+            cache_hits: cacheHits24h,
+            cache_hit_rate: total24h > 0 ? ((cacheHits24h / total24h) * 100).toFixed(1) + '%' : '0%',
+            method_breakdown: methodBreakdown24h,
           },
           last_1h: {
             total: total1h,
@@ -115,6 +133,9 @@ function startHealthServer(): void {
             deny: deny1h,
             uncertain: uncertain1h,
             error: error1h,
+            ok: ok1h,
+            cache_hits: cacheHits1h,
+            cache_hit_rate: total1h > 0 ? ((cacheHits1h / total1h) * 100).toFixed(1) + '%' : '0%',
           },
           timestamp: new Date().toISOString(),
         }));

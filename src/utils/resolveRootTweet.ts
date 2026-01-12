@@ -294,27 +294,31 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
 
 /**
  * Try JSON extraction from page (most reliable method)
+ * Extracts in_reply_to_status_id and conversation_id from Twitter's embedded JSON
  */
 async function tryJsonExtraction(page: any, tweetId: string): Promise<RootTweetResolution | null> {
   try {
     const jsonData = await page.evaluate(() => {
-      // Look for embedded JSON-LD or script tags with tweet data
-      const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+      // Method 1: Look for Twitter's embedded JSON in script tags
+      const scripts = Array.from(document.querySelectorAll('script'));
       for (const script of scripts) {
-        try {
-          const data = JSON.parse(script.textContent || '');
-          if (data['@type'] === 'SocialMediaPosting' || data.mainEntity) {
-            return data;
-          }
-        } catch {}
+        const text = script.textContent || '';
+        // Look for JSON that contains tweet data
+        if (text.includes('"tweetId"') || text.includes('"conversationId"') || text.includes('"inReplyToStatusId"')) {
+          try {
+            // Try to extract JSON object
+            const jsonMatch = text.match(/\{.*"tweetId".*\}/s);
+            if (jsonMatch) {
+              const data = JSON.parse(jsonMatch[0]);
+              if (data.tweetId || data.conversationId || data.inReplyToStatusId) {
+                return data;
+              }
+            }
+          } catch {}
+        }
       }
       
-      // Look for window.__INITIAL_STATE__ or similar
-      if ((window as any).__INITIAL_STATE__) {
-        return (window as any).__INITIAL_STATE__;
-      }
-      
-      // Look for data attributes on article elements
+      // Method 2: Look for data attributes on article
       const article = document.querySelector('article[data-testid="tweet"]');
       if (article) {
         const dataAttrs: Record<string, string> = {};
@@ -323,7 +327,24 @@ async function tryJsonExtraction(page: any, tweetId: string): Promise<RootTweetR
             dataAttrs[attr.name] = attr.value;
           }
         });
-        return { articleData: dataAttrs };
+        // Check for conversation or reply indicators
+        if (dataAttrs['data-conversation-id'] || dataAttrs['data-reply-to']) {
+          return { articleData: dataAttrs };
+        }
+      }
+      
+      // Method 3: Look for meta tags
+      const metaTags = Array.from(document.querySelectorAll('meta[property], meta[name]'));
+      const metaData: Record<string, string> = {};
+      metaTags.forEach(meta => {
+        const prop = meta.getAttribute('property') || meta.getAttribute('name');
+        const content = meta.getAttribute('content');
+        if (prop && content) {
+          metaData[prop] = content;
+        }
+      });
+      if (metaData['twitter:data1'] || metaData['og:url']) {
+        return { metaData };
       }
       
       return null;
@@ -333,10 +354,70 @@ async function tryJsonExtraction(page: any, tweetId: string): Promise<RootTweetR
       return null;
     }
     
-    // Try to extract conversation_id or in_reply_to from JSON
-    // This is a placeholder - actual extraction depends on Twitter's JSON structure
-    // For now, return null to fall back to DOM
-    return null;
+    // Extract conversation_id or in_reply_to from JSON
+    let rootTweetId: string | null = null;
+    let isReply = false;
+    
+    if (jsonData.conversationId && jsonData.conversationId !== tweetId) {
+      rootTweetId = jsonData.conversationId;
+      isReply = true;
+    } else if (jsonData.inReplyToStatusId) {
+      rootTweetId = jsonData.inReplyToStatusId;
+      isReply = true;
+    } else if (jsonData.articleData) {
+      const convId = jsonData.articleData['data-conversation-id'];
+      if (convId && convId !== tweetId) {
+        rootTweetId = convId;
+        isReply = true;
+      }
+    }
+    
+    if (isReply && rootTweetId) {
+      console.log(`[REPLY_SELECT] ✅ JSON extraction: ${tweetId} → root ${rootTweetId}`);
+      return {
+        originalTweetId: tweetId,
+        rootTweetId: rootTweetId,
+        isRootTweet: false,
+        rootTweetUrl: `https://x.com/i/web/status/${rootTweetId}`,
+        rootTweetAuthor: null,
+        rootTweetContent: null,
+        status: 'OK',
+        confidence: 'HIGH',
+        method: 'json_extraction',
+        signals: {
+          replying_to_text: false,
+          social_context: false,
+          main_article_reply_indicator: false,
+          multiple_articles: false,
+          verification_passed: true,
+        },
+      };
+    }
+    
+    // If no reply indicators found, assume root
+    if (!isReply) {
+      console.log(`[REPLY_SELECT] ✅ JSON extraction: ${tweetId} appears to be root`);
+      return {
+        originalTweetId: tweetId,
+        rootTweetId: tweetId,
+        isRootTweet: true,
+        rootTweetUrl: `https://x.com/i/web/status/${tweetId}`,
+        rootTweetAuthor: null,
+        rootTweetContent: null,
+        status: 'OK',
+        confidence: 'HIGH',
+        method: 'json_extraction',
+        signals: {
+          replying_to_text: false,
+          social_context: false,
+          main_article_reply_indicator: false,
+          multiple_articles: false,
+          verification_passed: true,
+        },
+      };
+    }
+    
+    return null; // Fall back to DOM if JSON extraction incomplete
   } catch (error: any) {
     console.warn(`[REPLY_SELECT] JSON extraction failed: ${error.message}`);
     return null;

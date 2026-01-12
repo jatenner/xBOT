@@ -23,6 +23,7 @@ export interface ReplyAncestry {
     verification_passed: boolean;
   };
   error?: string;
+  cache_hit?: boolean; // Whether this resolution used cache
 }
 
 export interface ReplyDecisionRecord {
@@ -34,13 +35,17 @@ export interface ReplyDecisionRecord {
   is_root: boolean;
   decision: 'ALLOW' | 'DENY';
   reason?: string;
-  method?: string; // Resolution method (metadata, json, dom, cache, etc.)
+  // 🔒 REQUIRED: Status, confidence, method must always be provided
+  status: 'OK' | 'UNCERTAIN' | 'ERROR';
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
+  method: string; // Resolution method (metadata, json, dom, cache, explicit_signals, dom_verification, error, fallback, unknown)
   trace_id?: string; // feed_run_id, scheduler_run_id, etc.
   job_run_id?: string;
   pipeline_source?: string;
   playwright_post_attempted?: boolean;
   posted_reply_tweet_id?: string;
   error?: string;
+  cache_hit?: boolean; // Whether this resolution used cache
 }
 
 /**
@@ -54,6 +59,7 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
   const { getCachedAncestry, setCachedAncestry } = await import('./ancestryCache');
   const cached = await getCachedAncestry(targetTweetId);
   if (cached) {
+    cached.cache_hit = true;
     return cached;
   }
   
@@ -125,6 +131,7 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
           confidence: resolution.confidence,
           method: resolution.method,
           signals: resolution.signals,
+          cache_hit: false,
         };
         // Cache result
         await setCachedAncestry(targetTweetId, result);
@@ -169,6 +176,7 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
         confidence: 'LOW' as const,
         method: 'exception',
         error: error.message,
+        cache_hit: false,
       };
       // Cache ERROR result (still useful to avoid retrying)
       await setCachedAncestry(targetTweetId, errorResult);
@@ -188,6 +196,7 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
     confidence: 'LOW' as const,
     method: 'max_depth_reached',
     error: `Hit MAX_DEPTH (${MAX_DEPTH}) without finding root`,
+    cache_hit: false,
   };
   // Cache UNCERTAIN result
   await setCachedAncestry(targetTweetId, maxDepthResult);
@@ -253,6 +262,31 @@ async function tryMetadataResolution(tweetId: string): Promise<ReplyAncestry | n
       };
     }
     
+    // Check cache table (if exists)
+    try {
+      const { data: cached } = await supabase
+        .from('reply_ancestry_cache')
+        .select('*')
+        .eq('tweet_id', tweetId)
+        .maybeSingle();
+      
+      if (cached && cached.status === 'OK' && cached.depth !== null) {
+        console.log(`[ANCESTRY] ✅ Resolved from cache metadata: ${tweetId} → depth=${cached.depth}, root=${cached.root_tweet_id}`);
+        return {
+          targetTweetId: tweetId,
+          targetInReplyToTweetId: null,
+          rootTweetId: cached.root_tweet_id,
+          ancestryDepth: cached.depth,
+          isRoot: cached.depth === 0,
+          status: cached.status as 'OK',
+          confidence: cached.confidence as 'HIGH' | 'MEDIUM' | 'LOW',
+          method: cached.method,
+        };
+      }
+    } catch (cacheError: any) {
+      // Cache table might not exist yet, ignore
+    }
+    
     return null; // No metadata available
   } catch (error: any) {
     console.warn(`[ANCESTRY] ⚠️ Metadata resolution failed: ${error.message}`);
@@ -262,18 +296,19 @@ async function tryMetadataResolution(tweetId: string): Promise<ReplyAncestry | n
 
 /**
  * Record a reply decision in the forensic pipeline
+ * 🔒 REQUIRED: status, confidence, method must always be provided
  */
 export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<void> {
   try {
     const supabase = getSupabaseClient();
     
-    // Extract method from reason if not provided
-    let method = record.method || null;
-    if (!method && record.reason) {
-      const methodMatch = record.reason.match(/method=([^,]+)/);
-      if (methodMatch) {
-        method = methodMatch[1];
-      }
+    // 🔒 VALIDATION: Ensure required fields are present
+    if (!record.status || !record.confidence || !record.method) {
+      console.error(`[REPLY_DECISION] ❌ Missing required fields: status=${record.status}, confidence=${record.confidence}, method=${record.method}`);
+      // Fallback to safe defaults (will DENY)
+      record.status = record.status || 'UNCERTAIN';
+      record.confidence = record.confidence || 'UNKNOWN';
+      record.method = record.method || 'unknown';
     }
     
     const { error } = await supabase.from('reply_decisions').insert({
@@ -285,7 +320,10 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
       is_root: record.is_root,
       decision: record.decision,
       reason: record.reason || null,
-      method: method, // Store method for metrics
+      status: record.status, // 🔒 REQUIRED
+      confidence: record.confidence, // 🔒 REQUIRED
+      method: record.method, // 🔒 REQUIRED
+      cache_hit: record.cache_hit || false,
       trace_id: record.trace_id || null,
       job_run_id: record.job_run_id || null,
       pipeline_source: record.pipeline_source || null,
@@ -307,8 +345,8 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
 
 /**
  * Check if reply should be allowed based on ancestry
- * 🔒 FAIL-CLOSED: Only allow when status=OK AND depth===0
- * All other cases (UNCERTAIN, ERROR, depth>=1) result in DENY
+ * 🔒 FAIL-CLOSED: Only allow when status=OK AND depth===0 AND method != 'unknown'
+ * All other cases (UNCERTAIN, ERROR, depth>=1, method=unknown) result in DENY
  */
 export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; reason: string } {
   // 🔒 FAIL-CLOSED: Must have OK status
@@ -316,9 +354,19 @@ export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; rea
     const statusReason = ancestry.status === 'UNCERTAIN' 
       ? 'ANCESTRY_UNCERTAIN_FAIL_CLOSED'
       : 'ANCESTRY_ERROR_FAIL_CLOSED';
+    console.log(`[REPLY_DECISION] 🚫 DENY: ${statusReason} status=${ancestry.status} target=${ancestry.targetTweetId} method=${ancestry.method}`);
     return {
       allow: false,
       reason: `${statusReason}: status=${ancestry.status}, target=${ancestry.targetTweetId}, method=${ancestry.method}${ancestry.error ? `, error=${ancestry.error}` : ''}`,
+    };
+  }
+  
+  // 🔒 FAIL-CLOSED: Method must not be 'unknown'
+  if (ancestry.method === 'unknown' || !ancestry.method) {
+    console.log(`[REPLY_DECISION] 🚫 DENY: METHOD_UNKNOWN target=${ancestry.targetTweetId} method=${ancestry.method || 'missing'}`);
+    return {
+      allow: false,
+      reason: `METHOD_UNKNOWN_FAIL_CLOSED: method=${ancestry.method || 'missing'}, target=${ancestry.targetTweetId}`,
     };
   }
   
@@ -338,9 +386,9 @@ export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; rea
     };
   }
   
-  // ✅ ALLOW: status=OK, depth=0, isRoot=true
+  // ✅ ALLOW: status=OK, depth=0, isRoot=true, method != unknown
   return {
     allow: true,
-    reason: `Root tweet allowed: target=${ancestry.targetTweetId}, status=${ancestry.status}, confidence=${ancestry.confidence}`,
+    reason: `Root tweet allowed: target=${ancestry.targetTweetId}, status=${ancestry.status}, confidence=${ancestry.confidence}, method=${ancestry.method}`,
   };
 }

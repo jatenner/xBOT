@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS reply_decisions (
   -- Decision
   decision text NOT NULL CHECK (decision IN ('ALLOW', 'DENY')),
   reason text, -- Why ALLOW/DENY
-  method text, -- Resolution method (metadata, json, dom, cache, etc.)
+  status text NOT NULL DEFAULT 'UNCERTAIN' CHECK (status IN ('OK', 'UNCERTAIN', 'ERROR')), -- Resolution status
+  confidence text NOT NULL DEFAULT 'UNKNOWN' CHECK (confidence IN ('HIGH', 'MEDIUM', 'LOW', 'UNKNOWN')), -- Confidence level
+  method text NOT NULL DEFAULT 'unknown', -- Resolution method (metadata, json, dom, cache, explicit_signals, dom_verification, error, fallback, unknown)
+  cache_hit boolean DEFAULT false, -- Whether cache was used
   
   -- Traceability
   trace_id text, -- feed_run_id, scheduler_run_id, etc.

@@ -102,6 +102,10 @@ async function validateFailClosed() {
         is_root: ancestry.isRoot,
         decision: decision.allow ? 'ALLOW' : 'DENY',
         reason: `Validation: ${decision.reason}`,
+        status: ancestry.status, // 🔒 REQUIRED
+        confidence: ancestry.confidence, // 🔒 REQUIRED
+        method: ancestry.method || 'unknown', // 🔒 REQUIRED
+        cache_hit: ancestry.cache_hit || false,
         trace_id: 'fail_closed_validation',
         job_run_id: 'validation_test',
         pipeline_source: 'validation_script',
@@ -153,9 +157,12 @@ async function validateFailClosed() {
     .limit(10);
   
   if (rows && rows.length > 0) {
-    rows.forEach((row, i) => {
-      console.log(`\n[${i + 1}] ${row.decision}: depth=${row.ancestry_depth}, status=${row.reason?.includes('ANCESTRY') ? 'UNCERTAIN/ERROR' : 'OK'}`);
+    rows.forEach((row: any, i) => {
+      console.log(`\n[${i + 1}] ${row.decision}: depth=${row.ancestry_depth}, status=${row.status || 'unknown'}, method=${row.method || 'unknown'}`);
       console.log(`    Target: ${row.target_tweet_id}, Root: ${row.root_tweet_id || 'null'}`);
+      if (row.method === 'unknown' && row.decision === 'ALLOW') {
+        console.log(`    ⚠️  WARNING: method=unknown produced ALLOW (should be impossible)`);
+      }
     });
   }
   

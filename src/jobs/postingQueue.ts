@@ -4544,7 +4544,10 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       is_root: ancestry.isRoot,
       decision: 'DENY',
       reason: `Final gate: ${allowCheck.reason}`,
-      method: ancestry.method,
+      status: ancestry.status, // 🔒 REQUIRED
+      confidence: ancestry.confidence, // 🔒 REQUIRED
+      method: ancestry.method || 'unknown', // 🔒 REQUIRED
+      cache_hit: ancestry.method?.startsWith('cache:') || false,
       trace_id: traceId,
       job_run_id: jobRunId,
       pipeline_source: pipelineSource,
@@ -4565,7 +4568,10 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     is_root: ancestry.isRoot,
     decision: 'ALLOW',
     reason: allowCheck.reason,
-    method: ancestry.method,
+    status: ancestry.status, // 🔒 REQUIRED
+    confidence: ancestry.confidence, // 🔒 REQUIRED
+    method: ancestry.method || 'unknown', // 🔒 REQUIRED
+    cache_hit: ancestry.method?.startsWith('cache:') || false,
     trace_id: traceId,
     job_run_id: jobRunId,
     pipeline_source: pipelineSource,
