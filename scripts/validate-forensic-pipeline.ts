@@ -7,6 +7,7 @@ import 'dotenv/config';
 import { getSupabaseClient } from '../src/db';
 import { resolveTweetAncestry, recordReplyDecision, shouldAllowReply } from '../src/jobs/replySystemV2/replyDecisionRecorder';
 import { Client } from 'pg';
+import * as fs from 'fs';
 
 async function checkTableExists() {
   const supabase = getSupabaseClient();
@@ -88,6 +89,54 @@ async function validatePipeline() {
     }
   } else {
     console.log('  ✅ Table reply_decisions exists');
+  }
+  
+  // Check if method column exists, add if missing
+  try {
+    const { error: methodCheck } = await supabase
+      .from('reply_decisions')
+      .select('method')
+      .limit(1);
+    
+    if (methodCheck && methodCheck.message.includes('column') && methodCheck.message.includes('method')) {
+      console.log('  💡 Adding method column...');
+      const client = new Client({
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+      });
+      await client.connect();
+      await client.query('ALTER TABLE reply_decisions ADD COLUMN IF NOT EXISTS method text;');
+      await client.end();
+      console.log('  ✅ Method column added');
+    }
+  } catch (error: any) {
+    console.warn(`  ⚠️  Method column check failed: ${error.message}`);
+  }
+  
+  // Check cache table
+  const { data: cacheCheck, error: cacheError } = await supabase
+    .from('reply_ancestry_cache')
+    .select('id')
+    .limit(1);
+  
+  if (cacheError && (cacheError.code === '42P01' || cacheError.message.includes('does not exist'))) {
+    console.log('  💡 Running cache table migration...');
+    try {
+      const client = new Client({
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+      });
+      await client.connect();
+      const fs = await import('fs');
+      const cacheSQL = fs.readFileSync('supabase/migrations/20260112_reply_ancestry_cache.sql', 'utf8');
+      await client.query(cacheSQL);
+      await client.end();
+      console.log('  ✅ Cache table created');
+    } catch (error: any) {
+      console.warn(`  ⚠️  Cache migration failed: ${error.message}`);
+    }
+  } else {
+    console.log('  ✅ Table reply_ancestry_cache exists');
   }
   
   // Count rows

@@ -20,8 +20,8 @@ CREATE INDEX IF NOT EXISTS idx_reply_ancestry_cache_tweet_id ON reply_ancestry_c
 CREATE INDEX IF NOT EXISTS idx_reply_ancestry_cache_updated_at ON reply_ancestry_cache(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reply_ancestry_cache_status ON reply_ancestry_cache(status);
 
--- TTL: Auto-cleanup old entries (older than 7 days)
-CREATE INDEX IF NOT EXISTS idx_reply_ancestry_cache_cleanup ON reply_ancestry_cache(updated_at) WHERE updated_at < now() - interval '7 days';
+-- Note: Partial index for cleanup would require IMMUTABLE function - skip for now
+-- Can use simple query: DELETE FROM reply_ancestry_cache WHERE updated_at < now() - interval '7 days';
 
 COMMENT ON TABLE reply_ancestry_cache IS 'Cache for resolved tweet ancestry to reduce UNCERTAIN/ERROR rates';
 COMMENT ON COLUMN reply_ancestry_cache.depth IS 'null = uncertain, 0 = root tweet, 1+ = reply depth';
