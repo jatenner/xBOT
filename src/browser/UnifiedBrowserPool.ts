@@ -262,6 +262,10 @@ export class UnifiedBrowserPool {
       // 🔥 OPTIMIZATION: Critical operations get longer timeout
       const queueTimeoutTimer = setTimeout(() => {
         const waitTime = Date.now() - queuedAt;
+        
+        // 🎯 METRICS: Track timeout
+        this.metrics.timeoutsLast1h++;
+        
         console.error(`[BROWSER_POOL] ⏱️ QUEUE TIMEOUT: ${operationName} waited ${Math.round(waitTime/1000)}s (timeout: ${timeoutMs/1000}s)`);
         console.error(`[BROWSER_POOL] 📊 Current: ${this.queue.length} queued, ${this.getActiveCount()} active`);
         const timeoutPoolStats = {
@@ -287,6 +291,20 @@ export class UnifiedBrowserPool {
       // Wrap operation to clear timeout when it starts
       const wrappedOperation = async (ctx: BrowserContext) => {
         clearTimeout(queueTimeoutTimer); // Cancel timeout - we're starting!
+        
+        // 🎯 METRICS: Record wait time for rolling average
+        const waitTime = Date.now() - queuedAt;
+        this.metrics.totalWaitTime += waitTime;
+        this.metrics.waitTimeSamples++;
+        // Rolling average: keep last 100 samples
+        if (this.metrics.waitTimeSamples > 100) {
+          this.metrics.totalWaitTime = this.metrics.totalWaitTime * 0.99; // Decay old samples
+          this.metrics.waitTimeSamples = 100;
+        }
+        this.metrics.averageWaitTime = this.metrics.waitTimeSamples > 0 
+          ? this.metrics.totalWaitTime / this.metrics.waitTimeSamples 
+          : 0;
+        
         return operation(ctx);
       };
       

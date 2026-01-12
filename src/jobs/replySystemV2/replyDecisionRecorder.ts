@@ -86,9 +86,37 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
     return metadataAncestry;
   }
   
-  // Step 3: Fall back to DOM resolution
+  // Step 3: Check if system is overloaded (skip ancestry if overloaded)
+  const { UnifiedBrowserPool } = await import('../../browser/UnifiedBrowserPool');
+  const pool = UnifiedBrowserPool.getInstance();
+  const poolAny = pool as any;
+  const queueLen = poolAny.queue?.length || 0;
+  const activeContexts = poolAny.getActiveCount?.() || 0;
+  const maxContexts = poolAny.MAX_CONTEXTS || 0;
+  const isOverloaded = queueLen >= 20 || (activeContexts >= maxContexts && queueLen >= 5);
+  
+  if (isOverloaded && !cached) {
+    // Skip ancestry resolution if overloaded and no cache hit
+    console.warn(`[ANCESTRY] ⚠️ System overloaded (queue=${queueLen}, active=${activeContexts}/${maxContexts}), skipping ancestry resolution for ${targetTweetId}`);
+    const skippedResult = {
+      targetTweetId,
+      targetInReplyToTweetId: null,
+      rootTweetId: null,
+      ancestryDepth: null,
+      isRoot: false,
+      status: 'ERROR' as const,
+      confidence: 'LOW' as const,
+      method: 'skipped_overload',
+      error: `Ancestry resolution skipped due to system overload (queue=${queueLen}, active=${activeContexts}/${maxContexts})`,
+      cache_hit: false,
+    };
+    // Cache skipped result to avoid retrying immediately
+    await setCachedAncestry(targetTweetId, skippedResult);
+    return skippedResult;
+  }
+  
+  // Step 4: Fall back to DOM resolution
   const { resolveRootTweetId } = await import('../../utils/resolveRootTweet');
-  const pool = (await import('../../browser/UnifiedBrowserPool')).UnifiedBrowserPool.getInstance();
   
   let currentTweetId = targetTweetId;
   let depth = 0;
@@ -423,7 +451,9 @@ export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; rea
     
     if (ancestry.status === 'ERROR' && ancestry.error) {
       const errorLower = ancestry.error.toLowerCase();
-      if (errorLower.includes('timeout') || errorLower.includes('queue timeout') || errorLower.includes('pool overloaded')) {
+      if (errorLower.includes('skipped') || errorLower.includes('overload')) {
+        denyReasonCode = 'ANCESTRY_SKIPPED_OVERLOAD';
+      } else if (errorLower.includes('timeout') || errorLower.includes('queue timeout') || errorLower.includes('pool overloaded')) {
         denyReasonCode = 'ANCESTRY_TIMEOUT';
       } else if (errorLower.includes('dropped') || errorLower.includes('disconnected') || errorLower.includes('browser has been closed')) {
         denyReasonCode = 'ANCESTRY_PLAYWRIGHT_DROPPED';

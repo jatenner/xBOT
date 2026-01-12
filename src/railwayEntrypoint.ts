@@ -75,9 +75,9 @@ function startHealthServer(): void {
         railway_environment: process.env.RAILWAY_ENVIRONMENT || 'missing',
         // Session path info
         session_canonical_path_env: process.env.SESSION_CANONICAL_PATH || '(not set)',
-        session_path: sessionPathInfo.resolvedPath || 'unknown',
-        session_file_exists: sessionPathInfo.exists || false,
-        session_file_size: sessionPathInfo.size || null,
+        session_path_resolved: sessionPathInfo.resolvedPath || 'unknown',
+        session_path_exists: sessionPathInfo.exists || false,
+        session_path_size_bytes: sessionPathInfo.size || null,
         session_file_mtime: sessionPathInfo.mtime || null,
         session_directory_writable: sessionPathInfo.writable || false,
       }));
@@ -132,18 +132,48 @@ function startHealthServer(): void {
           return acc;
         }, {});
         
-        // 🎯 POOL HEALTH: Get browser pool stats
+        // 🎯 POOL HEALTH: Get browser pool stats (truthful)
         let poolHealth: any = {};
         try {
           const { UnifiedBrowserPool } = await import('./browser/UnifiedBrowserPool');
           const pool = UnifiedBrowserPool.getInstance();
-          // Access private methods via any cast (for metrics)
+          const metrics = pool.getMetrics();
           const poolAny = pool as any;
+          
+          // Get real values from pool
+          const activeContexts = poolAny.getActiveCount?.() || 0;
+          const totalContexts = poolAny.contexts?.size || 0;
+          const idleContexts = Math.max(0, totalContexts - activeContexts);
+          const queueLen = poolAny.queue?.length || 0;
+          const maxContexts = poolAny.MAX_CONTEXTS || 0;
+          
+          // Get ancestry limiter stats if available
+          let semaphoreInflight = 0;
+          try {
+            const { getAncestryLimiter } = await import('./utils/ancestryConcurrencyLimiter');
+            const limiter = getAncestryLimiter();
+            const limiterStats = limiter.getStats();
+            semaphoreInflight = limiterStats.current || 0;
+          } catch {
+            // Limiter not available
+          }
+          
+          // Calculate avg wait time (simplified: use metrics if available)
+          const avgWaitMs = metrics.averageWaitTime || 0;
+          
           poolHealth = {
-            queue_len: poolAny.queue?.length || 0,
-            active: poolAny.getActiveCount?.() || 0,
-            idle: (poolAny.contexts?.size || 0) - (poolAny.getActiveCount?.() || 0),
-            max_contexts: poolAny.MAX_CONTEXTS || 0,
+            contexts_created_total: metrics.contextsCreated || 0,
+            active_contexts: activeContexts,
+            idle_contexts: idleContexts,
+            total_contexts: totalContexts,
+            max_contexts: maxContexts,
+            queue_len: queueLen,
+            avg_wait_ms: Math.round(avgWaitMs),
+            total_operations: metrics.totalOperations || 0,
+            successful_operations: metrics.successfulOperations || 0,
+            failed_operations: metrics.failedOperations || 0,
+            peak_queue: metrics.peakQueue || 0,
+            semaphore_inflight: semaphoreInflight,
           };
         } catch (e: any) {
           poolHealth = { error: e.message };

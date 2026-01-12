@@ -146,8 +146,36 @@ export async function fetchAndEvaluateCandidates(): Promise<{
         const sourceId = sourceRecord?.id;
         
         // 🔒 TASK 4: Limit evaluations per tick (throughput knob)
-        // 🎯 THROTTLE: Hard cap to prevent pool overload
-        const REPLY_V2_MAX_EVAL_PER_TICK = parseInt(process.env.REPLY_V2_MAX_EVAL_PER_TICK || '15', 10); // Default 15 (was 0 = unlimited)
+        // 🎯 THROTTLE: Hard cap to prevent pool overload (reduced default)
+        let REPLY_V2_MAX_EVAL_PER_TICK = parseInt(process.env.REPLY_V2_MAX_EVAL_PER_TICK || '7', 10); // Default 7 (was 15)
+        
+        // 🎯 ADAPTIVE THROTTLING: If ancestry timeout rate > 25% in last 10 min, halve eval rate
+        try {
+          const { getSupabaseClient } = await import('../../db');
+          const supabase = getSupabaseClient();
+          const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+          
+          const { data: recentDecisions } = await supabase
+            .from('reply_decisions')
+            .select('decision, deny_reason_code')
+            .gte('created_at', tenMinutesAgo);
+          
+          if (recentDecisions && recentDecisions.length > 0) {
+            const total = recentDecisions.length;
+            const ancestryTimeouts = recentDecisions.filter(
+              (r: any) => r.decision === 'DENY' && r.deny_reason_code === 'ANCESTRY_TIMEOUT'
+            ).length;
+            const timeoutRate = total > 0 ? (ancestryTimeouts / total) : 0;
+            
+            if (timeoutRate > 0.25) {
+              REPLY_V2_MAX_EVAL_PER_TICK = Math.max(3, Math.floor(REPLY_V2_MAX_EVAL_PER_TICK / 2));
+              console.log(`[ORCHESTRATOR] 🎯 ADAPTIVE THROTTLE: Timeout rate ${(timeoutRate * 100).toFixed(1)}% > 25%, reducing eval per tick to ${REPLY_V2_MAX_EVAL_PER_TICK}`);
+            }
+          }
+        } catch (e: any) {
+          console.warn(`[ORCHESTRATOR] ⚠️ Adaptive throttling check failed: ${e.message}`);
+        }
+        
         const tweetsToEvaluate = REPLY_V2_MAX_EVAL_PER_TICK > 0 
           ? tweets.slice(0, REPLY_V2_MAX_EVAL_PER_TICK)
           : tweets;

@@ -7,6 +7,7 @@ export type DenyReasonCode =
   | 'ANCESTRY_UNCERTAIN'
   | 'ANCESTRY_ERROR'
   | 'ANCESTRY_TIMEOUT'
+  | 'ANCESTRY_SKIPPED_OVERLOAD'
   | 'ANCESTRY_PLAYWRIGHT_DROPPED'
   | 'ANCESTRY_NAV_FAIL'
   | 'ANCESTRY_PARSE_FAIL'
@@ -33,6 +34,11 @@ export function mapFilterReasonToDenyCode(filterReason: string): DenyReasonCode 
   // Ancestry failures - specific buckets
   if (reasonLower.includes('ancestry_uncertain') || reasonLower.includes('uncertain')) {
     return 'ANCESTRY_UNCERTAIN';
+  }
+  
+  // Overload skip (new)
+  if (reasonLower.includes('skipped') || reasonLower.includes('overload') || reasonLower.includes('skipped_overload')) {
+    return 'ANCESTRY_SKIPPED_OVERLOAD';
   }
   
   // Transient errors (can retry)
