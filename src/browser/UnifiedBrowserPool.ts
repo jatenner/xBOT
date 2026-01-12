@@ -1291,7 +1291,9 @@ export class UnifiedBrowserPool {
       ...this.metrics,
       queueLength: this.queue.length,
       activeContexts: this.getActiveCount(),
-      totalContexts: this.contexts.size
+      totalContexts: this.contexts.size,
+      averageWaitTime: this.metrics.averageWaitTime,
+      timeoutsLast1h: this.metrics.timeoutsLast1h,
     };
   }
 
