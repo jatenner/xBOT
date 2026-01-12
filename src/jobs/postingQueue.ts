@@ -4539,11 +4539,12 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       decision_id: decision.id,
       target_tweet_id: decision.target_tweet_id || '',
       target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
-      root_tweet_id: ancestry.rootTweetId,
-      ancestry_depth: ancestry.ancestryDepth,
+      root_tweet_id: ancestry.rootTweetId || 'null',
+      ancestry_depth: ancestry.ancestryDepth ?? -1,
       is_root: ancestry.isRoot,
       decision: 'DENY',
       reason: `Final gate: ${allowCheck.reason}`,
+      method: ancestry.method,
       trace_id: traceId,
       job_run_id: jobRunId,
       pipeline_source: pipelineSource,
@@ -4559,11 +4560,12 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     decision_id: decision.id,
     target_tweet_id: decision.target_tweet_id || '',
     target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
-    root_tweet_id: ancestry.rootTweetId,
-    ancestry_depth: ancestry.ancestryDepth,
+    root_tweet_id: ancestry.rootTweetId || 'null',
+    ancestry_depth: ancestry.ancestryDepth ?? -1,
     is_root: ancestry.isRoot,
     decision: 'ALLOW',
     reason: allowCheck.reason,
+    method: ancestry.method,
     trace_id: traceId,
     job_run_id: jobRunId,
     pipeline_source: pipelineSource,
@@ -4938,30 +4940,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
 
       // ✅ STEP 3: Return tweet ID (receipt is saved, can proceed to DB save)
       // 🔍 FORENSIC PIPELINE: Update decision record with posted tweet ID
-      try {
-        const { recordReplyDecision } = await import('./replySystemV2/replyDecisionRecorder');
-        // Get trace info from decision metadata if available
-        const traceId = (decision as any).scheduler_run_id || (decision as any).feed_run_id || null;
-        const jobRunId = (decision as any).job_run_id || null;
-        const pipelineSource = (decision as any).pipeline_source || 'posting_queue';
-        
-        await recordReplyDecision({
-          decision_id: decision.id,
-          target_tweet_id: decision.target_tweet_id || '',
-          root_tweet_id: decision.root_tweet_id || decision.target_tweet_id || '',
-          ancestry_depth: 0, // Will be updated if we have ancestry data
-          is_root: true, // Assumed true if we got here
-          decision: 'ALLOW',
-          reason: 'Reply posted successfully',
-          trace_id: traceId,
-          job_run_id: jobRunId,
-          pipeline_source: pipelineSource,
-          playwright_post_attempted: true,
-          posted_reply_tweet_id: result.tweetId,
-        });
-      } catch (recordError: any) {
-        console.warn(`[POSTING_QUEUE] ⚠️ Failed to update decision record: ${recordError.message}`);
-      }
+      // Note: Decision already recorded earlier, this is just for completeness
+      // We don't re-record here to avoid duplicates
       
       console.log(`[REPLY_TRUTH] step=RETURN_TWEETID tweet_id=${result.tweetId}`);
       return result.tweetId;

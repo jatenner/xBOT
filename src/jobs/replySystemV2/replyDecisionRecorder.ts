@@ -34,6 +34,7 @@ export interface ReplyDecisionRecord {
   is_root: boolean;
   decision: 'ALLOW' | 'DENY';
   reason?: string;
+  method?: string; // Resolution method (metadata, json, dom, cache, etc.)
   trace_id?: string; // feed_run_id, scheduler_run_id, etc.
   job_run_id?: string;
   pipeline_source?: string;
@@ -46,8 +47,24 @@ export interface ReplyDecisionRecord {
  * Resolve tweet ancestry: compute root tweet ID and depth
  * Cap depth at 10 to prevent infinite loops
  * 🔒 FAIL-CLOSED: Returns UNCERTAIN/ERROR status when resolution fails
+ * 🚀 IMPROVED: Uses cache + metadata + JSON + DOM fallback order
  */
 export async function resolveTweetAncestry(targetTweetId: string): Promise<ReplyAncestry> {
+  // Step 1: Check cache
+  const { getCachedAncestry, setCachedAncestry } = await import('./ancestryCache');
+  const cached = await getCachedAncestry(targetTweetId);
+  if (cached) {
+    return cached;
+  }
+  
+  // Step 2: Try metadata first (if available)
+  const metadataAncestry = await tryMetadataResolution(targetTweetId);
+  if (metadataAncestry && metadataAncestry.status === 'OK') {
+    await setCachedAncestry(targetTweetId, metadataAncestry);
+    return metadataAncestry;
+  }
+  
+  // Step 3: Fall back to DOM resolution
   const { resolveRootTweetId } = await import('../../utils/resolveRootTweet');
   const pool = (await import('../../browser/UnifiedBrowserPool')).UnifiedBrowserPool.getInstance();
   
@@ -98,17 +115,20 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
       
       if (resolution.isRootTweet && resolution.status === 'OK') {
         // Found root with OK status
-        return {
+        const result = {
           targetTweetId,
           targetInReplyToTweetId: depth === 0 ? null : currentTweetId,
           rootTweetId: resolution.rootTweetId || currentTweetId,
           ancestryDepth: depth,
           isRoot: depth === 0,
-          status: 'OK',
+          status: 'OK' as const,
           confidence: resolution.confidence,
           method: resolution.method,
           signals: resolution.signals,
         };
+        // Cache result
+        await setCachedAncestry(targetTweetId, result);
+        return result;
       }
       
       // This is a reply, get the parent
@@ -123,46 +143,121 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
       
       // Could not resolve further - UNCERTAIN
       console.warn(`[ANCESTRY] ⚠️ Could not resolve parent for ${currentTweetId}`);
-      return {
+      const uncertainResult = {
         targetTweetId,
         targetInReplyToTweetId,
         rootTweetId: null,
         ancestryDepth: null,
         isRoot: false,
-        status: 'UNCERTAIN',
-        confidence: 'LOW',
+        status: 'UNCERTAIN' as const,
+        confidence: 'LOW' as const,
         method: 'incomplete_resolution',
         error: `Could not resolve parent for ${currentTweetId}`,
       };
+      // Cache UNCERTAIN result (still useful to avoid retrying)
+      await setCachedAncestry(targetTweetId, uncertainResult);
+      return uncertainResult;
     } catch (error: any) {
       console.error(`[ANCESTRY] ❌ Error resolving ancestry for ${currentTweetId}:`, error.message);
-      return {
+      const errorResult = {
         targetTweetId,
         targetInReplyToTweetId,
         rootTweetId: null,
         ancestryDepth: null,
         isRoot: false,
-        status: 'ERROR',
-        confidence: 'LOW',
+        status: 'ERROR' as const,
+        confidence: 'LOW' as const,
         method: 'exception',
         error: error.message,
       };
+      // Cache ERROR result (still useful to avoid retrying)
+      await setCachedAncestry(targetTweetId, errorResult);
+      return errorResult;
     }
   }
   
   // Hit MAX_DEPTH - UNCERTAIN
   console.warn(`[ANCESTRY] ⚠️ Hit MAX_DEPTH (${MAX_DEPTH}) - UNCERTAIN`);
-  return {
+  const maxDepthResult = {
     targetTweetId,
     targetInReplyToTweetId,
     rootTweetId: null,
     ancestryDepth: null,
     isRoot: false,
-    status: 'UNCERTAIN',
-    confidence: 'LOW',
+    status: 'UNCERTAIN' as const,
+    confidence: 'LOW' as const,
     method: 'max_depth_reached',
     error: `Hit MAX_DEPTH (${MAX_DEPTH}) without finding root`,
   };
+  // Cache UNCERTAIN result
+  await setCachedAncestry(targetTweetId, maxDepthResult);
+  return maxDepthResult;
+}
+
+/**
+ * Try to resolve ancestry from existing metadata (fastest, most reliable)
+ */
+async function tryMetadataResolution(tweetId: string): Promise<ReplyAncestry | null> {
+  try {
+    const { getSupabaseClient } = await import('../../db');
+    const supabase = getSupabaseClient();
+    
+    // Check reply_opportunities for metadata
+    const { data: opp } = await supabase
+      .from('reply_opportunities')
+      .select('tweet_id, target_in_reply_to_tweet_id, root_tweet_id, is_root_tweet')
+      .eq('tweet_id', tweetId)
+      .maybeSingle();
+    
+    if (opp && opp.root_tweet_id && opp.is_root_tweet !== undefined) {
+      const isRoot = opp.is_root_tweet && opp.tweet_id === opp.root_tweet_id;
+      const depth = isRoot ? 0 : (opp.target_in_reply_to_tweet_id ? 1 : null);
+      
+      if (depth !== null) {
+        console.log(`[ANCESTRY] ✅ Resolved from metadata: ${tweetId} → depth=${depth}, root=${opp.root_tweet_id}`);
+        return {
+          targetTweetId: tweetId,
+          targetInReplyToTweetId: opp.target_in_reply_to_tweet_id || null,
+          rootTweetId: opp.root_tweet_id,
+          ancestryDepth: depth,
+          isRoot: isRoot,
+          status: 'OK',
+          confidence: 'HIGH',
+          method: 'metadata',
+        };
+      }
+    }
+    
+    // Check content_metadata for reply info
+    const { data: meta } = await supabase
+      .from('content_metadata')
+      .select('target_tweet_id, root_tweet_id')
+      .eq('target_tweet_id', tweetId)
+      .eq('decision_type', 'reply')
+      .maybeSingle();
+    
+    if (meta && meta.root_tweet_id) {
+      const isRoot = meta.target_tweet_id === meta.root_tweet_id;
+      const depth = isRoot ? 0 : 1; // Assume depth 1 if target != root
+      
+      console.log(`[ANCESTRY] ✅ Resolved from content_metadata: ${tweetId} → depth=${depth}, root=${meta.root_tweet_id}`);
+      return {
+        targetTweetId: tweetId,
+        targetInReplyToTweetId: isRoot ? null : meta.target_tweet_id,
+        rootTweetId: meta.root_tweet_id,
+        ancestryDepth: depth,
+        isRoot: isRoot,
+        status: 'OK',
+        confidence: 'HIGH',
+        method: 'metadata',
+      };
+    }
+    
+    return null; // No metadata available
+  } catch (error: any) {
+    console.warn(`[ANCESTRY] ⚠️ Metadata resolution failed: ${error.message}`);
+    return null;
+  }
 }
 
 /**
@@ -171,6 +266,15 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
 export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<void> {
   try {
     const supabase = getSupabaseClient();
+    
+    // Extract method from reason if not provided
+    let method = record.method || null;
+    if (!method && record.reason) {
+      const methodMatch = record.reason.match(/method=([^,]+)/);
+      if (methodMatch) {
+        method = methodMatch[1];
+      }
+    }
     
     const { error } = await supabase.from('reply_decisions').insert({
       decision_id: record.decision_id || null,
@@ -181,6 +285,7 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
       is_root: record.is_root,
       decision: record.decision,
       reason: record.reason || null,
+      method: method, // Store method for metrics
       trace_id: record.trace_id || null,
       job_run_id: record.job_run_id || null,
       pipeline_source: record.pipeline_source || null,

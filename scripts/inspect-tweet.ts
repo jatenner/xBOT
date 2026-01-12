@@ -19,6 +19,15 @@ async function inspectTweet(tweetId: string) {
   console.log('\n📊 ANCESTRY ANALYSIS:');
   console.log('-'.repeat(80));
   try {
+    // Check cache first
+    const { getCachedAncestry } = await import('../src/jobs/replySystemV2/ancestryCache');
+    const cached = await getCachedAncestry(tweetId);
+    if (cached) {
+      console.log(`  💾 Cache: HIT (method=${cached.method})`);
+    } else {
+      console.log(`  💾 Cache: MISS`);
+    }
+    
     const ancestry = await resolveTweetAncestry(tweetId);
     console.log(`  Target Tweet ID: ${ancestry.targetTweetId}`);
     console.log(`  Target In Reply To: ${ancestry.targetInReplyToTweetId || 'NONE (root tweet)'}`);
@@ -27,7 +36,7 @@ async function inspectTweet(tweetId: string) {
     console.log(`  Is Root: ${ancestry.isRoot ? '✅ YES' : '❌ NO'}`);
     console.log(`\n  🔒 Status: ${ancestry.status} (${ancestry.status === 'OK' ? '✅' : ancestry.status === 'UNCERTAIN' ? '⚠️' : '❌'})`);
     console.log(`  Confidence: ${ancestry.confidence}`);
-    console.log(`  Method: ${ancestry.method}`);
+    console.log(`  Method: ${ancestry.method}${ancestry.method.startsWith('cache:') ? ' (from cache)' : ''}`);
     if (ancestry.signals) {
       console.log(`  Signals:`);
       console.log(`    - replying_to_text: ${ancestry.signals.replying_to_text}`);

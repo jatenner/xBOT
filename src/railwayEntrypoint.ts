@@ -38,7 +38,7 @@ function startHealthServer(): void {
   console.log(`[HEALTH] APP_VERSION: ${process.env.APP_VERSION || 'NOT SET'}`);
   console.log(`[HEALTH] RAILWAY_GIT_COMMIT_SHA: ${process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT SET'}`);
 
-  healthServer = createServer((req, res) => {
+  healthServer = createServer(async (req, res) => {
     // Respond to healthcheck endpoints
     if (req.url === '/status' || req.url === '/health' || req.url === '/healthz') {
       res.writeHead(200, { 
@@ -65,6 +65,63 @@ function startHealthServer(): void {
         railway_service_name: process.env.RAILWAY_SERVICE_NAME || 'missing',
         railway_environment: process.env.RAILWAY_ENVIRONMENT || 'missing'
       }));
+    } else if (req.url === '/metrics/replies') {
+      // Reply decisions metrics endpoint
+      try {
+        const { getSupabaseClient } = await import('./db');
+        const supabase = getSupabaseClient();
+        
+        const now = new Date();
+        const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+        const last1h = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+        
+        const { data: last24hData } = await supabase
+          .from('reply_decisions')
+          .select('decision, reason')
+          .gte('created_at', last24h);
+        
+        const { data: last1hData } = await supabase
+          .from('reply_decisions')
+          .select('decision, reason')
+          .gte('created_at', last1h);
+        
+        const total24h = last24hData?.length || 0;
+        const allow24h = last24hData?.filter(r => r.decision === 'ALLOW').length || 0;
+        const deny24h = last24hData?.filter(r => r.decision === 'DENY').length || 0;
+        const uncertain24h = last24hData?.filter(r => r.reason?.includes('ANCESTRY_UNCERTAIN_FAIL_CLOSED')).length || 0;
+        const error24h = last24hData?.filter(r => r.reason?.includes('ANCESTRY_ERROR_FAIL_CLOSED')).length || 0;
+        
+        const total1h = last1hData?.length || 0;
+        const allow1h = last1hData?.filter(r => r.decision === 'ALLOW').length || 0;
+        const deny1h = last1hData?.filter(r => r.decision === 'DENY').length || 0;
+        const uncertain1h = last1hData?.filter(r => r.reason?.includes('ANCESTRY_UNCERTAIN_FAIL_CLOSED')).length || 0;
+        const error1h = last1hData?.filter(r => r.reason?.includes('ANCESTRY_ERROR_FAIL_CLOSED')).length || 0;
+        
+        res.writeHead(200, { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache'
+        });
+        res.end(JSON.stringify({
+          last_24h: {
+            total: total24h,
+            allow: allow24h,
+            deny: deny24h,
+            uncertain: uncertain24h,
+            error: error24h,
+          },
+          last_1h: {
+            total: total1h,
+            allow: allow1h,
+            deny: deny1h,
+            uncertain: uncertain1h,
+            error: error1h,
+          },
+          timestamp: new Date().toISOString(),
+        }));
+      } catch (error: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: error.message }));
+      }
     } else {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('not found');

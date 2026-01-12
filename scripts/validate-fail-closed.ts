@@ -20,26 +20,36 @@ async function validateFailClosed() {
   console.log('═'.repeat(80));
   
   // Test cases: root tweet, depth1 reply, depth2 reply
-  // Replace with real tweet IDs from your database
+  // REQUIRE REAL TWEET IDs (no defaults)
+  const rootTweetId = process.argv[2];
+  const depth1TweetId = process.argv[3];
+  const depth2TweetId = process.argv[4];
+  
+  if (!rootTweetId || !depth1TweetId || !depth2TweetId) {
+    console.error('❌ Usage: pnpm run validate:fail-closed -- <root_tweet_id> <depth1_tweet_id> <depth2_tweet_id>');
+    console.error('   All 3 tweet IDs are REQUIRED (no defaults)');
+    process.exit(1);
+  }
+  
   const testCases: TestCase[] = [
     {
       name: 'Root Tweet (should ALLOW)',
-      tweetId: process.argv[2] || '1987900630393069568', // Replace with real root tweet ID
+      tweetId: rootTweetId,
       expectedStatus: 'OK',
       expectedDepth: 0,
       expectedDecision: 'ALLOW',
     },
     {
       name: 'Depth 1 Reply (should DENY)',
-      tweetId: process.argv[3] || '1741970033939767379', // Replace with real depth1 reply ID
-      expectedStatus: 'OK',
+      tweetId: depth1TweetId,
+      expectedStatus: 'OK', // After improvements, should resolve to OK with depth=1
       expectedDepth: 1,
       expectedDecision: 'DENY',
     },
     {
       name: 'Depth 2 Reply (should DENY)',
-      tweetId: process.argv[4] || '9999999999999999999', // Replace with real depth2 reply ID
-      expectedStatus: 'OK',
+      tweetId: depth2TweetId,
+      expectedStatus: 'OK', // After improvements, should resolve to OK with depth=2
       expectedDepth: 2,
       expectedDecision: 'DENY',
     },

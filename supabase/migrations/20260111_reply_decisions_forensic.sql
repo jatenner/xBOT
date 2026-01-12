@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS reply_decisions (
   -- Decision
   decision text NOT NULL CHECK (decision IN ('ALLOW', 'DENY')),
   reason text, -- Why ALLOW/DENY
+  method text, -- Resolution method (metadata, json, dom, cache, etc.)
   
   -- Traceability
   trace_id text, -- feed_run_id, scheduler_run_id, etc.
