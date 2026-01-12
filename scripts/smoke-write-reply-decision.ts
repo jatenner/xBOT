@@ -10,7 +10,8 @@ import { getSupabaseClient } from '../src/db/index';
 async function smokeTest() {
   console.log('🧪 Smoke test: Writing reply decision with timestamps...\n');
 
-  const decisionId = `smoke_${Date.now()}`;
+  const { randomUUID } = await import('crypto');
+  const decisionId = randomUUID();
   const scoredAt = new Date().toISOString();
 
   try {
