@@ -26,6 +26,8 @@ export interface ReplyGenerationRequest {
   relevance_score?: number;
   replyability_score?: number;
   reply_context?: ReplyContext;
+  template_id?: string; // 🎨 QUALITY TRACKING: Template to use
+  prompt_version?: string; // 🎨 QUALITY TRACKING: Prompt version
 }
 
 export interface ReplyGenerationResult {

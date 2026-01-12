@@ -146,10 +146,10 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   let queueId: string | undefined;
   
   try {
-    // Get candidate details (minimal - just for permit creation)
+    // Get candidate details (including scores for quality tracking)
     const { data: candidateData } = await supabase
       .from('candidate_evaluations')
-      .select('candidate_tweet_id, candidate_author_username, candidate_content')
+      .select('candidate_tweet_id, candidate_author_username, candidate_content, topic_relevance_score, velocity_score, recency_score, author_signal_score, predicted_tier, predicted_24h_views, overall_score')
       .eq('id', candidate.evaluation_id)
       .single();
     
@@ -253,7 +253,19 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     const ancestry = await resolveTweetAncestry(candidate.candidate_tweet_id);
     const allowCheck = shouldAllowReply(ancestry);
     
+    // 🎨 QUALITY TRACKING: Get candidate score for logging (from candidateData)
+    const candidateScore = candidateData.overall_score || candidate.overall_score || 0;
+    const candidateFeatures = {
+      topic_relevance: candidateData.topic_relevance_score || 0,
+      velocity: candidateData.velocity_score || 0,
+      recency: candidateData.recency_score || 0,
+      author_signal: candidateData.author_signal_score || 0,
+      predicted_tier: candidateData.predicted_tier || candidate.predicted_tier || 4,
+      predicted_24h_views: candidateData.predicted_24h_views || 0,
+    };
+    
     // Record decision BEFORE inserting into content_metadata
+    // Note: template_id and prompt_version will be updated after template selection
     await recordReplyDecision({
       decision_id: decisionId,
       target_tweet_id: candidate.candidate_tweet_id,
@@ -267,6 +279,10 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       confidence: ancestry.confidence, // 🔒 REQUIRED
       method: ancestry.method || 'unknown', // 🔒 REQUIRED
       cache_hit: ancestry.method?.startsWith('cache:') || false,
+      candidate_features: candidateFeatures,
+      candidate_score: candidateScore,
+      template_id: 'pending', // Will be updated after template selection
+      prompt_version: 'pending', // Will be updated after template selection
       trace_id: schedulerRunId,
       job_run_id: schedulerRunId,
       pipeline_source: 'reply_v2_scheduler',
@@ -416,10 +432,22 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     const keywords = extractKeywords(candidateData.candidate_content);
     const replyContext = await buildReplyContext(candidate.candidate_tweet_id, candidateData.candidate_author_username);
     
+    // 🎨 QUALITY TRACKING: Select reply template
+    const { selectReplyTemplate } = await import('./replyTemplateSelector');
+    const templateSelection = await selectReplyTemplate({
+      topic_relevance_score: (candidateData.topic_relevance_score || 0) / 100, // Normalize to 0-1
+      candidate_score: candidateData.overall_score || candidate.overall_score || 0,
+      topic: keywords.join(', '),
+      content_preview: candidateData.candidate_content.substring(0, 100),
+    });
+    
+    console.log(`[SCHEDULER] 🎨 Selected template: ${templateSelection.template_id} (${templateSelection.template_name}) - ${templateSelection.selection_reason}`);
+    
     // Generate reply content with fallback logic
     let replyContent: string;
     let isFallback = false;
     let generationError: Error | null = null;
+    let promptVersion = templateSelection.prompt_version;
     
     // 🔒 CERT_MODE: Check if cert mode is enabled (env var or global flag)
     const certMode = process.env.CERT_MODE === 'true' || (global as any).CERT_MODE === true;
@@ -429,6 +457,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         // 🔒 CERT_MODE: Use certified reply generator (guaranteed success)
         console.log(`[SCHEDULER] 🔒 CERT_MODE enabled - using certified reply generator`);
         const { generateCertModeReply } = await import('../../ai/replyGeneratorAdapter');
+        // Note: Template selection already done above, will be logged in reply_decisions
         const certResult = await generateCertModeReply({
           target_username: candidateData.candidate_author_username,
           target_tweet_content: normalizedSnapshot,
@@ -436,21 +465,30 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           angle: 'reply_context',
           tone: 'helpful',
           model: 'gpt-4o-mini',
+          template_id: templateSelection.template_id, // 🎨 QUALITY TRACKING
+          prompt_version: promptVersion, // 🎨 QUALITY TRACKING
         });
         
         replyContent = certResult.content;
         console.log(`[SCHEDULER] ✅ CERT reply generated: ${replyContent.length} chars`);
       } else {
         // Normal generation path
-        const routerResponse = await routeContentGeneration({
-          decision_type: 'reply',
-          content_slot: 'reply',
-          topic: 'health',
+        // 🎨 QUALITY TRACKING: Use template-aware generation
+        const { generateReplyContent } = await import('../../ai/replyGeneratorAdapter');
+        const { getTemplatePrompt } = await import('./replyTemplateSelector');
+        
+        // Get template prompt structure (if available)
+        const templatePrompt = await getTemplatePrompt(templateSelection.template_id);
+        
+        const replyResult = await generateReplyContent({
+          target_username: candidateData.candidate_author_username,
+          target_tweet_content: normalizedSnapshot,
+          topic: keywords.join(', ') || 'health',
           angle: 'reply_context',
           tone: 'helpful',
-          target_username: candidateData.candidate_author_username,
-          target_tweet_content: normalizedSnapshot, // Use normalized snapshot for generation
-          generator_name: 'contextual_reply',
+          model: 'gpt-4o-mini',
+          template_id: templateSelection.template_id, // 🎨 QUALITY TRACKING
+          prompt_version: promptVersion, // 🎨 QUALITY TRACKING
           reply_context: {
             target_text: normalizedSnapshot,
             root_text: replyContext.root_tweet_text || normalizedSnapshot,
@@ -458,11 +496,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           },
         });
         
-        replyContent = routerResponse.text;
-        if (Array.isArray(replyContent)) {
-          replyContent = replyContent[0];
-        }
-        
+        replyContent = replyResult.content;
         console.log(`[SCHEDULER] ✅ Reply generated: ${replyContent.length} chars`);
       }
     } catch (genError: any) {
@@ -510,6 +544,8 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
             angle: 'reply_context',
             tone: 'helpful',
             model: 'gpt-4o-mini',
+            template_id: templateSelection.template_id, // 🎨 QUALITY TRACKING
+            prompt_version: promptVersion, // 🎨 QUALITY TRACKING
             reply_context: {
               target_text: normalizedSnapshot,
               root_text: replyContext.root_tweet_text || normalizedSnapshot,
@@ -743,6 +779,17 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     });
     
     console.log(`[SCHEDULER] ✅ Decision persisted: status=queued, is_fallback=${isFallback}, similarity=${semanticSimilarity.toFixed(3)}`);
+    
+    // 🎨 QUALITY TRACKING: Update reply_decisions with template_id and prompt_version
+    await supabase
+      .from('reply_decisions')
+      .update({
+        template_id: templateSelection.template_id,
+        prompt_version: promptVersion,
+      })
+      .eq('decision_id', decisionId);
+    
+    console.log(`[SCHEDULER] 🎨 Updated reply_decisions with template_id=${templateSelection.template_id}, prompt_version=${promptVersion}`);
     
     // 🔒 TASK 4: Emit generation_completed event (AFTER updates succeed)
     await supabase.from('system_events').insert({

@@ -39,6 +39,11 @@ export interface ReplyDecisionRecord {
   status: 'OK' | 'UNCERTAIN' | 'ERROR';
   confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
   method: string; // Resolution method (metadata, json, dom, cache, explicit_signals, dom_verification, error, fallback, unknown)
+  // 🎨 QUALITY TRACKING: Candidate features and template tracking
+  candidate_features?: Record<string, any>; // JSON of candidate scoring features
+  candidate_score?: number; // Overall candidate score (0-100)
+  template_id?: string; // Template used (e.g., 'explanation', 'actionable')
+  prompt_version?: string; // Prompt version/template version used
   trace_id?: string; // feed_run_id, scheduler_run_id, etc.
   job_run_id?: string;
   pipeline_source?: string;
@@ -328,6 +333,10 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
       confidence: record.confidence, // 🔒 REQUIRED
       method: record.method, // 🔒 REQUIRED
       cache_hit: record.cache_hit || false,
+      candidate_features: record.candidate_features || null, // 🎨 QUALITY TRACKING
+      candidate_score: record.candidate_score || null, // 🎨 QUALITY TRACKING
+      template_id: record.template_id || null, // 🎨 QUALITY TRACKING
+      prompt_version: record.prompt_version || null, // 🎨 QUALITY TRACKING
       trace_id: record.trace_id || null,
       job_run_id: record.job_run_id || null,
       pipeline_source: record.pipeline_source || null,

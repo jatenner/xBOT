@@ -162,6 +162,34 @@ export async function fetchAndEvaluateCandidates(): Promise<{
             
             totalEvaluated++;
             
+            // 🎨 QUALITY TRACKING: Log candidate features for learning
+            if (score.passed_hard_filters) {
+              const { logCandidateFeatures } = await import('./candidateFeatureLogger');
+              const postedTime = new Date(tweet.posted_at).getTime();
+              const ageMinutes = (Date.now() - postedTime) / (1000 * 60);
+              
+              await logCandidateFeatures({
+                candidate_tweet_id: tweet.tweet_id,
+                feed_run_id: feedRunId,
+                candidate_score: score.overall_score,
+                topic_relevance_score: score.topic_relevance_score,
+                spam_score: score.spam_score,
+                velocity_score: score.velocity_score,
+                recency_score: score.recency_score,
+                author_signal_score: score.author_signal_score,
+                current_likes: tweet.like_count || 0,
+                current_replies: tweet.reply_count || 0,
+                current_retweets: tweet.retweet_count || 0,
+                age_minutes: ageMinutes,
+                predicted_24h_views: score.predicted_24h_views,
+                predicted_tier: score.predicted_tier,
+                features_json: {
+                  judge_decision: score.judge_decision,
+                  filter_reason: score.filter_reason,
+                },
+              });
+            }
+            
             if (score.passed_hard_filters) {
               totalPassed++;
             }

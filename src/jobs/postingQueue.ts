@@ -4946,8 +4946,14 @@ async function postReply(decision: QueuedDecision): Promise<string> {
 
       // ✅ STEP 3: Return tweet ID (receipt is saved, can proceed to DB save)
       // 🔍 FORENSIC PIPELINE: Update decision record with posted tweet ID
-      // Note: Decision already recorded earlier, this is just for completeness
-      // We don't re-record here to avoid duplicates
+      // 🎨 QUALITY TRACKING: Update template_id and prompt_version if not already set
+      await supabase
+        .from('reply_decisions')
+        .update({
+          posted_reply_tweet_id: result.tweetId,
+          playwright_post_attempted: true,
+        })
+        .eq('decision_id', decision.id);
       
       console.log(`[REPLY_TRUTH] step=RETURN_TWEETID tweet_id=${result.tweetId}`);
       return result.tweetId;
