@@ -105,7 +105,7 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
       // 🔒 FAIL-CLOSED: If resolution is UNCERTAIN or ERROR, propagate it
       if (resolution.status === 'UNCERTAIN' || resolution.status === 'ERROR') {
         console.warn(`[ANCESTRY] ⚠️ Resolution ${resolution.status} for ${currentTweetId} - FAIL-CLOSED`);
-        return {
+        const uncertainResult = {
           targetTweetId,
           targetInReplyToTweetId: depth === 0 ? null : currentTweetId,
           rootTweetId: null,
@@ -116,7 +116,11 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
           method: resolution.method,
           signals: resolution.signals,
           error: resolution.error,
+          cache_hit: false,
         };
+        // Cache UNCERTAIN/ERROR result (still useful to avoid retrying)
+        await setCachedAncestry(targetTweetId, uncertainResult);
+        return uncertainResult;
       }
       
       if (resolution.isRootTweet && resolution.status === 'OK') {

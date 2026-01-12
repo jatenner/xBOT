@@ -21,13 +21,16 @@ async function validateFailClosed() {
   
   // Test cases: root tweet, depth1 reply, depth2 reply
   // REQUIRE REAL TWEET IDs (no defaults)
-  const rootTweetId = process.argv[2];
-  const depth1TweetId = process.argv[3];
-  const depth2TweetId = process.argv[4];
+  // Skip '--' if present (npm/pnpm flag separator)
+  const args = process.argv.slice(2).filter(arg => arg !== '--');
+  const rootTweetId = args[0];
+  const depth1TweetId = args[1];
+  const depth2TweetId = args[2];
   
   if (!rootTweetId || !depth1TweetId || !depth2TweetId) {
     console.error('❌ Usage: pnpm run validate:fail-closed -- <root_tweet_id> <depth1_tweet_id> <depth2_tweet_id>');
     console.error('   All 3 tweet IDs are REQUIRED (no defaults)');
+    console.error(`   Received args: ${JSON.stringify(process.argv.slice(2))}`);
     process.exit(1);
   }
   
