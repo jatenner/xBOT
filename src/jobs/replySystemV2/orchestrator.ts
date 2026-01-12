@@ -162,6 +162,45 @@ export async function fetchAndEvaluateCandidates(): Promise<{
             
             totalEvaluated++;
             
+            // 🎯 ANALYTICS: Record DENY decision for scoring failures
+            if (!score.passed_hard_filters) {
+              const { mapFilterReasonToDenyCode } = await import('./denyReasonMapper');
+              const { resolveTweetAncestry, recordReplyDecision } = await import('./replyDecisionRecorder');
+              
+              // Resolve ancestry for DENY decision (needed for reply_decisions schema)
+              const ancestry = await resolveTweetAncestry(tweet.tweet_id);
+              const denyReasonCode = mapFilterReasonToDenyCode(score.filter_reason);
+              
+              // Record DENY decision with deny_reason_code
+              await recordReplyDecision({
+                target_tweet_id: tweet.tweet_id,
+                target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
+                root_tweet_id: ancestry.rootTweetId || 'null',
+                ancestry_depth: ancestry.ancestryDepth ?? -1,
+                is_root: ancestry.isRoot,
+                decision: 'DENY',
+                reason: `Scoring filter failed: ${score.filter_reason}`,
+                deny_reason_code: denyReasonCode, // 🎯 ANALYTICS: Structured deny reason
+                status: ancestry.status,
+                confidence: ancestry.confidence,
+                method: ancestry.method || 'unknown',
+                cache_hit: ancestry.cache_hit || false,
+                candidate_features: {
+                  topic_relevance: score.topic_relevance_score,
+                  velocity: score.velocity_score,
+                  recency: score.recency_score,
+                  author_signal: score.author_signal_score,
+                  overall_score: score.overall_score,
+                  filter_reason: score.filter_reason,
+                },
+                candidate_score: score.overall_score,
+                scored_at: new Date().toISOString(),
+                template_status: 'FAILED',
+                trace_id: feedRunId,
+                pipeline_source: 'reply_v2_scoring',
+              });
+            }
+            
             // 🎨 QUALITY TRACKING: Log candidate features for learning
             if (score.passed_hard_filters) {
               const { logCandidateFeatures } = await import('./candidateFeatureLogger');
@@ -498,6 +537,78 @@ export async function runFullCycle(): Promise<void> {
       .update({ status: 'queued', selected_at: null, scheduler_run_id: null })
       .eq('status', 'selected')
       .lt('selected_at', tenMinutesAgo);
+  }
+  
+  // 🎯 ANALYTICS: Adaptive tuning - widen candidate pool if 0 ALLOW decisions
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { data: recentDecisions } = await supabase
+    .from('reply_decisions')
+    .select('decision')
+    .gte('created_at', oneHourAgo);
+  
+  const allowCount = recentDecisions?.filter(r => r.decision === 'ALLOW').length || 0;
+  
+  if (allowCount === 0 && (recentDecisions?.length || 0) > 0) {
+    console.log(`[ORCHESTRATOR] 🎯 Adaptive tuning: 0 ALLOW decisions in last hour, relaxing non-safety thresholds...`);
+    
+    // Get current control plane state
+    const { data: currentState } = await supabase
+      .from('control_plane_state')
+      .select('*')
+      .is('expires_at', null)
+      .order('effective_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    const currentThreshold = currentState?.acceptance_threshold || 0.6;
+    const currentShortlistSize = currentState?.shortlist_size || 25;
+    
+    // Relax ONLY non-safety thresholds within safe bounds
+    // Never change: root-only, fail-closed ancestry, method=unknown DENY
+    const newThreshold = Math.max(0.3, Math.min(0.9, currentThreshold - 0.05)); // Lower by 0.05 (wider pool)
+    const newShortlistSize = Math.min(50, currentShortlistSize + 5); // Increase by 5 (wider pool)
+    
+    if (newThreshold !== currentThreshold || newShortlistSize !== currentShortlistSize) {
+      // Expire old state
+      if (currentState) {
+        await supabase
+          .from('control_plane_state')
+          .update({ expires_at: new Date().toISOString() })
+          .eq('id', currentState.id);
+      }
+      
+      // Insert new adaptive state
+      await supabase
+        .from('control_plane_state')
+        .insert({
+          effective_at: new Date().toISOString(),
+          acceptance_threshold: newThreshold,
+          shortlist_size: newShortlistSize,
+          feed_weights: currentState?.feed_weights || { curated_accounts: 0.4, keyword_search: 0.3, viral_watcher: 0.2, discovered_accounts: 0.1 },
+          exploration_rate: currentState?.exploration_rate || 0.1,
+          budget_caps: currentState?.budget_caps || { hourly_max: 5.0, daily_max: 50.0, per_reply_max: 0.1 },
+          model_preferences: currentState?.model_preferences || { default: 'gpt-4o-mini', fallback: 'gpt-4o-mini' },
+          updated_by: 'adaptive_tuning',
+          update_reason: `0 ALLOW decisions in last hour - relaxed thresholds: ${currentThreshold.toFixed(2)} -> ${newThreshold.toFixed(2)}, shortlist ${currentShortlistSize} -> ${newShortlistSize}`,
+        });
+      
+      console.log(`[ORCHESTRATOR] ✅ Adaptive tuning applied: threshold ${currentThreshold.toFixed(2)} -> ${newThreshold.toFixed(2)}, shortlist ${currentShortlistSize} -> ${newShortlistSize}`);
+      
+      // Log adaptive tuning event
+      await supabase.from('system_events').insert({
+        event_type: 'adaptive_tuning_applied',
+        severity: 'info',
+        message: `Adaptive tuning: relaxed thresholds due to 0 ALLOW decisions`,
+        event_data: {
+          old_threshold: currentThreshold,
+          new_threshold: newThreshold,
+          old_shortlist_size: currentShortlistSize,
+          new_shortlist_size: newShortlistSize,
+          recent_decisions_count: recentDecisions?.length || 0,
+        },
+        created_at: new Date().toISOString(),
+      });
+    }
   }
   
   console.log(`[ORCHESTRATOR] ✅ Cycle complete: ${fetchResult.evaluated} evaluated, ${queueResult.queued} queued, queue_size=${queueSize}`);
