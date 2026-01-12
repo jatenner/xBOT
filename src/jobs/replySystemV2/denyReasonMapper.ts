@@ -7,6 +7,10 @@ export type DenyReasonCode =
   | 'ANCESTRY_UNCERTAIN'
   | 'ANCESTRY_ERROR'
   | 'ANCESTRY_TIMEOUT'
+  | 'ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT'
+  | 'ANCESTRY_NAV_TIMEOUT'
+  | 'ANCESTRY_PARSE_TIMEOUT'
+  | 'ANCESTRY_QUEUE_TIMEOUT'
   | 'ANCESTRY_SKIPPED_OVERLOAD'
   | 'ANCESTRY_PLAYWRIGHT_DROPPED'
   | 'ANCESTRY_NAV_FAIL'
@@ -36,12 +40,26 @@ export function mapFilterReasonToDenyCode(filterReason: string): DenyReasonCode 
     return 'ANCESTRY_UNCERTAIN';
   }
   
-  // Overload skip (new)
+  // 🎯 PART B: Stage-specific timeout codes (highest priority)
+  if (reasonLower.includes('ancestry_acquire_context_timeout') || reasonLower.includes('acquire_context_timeout')) {
+    return 'ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT';
+  }
+  if (reasonLower.includes('ancestry_nav_timeout') || reasonLower.includes('nav_timeout')) {
+    return 'ANCESTRY_NAV_TIMEOUT';
+  }
+  if (reasonLower.includes('ancestry_parse_timeout') || reasonLower.includes('parse_timeout')) {
+    return 'ANCESTRY_PARSE_TIMEOUT';
+  }
+  if (reasonLower.includes('ancestry_queue_timeout') || reasonLower.includes('queue_timeout')) {
+    return 'ANCESTRY_QUEUE_TIMEOUT';
+  }
+  
+  // Overload skip
   if (reasonLower.includes('skipped') || reasonLower.includes('overload') || reasonLower.includes('skipped_overload')) {
     return 'ANCESTRY_SKIPPED_OVERLOAD';
   }
   
-  // Transient errors (can retry)
+  // Transient errors (can retry) - generic timeout fallback
   if (reasonLower.includes('timeout') || reasonLower.includes('queue timeout') || reasonLower.includes('pool overloaded')) {
     return 'ANCESTRY_TIMEOUT';
   }

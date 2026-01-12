@@ -277,6 +277,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       decision: allowCheck.allow ? 'ALLOW' : 'DENY',
       reason: allowCheck.reason,
       deny_reason_code: allowCheck.deny_reason_code, // 🎯 ANALYTICS: Structured deny reason code
+      deny_reason_detail: allowCheck.deny_reason_detail, // 🎯 PART B: Stage-specific error detail
       status: ancestry.status, // 🔒 REQUIRED
       confidence: ancestry.confidence, // 🔒 REQUIRED
       method: ancestry.method || 'unknown', // 🔒 REQUIRED
@@ -290,7 +291,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       trace_id: schedulerRunId,
       job_run_id: schedulerRunId,
       pipeline_source: 'reply_v2_scheduler',
-    });
+    } as any);
     
     // 🔒 HARD INVARIANT: Deny non-root replies
     if (!allowCheck.allow) {

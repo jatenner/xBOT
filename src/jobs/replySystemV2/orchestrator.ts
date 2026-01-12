@@ -231,6 +231,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
                 decision: 'DENY',
                 reason: `Scoring filter failed: ${score.filter_reason}`,
                 deny_reason_code: denyReasonCode, // 🎯 ANALYTICS: Structured deny reason
+                deny_reason_detail: null, // Scoring filters don't have stage details
                 status: ancestry.status,
                 confidence: ancestry.confidence,
                 method: ancestry.method || 'unknown',
@@ -248,7 +249,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
                 template_status: 'FAILED',
                 trace_id: feedRunId,
                 pipeline_source: 'reply_v2_scoring',
-              });
+              } as any);
             }
             
             // 🎨 QUALITY TRACKING: Log candidate features for learning

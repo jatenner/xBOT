@@ -138,6 +138,10 @@ function startHealthServer(): void {
           return acc;
         }, {});
         
+        // 🎯 PART A: Ancestry metrics
+        const ancestryAttemptsLast1h = (global as any).ancestryAttemptsLast1h || 0;
+        const ancestryUsedPoolLast1h = (global as any).ancestryUsedPoolLast1h || 0;
+        
         // 🎯 POOL HEALTH: Get browser pool stats (truthful)
         let poolHealth: any = {};
         try {
@@ -263,6 +267,8 @@ function startHealthServer(): void {
             consent_wall_rate: consentWallRate24h, // 🎯 ANALYTICS: Consent wall rate
             consent_wall_failures_by_variant: consentWallFailuresByVariant24h, // 🎯 ANALYTICS: Consent wall failures by variant
             pool_health: poolHealth, // 🎯 POOL HEALTH: Browser pool stats
+            ancestry_attempts: ancestryAttemptsLast1h, // 🎯 PART A: Ancestry attempt counter
+            ancestry_used_pool: ancestryUsedPoolLast1h, // 🎯 PART A: Ancestry pool usage counter
           },
           last_1h: {
             total: total1h,
@@ -277,6 +283,8 @@ function startHealthServer(): void {
             consent_wall_rate: consentWallRate1h, // 🎯 ANALYTICS: Consent wall rate
             consent_wall_failures_by_variant: consentWallFailuresByVariant1h, // 🎯 ANALYTICS: Consent wall failures by variant
             pool_health: poolHealth, // 🎯 POOL HEALTH: Browser pool stats
+            ancestry_attempts: ancestryAttemptsLast1h, // 🎯 PART A: Ancestry attempt counter
+            ancestry_used_pool: ancestryUsedPoolLast1h, // 🎯 PART A: Ancestry pool usage counter
           },
           timestamp: new Date().toISOString(),
         }));

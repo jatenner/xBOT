@@ -420,6 +420,7 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
       playwright_post_attempted: record.playwright_post_attempted || false,
       posted_reply_tweet_id: record.posted_reply_tweet_id || null,
       error: record.error || null,
+      deny_reason_detail: (record as any).deny_reason_detail || null,
       build_sha: process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || 'unknown',
     });
     
@@ -439,22 +440,41 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
  * All other cases (UNCERTAIN, ERROR, depth>=1, method=unknown) result in DENY
  * 🎯 ANALYTICS: Returns deny_reason_code for structured analytics
  */
-export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; reason: string; deny_reason_code?: string } {
+export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; reason: string; deny_reason_code?: string; deny_reason_detail?: string } {
   // 🔒 FAIL-CLOSED: Must have OK status
   if (ancestry.status !== 'OK') {
     const statusReason = ancestry.status === 'UNCERTAIN' 
       ? 'ANCESTRY_UNCERTAIN_FAIL_CLOSED'
       : 'ANCESTRY_ERROR_FAIL_CLOSED';
     
-    // 🎯 SPECIFIC ERROR BUCKETS: Map error to specific deny_reason_code
+    // 🎯 SPECIFIC ERROR BUCKETS: Map error to specific deny_reason_code (stage-aware)
     let denyReasonCode: string = ancestry.status === 'UNCERTAIN' ? 'ANCESTRY_UNCERTAIN' : 'ANCESTRY_ERROR';
+    let denyReasonDetail: string | undefined = undefined;
     
     if (ancestry.status === 'ERROR' && ancestry.error) {
       const errorLower = ancestry.error.toLowerCase();
-      if (errorLower.includes('skipped') || errorLower.includes('overload')) {
+      const errorMsg = ancestry.error;
+      
+      // 🎯 PART B: Stage-specific error codes (highest priority)
+      if (errorMsg.includes('ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT') || errorLower.includes('acquire_context_timeout')) {
+        denyReasonCode = 'ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT';
+        denyReasonDetail = errorMsg.split(':').slice(1).join(':').trim();
+      } else if (errorMsg.includes('ANCESTRY_NAV_TIMEOUT') || errorLower.includes('nav_timeout')) {
+        denyReasonCode = 'ANCESTRY_NAV_TIMEOUT';
+        denyReasonDetail = errorMsg.split(':').slice(1).join(':').trim();
+      } else if (errorMsg.includes('ANCESTRY_PARSE_TIMEOUT') || errorLower.includes('parse_timeout')) {
+        denyReasonCode = 'ANCESTRY_PARSE_TIMEOUT';
+        denyReasonDetail = errorMsg.split(':').slice(1).join(':').trim();
+      } else if (errorMsg.includes('ANCESTRY_QUEUE_TIMEOUT') || errorLower.includes('queue_timeout')) {
+        denyReasonCode = 'ANCESTRY_QUEUE_TIMEOUT';
+        denyReasonDetail = errorMsg.split(':').slice(1).join(':').trim();
+      } else if (errorMsg.includes('CONSENT_WALL') || errorLower.includes('consent_wall')) {
+        denyReasonCode = 'CONSENT_WALL';
+        denyReasonDetail = errorMsg.split(':').slice(1).join(':').trim();
+      } else if (errorLower.includes('skipped') || errorLower.includes('overload')) {
         denyReasonCode = 'ANCESTRY_SKIPPED_OVERLOAD';
       } else if (errorLower.includes('timeout') || errorLower.includes('queue timeout') || errorLower.includes('pool overloaded')) {
-        denyReasonCode = 'ANCESTRY_TIMEOUT';
+        denyReasonCode = 'ANCESTRY_TIMEOUT'; // Generic timeout fallback
       } else if (errorLower.includes('dropped') || errorLower.includes('disconnected') || errorLower.includes('browser has been closed')) {
         denyReasonCode = 'ANCESTRY_PLAYWRIGHT_DROPPED';
       } else if (errorLower.includes('navigation') || errorLower.includes('nav_fail') || errorLower.includes('goto failed')) {
@@ -464,11 +484,12 @@ export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; rea
       }
     }
     
-    console.log(`[REPLY_DECISION] 🚫 DENY: ${statusReason} status=${ancestry.status} target=${ancestry.targetTweetId} method=${ancestry.method} code=${denyReasonCode}`);
+    console.log(`[REPLY_DECISION] 🚫 DENY: ${statusReason} status=${ancestry.status} target=${ancestry.targetTweetId} method=${ancestry.method} code=${denyReasonCode}${denyReasonDetail ? ` detail=${denyReasonDetail}` : ''}`);
     return {
       allow: false,
       reason: `${statusReason}: status=${ancestry.status}, target=${ancestry.targetTweetId}, method=${ancestry.method}${ancestry.error ? `, error=${ancestry.error}` : ''}`,
       deny_reason_code: denyReasonCode,
+      deny_reason_detail: denyReasonDetail,
     };
   }
   
@@ -479,6 +500,7 @@ export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; rea
       allow: false,
       reason: `METHOD_UNKNOWN_FAIL_CLOSED: method=${ancestry.method || 'missing'}, target=${ancestry.targetTweetId}`,
       deny_reason_code: 'ANCESTRY_ERROR', // Method unknown = ancestry error
+      deny_reason_detail: `method=${ancestry.method || 'missing'}`,
     };
   }
   
@@ -488,6 +510,7 @@ export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; rea
       allow: false,
       reason: `Non-root reply blocked: depth=${ancestry.ancestryDepth ?? 'null'}, target=${ancestry.targetTweetId}, root=${ancestry.rootTweetId || 'null'}`,
       deny_reason_code: 'NON_ROOT',
+      deny_reason_detail: `depth=${ancestry.ancestryDepth ?? 'null'}`,
     };
   }
   
@@ -497,6 +520,7 @@ export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; rea
       allow: false,
       reason: `Target tweet is not root: target=${ancestry.targetTweetId}, root=${ancestry.rootTweetId || 'null'}`,
       deny_reason_code: 'NON_ROOT',
+      deny_reason_detail: `is_root=false`,
     };
   }
   
