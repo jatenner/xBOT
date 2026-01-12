@@ -325,6 +325,19 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
               if (containersAfter > containersBefore) {
                 consentCleared = true;
                 console.log(`[CURATED_FEED] ✅ Consent cleared: ${containersBefore} -> ${containersAfter} containers`);
+                
+                // 🎯 PERSISTENCE: Save storageState after consent acceptance
+                try {
+                  const { saveStorageState } = await import('../../utils/twitterSessionState');
+                  const context = page.context();
+                  const savedPath = await saveStorageState(context);
+                  if (savedPath) {
+                    console.log(`[CONSENT_WALL] ✅ Persisted consent acceptance to ${savedPath}`);
+                  }
+                } catch (saveError: any) {
+                  console.warn(`[CONSENT_WALL] ⚠️ Failed to persist storageState: ${saveError.message}`);
+                }
+                
                 break;
               }
             }
@@ -407,6 +420,39 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
         await page.screenshot({ path: screenshotPath, fullPage: true });
         console.log(`[CURATED_FEED] 📸 Screenshot saved: ${screenshotPath}`);
         
+        // 🎯 ANALYTICS: Record CONSENT_WALL deny decision
+        const { resolveTweetAncestry, recordReplyDecision } = await import('./replyDecisionRecorder');
+        // Create a synthetic tweet ID for consent wall tracking (since no tweets were fetched)
+        const consentWallTweetId = `consent_wall_${username}_${Date.now()}`;
+        const ancestry = await resolveTweetAncestry(consentWallTweetId).catch(() => ({
+          targetTweetId: consentWallTweetId,
+          targetInReplyToTweetId: null,
+          rootTweetId: null,
+          ancestryDepth: null,
+          isRoot: false,
+          status: 'ERROR' as const,
+          confidence: 'LOW' as const,
+          method: 'consent_wall_blocked',
+        }));
+        
+        await recordReplyDecision({
+          target_tweet_id: consentWallTweetId,
+          target_in_reply_to_tweet_id: null,
+          root_tweet_id: 'null',
+          ancestry_depth: -1,
+          is_root: false,
+          decision: 'DENY',
+          reason: `Consent wall blocked feed fetch for @${username}`,
+          deny_reason_code: 'CONSENT_WALL', // 🎯 ANALYTICS: Structured deny reason
+          status: ancestry.status,
+          confidence: ancestry.confidence,
+          method: ancestry.method || 'consent_wall_blocked',
+          scored_at: new Date().toISOString(),
+          template_status: 'FAILED',
+          trace_id: `feed_${Date.now()}`,
+          pipeline_source: 'reply_v2_feed_curated',
+        });
+        
         await supabase.from('system_events').insert({
           event_type: 'reply_v2_feed_consent_failed',
           severity: 'warning',
@@ -417,9 +463,12 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
             containers_before: containersBefore,
             containers_after: containersAfter,
             click_attempted: clickAttempted,
+            deny_reason_code: 'CONSENT_WALL',
           },
           created_at: new Date().toISOString(),
         });
+        
+        console.log(`[CURATED_FEED] 🎯 Recorded CONSENT_WALL deny decision for @${username}`);
         
         return [];
       }

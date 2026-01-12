@@ -35,6 +35,7 @@ export interface ReplyDecisionRecord {
   is_root: boolean;
   decision: 'ALLOW' | 'DENY';
   reason?: string;
+  deny_reason_code?: string | null; // 🎯 ANALYTICS: Structured deny reason code (NON_ROOT, ANCESTRY_UNCERTAIN, ANCESTRY_ERROR, LOW_RELEVANCE, LOW_AUTHOR_SIGNAL, LOW_QUALITY_SCORE, CONSENT_WALL, DUPLICATE_TOPIC, RATE_LIMITED, NO_CANDIDATES, OTHER)
   // 🔒 REQUIRED: Status, confidence, method must always be provided
   status: 'OK' | 'UNCERTAIN' | 'ERROR';
   confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
@@ -339,6 +340,7 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
       is_root: record.is_root,
       decision: record.decision,
       reason: record.reason || null,
+      deny_reason_code: record.decision === 'DENY' ? (record.deny_reason_code || 'OTHER') : null, // 🎯 ANALYTICS: Set deny_reason_code for DENY decisions
       status: record.status, // 🔒 REQUIRED
       confidence: record.confidence, // 🔒 REQUIRED
       method: record.method, // 🔒 REQUIRED
@@ -380,17 +382,20 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
  * Check if reply should be allowed based on ancestry
  * 🔒 FAIL-CLOSED: Only allow when status=OK AND depth===0 AND method != 'unknown'
  * All other cases (UNCERTAIN, ERROR, depth>=1, method=unknown) result in DENY
+ * 🎯 ANALYTICS: Returns deny_reason_code for structured analytics
  */
-export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; reason: string } {
+export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; reason: string; deny_reason_code?: string } {
   // 🔒 FAIL-CLOSED: Must have OK status
   if (ancestry.status !== 'OK') {
     const statusReason = ancestry.status === 'UNCERTAIN' 
       ? 'ANCESTRY_UNCERTAIN_FAIL_CLOSED'
       : 'ANCESTRY_ERROR_FAIL_CLOSED';
+    const denyReasonCode = ancestry.status === 'UNCERTAIN' ? 'ANCESTRY_UNCERTAIN' : 'ANCESTRY_ERROR';
     console.log(`[REPLY_DECISION] 🚫 DENY: ${statusReason} status=${ancestry.status} target=${ancestry.targetTweetId} method=${ancestry.method}`);
     return {
       allow: false,
       reason: `${statusReason}: status=${ancestry.status}, target=${ancestry.targetTweetId}, method=${ancestry.method}${ancestry.error ? `, error=${ancestry.error}` : ''}`,
+      deny_reason_code: denyReasonCode,
     };
   }
   
@@ -400,6 +405,7 @@ export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; rea
     return {
       allow: false,
       reason: `METHOD_UNKNOWN_FAIL_CLOSED: method=${ancestry.method || 'missing'}, target=${ancestry.targetTweetId}`,
+      deny_reason_code: 'ANCESTRY_ERROR', // Method unknown = ancestry error
     };
   }
   
@@ -408,6 +414,7 @@ export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; rea
     return {
       allow: false,
       reason: `Non-root reply blocked: depth=${ancestry.ancestryDepth ?? 'null'}, target=${ancestry.targetTweetId}, root=${ancestry.rootTweetId || 'null'}`,
+      deny_reason_code: 'NON_ROOT',
     };
   }
   
@@ -416,6 +423,7 @@ export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; rea
     return {
       allow: false,
       reason: `Target tweet is not root: target=${ancestry.targetTweetId}, root=${ancestry.rootTweetId || 'null'}`,
+      deny_reason_code: 'NON_ROOT',
     };
   }
   

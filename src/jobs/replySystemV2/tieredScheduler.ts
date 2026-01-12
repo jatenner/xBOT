@@ -276,6 +276,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       is_root: ancestry.isRoot,
       decision: allowCheck.allow ? 'ALLOW' : 'DENY',
       reason: allowCheck.reason,
+      deny_reason_code: allowCheck.deny_reason_code, // 🎯 ANALYTICS: Structured deny reason code
       status: ancestry.status, // 🔒 REQUIRED
       confidence: ancestry.confidence, // 🔒 REQUIRED
       method: ancestry.method || 'unknown', // 🔒 REQUIRED

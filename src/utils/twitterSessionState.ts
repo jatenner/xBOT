@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { join } from 'path';
 import { SessionLoader } from './sessionLoader';
 import type { BrowserContext } from 'playwright';
 
@@ -232,6 +233,41 @@ function expandDomains(cookie: CookieEntry): CookieEntry[] {
   }
 
   return variants;
+}
+
+/**
+ * Save storageState to file for persistence (e.g., after consent acceptance)
+ * Uses the same path as SessionLoader for consistency
+ */
+export async function saveStorageState(
+  context: BrowserContext,
+  customPath?: string
+): Promise<string | null> {
+  try {
+    const storageState = await context.storageState();
+    const sessionResult = SessionLoader.load();
+    
+    // Use custom path if provided, otherwise use SessionLoader's path
+    const savePath = customPath || sessionResult.path || join(process.cwd(), 'twitter_session.json');
+    
+    // Ensure directory exists
+    const dir = join(savePath, '..');
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    // Normalize before saving
+    const normalized = normalizeStorageState(storageState);
+    
+    // Write to file
+    fs.writeFileSync(savePath, JSON.stringify(normalized, null, 2), 'utf8');
+    
+    console.log(`[CONSENT_WALL] ✅ Saved storageState to ${savePath} (${normalized.cookies.length} cookies)`);
+    return savePath;
+  } catch (error: any) {
+    console.error(`[CONSENT_WALL] ⚠️ Failed to save storageState: ${error.message}`);
+    return null;
+  }
 }
 
 

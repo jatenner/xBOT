@@ -78,12 +78,12 @@ function startHealthServer(): void {
         // 🔒 TRUTHFUL: Compute from columns, not reason parsing
         const { data: last24hData } = await supabase
           .from('reply_decisions')
-          .select('decision, status, method, cache_hit')
+          .select('decision, status, method, cache_hit, deny_reason_code')
           .gte('created_at', last24h);
         
         const { data: last1hData } = await supabase
           .from('reply_decisions')
-          .select('decision, status, method, cache_hit')
+          .select('decision, status, method, cache_hit, deny_reason_code')
           .gte('created_at', last1h);
         
         const total24h = last24hData?.length || 0;
@@ -93,6 +93,19 @@ function startHealthServer(): void {
         const error24h = last24hData?.filter(r => r.status === 'ERROR').length || 0;
         const ok24h = last24hData?.filter(r => r.status === 'OK').length || 0;
         const cacheHits24h = last24hData?.filter(r => r.cache_hit === true).length || 0;
+        
+        // 🎯 ANALYTICS: Deny reason breakdown
+        const denyReasonBreakdown24h = (last24hData || [])
+          .filter(r => r.decision === 'DENY')
+          .reduce((acc: Record<string, number>, r) => {
+            const code = r.deny_reason_code || 'OTHER';
+            acc[code] = (acc[code] || 0) + 1;
+            return acc;
+          }, {});
+        
+        // 🎯 ANALYTICS: Consent wall rate
+        const consentWallCount24h = denyReasonBreakdown24h['CONSENT_WALL'] || 0;
+        const consentWallRate24h = total24h > 0 ? ((consentWallCount24h / total24h) * 100).toFixed(2) + '%' : '0%';
         
         // Method breakdown
         const methodBreakdown24h = (last24hData || []).reduce((acc: Record<string, { allow: number; deny: number }>, r) => {
@@ -111,6 +124,24 @@ function startHealthServer(): void {
         const ok1h = last1hData?.filter(r => r.status === 'OK').length || 0;
         const cacheHits1h = last1hData?.filter(r => r.cache_hit === true).length || 0;
         
+        // 🎯 ANALYTICS: Deny reason breakdown (1h)
+        const denyReasonBreakdown1h = (last1hData || [])
+          .filter(r => r.decision === 'DENY')
+          .reduce((acc: Record<string, number>, r) => {
+            const code = r.deny_reason_code || 'OTHER';
+            acc[code] = (acc[code] || 0) + 1;
+            return acc;
+          }, {});
+        
+        // 🎯 ANALYTICS: Consent wall rate (1h)
+        const consentWallCount1h = denyReasonBreakdown1h['CONSENT_WALL'] || 0;
+        const consentWallRate1h = total1h > 0 ? ((consentWallCount1h / total1h) * 100).toFixed(2) + '%' : '0%';
+        
+        // 🎯 WARNING: Log if consent wall rate is high
+        if (consentWallCount1h > 0) {
+          console.warn(`[METRICS] ⚠️ Consent wall detected: ${consentWallCount1h} in last 1h (${consentWallRate1h})`);
+        }
+        
         res.writeHead(200, { 
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache'
@@ -126,6 +157,8 @@ function startHealthServer(): void {
             cache_hits: cacheHits24h,
             cache_hit_rate: total24h > 0 ? ((cacheHits24h / total24h) * 100).toFixed(1) + '%' : '0%',
             method_breakdown: methodBreakdown24h,
+            deny_reason_breakdown: denyReasonBreakdown24h, // 🎯 ANALYTICS: Deny reason breakdown
+            consent_wall_rate: consentWallRate24h, // 🎯 ANALYTICS: Consent wall rate
           },
           last_1h: {
             total: total1h,
@@ -136,6 +169,8 @@ function startHealthServer(): void {
             ok: ok1h,
             cache_hits: cacheHits1h,
             cache_hit_rate: total1h > 0 ? ((cacheHits1h / total1h) * 100).toFixed(1) + '%' : '0%',
+            deny_reason_breakdown: denyReasonBreakdown1h, // 🎯 ANALYTICS: Deny reason breakdown
+            consent_wall_rate: consentWallRate1h, // 🎯 ANALYTICS: Consent wall rate
           },
           timestamp: new Date().toISOString(),
         }));
