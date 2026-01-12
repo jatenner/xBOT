@@ -281,8 +281,9 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       cache_hit: ancestry.method?.startsWith('cache:') || false,
       candidate_features: candidateFeatures,
       candidate_score: candidateScore,
-      template_id: 'pending', // Will be updated after template selection
-      prompt_version: 'pending', // Will be updated after template selection
+      template_id: null, // Will be updated after template selection
+      prompt_version: null, // Will be updated after template selection
+      template_status: 'PENDING', // Will be updated to 'SET' after template selection
       trace_id: schedulerRunId,
       job_run_id: schedulerRunId,
       pipeline_source: 'reply_v2_scheduler',
@@ -781,15 +782,29 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     console.log(`[SCHEDULER] ✅ Decision persisted: status=queued, is_fallback=${isFallback}, similarity=${semanticSimilarity.toFixed(3)}`);
     
     // 🎨 QUALITY TRACKING: Update reply_decisions with template_id and prompt_version
-    await supabase
-      .from('reply_decisions')
-      .update({
-        template_id: templateSelection.template_id,
-        prompt_version: promptVersion,
-      })
-      .eq('decision_id', decisionId);
-    
-    console.log(`[SCHEDULER] 🎨 Updated reply_decisions with template_id=${templateSelection.template_id}, prompt_version=${promptVersion}`);
+    try {
+      const { error: updateError } = await supabase
+        .from('reply_decisions')
+        .update({
+          template_id: templateSelection.template_id,
+          prompt_version: promptVersion,
+          template_status: 'SET',
+        })
+        .eq('decision_id', decisionId);
+      
+      if (updateError) {
+        console.warn(`[SCHEDULER] ⚠️ Failed to update template tracking: ${updateError.message}`);
+      } else {
+        console.log(`[SCHEDULER] 🎨 Updated reply_decisions with template_id=${templateSelection.template_id}, prompt_version=${promptVersion}, template_status=SET`);
+      }
+    } catch (error: any) {
+      console.warn(`[SCHEDULER] ⚠️ Error updating template tracking: ${error.message}`);
+      // Mark as failed
+      await supabase
+        .from('reply_decisions')
+        .update({ template_status: 'FAILED' })
+        .eq('decision_id', decisionId);
+    }
     
     // 🔒 TASK 4: Emit generation_completed event (AFTER updates succeed)
     await supabase.from('system_events').insert({

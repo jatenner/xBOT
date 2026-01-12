@@ -42,8 +42,9 @@ export interface ReplyDecisionRecord {
   // 🎨 QUALITY TRACKING: Candidate features and template tracking
   candidate_features?: Record<string, any>; // JSON of candidate scoring features
   candidate_score?: number; // Overall candidate score (0-100)
-  template_id?: string; // Template used (e.g., 'explanation', 'actionable')
-  prompt_version?: string; // Prompt version/template version used
+  template_id?: string | null; // Template used (e.g., 'explanation', 'actionable') - NULL if not selected yet
+  prompt_version?: string | null; // Prompt version/template version used - NULL if not selected yet
+  template_status?: 'PENDING' | 'SET' | 'FAILED'; // Template selection status
   trace_id?: string; // feed_run_id, scheduler_run_id, etc.
   job_run_id?: string;
   pipeline_source?: string;
@@ -335,8 +336,9 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
       cache_hit: record.cache_hit || false,
       candidate_features: record.candidate_features || null, // 🎨 QUALITY TRACKING
       candidate_score: record.candidate_score || null, // 🎨 QUALITY TRACKING
-      template_id: record.template_id || null, // 🎨 QUALITY TRACKING
-      prompt_version: record.prompt_version || null, // 🎨 QUALITY TRACKING
+      template_id: record.template_id || null, // 🎨 QUALITY TRACKING (NULL if not selected)
+      prompt_version: record.prompt_version || null, // 🎨 QUALITY TRACKING (NULL if not selected)
+      template_status: record.template_status || 'PENDING', // 🎨 QUALITY TRACKING
       trace_id: record.trace_id || null,
       job_run_id: record.job_run_id || null,
       pipeline_source: record.pipeline_source || null,
