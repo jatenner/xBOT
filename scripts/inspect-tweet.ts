@@ -22,13 +22,23 @@ async function inspectTweet(tweetId: string) {
     const ancestry = await resolveTweetAncestry(tweetId);
     console.log(`  Target Tweet ID: ${ancestry.targetTweetId}`);
     console.log(`  Target In Reply To: ${ancestry.targetInReplyToTweetId || 'NONE (root tweet)'}`);
-    console.log(`  Root Tweet ID: ${ancestry.rootTweetId ?? 'NULL (cannot determine)'}`);
-    console.log(`  Ancestry Depth: ${ancestry.ancestryDepth ?? 'NULL (cannot determine)'} (0 = root, 1+ = reply depth)`);
+    console.log(`  Root Tweet ID: ${ancestry.rootTweetId || 'NULL (cannot determine)'}`);
+    console.log(`  Ancestry Depth: ${ancestry.ancestryDepth ?? 'NULL (uncertain)'} (0 = root, 1+ = reply depth)`);
     console.log(`  Is Root: ${ancestry.isRoot ? '✅ YES' : '❌ NO'}`);
-    console.log(`\n  🔒 Status: ${ancestry.status} (${ancestry.status === 'OK' ? '✅ Confident' : ancestry.status === 'UNCERTAIN' ? '⚠️ Uncertain' : '❌ Error'})`);
+    console.log(`\n  🔒 Status: ${ancestry.status} (${ancestry.status === 'OK' ? '✅' : ancestry.status === 'UNCERTAIN' ? '⚠️' : '❌'})`);
     console.log(`  Confidence: ${ancestry.confidence}`);
     console.log(`  Method: ${ancestry.method}`);
-    console.log(`  Signals: [${ancestry.signals.join(', ')}]`);
+    if (ancestry.signals) {
+      console.log(`  Signals:`);
+      console.log(`    - replying_to_text: ${ancestry.signals.replying_to_text}`);
+      console.log(`    - social_context: ${ancestry.signals.social_context}`);
+      console.log(`    - main_article_reply_indicator: ${ancestry.signals.main_article_reply_indicator}`);
+      console.log(`    - multiple_articles: ${ancestry.signals.multiple_articles}`);
+      console.log(`    - verification_passed: ${ancestry.signals.verification_passed}`);
+    }
+    if (ancestry.error) {
+      console.log(`  Error: ${ancestry.error}`);
+    }
     
     // 2. Check if bot would allow
     const allowCheck = shouldAllowReply(ancestry);

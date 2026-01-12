@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS reply_decisions (
   root_tweet_id text NOT NULL, -- The root tweet in the thread
   
   -- Ancestry analysis
-  ancestry_depth int NOT NULL DEFAULT 0, -- 0 = root tweet, 1+ = reply depth
-  is_root boolean NOT NULL DEFAULT true, -- true if target_tweet_id == root_tweet_id
+  ancestry_depth int NOT NULL DEFAULT 0, -- -1 = uncertain/null, 0 = root tweet, 1+ = reply depth
+  is_root boolean NOT NULL DEFAULT true, -- true if target_tweet_id == root_tweet_id AND status=OK
   
   -- Decision
   decision text NOT NULL CHECK (decision IN ('ALLOW', 'DENY')),

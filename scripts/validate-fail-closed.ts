@@ -1,7 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * 🔒 VALIDATE FAIL-CLOSED: Test ancestry resolution with real tweet IDs
- * Asserts correct classification: root=ALLOW, depth>=1=DENY, uncertain=DENY
+ * 🔍 VALIDATE FAIL-CLOSED: Test with real tweet IDs and assert correct classification
  */
 
 import 'dotenv/config';
@@ -11,39 +10,37 @@ import { resolveTweetAncestry, recordReplyDecision, shouldAllowReply } from '../
 interface TestCase {
   name: string;
   tweetId: string;
-  expectedDepth: number | null;
   expectedStatus: 'OK' | 'UNCERTAIN' | 'ERROR';
+  expectedDepth: number | null;
   expectedDecision: 'ALLOW' | 'DENY';
 }
 
 async function validateFailClosed() {
-  console.log('\n🔒 VALIDATING FAIL-CLOSED BEHAVIOR\n');
+  console.log('\n🔍 VALIDATING FAIL-CLOSED BEHAVIOR\n');
   console.log('═'.repeat(80));
-  
-  const supabase = getSupabaseClient();
   
   // Test cases: root tweet, depth1 reply, depth2 reply
   // Replace with real tweet IDs from your database
   const testCases: TestCase[] = [
     {
-      name: 'Root Tweet',
-      tweetId: process.argv[2] || '1987900630393069568', // Replace with real root tweet
-      expectedDepth: 0,
+      name: 'Root Tweet (should ALLOW)',
+      tweetId: process.argv[2] || '1987900630393069568', // Replace with real root tweet ID
       expectedStatus: 'OK',
+      expectedDepth: 0,
       expectedDecision: 'ALLOW',
     },
     {
-      name: 'Depth 1 Reply',
-      tweetId: process.argv[3] || '1741970033939767379', // Replace with real depth1 reply
-      expectedDepth: 1,
+      name: 'Depth 1 Reply (should DENY)',
+      tweetId: process.argv[3] || '1741970033939767379', // Replace with real depth1 reply ID
       expectedStatus: 'OK',
+      expectedDepth: 1,
       expectedDecision: 'DENY',
     },
     {
-      name: 'Depth 2 Reply',
-      tweetId: process.argv[4] || '9999999999999999999', // Replace with real depth2 reply
-      expectedDepth: 2,
+      name: 'Depth 2 Reply (should DENY)',
+      tweetId: process.argv[4] || '9999999999999999999', // Replace with real depth2 reply ID
       expectedStatus: 'OK',
+      expectedDepth: 2,
       expectedDecision: 'DENY',
     },
   ];
@@ -55,38 +52,32 @@ async function validateFailClosed() {
     passed: boolean;
   }> = [];
   
-  console.log('\n📊 Running test cases...\n');
-  
   for (const testCase of testCases) {
-    console.log(`\n[TEST] ${testCase.name}: ${testCase.tweetId}`);
+    console.log(`\n📊 Testing: ${testCase.name}`);
+    console.log(`   Tweet ID: ${testCase.tweetId}`);
+    console.log(`   Expected: status=${testCase.expectedStatus}, depth=${testCase.expectedDepth}, decision=${testCase.expectedDecision}`);
     console.log('-'.repeat(80));
     
     try {
       const ancestry = await resolveTweetAncestry(testCase.tweetId);
       const decision = shouldAllowReply(ancestry);
       
-      console.log(`  Status: ${ancestry.status} (expected: ${testCase.expectedStatus})`);
-      console.log(`  Depth: ${ancestry.ancestryDepth ?? 'null'} (expected: ${testCase.expectedDepth ?? 'null'})`);
-      console.log(`  Decision: ${decision.allow ? 'ALLOW' : 'DENY'} (expected: ${testCase.expectedDecision})`);
-      console.log(`  Reason: ${decision.reason}`);
-      console.log(`  Method: ${ancestry.method}`);
-      console.log(`  Signals: [${ancestry.signals.slice(0, 3).join(', ')}...]`);
+      const passed = 
+        ancestry.status === testCase.expectedStatus &&
+        ancestry.ancestryDepth === testCase.expectedDepth &&
+        (decision.allow ? 'ALLOW' : 'DENY') === testCase.expectedDecision;
       
-      // Check assertions
-      const statusMatch = ancestry.status === testCase.expectedStatus;
-      const depthMatch = ancestry.ancestryDepth === testCase.expectedDepth;
-      const decisionMatch = (decision.allow && testCase.expectedDecision === 'ALLOW') ||
-                           (!decision.allow && testCase.expectedDecision === 'DENY');
+      console.log(`   Status: ${ancestry.status} ${ancestry.status === testCase.expectedStatus ? '✅' : '❌'}`);
+      console.log(`   Depth: ${ancestry.ancestryDepth ?? 'null'} ${ancestry.ancestryDepth === testCase.expectedDepth ? '✅' : '❌'}`);
+      console.log(`   Decision: ${decision.allow ? 'ALLOW' : 'DENY'} ${(decision.allow ? 'ALLOW' : 'DENY') === testCase.expectedDecision ? '✅' : '❌'}`);
+      console.log(`   Reason: ${decision.reason}`);
+      console.log(`   Method: ${ancestry.method}`);
+      console.log(`   Confidence: ${ancestry.confidence}`);
       
-      const passed = statusMatch && depthMatch && decisionMatch;
-      
-      if (!passed) {
-        console.log(`  ❌ FAILED:`);
-        if (!statusMatch) console.log(`     Status mismatch: got ${ancestry.status}, expected ${testCase.expectedStatus}`);
-        if (!depthMatch) console.log(`     Depth mismatch: got ${ancestry.ancestryDepth}, expected ${testCase.expectedDepth}`);
-        if (!decisionMatch) console.log(`     Decision mismatch: got ${decision.allow ? 'ALLOW' : 'DENY'}, expected ${testCase.expectedDecision}`);
+      if (passed) {
+        console.log(`   ✅ TEST PASSED`);
       } else {
-        console.log(`  ✅ PASSED`);
+        console.log(`   ❌ TEST FAILED`);
       }
       
       results.push({ testCase, ancestry, decision, passed });
@@ -96,11 +87,11 @@ async function validateFailClosed() {
         decision_id: undefined,
         target_tweet_id: ancestry.targetTweetId,
         target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
-        root_tweet_id: ancestry.rootTweetId || 'NULL',
+        root_tweet_id: ancestry.rootTweetId || 'null',
         ancestry_depth: ancestry.ancestryDepth ?? -1, // Use -1 for null in DB
         is_root: ancestry.isRoot,
         decision: decision.allow ? 'ALLOW' : 'DENY',
-        reason: `Validation test: ${decision.reason}`,
+        reason: `Validation: ${decision.reason}`,
         trace_id: 'fail_closed_validation',
         job_run_id: 'validation_test',
         pipeline_source: 'validation_script',
@@ -108,41 +99,42 @@ async function validateFailClosed() {
       });
       
     } catch (error: any) {
-      console.error(`  ❌ ERROR: ${error.message}`);
+      console.error(`   ❌ Error: ${error.message}`);
       results.push({
         testCase,
         ancestry: null,
-        decision: { allow: false, reason: `Exception: ${error.message}` },
+        decision: { allow: false, reason: `Error: ${error.message}` },
         passed: false,
       });
     }
   }
   
   // Summary
-  console.log('\n\n📊 VALIDATION SUMMARY:');
+  console.log('\n📊 VALIDATION SUMMARY:');
   console.log('═'.repeat(80));
-  
   const passedCount = results.filter(r => r.passed).length;
   const totalCount = results.length;
   
   results.forEach((result, i) => {
-    const status = result.passed ? '✅ PASS' : '❌ FAIL';
-    console.log(`  [${i + 1}] ${status} ${result.testCase.name}`);
+    console.log(`\n[${i + 1}] ${result.testCase.name}: ${result.passed ? '✅ PASSED' : '❌ FAILED'}`);
+    if (result.ancestry) {
+      console.log(`    Status: ${result.ancestry.status}, Depth: ${result.ancestry.ancestryDepth ?? 'null'}, Decision: ${result.decision.allow ? 'ALLOW' : 'DENY'}`);
+    }
   });
   
-  console.log(`\n  Total: ${passedCount}/${totalCount} passed`);
+  console.log(`\n✅ Passed: ${passedCount}/${totalCount}`);
   
   if (passedCount === totalCount) {
-    console.log('\n  ✅ All tests passed - fail-closed behavior validated!\n');
+    console.log('\n🎉 ALL TESTS PASSED - Fail-closed behavior validated!\n');
   } else {
-    console.log('\n  ❌ Some tests failed - review ancestry resolution\n');
+    console.log('\n⚠️  SOME TESTS FAILED - Review results above\n');
     process.exit(1);
   }
   
   // Query latest rows
-  console.log('\n📊 Latest reply_decisions rows from validation:');
+  console.log('\n📊 Latest reply_decisions rows:');
   console.log('-'.repeat(80));
-  
+  const supabase = getSupabaseClient();
   const { data: rows } = await supabase
     .from('reply_decisions')
     .select('*')
@@ -152,15 +144,12 @@ async function validateFailClosed() {
   
   if (rows && rows.length > 0) {
     rows.forEach((row, i) => {
-      console.log(`  [${i + 1}] Target: ${row.target_tweet_id}`);
-      console.log(`      Depth: ${row.ancestry_depth}, Is Root: ${row.is_root}`);
-      console.log(`      Decision: ${row.decision}`);
-      console.log(`      Reason: ${row.reason?.substring(0, 80)}...`);
-      console.log('');
+      console.log(`\n[${i + 1}] ${row.decision}: depth=${row.ancestry_depth}, status=${row.reason?.includes('ANCESTRY') ? 'UNCERTAIN/ERROR' : 'OK'}`);
+      console.log(`    Target: ${row.target_tweet_id}, Root: ${row.root_tweet_id || 'null'}`);
     });
   }
   
-  console.log('═'.repeat(80));
+  console.log('\n✅ Validation complete\n');
 }
 
 validateFailClosed().catch((error) => {
