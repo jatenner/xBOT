@@ -251,8 +251,8 @@ export async function saveStorageState(
     const canonicalPath = resolveSessionPath();
     const savePath = customPath || canonicalPath;
     
-    // Ensure directory exists
-    const dir = join(savePath, '..');
+    // Ensure directory exists (with recursive mkdir)
+    const dir = path.dirname(savePath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }

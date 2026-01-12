@@ -182,9 +182,14 @@ export class SessionLoader {
       const canonicalPath = resolveSessionPath();
       const dir = path.dirname(canonicalPath);
       
-      // Ensure directory exists
+      // Ensure directory exists (with recursive mkdir)
       if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
+        try {
+          fs.mkdirSync(dir, { recursive: true });
+        } catch (mkdirError: any) {
+          console.error(`[SESSION_LOADER] ❌ Failed to create directory ${dir}: ${mkdirError.message}`);
+          throw mkdirError;
+        }
       }
       
       // Write updated session atomically

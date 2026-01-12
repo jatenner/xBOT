@@ -30,16 +30,24 @@ export function resolveSessionPath(): string {
   }
   
   // Priority 2: Check if /data exists (Railway volume)
+  // Note: Railway volumes may not be available in all environments
+  // Fall back to /app/data which is writable in Railway containers
   try {
     if (fs.existsSync('/data') && fs.statSync('/data').isDirectory()) {
-      resolvedPath = '/data/twitter_session.json';
-      return resolvedPath;
+      // Check if writable
+      try {
+        fs.accessSync('/data', fs.constants.W_OK);
+        resolvedPath = '/data/twitter_session.json';
+        return resolvedPath;
+      } catch {
+        // /data exists but not writable, fall through to /app/data
+      }
     }
   } catch {
     // /data doesn't exist or not accessible
   }
   
-  // Priority 3: Fallback to /app/data
+  // Priority 3: Fallback to /app/data (always writable in Railway containers)
   resolvedPath = '/app/data/twitter_session.json';
   return resolvedPath;
 }
