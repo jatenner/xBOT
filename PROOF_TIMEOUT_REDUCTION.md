@@ -299,16 +299,31 @@ TOTAL decisions: 38
 ## Conclusion
 
 ✅ **POOL HEALTH METRICS:** Enhanced with detailed, truthful values
-✅ **ADAPTIVE THROTTLING:** Implemented (reduces eval rate if timeout rate > 25%)
-✅ **OVERLOAD SKIP:** Implemented (skips ancestry if pool overloaded)
-✅ **VOLUME DETECTION:** Implemented (checks /data, falls back to /app/data)
+- Pool self-test passed locally (metrics change correctly)
+- Enhanced fields: contexts_created_total, active_contexts, idle_contexts, avg_wait_ms, timeouts_last_1h, semaphore_inflight
 
-⏳ **METRICS IMPACT:** Pending new evaluation cycle
-- Need to wait for next cycle to measure ANCESTRY_TIMEOUT reduction
-- Expected: 50% reduction (30 → ≤15) with throttling + overload skip
+✅ **ADAPTIVE THROTTLING:** Implemented and working
+- Detects timeout rate > 25% in last 10 min
+- Reduces eval per tick (halved to 3 when rate > 25%)
+- Evidence: Logs show adaptive throttle activating
+
+✅ **OVERLOAD SKIP:** Implemented
+- Skips ancestry resolution if queue >= 20 or (active=max && queue>=5)
+- Records `ANCESTRY_SKIPPED_OVERLOAD` deny reason
+- Caches skipped result to avoid immediate retry
+
+✅ **VOLUME DETECTION:** Implemented
+- Checks /data volume (not found in Railway)
+- Falls back to /app/data/twitter_session.json
+- Logs warnings when /data not found
+
+⏳ **METRICS IMPACT:** 
+- ANCESTRY_TIMEOUT: 31 (slight increase from baseline 30, +3%)
+- Adaptive throttling is active and reducing eval per tick
+- Need to monitor over next hour to see if throttling reduces timeouts
 
 **Next Steps:**
-1. Run pool-self-test.ts in Railway to verify metrics
-2. Monitor metrics over next hour for ANCESTRY_TIMEOUT reduction
-3. Verify ANCESTRY_SKIPPED_OVERLOAD is being recorded
-4. Check if /data volume needs to be attached in Railway
+1. Monitor metrics over next hour for ANCESTRY_TIMEOUT reduction
+2. Verify ANCESTRY_SKIPPED_OVERLOAD is being recorded (if overload occurs)
+3. Consider attaching /data volume in Railway for persistent session storage
+4. If ANCESTRY_TIMEOUT doesn't reduce, further reduce REPLY_V2_MAX_EVAL_PER_TICK to 5 or lower
