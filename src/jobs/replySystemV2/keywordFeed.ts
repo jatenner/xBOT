@@ -169,6 +169,20 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
     const supabase = getSupabaseClient();
     
     try {
+      // 🎯 CENTRALIZED CONSENT HANDLING: Use centralized session manager
+      const { ensureConsentAccepted, loadTwitterState } = await import('../../playwright/twitterSession');
+      
+      // Ensure storageState is loaded for this context (if not already loaded by UnifiedBrowserPool)
+      const storageState = await loadTwitterState();
+      if (storageState) {
+        try {
+          await context.addCookies(storageState.cookies);
+          console.log(`[KEYWORD_FEED] ✅ Loaded storageState (${storageState.cookies.length} cookies) for keyword: ${keyword}`);
+        } catch (cookieError: any) {
+          console.warn(`[KEYWORD_FEED] ⚠️ Failed to add cookies: ${cookieError.message}`);
+        }
+      }
+      
       // Search URL
       const searchUrl = `https://x.com/search?q=${encodeURIComponent(keyword)}&src=typed_query&f=live`;
       console.log(`[KEYWORD_FEED] 🔍 Searching for: ${keyword}`);
@@ -176,126 +190,21 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
       await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(3000); // Let results load
       
-      // Handle consent wall if present - STRONGER APPROACH
-      let consentCleared = false;
-      let clickAttempted = 0;
-      let matchedSelector = null;
+      // Get initial container count
       const containersBefore = await page.evaluate(() => {
         return document.querySelectorAll('article[data-testid="tweet"]').length;
       });
       
-      try {
-        const strategies = [
-          { name: 'getByText Accept all cookies', fn: async () => {
-            const acceptButton = page.getByText('Accept all cookies', { exact: false }).first();
-            if (await acceptButton.isVisible({ timeout: 2000 })) {
-              await acceptButton.click();
-              return true;
-            }
-          }},
-          { name: 'getByText Accept', fn: async () => {
-            const acceptButton = page.getByText('Accept', { exact: false }).first();
-            if (await acceptButton.isVisible({ timeout: 2000 })) {
-              await acceptButton.click();
-              return true;
-            }
-          }},
-          { name: 'getByRole button accept', fn: async () => {
-            const acceptButton = page.getByRole('button', { name: /accept/i }).first();
-            if (await acceptButton.isVisible({ timeout: 2000 })) {
-              await acceptButton.click();
-              return true;
-            }
-          }},
-          { name: 'locator button filter accept', fn: async () => {
-            const acceptButton = page.locator('button').filter({ hasText: /accept/i }).first();
-            if (await acceptButton.isVisible({ timeout: 2000 })) {
-              await acceptButton.click();
-              return true;
-            }
-          }},
-          { name: 'iframe accept button', fn: async () => {
-            const iframes = await page.locator('iframe').all();
-            for (const iframe of iframes) {
-              try {
-                const frame = await iframe.contentFrame();
-                if (frame) {
-                  const acceptButton = frame.getByText(/accept/i).first();
-                  if (await acceptButton.isVisible({ timeout: 1000 })) {
-                    await acceptButton.click();
-                    return true;
-                  }
-                }
-              } catch (e) {}
-            }
-          }},
-          { name: 'keyboard TAB+ENTER', fn: async () => {
-            await page.keyboard.press('Tab');
-            await page.waitForTimeout(500);
-            await page.keyboard.press('Tab');
-            await page.waitForTimeout(500);
-            const focused = await page.evaluate(() => {
-              const active = document.activeElement;
-              return active?.textContent?.toLowerCase().includes('accept') || false;
-            });
-            if (focused) {
-              await page.keyboard.press('Enter');
-              return true;
-            }
-          }},
-          { name: 'escape key', fn: async () => {
-            await page.keyboard.press('Escape');
-            await page.waitForTimeout(1000);
-            return true;
-          }},
-        ];
-        
-        for (const strategy of strategies) {
-          try {
-            clickAttempted++;
-            const clicked = await strategy.fn();
-            if (clicked) {
-              matchedSelector = strategy.name;
-              console.log(`[KEYWORD_FEED] 🍪 Clicked consent button via: ${strategy.name}`);
-              
-              await page.waitForFunction(
-                () => {
-                  const overlays = document.querySelectorAll('[role="dialog"], [data-testid*="cookie"], [aria-label*="cookie"]');
-                  return overlays.length === 0;
-                },
-                { timeout: 5000 }
-              ).catch(() => {});
-              
-              await page.waitForTimeout(2000);
-              
-              const containersAfter = await page.evaluate(() => {
-                return document.querySelectorAll('article[data-testid="tweet"]').length;
-              });
-              
-              if (containersAfter > containersBefore) {
-                consentCleared = true;
-                console.log(`[KEYWORD_FEED] ✅ Consent cleared: ${containersBefore} -> ${containersAfter} containers`);
-                
-                // 🎯 PERSISTENCE: Save storageState after consent acceptance
-                try {
-                  const { saveStorageState } = await import('../../utils/twitterSessionState');
-                  const context = page.context();
-                  const savedPath = await saveStorageState(context);
-                  if (savedPath) {
-                    console.log(`[CONSENT_WALL] ✅ Persisted consent acceptance to ${savedPath}`);
-                  }
-                } catch (saveError: any) {
-                  console.warn(`[CONSENT_WALL] ⚠️ Failed to persist storageState: ${saveError.message}`);
-                }
-                
-                break;
-              }
-            }
-          } catch (e) {}
-        }
-      } catch (e) {
-        console.log(`[KEYWORD_FEED] ⚠️ Consent handling failed: ${(e as Error).message}`);
-      }
+      // 🎯 CENTRALIZED: Ensure consent is accepted with retry
+      const consentResult = await ensureConsentAccepted(page, async () => {
+        // Retry navigation after consent acceptance
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.waitForTimeout(3000);
+      });
+      
+      const consentCleared = consentResult.cleared;
+      const clickAttempted = consentResult.attempts;
+      const matchedSelector = consentResult.matchedSelector || null;
       
       const containersAfter = await page.evaluate(() => {
         return document.querySelectorAll('article[data-testid="tweet"]').length;
@@ -389,7 +298,7 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
           ancestry_depth: -1,
           is_root: false,
           decision: 'DENY',
-          reason: `Consent wall blocked feed fetch for keyword: ${keyword}`,
+          reason: `Consent wall blocked feed fetch for keyword: ${keyword} (attempts=${clickAttempted}, selector=${matchedSelector || 'none'}, containers_before=${containersBefore}, containers_after=${containersAfter})`,
           deny_reason_code: 'CONSENT_WALL', // 🎯 ANALYTICS: Structured deny reason
           status: ancestry.status,
           confidence: ancestry.confidence,

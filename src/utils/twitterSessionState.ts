@@ -237,7 +237,7 @@ function expandDomains(cookie: CookieEntry): CookieEntry[] {
 
 /**
  * Save storageState to file for persistence (e.g., after consent acceptance)
- * Uses the same path as SessionLoader for consistency
+ * Uses canonical path for consistency across all contexts
  */
 export async function saveStorageState(
   context: BrowserContext,
@@ -245,10 +245,10 @@ export async function saveStorageState(
 ): Promise<string | null> {
   try {
     const storageState = await context.storageState();
-    const sessionResult = SessionLoader.load();
     
-    // Use custom path if provided, otherwise use SessionLoader's path
-    const savePath = customPath || sessionResult.path || join(process.cwd(), 'twitter_session.json');
+    // Use canonical path: SESSION_CANONICAL_PATH or default Railway path
+    const canonicalPath = process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';
+    const savePath = customPath || canonicalPath;
     
     // Ensure directory exists
     const dir = join(savePath, '..');
@@ -263,6 +263,14 @@ export async function saveStorageState(
     fs.writeFileSync(savePath, JSON.stringify(normalized, null, 2), 'utf8');
     
     console.log(`[CONSENT_WALL] ✅ Saved storageState to ${savePath} (${normalized.cookies.length} cookies)`);
+    
+    // Also update SessionLoader's last result to reflect the save
+    // This ensures UnifiedBrowserPool will detect the change on next load
+    const sessionResult = SessionLoader.load();
+    if (sessionResult.path === savePath) {
+      console.log(`[CONSENT_WALL] ✅ StorageState saved to canonical path - will be loaded on next context creation`);
+    }
+    
     return savePath;
   } catch (error: any) {
     console.error(`[CONSENT_WALL] ⚠️ Failed to save storageState: ${error.message}`);
