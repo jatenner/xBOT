@@ -237,10 +237,24 @@ TOTAL decisions: 38
 
 **Status:** 
 - ✅ Pool health metrics enhanced and truthful
-- ✅ Adaptive throttling deployed
+- ✅ Adaptive throttling deployed and working (reduced eval per tick to 3 when timeout rate > 25%)
 - ✅ Overload skip deployed
-- ⏳ Need new evaluation cycle to measure ANCESTRY_TIMEOUT reduction
-- ⚠️ ANCESTRY_TIMEOUT increased (likely due to more cycles, throttling needs time to take effect)
+- ✅ Pool self-test passed (metrics are truthful)
+- ⚠️ ANCESTRY_TIMEOUT: 31 (increased from baseline 30, +3%)
+- ✅ CONSENT_WALL: 5 (13.51% rate, stable)
+
+**Adaptive Throttling Evidence:**
+```
+[ORCHESTRATOR] 🎯 ADAPTIVE THROTTLE: Timeout rate 75.0% > 25%, reducing eval per tick to 3
+[ORCHESTRATOR] 🎯 ADAPTIVE THROTTLE: Timeout rate 60.0% > 25%, reducing eval per tick to 3
+[ORCHESTRATOR] 🎯 THROTTLE: Limited keyword_search from 19 to 3 candidates
+```
+
+**Analysis:**
+- Adaptive throttling is working (detected high timeout rates and reduced eval per tick)
+- ANCESTRY_TIMEOUT slightly increased (30 → 31) but throttling is now active
+- Need to monitor over next hour to see if throttling reduces timeouts
+- CONSENT_WALL stable at 5 (13.51% rate)
 
 ---
 
