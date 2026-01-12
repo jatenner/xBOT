@@ -164,8 +164,9 @@ function startHealthServer(): void {
             // Limiter not available
           }
           
-          // Calculate avg wait time (simplified: use metrics if available)
-          const avgWaitMs = metrics.averageWaitTime || 0;
+          // Calculate avg wait time from metrics
+          const avgWaitMs = (metrics as any).averageWaitTime || 0;
+          const timeoutsLast1h = (metrics as any).timeoutsLast1h || 0;
           
           poolHealth = {
             contexts_created_total: metrics.contextsCreated || 0,
@@ -180,6 +181,7 @@ function startHealthServer(): void {
             failed_operations: metrics.failedOperations || 0,
             peak_queue: metrics.peakQueue || 0,
             semaphore_inflight: semaphoreInflight,
+            timeouts_last_1h: timeoutsLast1h,
           };
         } catch (e: any) {
           poolHealth = { error: e.message };
