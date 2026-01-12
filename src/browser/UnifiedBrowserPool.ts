@@ -263,8 +263,8 @@ export class UnifiedBrowserPool {
       const queueTimeoutTimer = setTimeout(() => {
         const waitTime = Date.now() - queuedAt;
         
-        // 🎯 METRICS: Track timeout
-        this.metrics.timeoutsLast1h++;
+        // 🎯 METRICS: Track timeout (reset hourly)
+        this.metrics.timeoutsLast1h = (this.metrics.timeoutsLast1h || 0) + 1;
         
         console.error(`[BROWSER_POOL] ⏱️ QUEUE TIMEOUT: ${operationName} waited ${Math.round(waitTime/1000)}s (timeout: ${timeoutMs/1000}s)`);
         console.error(`[BROWSER_POOL] 📊 Current: ${this.queue.length} queued, ${this.getActiveCount()} active`);
@@ -294,15 +294,15 @@ export class UnifiedBrowserPool {
         
         // 🎯 METRICS: Record wait time for rolling average
         const waitTime = Date.now() - queuedAt;
-        this.metrics.totalWaitTime += waitTime;
-        this.metrics.waitTimeSamples++;
+        this.metrics.totalWaitTime = (this.metrics.totalWaitTime || 0) + waitTime;
+        this.metrics.waitTimeSamples = (this.metrics.waitTimeSamples || 0) + 1;
         // Rolling average: keep last 100 samples
         if (this.metrics.waitTimeSamples > 100) {
-          this.metrics.totalWaitTime = this.metrics.totalWaitTime * 0.99; // Decay old samples
+          this.metrics.totalWaitTime = (this.metrics.totalWaitTime || 0) * 0.99; // Decay old samples
           this.metrics.waitTimeSamples = 100;
         }
         this.metrics.averageWaitTime = this.metrics.waitTimeSamples > 0 
-          ? this.metrics.totalWaitTime / this.metrics.waitTimeSamples 
+          ? (this.metrics.totalWaitTime || 0) / this.metrics.waitTimeSamples 
           : 0;
         
         return operation(ctx);
