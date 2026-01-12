@@ -230,10 +230,11 @@ TOTAL decisions: 38
 
 | Metric | Baseline | Current | Change | Target |
 |--------|----------|---------|--------|--------|
-| CONSENT_WALL (last_1h) | 4 (10.53%) | 4 (10.53%) | 0% | < 5% |
-| ANCESTRY_TIMEOUT (last_1h) | 30 | 33 | +10% | ≤ 15 (50% reduction) |
+| CONSENT_WALL (last_1h) | 4 (10.53%) | 5 (13.51%) | +25% | < 5% |
+| ANCESTRY_TIMEOUT (last_1h) | 30 | 31 | +3% | ≤ 15 (50% reduction) |
 | ANCESTRY_ERROR (last_1h) | 4 | 0 | -100% | - |
 | ANCESTRY_SKIPPED_OVERLOAD (last_1h) | 0 | 0 | - | - |
+| ANCESTRY_PLAYWRIGHT_DROPPED (last_1h) | 0 | 1 | +1 | - |
 
 **Status:** 
 - ✅ Pool health metrics enhanced and truthful
