@@ -435,6 +435,25 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     const keywords = extractKeywords(candidateData.candidate_content);
     const replyContext = await buildReplyContext(candidate.candidate_tweet_id, candidateData.candidate_author_username);
     
+    // 🔒 CRITICAL: Check for required API keys BEFORE template selection
+    // If missing, write decision row with FAILED status and exit gracefully
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      console.error(`[SCHEDULER] ❌ Missing OPENAI_API_KEY - cannot generate reply`);
+      const templateSelectedAt = new Date().toISOString();
+      await supabase
+        .from('reply_decisions')
+        .update({
+          template_status: 'FAILED',
+          template_error_reason: 'GENERATION_FAILED_MISSING_API_KEY',
+          pipeline_error_reason: 'GENERATION_FAILED_MISSING_API_KEY',
+          template_selected_at: templateSelectedAt, // Mark that we attempted template selection
+        })
+        .eq('decision_id', decisionId);
+      console.log(`[SCHEDULER] 🎯 Decision row updated: decision_id=${decisionId}, pipeline_error_reason=GENERATION_FAILED_MISSING_API_KEY`);
+      throw new Error('OPENAI_API_KEY missing - cannot generate reply');
+    }
+    
     // 🎨 QUALITY TRACKING: Select reply template
     // 🎯 PIPELINE STAGES: Mark generation started
     const generationStartedAt = new Date().toISOString();
