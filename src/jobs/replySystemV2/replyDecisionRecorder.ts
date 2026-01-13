@@ -96,7 +96,8 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
   const poolId = poolAny.poolInstanceUid || 'unknown';
   
   // 🎯 CAPACITY-AWARE: Threshold scales with maxContexts (was hardcoded 20)
-  const hardQueueCeiling = Math.max(30, maxContexts * 3); // With maxContexts=11 -> 33
+  // 🎯 PHASE 3: Relax ceiling to allow more ancestry attempts (queueLen 21-23 currently blocked)
+  const hardQueueCeiling = Math.max(40, maxContexts * 4); // With maxContexts=11 -> 44 (was 33)
   
   // 🎯 TASK 3: FORCE_OVERLOAD_JSON_TEST mode - ALWAYS trigger overload gate
   const forceTestMode = process.env.FORCE_OVERLOAD_JSON_TEST === '1';
