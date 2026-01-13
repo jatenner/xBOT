@@ -4567,6 +4567,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     .update({ posting_started_at: postingStartedAt })
     .eq('decision_id', decision.id);
   
+  console.log(`[PIPELINE] decision_id=${decision.id} stage=post ok=start detail=posting_started`);
   console.log(`[POSTING_QUEUE] 🎯 Pipeline stage: posting_started_at=${postingStartedAt} for decision_id=${decision.id}`);
   
   // Record ALLOW decision (will update with posted_reply_tweet_id after success)
@@ -4966,14 +4967,27 @@ async function postReply(decision: QueuedDecision): Promise<string> {
           posted_reply_tweet_id: result.tweetId,
           playwright_post_attempted: true,
           posting_completed_at: postingCompletedAt, // 🎯 PIPELINE STAGES
+          pipeline_error_reason: null, // Clear any previous error
         })
         .eq('decision_id', decision.id);
       
+      console.log(`[PIPELINE] decision_id=${decision.id} stage=post ok=true detail=posting_completed tweet_id=${result.tweetId}`);
       console.log(`[POSTING_QUEUE] 🎯 Pipeline stage: posting_completed_at=${postingCompletedAt} for decision_id=${decision.id}`);
       
       console.log(`[REPLY_TRUTH] step=RETURN_TWEETID tweet_id=${result.tweetId}`);
       return result.tweetId;
     } catch (innerError: any) {
+      // Mark posting failed
+      const postingCompletedAt = new Date().toISOString();
+      const errorReason = `POSTING_FAILED_${innerError.message.replace(/[^a-zA-Z0-9_]/g, '_').substring(0, 50)}`;
+      await supabase
+        .from('reply_decisions')
+        .update({
+          posting_completed_at: postingCompletedAt,
+          pipeline_error_reason: errorReason,
+        })
+        .eq('decision_id', decision.id);
+      console.error(`[PIPELINE] decision_id=${decision.id} stage=post ok=false detail=${errorReason}`);
       if (poster) {
         await poster.handleFailure(innerError.message || 'reply_posting_failure');
       }

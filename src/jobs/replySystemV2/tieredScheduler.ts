@@ -51,6 +51,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   }
   
   console.log('[SCHEDULER] ⏰ Attempting scheduled reply...');
+  console.log(`[PIPELINE] scheduler_run_id=${schedulerRunId} stage=scheduler_start ok=true detail=attempting_reply`);
   
   // 🔒 MANDATE 3: Reset stuck "selected" candidates BEFORE selecting new one
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -107,6 +108,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   
   if (!candidate) {
     console.log('[SCHEDULER] ⚠️ No candidates available in queue');
+    console.log(`[PIPELINE] scheduler_run_id=${schedulerRunId} stage=scheduler_end ok=false detail=queue_empty`);
     
     // Log SLO event
     await supabase
@@ -293,9 +295,18 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       pipeline_source: 'reply_v2_scheduler',
     } as any);
     
+    console.log(`[PIPELINE] decision_id=${decisionId} stage=scored ok=true detail=decision=${allowCheck.allow ? 'ALLOW' : 'DENY'} target=${candidate.candidate_tweet_id}`);
+    
     // 🔒 HARD INVARIANT: Deny non-root replies
     if (!allowCheck.allow) {
-      console.error(`[SCHEDULER] 🚫 DENY: ${allowCheck.reason}`);
+      const denyReason = `DENY_NON_ROOT: ${allowCheck.reason}`;
+      await supabase
+        .from('reply_decisions')
+        .update({
+          pipeline_error_reason: denyReason,
+        })
+        .eq('decision_id', decisionId);
+      console.error(`[PIPELINE] decision_id=${decisionId} stage=scored ok=false detail=${denyReason}`);
       throw new Error(`Non-root reply blocked: ${allowCheck.reason}`);
     }
     
@@ -456,36 +467,74 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       throw new Error('OPENAI_API_KEY missing - cannot generate reply');
     }
     
-    // 🎨 QUALITY TRACKING: Select reply template
     // 🎯 PIPELINE STAGES: Mark generation started
     const generationStartedAt = new Date().toISOString();
     await supabase
       .from('reply_decisions')
       .update({ generation_started_at: generationStartedAt })
       .eq('decision_id', decisionId);
+    console.log(`[PIPELINE] decision_id=${decisionId} stage=generate_start ok=true detail=generation_started_at_set`);
     
-    const { selectReplyTemplate } = await import('./replyTemplateSelector');
-    const templateSelection = await selectReplyTemplate({
-      topic_relevance_score: (candidateData.topic_relevance_score || 0) / 100, // Normalize to 0-1
-      candidate_score: candidateData.overall_score || candidate.overall_score || 0,
-      topic: keywords.join(', '),
-      content_preview: candidateData.candidate_content.substring(0, 100),
-    });
-    
-    // 🎯 PIPELINE STAGES: Mark template selected
-    const templateSelectedAt = new Date().toISOString();
-    console.log(`[SCHEDULER] 🎨 Selected template: ${templateSelection.template_id} (${templateSelection.template_name}) - ${templateSelection.selection_reason} at ${templateSelectedAt}`);
+    // 🎨 QUALITY TRACKING: Select reply template
+    let templateSelection;
+    let templateSelectedAt: string | null = null;
+    try {
+      console.log(`[PIPELINE] decision_id=${decisionId} stage=template_select ok=start detail=selecting_template`);
+      const { selectReplyTemplate } = await import('./replyTemplateSelector');
+      templateSelection = await selectReplyTemplate({
+        topic_relevance_score: (candidateData.topic_relevance_score || 0) / 100, // Normalize to 0-1
+        candidate_score: candidateData.overall_score || candidate.overall_score || 0,
+        topic: keywords.join(', '),
+        content_preview: candidateData.candidate_content.substring(0, 100),
+      });
+      
+      if (!templateSelection || !templateSelection.template_id) {
+        throw new Error('Template selection returned null or missing template_id');
+      }
+      
+      // 🎯 PIPELINE STAGES: Mark template selected
+      templateSelectedAt = new Date().toISOString();
+      await supabase
+        .from('reply_decisions')
+        .update({
+          template_selected_at: templateSelectedAt,
+          template_id: templateSelection.template_id,
+          prompt_version: templateSelection.prompt_version,
+          template_status: 'SET',
+          template_error_reason: null,
+        })
+        .eq('decision_id', decisionId);
+      
+      console.log(`[PIPELINE] decision_id=${decisionId} stage=template_select ok=true detail=template_id=${templateSelection.template_id} prompt_version=${templateSelection.prompt_version}`);
+      console.log(`[SCHEDULER] 🎨 Selected template: ${templateSelection.template_id} (${templateSelection.template_name}) - ${templateSelection.selection_reason} at ${templateSelectedAt}`);
+    } catch (templateError: any) {
+      const errorReason = `TEMPLATE_SELECTION_FAILED_${templateError.message.replace(/[^a-zA-Z0-9_]/g, '_').substring(0, 50)}`;
+      templateSelectedAt = new Date().toISOString();
+      await supabase
+        .from('reply_decisions')
+        .update({
+          template_selected_at: templateSelectedAt,
+          template_status: 'FAILED',
+          template_error_reason: errorReason,
+          pipeline_error_reason: errorReason,
+        })
+        .eq('decision_id', decisionId);
+      console.error(`[PIPELINE] decision_id=${decisionId} stage=template_select ok=false detail=${errorReason}`);
+      throw new Error(`Template selection failed: ${templateError.message}`);
+    }
     
     // Generate reply content with fallback logic
     let replyContent: string;
     let isFallback = false;
     let generationError: Error | null = null;
     let promptVersion = templateSelection.prompt_version;
+    let generationCompletedAt: string | null = null;
     
     // 🔒 CERT_MODE: Check if cert mode is enabled (env var or global flag)
     const certMode = process.env.CERT_MODE === 'true' || (global as any).CERT_MODE === true;
     
     try {
+      console.log(`[PIPELINE] decision_id=${decisionId} stage=generate ok=start detail=generating_reply cert_mode=${certMode}`);
       if (certMode) {
         // 🔒 CERT_MODE: Use certified reply generator (guaranteed success)
         console.log(`[SCHEDULER] 🔒 CERT_MODE enabled - using certified reply generator`);
@@ -530,10 +579,27 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         });
         
         replyContent = replyResult.content;
+        console.log(`[PIPELINE] decision_id=${decisionId} stage=generate ok=true detail=reply_generated length=${replyContent.length}`);
         console.log(`[SCHEDULER] ✅ Reply generated: ${replyContent.length} chars`);
       }
+      
+      // Mark generation completed
+      generationCompletedAt = new Date().toISOString();
+      console.log(`[PIPELINE] decision_id=${decisionId} stage=generate ok=true detail=generation_completed_at_set`);
     } catch (genError: any) {
       generationError = genError;
+      const errorReason = `GENERATION_FAILED_${genError.message.replace(/[^a-zA-Z0-9_]/g, '_').substring(0, 50)}`;
+      generationCompletedAt = new Date().toISOString();
+      
+      // Mark generation failed in DB
+      await supabase
+        .from('reply_decisions')
+        .update({
+          generation_completed_at: generationCompletedAt,
+          pipeline_error_reason: errorReason,
+        })
+        .eq('decision_id', decisionId);
+      console.error(`[PIPELINE] decision_id=${decisionId} stage=generate ok=false detail=${errorReason}`);
       
       // 🔒 TASK 1: Instrument UNGROUNDED_GENERATION_SKIP
       if (genError.message?.includes('UNGROUNDED_GENERATION_SKIP')) {
@@ -832,7 +898,11 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     // 🎨 QUALITY TRACKING: Update reply_decisions with template_id and prompt_version
     // 🔒 DETERMINISTIC UPDATE: Use decision_id as primary key (guaranteed to exist)
     // 🎯 PIPELINE STAGES: Mark template selected and generation completed
-    const generationCompletedAt = new Date().toISOString();
+    // Set generation_completed_at if not already set (from catch block)
+    if (!generationCompletedAt) {
+      generationCompletedAt = new Date().toISOString();
+    }
+    
     try {
       const { data: updateResult, error: updateError } = await supabase
         .from('reply_decisions')
@@ -843,6 +913,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           template_error_reason: null, // Clear any previous error
           template_selected_at: templateSelectedAt, // 🎯 PIPELINE STAGES
           generation_completed_at: generationCompletedAt, // 🎯 PIPELINE STAGES
+          pipeline_error_reason: null, // Clear any previous error
         })
         .eq('decision_id', decisionId)
         .select('id');
@@ -1051,27 +1122,48 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   } catch (error: any) {
     console.error(`[SCHEDULER] ❌ Failed to post reply: ${error.message}`);
     
-    // 🎨 QUALITY TRACKING: If we have a decisionId, mark template status as FAILED if still PENDING
+    // 🎯 PIPELINE STAGES: Mark all unset stages as FAILED
     if (decisionId) {
       try {
-        const { data: currentStatus } = await supabase
+        const { data: current } = await supabase
           .from('reply_decisions')
-          .select('template_status')
+          .select('template_status, template_selected_at, generation_completed_at, posting_completed_at')
           .eq('decision_id', decisionId)
           .single();
         
-        if (currentStatus?.template_status === 'PENDING') {
-          await supabase
-            .from('reply_decisions')
-            .update({
-              template_status: 'FAILED',
-              template_error_reason: `SCHEDULER_ERROR: ${error.message}`,
-            })
-            .eq('decision_id', decisionId);
-          console.log(`[SCHEDULER] 🎨 Marked template_status=FAILED due to scheduler error`);
+        const errorReason = `SCHEDULER_ERROR_${error.message.replace(/[^a-zA-Z0-9_]/g, '_').substring(0, 50)}`;
+        const updates: any = {
+          pipeline_error_reason: errorReason,
+        };
+        
+        // Mark template as FAILED if still PENDING
+        if (current?.template_status === 'PENDING' && !current?.template_selected_at) {
+          updates.template_status = 'FAILED';
+          updates.template_error_reason = `TEMPLATE_SELECTION_FAILED_${errorReason}`;
+          updates.template_selected_at = new Date().toISOString(); // Mark that we attempted
+          console.log(`[PIPELINE] decision_id=${decisionId} stage=template_select ok=false detail=${updates.template_error_reason}`);
         }
+        
+        // Mark generation as failed if not completed
+        if (!current?.generation_completed_at) {
+          updates.generation_completed_at = new Date().toISOString();
+          console.log(`[PIPELINE] decision_id=${decisionId} stage=generate ok=false detail=GENERATION_FAILED_${errorReason}`);
+        }
+        
+        // Mark posting as failed if not completed
+        if (!current?.posting_completed_at) {
+          updates.posting_completed_at = new Date().toISOString();
+          console.log(`[PIPELINE] decision_id=${decisionId} stage=post ok=false detail=POSTING_FAILED_${errorReason}`);
+        }
+        
+        await supabase
+          .from('reply_decisions')
+          .update(updates)
+          .eq('decision_id', decisionId);
+        
+        console.log(`[SCHEDULER] 🎯 Marked pipeline stages as FAILED due to scheduler error`);
       } catch (statusError: any) {
-        console.warn(`[SCHEDULER] ⚠️ Failed to update template status: ${statusError.message}`);
+        console.warn(`[SCHEDULER] ⚠️ Failed to update pipeline stages: ${statusError.message}`);
       }
     }
     console.error(`[SCHEDULER] Stack: ${error.stack}`);

@@ -74,14 +74,16 @@ export async function selectReplyTemplate(
     .select('*')
     .order('priority_weight', { ascending: false });
   
-  if (error || !templates || templates.length === 0) {
-    console.warn(`[TEMPLATE_SELECTOR] ⚠️ No templates found, using default`);
-    return {
-      template_id: 'explanation',
-      prompt_version: 'v1',
-      template_name: 'Explanation',
-      selection_reason: 'default_fallback',
-    };
+  if (error) {
+    const errorMsg = `TEMPLATE_SELECTION_FAILED_DB_ERROR: ${error.message}`;
+    console.error(`[TEMPLATE_SELECTOR] ❌ Database error: ${error.message}`);
+    throw new Error(errorMsg);
+  }
+  
+  if (!templates || templates.length === 0) {
+    const errorMsg = 'TEMPLATE_SELECTION_FAILED_NO_TEMPLATES';
+    console.error(`[TEMPLATE_SELECTOR] ❌ No templates found in reply_templates table`);
+    throw new Error(errorMsg);
   }
   
   // Calculate selection weights (combine policy weights with context-based boosts)

@@ -322,6 +322,28 @@ function startHealthServer(): void {
     }
   });
 
+  // 🎯 STARTUP CHECK: Verify reply_templates table has rows
+  (async () => {
+    try {
+      const { getSupabaseClient } = await import('./db');
+      const supabase = getSupabaseClient();
+      const { data: templates, error } = await supabase
+        .from('reply_templates')
+        .select('id')
+        .limit(1);
+      
+      if (error) {
+        console.error(`[STARTUP] ❌ Failed to check reply_templates: ${error.message}`);
+      } else if (!templates || templates.length === 0) {
+        console.error(`[STARTUP] ❌ CRITICAL: reply_templates table is empty! Template selection will fail.`);
+      } else {
+        console.log(`[STARTUP] ✅ reply_templates table has ${templates.length}+ templates`);
+      }
+    } catch (checkError: any) {
+      console.error(`[STARTUP] ⚠️ Template check failed: ${checkError.message}`);
+    }
+  })();
+
   healthServer.listen(port, host, () => {
     console.log(`[HEALTH] Starting health server on ${host}:${port}...`);
     console.log(`[HEALTH] ✅ Listening on ${host}:${port}`);
