@@ -183,11 +183,32 @@ async function main() {
     return;
   }
   
+  let ceilingCount = 0;
+  let saturationCount = 0;
+  let overloadGateCount = 0;
+  let limiterQueueCount = 0;
+  let fallbackSnapshotCount = 0;
+  
   samples.forEach((row, idx) => {
     console.log(`\n${idx + 1}. Decision ID: ${row.decision_id}`);
     console.log(`   Target Tweet: ${row.target_tweet_id}`);
     console.log(`   Created: ${row.created_at}`);
-    console.log(`   Detail: ${row.deny_reason_detail || '(null)'}`);
+    console.log(`   Detail: ${row.deny_reason_detail ? row.deny_reason_detail.substring(0, 300) : '(null)'}`);
+    
+    // 🎯 TASK 5: Check for skip_source and JSON markers
+    const containsOverloadJson = row.deny_reason_detail?.includes('OVERLOAD_DETAIL_JSON') || false;
+    const containsDetailVersion = row.deny_reason_detail?.includes('detail_version') || false;
+    const skipSourceMatch = row.deny_reason_detail?.match(/skip_source=(\w+)/);
+    const skipSource = skipSourceMatch ? skipSourceMatch[1] : 'UNKNOWN';
+    
+    console.log(`   Contains OVERLOAD_DETAIL_JSON: ${containsOverloadJson}`);
+    console.log(`   Contains detail_version: ${containsDetailVersion}`);
+    console.log(`   Skip source: ${skipSource}`);
+    
+    // Count skip sources
+    if (skipSource === 'OVERLOAD_GATE') overloadGateCount++;
+    else if (skipSource === 'LIMITER_QUEUE') limiterQueueCount++;
+    else if (skipSource === 'FALLBACK_SNAPSHOT') fallbackSnapshotCount++;
     
     // Try to parse JSON if present
     if (row.deny_reason_detail) {
@@ -198,6 +219,7 @@ async function main() {
           console.log(`   ✅ JSON Found (detail_version=${detail.detail_version || 'missing'})`);
           console.log(`   Parsed JSON:`);
           console.log(`     - detail_version: ${detail.detail_version || 'missing'}`);
+          console.log(`     - skip_source: ${detail.skip_source || 'missing'}`);
           console.log(`     - overload_reason: ${detail.overloadedByCeiling ? 'CEILING' : (detail.overloadedBySaturation ? 'SATURATION' : 'UNKNOWN')}`);
           console.log(`     - overloadedByCeiling: ${detail.overloadedByCeiling}`);
           console.log(`     - overloadedBySaturation: ${detail.overloadedBySaturation}`);
@@ -205,21 +227,24 @@ async function main() {
           console.log(`     - hardQueueCeiling: ${detail.hardQueueCeiling}`);
           console.log(`     - activeContexts: ${detail.activeContexts}`);
           console.log(`     - maxContexts: ${detail.maxContexts}`);
-          console.log(`     - pool_id: ${detail.pool_id}`);
           console.log(`     - pool_instance_uid: ${detail.pool_instance_uid}`);
+          
+          if (detail.overloadedByCeiling) ceilingCount++;
+          if (detail.overloadedBySaturation) saturationCount++;
         } catch (e) {
           console.log(`   ❌ Could not parse JSON: ${e}`);
           console.log(`   Raw detail: ${row.deny_reason_detail.substring(0, 200)}`);
         }
       } else {
-        // Try to extract JSON from embedded format
-        const jsonMatch = row.deny_reason_detail.match(/\{[\s\S]*"overloadedByCeiling"[\s\S]*\}/);
-        if (jsonMatch) {
+        // Try to extract JSON from embedded format (OVERLOAD_DETAIL_JSON: marker)
+        const jsonMarkerMatch = row.deny_reason_detail.match(/OVERLOAD_DETAIL_JSON:(.+?)(?:\s|$)/);
+        if (jsonMarkerMatch) {
           try {
-            const detail = JSON.parse(jsonMatch[0]);
+            const detail = JSON.parse(jsonMarkerMatch[1].trim());
             console.log(`   ✅ JSON Found (embedded, detail_version=${detail.detail_version || 'missing'})`);
             console.log(`   Parsed JSON:`);
             console.log(`     - detail_version: ${detail.detail_version || 'missing'}`);
+            console.log(`     - skip_source: ${detail.skip_source || 'missing'}`);
             console.log(`     - overload_reason: ${detail.overloadedByCeiling ? 'CEILING' : (detail.overloadedBySaturation ? 'SATURATION' : 'UNKNOWN')}`);
             console.log(`     - overloadedByCeiling: ${detail.overloadedByCeiling}`);
             console.log(`     - overloadedBySaturation: ${detail.overloadedBySaturation}`);
@@ -227,8 +252,10 @@ async function main() {
             console.log(`     - hardQueueCeiling: ${detail.hardQueueCeiling}`);
             console.log(`     - activeContexts: ${detail.activeContexts}`);
             console.log(`     - maxContexts: ${detail.maxContexts}`);
-            console.log(`     - pool_id: ${detail.pool_id}`);
             console.log(`     - pool_instance_uid: ${detail.pool_instance_uid}`);
+            
+            if (detail.overloadedByCeiling) ceilingCount++;
+            if (detail.overloadedBySaturation) saturationCount++;
           } catch (e) {
             console.log(`   ❌ Could not parse embedded JSON: ${e}`);
             console.log(`   Raw detail: ${row.deny_reason_detail.substring(0, 200)}`);
@@ -241,6 +268,14 @@ async function main() {
       }
     }
   });
+  
+  console.log(`\n=== Overload Condition Breakdown ===`);
+  console.log(`CEILING: ${ceilingCount}`);
+  console.log(`SATURATION: ${saturationCount}`);
+  console.log(`\n=== Skip Source Breakdown ===`);
+  console.log(`OVERLOAD_GATE: ${overloadGateCount}`);
+  console.log(`LIMITER_QUEUE: ${limiterQueueCount}`);
+  console.log(`FALLBACK_SNAPSHOT: ${fallbackSnapshotCount}`);
   
   console.log('\n=== Summary ===');
   console.log(`Total SKIPPED_OVERLOAD: ${samples.length}`);

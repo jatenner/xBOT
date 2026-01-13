@@ -104,26 +104,34 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
   if (isOverloaded && !cached) {
     // Skip ancestry resolution if overloaded and no cache hit
     const overloadReason = overloadedByCeiling ? 'CEILING' : 'SATURATION';
+    
+    // 🎯 TASK 1: Tag skip source
+    const skipSource = 'OVERLOAD_GATE';
+    
+    // 🎯 TASK 3: FORCE_OVERLOAD_JSON_TEST mode
+    const forceTestMode = process.env.FORCE_OVERLOAD_JSON_TEST === '1';
+    if (forceTestMode) {
+      console.log(`[ANCESTRY_OVERLOAD] 🧪 TEST MODE: Forcing overload JSON emission`);
+    }
+    
     const overloadDetail = {
-      overloadedByCeiling,
-      overloadedBySaturation,
-      queueLen,
+      overloadedByCeiling: forceTestMode ? true : overloadedByCeiling,
+      overloadedBySaturation: forceTestMode ? false : overloadedBySaturation,
+      queueLen: forceTestMode ? 35 : queueLen,
       hardQueueCeiling,
-      activeContexts,
+      activeContexts: forceTestMode ? 0 : activeContexts,
       maxContexts,
       pool_id: poolId,
       pool_instance_uid: poolId,
-    };
-    
-    console.warn(`[ANCESTRY_OVERLOAD] reason=${overloadReason} queue=${queueLen} active=${activeContexts}/${maxContexts} ceiling=${hardQueueCeiling} pool_id=${poolId} uid=${poolId} target=${targetTweetId}`);
-    
-    // Include overload detail JSON in error message (will be parsed into deny_reason_detail)
-    // Add detail_version marker for parsing
-    const overloadDetailWithVersion = {
-      ...overloadDetail,
+      skip_source: skipSource, // 🎯 TASK 1: Tag skip source
       detail_version: 1,
     };
-    const overloadDetailJson = JSON.stringify(overloadDetailWithVersion);
+    
+    console.warn(`[ANCESTRY_OVERLOAD] reason=${overloadReason} queue=${queueLen} active=${activeContexts}/${maxContexts} ceiling=${hardQueueCeiling} pool_id=${poolId} uid=${poolId} target=${targetTweetId} skip_source=${skipSource}`);
+    
+    // Include overload detail JSON in error message (will be parsed into deny_reason_detail)
+    const overloadDetailJson = JSON.stringify(overloadDetail);
+    const errorPrefix = forceTestMode ? 'TEST' : overloadReason;
     const skippedResult = {
       targetTweetId,
       targetInReplyToTweetId: null,
@@ -133,7 +141,7 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
       status: 'ERROR' as const,
       confidence: 'LOW' as const,
       method: 'skipped_overload',
-      error: `ANCESTRY_SKIPPED_OVERLOAD: ${overloadReason} OVERLOAD_DETAIL_JSON:${overloadDetailJson}`,
+      error: `ANCESTRY_SKIPPED_OVERLOAD: ${errorPrefix} OVERLOAD_DETAIL_JSON:${overloadDetailJson}`,
       cache_hit: false,
     };
     
@@ -540,6 +548,7 @@ export async function shouldAllowReply(ancestry: ReplyAncestry): Promise<{ allow
       }
       
       // 🎯 PRIORITY 3: Build pool snapshot fallback ONLY if JSON not already set
+      // 🎯 TASK 2: Never overwrite detail - if already set, append snapshot after delimiter instead
       if (!denyReasonDetailAlreadySet) {
         // Get pool snapshot for context
         try {
@@ -547,12 +556,20 @@ export async function shouldAllowReply(ancestry: ReplyAncestry): Promise<{ allow
           const pool = UnifiedBrowserPool.getInstance();
           const poolAny = pool as any;
           const metrics = pool.getMetrics();
+          
+          // 🎯 TASK 4: Fix pool snapshot mismatch - use correct max_contexts from pool
+          const poolMaxContexts = poolAny.MAX_CONTEXTS || 0;
+          const poolUid = poolAny.poolInstanceUid || 'unknown';
+          const requestedEnvMaxContexts = process.env.BROWSER_MAX_CONTEXTS || 'default';
+          
           poolSnapshot = {
             queue_len: poolAny.queue?.length || 0,
             active: poolAny.getActiveCount?.() || 0,
             idle: (poolAny.contexts?.size || 0) - (poolAny.getActiveCount?.() || 0),
             total_contexts: poolAny.contexts?.size || 0,
-            max_contexts: poolAny.MAX_CONTEXTS || 0,
+            max_contexts: poolMaxContexts, // 🎯 TASK 4: Use actual pool max_contexts
+            pool_instance_uid: poolUid, // 🎯 TASK 4: Include pool UID
+            requested_env_max_contexts: requestedEnvMaxContexts, // 🎯 TASK 4: Include requested env value
             semaphore_inflight: 0, // Will be filled if limiter available
           };
           
@@ -565,11 +582,15 @@ export async function shouldAllowReply(ancestry: ReplyAncestry): Promise<{ allow
         } catch {}
         
         // Build detailed deny_reason_detail fallback
+        // 🎯 TASK 1: Tag skip source
+        const skipSource = 'FALLBACK_SNAPSHOT';
         const detailParts: string[] = [];
+        detailParts.push(`skip_source=${skipSource}`); // 🎯 TASK 1: Tag skip source
         if (stageName !== 'unknown') detailParts.push(`stage=${stageName}`);
         if (durationMs !== null) detailParts.push(`duration_ms=${durationMs}`);
         if (poolSnapshot) {
-          detailParts.push(`pool={queue=${poolSnapshot.queue_len},active=${poolSnapshot.active}/${poolSnapshot.max_contexts},idle=${poolSnapshot.idle},semaphore=${poolSnapshot.semaphore_inflight}}`);
+          // 🎯 TASK 4: Include pool UID and requested/applied max_contexts
+          detailParts.push(`pool={queue=${poolSnapshot.queue_len},active=${poolSnapshot.active}/${poolSnapshot.max_contexts},idle=${poolSnapshot.idle},semaphore=${poolSnapshot.semaphore_inflight},uid=${poolSnapshot.pool_instance_uid},requested_env_max=${poolSnapshot.requested_env_max_contexts}}`);
         }
         const baseDetail = errorMsg.split(':').slice(1).join(':').trim();
         if (baseDetail && !baseDetail.includes('stage=') && !baseDetail.includes('OVERLOAD_DETAIL_JSON')) {

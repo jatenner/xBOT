@@ -33,7 +33,17 @@ class AncestryConcurrencyLimiter {
       // If queue is full (>= maxConcurrent), reject to prevent unbounded growth
       if (this.queue.length >= this.maxConcurrent) {
         console.warn(`[ANCESTRY_LIMITER] ⚠️ Queue full: rejecting request (current=${this.current}/${this.maxConcurrent}, queue=${this.queue.length})`);
-        reject(new Error(`ANCESTRY_SKIPPED_OVERLOAD: queue full (current=${this.current}/${this.maxConcurrent}, queue=${this.queue.length})`));
+        
+        // 🎯 TASK 1: Tag skip source and include JSON detail
+        const limiterDetail = {
+          skip_source: 'LIMITER_QUEUE',
+          detail_version: 1,
+          current: this.current,
+          maxConcurrent: this.maxConcurrent,
+          queueLength: this.queue.length,
+        };
+        const limiterDetailJson = JSON.stringify(limiterDetail);
+        reject(new Error(`ANCESTRY_SKIPPED_OVERLOAD: LIMITER_QUEUE OVERLOAD_DETAIL_JSON:${limiterDetailJson}`));
         return;
       }
       
