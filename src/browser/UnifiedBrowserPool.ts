@@ -944,16 +944,23 @@ export class UnifiedBrowserPool {
    * Acquire a context from pool or create new one
    * 
    * ✨ ENHANCED with health checking to prevent using broken contexts
+   * 🎯 PART 3: Instrumented with timing logs
    */
   private async acquireContext(): Promise<ContextHandle | null> {
+    const acquireStartTime = Date.now();
+    console.log(`[BROWSER_POOL][ACQUIRE] start contexts=${this.contexts.size}/${this.MAX_CONTEXTS} active=${this.getActiveCount()}`);
+    
     // Try to find available context
     for (const [id, handle] of this.contexts) {
       if (!handle.inUse && handle.operationCount < handle.maxOperations) {
         
         // ✅ NEW: Health check before using context
+        const healthCheckStart = Date.now();
         const isHealthy = await this.isContextHealthy(handle);
+        const healthCheckDuration = Date.now() - healthCheckStart;
+        
         if (!isHealthy) {
-          console.warn(`[BROWSER_POOL] ⚠️ Context ${id} is unhealthy, removing from pool...`);
+          console.warn(`[BROWSER_POOL] ⚠️ Context ${id} is unhealthy (health_check=${healthCheckDuration}ms), removing from pool...`);
           await this.forceCloseContext(handle);
           continue; // Try next context
         }
@@ -965,31 +972,50 @@ export class UnifiedBrowserPool {
         // 🐕 POOL WATCHDOG: Track when context becomes active
         this.contextActiveStartTimes.set(id, Date.now());
         
+        const acquireDuration = Date.now() - acquireStartTime;
+        console.log(`[BROWSER_POOL][ACQUIRE] success context_id=${id} duration_ms=${acquireDuration} reused=true`);
+        
         return handle;
       }
     }
 
     // Create new context if under limit
     if (this.contexts.size < this.MAX_CONTEXTS) {
-      return await this.createNewContext();
+      console.log(`[BROWSER_POOL][ACQUIRE] creating_new contexts=${this.contexts.size}/${this.MAX_CONTEXTS}`);
+      const newContext = await this.createNewContext();
+      const acquireDuration = Date.now() - acquireStartTime;
+      console.log(`[BROWSER_POOL][ACQUIRE] success context_id=${Array.from(this.contexts.keys()).pop()} duration_ms=${acquireDuration} reused=false`);
+      return newContext;
     }
 
     // All contexts busy
+    const acquireDuration = Date.now() - acquireStartTime;
+    console.log(`[BROWSER_POOL][ACQUIRE] failed reason=all_busy duration_ms=${acquireDuration} contexts=${this.contexts.size}/${this.MAX_CONTEXTS} active=${this.getActiveCount()}`);
     return null;
   }
 
   /**
    * Create a new context in the pool
+   * 🎯 PART 3: Instrumented with timing logs
    */
   private async createNewContext(): Promise<ContextHandle> {
+    const createStartTime = Date.now();
+    console.log(`[BROWSER_POOL][CREATE_CONTEXT] start`);
+    
     // ✅ RECOVER: Ensure browser is live before creating context
     await this.ensureLiveContext('createNewContext');
     
     // Ensure browser exists
     if (!this.browser || !this.browser.isConnected()) {
+      const browserInitStart = Date.now();
+      console.log(`[BROWSER_POOL][CREATE_CONTEXT] initializing_browser`);
       try {
         await this.initializeBrowser();
+        const browserInitDuration = Date.now() - browserInitStart;
+        console.log(`[BROWSER_POOL][CREATE_CONTEXT] browser_init_success duration_ms=${browserInitDuration}`);
       } catch (error: any) {
+        const browserInitDuration = Date.now() - browserInitStart;
+        console.log(`[BROWSER_POOL][CREATE_CONTEXT] browser_init_failed duration_ms=${browserInitDuration} error=${error.message}`);
         if (this.isResourceExhaustionError(error)) {
           await this.handleResourceExhaustion(error);
         }
@@ -1000,7 +1026,11 @@ export class UnifiedBrowserPool {
     const contextId = `ctx-${Date.now()}-${this.metrics.contextsCreated}`;
     console.log(`[BROWSER_POOL] 🆕 Creating context: ${contextId}`);
     
+    const storageStateStart = Date.now();
     const storageState = await this.ensureStorageState();
+    const storageStateDuration = Date.now() - storageStateStart;
+    console.log(`[BROWSER_POOL][CREATE_CONTEXT] storage_state_loaded duration_ms=${storageStateDuration} has_session=${!!storageState}`);
+    
     const contextOptions: BrowserContextOptions = {
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
       viewport: { width: 1280, height: 720 }
@@ -1011,9 +1041,16 @@ export class UnifiedBrowserPool {
     }
     
     let context: BrowserContext;
+    const contextCreateStart = Date.now();
     try {
+      console.log(`[BROWSER_POOL][CREATE_CONTEXT] calling_browser.newContext`);
       context = await this.browser!.newContext(contextOptions);
+      const contextCreateDuration = Date.now() - contextCreateStart;
+      console.log(`[BROWSER_POOL][CREATE_CONTEXT] browser.newContext_success duration_ms=${contextCreateDuration}`);
     } catch (error: any) {
+      const contextCreateDuration = Date.now() - contextCreateStart;
+      console.log(`[BROWSER_POOL][CREATE_CONTEXT] browser.newContext_failed duration_ms=${contextCreateDuration} error=${error.message}`);
+      
       // ✅ RECOVER: If disconnected error, reset pool and retry once
       if (this.isDisconnectedError(error)) {
         console.log(`[BROWSER_POOL][RECOVER] reason=context_creation_failed action=reset label=createNewContext`);
@@ -1036,7 +1073,11 @@ export class UnifiedBrowserPool {
           retryContextOptions.storageState = retryStorageState;
         }
         
+        const retryStart = Date.now();
+        console.log(`[BROWSER_POOL][CREATE_CONTEXT] retry_browser.newContext`);
         context = await this.browser!.newContext(retryContextOptions);
+        const retryDuration = Date.now() - retryStart;
+        console.log(`[BROWSER_POOL][CREATE_CONTEXT] retry_browser.newContext_success duration_ms=${retryDuration}`);
       } else if (this.isResourceExhaustionError(error)) {
         await this.handleResourceExhaustion(error);
         throw error;
@@ -1061,15 +1102,18 @@ export class UnifiedBrowserPool {
     // 🐕 POOL WATCHDOG: Track when context becomes active
     this.contextActiveStartTimes.set(contextId, Date.now());
 
-    console.log(`[BROWSER_POOL] ✅ Context created (total: ${this.contexts.size}/${this.MAX_CONTEXTS})`);
+    const totalDuration = Date.now() - createStartTime;
+    console.log(`[BROWSER_POOL] ✅ Context created (total: ${this.contexts.size}/${this.MAX_CONTEXTS}, duration_ms=${totalDuration})`);
     
     return handle;
   }
 
   /**
    * Initialize the browser instance
+   * 🎯 PART 3: Instrumented with timing logs
    */
   private async initializeBrowser(): Promise<void> {
+    const initStartTime = Date.now();
     console.log('[BROWSER_POOL] 🚀 Initializing browser...');
     
     // Check if session exists in env var (Railway persistent storage)
@@ -1080,7 +1124,9 @@ export class UnifiedBrowserPool {
       console.warn('[BROWSER_POOL] ⚠️ TWITTER_SESSION_B64 not found - sessions will be unauthenticated');
     }
 
+    const chromiumLaunchStart = Date.now();
     try {
+      console.log(`[BROWSER_POOL][INIT_BROWSER] calling_chromium.launch`);
       this.browser = await chromium.launch({
         headless: true,
         args: [
@@ -1102,14 +1148,19 @@ export class UnifiedBrowserPool {
           '--headless=new'
         ]
       });
+      const chromiumLaunchDuration = Date.now() - chromiumLaunchStart;
+      console.log(`[BROWSER_POOL][INIT_BROWSER] chromium.launch_success duration_ms=${chromiumLaunchDuration}`);
     } catch (error: any) {
+      const chromiumLaunchDuration = Date.now() - chromiumLaunchStart;
+      console.log(`[BROWSER_POOL][INIT_BROWSER] chromium.launch_failed duration_ms=${chromiumLaunchDuration} error=${error.message}`);
       if (this.isResourceExhaustionError(error)) {
         await this.handleResourceExhaustion(error);
       }
       throw error;
     }
 
-    console.log('[BROWSER_POOL] ✅ Browser initialized');
+    const totalInitDuration = Date.now() - initStartTime;
+    console.log(`[BROWSER_POOL] ✅ Browser initialized (duration_ms=${totalInitDuration})`);
   }
 
   /**

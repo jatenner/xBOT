@@ -11,6 +11,36 @@ import { getSupabaseClient } from '../src/db';
 async function main() {
   console.log('=== Seed and Run Scheduler ===\n');
   
+  // PART 1: Print environment and pool context
+  console.log('📊 Environment Variables:');
+  console.log(`   BROWSER_MAX_CONTEXTS: ${process.env.BROWSER_MAX_CONTEXTS || 'NOT SET'}`);
+  console.log(`   ANCESTRY_MAX_CONCURRENT: ${process.env.ANCESTRY_MAX_CONCURRENT || 'NOT SET'}`);
+  console.log(`   REPLY_V2_MAX_EVAL_PER_TICK: ${process.env.REPLY_V2_MAX_EVAL_PER_TICK || 'NOT SET'}`);
+  console.log();
+  
+  // Get pool instance and snapshot
+  try {
+    const { UnifiedBrowserPool } = await import('../src/browser/UnifiedBrowserPool');
+    const pool = UnifiedBrowserPool.getInstance();
+    const poolAny = pool as any;
+    const appliedMaxContexts = poolAny.MAX_CONTEXTS || 'UNKNOWN';
+    const totalContexts = poolAny.totalContexts || 0;
+    const activeContexts = poolAny.activeContexts || 0;
+    const idleContexts = poolAny.idleContexts || 0;
+    const queueLen = poolAny.queue?.length || 0;
+    
+    console.log('📊 Pool Snapshot (BEFORE ancestry resolution):');
+    console.log(`   applied_max_contexts: ${appliedMaxContexts}`);
+    console.log(`   total_contexts: ${totalContexts}`);
+    console.log(`   active_contexts: ${activeContexts}`);
+    console.log(`   idle_contexts: ${idleContexts}`);
+    console.log(`   queue_len: ${queueLen}`);
+    console.log();
+  } catch (error: any) {
+    console.log(`⚠️ Could not get pool snapshot: ${error.message}`);
+    console.log();
+  }
+  
   // Step 1: Seed candidates
   console.log('Step 1: Seeding candidates...');
   const { execSync } = await import('child_process');
