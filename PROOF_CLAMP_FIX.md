@@ -92,12 +92,16 @@ railway logs -s xBOT --tail 2000 | grep "\[BOOT\].*Browser pool"
 [BOOT] Browser pool uid=<uid> requested_env_max_contexts=11 applied_max_contexts=11 clamp_max=15
 ```
 
-**Actual Output:** (To be captured)
+**Actual Output:**
+```
+[BOOT] Browser pool uid=1768313737673-rkpc91e requested_env_max_contexts=11 applied_max_contexts=11 clamp_max=15
+```
 
 **Verification:**
 - ✅ `requested_env_max_contexts=11` (matches Railway env var)
 - ✅ `applied_max_contexts=11` (no longer clamped to 10)
 - ✅ `clamp_max=15` (new max limit)
+- ✅ **Clamp fix successful!**
 
 ---
 
@@ -124,9 +128,20 @@ ORDER BY created_at DESC
 LIMIT 5;
 ```
 
-**Results:** (To be captured)
+**Results:**
+```
+decision_id: 0e5d4394-56c7-4649-8d00-acd0c30cdb53
+deny_reason_detail: pool={queue=24,active=0/5,idle=0,semaphore=0} error=5, timeout: 60s)
+```
 
-**Key Fields to Verify:**
+**Finding:** ⚠️ Decisions still show old format (no JSON overload detail). This suggests:
+1. Decisions are using cached ancestry results from before the fix
+2. New code hasn't run yet (scheduler runs every 15 minutes)
+3. Pool snapshot shows `max_contexts=5` (old value), indicating snapshot taken before config update
+
+**Next Steps:** Wait for fresh scheduler runs (every 15 minutes) to see new overload detail JSON.
+
+**Key Fields Expected (once new code runs):**
 - `overloadedByCeiling`: true/false
 - `overloadedBySaturation`: true/false
 - `queueLen`: actual queue length
