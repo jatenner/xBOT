@@ -346,6 +346,39 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
       let denyReasonCode = 'ANCESTRY_ERROR';
       let denyReasonDetail = `stage=${currentStage} error=${errorMsg}`;
       
+      // 🎯 ENHANCED: Get full pool snapshot for timeout errors
+      let poolSnapshot: any = null;
+      if (errorMsg.includes('timeout') || errorMsg.includes('queue timeout') || errorMsg.includes('pool overloaded') || errorMsg.includes('ACQUIRE_CONTEXT_TIMEOUT')) {
+        try {
+          const pool = UnifiedBrowserPool.getInstance();
+          const poolAny = pool as any;
+          const metrics = pool.getMetrics();
+          
+          // Get ancestry limiter stats
+          let semaphoreInflight = 0;
+          try {
+            const { getAncestryLimiter } = await import('./ancestryConcurrencyLimiter');
+            const limiter = getAncestryLimiter();
+            const limiterStats = limiter.getStats();
+            semaphoreInflight = limiterStats.current || 0;
+          } catch {}
+          
+          poolSnapshot = {
+            max_contexts: poolAny.MAX_CONTEXTS || 0,
+            total_contexts: poolAny.contexts?.size || 0,
+            active: poolAny.getActiveCount?.() || 0,
+            idle: Math.max(0, (poolAny.contexts?.size || 0) - (poolAny.getActiveCount?.() || 0)),
+            queue_len: poolAny.queue?.length || 0,
+            semaphore_inflight: semaphoreInflight,
+            avg_wait_ms: Math.round(metrics.averageWaitTime || 0),
+            peak_queue: metrics.peakQueue || 0,
+            contexts_created_total: metrics.contextsCreated || 0,
+          };
+        } catch (snapshotError: any) {
+          console.warn(`[ANCESTRY_TRACE] Failed to get pool snapshot: ${snapshotError.message}`);
+        }
+      }
+      
       if (errorMsg.includes('ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT') || errorMsg.includes('acquire_context_timeout')) {
         denyReasonCode = 'ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT';
       } else if (errorMsg.includes('ANCESTRY_NAV_TIMEOUT') || errorMsg.includes('nav_timeout')) {
@@ -357,6 +390,21 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
         denyReasonCode = 'ANCESTRY_QUEUE_TIMEOUT';
       } else if (errorMsg.includes('parse') || errorMsg.includes('extraction failed') || errorMsg.includes('dom query failed')) {
         denyReasonCode = 'ANCESTRY_PARSE_TIMEOUT';
+      }
+      
+      // 🎯 ENHANCED: Build detailed deny_reason_detail with full pool snapshot
+      if (poolSnapshot) {
+        const detailParts = [`stage=${currentStage}`];
+        if (Object.keys(stageTimings).length > 0) {
+          const totalDuration = Object.values(stageTimings).reduce((a, b) => a + b, 0);
+          detailParts.push(`duration_ms=${totalDuration}`);
+        }
+        detailParts.push(`pool={max_contexts=${poolSnapshot.max_contexts},total_contexts=${poolSnapshot.total_contexts},active=${poolSnapshot.active},idle=${poolSnapshot.idle},queue_len=${poolSnapshot.queue_len},semaphore_inflight=${poolSnapshot.semaphore_inflight},avg_wait_ms=${poolSnapshot.avg_wait_ms},peak_queue=${poolSnapshot.peak_queue},contexts_created_total=${poolSnapshot.contexts_created_total}}`);
+        const baseDetail = errorMsg.split(':').slice(1).join(':').trim();
+        if (baseDetail && !baseDetail.includes('stage=')) {
+          detailParts.push(`error=${baseDetail.substring(0, 200)}`);
+        }
+        denyReasonDetail = detailParts.join(' ');
       }
       
       const totalDuration = Object.values(stageTimings).reduce((a, b) => a + b, 0);

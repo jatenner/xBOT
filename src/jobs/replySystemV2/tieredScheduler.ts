@@ -1127,41 +1127,44 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       try {
         const { data: current } = await supabase
           .from('reply_decisions')
-          .select('template_status, template_selected_at, generation_completed_at, posting_completed_at')
+          .select('decision, template_status, template_selected_at, generation_completed_at, posting_completed_at')
           .eq('decision_id', decisionId)
           .single();
         
-        const errorReason = `SCHEDULER_ERROR_${error.message.replace(/[^a-zA-Z0-9_]/g, '_').substring(0, 50)}`;
-        const updates: any = {
-          pipeline_error_reason: errorReason,
-        };
-        
-        // Mark template as FAILED if still PENDING
-        if (current?.template_status === 'PENDING' && !current?.template_selected_at) {
-          updates.template_status = 'FAILED';
-          updates.template_error_reason = `TEMPLATE_SELECTION_FAILED_${errorReason}`;
-          updates.template_selected_at = new Date().toISOString(); // Mark that we attempted
-          console.log(`[PIPELINE] decision_id=${decisionId} stage=template_select ok=false detail=${updates.template_error_reason}`);
+        // Only mark pipeline stages for ALLOW decisions (DENY decisions never entered pipeline)
+        if (current?.decision === 'ALLOW') {
+          const errorReason = `SCHEDULER_ERROR_${error.message.replace(/[^a-zA-Z0-9_]/g, '_').substring(0, 50)}`;
+          const updates: any = {
+            pipeline_error_reason: errorReason,
+          };
+          
+          // Mark template as FAILED if still PENDING
+          if (current?.template_status === 'PENDING' && !current?.template_selected_at) {
+            updates.template_status = 'FAILED';
+            updates.template_error_reason = `TEMPLATE_SELECTION_FAILED_${errorReason}`;
+            updates.template_selected_at = new Date().toISOString(); // Mark that we attempted
+            console.log(`[PIPELINE] decision_id=${decisionId} stage=template_select ok=false detail=${updates.template_error_reason}`);
+          }
+          
+          // Mark generation as failed if not completed
+          if (!current?.generation_completed_at) {
+            updates.generation_completed_at = new Date().toISOString();
+            console.log(`[PIPELINE] decision_id=${decisionId} stage=generate ok=false detail=GENERATION_FAILED_${errorReason}`);
+          }
+          
+          // Mark posting as failed if not completed
+          if (!current?.posting_completed_at) {
+            updates.posting_completed_at = new Date().toISOString();
+            console.log(`[PIPELINE] decision_id=${decisionId} stage=post ok=false detail=POSTING_FAILED_${errorReason}`);
+          }
+          
+          await supabase
+            .from('reply_decisions')
+            .update(updates)
+            .eq('decision_id', decisionId);
+          
+          console.log(`[SCHEDULER] 🎯 Marked pipeline stages as FAILED due to scheduler error`);
         }
-        
-        // Mark generation as failed if not completed
-        if (!current?.generation_completed_at) {
-          updates.generation_completed_at = new Date().toISOString();
-          console.log(`[PIPELINE] decision_id=${decisionId} stage=generate ok=false detail=GENERATION_FAILED_${errorReason}`);
-        }
-        
-        // Mark posting as failed if not completed
-        if (!current?.posting_completed_at) {
-          updates.posting_completed_at = new Date().toISOString();
-          console.log(`[PIPELINE] decision_id=${decisionId} stage=post ok=false detail=POSTING_FAILED_${errorReason}`);
-        }
-        
-        await supabase
-          .from('reply_decisions')
-          .update(updates)
-          .eq('decision_id', decisionId);
-        
-        console.log(`[SCHEDULER] 🎯 Marked pipeline stages as FAILED due to scheduler error`);
       } catch (statusError: any) {
         console.warn(`[SCHEDULER] ⚠️ Failed to update pipeline stages: ${statusError.message}`);
       }

@@ -131,6 +131,9 @@ export class UnifiedBrowserPool {
     // Start periodic cleanup
     this.startCleanupTimer();
     
+    // 🐕 POOL WATCHDOG: Start watchdog timer
+    this.startWatchdog();
+    
     // Graceful shutdown
     process.on('SIGTERM', () => this.shutdown());
     process.on('SIGINT', () => this.shutdown());
@@ -944,6 +947,10 @@ export class UnifiedBrowserPool {
         handle.inUse = true;
         handle.lastUsed = new Date();
         handle.operationCount++;
+        
+        // 🐕 POOL WATCHDOG: Track when context becomes active
+        this.contextActiveStartTimes.set(id, Date.now());
+        
         return handle;
       }
     }
@@ -1141,6 +1148,74 @@ export class UnifiedBrowserPool {
         console.error('[BROWSER_POOL] ❌ Cleanup error:', err.message);
       });
     }, this.CLEANUP_INTERVAL);
+  }
+
+  /**
+   * 🐕 POOL WATCHDOG: Monitor acquire waits and stuck contexts
+   * - Logs pool snapshot if acquire wait > 15s
+   * - Force-closes contexts stuck > 90s
+   */
+  private startWatchdog(): void {
+    const WATCHDOG_INTERVAL = 10000; // Check every 10s
+    const ACQUIRE_WAIT_WARNING_MS = 15000; // Warn if waiting > 15s
+    const CONTEXT_STUCK_MS = 90000; // Force-close contexts stuck > 90s
+    
+    this.watchdogTimer = setInterval(() => {
+      try {
+        const now = Date.now();
+        
+        // Check acquire waits
+        for (const [operationId, startTime] of this.acquireWaitStartTimes.entries()) {
+          const waitTime = now - startTime;
+          if (waitTime > ACQUIRE_WAIT_WARNING_MS) {
+            const poolSnapshot = this.getPoolSnapshot();
+            console.warn(`[POOL_WATCHDOG] ⚠️ Long acquire wait detected: operation=${operationId} wait_ms=${waitTime} ${JSON.stringify(poolSnapshot)}`);
+          }
+        }
+        
+        // Check stuck contexts
+        for (const [contextId, startTime] of this.contextActiveStartTimes.entries()) {
+          const activeTime = now - startTime;
+          if (activeTime > CONTEXT_STUCK_MS) {
+            const handle = this.contexts.get(contextId);
+            if (handle) {
+              console.error(`[POOL_WATCHDOG] 🚨 Stuck context detected: context=${contextId} active_ms=${activeTime} force-closing...`);
+              this.forceCloseContext(handle).catch(err => {
+                console.error(`[POOL_WATCHDOG] ❌ Failed to force-close context: ${err.message}`);
+              });
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error(`[POOL_WATCHDOG] ❌ Watchdog error: ${err.message}`);
+      }
+    }, WATCHDOG_INTERVAL);
+  }
+
+  /**
+   * Get current pool snapshot for logging
+   */
+  private getPoolSnapshot(): any {
+    const metrics = this.getMetrics();
+    let semaphoreInflight = 0;
+    try {
+      const { getAncestryLimiter } = require('../utils/ancestryConcurrencyLimiter');
+      const limiter = getAncestryLimiter();
+      const limiterStats = limiter.getStats();
+      semaphoreInflight = limiterStats.current || 0;
+    } catch {}
+    
+    return {
+      max_contexts: this.MAX_CONTEXTS,
+      total_contexts: this.contexts.size,
+      active: this.getActiveCount(),
+      idle: Math.max(0, this.contexts.size - this.getActiveCount()),
+      queue_len: this.queue.length,
+      semaphore_inflight: semaphoreInflight,
+      avg_wait_ms: Math.round(metrics.averageWaitTime || 0),
+      peak_queue: metrics.peakQueue || 0,
+      contexts_created_total: metrics.contextsCreated || 0,
+    };
   }
 
   /**
