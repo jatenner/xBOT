@@ -477,10 +477,46 @@ export async function shouldAllowReply(ancestry: ReplyAncestry): Promise<{ allow
     // 🎯 SPECIFIC ERROR BUCKETS: Map error to specific deny_reason_code (stage-aware)
     let denyReasonCode: string = ancestry.status === 'UNCERTAIN' ? 'ANCESTRY_UNCERTAIN' : 'ANCESTRY_ERROR';
     let denyReasonDetail: string | undefined = undefined;
+    let denyReasonDetailAlreadySet = false; // Guard to prevent overwriting JSON
     
     if (ancestry.status === 'ERROR' && ancestry.error) {
       const errorLower = ancestry.error.toLowerCase();
       const errorMsg = ancestry.error;
+      
+      // 🎯 PRIORITY 1: Extract JSON detail FIRST (before building pool snapshot)
+      // Check for overload detail JSON marker
+      const jsonMarkerMatch = errorMsg.match(/OVERLOAD_DETAIL_JSON:(.+)$/);
+      if (jsonMarkerMatch) {
+        try {
+          const jsonStr = jsonMarkerMatch[1].trim();
+          const overloadDetail = JSON.parse(jsonStr);
+          // Verify it has detail_version marker
+          if (overloadDetail.detail_version === 1) {
+            // Store raw JSON string (or normalized)
+            denyReasonDetail = jsonStr;
+            denyReasonDetailAlreadySet = true;
+            console.log(`[REPLY_DECISION] ✅ Extracted overload JSON detail: ${jsonStr.substring(0, 100)}...`);
+          }
+        } catch (e) {
+          console.warn(`[REPLY_DECISION] Failed to parse overload JSON: ${e}, jsonStr=${jsonMarkerMatch[1].substring(0, 100)}`);
+        }
+      }
+      
+      // 🎯 PRIORITY 2: Fallback to generic JSON extraction if marker not found
+      if (!denyReasonDetailAlreadySet) {
+        try {
+          const jsonMatch = errorMsg.match(/\{[\s\S]*"overloadedByCeiling"[\s\S]*\}/);
+          if (jsonMatch) {
+            const overloadDetail = JSON.parse(jsonMatch[0]);
+            if (overloadDetail.detail_version === 1 || overloadDetail.overloadedByCeiling !== undefined) {
+              denyReasonDetail = jsonMatch[0];
+              denyReasonDetailAlreadySet = true;
+            }
+          }
+        } catch (e) {
+          // JSON parsing failed, continue to fallback
+        }
+      }
       
       // 🎯 PART B: Stage-specific error codes (highest priority)
       // Extract stage info from error message if available
@@ -503,41 +539,44 @@ export async function shouldAllowReply(ancestry: ReplyAncestry): Promise<{ allow
         } catch {}
       }
       
-      // Get pool snapshot for context
-      try {
-        const { UnifiedBrowserPool } = await import('../../browser/UnifiedBrowserPool');
-        const pool = UnifiedBrowserPool.getInstance();
-        const poolAny = pool as any;
-        const metrics = pool.getMetrics();
-        poolSnapshot = {
-          queue_len: poolAny.queue?.length || 0,
-          active: poolAny.getActiveCount?.() || 0,
-          idle: (poolAny.contexts?.size || 0) - (poolAny.getActiveCount?.() || 0),
-          total_contexts: poolAny.contexts?.size || 0,
-          max_contexts: poolAny.MAX_CONTEXTS || 0,
-          semaphore_inflight: 0, // Will be filled if limiter available
-        };
-        
+      // 🎯 PRIORITY 3: Build pool snapshot fallback ONLY if JSON not already set
+      if (!denyReasonDetailAlreadySet) {
+        // Get pool snapshot for context
         try {
-          const { getAncestryLimiter } = await import('../../utils/ancestryConcurrencyLimiter');
-          const limiter = getAncestryLimiter();
-          const limiterStats = limiter.getStats();
-          poolSnapshot.semaphore_inflight = limiterStats.current || 0;
+          const { UnifiedBrowserPool } = await import('../../browser/UnifiedBrowserPool');
+          const pool = UnifiedBrowserPool.getInstance();
+          const poolAny = pool as any;
+          const metrics = pool.getMetrics();
+          poolSnapshot = {
+            queue_len: poolAny.queue?.length || 0,
+            active: poolAny.getActiveCount?.() || 0,
+            idle: (poolAny.contexts?.size || 0) - (poolAny.getActiveCount?.() || 0),
+            total_contexts: poolAny.contexts?.size || 0,
+            max_contexts: poolAny.MAX_CONTEXTS || 0,
+            semaphore_inflight: 0, // Will be filled if limiter available
+          };
+          
+          try {
+            const { getAncestryLimiter } = await import('../../utils/ancestryConcurrencyLimiter');
+            const limiter = getAncestryLimiter();
+            const limiterStats = limiter.getStats();
+            poolSnapshot.semaphore_inflight = limiterStats.current || 0;
+          } catch {}
         } catch {}
-      } catch {}
-      
-      // Build detailed deny_reason_detail
-      const detailParts: string[] = [];
-      if (stageName !== 'unknown') detailParts.push(`stage=${stageName}`);
-      if (durationMs !== null) detailParts.push(`duration_ms=${durationMs}`);
-      if (poolSnapshot) {
-        detailParts.push(`pool={queue=${poolSnapshot.queue_len},active=${poolSnapshot.active}/${poolSnapshot.max_contexts},idle=${poolSnapshot.idle},semaphore=${poolSnapshot.semaphore_inflight}}`);
+        
+        // Build detailed deny_reason_detail fallback
+        const detailParts: string[] = [];
+        if (stageName !== 'unknown') detailParts.push(`stage=${stageName}`);
+        if (durationMs !== null) detailParts.push(`duration_ms=${durationMs}`);
+        if (poolSnapshot) {
+          detailParts.push(`pool={queue=${poolSnapshot.queue_len},active=${poolSnapshot.active}/${poolSnapshot.max_contexts},idle=${poolSnapshot.idle},semaphore=${poolSnapshot.semaphore_inflight}}`);
+        }
+        const baseDetail = errorMsg.split(':').slice(1).join(':').trim();
+        if (baseDetail && !baseDetail.includes('stage=') && !baseDetail.includes('OVERLOAD_DETAIL_JSON')) {
+          detailParts.push(`error=${baseDetail.substring(0, 200)}`);
+        }
+        denyReasonDetail = detailParts.join(' ');
       }
-      const baseDetail = errorMsg.split(':').slice(1).join(':').trim();
-      if (baseDetail && !baseDetail.includes('stage=')) {
-        detailParts.push(`error=${baseDetail.substring(0, 200)}`);
-      }
-      denyReasonDetail = detailParts.join(' ');
       
       if (errorMsg.includes('ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT') || errorLower.includes('acquire_context_timeout')) {
         denyReasonCode = 'ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT';
@@ -551,28 +590,20 @@ export async function shouldAllowReply(ancestry: ReplyAncestry): Promise<{ allow
         denyReasonCode = 'CONSENT_WALL';
       } else if (errorLower.includes('skipped') || errorLower.includes('overload')) {
         denyReasonCode = 'ANCESTRY_SKIPPED_OVERLOAD';
-        // Extract overload detail JSON if present
-        try {
-          // Look for JSON object in error message (may be at end after other text)
-          const jsonMatch = errorMsg.match(/\{[\s\S]*"overloadedByCeiling"[\s\S]*\}/);
-          if (jsonMatch) {
-            const overloadDetail = JSON.parse(jsonMatch[0]);
-            // Replace existing detailParts with structured overload detail
-            detailParts.length = 0;
-            detailParts.push(`overload_reason=${overloadDetail.overloadedByCeiling ? 'CEILING' : (overloadDetail.overloadedBySaturation ? 'SATURATION' : 'UNKNOWN')}`);
-            detailParts.push(`overloadedByCeiling=${overloadDetail.overloadedByCeiling}`);
-            detailParts.push(`overloadedBySaturation=${overloadDetail.overloadedBySaturation}`);
-            detailParts.push(`queueLen=${overloadDetail.queueLen}`);
-            detailParts.push(`hardQueueCeiling=${overloadDetail.hardQueueCeiling}`);
-            detailParts.push(`activeContexts=${overloadDetail.activeContexts}`);
-            detailParts.push(`maxContexts=${overloadDetail.maxContexts}`);
-            detailParts.push(`pool_id=${overloadDetail.pool_id}`);
-            detailParts.push(`pool_instance_uid=${overloadDetail.pool_instance_uid}`);
-            // Also include full JSON for parsing
-            detailParts.push(`json=${jsonMatch[0]}`);
+        // JSON should already be extracted in PRIORITY 1 above
+        // If not set, this is a fallback (shouldn't happen with new code)
+        if (!denyReasonDetailAlreadySet) {
+          // Extract overload detail JSON if present (fallback)
+          try {
+            const jsonMatch = errorMsg.match(/\{[\s\S]*"overloadedByCeiling"[\s\S]*\}/);
+            if (jsonMatch) {
+              const overloadDetail = JSON.parse(jsonMatch[0]);
+              denyReasonDetail = jsonMatch[0];
+              denyReasonDetailAlreadySet = true;
+            }
+          } catch (e) {
+            console.warn(`[REPLY_DECISION] Failed to parse overload JSON (fallback): ${e}, errorMsg=${errorMsg.substring(0, 200)}`);
           }
-        } catch (e) {
-          console.warn(`[REPLY_DECISION] Failed to parse overload JSON: ${e}, errorMsg=${errorMsg.substring(0, 200)}`);
         }
       } else if (errorLower.includes('timeout') || errorLower.includes('queue timeout') || errorLower.includes('pool overloaded')) {
         denyReasonCode = 'ANCESTRY_TIMEOUT'; // Generic timeout fallback
