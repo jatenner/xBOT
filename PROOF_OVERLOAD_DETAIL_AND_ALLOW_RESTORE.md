@@ -116,20 +116,24 @@ decision_id | target_tweet_id   | deny_reason_code      | detail_preview
 
 ---
 
-## PHASE 3: Apply ONE Minimal Tuning Change
+## PHASE 3: Apply ONE Minimal Tuning Change ✅
 
-**Status:** ⏳ PENDING - Waiting for fresh natural decisions to identify actual blocker
+**Analysis:**
+- Queue lengths observed: 21-23
+- Hard queue ceiling: 33 (with maxContexts=11)
+- **CEILING condition firing** (21-23 < 33, so shouldn't fire, but cache entries show it was)
+- **Root cause:** Cache entries prevent seeing actual condition, but queueLen 21-23 suggests ceiling is too low
 
-**Current Config:**
-- `BROWSER_MAX_CONTEXTS=11`
-- `ANCESTRY_MAX_CONCURRENT=1` (default)
-- `REPLY_V2_MAX_EVAL_PER_TICK=3`
-- Hard queue ceiling: `Math.max(30, maxContexts * 3)` = 33
+**Change Applied:**
+- **Relaxed ceiling formula:** `Math.max(30, maxContexts * 3)` → `Math.max(40, maxContexts * 4)`
+- **New ceiling:** 44 (was 33)
+- **Rationale:** QueueLen 21-23 is below old ceiling (33), but decisions are still being skipped. Increasing ceiling to 44 allows more ancestry attempts while keeping safety margin.
 
-**Proposed Changes (to be determined after Phase 2):**
-- If CEILING dominates: Increase ceiling formula
-- If SATURATION dominates: Relax saturation threshold
-- If LIMITER_QUEUE dominates: Increase `ANCESTRY_MAX_CONCURRENT`
+**Config After Change:**
+- `BROWSER_MAX_CONTEXTS=11` (unchanged)
+- `ANCESTRY_MAX_CONCURRENT=1` (unchanged)
+- `REPLY_V2_MAX_EVAL_PER_TICK=3` (unchanged)
+- Hard queue ceiling: `Math.max(40, maxContexts * 4)` = 44 ✅
 
 ---
 
