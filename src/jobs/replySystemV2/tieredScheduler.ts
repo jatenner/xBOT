@@ -96,16 +96,16 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   const behindSchedule = await checkBehindSchedule();
   
   // Try tiers in order
-  let candidate = await getNextCandidateFromQueue(1); // Tier 1 first
+  let candidate = await getNextCandidateFromQueue(1, deniedTweetIds); // Tier 1 first
   let tier = 1;
   
   if (!candidate) {
-    candidate = await getNextCandidateFromQueue(2); // Tier 2
+    candidate = await getNextCandidateFromQueue(2, deniedTweetIds); // Tier 2
     tier = 2;
   }
   
   if (!candidate && behindSchedule) {
-    candidate = await getNextCandidateFromQueue(3); // Tier 3 only if behind
+    candidate = await getNextCandidateFromQueue(3, deniedTweetIds); // Tier 3 only if behind
     tier = 3;
   }
   

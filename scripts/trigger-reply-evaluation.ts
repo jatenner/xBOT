@@ -1,39 +1,29 @@
 #!/usr/bin/env tsx
 /**
- * Trigger reply evaluation to generate fresh decisions
+ * Trigger reply evaluation cycle (scheduler + orchestrator)
  */
 
-import { fetchAndEvaluateCandidates } from '../src/jobs/replySystemV2/orchestrator';
 import * as dotenv from 'dotenv';
-
 dotenv.config();
 
 async function main() {
   console.log('=== Triggering Reply Evaluation ===\n');
   
-  const cycles = parseInt(process.env.CYCLES || '3', 10);
-  console.log(`Running ${cycles} evaluation cycles...\n`);
+  // Trigger scheduler directly (attemptScheduledReply)
+  const { attemptScheduledReply } = await import('../src/jobs/replySystemV2/tieredScheduler');
   
-  for (let i = 0; i < cycles; i++) {
-    console.log(`\n--- Cycle ${i + 1}/${cycles} ---`);
-    try {
-      const result = await fetchAndEvaluateCandidates();
-      console.log(`✅ Cycle ${i + 1} complete:`);
-      console.log(`   Fetched: ${result.fetched}`);
-      console.log(`   Evaluated: ${result.evaluated}`);
-      console.log(`   Passed filters: ${result.passed_filters}`);
-      console.log(`   Feed run ID: ${result.feed_run_id}`);
-      
-      // Wait a bit between cycles
-      if (i < cycles - 1) {
-        await new Promise(resolve => setTimeout(resolve, 5000));
-      }
-    } catch (error: any) {
-      console.error(`❌ Cycle ${i + 1} failed:`, error.message);
+  try {
+    const result = await attemptScheduledReply();
+    console.log('\n✅ Scheduler run completed');
+    console.log(`   Posted: ${result.posted}`);
+    console.log(`   Reason: ${result.reason}`);
+    if (result.candidate_tweet_id) {
+      console.log(`   Candidate: ${result.candidate_tweet_id}`);
     }
+  } catch (error: any) {
+    console.error('\n❌ Error:', error.message);
+    process.exit(1);
   }
-  
-  console.log('\n=== Evaluation Complete ===');
 }
 
 main().catch(console.error);

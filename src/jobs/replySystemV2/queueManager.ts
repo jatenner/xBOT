@@ -158,7 +158,7 @@ function calculateTTL(ageMinutes: number, velocityScore: number): number {
 /**
  * Get next candidate from queue for posting
  */
-export async function getNextCandidateFromQueue(tier?: number): Promise<{
+export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: Set<string>): Promise<{
   candidate_tweet_id: string;
   evaluation_id: string;
   predicted_tier: number;
@@ -170,7 +170,14 @@ export async function getNextCandidateFromQueue(tier?: number): Promise<{
     .from('reply_candidate_queue')
     .select('candidate_tweet_id, evaluation_id, predicted_tier, overall_score')
     .eq('status', 'queued')
-    .gt('expires_at', new Date().toISOString())
+    .gt('expires_at', new Date().toISOString());
+  
+  // 🎯 PART B: Exclude denied tweet IDs if provided
+  if (deniedTweetIds && deniedTweetIds.size > 0) {
+    query = query.not('candidate_tweet_id', 'in', Array.from(deniedTweetIds));
+  }
+  
+  query = query
     .order('predicted_tier', { ascending: true }) // Tier 1 first
     .order('overall_score', { ascending: false }) // Then by score
     .limit(1);
