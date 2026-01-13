@@ -24,9 +24,12 @@ async function main() {
     process.exit(1);
   }
   
-  console.log('\nStep 2: Triggering scheduler...');
+  console.log('\nStep 2: Waiting 2 seconds for transaction commit...');
+  await new Promise(resolve => setTimeout(resolve, 2000));
   
-  // Step 2: Trigger scheduler
+  console.log('Step 3: Triggering scheduler...');
+  
+  // Step 3: Trigger scheduler
   const { attemptScheduledReply } = await import('../src/jobs/replySystemV2/tieredScheduler');
   
   try {
@@ -42,8 +45,8 @@ async function main() {
     console.error(error.stack);
   }
   
-  // Step 3: Query decisions created in last 5 minutes
-  console.log('\nStep 3: Querying decisions (last 5 minutes)...');
+  // Step 4: Query decisions created in last 5 minutes
+  console.log('\nStep 4: Querying decisions (last 5 minutes)...');
   const supabase = getSupabaseClient();
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
   
