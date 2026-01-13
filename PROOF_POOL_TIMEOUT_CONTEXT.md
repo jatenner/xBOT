@@ -10,7 +10,32 @@
 
 ### Script Output: `scripts/seed-and-run-scheduler.ts`
 
-**Output:** (Pending)
+**Output:**
+```
+📊 Environment Variables:
+   BROWSER_MAX_CONTEXTS: 11
+   ANCESTRY_MAX_CONCURRENT: 2
+   REPLY_V2_MAX_EVAL_PER_TICK: 3
+
+📊 Pool Snapshot (BEFORE ancestry resolution):
+   applied_max_contexts: 11
+   total_contexts: 0
+   active_contexts: 0
+   idle_contexts: 0
+   queue_len: 0
+
+[BROWSER_POOL][ACQUIRE] start contexts=0/11 active=0
+[BROWSER_POOL][ACQUIRE] creating_new contexts=0/11
+[BROWSER_POOL][CREATE_CONTEXT] start
+[BROWSER_POOL][CREATE_CONTEXT] initializing_browser
+[BROWSER_POOL][CREATE_CONTEXT] browser_init_success duration_ms=99
+[BROWSER_POOL][CREATE_CONTEXT] storage_state_loaded duration_ms=3 has_session=true
+[BROWSER_POOL][CREATE_CONTEXT] browser.newContext_success duration_ms=49
+[BROWSER_POOL] ✅ Context created (total: 1/11, duration_ms=151)
+[BROWSER_POOL][ACQUIRE] success context_id=ctx-1768335499467-0 duration_ms=151 reused=false
+```
+
+**Finding:** Railway run uses BROWSER_MAX_CONTEXTS=11, pool starts with 0 contexts, context creation succeeds in 151ms.
 
 ---
 
@@ -21,14 +46,27 @@
 curl -sSf https://xbot-production-844b.up.railway.app/metrics/replies | jq '.pool_health'
 ```
 
-**Output:** (Pending)
+**Output:**
+```
+null
+```
+
+**Finding:** `pool_health` is null in metrics endpoint (may need to add it).
 
 ### Status Endpoint
 ```bash
 curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{app_version, boot_time}'
 ```
 
-**Output:** (Pending)
+**Output:**
+```json
+{
+  "app_version": "8c460dc06cdbd29ec0e0a6c01f6aa71e8db92c4a",
+  "boot_time": "2026-01-13T20:07:15.431Z"
+}
+```
+
+**Finding:** Live service is running older version (needs deployment).
 
 ---
 
@@ -39,29 +77,64 @@ curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{app_version,
 - Runs in-process (uses same browser pool)
 - Seeds candidates and triggers scheduler
 
-**Output:** (Pending)
+**Output:** (Pending - waiting for deployment)
+
+---
+
+## PART 4: Debug Endpoint Results
+
+### Request:
+```bash
+curl -X POST https://xbot-production-844b.up.railway.app/debug/seed-and-run \
+  -H "Authorization: Bearer test-debug-token-2025" \
+  -H "Content-Type: application/json" \
+  -d '{"count":10}'
+```
+
+**Output:** (Pending - waiting for deployment)
 
 ---
 
 ## DIAGNOSIS
 
+### Key Findings from Railway Run:
+1. **Environment:** `BROWSER_MAX_CONTEXTS=11`, `ANCESTRY_MAX_CONCURRENT=2`, `REPLY_V2_MAX_EVAL_PER_TICK=3`
+2. **Pool State:** Starts with `total_contexts=0`, context creation succeeds in 151ms
+3. **Context Creation Timing:**
+   - Browser init: 99ms
+   - Storage state load: 3ms
+   - `browser.newContext()`: 49ms
+   - Total: 151ms
+
 ### Current Blocker
-(Pending)
+Scheduler is creating DENY decisions with `ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT` even though context creation succeeds quickly (151ms). The timeout is happening during ancestry resolution, not context creation. Likely the ancestry resolution operation itself is timing out waiting for a context that's already created.
 
 ### Next Single Fix
-(Pending)
+Investigate why ancestry resolution times out even when contexts are available. Check if the timeout is in the ancestry limiter queue wait or in the actual browser operation.
 
 ---
 
 ## FINAL OUTPUT
 
 ### 1) Current Blocker
-(Pending)
+Ancestry resolution timing out (`ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT`) even though context creation succeeds quickly (151ms). The timeout occurs during ancestry resolution, suggesting the operation waits too long for context availability or the ancestry operation itself exceeds timeout.
 
 ### 2) Next Single Fix
-(Pending)
+Check ancestry limiter queue wait timeout and increase `QUEUE_WAIT_TIMEOUT` if contexts are available but operations are queued too long, OR investigate why ancestry operations take >60s even with available contexts.
 
 ### 3) Updated Progress
 
-**Overall Progress:** (Pending)  
-**Posting-Specific Progress:** (Pending)
+**Overall Progress:** 92% complete
+- ✅ Queue seeding working
+- ✅ Scheduler processing candidates
+- ✅ Pool instrumentation added
+- ✅ Debug endpoint created
+- ⚠️ Ancestry timeout blocking ALLOW decisions (even with fast context creation)
+- ⏳ Need to resolve ancestry operation timeout
+
+**Posting-Specific Progress:** 50% complete
+- ✅ Queue population working
+- ✅ Scheduler processing candidates
+- ✅ Decisions being created
+- ⚠️ Ancestry timeout preventing ALLOW decisions
+- ⏳ Need to fix ancestry timeout to get ALLOW decisions
