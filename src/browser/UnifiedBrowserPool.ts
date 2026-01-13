@@ -91,6 +91,7 @@ export class UnifiedBrowserPool {
   private readonly QUEUE_WAIT_TIMEOUT = QUEUE_WAIT_TIMEOUT_CONFIG; // Max wait in queue (default 60s)
   
   private cleanupTimer: NodeJS.Timeout | null = null;
+  private watchdogTimer: NodeJS.Timeout | null = null;
   private metrics = {
     totalOperations: 0,
     queuedOperations: 0,
@@ -106,6 +107,10 @@ export class UnifiedBrowserPool {
     timeoutsLast1h: 0,
   };
   private resourceFailureCount = 0;
+  
+  // 🐕 POOL WATCHDOG: Track context acquisition wait times
+  private acquireWaitStartTimes: Map<string, number> = new Map(); // operationId -> startTime
+  private contextActiveStartTimes: Map<string, number> = new Map(); // contextId -> startTime
   
   // 🔥 MEMORY OPTIMIZATION: Track operations for browser restart cycle
   private totalOperationCount = 0; // Track total operations across all contexts
@@ -262,6 +267,9 @@ export class UnifiedBrowserPool {
     return new Promise<T>((resolve, reject) => {
       const queuedAt = Date.now();
       
+      // 🐕 POOL WATCHDOG: Track acquire wait start time
+      this.acquireWaitStartTimes.set(operationId, queuedAt);
+      
       // 🔥 QUEUE TIMEOUT: Reject if waiting too long (prevents infinite waits)
       // 🔥 OPTIMIZATION: Critical operations get longer timeout
       const queueTimeoutTimer = setTimeout(() => {
@@ -288,6 +296,9 @@ export class UnifiedBrowserPool {
           this.queue.splice(index, 1);
           this.metrics.queuedOperations--;
         }
+        
+        // 🐕 POOL WATCHDOG: Clear acquire wait tracking
+        this.acquireWaitStartTimes.delete(operationId);
         
         reject(new Error(`Queue timeout after ${Math.round(waitTime/1000)}s - pool overloaded (priority: ${priority}, timeout: ${timeoutMs/1000}s, queue_len=${this.queue.length}, active=${this.getActiveCount()}/${this.MAX_CONTEXTS})`));
       }, timeoutMs);
@@ -582,6 +593,8 @@ export class UnifiedBrowserPool {
                 // Force close the stuck context
                 await this.forceCloseContext(context);
                 contextClosed = true; // Don't try to release in finally
+                
+                // 🐕 POOL WATCHDOG: Clear active tracking (forceCloseContext already handles this)
                 
               } else {
                 console.error(`[BROWSER_POOL]   ❌ ${op.id}: Failed (${duration}ms) - ${error.message}`);
@@ -900,6 +913,9 @@ export class UnifiedBrowserPool {
       this.metrics.contextsClosed++;
       this.metrics.activeContexts = this.contexts.size;
       
+      // 🐕 POOL WATCHDOG: Clear active tracking
+      this.contextActiveStartTimes.delete(contextId);
+      
       console.log(`[BROWSER_POOL] ✅ Context force-closed (remaining: ${this.contexts.size}/${this.MAX_CONTEXTS})`);
       
     } catch (error: any) {
@@ -1020,6 +1036,9 @@ export class UnifiedBrowserPool {
     this.contexts.set(contextId, handle);
     this.metrics.contextsCreated++;
     this.metrics.activeContexts = this.contexts.size;
+    
+    // 🐕 POOL WATCHDOG: Track when context becomes active
+    this.contextActiveStartTimes.set(contextId, Date.now());
 
     console.log(`[BROWSER_POOL] ✅ Context created (total: ${this.contexts.size}/${this.MAX_CONTEXTS})`);
     
@@ -1078,6 +1097,13 @@ export class UnifiedBrowserPool {
   private releaseContext(handle: ContextHandle): void {
     handle.inUse = false;
     handle.lastUsed = new Date();
+    
+    // 🐕 POOL WATCHDOG: Clear active tracking
+    const contextId = Array.from(this.contexts.entries())
+      .find(([_, h]) => h === handle)?.[0];
+    if (contextId) {
+      this.contextActiveStartTimes.delete(contextId);
+    }
     
     // Close context if it's exceeded max operations
     if (handle.operationCount >= handle.maxOperations) {
@@ -1428,6 +1454,10 @@ export class UnifiedBrowserPool {
     
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
+    }
+    
+    if (this.watchdogTimer) {
+      clearInterval(this.watchdogTimer);
     }
 
     // Close all contexts

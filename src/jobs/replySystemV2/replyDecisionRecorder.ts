@@ -456,21 +456,72 @@ export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; rea
       const errorMsg = ancestry.error;
       
       // 🎯 PART B: Stage-specific error codes (highest priority)
+      // Extract stage info from error message if available
+      let stageName = 'unknown';
+      let durationMs = null;
+      let poolSnapshot: any = null;
+      
+      // Try to extract stage from error message or ancestry metadata
+      const stageMatch = errorMsg.match(/stage=(\w+)/);
+      if (stageMatch) {
+        stageName = stageMatch[1];
+      }
+      
+      // Try to extract duration from stage_timings JSON if present
+      const timingsMatch = errorMsg.match(/stage_timings=(\{[^}]+\})/);
+      if (timingsMatch) {
+        try {
+          const timings = JSON.parse(timingsMatch[1]);
+          durationMs = timings[stageName] || Object.values(timings)[0] || null;
+        } catch {}
+      }
+      
+      // Get pool snapshot for context
+      try {
+        const { UnifiedBrowserPool } = await import('../../browser/UnifiedBrowserPool');
+        const pool = UnifiedBrowserPool.getInstance();
+        const poolAny = pool as any;
+        const metrics = pool.getMetrics();
+        poolSnapshot = {
+          queue_len: poolAny.queue?.length || 0,
+          active: poolAny.getActiveCount?.() || 0,
+          idle: (poolAny.contexts?.size || 0) - (poolAny.getActiveCount?.() || 0),
+          total_contexts: poolAny.contexts?.size || 0,
+          max_contexts: poolAny.MAX_CONTEXTS || 0,
+          semaphore_inflight: 0, // Will be filled if limiter available
+        };
+        
+        try {
+          const { getAncestryLimiter } = await import('../../utils/ancestryConcurrencyLimiter');
+          const limiter = getAncestryLimiter();
+          const limiterStats = limiter.getStats();
+          poolSnapshot.semaphore_inflight = limiterStats.current || 0;
+        } catch {}
+      } catch {}
+      
+      // Build detailed deny_reason_detail
+      const detailParts: string[] = [];
+      if (stageName !== 'unknown') detailParts.push(`stage=${stageName}`);
+      if (durationMs !== null) detailParts.push(`duration_ms=${durationMs}`);
+      if (poolSnapshot) {
+        detailParts.push(`pool={queue=${poolSnapshot.queue_len},active=${poolSnapshot.active}/${poolSnapshot.max_contexts},idle=${poolSnapshot.idle},semaphore=${poolSnapshot.semaphore_inflight}}`);
+      }
+      const baseDetail = errorMsg.split(':').slice(1).join(':').trim();
+      if (baseDetail && !baseDetail.includes('stage=')) {
+        detailParts.push(`error=${baseDetail.substring(0, 200)}`);
+      }
+      denyReasonDetail = detailParts.join(' ');
+      
       if (errorMsg.includes('ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT') || errorLower.includes('acquire_context_timeout')) {
         denyReasonCode = 'ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT';
-        denyReasonDetail = errorMsg.split(':').slice(1).join(':').trim();
       } else if (errorMsg.includes('ANCESTRY_NAV_TIMEOUT') || errorLower.includes('nav_timeout')) {
         denyReasonCode = 'ANCESTRY_NAV_TIMEOUT';
-        denyReasonDetail = errorMsg.split(':').slice(1).join(':').trim();
       } else if (errorMsg.includes('ANCESTRY_PARSE_TIMEOUT') || errorLower.includes('parse_timeout')) {
         denyReasonCode = 'ANCESTRY_PARSE_TIMEOUT';
-        denyReasonDetail = errorMsg.split(':').slice(1).join(':').trim();
       } else if (errorMsg.includes('ANCESTRY_QUEUE_TIMEOUT') || errorLower.includes('queue_timeout')) {
         denyReasonCode = 'ANCESTRY_QUEUE_TIMEOUT';
-        denyReasonDetail = errorMsg.split(':').slice(1).join(':').trim();
       } else if (errorMsg.includes('CONSENT_WALL') || errorLower.includes('consent_wall')) {
         denyReasonCode = 'CONSENT_WALL';
-        denyReasonDetail = errorMsg.split(':').slice(1).join(':').trim();
       } else if (errorLower.includes('skipped') || errorLower.includes('overload')) {
         denyReasonCode = 'ANCESTRY_SKIPPED_OVERLOAD';
       } else if (errorLower.includes('timeout') || errorLower.includes('queue timeout') || errorLower.includes('pool overloaded')) {

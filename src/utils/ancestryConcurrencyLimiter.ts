@@ -3,30 +3,44 @@
  * 
  * Limits concurrent ancestry resolutions to prevent browser pool overload.
  * Uses a simple semaphore pattern to cap concurrency.
+ * 
+ * 🎯 LOAD SHAPING: Implements "one waiting at a time" rule to prevent pool starvation
  */
 
 class AncestryConcurrencyLimiter {
   private maxConcurrent: number;
   private current: number = 0;
   private queue: Array<() => void> = [];
+  private acquireContextWaiting: boolean = false; // Track if acquire_context is waiting
   
-  constructor(maxConcurrent: number = 2) {
+  constructor(maxConcurrent: number = 1) { // 🎯 LOAD SHAPING: Default to 1 (was 2)
     this.maxConcurrent = maxConcurrent;
   }
   
   /**
    * Acquire a slot for ancestry resolution
    * Returns a release function that must be called when done
+   * 🎯 LOAD SHAPING: Skips if acquire_context is already waiting
    */
   async acquire(): Promise<() => void> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+      // 🎯 LOAD SHAPING: If acquire_context is already waiting, skip this request
+      if (this.acquireContextWaiting) {
+        reject(new Error('ANCESTRY_SKIPPED_OVERLOAD: acquire_context already waiting'));
+        return;
+      }
+      
       if (this.current < this.maxConcurrent) {
         this.current++;
         resolve(() => this.release());
       } else {
+        // 🎯 LOAD SHAPING: Mark that we're waiting for acquire_context
+        this.acquireContextWaiting = true;
+        
         // Queue the request
         this.queue.push(() => {
           this.current++;
+          this.acquireContextWaiting = false; // Clear waiting flag when we get a slot
           resolve(() => this.release());
         });
       }
@@ -58,7 +72,8 @@ let limiter: AncestryConcurrencyLimiter | null = null;
 
 export function getAncestryLimiter(): AncestryConcurrencyLimiter {
   if (!limiter) {
-    const maxConcurrent = parseInt(process.env.ANCESTRY_MAX_CONCURRENT || '2', 10);
+    // 🎯 LOAD SHAPING: Default to 1 (was 2) to reduce pool pressure
+    const maxConcurrent = parseInt(process.env.ANCESTRY_MAX_CONCURRENT || '1', 10);
     limiter = new AncestryConcurrencyLimiter(maxConcurrent);
   }
   return limiter;

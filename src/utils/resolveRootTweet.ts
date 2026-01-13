@@ -34,7 +34,8 @@ export interface RootTweetResolution {
  */
 export async function resolveRootTweetId(tweetId: string): Promise<RootTweetResolution> {
   // 🎯 CONCURRENCY LIMIT: Wrap in limiter to prevent pool overload
-  return withAncestryLimit(async () => {
+  try {
+    return await withAncestryLimit(async () => {
     const tweetUrl = `https://x.com/i/web/status/${tweetId}`;
     const decisionId = `ancestry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
@@ -400,7 +401,55 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
         }
       }
     }
-  });
+    });
+  } catch (limiterError: any) {
+    // 🎯 LOAD SHAPING: Handle ANCESTRY_SKIPPED_OVERLOAD from limiter
+    if (limiterError.message && limiterError.message.includes('ANCESTRY_SKIPPED_OVERLOAD')) {
+      const pool = UnifiedBrowserPool.getInstance();
+      const poolAny = pool as any;
+      const poolSnapshot = {
+        queue_len: poolAny.queue?.length || 0,
+        active: poolAny.getActiveCount?.() || 0,
+        idle: (poolAny.contexts?.size || 0) - (poolAny.getActiveCount?.() || 0),
+        total_contexts: poolAny.contexts?.size || 0,
+        max_contexts: poolAny.MAX_CONTEXTS || 0,
+      };
+      
+      try {
+        const { getAncestryLimiter } = await import('./ancestryConcurrencyLimiter');
+        const limiter = getAncestryLimiter();
+        const limiterStats = limiter.getStats();
+        poolSnapshot.semaphore_inflight = limiterStats.current || 0;
+      } catch {}
+      
+      const denyReasonDetail = `stage=acquire_context pool={queue=${poolSnapshot.queue_len},active=${poolSnapshot.active}/${poolSnapshot.max_contexts},idle=${poolSnapshot.idle},semaphore=${poolSnapshot.semaphore_inflight || 0}}`;
+      
+      console.warn(`[ANCESTRY] ⚠️ Skipped due to overload: ${tweetId} ${denyReasonDetail}`);
+      
+      return {
+        originalTweetId: tweetId,
+        rootTweetId: null,
+        isRootTweet: false,
+        rootTweetUrl: `https://x.com/i/web/status/${tweetId}`,
+        rootTweetAuthor: null,
+        rootTweetContent: null,
+        status: 'ERROR',
+        confidence: 'LOW',
+        method: 'skipped_overload',
+        signals: {
+          replying_to_text: false,
+          social_context: false,
+          main_article_reply_indicator: false,
+          multiple_articles: false,
+          verification_passed: false,
+        },
+        error: `ANCESTRY_SKIPPED_OVERLOAD: ${denyReasonDetail}`,
+      };
+    }
+    
+    // Re-throw other errors
+    throw limiterError;
+  }
 }
 
 /**
