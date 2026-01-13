@@ -6,7 +6,6 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { resolveTweetAncestry, recordReplyDecision, shouldAllowReply } from '../src/jobs/replySystemV2/replyDecisionRecorder';
-import { fetchAndEvaluateCandidates } from '../src/jobs/replySystemV2/orchestrator';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -22,12 +21,7 @@ async function main() {
   console.log(`=== Force Fresh Ancestry Sample ===\n`);
   console.log(`Target count: ${count} fresh tweet IDs\n`);
   
-  // Step 1: Fetch candidates from feeds
-  console.log('Step 1: Fetching candidates from feeds...');
-  const fetchResult = await fetchAndEvaluateCandidates();
-  console.log(`✅ Fetched ${fetchResult.fetched} tweets, evaluated ${fetchResult.evaluated}\n`);
-  
-  // Step 2: Get tweet IDs from reply_candidate_queue (most reliable source)
+  // Step 1: Get tweet IDs from reply_candidate_queue (most reliable source)
   console.log('Step 2: Collecting tweet IDs from reply_candidate_queue...');
   
   const { data: queueCandidates, error: queueError } = await supabase
@@ -65,8 +59,8 @@ async function main() {
   const uniqueIds = Array.from(new Set(candidateIds));
   console.log(`Found ${uniqueIds.length} unique candidate tweet IDs\n`);
   
-  // Step 3: Filter out IDs that already appear in reply_decisions (last 24h)
-  console.log('Step 3: Filtering out IDs already in reply_decisions...');
+  // Step 2: Filter out IDs that already appear in reply_decisions (last 24h)
+  console.log('Step 2: Filtering out IDs already in reply_decisions...');
   const { data: existingDecisions } = await supabase
     .from('reply_decisions')
     .select('target_tweet_id')
@@ -75,8 +69,8 @@ async function main() {
   const existingIds = new Set(existingDecisions?.map(d => d.target_tweet_id).filter(Boolean) || []);
   console.log(`Found ${existingIds.size} IDs already in reply_decisions\n`);
   
-  // Step 4: Filter out IDs present in reply_ancestry_cache
-  console.log('Step 4: Filtering out IDs in reply_ancestry_cache...');
+  // Step 3: Filter out IDs present in reply_ancestry_cache
+  console.log('Step 3: Filtering out IDs in reply_ancestry_cache...');
   const { data: cachedAncestry } = await supabase
     .from('reply_ancestry_cache')
     .select('tweet_id');
@@ -84,12 +78,12 @@ async function main() {
   const cachedIds = new Set(cachedAncestry?.map(c => c.tweet_id).filter(Boolean) || []);
   console.log(`Found ${cachedIds.size} IDs in ancestry cache\n`);
   
-  // Step 5: Choose first N "never seen" IDs
-  const freshIds = candidateIds.filter(id => 
+  // Step 4: Choose first N "never seen" IDs
+  const freshIds = uniqueIds.filter(id => 
     !existingIds.has(id) && !cachedIds.has(id)
   ).slice(0, count);
   
-  console.log(`Step 5: Selected ${freshIds.length} fresh tweet IDs\n`);
+  console.log(`Step 4: Selected ${freshIds.length} fresh tweet IDs\n`);
   
   if (freshIds.length === 0) {
     console.log('⚠️ No fresh tweet IDs found. Using any available IDs...');
@@ -103,7 +97,7 @@ async function main() {
   
   console.log(`Processing ${freshIds.length} fresh tweet IDs...\n`);
   
-  // Step 6: For each ID, run ancestry resolution and record decision
+  // Step 5: For each ID, run ancestry resolution and record decision
   let processed = 0;
   let skippedOverload = 0;
   let hasOverloadJson = 0;
