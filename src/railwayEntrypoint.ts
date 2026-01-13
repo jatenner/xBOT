@@ -433,6 +433,28 @@ setImmediate(async () => {
           const type = entry.isDirectory() ? 'DIR' : 'FILE';
           console.log(`[BOOT][PLAYWRIGHT]   ${type}: ${entry.name}`);
         }
+        
+        // STEP 3: Check for chromium executables
+        console.log('[BOOT][PLAYWRIGHT] Checking for chromium executables...');
+        const { execSync } = require('child_process');
+        try {
+          const lsOutput = execSync('ls -la /ms-playwright | head -20', { encoding: 'utf8', timeout: 5000 });
+          console.log(`[BOOT][PLAYWRIGHT] ls -la /ms-playwright (first 20 lines):`);
+          console.log(lsOutput.split('\n').slice(0, 20).join('\n'));
+        } catch (e: any) {
+          console.warn(`[BOOT][PLAYWRIGHT] ls failed: ${e.message}`);
+        }
+        
+        try {
+          const findOutput = execSync('find /ms-playwright -maxdepth 3 -type f \\( -name headless_shell -o -name chrome \\) | head -10', { encoding: 'utf8', timeout: 5000 });
+          const found = findOutput.trim().split('\n').filter(Boolean);
+          console.log(`[BOOT][PLAYWRIGHT] Found ${found.length} chromium executables:`);
+          found.slice(0, 10).forEach((path: string) => {
+            console.log(`[BOOT][PLAYWRIGHT]   ${path}`);
+          });
+        } catch (e: any) {
+          console.warn(`[BOOT][PLAYWRIGHT] find failed: ${e.message}`);
+        }
       } else {
         console.log('[BOOT][PLAYWRIGHT] /ms-playwright: MISSING');
       }
