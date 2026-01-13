@@ -162,6 +162,26 @@ curl -sSf https://xbot-production-844b.up.railway.app/metrics/replies | jq '{las
 ## SUMMARY
 
 **Fix:** Capacity-aware overload threshold (20 → 33 with maxContexts=11)  
-**Deployment:** (Status)  
-**Impact:** (To be measured)  
-**Next Action:** (To be determined)
+**Deployment:** ✅ Complete (app_version: b1219abcd9108707d582bd66f6c4ae86d8c84581, boot_id: 6588b74d-01d3-44f1-a69c-48557c5be091)  
+**Impact:** ⚠️ Monitoring - waiting for fresh decisions post-deploy  
+**Next Action:** Monitor for 30-60 minutes to see if SKIPPED_OVERLOAD decreases and ALLOW decisions appear
+
+---
+
+## DIAGNOSIS
+
+### Current Status (30 minutes post-deploy)
+- **ALLOW:** 0 (still waiting)
+- **SKIPPED_OVERLOAD:** 6 decisions (100% of DENY in last 30 min)
+- **Queue lengths:** 22-25 (below new threshold of 33)
+
+### Observation
+Pool snapshots in `deny_reason_detail` show `max_contexts=5` (old value), suggesting:
+1. Decisions were created before deployment completed, OR
+2. Pool snapshot code needs to read updated `MAX_CONTEXTS` value
+
+**Next Steps:**
+1. Wait for scheduler to run (every 15 minutes) with new code
+2. Check for decisions created after 04:50 UTC (post-deploy window)
+3. Verify overload check logs show new threshold (33) being used
+4. If still 0 ALLOW after 1 hour, investigate other blockers
