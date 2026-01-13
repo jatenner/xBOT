@@ -31,7 +31,7 @@ const parseEnvInt = (key: string, fallback: number, min: number, max: number): n
   return clamp(parsed, min, max);
 };
 
-const MAX_CONTEXTS_CONFIG = parseEnvInt('BROWSER_MAX_CONTEXTS', 5, 1, 10); // Increased to 5 (no thread limit with multi-process)
+const MAX_CONTEXTS_CONFIG = parseEnvInt('BROWSER_MAX_CONTEXTS', 5, 1, 15); // Increased max to 15 to allow higher values (was clamped at 10)
 const MAX_OPERATIONS_CONFIG = parseEnvInt('BROWSER_MAX_OPERATIONS', 25, 5, 100);
 const QUEUE_WAIT_TIMEOUT_CONFIG = parseEnvInt('BROWSER_QUEUE_TIMEOUT_MS', 60000, 10000, 300000);
 const CIRCUIT_BREAKER_TIMEOUT_CONFIG = parseEnvInt('BROWSER_CIRCUIT_BREAKER_TIMEOUT_MS', 60000, 30000, 600000);
@@ -134,8 +134,13 @@ export class UnifiedBrowserPool {
     // Generate unique instance ID
     this.poolInstanceUid = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     
-    // 🚀 BOOT LOG: Log pool initialization
-    console.log(`[BOOT] Browser pool uid=${this.poolInstanceUid} maxContexts=${this.MAX_CONTEXTS} source_env=${process.env.BROWSER_MAX_CONTEXTS || 'default'}`);
+    // 🚀 BOOT LOG: Log pool initialization with clamp details
+    const requestedEnv = process.env.BROWSER_MAX_CONTEXTS || 'default';
+    const requestedNum = requestedEnv !== 'default' ? parseInt(requestedEnv, 10) : null;
+    const appliedMaxContexts = this.MAX_CONTEXTS;
+    const clampMax = 15; // Match parseEnvInt max parameter
+    const wasClamped = requestedNum !== null && requestedNum > clampMax;
+    console.log(`[BOOT] Browser pool uid=${this.poolInstanceUid} requested_env_max_contexts=${requestedEnv} applied_max_contexts=${appliedMaxContexts} clamp_max=${clampMax}${wasClamped ? ' (WAS_CLAMPED)' : ''}`);
     
     // Start periodic cleanup
     this.startCleanupTimer();

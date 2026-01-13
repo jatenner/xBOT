@@ -17,8 +17,13 @@ const supabase = createClient(
 async function main() {
   console.log('=== Overload Detail Verification ===\n');
   
-  // Get last 60 minutes of decisions
-  const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+  // Allow cutoff to be specified via env var (for post-deploy window)
+  const deployCutoff = process.env.DEPLOY_CUTOFF;
+  const cutoff = deployCutoff 
+    ? new Date(deployCutoff)
+    : new Date(Date.now() - 60 * 60 * 1000); // Default: last 60 minutes
+  
+  console.log(`Using cutoff: ${cutoff.toISOString()}\n`);
   
   // Breakdown by deny_reason_code
   const { data: breakdown, error: breakdownError } = await supabase
@@ -79,7 +84,7 @@ async function main() {
         try {
           const detail = JSON.parse(jsonMatch[0]);
           console.log(`   Parsed JSON:`);
-          console.log(`     - overload_reason: ${detail.overloadedByCeiling ? 'CEILING' : 'SATURATION'}`);
+          console.log(`     - overload_reason: ${detail.overloadedByCeiling ? 'CEILING' : (detail.overloadedBySaturation ? 'SATURATION' : 'UNKNOWN')}`);
           console.log(`     - overloadedByCeiling: ${detail.overloadedByCeiling}`);
           console.log(`     - overloadedBySaturation: ${detail.overloadedBySaturation}`);
           console.log(`     - queueLen: ${detail.queueLen}`);
@@ -90,7 +95,12 @@ async function main() {
           console.log(`     - pool_instance_uid: ${detail.pool_instance_uid}`);
         } catch (e) {
           console.log(`   (Could not parse JSON: ${e})`);
+          console.log(`   Raw detail: ${row.deny_reason_detail.substring(0, 200)}`);
         }
+      } else {
+        // Check for structured format without JSON
+        console.log(`   (No JSON found - may be old format)`);
+        console.log(`   Raw detail: ${row.deny_reason_detail.substring(0, 200)}`);
       }
     }
   });
