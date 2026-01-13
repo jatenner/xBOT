@@ -20,6 +20,39 @@ export interface TemplateContext {
   content_preview?: string;
 }
 
+// Cache for control plane state (5 minute TTL)
+let cachedPolicy: { state: any; expiresAt: number } | null = null;
+const POLICY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Get current policy from control_plane_state (cached)
+ */
+async function getCurrentPolicy(): Promise<any> {
+  const now = Date.now();
+  
+  // Return cached if valid
+  if (cachedPolicy && cachedPolicy.expiresAt > now) {
+    return cachedPolicy.state;
+  }
+  
+  const supabase = getSupabaseClient();
+  const { data: currentState } = await supabase
+    .from('control_plane_state')
+    .select('*')
+    .is('expires_at', null)
+    .order('effective_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  
+  // Cache for 5 minutes
+  cachedPolicy = {
+    state: currentState,
+    expiresAt: now + POLICY_CACHE_TTL,
+  };
+  
+  return currentState;
+}
+
 /**
  * Select reply template based on context
  */
@@ -27,6 +60,13 @@ export async function selectReplyTemplate(
   context: TemplateContext
 ): Promise<TemplateSelection> {
   const supabase = getSupabaseClient();
+  
+  // Get current policy
+  const policy = await getCurrentPolicy();
+  const templateWeights = policy?.template_weights || {};
+  const promptVersionWeights = policy?.prompt_version_weights || {};
+  const explorationRate = policy?.exploration_rate || 0.10;
+  const policyVersion = policy?.id || 'none';
   
   // Get available templates
   const { data: templates, error } = await supabase
@@ -44,44 +84,41 @@ export async function selectReplyTemplate(
     };
   }
   
-  // Calculate selection weights
+  // Calculate selection weights (combine policy weights with context-based boosts)
   const weightedTemplates = templates.map(template => {
-    let weight = template.priority_weight || 1.0;
+    // Start with policy weight if available, else use priority_weight
+    let weight = templateWeights[template.id] || template.priority_weight || 1.0;
     
-    // Boost templates based on topic relevance
+    // Apply context-based boosts (smaller than before, policy is primary)
     if (context.topic_relevance_score >= 0.8) {
-      // High relevance: prefer explanation/clarification
       if (template.id === 'explanation' || template.id === 'clarification') {
-        weight *= 1.2;
+        weight *= 1.1; // Smaller boost
       }
     } else if (context.topic_relevance_score >= 0.6) {
-      // Medium relevance: prefer actionable/question
       if (template.id === 'actionable' || template.id === 'question') {
-        weight *= 1.15;
+        weight *= 1.05; // Smaller boost
       }
     }
     
-    // Boost based on candidate score (higher score = more confident templates)
     if (context.candidate_score >= 70) {
-      // High score: prefer explanation/clarification (more authoritative)
       if (template.id === 'explanation' || template.id === 'clarification') {
-        weight *= 1.1;
+        weight *= 1.05; // Smaller boost
       }
     } else if (context.candidate_score >= 50) {
-      // Medium score: prefer actionable/question (more engaging)
       if (template.id === 'actionable' || template.id === 'question') {
-        weight *= 1.1;
+        weight *= 1.05; // Smaller boost
       }
     }
     
     return { ...template, calculated_weight: weight };
   });
   
-  // Check exploration rate (try different template occasionally)
-  const explorationRate = templates[0]?.exploration_rate || 0.1;
+  // Check exploration rate from policy
   const shouldExplore = Math.random() < explorationRate;
   
   let selectedTemplate;
+  let selectedPromptVersion = 'v1';
+  
   if (shouldExplore && templates.length > 1) {
     // Exploration: randomly select from top 3 templates
     const topTemplates = weightedTemplates
@@ -89,20 +126,48 @@ export async function selectReplyTemplate(
       .slice(0, 3);
     const randomIndex = Math.floor(Math.random() * topTemplates.length);
     selectedTemplate = topTemplates[randomIndex];
-    console.log(`[TEMPLATE_SELECTOR] 🎲 Exploration mode: selected ${selectedTemplate.id} (random from top 3)`);
+    
+    // Select prompt version from policy if available
+    const templateVersions = promptVersionWeights[selectedTemplate.id];
+    if (templateVersions && Object.keys(templateVersions).length > 0) {
+      const versions = Object.entries(templateVersions);
+      const totalWeight = versions.reduce((sum, [, w]) => sum + (w as number), 0);
+      let random = Math.random() * totalWeight;
+      for (const [version, weight] of versions) {
+        random -= weight as number;
+        if (random <= 0) {
+          selectedPromptVersion = version;
+          break;
+        }
+      }
+    }
+    
+    console.log(`[TEMPLATE_SELECTOR] 🎲 Exploration mode: selected ${selectedTemplate.id} (policy_version=${policyVersion}, prompt=${selectedPromptVersion})`);
   } else {
     // Exploitation: select highest weighted template
     selectedTemplate = weightedTemplates.reduce((best, current) =>
       current.calculated_weight > best.calculated_weight ? current : best
     );
-    console.log(`[TEMPLATE_SELECTOR] 🎯 Exploitation mode: selected ${selectedTemplate.id} (weight=${selectedTemplate.calculated_weight.toFixed(2)})`);
+    
+    // Select prompt version from policy if available
+    const templateVersions = promptVersionWeights[selectedTemplate.id];
+    if (templateVersions && Object.keys(templateVersions).length > 0) {
+      // Select highest weighted version
+      const versions = Object.entries(templateVersions);
+      const bestVersion = versions.reduce((best, current) =>
+        (current[1] as number) > (best[1] as number) ? current : best
+      );
+      selectedPromptVersion = bestVersion[0];
+    }
+    
+    console.log(`[TEMPLATE_SELECTOR] 🎯 Exploitation mode: selected ${selectedTemplate.id} (weight=${selectedTemplate.calculated_weight.toFixed(2)}, policy_version=${policyVersion}, prompt=${selectedPromptVersion})`);
   }
   
   return {
     template_id: selectedTemplate.id,
-    prompt_version: 'v1', // TODO: Track prompt versions
+    prompt_version: selectedPromptVersion,
     template_name: selectedTemplate.name,
-    selection_reason: shouldExplore ? 'exploration' : 'weighted_selection',
+    selection_reason: shouldExplore ? `exploration_policy_v${policyVersion}` : `weighted_selection_policy_v${policyVersion}`,
   };
 }
 

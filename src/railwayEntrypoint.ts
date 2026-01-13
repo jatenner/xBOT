@@ -100,12 +100,12 @@ function startHealthServer(): void {
         // 🔒 TRUTHFUL: Compute from columns, not reason parsing
         const { data: last24hData } = await supabase
           .from('reply_decisions')
-          .select('decision, status, method, cache_hit, deny_reason_code')
+          .select('decision, status, method, cache_hit, deny_reason_code, posted_reply_tweet_id, created_at, reward_24h')
           .gte('created_at', last24h);
         
         const { data: last1hData } = await supabase
           .from('reply_decisions')
-          .select('decision, status, method, cache_hit, deny_reason_code')
+          .select('decision, status, method, cache_hit, deny_reason_code, posted_reply_tweet_id, created_at, reward_24h')
           .gte('created_at', last1h);
         
         const total24h = last24hData?.length || 0;
@@ -115,6 +115,15 @@ function startHealthServer(): void {
         const error24h = last24hData?.filter(r => r.status === 'ERROR').length || 0;
         const ok24h = last24hData?.filter(r => r.status === 'OK').length || 0;
         const cacheHits24h = last24hData?.filter(r => r.cache_hit === true).length || 0;
+        const allowRate24h = total24h > 0 ? ((allow24h / total24h) * 100).toFixed(2) : '0.00';
+        const posted24h = last24hData?.filter(r => r.posted_reply_tweet_id).length || 0;
+        const postedRate24h = allow24h > 0 ? ((posted24h / allow24h) * 100).toFixed(2) : '0.00';
+        const now24h = new Date();
+        const learnable24h = last24hData?.filter(r => 
+          r.posted_reply_tweet_id && 
+          r.decision === 'ALLOW' &&
+          new Date(r.created_at).getTime() < now24h.getTime() - 24 * 60 * 60 * 1000
+        ).length || 0;
         
         // 🎯 ANALYTICS: Deny reason breakdown
         const denyReasonBreakdown24h = (last24hData || [])
@@ -198,6 +207,15 @@ function startHealthServer(): void {
         const error1h = last1hData?.filter(r => r.status === 'ERROR').length || 0;
         const ok1h = last1hData?.filter(r => r.status === 'OK').length || 0;
         const cacheHits1h = last1hData?.filter(r => r.cache_hit === true).length || 0;
+        const allowRate1h = total1h > 0 ? ((allow1h / total1h) * 100).toFixed(2) : '0.00';
+        const posted1h = last1hData?.filter(r => r.posted_reply_tweet_id).length || 0;
+        const postedRate1h = allow1h > 0 ? ((posted1h / allow1h) * 100).toFixed(2) : '0.00';
+        const now1h = new Date();
+        const learnable1h = last1hData?.filter(r => 
+          r.posted_reply_tweet_id && 
+          r.decision === 'ALLOW' &&
+          new Date(r.created_at).getTime() < now1h.getTime() - 24 * 60 * 60 * 1000
+        ).length || 0;
         
         // 🎯 ANALYTICS: Deny reason breakdown (1h)
         const denyReasonBreakdown1h = (last1hData || [])
@@ -266,6 +284,9 @@ function startHealthServer(): void {
             deny_reason_breakdown: denyReasonBreakdown24h, // 🎯 ANALYTICS: Deny reason breakdown
             consent_wall_rate: consentWallRate24h, // 🎯 ANALYTICS: Consent wall rate
             consent_wall_failures_by_variant: consentWallFailuresByVariant24h, // 🎯 ANALYTICS: Consent wall failures by variant
+            allow_rate: allowRate24h + '%', // 🎯 LEARNING: ALLOW rate
+            posted_rate: postedRate24h + '%', // 🎯 LEARNING: Posting success rate
+            learnable_count: learnable24h, // 🎯 LEARNING: Learnable count (posted 24h+ ago)
             pool_health: poolHealth, // 🎯 POOL HEALTH: Browser pool stats
             ancestry_attempts: ancestryAttemptsLast1h, // 🎯 PART A: Ancestry attempt counter
             ancestry_used_pool: ancestryUsedPoolLast1h, // 🎯 PART A: Ancestry pool usage counter
@@ -282,6 +303,9 @@ function startHealthServer(): void {
             deny_reason_breakdown: denyReasonBreakdown1h, // 🎯 ANALYTICS: Deny reason breakdown
             consent_wall_rate: consentWallRate1h, // 🎯 ANALYTICS: Consent wall rate
             consent_wall_failures_by_variant: consentWallFailuresByVariant1h, // 🎯 ANALYTICS: Consent wall failures by variant
+            allow_rate: allowRate1h + '%', // 🎯 LEARNING: ALLOW rate
+            posted_rate: postedRate1h + '%', // 🎯 LEARNING: Posting success rate
+            learnable_count: learnable1h, // 🎯 LEARNING: Learnable count (posted 24h+ ago)
             pool_health: poolHealth, // 🎯 POOL HEALTH: Browser pool stats
             ancestry_attempts: ancestryAttemptsLast1h, // 🎯 PART A: Ancestry attempt counter
             ancestry_used_pool: ancestryUsedPoolLast1h, // 🎯 PART A: Ancestry pool usage counter

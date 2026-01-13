@@ -114,6 +114,10 @@ export async function updateReplyEngagement(
     return;
   }
   
+  // Compute reward_24h: likes + replies*3 + retweets*2 + views*0.1
+  const reward24h = metrics.likes + (metrics.replies * 3) + (metrics.retweets * 2) + (metrics.views * 0.1);
+  const engagedAt = new Date().toISOString();
+  
   // Update reply_decisions
   const { error } = await supabase
     .from('reply_decisions')
@@ -122,14 +126,16 @@ export async function updateReplyEngagement(
       engagement_24h_replies: metrics.replies,
       engagement_24h_retweets: metrics.retweets,
       engagement_24h_views: metrics.views,
-      engagement_fetched_at: new Date().toISOString(),
+      engagement_fetched_at: engagedAt,
+      reward_24h: reward24h, // 🎯 LEARNING: Reward signal
+      engaged_at: engagedAt, // 🎯 LEARNING: When engagement was recorded
     })
     .eq('id', decision.id);
   
   if (error) {
     console.error(`[ENGAGEMENT_TRACKER] ❌ Failed to update engagement: ${error.message}`);
   } else {
-    console.log(`[ENGAGEMENT_TRACKER] ✅ Updated engagement for ${postedReplyTweetId}: likes=${metrics.likes}, replies=${metrics.replies}, retweets=${metrics.retweets}, views=${metrics.views}`);
+    console.log(`[ENGAGEMENT_TRACKER] ✅ Updated engagement for ${postedReplyTweetId}: likes=${metrics.likes}, replies=${metrics.replies}, retweets=${metrics.retweets}, views=${metrics.views}, reward_24h=${reward24h.toFixed(2)}`);
   }
 }
 
