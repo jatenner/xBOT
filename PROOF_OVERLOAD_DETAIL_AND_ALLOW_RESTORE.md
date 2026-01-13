@@ -479,7 +479,34 @@ ORDER BY count DESC;
 
 **Posting-Specific Progress:** 40% complete
 - ✅ ALLOW decisions created (from script)
-- ❌ Template selection not triggered
+- ❌ Template selection not triggered (script-created ALLOW don't trigger pipeline)
 - ❌ Generation not triggered
 - ❌ Posting not triggered
-- ⚠️ Scheduler pipeline not creating ALLOW decisions
+- ⚠️ Scheduler pipeline blocked by cache (old format entries preventing ALLOW decisions)
+
+---
+
+## FINAL OUTPUT
+
+### 1) Current Blocker
+Scheduler is creating DENY decisions due to cached ancestry entries with old error format, preventing ALLOW decisions from being created through the scheduler pipeline.
+
+### 2) Next Single Fix
+Clear cache entries for frequently-processed tweets (`2009856419541950874`, `2009917057933160522`) to force fresh ancestry resolution with new code path, then scheduler should create ALLOW decisions with JSON detail and progress through template selection → generation → posting.
+
+### 3) Updated Progress
+
+**Overall Progress:** 75% complete
+- ✅ JSON extraction working
+- ✅ Skip source tagging working
+- ✅ Ceiling tuning complete (33→44)
+- ✅ ALLOW throughput restored (from script: 7 ALLOW decisions)
+- ⚠️ Pipeline progression blocked (script-created ALLOW don't trigger pipeline)
+- ⚠️ Scheduler blocked by cache (old format entries preventing ALLOW decisions)
+
+**Posting-Specific Progress:** 40% complete
+- ✅ ALLOW decisions created (from script: 7)
+- ❌ Template selection not triggered (script-created ALLOW don't trigger pipeline)
+- ❌ Generation not triggered
+- ❌ Posting not triggered
+- ⚠️ Scheduler pipeline blocked by cache (need to clear old cache entries)
