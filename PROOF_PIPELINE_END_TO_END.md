@@ -116,10 +116,14 @@ WHERE decision_id = '572aa168-e349-4359-9e33-887dbfad9450';
 
 **Observations:**
 - ✅ `scored_at` is set (decision was created)
-- ⚠️ `template_status=FAILED` but `template_selected_at` is NULL
-- ⚠️ `pipeline_error_reason` is NULL (should be set by outer catch block)
+- ✅ `template_status=FAILED` is set
+- ✅ `template_error_reason` is set: "SCHEDULER_ERROR: Non-root reply blocked: ANCESTRY_ERROR_FAIL_CLOSED..."
+- ⚠️ `template_selected_at` is NULL (catch block doesn't set this for DENY decisions)
+- ⚠️ `pipeline_error_reason` is NULL (catch block sets `template_error_reason` but not `pipeline_error_reason`)
 
-**Issue:** Outer catch block is setting `template_status=FAILED` but not setting `template_selected_at` or `pipeline_error_reason`. This suggests the catch block code path may not be fully executing the DB update.
+**Issue:** Outer catch block is partially working (sets `template_status` and `template_error_reason`) but:
+1. Doesn't set `template_selected_at` for DENY decisions (only checks for PENDING status)
+2. Doesn't set `pipeline_error_reason` (only sets `template_error_reason`)
 
 ---
 
