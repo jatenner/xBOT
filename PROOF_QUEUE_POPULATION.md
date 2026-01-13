@@ -93,21 +93,25 @@ Add small delay between seeding and scheduler trigger, OR verify seeded candidat
 ## FINAL OUTPUT
 
 ### 1) Current Blocker
-Scheduler query not finding seeded candidates immediately after insertion (transaction isolation or timing issue).
+Ancestry resolution timing out (`ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT`) when scheduler processes candidates. Queue seeding and scheduler processing are working - this is a pool starvation issue.
 
 ### 2) Next Single Fix
-Add delay between seeding and scheduler trigger, or verify seeded candidates match scheduler query exactly.
+Address pool starvation causing ancestry timeouts (increase `BROWSER_MAX_CONTEXTS` or reduce concurrent ancestry requests) to allow ALLOW decisions to be created.
 
 ### 3) Updated Progress
 
-**Overall Progress:** 85% complete
-- ✅ Queue seeding scripts created
+**Overall Progress:** 90% complete
+- ✅ Queue seeding scripts created and working
 - ✅ Queue diagnosis working
 - ✅ Candidates seeded successfully
-- ⚠️ Scheduler not picking up seeded candidates (timing/isolation issue)
-- ⏳ Need to verify scheduler processes seeded candidates
+- ✅ Scheduler processing seeded candidates (query syntax fixed)
+- ✅ DENY decision created from seeded candidate
+- ⚠️ Ancestry timeout blocking ALLOW decisions (pool starvation)
+- ⏳ Need ALLOW decision to prove full pipeline progression
 
-**Posting-Specific Progress:** 40% complete
-- ✅ Queue population mechanism ready
-- ⏳ Waiting for scheduler to process seeded candidates
-- ⏳ Need ALLOW decision from scheduler to prove pipeline progression
+**Posting-Specific Progress:** 50% complete
+- ✅ Queue population mechanism working
+- ✅ Scheduler processing candidates
+- ✅ Decisions being created from scheduler
+- ⚠️ Ancestry timeout preventing ALLOW decisions
+- ⏳ Need to resolve pool starvation to get ALLOW decisions
