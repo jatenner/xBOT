@@ -93,11 +93,21 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
   const queueLen = poolAny.queue?.length || 0;
   const activeContexts = poolAny.getActiveCount?.() || 0;
   const maxContexts = poolAny.MAX_CONTEXTS || 0;
-  const isOverloaded = queueLen >= 20 || (activeContexts >= maxContexts && queueLen >= 5);
+  
+  // 🎯 CAPACITY-AWARE: Threshold scales with maxContexts (was hardcoded 20)
+  const hardQueueCeiling = Math.max(30, maxContexts * 3); // With maxContexts=11 -> 33
+  const isOverloaded = queueLen >= hardQueueCeiling || (activeContexts >= maxContexts && queueLen >= 5);
   
   if (isOverloaded && !cached) {
     // Skip ancestry resolution if overloaded and no cache hit
-    console.warn(`[ANCESTRY] ⚠️ System overloaded (queue=${queueLen}, active=${activeContexts}/${maxContexts}), skipping ancestry resolution for ${targetTweetId}`);
+    const overloadSnapshot = {
+      queueLen,
+      hardQueueCeiling,
+      activeContexts,
+      maxContexts,
+      threshold: hardQueueCeiling,
+    };
+    console.warn(`[ANCESTRY] ⚠️ System overloaded: queue=${queueLen} >= ${hardQueueCeiling} (active=${activeContexts}/${maxContexts}), skipping ancestry resolution for ${targetTweetId}`);
     const skippedResult = {
       targetTweetId,
       targetInReplyToTweetId: null,
@@ -107,7 +117,7 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
       status: 'ERROR' as const,
       confidence: 'LOW' as const,
       method: 'skipped_overload',
-      error: `Ancestry resolution skipped due to system overload (queue=${queueLen}, active=${activeContexts}/${maxContexts})`,
+      error: `ANCESTRY_SKIPPED_OVERLOAD: queue=${queueLen} >= ${hardQueueCeiling} (active=${activeContexts}/${maxContexts}, threshold=${hardQueueCeiling})`,
       cache_hit: false,
     };
     // Cache skipped result to avoid retrying immediately
