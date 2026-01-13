@@ -174,7 +174,13 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
   
   // 🎯 PART B: Exclude denied tweet IDs if provided
   if (deniedTweetIds && deniedTweetIds.size > 0) {
-    query = query.not('candidate_tweet_id', 'in', Array.from(deniedTweetIds));
+    const deniedArray = Array.from(deniedTweetIds);
+    // Use filter with neq (not equal) for each ID, or use PostgREST array syntax
+    // PostgREST expects: candidate_tweet_id=not.in.(id1,id2)
+    // But Supabase JS client handles this differently - use filter with neq for each
+    for (const deniedId of deniedArray) {
+      query = query.neq('candidate_tweet_id', deniedId);
+    }
   }
   
   query = query
