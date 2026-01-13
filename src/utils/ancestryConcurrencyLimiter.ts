@@ -11,7 +11,6 @@ class AncestryConcurrencyLimiter {
   private maxConcurrent: number;
   private current: number = 0;
   private queue: Array<() => void> = [];
-  private acquireContextWaiting: boolean = false; // Track if acquire_context is waiting
   
   constructor(maxConcurrent: number = 1) { // 🎯 LOAD SHAPING: Default to 1 (was 2)
     this.maxConcurrent = maxConcurrent;
@@ -20,30 +19,29 @@ class AncestryConcurrencyLimiter {
   /**
    * Acquire a slot for ancestry resolution
    * Returns a release function that must be called when done
-   * 🎯 LOAD SHAPING: Skips if acquire_context is already waiting
+   * 🎯 FIX: Allow queuing up to maxConcurrent instead of immediately rejecting
    */
   async acquire(): Promise<() => void> {
     return new Promise((resolve, reject) => {
-      // 🎯 LOAD SHAPING: If acquire_context is already waiting, skip this request
-      if (this.acquireContextWaiting) {
-        reject(new Error('ANCESTRY_SKIPPED_OVERLOAD: acquire_context already waiting'));
-        return;
-      }
-      
+      // If we have capacity, grant immediately
       if (this.current < this.maxConcurrent) {
         this.current++;
         resolve(() => this.release());
-      } else {
-        // 🎯 LOAD SHAPING: Mark that we're waiting for acquire_context
-        this.acquireContextWaiting = true;
-        
-        // Queue the request
-        this.queue.push(() => {
-          this.current++;
-          this.acquireContextWaiting = false; // Clear waiting flag when we get a slot
-          resolve(() => this.release());
-        });
+        return;
       }
+      
+      // If queue is full (>= maxConcurrent), reject to prevent unbounded growth
+      if (this.queue.length >= this.maxConcurrent) {
+        console.warn(`[ANCESTRY_LIMITER] ⚠️ Queue full: rejecting request (current=${this.current}/${this.maxConcurrent}, queue=${this.queue.length})`);
+        reject(new Error(`ANCESTRY_SKIPPED_OVERLOAD: queue full (current=${this.current}/${this.maxConcurrent}, queue=${this.queue.length})`));
+        return;
+      }
+      
+      // Queue the request (queue.length < maxConcurrent)
+      this.queue.push(() => {
+        this.current++;
+        resolve(() => this.release());
+      });
     });
   }
   
