@@ -414,12 +414,17 @@ GROUP BY pipeline_source;
 
 **Root Cause:** ALLOW decisions from `force_fresh_sample` script don't trigger the scheduler pipeline. The scheduler (`tieredScheduler.ts`) only processes candidates from `reply_candidate_queue` table, but the script only calls `recordReplyDecision()` without creating queue entries or triggering the pipeline stages.
 
+**Additional Finding:** 
+- Historical data shows 91 ALLOW decisions from `reply_v2_scheduler` pipeline source (total)
+- But 0 ALLOW decisions from scheduler since boot_time (`2026-01-13T17:47:29.031Z`)
+- This suggests scheduler is running but not creating ALLOW decisions (may be blocked by another gate)
+
 **Evidence:**
-- 7 ALLOW decisions exist (all from script, 0 from scheduler)
+- 7 ALLOW decisions exist since boot_time (all from script, 0 from scheduler)
 - All have `template_status='PENDING'` with no pipeline stage timestamps
 - Scheduler pipeline is what calls template selection → generation → posting
 
-**Next Single Fix:** Wait for natural scheduler runs to create ALLOW decisions through normal pipeline, OR modify `force-fresh-ancestry-sample.ts` to also create entries in `reply_candidate_queue` so scheduler picks them up, OR trigger template selection → generation → posting directly in the script after creating ALLOW decision.
+**Next Single Fix:** Investigate why scheduler isn't creating ALLOW decisions (check scheduler logs, queue status, and recent DENY reasons from scheduler pipeline), then wait for natural scheduler runs OR modify `force-fresh-ancestry-sample.ts` to trigger pipeline stages directly.
 
 ---
 
@@ -429,11 +434,13 @@ GROUP BY pipeline_source;
 - ✅ JSON extraction working
 - ✅ Skip source tagging working
 - ✅ Ceiling tuning complete
-- ✅ ALLOW throughput restored
+- ✅ ALLOW throughput restored (from script)
 - ⚠️ Pipeline progression blocked (need scheduler-created ALLOW decisions)
+- ⚠️ Scheduler not creating ALLOW decisions (0 since boot_time)
 
 **Posting-Specific Progress:** 40% complete
-- ✅ ALLOW decisions created
+- ✅ ALLOW decisions created (from script)
 - ❌ Template selection not triggered
 - ❌ Generation not triggered
 - ❌ Posting not triggered
+- ⚠️ Scheduler pipeline not creating ALLOW decisions
