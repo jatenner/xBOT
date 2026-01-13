@@ -106,10 +106,20 @@ curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{app_version,
 
 ### Boot Log Check
 ```bash
-railway logs -s xBOT --tail 1000 | grep "\[BOOT\].*Browser pool"
+railway logs -s xBOT --tail 2000 | grep "\[BOOT\].*Browser pool"
 ```
 
-**Output:** (To be captured)
+**Output:**
+```
+[BOOT] Browser pool uid=1768282160453-y4ak6md maxContexts=10 source_env=11
+```
+
+**Finding:** ⚠️ `maxContexts=10` but `source_env=11`. The `parseEnvInt` function clamps values to max=10:
+```typescript
+const MAX_CONTEXTS_CONFIG = parseEnvInt('BROWSER_MAX_CONTEXTS', 5, 1, 10);
+```
+
+**Impact:** Pool is using 10 contexts instead of 11, so threshold becomes `Math.max(30, 10*3) = 30` instead of 33.
 
 ---
 
@@ -134,7 +144,16 @@ ORDER BY created_at DESC
 LIMIT 5;
 ```
 
-**Results:** (To be captured)
+**Results:**
+```
+decision_id: 78a6f536-c07b-4633-9da2-797a94ddf44b
+deny_reason_detail: pool={queue=22,active=0/5,idle=0,semaphore=0} error=5, timeout: 60s)
+```
+
+**Finding:** ⚠️ Decisions still show old format (no JSON overload detail). This suggests:
+1. Decisions are using cached ancestry results from before the fix
+2. New code hasn't run yet (scheduler runs every 15 minutes)
+3. Pool snapshot shows `max_contexts=5` (old value), indicating snapshot taken before config update
 
 **Key Fields to Verify:**
 - `overload_reason`: CEILING or SATURATION
