@@ -126,6 +126,8 @@ DENY Breakdown by reason:
 ## SUMMARY
 
 **Fix:** ✅ Code reordered correctly  
-**Deployment:** ✅ Complete (app_version: 8e1b8b21)  
-**Status:** ⚠️ **Awaiting fresh decisions** (current decisions use cached ancestry)  
-**Next Action:** Wait for fresh tweet IDs or clear cache for all tweets
+**Deployment:** ✅ Complete (app_version: 8e1b8b21, boot_time: 2026-01-13T15:17:10.007Z)  
+**Status:** ⚠️ **Awaiting fresh decisions** (current decisions use cached ancestry from `reply_ancestry_cache` table)  
+**Cache TTL:** 24 hours  
+**Action Taken:** Cleared cache for tweet ID 2009917057933160522, triggered fresh evaluation  
+**Next Action:** Wait for fresh decisions with new code path (not cached)
