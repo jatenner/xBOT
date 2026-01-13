@@ -52,6 +52,12 @@ RUN pnpm install --prod --frozen-lockfile
 # Prune production dependencies (remove devDependencies)
 RUN pnpm prune --prod
 
+# PART 2: Install Chromium browser (even though base image has Playwright, ensure chromium exists)
+RUN npx playwright install --with-deps chromium || echo "Playwright install failed but continuing"
+
+# Set Playwright browsers path
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 # Copy compiled JavaScript from dist/ (no source needed)
 COPY --from=builder /app/dist ./dist
 # Copy supporting directories (guaranteed to exist from builder stage)

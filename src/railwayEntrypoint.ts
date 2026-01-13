@@ -371,6 +371,81 @@ function startHealthServer(): void {
 // Start health server IMMEDIATELY
 startHealthServer();
 
+// PART 1: Boot diagnostics for Playwright browser paths
+setImmediate(async () => {
+  try {
+    console.log('[BOOT][PLAYWRIGHT] Checking Playwright browser installation...');
+    
+    // Check Playwright version
+    try {
+      const playwrightPkg = require('playwright/package.json');
+      console.log(`[BOOT][PLAYWRIGHT] Playwright version: ${playwrightPkg.version}`);
+    } catch (e: any) {
+      console.warn(`[BOOT][PLAYWRIGHT] Could not read Playwright version: ${e.message}`);
+    }
+    
+    // Check PLAYWRIGHT_BROWSERS_PATH
+    const browsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH || '(not set)';
+    console.log(`[BOOT][PLAYWRIGHT] PLAYWRIGHT_BROWSERS_PATH: ${browsersPath}`);
+    
+    // Check common browser paths
+    const fs = require('fs');
+    const paths = [
+      '/ms-playwright',
+      '/ms-playwright/chromium-*/chrome-linux/chrome',
+      '/ms-playwright/chromium-*/chrome-linux/headless_shell',
+      '/ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell',
+    ];
+    
+    console.log('[BOOT][PLAYWRIGHT] Checking browser paths...');
+    for (const pathPattern of paths) {
+      try {
+        // Try to find matching directories/files
+        if (pathPattern.includes('*')) {
+          const baseDir = pathPattern.split('*')[0];
+          if (fs.existsSync(baseDir)) {
+            const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+            const matches = entries.filter(e => e.name.startsWith('chromium'));
+            console.log(`[BOOT][PLAYWRIGHT] Found ${matches.length} chromium directories in ${baseDir}`);
+            for (const match of matches.slice(0, 3)) { // Limit to first 3
+              const fullPath = `${baseDir}${match.name}`;
+              const exists = fs.existsSync(fullPath);
+              console.log(`[BOOT][PLAYWRIGHT]   ${fullPath}: ${exists ? 'EXISTS' : 'MISSING'}`);
+            }
+          } else {
+            console.log(`[BOOT][PLAYWRIGHT]   ${baseDir}: MISSING`);
+          }
+        } else {
+          const exists = fs.existsSync(pathPattern);
+          console.log(`[BOOT][PLAYWRIGHT]   ${pathPattern}: ${exists ? 'EXISTS' : 'MISSING'}`);
+        }
+      } catch (e: any) {
+        console.log(`[BOOT][PLAYWRIGHT]   ${pathPattern}: ERROR (${e.message})`);
+      }
+    }
+    
+    // Try to list /ms-playwright directory if it exists
+    try {
+      if (fs.existsSync('/ms-playwright')) {
+        const entries = fs.readdirSync('/ms-playwright', { withFileTypes: true });
+        console.log(`[BOOT][PLAYWRIGHT] /ms-playwright contents (${entries.length} entries):`);
+        for (const entry of entries.slice(0, 10)) { // Limit to first 10
+          const type = entry.isDirectory() ? 'DIR' : 'FILE';
+          console.log(`[BOOT][PLAYWRIGHT]   ${type}: ${entry.name}`);
+        }
+      } else {
+        console.log('[BOOT][PLAYWRIGHT] /ms-playwright: MISSING');
+      }
+    } catch (e: any) {
+      console.warn(`[BOOT][PLAYWRIGHT] Could not list /ms-playwright: ${e.message}`);
+    }
+    
+    console.log('[BOOT][PLAYWRIGHT] Browser path check complete');
+  } catch (error: any) {
+    console.error(`[BOOT][PLAYWRIGHT] Error during browser path check: ${error.message}`);
+  }
+});
+
 // Log session file status at boot (for consent persistence verification)
 // 🎯 SEED SESSION ON BOOT: If SEED_SESSION_ON_BOOT=true and file doesn't exist, create it
 setImmediate(async () => {
