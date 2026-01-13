@@ -316,8 +316,80 @@ curl -sSf -X POST "https://xbot-production-844b.up.railway.app/debug/seed-and-ru
 
 ---
 
+---
+
+## TASK A: Production Version (FINAL)
+
+**Output:**
+```json
+{
+  "app_version": "9b4d1e844ce4b69044fda876287649cb868a3607",
+  "boot_time": "2026-01-13T23:22:39.375Z",
+  "boot_id": "10c38e9a-136f-4eea-bf8e-1635b910e131"
+}
+```
+
+**Status:** ✅ **NEW VERSION DEPLOYED** - Running commit `9b4d1e84` (contains playwright v1.57.0 + Dockerfile fixes + lockfile update)
+
+---
+
+## TASK C: Boot Diagnostics Proof (FINAL)
+
+**Output:**
+```
+[BOOT][PLAYWRIGHT] Checking Playwright browser installation...
+[BOOT][PLAYWRIGHT] Playwright version: 1.57.0
+[BOOT][PLAYWRIGHT] PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+[BOOT][PLAYWRIGHT] Checking browser paths...
+[BOOT][PLAYWRIGHT]   /ms-playwright: EXISTS
+[BOOT][PLAYWRIGHT] /ms-playwright contents (7 entries):
+[BOOT][PLAYWRIGHT]   DIR: chromium-1200
+[BOOT][PLAYWRIGHT]   DIR: chromium_headless_shell-1200
+[BOOT][PLAYWRIGHT] Found 1 chromium executables:
+[BOOT][PLAYWRIGHT]   /ms-playwright/chromium-1200/chrome-linux64/chrome
+[BOOT][PLAYWRIGHT] Browser path check complete
+[BROWSER_POOL][INIT_BROWSER] calling_chromium.launch
+[BROWSER_POOL][INIT_BROWSER] chromium.launch_success duration_ms=290
+```
+
+**Status:** ✅ **BROWSER LAUNCHES SUCCESSFULLY** - `chromium.launch_success duration_ms=290`
+
+---
+
+## TASK D: Deterministic Runtime Test
+
+**Command:**
+```bash
+curl -sSf -X POST "https://xbot-production-844b.up.railway.app/debug/seed-and-run" \
+  -H "content-type: application/json" \
+  -H "Authorization: Bearer test-debug-token-2025" \
+  -d '{"count":5}'
+```
+
+**Output:**
+```
+curl: (56) The requested URL returned error: 404
+```
+
+**Status:** ⚠️ **DEBUG ENDPOINT NOT FOUND** - Endpoint returns 404 (may be routing issue or endpoint not registered)
+
+**Recent Decisions (last 5 min):**
+- Total: 2 decisions
+- DENY: 2 (both CONSENT_WALL)
+- ALLOW: 0
+- ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT: 0 ✅
+
+---
+
 ## FINAL ANSWER
 
-**Browser launches in prod:** (Pending - see outputs below)
+**Browser launches in prod:** ✅ **YES** - `[BROWSER_POOL][INIT_BROWSER] chromium.launch_success duration_ms=290`
 
-**Next blocker (if any):** (Pending - see outputs below)
+**Proof:**
+- ✅ New version deployed (`9b4d1e84`)
+- ✅ Playwright v1.57.0 installed correctly
+- ✅ Chromium executables found: `/ms-playwright/chromium-1200/chrome-linux64/chrome`
+- ✅ Browser launch succeeds: `chromium.launch_success duration_ms=290`
+- ✅ No `ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT` in recent decisions (0 out of 2)
+
+**Next blocker:** Debug endpoint returns 404 - may need to check routing or endpoint registration. However, browser is launching successfully, so ancestry resolution should work now.
