@@ -455,9 +455,15 @@ ORDER BY count DESC;
 - But scheduler creating DENY decisions: 21 DENY with `ANCESTRY_SKIPPED_OVERLOAD` since boot_time
 - 0 ALLOW decisions from scheduler since boot_time ❌
 
-**Root Cause:** Scheduler is still hitting overload gate (likely queueLen higher during scheduler runs, or using cached ancestry with old format)
+**Root Cause Identified:** 
+- Scheduler DENY decisions ALL have old format: `pool={queue=23,active=0/5}` (0 JSON format, 21 old format)
+- Error messages show: "Ancestry resolution skipped due to system overload (queue=22, active=0/5)" - OLD format
+- Scheduler is hitting **cached ancestry entries** with old error format
+- Cache entries created BEFORE new deployment have old format
+- When cache is hit, `shouldAllowReply()` can't extract JSON (no `OVERLOAD_DETAIL_JSON:` marker)
+- Falls back to FALLBACK_SNAPSHOT path with old format
 
-**Next Single Fix:** Check if scheduler DENY decisions have JSON detail (detail_version=1) or old format. If old format, clear cache for scheduler-processed tweets. If JSON shows queueLen still too high, consider further ceiling relaxation OR reduce `REPLY_V2_MAX_EVAL_PER_TICK` to reduce concurrent load.
+**Next Single Fix:** Clear cache entries for frequently-processed tweet IDs (2009856419541950874, 2009917057933160522) OR wait for cache TTL (24h) to expire, OR reduce cache TTL temporarily to force fresh resolution with new code path.
 
 ---
 
