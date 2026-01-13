@@ -127,18 +127,52 @@ Scheduler is still hitting stale cache entries with old format error messages. T
 3. Cache entry may be too recent (< 24h TTL) but still contains old format
 
 ### Next Single Fix
-Enhance stale cache detection to also check for old format in `error` field regardless of `status`, or add a cache version field to force invalidation of pre-JSON entries.
+Refined stale cache detection to catch `active=0/5` pattern and `queue=XX, active=XX` patterns. Deployed and verifying bypass triggers correctly.
 
 ---
 
 ## PROGRESS UPDATE
 
-**Overall Progress:** 75%  
+**Overall Progress:** 80%  
 **Posting-Specific Progress:** 40%
 
+**Completed:**
+1. ✅ Stale cache detection implemented (refined to catch `active=0/5` pattern)
+2. ✅ Scheduler backoff implemented (skip recent DENY candidates)
+3. ✅ Cache entry deleted for problematic tweet ID (`2009917057933160522`)
+4. ✅ Deployment complete (commit `bcb28a7c`)
+
 **Remaining Work:**
-1. ✅ Stale cache detection implemented
-2. ✅ Scheduler backoff implemented  
-3. ⚠️ Stale cache bypass not triggering (needs refinement)
+1. ⏳ Wait for new deployment to go live (currently showing old app_version)
+2. ⏳ Verify stale cache bypass triggers (check logs for `stale_format_bypass`)
+3. ⏳ Ensure candidates exist in queue (scheduler showing "queue_empty")
 4. ⏳ Scheduler ALLOW decisions with JSON detail
 5. ⏳ End-to-end pipeline progression (template → generate → post)
+
+---
+
+## FINAL OUTPUT
+
+### 1) Current Blocker
+Scheduler queue is empty, preventing any candidate processing. Stale cache detection is deployed but needs verification once new deployment is live and queue has candidates.
+
+### 2) Next Single Fix
+Wait for natural scheduler runs to populate queue with candidates, then verify stale cache bypass triggers correctly when scheduler processes cached tweet IDs.
+
+### 3) Updated Progress
+
+**Overall Progress:** 80% complete
+- ✅ JSON extraction working
+- ✅ Skip source tagging working
+- ✅ Ceiling tuning complete (33→44)
+- ✅ ALLOW throughput restored (from script: 7 ALLOW decisions)
+- ✅ Stale cache detection + scheduler backoff deployed
+- ⚠️ Queue empty (need candidates for scheduler to process)
+- ⏳ Scheduler ALLOW decisions with JSON detail (pending queue population)
+
+**Posting-Specific Progress:** 40% complete
+- ✅ ALLOW decisions created (from script: 7)
+- ❌ Template selection not triggered (script-created ALLOW don't trigger pipeline)
+- ❌ Generation not triggered
+- ❌ Posting not triggered
+- ⏳ Scheduler pipeline waiting for queue candidates

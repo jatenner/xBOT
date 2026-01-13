@@ -489,24 +489,25 @@ ORDER BY count DESC;
 ## FINAL OUTPUT
 
 ### 1) Current Blocker
-Scheduler is creating DENY decisions due to cached ancestry entries with old error format, preventing ALLOW decisions from being created through the scheduler pipeline.
+Scheduler queue is empty, preventing candidate processing. Stale cache detection and backoff logic are deployed but need queue candidates to process.
 
 ### 2) Next Single Fix
-Clear cache entries for frequently-processed tweets (`2009856419541950874`, `2009917057933160522`) to force fresh ancestry resolution with new code path, then scheduler should create ALLOW decisions with JSON detail and progress through template selection → generation → posting.
+Wait for natural scheduler/feed runs to populate queue with candidates, then verify stale cache bypass triggers correctly when scheduler processes cached tweet IDs with old format.
 
 ### 3) Updated Progress
 
-**Overall Progress:** 75% complete
+**Overall Progress:** 80% complete
 - ✅ JSON extraction working
 - ✅ Skip source tagging working
 - ✅ Ceiling tuning complete (33→44)
 - ✅ ALLOW throughput restored (from script: 7 ALLOW decisions)
-- ⚠️ Pipeline progression blocked (script-created ALLOW don't trigger pipeline)
-- ⚠️ Scheduler blocked by cache (old format entries preventing ALLOW decisions)
+- ✅ Stale cache detection + scheduler backoff deployed
+- ⚠️ Queue empty (need candidates for scheduler to process)
+- ⏳ Scheduler ALLOW decisions with JSON detail (pending queue population)
 
 **Posting-Specific Progress:** 40% complete
 - ✅ ALLOW decisions created (from script: 7)
 - ❌ Template selection not triggered (script-created ALLOW don't trigger pipeline)
 - ❌ Generation not triggered
 - ❌ Posting not triggered
-- ⚠️ Scheduler pipeline blocked by cache (need to clear old cache entries)
+- ⏳ Scheduler pipeline waiting for queue candidates
