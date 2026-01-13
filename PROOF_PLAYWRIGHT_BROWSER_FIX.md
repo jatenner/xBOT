@@ -260,20 +260,64 @@ deny_reason_code: CONSENT_WALL
 
 ---
 
+---
+
+---
+
+## TASK A: Current Production Version
+
+**Command:**
+```bash
+curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{app_version, boot_time, boot_id}'
+```
+
+**Output:** (See TASK C below - checking after rebuild)
+
+---
+
+## TASK B: Force Rebuild
+
+**Actions Taken:**
+1. Verified latest commit pushed to GitHub: `4d98d05c`
+2. Set APP_VERSION: `railway variables -s xBOT --set "APP_VERSION=$(git rev-parse HEAD)"`
+3. Triggered build: `railway up --detach -s xBOT`
+
+**Build Logs Check:**
+```bash
+railway logs -s xBOT --build --lines 500 | grep -E "playwright|chromium|FROM|Step|RUN"
+```
+
+**Output:** (See below)
+
+---
+
+## TASK C: Boot Diagnostics Proof
+
+**Command:**
+```bash
+railway logs -s xBOT --tail 3000 | grep -E "\[BOOT\]\[PLAYWRIGHT\]|\[BROWSER_POOL\]\[INIT_BROWSER\]|PLAYWRIGHT_BROWSERS_PATH|chromium\.launch"
+```
+
+**Output:** (See below)
+
+---
+
+## TASK D: Deterministic Runtime Test
+
+**Command:**
+```bash
+curl -sSf -X POST "https://xbot-production-844b.up.railway.app/debug/seed-and-run" \
+  -H "content-type: application/json" \
+  -H "Authorization: Bearer test-debug-token-2025" \
+  -d '{"count":5}' | jq .
+```
+
+**Output:** (See below)
+
+---
+
 ## FINAL ANSWER
 
-**Browser OK?** ⏳ **PENDING VERIFICATION** - New deployment (`81ff894b`) with version-matched Playwright v1.57.0 is building. Production still running old version (`78697c5`).
+**Browser launches in prod:** (Pending - see outputs below)
 
-**Current Evidence:**
-- ✅ No `ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT` in recent decisions (0 out of 1 in last 5 min)
-- ⏳ Boot diagnostics not visible (old version still running)
-- ⏳ Debug endpoint returns "not found" (old version doesn't have endpoint)
-
-**Next Steps:**
-1. Wait for Railway deployment to complete (commit `81ff894b` or later)
-2. Verify new version is running: `curl /status` shows new `app_version`
-3. Check boot logs for `[BOOT][PLAYWRIGHT]` diagnostics
-4. Verify browser launch: `[BROWSER_POOL][INIT_BROWSER] chromium.launch_success`
-5. Test debug endpoint: `POST /debug/seed-and-run` returns decisions without `ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT`
-
-**Next Blocker:** Railway deployment completion. If deployment succeeds but browser still fails, check build logs to confirm `npx playwright install --with-deps chromium` ran successfully during Docker build.
+**Next blocker (if any):** (Pending - see outputs below)
