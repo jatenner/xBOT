@@ -18,7 +18,7 @@ async function main() {
   console.log('=== Overload Detail Verification ===\n');
   
   // Allow cutoff to be specified via env var (for post-deploy window)
-  const deployCutoff = process.env.DEPLOY_CUTOFF;
+  const deployCutoff = process.env.DEPLOY_CUTOFF || process.env.BOOT_TIME;
   const cutoff = deployCutoff 
     ? new Date(deployCutoff)
     : new Date(Date.now() - 60 * 60 * 1000); // Default: last 60 minutes
@@ -43,11 +43,26 @@ async function main() {
     counts[code] = (counts[code] || 0) + 1;
   });
   
-  console.log('DENY Breakdown (last 60 minutes):');
+  // Get ALLOW count
+  const { data: allowData, error: allowError } = await supabase
+    .from('reply_decisions')
+    .select('decision')
+    .gte('created_at', cutoff.toISOString())
+    .eq('decision', 'ALLOW');
+  
+  const allowCount = allowData?.length || 0;
+  const denyCount = breakdown?.length || 0;
+  const total = allowCount + denyCount;
+  
+  console.log(`Decision Breakdown (since ${cutoff.toISOString()}):`);
+  console.log(`  ALLOW: ${allowCount} (${total > 0 ? (allowCount / total * 100).toFixed(1) : '0'}%)`);
+  console.log(`  DENY: ${denyCount} (${total > 0 ? (denyCount / total * 100).toFixed(1) : '0'}%)`);
+  console.log(`  Total: ${total}`);
+  console.log('\nDENY Breakdown by reason:');
   Object.entries(counts)
     .sort((a, b) => b[1] - a[1])
     .forEach(([code, count]) => {
-      const pct = breakdown ? (count / breakdown.length * 100).toFixed(1) : '0';
+      const pct = denyCount > 0 ? (count / denyCount * 100).toFixed(1) : '0';
       console.log(`  ${code}: ${count} (${pct}%)`);
     });
   

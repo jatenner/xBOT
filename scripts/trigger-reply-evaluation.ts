@@ -1,40 +1,39 @@
 #!/usr/bin/env tsx
 /**
- * Trigger one reply evaluation cycle to generate reply_decisions with new fields
+ * Trigger reply evaluation to generate fresh decisions
  */
 
-import 'dotenv/config';
 import { fetchAndEvaluateCandidates } from '../src/jobs/replySystemV2/orchestrator';
-import { attemptScheduledReply } from '../src/jobs/replySystemV2/tieredScheduler';
+import * as dotenv from 'dotenv';
 
-async function triggerEvaluation() {
-  console.log('🎯 Triggering reply evaluation cycle...\n');
+dotenv.config();
 
-  try {
-    // Step 1: Fetch and evaluate candidates (this will log candidate features)
-    console.log('📊 Step 1: Fetching and evaluating candidates...');
-    const fetchResult = await fetchAndEvaluateCandidates();
-    console.log(`✅ Fetched: ${fetchResult.fetched}, Evaluated: ${fetchResult.evaluated}, Passed: ${fetchResult.passed_filters}`);
-    console.log(`   Feed run ID: ${fetchResult.feed_run_id}\n`);
-
-    // Step 2: Attempt scheduled reply (this will select template and log decision)
-    console.log('📊 Step 2: Attempting scheduled reply...');
-    const schedulerResult = await attemptScheduledReply();
-    console.log(`✅ Posted: ${schedulerResult.posted}, Reason: ${schedulerResult.reason}`);
-    if (schedulerResult.candidate_tweet_id) {
-      console.log(`   Candidate: ${schedulerResult.candidate_tweet_id}`);
+async function main() {
+  console.log('=== Triggering Reply Evaluation ===\n');
+  
+  const cycles = parseInt(process.env.CYCLES || '3', 10);
+  console.log(`Running ${cycles} evaluation cycles...\n`);
+  
+  for (let i = 0; i < cycles; i++) {
+    console.log(`\n--- Cycle ${i + 1}/${cycles} ---`);
+    try {
+      const result = await fetchAndEvaluateCandidates();
+      console.log(`✅ Cycle ${i + 1} complete:`);
+      console.log(`   Fetched: ${result.fetched}`);
+      console.log(`   Evaluated: ${result.evaluated}`);
+      console.log(`   Passed filters: ${result.passed_filters}`);
+      console.log(`   Feed run ID: ${result.feed_run_id}`);
+      
+      // Wait a bit between cycles
+      if (i < cycles - 1) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    } catch (error: any) {
+      console.error(`❌ Cycle ${i + 1} failed:`, error.message);
     }
-    console.log('');
-
-    console.log('✅ Evaluation cycle complete');
-  } catch (error: any) {
-    console.error('❌ Evaluation failed:', error.message);
-    console.error(error.stack);
-    process.exit(1);
   }
+  
+  console.log('\n=== Evaluation Complete ===');
 }
 
-triggerEvaluation().catch((error) => {
-  console.error('❌ Script failed:', error);
-  process.exit(1);
-});
+main().catch(console.error);

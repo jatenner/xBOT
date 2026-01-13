@@ -548,12 +548,13 @@ export async function shouldAllowReply(ancestry: ReplyAncestry): Promise<{ allow
         denyReasonCode = 'ANCESTRY_SKIPPED_OVERLOAD';
         // Extract overload detail JSON if present
         try {
-          const jsonMatch = errorMsg.match(/\{.*"overloadedByCeiling".*\}/);
+          // Look for JSON object in error message (may be at end after other text)
+          const jsonMatch = errorMsg.match(/\{[\s\S]*"overloadedByCeiling"[\s\S]*\}/);
           if (jsonMatch) {
             const overloadDetail = JSON.parse(jsonMatch[0]);
             // Replace existing detailParts with structured overload detail
             detailParts.length = 0;
-            detailParts.push(`overload_reason=${overloadDetail.overloadedByCeiling ? 'CEILING' : 'SATURATION'}`);
+            detailParts.push(`overload_reason=${overloadDetail.overloadedByCeiling ? 'CEILING' : (overloadDetail.overloadedBySaturation ? 'SATURATION' : 'UNKNOWN')}`);
             detailParts.push(`overloadedByCeiling=${overloadDetail.overloadedByCeiling}`);
             detailParts.push(`overloadedBySaturation=${overloadDetail.overloadedBySaturation}`);
             detailParts.push(`queueLen=${overloadDetail.queueLen}`);
@@ -562,8 +563,12 @@ export async function shouldAllowReply(ancestry: ReplyAncestry): Promise<{ allow
             detailParts.push(`maxContexts=${overloadDetail.maxContexts}`);
             detailParts.push(`pool_id=${overloadDetail.pool_id}`);
             detailParts.push(`pool_instance_uid=${overloadDetail.pool_instance_uid}`);
+            // Also include full JSON for parsing
+            detailParts.push(`json=${jsonMatch[0]}`);
           }
-        } catch {}
+        } catch (e) {
+          console.warn(`[REPLY_DECISION] Failed to parse overload JSON: ${e}, errorMsg=${errorMsg.substring(0, 200)}`);
+        }
       } else if (errorLower.includes('timeout') || errorLower.includes('queue timeout') || errorLower.includes('pool overloaded')) {
         denyReasonCode = 'ANCESTRY_TIMEOUT'; // Generic timeout fallback
       } else if (errorLower.includes('dropped') || errorLower.includes('disconnected') || errorLower.includes('browser has been closed')) {
