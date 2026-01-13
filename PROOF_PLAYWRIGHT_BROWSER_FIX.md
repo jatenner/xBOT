@@ -145,21 +145,84 @@ curl -X POST https://xbot-production-844b.up.railway.app/debug/seed-and-run \
 ## VERIFICATION RESULTS
 
 ### STEP 1: Production Version Check
-**Output:** (See below)
+
+**Command:**
+```bash
+curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{app_version, boot_time, boot_id}'
+```
+
+**Output:**
+```json
+{
+  "app_version": "78697c5262b51ebea3845af1868c82e9c6df955b",
+  "boot_time": "2026-01-13T20:20:52.466Z",
+  "boot_id": "2391377a-2849-4bf0-b5fd-6cc523e37994"
+}
+```
+
+**Status:** ❌ **OLD VERSION** - Production is running commit `78697c5` (before Dockerfile changes).  
+**Expected:** Commit `2a451088` or later (contains Dockerfile fixes)
+
+**Action:** FALLBACK implemented - upgraded `package.json` playwright to `^1.57.0` to match base image, then redeployed.
+
+---
 
 ### STEP 2: Boot Diagnostics
-**Output:** (See below)
+
+**Command:**
+```bash
+railway logs -s xBOT --tail 2000 | grep -E "\[BOOT\]\[PLAYWRIGHT\]|\[BROWSER_POOL\]\[INIT_BROWSER\]"
+```
+
+**Output:** (Pending - waiting for new deployment)
+
+---
 
 ### STEP 3: Chromium Executable Check
-**Output:** (See below)
+
+**Output:** (Pending - waiting for new deployment)
+
+---
 
 ### STEP 4: Runtime Test Results
-**Output:** (See below)
+
+**Debug Endpoint:**
+```bash
+curl -X POST https://xbot-production-844b.up.railway.app/debug/seed-and-run \
+  -H "Authorization: Bearer test-debug-token-2025" \
+  -H "Content-Type: application/json" \
+  -d '{"count":5}'
+```
+
+**Output:** `not found` (endpoint doesn't exist in old version)
+
+**Recent Decisions (last 5 min):**
+```
+decision_id: cad0874e-2973-4b32-b2bf-09914cac6858
+target_tweet_id: 2000000000000000009
+decision: DENY
+deny_reason_code: CONSENT_WALL
+```
+
+**Status:** No `ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT` in recent decisions (good sign - browser may be working for some operations)
+
+---
+
+## FALLBACK IMPLEMENTATION
+
+**Issue:** Version mismatch between base image (v1.57.0) and package.json (^1.40.1)
+
+**Solution:** Upgraded `package.json` playwright to `^1.57.0` to match base image version
+
+**Changes:**
+- `package.json`: `playwright: ^1.40.1` → `playwright: ^1.57.0`
+- `Dockerfile`: Base image remains `mcr.microsoft.com/playwright:v1.57.0-noble`
+- Ensures version consistency between base image and installed package
 
 ---
 
 ## FINAL STATUS
 
-**Browser OK?** (Pending verification)
+**Browser OK?** (Pending - waiting for new deployment with version-matched Playwright v1.57.0)
 
-**Next Blocker:** (Pending verification)
+**Next Blocker:** Verify new deployment completes and browser launches successfully. If still failing, check build logs to confirm `npx playwright install --with-deps chromium` ran successfully.
