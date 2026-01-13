@@ -97,8 +97,11 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
   
   // 🎯 CAPACITY-AWARE: Threshold scales with maxContexts (was hardcoded 20)
   const hardQueueCeiling = Math.max(30, maxContexts * 3); // With maxContexts=11 -> 33
-  const overloadedByCeiling = queueLen >= hardQueueCeiling;
-  const overloadedBySaturation = (activeContexts >= maxContexts && queueLen >= 5);
+  
+  // 🎯 TASK 3: FORCE_OVERLOAD_JSON_TEST mode - ALWAYS trigger overload gate
+  const forceTestMode = process.env.FORCE_OVERLOAD_JSON_TEST === '1';
+  const overloadedByCeiling = forceTestMode ? true : (queueLen >= hardQueueCeiling);
+  const overloadedBySaturation = forceTestMode ? false : ((activeContexts >= maxContexts && queueLen >= 5));
   const isOverloaded = overloadedByCeiling || overloadedBySaturation;
   
   if (isOverloaded && !cached) {
@@ -108,8 +111,6 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
     // 🎯 TASK 1: Tag skip source
     const skipSource = 'OVERLOAD_GATE';
     
-    // 🎯 TASK 3: FORCE_OVERLOAD_JSON_TEST mode
-    const forceTestMode = process.env.FORCE_OVERLOAD_JSON_TEST === '1';
     if (forceTestMode) {
       console.log(`[ANCESTRY_OVERLOAD] 🧪 TEST MODE: Forcing overload JSON emission`);
     }
