@@ -392,4 +392,4 @@ curl: (56) The requested URL returned error: 404
 - ✅ Browser launch succeeds: `chromium.launch_success duration_ms=290`
 - ✅ No `ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT` in recent decisions (0 out of 2)
 
-**Next blocker:** Debug endpoint returns 404 - may need to check routing or endpoint registration. However, browser is launching successfully, so ancestry resolution should work now.
+**Next blocker:** Debug endpoint returns 404 (endpoint exists in code but may not be registered in Railway entrypoint). However, **browser launches successfully**, so ancestry resolution should work. Test via scheduler or verify-reply-pipeline-live script instead.
