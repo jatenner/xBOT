@@ -118,7 +118,12 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
     console.warn(`[ANCESTRY_OVERLOAD] reason=${overloadReason} queue=${queueLen} active=${activeContexts}/${maxContexts} ceiling=${hardQueueCeiling} pool_id=${poolId} uid=${poolId} target=${targetTweetId}`);
     
     // Include overload detail JSON in error message (will be parsed into deny_reason_detail)
-    const overloadDetailJson = JSON.stringify(overloadDetail);
+    // Add detail_version marker for parsing
+    const overloadDetailWithVersion = {
+      ...overloadDetail,
+      detail_version: 1,
+    };
+    const overloadDetailJson = JSON.stringify(overloadDetailWithVersion);
     const skippedResult = {
       targetTweetId,
       targetInReplyToTweetId: null,
@@ -128,7 +133,7 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
       status: 'ERROR' as const,
       confidence: 'LOW' as const,
       method: 'skipped_overload',
-      error: `ANCESTRY_SKIPPED_OVERLOAD: ${overloadReason} (queue=${queueLen}, active=${activeContexts}/${maxContexts}, ceiling=${hardQueueCeiling}) ${overloadDetailJson}`,
+      error: `ANCESTRY_SKIPPED_OVERLOAD: ${overloadReason} OVERLOAD_DETAIL_JSON:${overloadDetailJson}`,
       cache_hit: false,
     };
     

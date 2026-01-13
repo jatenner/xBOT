@@ -94,11 +94,13 @@ async function main() {
     
     // Try to parse JSON if present
     if (row.deny_reason_detail) {
-      const jsonMatch = row.deny_reason_detail.match(/\{.*"overloadedByCeiling".*\}/);
-      if (jsonMatch) {
+      // Check if it's a JSON string (starts with {)
+      if (row.deny_reason_detail.trim().startsWith('{')) {
         try {
-          const detail = JSON.parse(jsonMatch[0]);
+          const detail = JSON.parse(row.deny_reason_detail);
+          console.log(`   ✅ JSON Found (detail_version=${detail.detail_version || 'missing'})`);
           console.log(`   Parsed JSON:`);
+          console.log(`     - detail_version: ${detail.detail_version || 'missing'}`);
           console.log(`     - overload_reason: ${detail.overloadedByCeiling ? 'CEILING' : (detail.overloadedBySaturation ? 'SATURATION' : 'UNKNOWN')}`);
           console.log(`     - overloadedByCeiling: ${detail.overloadedByCeiling}`);
           console.log(`     - overloadedBySaturation: ${detail.overloadedBySaturation}`);
@@ -109,13 +111,36 @@ async function main() {
           console.log(`     - pool_id: ${detail.pool_id}`);
           console.log(`     - pool_instance_uid: ${detail.pool_instance_uid}`);
         } catch (e) {
-          console.log(`   (Could not parse JSON: ${e})`);
+          console.log(`   ❌ Could not parse JSON: ${e}`);
           console.log(`   Raw detail: ${row.deny_reason_detail.substring(0, 200)}`);
         }
       } else {
-        // Check for structured format without JSON
-        console.log(`   (No JSON found - may be old format)`);
-        console.log(`   Raw detail: ${row.deny_reason_detail.substring(0, 200)}`);
+        // Try to extract JSON from embedded format
+        const jsonMatch = row.deny_reason_detail.match(/\{[\s\S]*"overloadedByCeiling"[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            const detail = JSON.parse(jsonMatch[0]);
+            console.log(`   ✅ JSON Found (embedded, detail_version=${detail.detail_version || 'missing'})`);
+            console.log(`   Parsed JSON:`);
+            console.log(`     - detail_version: ${detail.detail_version || 'missing'}`);
+            console.log(`     - overload_reason: ${detail.overloadedByCeiling ? 'CEILING' : (detail.overloadedBySaturation ? 'SATURATION' : 'UNKNOWN')}`);
+            console.log(`     - overloadedByCeiling: ${detail.overloadedByCeiling}`);
+            console.log(`     - overloadedBySaturation: ${detail.overloadedBySaturation}`);
+            console.log(`     - queueLen: ${detail.queueLen}`);
+            console.log(`     - hardQueueCeiling: ${detail.hardQueueCeiling}`);
+            console.log(`     - activeContexts: ${detail.activeContexts}`);
+            console.log(`     - maxContexts: ${detail.maxContexts}`);
+            console.log(`     - pool_id: ${detail.pool_id}`);
+            console.log(`     - pool_instance_uid: ${detail.pool_instance_uid}`);
+          } catch (e) {
+            console.log(`   ❌ Could not parse embedded JSON: ${e}`);
+            console.log(`   Raw detail: ${row.deny_reason_detail.substring(0, 200)}`);
+          }
+        } else {
+          // Check for structured format without JSON
+          console.log(`   ⚠️ No JSON found - may be old format`);
+          console.log(`   Raw detail: ${row.deny_reason_detail.substring(0, 200)}`);
+        }
       }
     }
   });
