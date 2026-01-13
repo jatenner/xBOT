@@ -17,8 +17,8 @@ const supabase = createClient(
 async function main() {
   console.log('=== Overload Detail Verification ===\n');
   
-  // Fetch boot_time from /status if not provided
-  let deployCutoff = process.env.DEPLOY_CUTOFF || process.env.BOOT_TIME;
+  // Allow CUT environment variable for explicit cutoff
+  let deployCutoff = process.env.CUT || process.env.DEPLOY_CUTOFF || process.env.BOOT_TIME;
   if (!deployCutoff) {
     try {
       const statusResponse = await fetch(process.env.STATUS_URL || 'https://xbot-production-844b.up.railway.app/status');
