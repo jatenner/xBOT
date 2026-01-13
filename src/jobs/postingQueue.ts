@@ -4522,7 +4522,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   // 🔍 FORENSIC PIPELINE: Final ancestry check before posting
   const { resolveTweetAncestry, recordReplyDecision, shouldAllowReply } = await import('./replySystemV2/replyDecisionRecorder');
   const ancestry = await resolveTweetAncestry(decision.target_tweet_id || '');
-  const allowCheck = shouldAllowReply(ancestry);
+  const allowCheck = await shouldAllowReply(ancestry);
   
   // Get trace info from decision metadata if available
   const traceId = (decision as any).scheduler_run_id || (decision as any).feed_run_id || null;

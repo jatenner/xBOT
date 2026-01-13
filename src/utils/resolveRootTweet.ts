@@ -16,7 +16,7 @@ export interface RootTweetResolution {
   // 🔒 FAIL-CLOSED: Status and confidence tracking
   status: 'OK' | 'UNCERTAIN' | 'ERROR';
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
-  method: 'explicit_signals' | 'dom_verification' | 'json_extraction' | 'metadata' | 'fallback' | 'error';
+  method: 'explicit_signals' | 'dom_verification' | 'json_extraction' | 'metadata' | 'fallback' | 'error' | 'skipped_overload';
   signals: {
     replying_to_text: boolean;
     social_context: boolean;
@@ -407,12 +407,20 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
     if (limiterError.message && limiterError.message.includes('ANCESTRY_SKIPPED_OVERLOAD')) {
       const pool = UnifiedBrowserPool.getInstance();
       const poolAny = pool as any;
-      const poolSnapshot = {
+      const poolSnapshot: {
+        queue_len: number;
+        active: number;
+        idle: number;
+        total_contexts: number;
+        max_contexts: number;
+        semaphore_inflight?: number;
+      } = {
         queue_len: poolAny.queue?.length || 0,
         active: poolAny.getActiveCount?.() || 0,
         idle: (poolAny.contexts?.size || 0) - (poolAny.getActiveCount?.() || 0),
         total_contexts: poolAny.contexts?.size || 0,
         max_contexts: poolAny.MAX_CONTEXTS || 0,
+        semaphore_inflight: 0,
       };
       
       try {

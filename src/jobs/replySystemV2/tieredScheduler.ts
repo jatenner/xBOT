@@ -251,7 +251,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     // 🔍 FORENSIC PIPELINE: Resolve ancestry and record decision
     const { resolveTweetAncestry, recordReplyDecision, shouldAllowReply } = await import('./replyDecisionRecorder');
     const ancestry = await resolveTweetAncestry(candidate.candidate_tweet_id);
-    const allowCheck = shouldAllowReply(ancestry);
+    const allowCheck = await shouldAllowReply(ancestry);
     
     // 🎨 QUALITY TRACKING: Get candidate score for logging (from candidateData)
     const candidateScore = candidateData.overall_score || candidate.overall_score || 0;

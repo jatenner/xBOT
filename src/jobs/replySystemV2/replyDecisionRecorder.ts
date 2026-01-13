@@ -440,7 +440,7 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
  * All other cases (UNCERTAIN, ERROR, depth>=1, method=unknown) result in DENY
  * 🎯 ANALYTICS: Returns deny_reason_code for structured analytics
  */
-export function shouldAllowReply(ancestry: ReplyAncestry): { allow: boolean; reason: string; deny_reason_code?: string; deny_reason_detail?: string } {
+export async function shouldAllowReply(ancestry: ReplyAncestry): Promise<{ allow: boolean; reason: string; deny_reason_code?: string; deny_reason_detail?: string }> {
   // 🔒 FAIL-CLOSED: Must have OK status
   if (ancestry.status !== 'OK') {
     const statusReason = ancestry.status === 'UNCERTAIN' 

@@ -1810,7 +1810,7 @@ export class UltimateTwitterPoster {
         // 🔍 FORENSIC PIPELINE: Final hard gate - verify ancestry before posting
         const { resolveTweetAncestry, shouldAllowReply } = await import('../jobs/replySystemV2/replyDecisionRecorder');
         const ancestry = await resolveTweetAncestry(replyToTweetId);
-        const allowCheck = shouldAllowReply(ancestry);
+        const allowCheck = await shouldAllowReply(ancestry);
         
         if (!allowCheck.allow) {
           const errorMsg = `FINAL_PLAYWRIGHT_GATE_BLOCKED: ${allowCheck.reason}`;
