@@ -65,6 +65,25 @@ export async function getCachedAncestry(tweetId: string): Promise<ReplyAncestry 
       return null; // Cache expired
     }
     
+    // 🎯 PART A: Detect stale cache entries (old format)
+    // If entry has ERROR/UNCERTAIN status and error message looks like old format, bypass cache
+    if ((cached.status === 'ERROR' || cached.status === 'UNCERTAIN') && cached.error) {
+      const errorMsg = cached.error;
+      // Check for old format indicators:
+      // - Contains "pool={queue=" (old pool snapshot format)
+      // - Lacks "OVERLOAD_DETAIL_JSON:" marker
+      // - Lacks "detail_version" marker
+      const hasOldFormat = errorMsg.includes('pool={queue=') || 
+                          (!errorMsg.includes('OVERLOAD_DETAIL_JSON:') && 
+                           !errorMsg.includes('detail_version') &&
+                           errorMsg.includes('overload'));
+      
+      if (hasOldFormat) {
+        console.log(`[ANCESTRY_CACHE] stale_format_bypass tweet_id=${cacheKey} reason=old_format error_preview=${errorMsg.substring(0, 100)}`);
+        return null; // Bypass stale cache, force fresh resolution
+      }
+    }
+    
     console.log(`[ANCESTRY_CACHE] ✅ Cache hit for ${cacheKey} (age: ${Math.round(ageMs / 1000 / 60)}min, method=${cached.method})`);
     
     return {

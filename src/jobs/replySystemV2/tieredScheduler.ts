@@ -75,6 +75,21 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   slotTime.setMinutes(slotMinutes, 0, 0);
   
   console.log(`[SCHEDULER] 🆔 Scheduler run ID: ${schedulerRunId}`);
+  
+  // 🎯 PART B: Prevent scheduler from looping on same bad candidates
+  // Check for recent DENY decisions with ANCESTRY_SKIPPED_OVERLOAD/ANCESTRY_TIMEOUT and skip those candidates
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data: recentDenies } = await supabase
+    .from('reply_decisions')
+    .select('target_tweet_id')
+    .gte('created_at', thirtyMinutesAgo)
+    .eq('decision', 'DENY')
+    .in('deny_reason_code', ['ANCESTRY_SKIPPED_OVERLOAD', 'ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT', 'ANCESTRY_TIMEOUT']);
+  
+  const deniedTweetIds = new Set(recentDenies?.map(d => d.target_tweet_id).filter(Boolean) || []);
+  if (deniedTweetIds.size > 0) {
+    console.log(`[SCHEDULER] 🚫 Skipping ${deniedTweetIds.size} tweet IDs with recent DENY decisions (backoff)`);
+  }
   console.log(`[SCHEDULER] ⏰ Slot time: ${slotTime.toISOString()}`);
   
   // Check if we're behind schedule
