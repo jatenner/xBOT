@@ -198,8 +198,24 @@ async function main() {
     // 🎯 TASK 5: Check for skip_source and JSON markers
     const containsOverloadJson = row.deny_reason_detail?.includes('OVERLOAD_DETAIL_JSON') || false;
     const containsDetailVersion = row.deny_reason_detail?.includes('detail_version') || false;
-    const skipSourceMatch = row.deny_reason_detail?.match(/skip_source=(\w+)/);
-    const skipSource = skipSourceMatch ? skipSourceMatch[1] : 'UNKNOWN';
+    
+    // Try to extract skip_source from JSON first, then from text format
+    let skipSource = 'UNKNOWN';
+    if (row.deny_reason_detail) {
+      // Check if it's JSON (starts with {)
+      if (row.deny_reason_detail.trim().startsWith('{')) {
+        try {
+          const detail = JSON.parse(row.deny_reason_detail);
+          skipSource = detail.skip_source || 'UNKNOWN';
+        } catch {}
+      } else {
+        // Try text format: skip_source=...
+        const skipSourceMatch = row.deny_reason_detail.match(/skip_source=(\w+)/);
+        if (skipSourceMatch) {
+          skipSource = skipSourceMatch[1];
+        }
+      }
+    }
     
     console.log(`   Contains OVERLOAD_DETAIL_JSON: ${containsOverloadJson}`);
     console.log(`   Contains detail_version: ${containsDetailVersion}`);
