@@ -563,12 +563,16 @@ export async function shouldAllowReply(ancestry: ReplyAncestry): Promise<{ allow
           const poolUid = poolAny.poolInstanceUid || 'unknown';
           const requestedEnvMaxContexts = process.env.BROWSER_MAX_CONTEXTS || 'default';
           
+          // 🎯 TASK 4: Fix pool snapshot - read MAX_CONTEXTS correctly
+          // The pool instance has MAX_CONTEXTS as a private readonly field, access via getter or public property
+          const actualMaxContexts = (pool as any).MAX_CONTEXTS || poolMaxContexts || 11;
+          
           poolSnapshot = {
             queue_len: poolAny.queue?.length || 0,
             active: poolAny.getActiveCount?.() || 0,
             idle: (poolAny.contexts?.size || 0) - (poolAny.getActiveCount?.() || 0),
             total_contexts: poolAny.contexts?.size || 0,
-            max_contexts: poolMaxContexts, // 🎯 TASK 4: Use actual pool max_contexts
+            max_contexts: actualMaxContexts, // 🎯 TASK 4: Use actual pool max_contexts (should be 11)
             pool_instance_uid: poolUid, // 🎯 TASK 4: Include pool UID
             requested_env_max_contexts: requestedEnvMaxContexts, // 🎯 TASK 4: Include requested env value
             semaphore_inflight: 0, // Will be filled if limiter available
