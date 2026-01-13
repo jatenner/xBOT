@@ -406,6 +406,31 @@ GROUP BY pipeline_source;
 - ✅ ALLOW throughput restored (5 ALLOW decisions)
 - ⚠️ Pipeline progression blocked (ALLOW decisions stuck at PENDING)
 
+### Query: Scheduler DENY Decisions Analysis
+```sql
+SELECT decision, deny_reason_code, COUNT(*) as count 
+FROM reply_decisions 
+WHERE created_at >= '2026-01-13T17:47:29.031Z'::timestamptz 
+AND pipeline_source = 'reply_v2_scheduler' 
+GROUP BY decision, deny_reason_code 
+ORDER BY count DESC;
+```
+
+**Raw Output:**
+```
+ decision |     deny_reason_code      | count 
+----------+---------------------------+-------
+ DENY     | ANCESTRY_SKIPPED_OVERLOAD |    21
+```
+
+**Scheduler Activity:**
+- Scheduler runs: 24 runs in last 2 hours ✅
+- Queue size: 148 candidates ✅
+- Scheduler DENY decisions: 21 (all `ANCESTRY_SKIPPED_OVERLOAD`)
+- Scheduler ALLOW decisions: 0 ❌
+
+**Conclusion:** Scheduler is running but still hitting overload gate, preventing ALLOW decisions.
+
 ---
 
 ## Where We Are Blocked Now
@@ -424,7 +449,15 @@ GROUP BY pipeline_source;
 - All have `template_status='PENDING'` with no pipeline stage timestamps
 - Scheduler pipeline is what calls template selection → generation → posting
 
-**Next Single Fix:** Investigate why scheduler isn't creating ALLOW decisions (check scheduler logs, queue status, and recent DENY reasons from scheduler pipeline), then wait for natural scheduler runs OR modify `force-fresh-ancestry-sample.ts` to trigger pipeline stages directly.
+**Scheduler Analysis:**
+- Scheduler IS running: 24 runs in last 2 hours ✅
+- Queue has 148 candidates ✅
+- But scheduler creating DENY decisions: 21 DENY with `ANCESTRY_SKIPPED_OVERLOAD` since boot_time
+- 0 ALLOW decisions from scheduler since boot_time ❌
+
+**Root Cause:** Scheduler is still hitting overload gate (likely queueLen higher during scheduler runs, or using cached ancestry with old format)
+
+**Next Single Fix:** Check if scheduler DENY decisions have JSON detail (detail_version=1) or old format. If old format, clear cache for scheduler-processed tweets. If JSON shows queueLen still too high, consider further ceiling relaxation OR reduce `REPLY_V2_MAX_EVAL_PER_TICK` to reduce concurrent load.
 
 ---
 
