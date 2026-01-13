@@ -188,7 +188,19 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
   
   const { data, error } = await query.single();
   
-  if (error || !data) {
+  if (error) {
+    console.log(`[QUEUE_MANAGER] ⚠️ Query error for tier ${tier}: ${error.message} (code: ${error.code})`);
+    return null;
+  }
+  
+  if (!data) {
+    // Debug: Check if any candidates exist without filters
+    const { count: totalCount } = await supabase
+      .from('reply_candidate_queue')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'queued')
+      .gt('expires_at', new Date().toISOString());
+    console.log(`[QUEUE_MANAGER] ⚠️ No candidate found for tier ${tier} (total available: ${totalCount || 0})`);
     return null;
   }
   
