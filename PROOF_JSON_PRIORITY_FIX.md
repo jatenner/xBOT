@@ -86,7 +86,16 @@ railway up --detach -s xBOT
 curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{app_version,boot_id,boot_time}'
 ```
 
-**Output:** (To be captured)
+**Output:**
+```json
+{
+  "app_version": "1563adc9e521af2ca878c134c525ca0d326f2510",
+  "boot_id": "13bb59ab-c1a4-4759-a631-27ba60bf6fda",
+  "boot_time": "2026-01-13T14:57:08.402Z"
+}
+```
+
+✅ **Deployment Complete** (Note: First deploy had wrong code order, second deploy fixes it)
 
 ---
 
