@@ -14,9 +14,11 @@
 - **Version mismatch:** Base image has v1.57.0, package.json has ^1.40.1
 
 ### Dockerfile Analysis
-- Uses Playwright base image (`mcr.microsoft.com/playwright:v1.57.0-noble`)
-- Does NOT install chromium (relies on base image)
-- No `PLAYWRIGHT_BROWSERS_PATH` set
+- **Before:** Uses Playwright base image (`mcr.microsoft.com/playwright:v1.57.0-noble`) - VERSION MISMATCH!
+- **Issue:** Base image v1.57.0 but package.json has ^1.40.1
+- **After:** Changed to `mcr.microsoft.com/playwright:v1.40.0-noble` to match package.json
+- Added `npx playwright install --with-deps chromium` to ensure browsers exist
+- Set `ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`
 
 ---
 
