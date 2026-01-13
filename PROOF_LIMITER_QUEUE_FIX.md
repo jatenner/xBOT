@@ -15,18 +15,23 @@
 **Change:** Removed aggressive `acquireContextWaiting` check that immediately rejected all requests when one was queued. Replaced with queue capacity logic that allows queuing up to `maxConcurrent` requests.
 
 ### Diff
+```bash
+git diff HEAD~1 src/utils/ancestryConcurrencyLimiter.ts
+```
+
+**Output:**
 ```diff
 --- a/src/utils/ancestryConcurrencyLimiter.ts
 +++ b/src/utils/ancestryConcurrencyLimiter.ts
-@@ -10,7 +10,6 @@ class AncestryConcurrencyLimiter {
+@@ -11,7 +11,6 @@ class AncestryConcurrencyLimiter {
    private maxConcurrent: number;
    private current: number = 0;
    private queue: Array<() => void> = [];
 -  private acquireContextWaiting: boolean = false; // Track if acquire_context is waiting
    
-   constructor(maxConcurrent: number = 1) {
+   constructor(maxConcurrent: number = 1) { // 🎯 LOAD SHAPING: Default to 1 (was 2)
      this.maxConcurrent = maxConcurrent;
-@@ -20,25 +19,20 @@ class AncestryConcurrencyLimiter {
+@@ -20,30 +19,29 @@ class AncestryConcurrencyLimiter {
     * Acquire a slot for ancestry resolution
     * Returns a release function that must be called when done
 -   * 🎯 LOAD SHAPING: Skips if acquire_context is already waiting
@@ -37,34 +42,38 @@
 -      // 🎯 LOAD SHAPING: If acquire_context is already waiting, skip this request
 -      if (this.acquireContextWaiting) {
 -        reject(new Error('ANCESTRY_SKIPPED_OVERLOAD: acquire_context already waiting'));
--        return;
--      }
--      
--      if (this.current < this.maxConcurrent) {
 +      // If we have capacity, grant immediately
 +      if (this.current < this.maxConcurrent) {
++        this.current++;
++        resolve(() => this.release());
+         return;
+       }
+       
+-      if (this.current < this.maxConcurrent) {
++      // If queue is full (>= maxConcurrent), reject to prevent unbounded growth
++      if (this.queue.length >= this.maxConcurrent) {
++        console.warn(`[ANCESTRY_LIMITER] ⚠️ Queue full: rejecting request (current=${this.current}/${this.maxConcurrent}, queue=${this.queue.length})`);
++        reject(new Error(`ANCESTRY_SKIPPED_OVERLOAD: queue full (current=${this.current}/${this.maxConcurrent}, queue=${this.queue.length})`));
++        return;
++      }
++      
++      // Queue the request (queue.length < maxConcurrent)
++      this.queue.push(() => {
          this.current++;
          resolve(() => this.release());
-+        return;
-       } else {
+-      } else {
 -        // 🎯 LOAD SHAPING: Mark that we're waiting for acquire_context
 -        this.acquireContextWaiting = true;
 -        
 -        // Queue the request
-+        // If queue is full (>= maxConcurrent), reject to prevent unbounded growth
-+        if (this.queue.length >= this.maxConcurrent) {
-+          console.warn(`[ANCESTRY_LIMITER] ⚠️ Queue full: rejecting request (current=${this.current}/${this.maxConcurrent}, queue=${this.queue.length})`);
-+          reject(new Error(`ANCESTRY_SKIPPED_OVERLOAD: queue full (current=${this.current}/${this.maxConcurrent}, queue=${this.queue.length})`));
-+          return;
-+        }
-+        
-+        // Queue the request (queue.length < maxConcurrent)
-         this.queue.push(() => {
-           this.current++;
+-        this.queue.push(() => {
+-          this.current++;
 -          this.acquireContextWaiting = false; // Clear waiting flag when we get a slot
-           resolve(() => this.release());
-         });
+-          resolve(() => this.release());
+-        });
        }
+     });
+   }
 ```
 
 **Key Changes:**

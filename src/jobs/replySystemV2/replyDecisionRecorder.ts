@@ -93,21 +93,32 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
   const queueLen = poolAny.queue?.length || 0;
   const activeContexts = poolAny.getActiveCount?.() || 0;
   const maxContexts = poolAny.MAX_CONTEXTS || 0;
+  const poolId = poolAny.poolInstanceUid || 'unknown';
   
   // 🎯 CAPACITY-AWARE: Threshold scales with maxContexts (was hardcoded 20)
   const hardQueueCeiling = Math.max(30, maxContexts * 3); // With maxContexts=11 -> 33
-  const isOverloaded = queueLen >= hardQueueCeiling || (activeContexts >= maxContexts && queueLen >= 5);
+  const overloadedByCeiling = queueLen >= hardQueueCeiling;
+  const overloadedBySaturation = (activeContexts >= maxContexts && queueLen >= 5);
+  const isOverloaded = overloadedByCeiling || overloadedBySaturation;
   
   if (isOverloaded && !cached) {
     // Skip ancestry resolution if overloaded and no cache hit
-    const overloadSnapshot = {
+    const overloadReason = overloadedByCeiling ? 'CEILING' : 'SATURATION';
+    const overloadDetail = {
+      overloadedByCeiling,
+      overloadedBySaturation,
       queueLen,
       hardQueueCeiling,
       activeContexts,
       maxContexts,
-      threshold: hardQueueCeiling,
+      pool_id: poolId,
+      pool_instance_uid: poolId,
     };
-    console.warn(`[ANCESTRY] ⚠️ System overloaded: queue=${queueLen} >= ${hardQueueCeiling} (active=${activeContexts}/${maxContexts}), skipping ancestry resolution for ${targetTweetId}`);
+    
+    console.warn(`[ANCESTRY_OVERLOAD] reason=${overloadReason} queue=${queueLen} active=${activeContexts}/${maxContexts} ceiling=${hardQueueCeiling} pool_id=${poolId} uid=${poolId} target=${targetTweetId}`);
+    
+    // Include overload detail JSON in error message (will be parsed into deny_reason_detail)
+    const overloadDetailJson = JSON.stringify(overloadDetail);
     const skippedResult = {
       targetTweetId,
       targetInReplyToTweetId: null,
@@ -117,9 +128,10 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
       status: 'ERROR' as const,
       confidence: 'LOW' as const,
       method: 'skipped_overload',
-      error: `ANCESTRY_SKIPPED_OVERLOAD: queue=${queueLen} >= ${hardQueueCeiling} (active=${activeContexts}/${maxContexts}, threshold=${hardQueueCeiling})`,
+      error: `ANCESTRY_SKIPPED_OVERLOAD: ${overloadReason} (queue=${queueLen}, active=${activeContexts}/${maxContexts}, ceiling=${hardQueueCeiling}) ${overloadDetailJson}`,
       cache_hit: false,
     };
+    
     // Cache skipped result to avoid retrying immediately
     await setCachedAncestry(targetTweetId, skippedResult);
     return skippedResult;
@@ -534,6 +546,24 @@ export async function shouldAllowReply(ancestry: ReplyAncestry): Promise<{ allow
         denyReasonCode = 'CONSENT_WALL';
       } else if (errorLower.includes('skipped') || errorLower.includes('overload')) {
         denyReasonCode = 'ANCESTRY_SKIPPED_OVERLOAD';
+        // Extract overload detail JSON if present
+        try {
+          const jsonMatch = errorMsg.match(/\{.*"overloadedByCeiling".*\}/);
+          if (jsonMatch) {
+            const overloadDetail = JSON.parse(jsonMatch[0]);
+            // Replace existing detailParts with structured overload detail
+            detailParts.length = 0;
+            detailParts.push(`overload_reason=${overloadDetail.overloadedByCeiling ? 'CEILING' : 'SATURATION'}`);
+            detailParts.push(`overloadedByCeiling=${overloadDetail.overloadedByCeiling}`);
+            detailParts.push(`overloadedBySaturation=${overloadDetail.overloadedBySaturation}`);
+            detailParts.push(`queueLen=${overloadDetail.queueLen}`);
+            detailParts.push(`hardQueueCeiling=${overloadDetail.hardQueueCeiling}`);
+            detailParts.push(`activeContexts=${overloadDetail.activeContexts}`);
+            detailParts.push(`maxContexts=${overloadDetail.maxContexts}`);
+            detailParts.push(`pool_id=${overloadDetail.pool_id}`);
+            detailParts.push(`pool_instance_uid=${overloadDetail.pool_instance_uid}`);
+          }
+        } catch {}
       } else if (errorLower.includes('timeout') || errorLower.includes('queue timeout') || errorLower.includes('pool overloaded')) {
         denyReasonCode = 'ANCESTRY_TIMEOUT'; // Generic timeout fallback
       } else if (errorLower.includes('dropped') || errorLower.includes('disconnected') || errorLower.includes('browser has been closed')) {

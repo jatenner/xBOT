@@ -83,6 +83,9 @@ export class UnifiedBrowserPool {
   private sessionEnvHash: string | null = null;
   private sessionFileSignature: string | null = null;
   
+  // Pool instance identification
+  public readonly poolInstanceUid: string;
+  
   // Configuration
   private readonly MAX_CONTEXTS = MAX_CONTEXTS_CONFIG; // Tunable via BROWSER_MAX_CONTEXTS (default=2 for Railway stability)
   private readonly MAX_OPERATIONS_PER_CONTEXT = MAX_OPERATIONS_CONFIG; // Tunable via BROWSER_MAX_OPERATIONS (default=25)
@@ -128,6 +131,12 @@ export class UnifiedBrowserPool {
   private readonly CIRCUIT_BREAKER_TIMEOUT = CIRCUIT_BREAKER_TIMEOUT_CONFIG; // Stay open for configurable duration
 
   private constructor() {
+    // Generate unique instance ID
+    this.poolInstanceUid = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    
+    // 🚀 BOOT LOG: Log pool initialization
+    console.log(`[BOOT] Browser pool uid=${this.poolInstanceUid} maxContexts=${this.MAX_CONTEXTS} source_env=${process.env.BROWSER_MAX_CONTEXTS || 'default'}`);
+    
     // Start periodic cleanup
     this.startCleanupTimer();
     
