@@ -117,10 +117,17 @@ Investigate why ancestry resolution times out even when contexts are available. 
 ## FINAL OUTPUT
 
 ### 1) Current Blocker
-Ancestry resolution timing out (`ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT`) even though context creation succeeds quickly (151ms in railway run). The timeout occurs during ancestry resolution. The deny_reason_detail shows `active=0/5` (should be 0/11), suggesting fallback snapshot is reading wrong MAX_CONTEXTS or from old pool instance. Need to verify with in-process debug endpoint once deployment completes.
+**ROOT CAUSE FOUND:** Browser executable doesn't exist in Railway production:
+```
+[BROWSER_POOL][INIT_BROWSER] chromium.launch_failed duration_ms=12 error=browserType.launch: Executable doesn't exist at /ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell
+```
+
+This explains `ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT` - browser can't launch, so contexts can't be created, so ancestry resolution times out waiting for a context that never arrives.
+
+**Note:** Railway run shows browser init succeeds (99ms), suggesting browser IS installed but maybe not in the production container instance, or deployment broke browser installation.
 
 ### 2) Next Single Fix
-Wait for deployment to complete, then test debug endpoint to see if in-process execution (same pool) avoids timeout. If timeout persists, investigate ancestry limiter queue wait timeout or increase `QUEUE_WAIT_TIMEOUT` from 60s to 120s for ancestry operations.
+Ensure Playwright browsers are installed in Railway production build. Add `npx playwright install chromium` to Railway build command or Dockerfile, OR verify browser installation path matches Playwright's expected location.
 
 ### 3) Updated Progress
 
