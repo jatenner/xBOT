@@ -52,22 +52,51 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 ## PART 4: Proof
 
-### Boot Logs (Expected)
-```
-[BOOT][PLAYWRIGHT] Checking Playwright browser installation...
-[BOOT][PLAYWRIGHT] Playwright version: 1.40.1
-[BOOT][PLAYWRIGHT] PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
-[BOOT][PLAYWRIGHT] /ms-playwright: EXISTS
-[BOOT][PLAYWRIGHT] Found X chromium directories in /ms-playwright
+### STEP 1: Confirm Production Version
+
+**Status Endpoint:**
+```bash
+curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{app_version, boot_time, boot_id}'
 ```
 
-### Browser Launch Logs (Expected)
-```
-[BROWSER_POOL][INIT_BROWSER] calling_chromium.launch
-[BROWSER_POOL][INIT_BROWSER] chromium.launch_success duration_ms=XXX
+**Output:** (Pending - waiting for deployment)
+
+**Expected:** `app_version` matches commit with Dockerfile changes (`2a451088` or later)
+
+---
+
+### STEP 2: Boot Diagnostics Logs
+
+**Command:**
+```bash
+railway logs -s xBOT --tail 1500 | grep -E "\[BOOT\]\[PLAYWRIGHT\]|\[BROWSER_POOL\]\[INIT_BROWSER\]|chromium\.launch"
 ```
 
-### Debug Endpoint Test
+**Output:** (Pending - waiting for deployment)
+
+**Expected:**
+- `[BOOT][PLAYWRIGHT] Checking Playwright browser installation...`
+- `[BOOT][PLAYWRIGHT] Playwright version: 1.40.1`
+- `[BOOT][PLAYWRIGHT] PLAYWRIGHT_BROWSERS_PATH: /ms-playwright`
+- `[BOOT][PLAYWRIGHT] /ms-playwright: EXISTS`
+- `[BOOT][PLAYWRIGHT] Found X chromium executables`
+- `[BROWSER_POOL][INIT_BROWSER] chromium.launch_success duration_ms=XXX`
+
+---
+
+### STEP 3: Chromium Executable Verification
+
+**Boot Diagnostics Include:**
+- `ls -la /ms-playwright | head -20`
+- `find /ms-playwright -maxdepth 3 -type f -name headless_shell -o -name chrome | head -10`
+
+**Output:** (Pending - waiting for deployment)
+
+---
+
+### STEP 4: Deterministic Runtime Test
+
+**Debug Endpoint:**
 ```bash
 curl -X POST https://xbot-production-844b.up.railway.app/debug/seed-and-run \
   -H "Authorization: Bearer test-debug-token-2025" \
@@ -75,7 +104,12 @@ curl -X POST https://xbot-production-844b.up.railway.app/debug/seed-and-run \
   -d '{"count":5}'
 ```
 
-**Expected:** At least 1 decision that is NOT `ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT`
+**Output:** (Pending - waiting for deployment)
+
+**Expected:** 
+- At least 1 decision created
+- NO decisions with `ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT`
+- Decision breakdown shows other deny reasons (e.g., CONSENT_WALL) or ALLOW
 
 ---
 
@@ -105,3 +139,27 @@ curl -X POST https://xbot-production-844b.up.railway.app/debug/seed-and-run \
 
 ### Next Single Blocker
 (Pending - verify browser launches successfully after deployment)
+
+---
+
+## VERIFICATION RESULTS
+
+### STEP 1: Production Version Check
+**Output:** (See below)
+
+### STEP 2: Boot Diagnostics
+**Output:** (See below)
+
+### STEP 3: Chromium Executable Check
+**Output:** (See below)
+
+### STEP 4: Runtime Test Results
+**Output:** (See below)
+
+---
+
+## FINAL STATUS
+
+**Browser OK?** (Pending verification)
+
+**Next Blocker:** (Pending verification)

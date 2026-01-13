@@ -28,9 +28,8 @@ RUN mkdir -p dist public supabase
 # Build TypeScript to dist/
 RUN pnpm run build
 
-# Production stage: Use Playwright base matching package.json version (v1.40.1)
-# Note: Using v1.40.0 base image (closest available) to match package.json ^1.40.1
-FROM mcr.microsoft.com/playwright:v1.40.0-noble AS runner
+# Production stage: Use Playwright base matching package.json version (v1.57.0)
+FROM mcr.microsoft.com/playwright:v1.57.0-noble AS runner
 
 # Accept APP_VERSION build arg (defaults to unknown)
 ARG APP_VERSION=unknown
