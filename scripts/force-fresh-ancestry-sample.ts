@@ -27,38 +27,39 @@ async function main() {
   const fetchResult = await fetchAndEvaluateCandidates();
   console.log(`✅ Fetched ${fetchResult.fetched} tweets, evaluated ${fetchResult.evaluated}\n`);
   
-  // Step 2: Get tweet IDs from multiple sources
-  console.log('Step 2: Collecting tweet IDs from recent feeds...');
+  // Step 2: Get tweet IDs from reply_candidate_queue (most reliable source)
+  console.log('Step 2: Collecting tweet IDs from reply_candidate_queue...');
   
-  const candidateIds: string[] = [];
-  
-  // Source 1: discovered_accounts
-  const { data: discoveredTweets } = await supabase
-    .from('discovered_accounts')
-    .select('tweet_id')
-    .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-    .order('created_at', { ascending: false })
-    .limit(50);
-  
-  if (discoveredTweets) {
-    candidateIds.push(...discoveredTweets.map(t => t.tweet_id).filter(Boolean));
-  }
-  
-  // Source 2: reply_candidate_queue (recent candidates)
-  const { data: queueCandidates } = await supabase
+  const { data: queueCandidates, error: queueError } = await supabase
     .from('reply_candidate_queue')
     .select('candidate_tweet_id')
     .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
     .order('created_at', { ascending: false })
-    .limit(50);
+    .limit(100);
   
-  if (queueCandidates) {
-    candidateIds.push(...queueCandidates.map(c => c.candidate_tweet_id).filter(Boolean));
+  if (queueError) {
+    console.error('Error fetching from reply_candidate_queue:', queueError);
+    return;
   }
   
-  // Source 3: Use fetchAndEvaluateCandidates to get fresh IDs
-  // The function returns fetched count, but we need to query the results
-  // For now, use the IDs we collected above
+  const candidateIds = queueCandidates?.map(c => c.candidate_tweet_id).filter(Boolean) || [];
+  console.log(`Found ${candidateIds.length} candidate tweet IDs from queue\n`);
+  
+  // If not enough, try candidate_evaluations
+  if (candidateIds.length < count) {
+    console.log('Step 2b: Supplementing from candidate_evaluations...');
+    const { data: evaluations } = await supabase
+      .from('candidate_evaluations')
+      .select('candidate_tweet_id')
+      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(50);
+    
+    if (evaluations) {
+      candidateIds.push(...evaluations.map(e => e.candidate_tweet_id).filter(Boolean));
+    }
+    console.log(`Total after supplementing: ${candidateIds.length}\n`);
+  }
   
   // Deduplicate
   const uniqueIds = Array.from(new Set(candidateIds));
