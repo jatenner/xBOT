@@ -256,20 +256,22 @@ export async function runPolicyUpdate(dryRun: boolean = false): Promise<{
   }
   
   // Log policy update event
-  await supabase.from('system_events').insert({
-    event_type: 'policy_update',
-    metadata: {
-      before: beforeState,
-      after: afterState,
-      outcomes_analyzed: outcomes.length,
-      templates_updated: Object.keys(templateWeights).length,
-      threshold_delta: thresholdDelta,
-      avg_reward: avgRewardAll,
-    },
-    created_at: now.toISOString(),
-  }).catch(err => {
+  try {
+    await supabase.from('system_events').insert({
+      event_type: 'policy_update',
+      metadata: {
+        before: beforeState,
+        after: afterState,
+        outcomes_analyzed: outcomes.length,
+        templates_updated: Object.keys(templateWeights).length,
+        threshold_delta: thresholdDelta,
+        avg_reward: avgRewardAll,
+      },
+      created_at: now.toISOString(),
+    });
+  } catch (err: any) {
     console.warn(`[POLICY_UPDATER] ⚠️ Failed to log event: ${err.message}`);
-  });
+  }
   
   console.log(`[POLICY_UPDATER] ✅ Policy updated successfully`);
   

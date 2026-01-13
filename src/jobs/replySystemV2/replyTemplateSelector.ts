@@ -163,6 +163,16 @@ export async function selectReplyTemplate(
     console.log(`[TEMPLATE_SELECTOR] 🎯 Exploitation mode: selected ${selectedTemplate.id} (weight=${selectedTemplate.calculated_weight.toFixed(2)}, policy_version=${policyVersion}, prompt=${selectedPromptVersion})`);
   }
   
+  // Log policy usage for proof
+  const policyUsed = policy ? {
+    policy_id: policy.id,
+    policy_effective_at: policy.effective_at,
+    template_weights_used: templateWeights,
+    exploration_rate_used: explorationRate,
+  } : null;
+  
+  console.log(`[TEMPLATE_SELECTOR] 📋 Policy used: ${JSON.stringify(policyUsed)}`);
+  
   return {
     template_id: selectedTemplate.id,
     prompt_version: selectedPromptVersion,
