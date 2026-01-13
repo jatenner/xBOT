@@ -153,8 +153,29 @@ TIMEOUT: 0
 - Scheduler only processes candidates from `reply_candidate_queue` table
 
 **Next Fix Needed:**
-- ALLOW decisions need to be picked up by scheduler OR
-- Script needs to trigger template selection → generation → posting pipeline
+- ALLOW decisions from `force_fresh_sample` script don't go through scheduler pipeline
+- Scheduler only processes candidates from `reply_candidate_queue` table
+- Need to wait for natural scheduler runs OR check if scheduler is creating ALLOW decisions
+
+### Phase 4C: Prove End-to-End Progression ⚠️
+
+**Status:** Cannot prove end-to-end progression yet
+
+**Reason:**
+- ALLOW decisions exist (5 total, 4 from fresh batch)
+- But they're from `force_fresh_sample` script, not scheduler pipeline
+- Script only calls `recordReplyDecision()`, doesn't trigger template selection → generation → posting
+- Scheduler pipeline (`tieredScheduler.ts`) is what progresses ALLOW decisions through stages
+
+**Findings:**
+- 0 ALLOW decisions from `reply_v2_scheduler` pipeline source
+- All 5 ALLOW decisions are from `force_fresh_sample` script
+- These script-created ALLOW decisions have `template_status='PENDING'` and no pipeline stage timestamps
+
+**Conclusion:**
+- Ceiling relaxation (33→44) successfully restored ALLOW throughput ✅
+- SKIPPED_OVERLOAD blocking removed ✅
+- But need natural scheduler runs to prove end-to-end progression
 
 ---
 
@@ -247,7 +268,35 @@ Based on evidence:
 - Skip source tagging functional
 
 **Next Steps:**
-1. Wait for fresh natural decisions (not from cache)
-2. Verify SKIPPED_OVERLOAD rate decreased
-3. Confirm ALLOW decisions appear
-4. Ensure ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT remains 0
+1. ✅ Wait for fresh natural decisions (not from cache) - DONE
+2. ✅ Verify SKIPPED_OVERLOAD rate decreased - DONE (0 in fresh batch)
+3. ✅ Confirm ALLOW decisions appear - DONE (5 total, 4 in fresh batch)
+4. ✅ Ensure ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT remains 0 - DONE
+5. ⏳ Wait for natural scheduler runs to create ALLOW decisions through scheduler pipeline
+6. ⏳ Prove end-to-end progression (template_select → generate → post)
+
+---
+
+## Where We Are Blocked Now
+
+**Current Blocker:** ALLOW decisions created but not progressing through pipeline
+
+**Root Cause:**
+- ALLOW decisions from `force_fresh_sample` script don't trigger scheduler pipeline
+- Scheduler only processes candidates from `reply_candidate_queue` table
+- Script-created ALLOW decisions remain at `template_status='PENDING'` with no pipeline stage timestamps
+
+**Evidence:**
+- 5 ALLOW decisions exist (all from `force_fresh_sample` script)
+- 0 ALLOW decisions from `reply_v2_scheduler` pipeline source
+- All ALLOW decisions have `template_selected_at=NULL`, `generation_completed_at=NULL`, `posting_completed_at=NULL`
+
+**Next Single Fix:**
+- Wait for natural scheduler runs to create ALLOW decisions through normal pipeline
+- OR modify `force-fresh-ancestry-sample.ts` to also create entries in `reply_candidate_queue` so scheduler picks them up
+- OR trigger template selection → generation → posting directly in the script after creating ALLOW decision
+
+**Recommendation:**
+- Wait for natural scheduler runs (they should happen automatically)
+- Check if scheduler is running and creating ALLOW decisions
+- If scheduler isn't creating ALLOW decisions, investigate why (may be another gate blocking scheduler path)
