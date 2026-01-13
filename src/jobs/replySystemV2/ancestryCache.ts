@@ -70,13 +70,15 @@ export async function getCachedAncestry(tweetId: string): Promise<ReplyAncestry 
     if ((cached.status === 'ERROR' || cached.status === 'UNCERTAIN') && cached.error) {
       const errorMsg = cached.error;
       // Check for old format indicators:
-      // - Contains "pool={queue=" (old pool snapshot format)
+      // - Contains "pool={queue=" OR "active=0/5" (old pool snapshot format)
+      // - Contains "queue=XX, active=0/5" pattern (old overload message format)
       // - Lacks "OVERLOAD_DETAIL_JSON:" marker
       // - Lacks "detail_version" marker
       const hasOldFormat = errorMsg.includes('pool={queue=') || 
-                          (!errorMsg.includes('OVERLOAD_DETAIL_JSON:') && 
-                           !errorMsg.includes('detail_version') &&
-                           errorMsg.includes('overload'));
+                          errorMsg.includes('active=0/5') ||
+                          (errorMsg.includes('queue=') && errorMsg.includes('active=') && 
+                           !errorMsg.includes('OVERLOAD_DETAIL_JSON:') &&
+                           !errorMsg.includes('detail_version'));
       
       if (hasOldFormat) {
         console.log(`[ANCESTRY_CACHE] stale_format_bypass tweet_id=${cacheKey} reason=old_format error_preview=${errorMsg.substring(0, 100)}`);
