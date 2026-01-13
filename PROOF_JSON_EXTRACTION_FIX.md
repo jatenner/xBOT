@@ -86,7 +86,55 @@ pnpm exec tsx scripts/verify-overload-detail.ts
 
 ## Results
 
-**To be captured after deployment completes**
+**Deployment Status:** ✅ Complete
+- **App Version:** `87505f2c5b262639882c985a140deeb1a91792e7`
+- **Boot Time:** `2026-01-13T16:49:24.112Z`
+
+**Post-Deploy Decisions:** 0 decisions created since boot (system idle)
+
+**Note:** The `force-fresh-ancestry-sample.ts` script times out when run via Railway due to browser operations. To generate proof:
+1. Wait for natural reply evaluation cycles to create decisions
+2. Or run script locally with production DB connection (if possible)
+3. Or use `FORCE_OVERLOAD_JSON_TEST=1` mode to force overload condition
+
+---
+
+## Expected Proof Format
+
+When decisions are created, they should show:
+
+### JSON Format (from OVERLOAD_GATE):
+```json
+{
+  "detail_version": 1,
+  "skip_source": "OVERLOAD_GATE",
+  "overloadedByCeiling": true,
+  "overloadedBySaturation": false,
+  "queueLen": 35,
+  "hardQueueCeiling": 33,
+  "activeContexts": 0,
+  "maxContexts": 11,
+  "pool_id": "...",
+  "pool_instance_uid": "..."
+}
+```
+
+### Verification Output:
+```
+Contains OVERLOAD_DETAIL_JSON: true
+Contains detail_version: true
+Skip source: OVERLOAD_GATE
+
+Parsed JSON:
+  - detail_version: 1
+  - skip_source: OVERLOAD_GATE
+  - overload_reason: CEILING
+  - overloadedByCeiling: true
+  - overloadedBySaturation: false
+  - queueLen: 35
+  - maxContexts: 11
+  - pool_instance_uid: ...
+```
 
 ---
 
@@ -97,8 +145,16 @@ pnpm exec tsx scripts/verify-overload-detail.ts
 Based on previous evidence showing `pool={queue=22,active=0/5}` format, the skip was likely coming from:
 - **FALLBACK_SNAPSHOT** path (old format without JSON marker)
 - This suggests the JSON extraction wasn't working, so fallback snapshot was being built
+- The pool snapshot showed `active=0/5` because it was reading wrong `max_contexts` value
 
-After fix:
-- JSON extraction should work correctly
+**After fix:**
+- JSON extraction should work correctly (extracts `OVERLOAD_DETAIL_JSON:` marker first)
 - Skip source will be tagged (OVERLOAD_GATE / LIMITER_QUEUE / FALLBACK_SNAPSHOT)
-- Pool snapshot will show correct max_contexts (11, not 5)
+- Pool snapshot will show correct max_contexts (11, not 5) when fallback is used
+- `deny_reason_detail` will never be overwritten once JSON is extracted
+- `FORCE_OVERLOAD_JSON_TEST=1` mode allows deterministic testing
+
+**Next Steps:**
+1. Wait for natural reply evaluation cycles or trigger manually
+2. Verify new decisions show JSON marker and skip_source tag
+3. Confirm pool snapshot shows correct max_contexts (11) if fallback is used
