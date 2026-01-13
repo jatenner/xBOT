@@ -117,10 +117,10 @@ Investigate why ancestry resolution times out even when contexts are available. 
 ## FINAL OUTPUT
 
 ### 1) Current Blocker
-Ancestry resolution timing out (`ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT`) even though context creation succeeds quickly (151ms). The timeout occurs during ancestry resolution, suggesting the operation waits too long for context availability or the ancestry operation itself exceeds timeout.
+Ancestry resolution timing out (`ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT`) even though context creation succeeds quickly (151ms in railway run). The timeout occurs during ancestry resolution. The deny_reason_detail shows `active=0/5` (should be 0/11), suggesting fallback snapshot is reading wrong MAX_CONTEXTS or from old pool instance. Need to verify with in-process debug endpoint once deployment completes.
 
 ### 2) Next Single Fix
-Check ancestry limiter queue wait timeout and increase `QUEUE_WAIT_TIMEOUT` if contexts are available but operations are queued too long, OR investigate why ancestry operations take >60s even with available contexts.
+Wait for deployment to complete, then test debug endpoint to see if in-process execution (same pool) avoids timeout. If timeout persists, investigate ancestry limiter queue wait timeout or increase `QUEUE_WAIT_TIMEOUT` from 60s to 120s for ancestry operations.
 
 ### 3) Updated Progress
 
