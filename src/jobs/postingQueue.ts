@@ -2917,11 +2917,13 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       if (!existingRows || existingRows.length === 0) {
         // No content_metadata row exists - mark decision as failed
         console.error(`[POSTING_QUEUE] ❌ No content_metadata row found for decision_id=${decision.id}`);
+        const errorReason = 'NO_CONTENT_METADATA';
+        const failedAt = new Date().toISOString();
         await supabase
           .from('reply_decisions')
           .update({
-            pipeline_error_reason: 'NO_CONTENT_METADATA',
-            posting_completed_at: new Date().toISOString(),
+            pipeline_error_reason: errorReason,
+            posting_completed_at: failedAt,
           })
           .eq('id', decision.id);
         
@@ -2929,6 +2931,21 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           .from('content_metadata')
           .update({ status: 'failed', error_message: 'NO_CONTENT_METADATA' })
           .eq('decision_id', decision.id);
+        
+        // 🔒 POST_FAILED: Emit structured proof signal
+        console.log(`[POST_FAILED] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} pipeline_error_reason=${errorReason}`);
+        await supabase.from('system_events').insert({
+          event_type: 'POST_FAILED',
+          severity: 'error',
+          message: `Reply posting failed: decision_id=${decision.id} error=${errorReason}`,
+          event_data: {
+            decision_id: decision.id,
+            target_tweet_id: decision.target_tweet_id,
+            pipeline_error_reason: errorReason,
+            failed_at: failedAt,
+          },
+          created_at: new Date().toISOString(),
+        });
         
         throw new Error(`No content_metadata row found for decision_id=${decision.id}`);
       }
@@ -2971,13 +2988,31 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       // Only claim if status is 'queued'
       if (targetRow.status !== 'queued') {
         console.warn(`[POSTING_QUEUE] ⚠️ Cannot claim ${decision.id}: status=${targetRow.status} (expected 'queued')`);
+        const errorReason = `INVALID_STATUS_${targetRow.status}`;
+        const failedAt = new Date().toISOString();
         await supabase
           .from('reply_decisions')
           .update({
-            pipeline_error_reason: `INVALID_STATUS_${targetRow.status}`,
-            posting_completed_at: new Date().toISOString(),
+            pipeline_error_reason: errorReason,
+            posting_completed_at: failedAt,
           })
           .eq('id', decision.id);
+        
+        // 🔒 POST_FAILED: Emit structured proof signal
+        console.log(`[POST_FAILED] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} pipeline_error_reason=${errorReason}`);
+        await supabase.from('system_events').insert({
+          event_type: 'POST_FAILED',
+          severity: 'error',
+          message: `Reply posting failed: decision_id=${decision.id} error=${errorReason}`,
+          event_data: {
+            decision_id: decision.id,
+            target_tweet_id: decision.target_tweet_id,
+            pipeline_error_reason: errorReason,
+            failed_at: failedAt,
+          },
+          created_at: new Date().toISOString(),
+        });
+        
         return false; // Skip posting
       }
       
@@ -3349,6 +3384,33 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           // ═══════════════════════════════════════════════════════════════════════
           const shouldSkip = await checkReplySafetyGates(decision, supabase);
           if (shouldSkip) {
+            // 🔒 POST_FAILED: Safety gates blocked the decision
+            const { data: blockedRow } = await supabase
+              .from('content_generation_metadata_comprehensive')
+              .select('skip_reason, error_message')
+              .eq('decision_id', decision.id)
+              .maybeSingle();
+            
+            const skipReason = blockedRow?.skip_reason || 'SAFETY_GATE_BLOCKED';
+            const errorReason = `SAFETY_GATE_${skipReason}`;
+            const failedAt = new Date().toISOString();
+            
+            console.log(`[POST_FAILED] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} pipeline_error_reason=${errorReason}`);
+            await supabase.from('system_events').insert({
+              event_type: 'POST_FAILED',
+              severity: 'warning',
+              message: `Reply posting blocked by safety gate: decision_id=${decision.id} reason=${skipReason}`,
+              event_data: {
+                decision_id: decision.id,
+                target_tweet_id: decision.target_tweet_id,
+                pipeline_error_reason: errorReason,
+                skip_reason: skipReason,
+                error_message: blockedRow?.error_message || null,
+                failed_at: failedAt,
+              },
+              created_at: new Date().toISOString(),
+            });
+            
             return false; // Skip this decision (return early from processDecision)
           }
           
@@ -5031,6 +5093,16 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       // 🎨 QUALITY TRACKING: Update template_id and prompt_version if not already set
       // 🎯 PIPELINE STAGES: Mark posting completed
       const postingCompletedAt = new Date().toISOString();
+      // Get template_id and prompt_version from reply_decisions for POST_SUCCESS event
+      const { data: decisionRow } = await supabase
+        .from('reply_decisions')
+        .select('template_id, prompt_version')
+        .eq('decision_id', decision.id)
+        .maybeSingle();
+      
+      const templateId = decisionRow?.template_id || null;
+      const promptVersion = decisionRow?.prompt_version || null;
+      
       await supabase
         .from('reply_decisions')
         .update({
@@ -5043,6 +5115,25 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       
       console.log(`[PIPELINE] decision_id=${decision.id} stage=post ok=true detail=posting_completed tweet_id=${result.tweetId}`);
       console.log(`[POSTING_QUEUE] 🎯 Pipeline stage: posting_completed_at=${postingCompletedAt} for decision_id=${decision.id}`);
+      
+      // 🔒 POST_SUCCESS: Emit structured proof signal
+      console.log(`[POST_SUCCESS] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} posted_reply_tweet_id=${result.tweetId} template_id=${templateId || 'null'} prompt_version=${promptVersion || 'null'}`);
+      
+      // Write POST_SUCCESS to system_events
+      await supabase.from('system_events').insert({
+        event_type: 'POST_SUCCESS',
+        severity: 'info',
+        message: `Reply posted successfully: decision_id=${decision.id} posted_reply_tweet_id=${result.tweetId}`,
+        event_data: {
+          decision_id: decision.id,
+          target_tweet_id: decision.target_tweet_id,
+          posted_reply_tweet_id: result.tweetId,
+          template_id: templateId,
+          prompt_version: promptVersion,
+          posted_at: postingCompletedAt,
+        },
+        created_at: new Date().toISOString(),
+      });
       
       console.log(`[REPLY_TRUTH] step=RETURN_TWEETID tweet_id=${result.tweetId}`);
       return result.tweetId;
@@ -5058,6 +5149,24 @@ async function postReply(decision: QueuedDecision): Promise<string> {
         })
         .eq('decision_id', decision.id);
       console.error(`[PIPELINE] decision_id=${decision.id} stage=post ok=false detail=${errorReason}`);
+      
+      // 🔒 POST_FAILED: Emit structured proof signal
+      console.log(`[POST_FAILED] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} pipeline_error_reason=${errorReason}`);
+      
+      // Write POST_FAILED to system_events
+      await supabase.from('system_events').insert({
+        event_type: 'POST_FAILED',
+        severity: 'error',
+        message: `Reply posting failed: decision_id=${decision.id} error=${errorReason}`,
+        event_data: {
+          decision_id: decision.id,
+          target_tweet_id: decision.target_tweet_id,
+          pipeline_error_reason: errorReason,
+          error_message: innerError.message,
+          failed_at: postingCompletedAt,
+        },
+        created_at: new Date().toISOString(),
+      });
       if (poster) {
         await poster.handleFailure(innerError.message || 'reply_posting_failure');
       }
