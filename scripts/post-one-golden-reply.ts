@@ -229,12 +229,26 @@ async function main() {
       
       // C) 2-phase validation with relaxed root confirmation
       // Phase 1: Validate target exists
-      if (!ancestry || !ancestry.targetTweetContent) {
-        const reason = ancestry ? 'no_content' : 'target_not_found';
+      // Note: resolveTweetAncestry doesn't return targetTweetContent directly
+      // We need to extract it from the resolved tweet page
+      if (!ancestry) {
+        const reason = 'target_not_found';
         skipReasons[reason] = (skipReasons[reason] || 0) + 1;
         console.log(`   ❌ Phase 1 failed: ${reason} - Skipping\n`);
         continue candidateLoop;
       }
+      
+      // Extract tweet content from ancestry signals or fetch it
+      let extractedContent = '';
+      let extractedUsername = '';
+      
+      if (ancestry.signals && typeof ancestry.signals === 'object') {
+        extractedContent = (ancestry.signals as any).tweetText || (ancestry.signals as any).content || '';
+        extractedUsername = (ancestry.signals as any).authorUsername || (ancestry.signals as any).username || '';
+      }
+      
+      // If no content in signals, we'll fetch it during root validation
+      // For now, continue to Phase 2
       
       // Phase 2: Root confirmation
       let finalTargetTweetId = tweetId;
@@ -312,11 +326,54 @@ async function main() {
         }
       }
       
-      // Final checks
-      if (!finalAncestry.targetTweetContent) {
-        const reason = 'no_content';
+      // Extract content from candidate_evaluations (where feed fetchers store it)
+      // resolveTweetAncestry doesn't return targetTweetContent, fetch from evaluations table
+      try {
+        const { data: evalData } = await supabase
+          .from('candidate_evaluations')
+          .select('candidate_content, candidate_author_username')
+          .eq('candidate_tweet_id', finalTargetTweetId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (evalData?.candidate_content) {
+          targetTweetContent = evalData.candidate_content;
+          targetUsername = evalData.candidate_author_username || 'unknown';
+        } else {
+          // Try reply_opportunities
+          const { data: oppData } = await supabase
+            .from('reply_opportunities')
+            .select('target_tweet_content, target_username')
+            .eq('target_tweet_id', finalTargetTweetId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (oppData?.target_tweet_content) {
+            targetTweetContent = oppData.target_tweet_content;
+            targetUsername = oppData.target_username || 'unknown';
+          } else {
+            // Extract from signals if available
+            const signals = finalAncestry.signals || {};
+            const extractedContent = (signals as any).tweetText || (signals as any).content || '';
+            const extractedUsername = (signals as any).authorUsername || (signals as any).username || '';
+            
+            if (extractedContent) {
+              targetTweetContent = extractedContent;
+              targetUsername = extractedUsername || 'unknown';
+            } else {
+              const reason = 'no_content_available';
+              skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+              console.log(`   ❌ No tweet content available in evaluations, opportunities, or signals - Skipping\n`);
+              continue candidateLoop;
+            }
+          }
+        }
+      } catch (contentError: any) {
+        const reason = 'content_fetch_failed';
         skipReasons[reason] = (skipReasons[reason] || 0) + 1;
-        console.log(`   ❌ No tweet content retrieved - Skipping\n`);
+        console.log(`   ❌ Content fetch failed: ${contentError.message} - Skipping\n`);
         continue candidateLoop;
       }
       
@@ -327,9 +384,6 @@ async function main() {
         console.log(`   ❌ Safety check: Target is a reply (in_reply_to: ${finalAncestry.targetInReplyToTweetId}) - Skipping\n`);
         continue candidateLoop;
       }
-      
-      targetTweetContent = finalAncestry.targetTweetContent;
-      targetUsername = finalAncestry.targetUsername || 'unknown';
       
       console.log(`   ✅ LIVE validation passed:`);
       console.log(`      target_exists: ✅`);
