@@ -616,10 +616,9 @@ async function main() {
   const decisionId = crypto.randomUUID();
   const now = new Date().toISOString();
   
-      const { recordReplyDecision } = await import('../src/jobs/replySystemV2/replyDecisionRecorder');
-      const decisionId = `golden-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-      await recordReplyDecision({
-        decision_id: decisionId,
+  const { recordReplyDecision } = await import('../src/jobs/replySystemV2/replyDecisionRecorder');
+  await recordReplyDecision({
+    decision_id: decisionId,
     decision_id: decisionId,
     target_tweet_id: chosenTweetId,
     target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId || null,
