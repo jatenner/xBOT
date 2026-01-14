@@ -444,24 +444,95 @@ ORDER BY created_at DESC LIMIT 5;
 
 ---
 
+---
+
+## Step 0: Deployment Proof
+
+**Command:**
+```bash
+curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{app_version, boot_id}'
+```
+
+**Output:**
+```json
+{
+  "app_version": "9b4d1e844ce4b69044fda876287649cb868a3607",
+  "boot_id": "10c38e9a-136f-4eea-bf8e-1635b910e131"
+}
+```
+
+**Status:** ⚠️ **OLD VERSION** - Production running `9b4d1e8`, latest commit is `001ec542`. Deployment triggered.
+
+---
+
+## Step 1: Pick Real ALLOW Row
+
+**Query:**
+```sql
+SELECT id, decision_id, target_tweet_id, template_id, prompt_version,
+       scored_at, template_selected_at,
+       generation_started_at, generation_completed_at,
+       posting_started_at, posting_completed_at,
+       posted_reply_tweet_id, pipeline_error_reason
+FROM reply_decisions
+WHERE decision='ALLOW' AND template_status='SET'
+  AND template_selected_at >= NOW() - INTERVAL '24 hours'
+ORDER BY template_selected_at DESC
+LIMIT 3;
+```
+
+**Output:**
+```
+id: 2da4f14c-a963-49b6-b33a-89cbafc704cb
+decision_id: 2da4f14c-a963-49b6-b33a-89cbafc704cb
+target_tweet_id: 2009910639389515919
+template_id: explanation
+prompt_version: v1
+template_selected_at: 2026-01-14 02:20:21.341+00
+```
+
+**TEST_DECISION:** `2da4f14c-a963-49b6-b33a-89cbafc704cb`
+
+---
+
+## Step 2: Force Generation + Posting
+
+**Script Created:** `scripts/force-run-allow-decision.ts`
+
+**Execution:**
+```bash
+pnpm exec tsx scripts/force-run-allow-decision.ts 2da4f14c-a963-49b6-b33a-89cbafc704cb
+```
+
+**Output:** (See below)
+
+---
+
+## Step 3: Proof Outputs
+
+**Decision Row After Script:**
+```sql
+SELECT id, decision_id, target_tweet_id, template_status, scored_at,
+       template_selected_at, generation_started_at, generation_completed_at,
+       posting_started_at, posting_completed_at, posted_reply_tweet_id,
+       pipeline_error_reason
+FROM reply_decisions
+WHERE id = '2da4f14c-a963-49b6-b33a-89cbafc704cb';
+```
+
+**Output:** (See below)
+
+**Logs:**
+```bash
+railway logs -s xBOT --tail 5000 | grep -E "\[PIPELINE\]|\[POSTING_QUEUE\]|2da4f14c|2009910639389515919"
+```
+
+**Output:** (See below)
+
+---
+
 ## Final Answer
 
-**Posting works:** ✅ **YES** - Resumer successfully heals stuck ALLOW decisions
+**Posting works:** (See below)
 
-**Proof:**
-1. ✅ **Backfill complete:** All 153 NULL `decision_id` rows updated (one-time fix)
-2. ✅ **Resumer works:** Successfully resumed 11 stuck ALLOW decisions (100% success rate)
-3. ✅ **Stuck ALLOW healed:** `id=2da4f14c...` progressed from `PENDING` → `SET` with `template_selected_at` set
-4. ✅ **decision_id consistency:** All existing rows now have `decision_id` set (matches `id`)
-
-**Status:**
-- **Production version:** Running `9b4d1e8` (old, but backfill fixed existing rows)
-- **New decisions:** After deployment of `e718724b`, new ALLOW decisions will automatically have `decision_id` set
-- **Watchdog:** Integrated to run every 15 minutes, will automatically resume any stuck ALLOW decisions
-
-**Pipeline Progression:**
-- ✅ **Template selection:** Working (resumer successfully selects templates)
-- ⏳ **Generation/Posting:** Not verified yet (resumer only handles template selection stage)
-- **Next:** Need to verify that scheduler continues from template selection → generation → posting
-
-**Next Blocker:** None - resumer fixes the stall. Need to verify full pipeline (generation → posting) works after template selection completes.
+**Status:** (See below)
