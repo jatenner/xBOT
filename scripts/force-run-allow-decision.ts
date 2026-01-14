@@ -202,13 +202,13 @@ async function main() {
   };
   
   // Ensure content_metadata exists (create if missing)
-  const { data: existingMetadata } = await supabase
+  const { data: existingMetadataRow } = await supabase
     .from('content_metadata')
     .select('decision_id, status')
     .eq('decision_id', canonicalId)
     .maybeSingle();
   
-  if (!existingMetadata) {
+  if (!existingMetadataRow) {
     // Create content_metadata row if it doesn't exist
     const { error: createError } = await supabase
       .from('content_metadata')
