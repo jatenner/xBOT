@@ -682,15 +682,12 @@ async function main() {
   // Use upsert to handle both insert and update cases
   try {
     const tweetUrl = `https://x.com/i/status/${chosenTweetId}`;
-    await supabase
+    const { data: oppData, error: oppError } = await supabase
       .from('reply_opportunities')
       .upsert({
-        tweet_id: chosenTweetId,
         target_tweet_id: chosenTweetId,
-        tweet_url: tweetUrl,
-        tweet_content: targetTweetContent,
+        target_tweet_url: tweetUrl,
         target_tweet_content: targetTweetContent,
-        tweet_author: targetUsername,
         target_username: targetUsername,
         account_username: targetUsername,
         root_tweet_id: ancestry.rootTweetId || chosenTweetId,
@@ -698,14 +695,27 @@ async function main() {
         tweet_posted_at: new Date().toISOString(),
         status: 'pending',
         replied_to: false,
+        like_count: 0,
+        reply_count: 0,
+        retweet_count: 0,
+        opportunity_score: 0,
         created_at: now,
       }, {
         onConflict: 'target_tweet_id',
         ignoreDuplicates: false
-      });
-    console.log(`✅ Reply opportunity created/updated\n`);
+      })
+      .select('target_tweet_id')
+      .single();
+    
+    if (oppError) {
+      console.error(`❌ Failed to create/update reply_opportunities: ${oppError.message}`);
+      console.error(`   Error details:`, JSON.stringify(oppError, null, 2));
+      throw oppError;
+    }
+    console.log(`✅ Reply opportunity created/updated: ${oppData?.target_tweet_id}\n`);
   } catch (oppError: any) {
-    console.warn(`⚠️  Failed to create/update reply_opportunities entry: ${oppError.message}`);
+    console.error(`❌ CRITICAL: Failed to create reply_opportunities entry: ${oppError.message}`);
+    console.error(`   This will cause opportunity_missing errors. Continuing anyway...\n`);
     // Continue anyway - pipeline_source bypass should handle it
   }
   
