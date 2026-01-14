@@ -88,7 +88,39 @@ async function main() {
     console.log(`[${i + 1}/${availableCandidates.length}] Validating ${tweetId}...`);
     
     try {
-      // Validate with ancestry resolver
+      // First try to get tweet content from candidate_evaluations (no browser needed)
+      const { data: candidateData } = await supabase
+        .from('candidate_evaluations')
+        .select('candidate_content, candidate_author_username, is_root_tweet')
+        .eq('candidate_tweet_id', tweetId)
+        .eq('is_root_tweet', true)
+        .single();
+      
+      if (candidateData && candidateData.is_root_tweet && candidateData.candidate_content) {
+        // Use cached data - tweet is already validated as root
+        ancestry = {
+          targetTweetId: tweetId,
+          targetTweetContent: candidateData.candidate_content,
+          targetUsername: candidateData.candidate_author_username || 'unknown',
+          rootTweetId: tweetId,
+          isRoot: true,
+          status: 'OK',
+          confidence: 'HIGH',
+          method: 'cached_candidate_data',
+        };
+        
+        targetTweetContent = candidateData.candidate_content;
+        targetUsername = candidateData.candidate_author_username || 'unknown';
+        
+        console.log(`   ✅ Valid (cached): exists=true, is_root=true, author=@${targetUsername}`);
+        console.log(`   Content: ${targetTweetContent.substring(0, 80)}...\n`);
+        
+        chosenTweetId = tweetId;
+        break;
+      }
+      
+      // Fallback: Try ancestry resolver (requires browser - may fail locally)
+      console.log(`   ⚠️  No cached data, trying ancestry resolver...`);
       ancestry = await resolveTweetAncestry(tweetId);
       
       if (!ancestry || ancestry.status !== 'OK') {
@@ -325,6 +357,7 @@ async function main() {
   console.log('Step 10: Running posting queue...\n');
   
   try {
+    const { processPostingQueue } = await import('../src/jobs/postingQueue');
     await processPostingQueue({ maxItems: 1 });
     console.log('✅ Posting queue completed\n');
   } catch (error: any) {
