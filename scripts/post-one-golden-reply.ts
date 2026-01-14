@@ -691,7 +691,28 @@ async function main() {
   
   console.log(`✅ Content metadata created (status: queued)\n`);
   
-  // Step 9: Update reply_decisions with posting_started_at
+  // Step 9: Create reply_opportunities entry (required for INVARIANT_BLOCK check)
+  try {
+    await supabase
+      .from('reply_opportunities')
+      .insert({
+        decision_id: decisionId,
+        tweet_id: chosenTweetId,
+        target_tweet_id: chosenTweetId,
+        target_tweet_content: targetTweetContent,
+        target_username: targetUsername,
+        root_tweet_id: ancestry.rootTweetId || chosenTweetId,
+        is_root_tweet: ancestry.isRoot,
+        tweet_posted_at: new Date().toISOString(),
+        created_at: now,
+      });
+    console.log(`✅ Reply opportunity created\n`);
+  } catch (oppError: any) {
+    console.warn(`⚠️  Failed to create reply_opportunities entry: ${oppError.message}`);
+    // Continue anyway - might already exist
+  }
+  
+  // Step 10: Update reply_decisions with posting_started_at
   await supabase
     .from('reply_decisions')
     .update({
@@ -699,8 +720,8 @@ async function main() {
     })
     .eq('decision_id', decisionId);
   
-  // Step 10: Run posting queue once
-  console.log('Step 10: Running posting queue...\n');
+  // Step 11: Run posting queue once
+  console.log('Step 11: Running posting queue...\n');
   
   try {
     const { processPostingQueue } = await import('../src/jobs/postingQueue');
@@ -711,8 +732,8 @@ async function main() {
     // Continue to check result
   }
   
-  // Step 11: Check result
-  console.log('Step 11: Checking result...\n');
+  // Step 12: Check result
+  console.log('Step 12: Checking result...\n');
   
   // Wait a moment for DB updates
   await new Promise(resolve => setTimeout(resolve, 2000));
