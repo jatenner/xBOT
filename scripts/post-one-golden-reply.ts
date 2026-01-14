@@ -721,8 +721,8 @@ async function main() {
     // Print sample tweet IDs for top reasons
     console.error('\nSample tweet IDs for top failing reasons:');
     const topReason = sortedReasons[0]?.[0];
-    if (topReason && availableCandidates) {
-      const sampleIds = availableCandidates
+    if (topReason && candidatesToValidate) {
+      const sampleIds = candidatesToValidate
         .slice(0, 5)
         .map(c => c.candidate_tweet_id)
         .join(', ');
