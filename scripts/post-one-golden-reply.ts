@@ -74,23 +74,23 @@ async function main() {
   // Step 1: Get candidate tweet IDs from production tables (fresh-first)
   console.log('Step 1: Fetching candidate tweet IDs (fresh-first)...\n');
   
-  // Primary source: reply_candidate_queue (newest first, last 6 hours)
-  const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+  // Primary source: reply_candidate_queue (newest first, last 24 hours)
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data: queueCandidates, error: queueError } = await supabase
     .from('reply_candidate_queue')
     .select('candidate_tweet_id, created_at')
-    .gte('created_at', sixHoursAgo)
+    .gte('created_at', oneDayAgo)
     .order('created_at', { ascending: false })
     .limit(maxCandidates);
   
-  // Secondary source: candidate_evaluations (last 2 hours only)
-  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  // Secondary source: candidate_evaluations (last 7 days)
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const { data: evalCandidates, error: evalError } = await supabase
     .from('candidate_evaluations')
     .select('candidate_tweet_id, created_at')
     .eq('is_root_tweet', true)
     .eq('passed_hard_filters', true)
-    .gte('created_at', twoHoursAgo)
+    .gte('created_at', sevenDaysAgo)
     .order('created_at', { ascending: false })
     .limit(maxCandidates);
   
@@ -111,6 +111,35 @@ async function main() {
     source: 'opportunities'
   }));
   
+  // B) Third source: Seed from recent feed fetches (if reply_candidate_queue is stale)
+  // Check if we have enough fresh candidates, if not trigger a feed refresh
+  const totalCandidates = (queueCandidates?.length || 0) + (evalCandidates?.length || 0) + oppCandidatesFormatted.length;
+  if (totalCandidates < 10) {
+    console.log(`⚠️  Low candidate count (${totalCandidates}), seeding from feed fetches...`);
+    try {
+      // Import and call refreshCandidateQueue to seed fresh candidates
+      const { refreshCandidateQueue } = await import('../src/jobs/replySystemV2/queueManager');
+      await refreshCandidateQueue();
+      console.log(`✅ Feed refresh completed, re-querying candidates...`);
+      
+      // Re-query queue after refresh
+      const { data: refreshedQueueCandidates } = await supabase
+        .from('reply_candidate_queue')
+        .select('candidate_tweet_id, created_at')
+        .gte('created_at', oneDayAgo)
+        .order('created_at', { ascending: false })
+        .limit(maxCandidates);
+      
+      if (refreshedQueueCandidates && refreshedQueueCandidates.length > (queueCandidates?.length || 0)) {
+        console.log(`✅ Found ${refreshedQueueCandidates.length} candidates after refresh (was ${queueCandidates?.length || 0})`);
+        // Use refreshed candidates
+        queueCandidates = refreshedQueueCandidates;
+      }
+    } catch (feedError: any) {
+      console.warn(`⚠️  Feed refresh failed: ${feedError.message} - continuing with existing candidates`);
+    }
+  }
+  
   // Combine and deduplicate (prioritize queue > evaluations > opportunities)
   const allCandidates = [
     ...(queueCandidates || []).map(c => ({ candidate_tweet_id: c.candidate_tweet_id, created_at: c.created_at, source: 'queue' })),
@@ -119,14 +148,22 @@ async function main() {
   ];
   
   // Deduplicate by tweet_id (keep first occurrence, which is from queue)
-  // Also filter out fake test tweet IDs (20000000000000000* - 17+ zeros)
+  // Also filter out fake test tweet IDs at DB level + JS level
   const seen = new Set<string>();
   const candidates = allCandidates.filter(c => {
-    // Filter out fake test IDs (pattern: 20000000000000000*)
     const tweetId = String(c.candidate_tweet_id);
-    if (tweetId.match(/^20000000000000000\d+$/)) {
+    
+    // A) DB-level filter: Must be 15-20 digits
+    if (!tweetId.match(/^\d{15,20}$/)) {
       return false;
     }
+    
+    // B) Exclude known test ranges
+    if (tweetId.startsWith('2000000000000') || tweetId === '2000000000000000003') {
+      return false;
+    }
+    
+    // C) Deduplicate
     if (seen.has(tweetId)) return false;
     seen.add(tweetId);
     return true;
@@ -191,16 +228,23 @@ async function main() {
       
       ancestry = await resolveTweetAncestry(tweetId);
       
-      // Check validation outcome
-      // If status is UNCERTAIN but we have a root_tweet_id, try using the root directly
+      // C) 2-phase validation with relaxed root confirmation
+      // Phase 1: Validate target exists
+      if (!ancestry || !ancestry.targetTweetContent) {
+        const reason = ancestry ? 'no_content' : 'target_not_found';
+        skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+        console.log(`   ❌ Phase 1 failed: ${reason} - Skipping\n`);
+        continue candidateLoop;
+      }
+      
+      // Phase 2: Root confirmation
       let finalTargetTweetId = tweetId;
       let finalAncestry = ancestry;
+      let rootConfidence = 'HIGH';
       
-      if (ancestry && ancestry.status === 'UNCERTAIN' && ancestry.rootTweetId && ancestry.rootTweetId !== tweetId) {
-        // Target resolved to a root, but root validation was UNCERTAIN
-        // Try validating the root tweet directly
-        console.log(`   ⚠️  Target resolves to root ${ancestry.rootTweetId}, but root validation was UNCERTAIN`);
-        console.log(`   🔄 Attempting direct validation of root tweet...`);
+      // If target resolves to a root, validate the root
+      if (ancestry.rootTweetId && ancestry.rootTweetId !== tweetId) {
+        console.log(`   🔄 Target resolves to root ${ancestry.rootTweetId}, validating root...`);
         
         try {
           // Clear cache for root tweet
@@ -211,37 +255,77 @@ async function main() {
           
           const rootAncestry = await resolveTweetAncestry(ancestry.rootTweetId);
           
-          if (rootAncestry && rootAncestry.status === 'OK' && rootAncestry.isRoot) {
-            console.log(`   ✅ Root tweet validates as OK - using root as target`);
+          if (!rootAncestry || !rootAncestry.targetTweetContent) {
+            const reason = 'root_not_found';
+            skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+            console.log(`   ❌ Phase 2 failed: root target not found - Skipping\n`);
+            continue candidateLoop;
+          }
+          
+          // Check root status
+          if (rootAncestry.status === 'OK' && rootAncestry.isRoot && rootAncestry.ancestryDepth === 0) {
+            // Perfect: root validates as OK with depth=0
+            console.log(`   ✅ Root validates as OK (depth=0) - using root as target`);
             finalTargetTweetId = ancestry.rootTweetId;
             finalAncestry = rootAncestry;
+            rootConfidence = 'HIGH';
+          } else if (rootAncestry.status === 'UNCERTAIN') {
+            // Relaxed: Check for strong root signals
+            const signals = rootAncestry.signals || {};
+            const hasStrongRootSignal = 
+              signals.inReplyToStatusId === null ||
+              signals.inReplyToStatusId === undefined ||
+              (signals.conversationId && signals.conversationId === rootAncestry.rootTweetId) ||
+              (rootAncestry.ancestryDepth === 0 && !rootAncestry.targetInReplyToTweetId);
+            
+            if (hasStrongRootSignal) {
+              console.log(`   ⚠️  Root status=UNCERTAIN but strong root signal detected - ACCEPTING`);
+              console.log(`      Signals: inReplyToStatusId=${signals.inReplyToStatusId}, depth=${rootAncestry.ancestryDepth}`);
+              finalTargetTweetId = ancestry.rootTweetId;
+              finalAncestry = rootAncestry;
+              rootConfidence = 'MEDIUM'; // Flagged as relaxed validation
+            } else {
+              const reason = 'root_uncertain_no_signal';
+              skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+              console.log(`   ❌ Phase 2 failed: root UNCERTAIN without strong root signal - Skipping\n`);
+              continue candidateLoop;
+            }
           } else {
-            console.log(`   ❌ Root tweet also invalid: status=${rootAncestry?.status}, is_root=${rootAncestry?.isRoot}`);
+            const reason = `root_status=${rootAncestry.status}`;
+            skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+            console.log(`   ❌ Phase 2 failed: root status=${rootAncestry.status} - Skipping\n`);
+            continue candidateLoop;
           }
         } catch (rootError: any) {
-          console.log(`   ❌ Root validation failed: ${rootError.message}`);
+          const reason = `root_validation_error`;
+          skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+          console.log(`   ❌ Root validation error: ${rootError.message} - Skipping\n`);
+          continue candidateLoop;
+        }
+      } else {
+        // Target is already the root (or no root resolved)
+        if (ancestry.status !== 'OK' || !ancestry.isRoot) {
+          // If target doesn't validate as root, skip
+          const reason = ancestry.status === 'UNCERTAIN' ? 'target_uncertain' : `target_status=${ancestry.status}`;
+          skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+          console.log(`   ❌ Phase 2 failed: target not confirmed as root (status=${ancestry.status}, is_root=${ancestry.isRoot}) - Skipping\n`);
+          continue candidateLoop;
         }
       }
       
-      // Final validation check
-      if (!finalAncestry || finalAncestry.status !== 'OK') {
-        const reason = `status=${finalAncestry?.status || 'UNKNOWN'}`;
-        skipReasons[reason] = (skipReasons[reason] || 0) + 1;
-        console.log(`   ❌ Validation failed: ${reason} - Skipping\n`);
-        continue candidateLoop;
-      }
-      
-      if (!finalAncestry.isRoot) {
-        const reason = 'not_root';
-        skipReasons[reason] = (skipReasons[reason] || 0) + 1;
-        console.log(`   ❌ Not root (in_reply_to: ${finalAncestry.targetInReplyToTweetId}) - Skipping\n`);
-        continue candidateLoop;
-      }
-      
+      // Final checks
       if (!finalAncestry.targetTweetContent) {
         const reason = 'no_content';
         skipReasons[reason] = (skipReasons[reason] || 0) + 1;
         console.log(`   ❌ No tweet content retrieved - Skipping\n`);
+        continue candidateLoop;
+      }
+      
+      // Safety: Never post if target doesn't exist or if it's a reply
+      if (finalAncestry.targetInReplyToTweetId && finalAncestry.targetInReplyToTweetId !== finalTargetTweetId) {
+        const reason = 'is_reply_not_root';
+        skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+        console.log(`   ❌ Safety check: Target is a reply (in_reply_to: ${finalAncestry.targetInReplyToTweetId}) - Skipping\n`);
         continue candidateLoop;
       }
       
@@ -252,6 +336,7 @@ async function main() {
       console.log(`      target_exists: ✅`);
       console.log(`      is_root: ✅`);
       console.log(`      status: ${finalAncestry.status}`);
+      console.log(`      root_confidence: ${rootConfidence}`);
       console.log(`      method: ${finalAncestry.method || 'unknown'}`);
       console.log(`      author: @${targetUsername}`);
       console.log(`      content: ${targetTweetContent.substring(0, 80)}...\n`);
