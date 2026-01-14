@@ -192,39 +192,72 @@ async function main() {
       ancestry = await resolveTweetAncestry(tweetId);
       
       // Check validation outcome
-      if (!ancestry || ancestry.status !== 'OK') {
-        const reason = `status=${ancestry?.status || 'UNKNOWN'}`;
+      // If status is UNCERTAIN but we have a root_tweet_id, try using the root directly
+      let finalTargetTweetId = tweetId;
+      let finalAncestry = ancestry;
+      
+      if (ancestry && ancestry.status === 'UNCERTAIN' && ancestry.rootTweetId && ancestry.rootTweetId !== tweetId) {
+        // Target resolved to a root, but root validation was UNCERTAIN
+        // Try validating the root tweet directly
+        console.log(`   ⚠️  Target resolves to root ${ancestry.rootTweetId}, but root validation was UNCERTAIN`);
+        console.log(`   🔄 Attempting direct validation of root tweet...`);
+        
+        try {
+          // Clear cache for root tweet
+          await supabase
+            .from('reply_ancestry_cache')
+            .delete()
+            .eq('tweet_id', ancestry.rootTweetId);
+          
+          const rootAncestry = await resolveTweetAncestry(ancestry.rootTweetId);
+          
+          if (rootAncestry && rootAncestry.status === 'OK' && rootAncestry.isRoot) {
+            console.log(`   ✅ Root tweet validates as OK - using root as target`);
+            finalTargetTweetId = ancestry.rootTweetId;
+            finalAncestry = rootAncestry;
+          } else {
+            console.log(`   ❌ Root tweet also invalid: status=${rootAncestry?.status}, is_root=${rootAncestry?.isRoot}`);
+          }
+        } catch (rootError: any) {
+          console.log(`   ❌ Root validation failed: ${rootError.message}`);
+        }
+      }
+      
+      // Final validation check
+      if (!finalAncestry || finalAncestry.status !== 'OK') {
+        const reason = `status=${finalAncestry?.status || 'UNKNOWN'}`;
         skipReasons[reason] = (skipReasons[reason] || 0) + 1;
         console.log(`   ❌ Validation failed: ${reason} - Skipping\n`);
         continue candidateLoop;
       }
       
-      if (!ancestry.isRoot) {
+      if (!finalAncestry.isRoot) {
         const reason = 'not_root';
         skipReasons[reason] = (skipReasons[reason] || 0) + 1;
-        console.log(`   ❌ Not root (in_reply_to: ${ancestry.targetInReplyToTweetId}) - Skipping\n`);
+        console.log(`   ❌ Not root (in_reply_to: ${finalAncestry.targetInReplyToTweetId}) - Skipping\n`);
         continue candidateLoop;
       }
       
-      if (!ancestry.targetTweetContent) {
+      if (!finalAncestry.targetTweetContent) {
         const reason = 'no_content';
         skipReasons[reason] = (skipReasons[reason] || 0) + 1;
         console.log(`   ❌ No tweet content retrieved - Skipping\n`);
         continue candidateLoop;
       }
       
-      targetTweetContent = ancestry.targetTweetContent;
-      targetUsername = ancestry.targetUsername || 'unknown';
+      targetTweetContent = finalAncestry.targetTweetContent;
+      targetUsername = finalAncestry.targetUsername || 'unknown';
       
       console.log(`   ✅ LIVE validation passed:`);
       console.log(`      target_exists: ✅`);
       console.log(`      is_root: ✅`);
-      console.log(`      status: ${ancestry.status}`);
-      console.log(`      method: ${ancestry.method || 'unknown'}`);
+      console.log(`      status: ${finalAncestry.status}`);
+      console.log(`      method: ${finalAncestry.method || 'unknown'}`);
       console.log(`      author: @${targetUsername}`);
       console.log(`      content: ${targetTweetContent.substring(0, 80)}...\n`);
       
-      chosenTweetId = tweetId;
+      chosenTweetId = finalTargetTweetId;
+      ancestry = finalAncestry;
       
       // Step 4: Select template
       console.log(`   Selecting template...`);
