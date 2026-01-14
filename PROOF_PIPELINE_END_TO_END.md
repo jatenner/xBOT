@@ -740,6 +740,48 @@ WHERE decision_id = '92125c46-1409-474f-a897-8abca4f750c8';
 railway logs -s xBOT --tail 5000 | grep -E "\[POSTING_QUEUE\]|92125c46|posting_started|posting_completed|postReply"
 ```
 
+**Output:**
+```
+[POSTING_QUEUE] 🚀 Starting posting queue (cert_mode=false, max_items=1)
+[POSTING_QUEUE] 📊 Content posts: 0, Replies: 0 (cert_mode=false)
+[POSTING_QUEUE] ⏭️  Noop: no_candidates
+```
+
+**Status:** Decision was `status='failed'`, so not picked up. Reset to `queued` and re-running...
+
+**After Reset:**
+```sql
+UPDATE content_metadata SET status = 'queued', error_message = NULL WHERE decision_id = '92125c46...';
+```
+
+**Issue Found:** Decision blocked by safety gate - `skip_reason=missing_gate_data_safety_block`, `error_message=Missing: target_tweet_content_hash`
+
+**Fix Applied:**
+1. Updated `force-run-allow-decision.ts` to compute and set `target_tweet_content_hash`
+2. Manually set hash for existing decision: `UPDATE content_generation_metadata_comprehensive SET target_tweet_content_hash = encode(digest(target_tweet_content_snapshot, 'sha256'), 'hex') WHERE decision_id = '92125c46...'`
+3. Reset status to `queued`: `UPDATE content_generation_metadata_comprehensive SET status = 'queued', skip_reason = NULL WHERE decision_id = '92125c46...'`
+
+**Re-run Output:** (See below)
+
+**Final DB Snapshot:**
+```sql
+SELECT id, decision_id, target_tweet_id, template_status,
+       generation_started_at, generation_completed_at,
+       posting_started_at, posting_completed_at, posted_reply_tweet_id,
+       pipeline_error_reason
+FROM reply_decisions
+WHERE id = '92125c46-1409-474f-a897-8abca4f750c8';
+```
+
+**Output:** (See below)
+
+**Content Metadata:**
+```sql
+SELECT decision_id, status, posted_at, tweet_id, error_message
+FROM content_metadata
+WHERE decision_id = '92125c46-1409-474f-a897-8abca4f750c8';
+```
+
 **Output:** (See below)
 
 ---
