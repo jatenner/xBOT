@@ -101,15 +101,16 @@ async function main() {
   ];
   
   // Deduplicate by tweet_id (keep first occurrence, which is from queue)
-  // Also filter out fake test tweet IDs (200000000000000000*)
+  // Also filter out fake test tweet IDs (20000000000000000* - 17+ zeros)
   const seen = new Set<string>();
   const candidates = allCandidates.filter(c => {
-    // Filter out fake test IDs
-    if (c.candidate_tweet_id.startsWith('200000000000000000')) {
+    // Filter out fake test IDs (pattern: 20000000000000000*)
+    const tweetId = String(c.candidate_tweet_id);
+    if (tweetId.match(/^20000000000000000\d+$/)) {
       return false;
     }
-    if (seen.has(c.candidate_tweet_id)) return false;
-    seen.add(c.candidate_tweet_id);
+    if (seen.has(tweetId)) return false;
+    seen.add(tweetId);
     return true;
   });
   
