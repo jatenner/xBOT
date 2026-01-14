@@ -672,4 +672,80 @@ railway run -s xBOT -- pnpm exec tsx scripts/diag-content-metadata-dupes.ts
 - ✅ **Posting queue claim:** Fixed (deterministic, handles edge cases)
 - ⏳ **Posting execution:** Verifying successful post
 
-**Next Blocker:** Verify posting queue successfully posts decision and sets `posted_reply_tweet_id`.
+---
+
+## Step 6: Force Posting Queue Run - Final Proof
+
+### Before Posting Queue Run
+
+**Decision:** `92125c46-1409-474f-a897-8abca4f750c8`
+
+**reply_decisions snapshot:**
+```sql
+SELECT id, decision_id, target_tweet_id, template_status, scored_at,
+       template_selected_at, generation_started_at, generation_completed_at,
+       posting_started_at, posting_completed_at, posted_reply_tweet_id,
+       pipeline_error_reason
+FROM reply_decisions
+WHERE id = '92125c46-1409-474f-a897-8abca4f750c8';
+```
+
+**Output:** (See below)
+
+**content_metadata snapshot:**
+```sql
+SELECT decision_id, status, scheduled_at, error_message
+FROM content_metadata
+WHERE decision_id = '92125c46-1409-474f-a897-8abca4f750c8';
+```
+
+**Output:** (See below)
+
+### Posting Queue Execution
+
+**Script:** `scripts/run-posting-once.ts` (created to run posting queue once)
+
+**Command:**
+```bash
+railway run -s xBOT -- pnpm exec tsx scripts/run-posting-once.ts
+```
+
+**Output:** (See below)
+
+### After Posting Queue Run
+
+**reply_decisions snapshot:**
+```sql
+SELECT id, decision_id, target_tweet_id, template_status, scored_at,
+       template_selected_at, generation_started_at, generation_completed_at,
+       posting_started_at, posting_completed_at, posted_reply_tweet_id,
+       pipeline_error_reason
+FROM reply_decisions
+WHERE id = '92125c46-1409-474f-a897-8abca4f750c8';
+```
+
+**Output:** (See below)
+
+**content_metadata snapshot:**
+```sql
+SELECT decision_id, status, scheduled_at, posted_at, tweet_id, error_message
+FROM content_metadata
+WHERE decision_id = '92125c46-1409-474f-a897-8abca4f750c8';
+```
+
+**Output:** (See below)
+
+**Logs:**
+```bash
+railway logs -s xBOT --tail 5000 | grep -E "\[POSTING_QUEUE\]|92125c46|posting_started|posting_completed|postReply"
+```
+
+**Output:** (See below)
+
+---
+
+## Final Answer
+
+**Posting works:** (See below)
+
+**Status:** (See below)
