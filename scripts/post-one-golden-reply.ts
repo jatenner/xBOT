@@ -326,48 +326,35 @@ async function main() {
         }
       }
       
-      // Extract content from candidate_evaluations (where feed fetchers store it)
-      // resolveTweetAncestry doesn't return targetTweetContent, fetch from evaluations table
+      // Extract content: Fetch LIVE from Twitter to ensure snapshot matches
+      // This prevents context lock verification failures
       try {
-        const { data: evalData } = await supabase
-          .from('candidate_evaluations')
-          .select('candidate_content, candidate_author_username')
-          .eq('candidate_tweet_id', finalTargetTweetId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+        const { fetchTweetData } = await import('../src/gates/contextLockVerifier');
+        const tweetData = await fetchTweetData(finalTargetTweetId);
         
-        if (evalData?.candidate_content) {
-          targetTweetContent = evalData.candidate_content;
-          targetUsername = evalData.candidate_author_username || 'unknown';
+        if (tweetData && tweetData.text && tweetData.text.trim().length >= 20) {
+          targetTweetContent = tweetData.text.trim();
+          targetUsername = tweetData.author || 'unknown';
+          console.log(`   ✅ Fetched live tweet content (${targetTweetContent.length} chars)`);
         } else {
-          // Try reply_opportunities
-          const { data: oppData } = await supabase
-            .from('reply_opportunities')
-            .select('target_tweet_content, target_username')
-            .eq('target_tweet_id', finalTargetTweetId)
+          // Fallback to candidate_evaluations
+          const { data: evalData } = await supabase
+            .from('candidate_evaluations')
+            .select('candidate_content, candidate_author_username')
+            .eq('candidate_tweet_id', finalTargetTweetId)
             .order('created_at', { ascending: false })
             .limit(1)
             .single();
           
-          if (oppData?.target_tweet_content) {
-            targetTweetContent = oppData.target_tweet_content;
-            targetUsername = oppData.target_username || 'unknown';
+          if (evalData?.candidate_content) {
+            targetTweetContent = evalData.candidate_content;
+            targetUsername = evalData.candidate_author_username || 'unknown';
+            console.log(`   ⚠️  Using cached content from evaluations (may be stale)`);
           } else {
-            // Extract from signals if available
-            const signals = finalAncestry.signals || {};
-            const extractedContent = (signals as any).tweetText || (signals as any).content || '';
-            const extractedUsername = (signals as any).authorUsername || (signals as any).username || '';
-            
-            if (extractedContent) {
-              targetTweetContent = extractedContent;
-              targetUsername = extractedUsername || 'unknown';
-            } else {
-              const reason = 'no_content_available';
-              skipReasons[reason] = (skipReasons[reason] || 0) + 1;
-              console.log(`   ❌ No tweet content available in evaluations, opportunities, or signals - Skipping\n`);
-              continue candidateLoop;
-            }
+            const reason = 'no_content_available';
+            skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+            console.log(`   ❌ No tweet content available - Skipping\n`);
+            continue candidateLoop;
           }
         }
       } catch (contentError: any) {
