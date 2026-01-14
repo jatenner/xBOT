@@ -210,6 +210,7 @@ async function main() {
   
   if (!existingMetadataRow) {
     // Create content_metadata row if it doesn't exist
+    const scheduledAt = new Date().toISOString();
     const { error: createError } = await supabase
       .from('content_metadata')
       .insert({
@@ -223,6 +224,7 @@ async function main() {
         target_tweet_content_snapshot: normalizedSnapshot,
         features: updatedFeatures,
         pipeline_source: 'force_run_script',
+        scheduled_at: scheduledAt, // Required for posting queue to pick it up
       });
     
     if (createError) {
@@ -232,12 +234,14 @@ async function main() {
     console.log(`✅ Created content_metadata row`);
   } else {
     // Update existing row
+    const scheduledAt = new Date().toISOString();
     await supabase
       .from('content_metadata')
       .update({
         status: 'queued',
         content: replyContent,
         features: updatedFeatures,
+        scheduled_at: scheduledAt, // Ensure scheduled_at is set
       })
       .eq('decision_id', canonicalId);
   }
