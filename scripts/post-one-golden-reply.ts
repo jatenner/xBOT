@@ -62,8 +62,11 @@ async function main() {
   }
   console.log('');
   
+  // Check for manual tweet ID override
+  const manualTweetId = process.argv.find(arg => arg.startsWith('--tweetId='))?.split('=')[1];
+  
   const maxCandidates = parseInt(
-    process.argv.find(arg => arg.startsWith('--maxCandidates='))?.split('=')[1] || '25',
+    process.argv.find(arg => arg.startsWith('--maxCandidates='))?.split('=')[1] || (manualTweetId ? '1' : '12'),
     10
   );
   const maxConsentSkips = parseInt(
@@ -77,7 +80,12 @@ async function main() {
   
   console.log(`Max candidates to check: ${maxCandidates}`);
   console.log(`Max consent wall skips: ${maxConsentSkips}`);
-  console.log(`Hard timeout: ${maxSeconds}s\n`);
+  console.log(`Hard timeout: ${maxSeconds}s`);
+  if (manualTweetId) {
+    console.log(`🎯 MANUAL MODE: Targeting tweet ${manualTweetId}\n`);
+  } else {
+    console.log('');
+  }
   
   const startTime = Date.now();
   const timeoutMs = maxSeconds * 1000;
@@ -254,6 +262,32 @@ async function main() {
           consentWallCount++;
           const reason = 'consent_wall';
           skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+          
+          // TASK 3: Record consent wall in system_events for sticky skip
+          try {
+            await supabase
+              .from('system_events')
+              .insert({
+                event_type: 'CONSENT_WALL_SEEN',
+                event_data: {
+                  tweet_id: tweetId,
+                  deny_reason_code: denyReason || 'CONSENT_WALL',
+                  timestamp: new Date().toISOString(),
+                },
+                created_at: new Date().toISOString(),
+              });
+          } catch (eventError: any) {
+            console.warn(`   ⚠️  Failed to record consent wall event: ${eventError.message}`);
+          }
+          
+          if (manualTweetId) {
+            console.error(`\n❌ MANUAL MODE FAILED: Consent wall detected`);
+            console.error(`   Tweet ID: ${tweetId}`);
+            console.error(`   Deny reason: ${denyReason || 'CONSENT_WALL'}`);
+            console.error(`   Try a different tweet ID\n`);
+            process.exit(1);
+          }
+          
           console.log(`   ⚠️  Consent wall/timeout - Skipping (${consentWallCount}/${maxConsentSkips})\n`);
           continue candidateLoop;
         }
@@ -261,6 +295,15 @@ async function main() {
         const reason = 'target_not_found';
         skipReasons[reason] = (skipReasons[reason] || 0) + 1;
         notFoundCount++;
+        
+        if (manualTweetId) {
+          console.error(`\n❌ MANUAL MODE FAILED: Target not found or deleted`);
+          console.error(`   Tweet ID: ${tweetId}`);
+          console.error(`   Deny reason: ${denyReason || 'UNKNOWN'}`);
+          console.error(`   Error: ${errorMsg || 'No details'}\n`);
+          process.exit(1);
+        }
+        
         console.log(`   ❌ Phase 1 failed: ${reason} (error: ${denyReason || 'UNKNOWN'}) - Skipping\n`);
         continue candidateLoop;
       }
@@ -597,6 +640,19 @@ async function main() {
         if (!preflightReport.will_pass_gates) {
           const reason = preflightReport.failure_reason || 'unknown';
           skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+          
+          if (manualTweetId) {
+            console.error(`\n❌ MANUAL MODE FAILED: Preflight gates failed`);
+            console.error(`   Tweet ID: ${chosenTweetId}`);
+            console.error(`   Failure reason: ${reason}`);
+            console.error(`   Details:`);
+            console.error(`     - target_exists: ${preflightReport.target_exists}`);
+            console.error(`     - is_root: ${preflightReport.is_root}`);
+            console.error(`     - semantic_similarity: ${preflightReport.semantic_similarity.toFixed(3)} (threshold: 0.25)`);
+            console.error(`     - missing_fields: ${preflightReport.missing_fields.join(', ') || 'None'}\n`);
+            process.exit(1);
+          }
+          
           console.log(`❌ Preflight check failed: ${reason} - Trying next candidate...\n`);
           chosenTweetId = null;
           ancestry = null;
@@ -606,6 +662,14 @@ async function main() {
         // All checks passed - break out of loop
         break candidateLoop;
       } else {
+        if (manualTweetId) {
+          console.error(`\n❌ MANUAL MODE FAILED: Generation failed or similarity too low`);
+          console.error(`   Tweet ID: ${chosenTweetId}`);
+          console.error(`   Similarity: ${semanticSimilarity.toFixed(3)} (threshold: 0.25)`);
+          console.error(`   Try a different tweet ID\n`);
+          process.exit(1);
+        }
+        
         console.log(`   ❌ Generation failed or similarity too low - Trying next candidate...\n`);
         chosenTweetId = null;
         ancestry = null;
@@ -631,6 +695,15 @@ async function main() {
   }
   
   if (!chosenTweetId || !ancestry || !replyContent || semanticSimilarity < 0.25) {
+    if (manualTweetId) {
+      console.error('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('           ❌ MANUAL MODE FAILED');
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      console.error(`Tweet ID: ${manualTweetId}`);
+      console.error(`Status: No valid candidate found after validation\n`);
+      process.exit(1);
+    }
+    
     console.error('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.error('           ❌ NO VALID CANDIDATE FOUND');
     console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
@@ -648,7 +721,7 @@ async function main() {
     // Print sample tweet IDs for top reasons
     console.error('\nSample tweet IDs for top failing reasons:');
     const topReason = sortedReasons[0]?.[0];
-    if (topReason) {
+    if (topReason && availableCandidates) {
       const sampleIds = availableCandidates
         .slice(0, 5)
         .map(c => c.candidate_tweet_id)
