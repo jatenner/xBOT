@@ -2901,37 +2901,107 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
     
       // 🔒 ATOMIC LOCK: Try to claim this decision by updating status to 'posting'
       // This prevents race conditions where two queue runs try to post the same decision
+      // 🔧 FIX: Use deterministic query - get newest row if multiple exist, handle 0 rows gracefully
+      const { data: existingRows, error: queryError } = await supabase
+        .from('content_metadata')
+        .select('id, decision_id, status, tweet_id, created_at')
+        .eq('decision_id', decision.id)
+        .order('created_at', { ascending: false })
+        .limit(10); // Get up to 10 rows to check for duplicates
+      
+      if (queryError) {
+        console.error(`[POSTING_QUEUE] ❌ Failed to query content_metadata for ${decision.id}: ${queryError.message}`);
+        throw new Error(`Failed to query decision: ${queryError.message}`);
+      }
+      
+      if (!existingRows || existingRows.length === 0) {
+        // No content_metadata row exists - mark decision as failed
+        console.error(`[POSTING_QUEUE] ❌ No content_metadata row found for decision_id=${decision.id}`);
+        await supabase
+          .from('reply_decisions')
+          .update({
+            pipeline_error_reason: 'NO_CONTENT_METADATA',
+            posting_completed_at: new Date().toISOString(),
+          })
+          .eq('id', decision.id);
+        
+        await supabase
+          .from('content_metadata')
+          .update({ status: 'failed', error_message: 'NO_CONTENT_METADATA' })
+          .eq('decision_id', decision.id);
+        
+        throw new Error(`No content_metadata row found for decision_id=${decision.id}`);
+      }
+      
+      // Handle duplicates: keep newest, mark others as superseded
+      if (existingRows.length > 1) {
+        console.warn(`[POSTING_QUEUE] ⚠️ Found ${existingRows.length} rows for decision_id=${decision.id}, keeping newest`);
+        const newestId = existingRows[0].id;
+        const olderIds = existingRows.slice(1).map(r => r.id);
+        
+        // Mark older rows as superseded (if status column allows, otherwise delete)
+        for (const oldId of olderIds) {
+          await supabase
+            .from('content_metadata')
+            .update({ 
+              status: 'failed',
+              error_message: 'SUPERSEDED_BY_NEWER_ROW',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', oldId);
+        }
+        
+        console.log(`[POSTING_QUEUE] ✅ Marked ${olderIds.length} older rows as superseded`);
+      }
+      
+      const targetRow = existingRows[0];
+      
+      // Check if already posted
+      if (targetRow.status === 'posted' || targetRow.tweet_id) {
+        console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED: ${decision.id} already posted (status: ${targetRow.status}, tweet_id: ${targetRow.tweet_id})`);
+        return false; // Skip posting
+      }
+      
+      // Check if already being posted
+      if (targetRow.status === 'posting') {
+        console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED: ${decision.id} already being posted by another process`);
+        return false; // Skip posting
+      }
+      
+      // Only claim if status is 'queued'
+      if (targetRow.status !== 'queued') {
+        console.warn(`[POSTING_QUEUE] ⚠️ Cannot claim ${decision.id}: status=${targetRow.status} (expected 'queued')`);
+        await supabase
+          .from('reply_decisions')
+          .update({
+            pipeline_error_reason: `INVALID_STATUS_${targetRow.status}`,
+            posting_completed_at: new Date().toISOString(),
+          })
+          .eq('id', decision.id);
+        return false; // Skip posting
+      }
+      
+      // Claim the row by updating status to 'posting'
       const { data: claimed, error: claimError } = await supabase
         .from('content_metadata')
         .update({ 
           status: 'posting',
           updated_at: new Date().toISOString()
         })
-        .eq('decision_id', decision.id)
-        .eq('status', 'queued')  // Only claim if still queued
+        .eq('id', targetRow.id) // Use primary key for deterministic update
+        .eq('status', 'queued')  // Double-check status hasn't changed
         .select('decision_id')
-        .single();
-    
-      if (claimError || !claimed) {
-        // Either already claimed by another process, or already posted
-        const { data: currentStatus } = await supabase
-          .from('content_metadata')
-          .select('status, tweet_id')
-          .eq('decision_id', decision.id)
-          .single();
+        .maybeSingle(); // Use maybeSingle to handle 0 rows gracefully
       
-        if (currentStatus?.status === 'posted' || currentStatus?.tweet_id) {
-          console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED: ${decision.id} already posted (status: ${currentStatus.status}, tweet_id: ${currentStatus.tweet_id})`);
-          return false; // Skip posting
-        }
+      if (claimError) {
+        console.error(`[POSTING_QUEUE] ❌ Failed to claim decision ${decision.id}: ${claimError.message}`);
+        throw new Error(`Failed to claim decision for posting: ${claimError.message}`);
+      }
       
-        if (currentStatus?.status === 'posting') {
-          console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED: ${decision.id} already being posted by another process`);
-          return false; // Skip posting
-        }
-      
-        console.warn(`[POSTING_QUEUE] ⚠️ Failed to claim decision ${decision.id}: ${claimError?.message || 'Unknown error'}`);
-        throw new Error(`Failed to claim decision for posting: ${claimError?.message || 'Unknown error'}`);
+      if (!claimed) {
+        // Status changed between query and update (race condition)
+        console.warn(`[POSTING_QUEUE] ⚠️ Failed to claim ${decision.id}: status changed during claim`);
+        return false; // Skip posting
       }
     
       console.log(`[POSTING_QUEUE] 🔒 Successfully claimed decision ${decision.id} for posting`);
