@@ -177,17 +177,125 @@ After deployment:
 
 ---
 
+---
+
+## Step 0: Deployment Proof
+
+**Command:**
+```bash
+curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{app_version, boot_id}'
+```
+
+**Output:** (See below)
+
+---
+
+## Step 1: Backfill Safety
+
+**Command:**
+```sql
+UPDATE reply_decisions SET decision_id = id WHERE decision_id IS NULL;
+```
+
+**Output:** (See below)
+
+**Verification:**
+```sql
+SELECT COUNT(*) as null_decision_id_count 
+FROM reply_decisions 
+WHERE decision_id IS NULL AND created_at >= NOW() - INTERVAL '7 days';
+```
+
+**Output:** (See below)
+
+---
+
+## Step 2: Verify Stuck ALLOW Heals
+
+**Stuck Row Before Resumer:**
+```sql
+SELECT id, decision_id, target_tweet_id, decision, template_status, 
+       template_error_reason, pipeline_error_reason, scored_at, 
+       template_selected_at, generation_started_at, generation_completed_at,
+       posting_started_at, posting_completed_at
+FROM reply_decisions 
+WHERE id = '2da4f14c-a963-49b6-b33a-89cbafc704cb';
+```
+
+**Output:** (See below)
+
+**Resumer Execution:**
+```bash
+pnpm exec tsx scripts/run-allow-resumer.ts
+```
+
+**Output:** (See below)
+
+**Stuck Row After Resumer:**
+```sql
+SELECT id, decision_id, target_tweet_id, decision, template_status, 
+       template_error_reason, pipeline_error_reason, scored_at, 
+       template_selected_at, generation_started_at, generation_completed_at,
+       posting_started_at, posting_completed_at
+FROM reply_decisions 
+WHERE id = '2da4f14c-a963-49b6-b33a-89cbafc704cb';
+```
+
+**Output:** (See below)
+
+---
+
+## Step 3: Prove NEW Decisions Are Healthy
+
+**Trigger Scheduler:**
+```bash
+pnpm exec tsx scripts/seed-and-run-scheduler.ts
+```
+
+**Output:** (See below)
+
+**New ALLOW Count (Last 5 Minutes):**
+```sql
+SELECT COUNT(*) FILTER (WHERE decision = 'ALLOW') as allow_count, COUNT(*) as total
+FROM reply_decisions 
+WHERE created_at >= '<cutoff>';
+```
+
+**Output:** (See below)
+
+**Newest ALLOW Decision:**
+```sql
+SELECT id, decision_id, target_tweet_id, decision, template_status, scored_at,
+       template_selected_at, generation_started_at, generation_completed_at,
+       posting_started_at, posting_completed_at, pipeline_error_reason
+FROM reply_decisions 
+WHERE decision = 'ALLOW' AND created_at >= '<cutoff>'
+ORDER BY created_at DESC LIMIT 1;
+```
+
+**Output:** (See below)
+
+**Pipeline Progression Check (Last 10 Minutes):**
+```sql
+SELECT id, decision_id IS NULL as decision_id_null, decision, template_status,
+       scored_at IS NOT NULL as has_scored_at,
+       template_selected_at IS NOT NULL as has_template_selected_at,
+       generation_started_at IS NOT NULL as has_generation_started_at,
+       generation_completed_at IS NOT NULL as has_generation_completed_at,
+       posting_started_at IS NOT NULL as has_posting_started_at,
+       posting_completed_at IS NOT NULL as has_posting_completed_at,
+       pipeline_error_reason IS NOT NULL as has_pipeline_error
+FROM reply_decisions 
+WHERE created_at >= '<cutoff>'
+ORDER BY created_at DESC LIMIT 10;
+```
+
+**Output:** (See below)
+
+---
+
 ## Final Answer
 
-**Posting works:** ⏳ **PENDING VERIFICATION**
+**Posting works:** (See below)
 
-**Fixes Deployed:**
-- ✅ `decision_id` now always set to match `id` after insert
-- ✅ Updates use `id` as fallback if `decision_id` is NULL
-- ✅ Allow resumer watchdog resumes stuck ALLOW decisions
-- ✅ Watchdog integrated to run automatically
-
-**Next Blocker:** Deployment verification - need to confirm:
-1. Stuck ALLOW decision is resumed or marked FAILED
-2. New ALLOW decisions have `decision_id` set
-3. Pipeline progresses past `template_selection` stage
+**Status:** (See below)
