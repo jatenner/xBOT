@@ -115,35 +115,15 @@ async function main() {
         targetTweetContent = candidateData.candidate_content;
         targetUsername = candidateData.candidate_author_username || 'unknown';
         
-      console.log(`   ✅ Valid (cached): exists=true, is_root=true, author=@${targetUsername}`);
-      console.log(`   Content: ${targetTweetContent.substring(0, 80)}...\n`);
-      
-      chosenTweetId = tweetId;
-      
-      // Continue to generation (don't break yet)
+        console.log(`   ✅ Valid (cached): exists=true, is_root=true, author=@${targetUsername}`);
+        console.log(`   Content: ${targetTweetContent.substring(0, 80)}...\n`);
+        
+        chosenTweetId = tweetId;
+      } else {
+        // Skip if no cached data (don't use browser-dependent resolver)
+        console.log(`   ⚠️  No cached candidate data available - Skipping (requires browser)\n`);
+        continue candidateLoop;
       }
-      
-      // Fallback: Try ancestry resolver (requires browser - may fail locally)
-      console.log(`   ⚠️  No cached data, trying ancestry resolver...`);
-      ancestry = await resolveTweetAncestry(tweetId);
-      
-      if (!ancestry || ancestry.status !== 'OK') {
-        console.log(`   ❌ Status: ${ancestry?.status || 'UNKNOWN'} - Skipping\n`);
-        continue;
-      }
-      
-      if (!ancestry.isRoot) {
-        console.log(`   ❌ Not root (in_reply_to: ${ancestry.targetInReplyToTweetId}) - Skipping\n`);
-        continue;
-      }
-      
-      targetTweetContent = ancestry.targetTweetContent || '';
-      targetUsername = ancestry.targetUsername || 'unknown';
-      
-      console.log(`   ✅ Valid: exists=true, is_root=true, author=@${targetUsername}`);
-      console.log(`   Content: ${targetTweetContent.substring(0, 80)}...\n`);
-      
-      chosenTweetId = tweetId;
       
       // Step 4: Select template
       console.log(`   Selecting template...`);
