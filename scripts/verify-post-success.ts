@@ -1,129 +1,92 @@
 #!/usr/bin/env tsx
 /**
- * Verify POST_SUCCESS and POST_FAILED events
- * Usage: pnpm exec tsx scripts/verify-post-success.ts
+ * Verify POST_SUCCESS events and print posted tweet URLs
+ * Usage: railway run -s xBOT -- pnpm exec tsx scripts/verify-post-success.ts
  */
 
 import 'dotenv/config';
 import { getSupabaseClient } from '../src/db';
 
 async function main() {
-  const supabase = getSupabaseClient();
-  
-  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   console.log('           ✅ POST SUCCESS VERIFICATION\n');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const supabase = getSupabaseClient();
   
-  // Get POST_SUCCESS events
-  const { data: successEvents, error: successError } = await supabase
+  // Check for POST_SUCCESS events in last 24h
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: successEvents, error: eventsError } = await supabase
     .from('system_events')
-    .select('created_at, event_data, message')
+    .select('event_data, created_at')
     .eq('event_type', 'POST_SUCCESS')
-    .gte('created_at', twentyFourHoursAgo)
+    .gte('created_at', oneDayAgo)
     .order('created_at', { ascending: false })
     .limit(10);
   
-  if (successError) {
-    console.error(`❌ Error querying POST_SUCCESS: ${successError.message}`);
+  if (eventsError) {
+    console.error(`❌ Error querying system_events: ${eventsError.message}`);
     process.exit(1);
   }
   
-  console.log(`📊 POST_SUCCESS Events (Last 24h): ${successEvents?.length || 0}\n`);
+  console.log(`📊 POST_SUCCESS Events (last 24h): ${successEvents?.length || 0}\n`);
   
   if (successEvents && successEvents.length > 0) {
-    console.log('Newest 5 POST_SUCCESS events:\n');
-    successEvents.slice(0, 5).forEach((event: any, idx: number) => {
-      const data = event.event_data || {};
-      const timestamp = new Date(event.created_at).toISOString();
-      const decisionId = data.decision_id || 'unknown';
-      const targetTweetId = data.target_tweet_id || 'unknown';
-      const postedTweetId = data.posted_reply_tweet_id || 'unknown';
-      const templateId = data.template_id || 'null';
-      const promptVersion = data.prompt_version || 'null';
+    console.log('✅ Recent POST_SUCCESS events:\n');
+    successEvents.forEach((event, i) => {
+      const eventData = event.event_data as any;
+      const tweetId = eventData?.posted_reply_tweet_id || eventData?.tweet_id;
+      const targetId = eventData?.target_tweet_id;
+      const decisionId = eventData?.decision_id;
       
-      console.log(`${idx + 1}. ${timestamp}`);
-      console.log(`   decision_id: ${decisionId}`);
-      console.log(`   target_tweet_id: ${targetTweetId}`);
-      console.log(`   posted_reply_tweet_id: ${postedTweetId}`);
-      console.log(`   template_id: ${templateId}, prompt_version: ${promptVersion}`);
-      console.log(`   Tweet URL: https://x.com/i/status/${postedTweetId}`);
-      console.log('');
-    });
-  } else {
-    console.log('⚠️  No POST_SUCCESS events in last 24h\n');
-  }
-  
-  // Get POST_FAILED events
-  const { data: failedEvents, error: failedError } = await supabase
-    .from('system_events')
-    .select('created_at, event_data, message')
-    .eq('event_type', 'POST_FAILED')
-    .gte('created_at', twentyFourHoursAgo)
-    .order('created_at', { ascending: false });
-  
-  if (failedError) {
-    console.error(`❌ Error querying POST_FAILED: ${failedError.message}`);
-    process.exit(1);
-  }
-  
-  console.log(`📊 POST_FAILED Events (Last 24h): ${failedEvents?.length || 0}\n`);
-  
-  if (failedEvents && failedEvents.length > 0) {
-    // Count by error reason
-    const errorCounts = new Map<string, number>();
-    failedEvents.forEach((event: any) => {
-      const data = event.event_data || {};
-      const reason = data.pipeline_error_reason || data.skip_reason || 'UNKNOWN';
-      errorCounts.set(reason, (errorCounts.get(reason) || 0) + 1);
-    });
-    
-    console.log('Top error reasons:\n');
-    Array.from(errorCounts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .forEach(([reason, count], idx) => {
-        console.log(`  ${idx + 1}. ${reason}: ${count} failures`);
-      });
-    
-    console.log('\nNewest 5 POST_FAILED events:\n');
-    failedEvents.slice(0, 5).forEach((event: any, idx: number) => {
-      const data = event.event_data || {};
-      const timestamp = new Date(event.created_at).toISOString();
-      const decisionId = data.decision_id || 'unknown';
-      const targetTweetId = data.target_tweet_id || 'unknown';
-      const errorReason = data.pipeline_error_reason || data.skip_reason || 'unknown';
-      const errorMessage = data.error_message || null;
-      
-      console.log(`${idx + 1}. ${timestamp}`);
-      console.log(`   decision_id: ${decisionId}`);
-      console.log(`   target_tweet_id: ${targetTweetId}`);
-      console.log(`   pipeline_error_reason: ${errorReason}`);
-      if (errorMessage) {
-        console.log(`   error_message: ${errorMessage}`);
+      console.log(`${i + 1}. Posted at: ${event.created_at}`);
+      if (decisionId) console.log(`   decision_id: ${decisionId}`);
+      if (targetId) console.log(`   target_tweet_id: ${targetId}`);
+      if (tweetId) {
+        console.log(`   posted_reply_tweet_id: ${tweetId}`);
+        console.log(`   🎯 Tweet URL: https://x.com/i/status/${tweetId}`);
       }
       console.log('');
     });
   } else {
-    console.log('✅ No POST_FAILED events in last 24h\n');
+    console.log('⚠️  No POST_SUCCESS events found in last 24h\n');
   }
   
-  // Summary
-  const successCount = successEvents?.length || 0;
-  const failedCount = failedEvents?.length || 0;
-  const total = successCount + failedCount;
-  const successRate = total > 0 ? ((successCount / total) * 100).toFixed(1) : 'N/A';
+  // Also check reply_decisions for recent posts
+  const { data: recentPosts, error: postsError } = await supabase
+    .from('reply_decisions')
+    .select('decision_id, target_tweet_id, posted_reply_tweet_id, created_at')
+    .not('posted_reply_tweet_id', 'is', null)
+    .gte('created_at', oneDayAgo)
+    .order('created_at', { ascending: false })
+    .limit(10);
+  
+  if (postsError) {
+    console.error(`❌ Error querying reply_decisions: ${postsError.message}`);
+    process.exit(1);
+  }
+  
+  console.log(`📊 Recent successful posts (from reply_decisions): ${recentPosts?.length || 0}\n`);
+  
+  if (recentPosts && recentPosts.length > 0) {
+    console.log('✅ Recent successful posts:\n');
+    recentPosts.forEach((post, i) => {
+      console.log(`${i + 1}. Posted at: ${post.created_at}`);
+      console.log(`   decision_id: ${post.decision_id}`);
+      console.log(`   target_tweet_id: ${post.target_tweet_id}`);
+      console.log(`   posted_reply_tweet_id: ${post.posted_reply_tweet_id}`);
+      console.log(`   🎯 Tweet URL: https://x.com/i/status/${post.posted_reply_tweet_id}`);
+      console.log(`   📋 Target URL: https://x.com/i/status/${post.target_tweet_id}`);
+      console.log('');
+    });
+  } else {
+    console.log('⚠️  No recent posts found in reply_decisions\n');
+  }
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-  console.log(`📈 Summary (Last 24h):`);
-  console.log(`   POST_SUCCESS: ${successCount}`);
-  console.log(`   POST_FAILED: ${failedCount}`);
-  console.log(`   Success Rate: ${successRate}%`);
-  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 }
 
 main().catch((error) => {
-  console.error('❌ Script failed:', error);
+  console.error('❌ Failed:', error);
   process.exit(1);
 });
