@@ -155,8 +155,18 @@ async function main() {
     console.log(`[${i + 1}/${availableCandidates.length}] LIVE validating ${tweetId}...`);
     
     try {
-      // LIVE validation: Use ancestry resolver (force fresh, no cache)
+      // LIVE validation: Use ancestry resolver (force fresh, bypass cache)
       // This runs in Railway production where browsers work
+      // Clear cache entry first to force fresh resolution
+      try {
+        await supabase
+          .from('reply_ancestry_cache')
+          .delete()
+          .eq('tweet_id', tweetId);
+      } catch (cacheError: any) {
+        // Ignore cache deletion errors
+      }
+      
       ancestry = await resolveTweetAncestry(tweetId);
       
       // Check validation outcome
