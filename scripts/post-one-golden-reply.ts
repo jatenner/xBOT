@@ -23,7 +23,7 @@ interface PreflightReport {
 
 async function main() {
   const maxCandidates = parseInt(
-    process.argv.find(arg => arg.startsWith('--maxCandidates='))?.split('=')[1] || '25',
+    process.argv.find(arg => arg.startsWith('--maxCandidates='))?.split('=')[1] || '50',
     10
   );
   
@@ -34,34 +34,58 @@ async function main() {
   
   const supabase = getSupabaseClient();
   
-  // Step 1: Get candidate tweet IDs from production tables
-  console.log('Step 1: Fetching candidate tweet IDs...');
+  // Step 1: Get candidate tweet IDs from production tables (fresh-first)
+  console.log('Step 1: Fetching candidate tweet IDs (fresh-first)...\n');
   
-  // Get recent candidates from candidate_evaluations (most reliable source)
-  const { data: candidates, error: candidatesError } = await supabase
+  // Primary source: reply_candidate_queue (newest first, last 6 hours)
+  const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+  const { data: queueCandidates, error: queueError } = await supabase
+    .from('reply_candidate_queue')
+    .select('candidate_tweet_id, created_at')
+    .gte('created_at', sixHoursAgo)
+    .order('created_at', { ascending: false })
+    .limit(maxCandidates);
+  
+  // Secondary source: candidate_evaluations (last 2 hours only)
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const { data: evalCandidates, error: evalError } = await supabase
     .from('candidate_evaluations')
     .select('candidate_tweet_id, created_at')
     .eq('is_root_tweet', true)
     .eq('passed_hard_filters', true)
-    .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+    .gte('created_at', twoHoursAgo)
     .order('created_at', { ascending: false })
     .limit(maxCandidates);
   
-  if (candidatesError || !candidates || candidates.length === 0) {
-    console.error(`❌ No candidates found: ${candidatesError?.message || 'empty result'}`);
+  // Combine and deduplicate (prioritize queue candidates)
+  const allCandidates = [
+    ...(queueCandidates || []).map(c => ({ candidate_tweet_id: c.candidate_tweet_id, created_at: c.created_at, source: 'queue' })),
+    ...(evalCandidates || []).map(c => ({ candidate_tweet_id: c.candidate_tweet_id, created_at: c.created_at, source: 'evaluations' }))
+  ];
+  
+  // Deduplicate by tweet_id (keep first occurrence, which is from queue)
+  const seen = new Set<string>();
+  const candidates = allCandidates.filter(c => {
+    if (seen.has(c.candidate_tweet_id)) return false;
+    seen.add(c.candidate_tweet_id);
+    return true;
+  });
+  
+  if (candidates.length === 0) {
+    console.error(`❌ No candidates found in last 6h (queue) or 2h (evaluations)`);
     process.exit(1);
   }
   
-  console.log(`✅ Found ${candidates.length} candidate tweets\n`);
+  console.log(`✅ Found ${candidates.length} unique candidates (${queueCandidates?.length || 0} from queue, ${evalCandidates?.length || 0} from evaluations)\n`);
   
-  // Step 2: Filter out recently used tweet IDs
-  console.log('Step 2: Filtering out recently used tweets...');
+  // Step 2: Filter out recently used tweet IDs (last 48h)
+  console.log('Step 2: Filtering out recently used tweets (last 48h)...');
   
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
   const { data: recentDecisions } = await supabase
     .from('reply_decisions')
     .select('target_tweet_id')
-    .gte('created_at', oneDayAgo);
+    .gte('created_at', twoDaysAgo);
   
   const usedTweetIds = new Set((recentDecisions || []).map(d => d.target_tweet_id));
   const availableCandidates = candidates.filter(c => !usedTweetIds.has(c.candidate_tweet_id));
@@ -73,8 +97,8 @@ async function main() {
     process.exit(1);
   }
   
-  // Step 3: Validate each candidate until we find one that generates successfully
-  console.log('Step 3: Validating candidates and generating replies...\n');
+  // Step 3: LIVE validate each candidate until we find one that generates successfully
+  console.log('Step 3: LIVE validating candidates (using production browser pool)...\n');
   
   let chosenTweetId: string | null = null;
   let ancestry: any = null;
@@ -83,47 +107,53 @@ async function main() {
   let replyContent: string = '';
   let semanticSimilarity: number = 0;
   let templateSelection: any = null;
+  const skipReasons: Record<string, number> = {};
   
   candidateLoop: for (let i = 0; i < availableCandidates.length; i++) {
     const candidate = availableCandidates[i];
     const tweetId = candidate.candidate_tweet_id;
     
-    console.log(`[${i + 1}/${availableCandidates.length}] Validating ${tweetId}...`);
+    console.log(`[${i + 1}/${availableCandidates.length}] LIVE validating ${tweetId}...`);
     
     try {
-      // First try to get tweet content from candidate_evaluations (no browser needed)
-      const { data: candidateData } = await supabase
-        .from('candidate_evaluations')
-        .select('candidate_content, candidate_author_username, is_root_tweet')
-        .eq('candidate_tweet_id', tweetId)
-        .eq('is_root_tweet', true)
-        .single();
+      // LIVE validation: Use ancestry resolver (force fresh, no cache)
+      // This runs in Railway production where browsers work
+      ancestry = await resolveTweetAncestry(tweetId);
       
-      if (candidateData && candidateData.is_root_tweet && candidateData.candidate_content) {
-        // Use cached data - tweet is already validated as root
-        ancestry = {
-          targetTweetId: tweetId,
-          targetTweetContent: candidateData.candidate_content,
-          targetUsername: candidateData.candidate_author_username || 'unknown',
-          rootTweetId: tweetId,
-          isRoot: true,
-          status: 'OK',
-          confidence: 'HIGH',
-          method: 'cached_candidate_data',
-        };
-        
-        targetTweetContent = candidateData.candidate_content;
-        targetUsername = candidateData.candidate_author_username || 'unknown';
-        
-        console.log(`   ✅ Valid (cached): exists=true, is_root=true, author=@${targetUsername}`);
-        console.log(`   Content: ${targetTweetContent.substring(0, 80)}...\n`);
-        
-        chosenTweetId = tweetId;
-      } else {
-        // Skip if no cached data (don't use browser-dependent resolver)
-        console.log(`   ⚠️  No cached candidate data available - Skipping (requires browser)\n`);
+      // Check validation outcome
+      if (!ancestry || ancestry.status !== 'OK') {
+        const reason = `status=${ancestry?.status || 'UNKNOWN'}`;
+        skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+        console.log(`   ❌ Validation failed: ${reason} - Skipping\n`);
         continue candidateLoop;
       }
+      
+      if (!ancestry.isRoot) {
+        const reason = 'not_root';
+        skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+        console.log(`   ❌ Not root (in_reply_to: ${ancestry.targetInReplyToTweetId}) - Skipping\n`);
+        continue candidateLoop;
+      }
+      
+      if (!ancestry.targetTweetContent) {
+        const reason = 'no_content';
+        skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+        console.log(`   ❌ No tweet content retrieved - Skipping\n`);
+        continue candidateLoop;
+      }
+      
+      targetTweetContent = ancestry.targetTweetContent;
+      targetUsername = ancestry.targetUsername || 'unknown';
+      
+      console.log(`   ✅ LIVE validation passed:`);
+      console.log(`      target_exists: ✅`);
+      console.log(`      is_root: ✅`);
+      console.log(`      status: ${ancestry.status}`);
+      console.log(`      method: ${ancestry.method || 'unknown'}`);
+      console.log(`      author: @${targetUsername}`);
+      console.log(`      content: ${targetTweetContent.substring(0, 80)}...\n`);
+      
+      chosenTweetId = tweetId;
       
       // Step 4: Select template
       console.log(`   Selecting template...`);
@@ -254,7 +284,16 @@ async function main() {
   }
   
   if (!chosenTweetId || !ancestry || !replyContent || semanticSimilarity < 0.25) {
-    console.error('❌ No valid candidate found with successful generation');
+    console.error('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('           ❌ NO VALID CANDIDATE FOUND');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    console.error('Skip reasons breakdown:');
+    Object.entries(skipReasons)
+      .sort((a, b) => b[1] - a[1])
+      .forEach(([reason, count]) => {
+        console.error(`  ${reason}: ${count}`);
+      });
+    console.error('\n');
     process.exit(1);
   }
   
@@ -276,7 +315,7 @@ async function main() {
   if (!ancestry.rootTweetId) missingFields.push('root_tweet_id');
   
   const preflightReport: PreflightReport = {
-    target_exists: true,
+    target_exists: ancestry.status === 'OK',
     is_root: ancestry.isRoot,
     semantic_similarity: semanticSimilarity,
     missing_fields: missingFields,
@@ -293,23 +332,34 @@ async function main() {
     preflightReport.will_pass_gates = true;
   }
   
-  // Print preflight report
+  // Print strengthened preflight report
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           📋 PREFLIGHT GATE REPORT');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-  console.log(`target_exists: ${preflightReport.target_exists ? '✅' : '❌'}`);
-  console.log(`is_root: ${preflightReport.is_root ? '✅' : '❌'}`);
-  console.log(`semantic_similarity: ${preflightReport.semantic_similarity.toFixed(3)} ${preflightReport.semantic_similarity >= 0.25 ? '✅' : '❌'} (threshold: 0.25)`);
-  console.log(`missing_fields: ${preflightReport.missing_fields.length > 0 ? '❌ ' + preflightReport.missing_fields.join(', ') : '✅ None'}`);
-  console.log(`will_pass_gates: ${preflightReport.will_pass_gates ? '✅ YES' : '❌ NO'}`);
+  console.log(`chosen target_tweet_id: ${chosenTweetId}`);
+  console.log(`\nValidation outcome:`);
+  console.log(`  target_exists: ${preflightReport.target_exists ? '✅ YES' : '❌ NO'}`);
+  console.log(`  is_root: ${preflightReport.is_root ? '✅ YES' : '❌ NO'}`);
+  console.log(`  status: ${ancestry.status || 'UNKNOWN'}`);
+  console.log(`  method: ${ancestry.method || 'unknown'}`);
+  console.log(`\nGate fields:`);
+  console.log(`  semantic_similarity: ${preflightReport.semantic_similarity.toFixed(3)} ${preflightReport.semantic_similarity >= 0.25 ? '✅' : '❌'} (threshold: 0.25)`);
+  console.log(`  missing_fields: ${preflightReport.missing_fields.length > 0 ? '❌ ' + preflightReport.missing_fields.join(', ') : '✅ None'}`);
+  console.log(`  target_tweet_content_hash: ${targetTweetContentHash ? '✅ Present' : '❌ Missing'}`);
+  console.log(`  root_tweet_id: ${ancestry.rootTweetId || chosenTweetId} ${ancestry.rootTweetId ? '✅' : '⚠️'}`);
+  console.log(`\nwill_pass_gates: ${preflightReport.will_pass_gates ? '✅ YES' : '❌ NO'}`);
   if (preflightReport.failure_reason) {
     console.log(`failure_reason: ${preflightReport.failure_reason}`);
   }
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
   if (!preflightReport.will_pass_gates) {
-    console.error(`❌ Preflight check failed: ${preflightReport.failure_reason}`);
-    process.exit(1);
+    const reason = preflightReport.failure_reason || 'unknown';
+    skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+    console.log(`❌ Preflight check failed: ${reason} - Trying next candidate...\n`);
+    chosenTweetId = null;
+    ancestry = null;
+    continue candidateLoop;
   }
   
   // Step 7: Create decision record
