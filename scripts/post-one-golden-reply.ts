@@ -242,10 +242,15 @@ async function main() {
       
       // Fast skip consent walls
       if (!ancestry || ancestry.status === 'ERROR') {
-        const errorCode = ancestry?.denyReasonCode || ancestry?.reason || 'UNKNOWN';
-        const errorMessage = ancestry?.error || errorCode;
-        if (errorCode === 'CONSENT_WALL' || errorCode === 'ANCESTRY_NAV_TIMEOUT' || 
-            errorMessage?.includes('CONSENT_WALL') || errorMessage?.includes('ANCESTRY_NAV_TIMEOUT')) {
+        // Check for consent wall in various error fields
+        const denyReason = (ancestry as any)?.denyReasonCode || (ancestry as any)?.reason || '';
+        const errorMsg = (ancestry as any)?.error || '';
+        const isConsentWall = denyReason === 'CONSENT_WALL' || 
+                             denyReason === 'ANCESTRY_NAV_TIMEOUT' ||
+                             errorMsg?.includes('CONSENT_WALL') || 
+                             errorMsg?.includes('ANCESTRY_NAV_TIMEOUT');
+        
+        if (isConsentWall) {
           consentWallCount++;
           const reason = 'consent_wall';
           skipReasons[reason] = (skipReasons[reason] || 0) + 1;
@@ -256,7 +261,7 @@ async function main() {
         const reason = 'target_not_found';
         skipReasons[reason] = (skipReasons[reason] || 0) + 1;
         notFoundCount++;
-        console.log(`   ❌ Phase 1 failed: ${reason} (error: ${errorCode}) - Skipping\n`);
+        console.log(`   ❌ Phase 1 failed: ${reason} (error: ${denyReason || 'UNKNOWN'}) - Skipping\n`);
         continue candidateLoop;
       }
       
