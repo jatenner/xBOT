@@ -211,6 +211,13 @@ async function main() {
   if (!existingMetadataRow) {
     // Create content_metadata row if it doesn't exist
     const scheduledAt = new Date().toISOString();
+    
+    // Compute hash for safety gate
+    const { createHash } = await import('crypto');
+    const targetTweetContentHash = createHash('sha256')
+      .update(normalizedSnapshot)
+      .digest('hex');
+    
     const { error: createError } = await supabase
       .from('content_metadata')
       .insert({
@@ -222,6 +229,7 @@ async function main() {
         target_username: targetUsername,
         root_tweet_id: rootTweetId,
         target_tweet_content_snapshot: normalizedSnapshot,
+        target_tweet_content_hash: targetTweetContentHash, // Required for safety gate
         features: updatedFeatures,
         pipeline_source: 'force_run_script',
         scheduled_at: scheduledAt, // Required for posting queue to pick it up
@@ -235,13 +243,23 @@ async function main() {
   } else {
     // Update existing row
     const scheduledAt = new Date().toISOString();
+    
+    // Compute hash for safety gate if missing
+    const { createHash } = await import('crypto');
+    const targetTweetContentHash = createHash('sha256')
+      .update(normalizedSnapshot)
+      .digest('hex');
+    
     await supabase
       .from('content_metadata')
       .update({
         status: 'queued',
         content: replyContent,
         features: updatedFeatures,
+        target_tweet_content_hash: targetTweetContentHash, // Ensure hash is set
         scheduled_at: scheduledAt, // Ensure scheduled_at is set
+        error_message: null, // Clear any errors
+        skip_reason: null, // Clear skip reasons
       })
       .eq('decision_id', canonicalId);
   }
