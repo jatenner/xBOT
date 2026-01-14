@@ -92,11 +92,156 @@ async function main() {
   
   const supabase = getSupabaseClient();
   
-  // Step 1: Get candidate tweet IDs from production tables (fresh-first)
-  console.log('Step 1: Fetching candidate tweet IDs (fresh-first)...\n');
+  // MANUAL MODE: If --tweetId provided, skip sourcing and validate only that tweet
+  let availableCandidates: Array<{ candidate_tweet_id: string; created_at: string }> = [];
   
-  // Primary source: reply_candidate_queue (newest first, last 24 hours)
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  if (manualTweetId) {
+    console.log('🎯 MANUAL MODE: Validating single tweet...\n');
+    
+    // Validate tweet ID format
+    if (!manualTweetId.match(/^\d{15,20}$/)) {
+      console.error(`❌ Invalid tweet ID format: ${manualTweetId} (must be 15-20 digits)`);
+      process.exit(1);
+    }
+    
+    // Create single candidate array
+    availableCandidates = [{
+      candidate_tweet_id: manualTweetId,
+      created_at: new Date().toISOString(),
+    }];
+    
+    console.log(`✅ Manual tweet ID validated: ${manualTweetId}\n`);
+  } else {
+    // Step 1: Get candidate tweet IDs from production tables (fresh-first, DB-prefiltered)
+    console.log('Step 1: Fetching candidate tweet IDs (fresh-first, DB-prefiltered)...\n');
+    
+    // DB-first prefilter: Only last 60 minutes
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    
+    // Get consent wall skip list (last 24h)
+    const { data: consentWallEvents } = await supabase
+      .from('system_events')
+      .select('event_data')
+      .eq('event_type', 'CONSENT_WALL_SEEN')
+      .gte('created_at', oneDayAgo);
+    
+    const consentWallTweetIds = new Set<string>();
+    (consentWallEvents || []).forEach(event => {
+      const data = typeof event.event_data === 'string' ? JSON.parse(event.event_data) : event.event_data;
+      if (data?.tweet_id) consentWallTweetIds.add(String(data.tweet_id));
+    });
+    
+    // Get target_not_found_or_deleted skip list (ever)
+    const { data: notFoundEvents } = await supabase
+      .from('system_events')
+      .select('event_data')
+      .eq('event_type', 'POST_FAILED')
+      .like('event_data->>reason', '%target_not_found_or_deleted%');
+    
+    const notFoundTweetIds = new Set<string>();
+    (notFoundEvents || []).forEach(event => {
+      const data = typeof event.event_data === 'string' ? JSON.parse(event.event_data) : event.event_data;
+      if (data?.target_tweet_id) notFoundTweetIds.add(String(data.target_tweet_id));
+    });
+    
+    console.log(`   Excluding ${consentWallTweetIds.size} consent wall tweets (24h)`);
+    console.log(`   Excluding ${notFoundTweetIds.size} not-found tweets (ever)\n`);
+    
+    // Primary source: reply_candidate_queue (last 60 minutes only)
+    const { data: queueCandidates, error: queueError } = await supabase
+      .from('reply_candidate_queue')
+      .select('candidate_tweet_id, created_at')
+      .gte('created_at', oneHourAgo)
+      .order('created_at', { ascending: false })
+      .limit(maxCandidates * 2); // Fetch more to account for filtering
+    
+    // Secondary source: candidate_evaluations (last 7 days)
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: evalCandidates, error: evalError } = await supabase
+      .from('candidate_evaluations')
+      .select('candidate_tweet_id, created_at')
+      .eq('is_root_tweet', true)
+      .eq('passed_hard_filters', true)
+      .gte('created_at', sevenDaysAgo)
+      .order('created_at', { ascending: false })
+      .limit(maxCandidates * 2);
+    
+    // Tertiary source: reply_opportunities (last 24 hours, validated root tweets)
+    const { data: oppCandidates, error: oppError } = await supabase
+      .from('reply_opportunities')
+      .select('target_tweet_id, tweet_posted_at')
+      .eq('is_root_tweet', true)
+      .gte('tweet_posted_at', oneDayAgo)
+      .order('tweet_posted_at', { ascending: false })
+      .limit(maxCandidates * 2);
+    
+    if (queueError) {
+      console.warn(`⚠️  Error fetching queue candidates: ${queueError.message}`);
+    }
+    if (evalError) {
+      console.warn(`⚠️  Error fetching eval candidates: ${evalError.message}`);
+    }
+    if (oppError) {
+      console.warn(`⚠️  Error fetching opp candidates: ${oppError.message}`);
+    }
+    
+    // Format opportunities as candidates
+    const oppCandidatesFormatted = (oppCandidates || []).map(opp => ({
+      candidate_tweet_id: opp.target_tweet_id,
+      created_at: opp.tweet_posted_at || new Date().toISOString(),
+    }));
+    
+    // Combine all sources
+    let allCandidates = [
+      ...(queueCandidates || []),
+      ...(evalCandidates || []),
+      ...oppCandidatesFormatted,
+    ];
+    
+    // Apply DB prefilters
+    allCandidates = allCandidates.filter(c => {
+      const tweetId = String(c.candidate_tweet_id);
+      if (consentWallTweetIds.has(tweetId)) return false;
+      if (notFoundTweetIds.has(tweetId)) return false;
+      return true;
+    });
+    
+    // Filter fake test IDs
+    const seen = new Set<string>();
+    allCandidates = allCandidates.filter(c => {
+      const tweetId = String(c.candidate_tweet_id);
+      if (!tweetId.match(/^\d{15,20}$/)) return false;
+      if (tweetId.startsWith('2000000000000') || tweetId === '2000000000000000003') return false;
+      if (seen.has(tweetId)) return false;
+      seen.add(tweetId);
+      return true;
+    });
+    
+    // Limit to maxCandidates after filtering
+    allCandidates = allCandidates.slice(0, maxCandidates);
+    
+    console.log(`✅ Prefiltered candidates: ${allCandidates.length} (after DB exclusions)\n`);
+    
+    // Step 2: Filter out recently used tweet IDs (last 48h)
+    console.log('Step 2: Filtering out recently used tweets (last 48h)...');
+    
+    const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const { data: recentDecisions } = await supabase
+      .from('reply_decisions')
+      .select('target_tweet_id')
+      .gte('created_at', twoDaysAgo);
+    
+    const usedTweetIds = new Set((recentDecisions || []).map(d => d.target_tweet_id));
+    availableCandidates = allCandidates.filter(c => !usedTweetIds.has(c.candidate_tweet_id));
+    
+    console.log(`✅ Filtered: ${allCandidates.length} → ${availableCandidates.length} available (removed ${allCandidates.length - availableCandidates.length} recently used)\n`);
+    
+    if (availableCandidates.length === 0) {
+      console.error('❌ No available candidates after filtering');
+      process.exit(1);
+    }
+  }
   const { data: queueCandidates, error: queueError } = await supabase
     .from('reply_candidate_queue')
     .select('candidate_tweet_id, created_at')
@@ -226,6 +371,10 @@ async function main() {
   let semanticSimilarity: number = 0;
   let templateSelection: any = null;
   const skipReasons: Record<string, number> = {};
+  let consentWallCount = 0;
+  let uncertainCount = 0;
+  let nonRootCount = 0;
+  let notFoundCount = 0;
   
   candidateLoop: for (let i = 0; i < availableCandidates.length; i++) {
     const candidate = availableCandidates[i];
