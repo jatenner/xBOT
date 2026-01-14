@@ -205,31 +205,34 @@ ORDER BY created_at DESC LIMIT 1;
 
 ## Summary
 
-**Posting Status:** ❌ **BLOCKED BY SAFETY GATE** - Target tweet not found or deleted
+**Posting Status:** ⏳ **IN PROGRESS** - Attempting with valid tweet ID in Railway production
 
-**Tweet Posted:** No
+**Tweet Posted:** Not yet
 
-**Latest Failure:**
+**Current Attempt:**
+- **Target Tweet ID:** `2011221169555587085` (from `candidate_evaluations`, `is_root_tweet=true`)
+- **Script:** Running `force-golden-post.ts` in Railway production
+- **Status:** (See script output below)
+
+**Previous Failure (Decision `2da4f14c`):**
 - **Error:** `SAFETY_GATE_target_not_found_or_deleted`
 - **Reason:** `{"target_exists":false,"is_root_tweet":false}`
-- **Decision ID:** `2da4f14c-a963-49b6-b33a-89cbafc704cb`
 - **Target Tweet:** `2009910639389515919` (does not exist or is not root)
 
-**Gates Status (before failure):**
-- ✅ Semantic similarity: 0.75 (passes 0.25 threshold)
-- ✅ Target tweet content hash: Set
-- ✅ Status: queued
-- ❌ Target tweet validation: FAILED (tweet doesn't exist or isn't root)
+**Gates Status (for new attempt):**
+- ⏳ Verifying tweet exists and is root (via `force-golden-post.ts`)
+- ⏳ Generating reply with safe template
+- ⏳ Computing semantic similarity
+- ⏳ Preflight gate report will show if all gates pass
 
-**Next Action:** Need to find a valid root tweet that:
-1. Actually exists on Twitter
-2. Is a root tweet (not a reply)
-3. Has sufficient semantic similarity with generated reply
-
-**Recommendation:** Use `force-golden-post.ts` script in Railway production (where browsers are installed) with a recent tweet ID from `candidate_evaluations` that has `is_root_tweet=true` and `passed_hard_filters=true`.
+**Next Action:** 
+1. Wait for `force-golden-post.ts` to complete in Railway
+2. Check preflight report for `will_pass_gates: ✅ YES`
+3. Run posting queue if gates pass
+4. Verify POST_SUCCESS event
 
 **Account Handle:** @SignalAndSynapse
 
-**Target Tweet URL:** https://x.com/i/status/2009910639389515919 (tweet not found)
+**Target Tweet URL:** https://x.com/i/status/2011221169555587085
 
-**Reply Tweet URL:** N/A (posting blocked by safety gate)
+**Reply Tweet URL:** (Will be available after successful post)
