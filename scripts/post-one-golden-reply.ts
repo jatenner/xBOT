@@ -599,7 +599,15 @@ async function main() {
         continue candidateLoop;
       }
     } catch (error: any) {
-      const reason = error.message?.substring(0, 50) || 'unknown_error';
+      const errorCode = error.message?.includes('CONSENT_WALL') || error.message?.includes('ANCESTRY_NAV_TIMEOUT')
+        ? 'consent_wall'
+        : 'unknown_error';
+      
+      if (errorCode === 'consent_wall') {
+        consentWallCount++;
+      }
+      
+      const reason = errorCode === 'consent_wall' ? 'consent_wall' : (error.message?.substring(0, 50) || 'unknown_error');
       skipReasons[reason] = (skipReasons[reason] || 0) + 1;
       console.log(`   ❌ Error: ${error.message} - Skipping\n`);
       continue candidateLoop;
