@@ -73,15 +73,18 @@ async function main() {
     process.exit(1);
   }
   
-  // Step 3: Validate each candidate until we find a valid one
-  console.log('Step 3: Validating candidates...\n');
+  // Step 3: Validate each candidate until we find one that generates successfully
+  console.log('Step 3: Validating candidates and generating replies...\n');
   
   let chosenTweetId: string | null = null;
   let ancestry: any = null;
   let targetTweetContent: string = '';
   let targetUsername: string = '';
+  let replyContent: string = '';
+  let semanticSimilarity: number = 0;
+  let templateSelection: any = null;
   
-  for (let i = 0; i < availableCandidates.length; i++) {
+  candidateLoop: for (let i = 0; i < availableCandidates.length; i++) {
     const candidate = availableCandidates[i];
     const tweetId = candidate.candidate_tweet_id;
     
@@ -112,11 +115,12 @@ async function main() {
         targetTweetContent = candidateData.candidate_content;
         targetUsername = candidateData.candidate_author_username || 'unknown';
         
-        console.log(`   ✅ Valid (cached): exists=true, is_root=true, author=@${targetUsername}`);
-        console.log(`   Content: ${targetTweetContent.substring(0, 80)}...\n`);
-        
-        chosenTweetId = tweetId;
-        break;
+      console.log(`   ✅ Valid (cached): exists=true, is_root=true, author=@${targetUsername}`);
+      console.log(`   Content: ${targetTweetContent.substring(0, 80)}...\n`);
+      
+      chosenTweetId = tweetId;
+      
+      // Continue to generation (don't break yet)
       }
       
       // Fallback: Try ancestry resolver (requires browser - may fail locally)
@@ -140,104 +144,141 @@ async function main() {
       console.log(`   Content: ${targetTweetContent.substring(0, 80)}...\n`);
       
       chosenTweetId = tweetId;
-      break;
+      
+      // Step 4: Select template
+      console.log(`   Selecting template...`);
+      const { selectReplyTemplate } = await import('../src/jobs/replySystemV2/replyTemplateSelector');
+      
+      templateSelection = await selectReplyTemplate({
+        topic_relevance_score: 0.8,
+        candidate_score: 85,
+        topic: 'general',
+        content_preview: targetTweetContent.substring(0, 100),
+      });
+      
+      if (!templateSelection || !templateSelection.template_id) {
+        console.log(`   ❌ Template selection failed - Skipping\n`);
+        continue candidateLoop;
+      }
+      
+      console.log(`   ✅ Template: ${templateSelection.template_id} (${templateSelection.prompt_version})`);
+      
+      // Step 5: Generate reply content (with retry if similarity low)
+      console.log(`   Generating reply...`);
+      let attempt = 0;
+      const maxAttempts = 2;
+      let generationSuccess = false;
+      
+      while (attempt < maxAttempts && !generationSuccess) {
+        attempt++;
+        
+        try {
+          const { generateReplyContent } = await import('../src/ai/replyGeneratorAdapter');
+          const normalizedTarget = normalizeTweetText(targetTweetContent);
+          
+          const topic = attempt === 2 
+            ? 'health (quote and respond style - directly reference the target tweet)'
+            : 'health';
+          
+          const replyResult = await generateReplyContent({
+            target_username: targetUsername,
+            target_tweet_content: normalizedTarget,
+            topic: topic,
+            angle: 'reply_context',
+            tone: 'helpful',
+            model: 'gpt-4o-mini',
+            template_id: templateSelection.template_id,
+            prompt_version: templateSelection.prompt_version,
+            reply_context: {
+              target_text: normalizedTarget,
+              root_text: normalizedTarget,
+              root_tweet_id: ancestry.rootTweetId || chosenTweetId,
+            },
+          });
+          
+          if (!replyResult || !replyResult.content) {
+            throw new Error('Generation returned empty content');
+          }
+          
+          replyContent = replyResult.content;
+          
+          // Compute semantic similarity
+          const normalizedReply = normalizeTweetText(replyContent);
+          semanticSimilarity = computeSemanticSimilarity(normalizedTarget, normalizedReply);
+          
+          console.log(`   ✅ Generated (${replyContent.length} chars, similarity: ${semanticSimilarity.toFixed(3)})`);
+          
+          if (semanticSimilarity >= 0.25) {
+            generationSuccess = true;
+            break;
+          }
+          
+          if (attempt < maxAttempts) {
+            console.log(`   ⚠️  Similarity too low (${semanticSimilarity.toFixed(3)} < 0.25), retrying...`);
+          }
+        } catch (error: any) {
+          // Handle UNGROUNDED_GENERATION_SKIP - try fallback
+          if (error.message?.includes('UNGROUNDED_GENERATION_SKIP') && attempt < maxAttempts) {
+            console.log(`   ⚠️  Ungrounded skip, trying fallback...`);
+            try {
+              const { generateGroundedFallbackReply } = await import('../src/ai/replyGeneratorAdapter');
+              const normalizedTarget = normalizeTweetText(targetTweetContent);
+              const fallbackResult = await generateGroundedFallbackReply({
+                target_username: targetUsername,
+                target_tweet_content: normalizedTarget,
+                topic: 'health',
+                angle: 'reply_context',
+                tone: 'helpful',
+                model: 'gpt-4o-mini',
+                template_id: templateSelection.template_id,
+                prompt_version: templateSelection.prompt_version,
+                reply_context: {
+                  target_text: normalizedTarget,
+                  root_text: normalizedTarget,
+                  root_tweet_id: ancestry.rootTweetId || chosenTweetId,
+                },
+              });
+              
+              if (fallbackResult && fallbackResult.content) {
+                replyContent = fallbackResult.content;
+                const normalizedReply = normalizeTweetText(replyContent);
+                semanticSimilarity = computeSemanticSimilarity(normalizedTarget, normalizedReply);
+                console.log(`   ✅ Fallback generated (${replyContent.length} chars, similarity: ${semanticSimilarity.toFixed(3)})`);
+                if (semanticSimilarity >= 0.25) {
+                  generationSuccess = true;
+                  break;
+                }
+              }
+            } catch (fallbackError: any) {
+              console.log(`   ❌ Fallback failed: ${fallbackError.message}`);
+            }
+          } else {
+            console.log(`   ❌ Generation failed: ${error.message}`);
+          }
+        }
+      }
+      
+      if (generationSuccess && semanticSimilarity >= 0.25) {
+        console.log(`   ✅ Successfully generated reply\n`);
+        break candidateLoop; // Found valid candidate with successful generation
+      } else {
+        console.log(`   ❌ Generation failed or similarity too low - Trying next candidate...\n`);
+        chosenTweetId = null;
+        ancestry = null;
+        continue candidateLoop;
+      }
     } catch (error: any) {
       console.log(`   ❌ Error: ${error.message} - Skipping\n`);
-      continue;
+      continue candidateLoop;
     }
   }
   
-  if (!chosenTweetId || !ancestry) {
-    console.error('❌ No valid candidate found after validation');
+  if (!chosenTweetId || !ancestry || !replyContent || semanticSimilarity < 0.25) {
+    console.error('❌ No valid candidate found with successful generation');
     process.exit(1);
   }
   
   console.log(`✅ Chosen target tweet: ${chosenTweetId}\n`);
-  
-  // Step 4: Select template
-  console.log('Step 4: Selecting template...');
-  const { selectReplyTemplate } = await import('../src/jobs/replySystemV2/replyTemplateSelector');
-  
-  const templateSelection = await selectReplyTemplate({
-    topic_relevance_score: 0.8,
-    candidate_score: 85,
-    topic: 'general',
-    content_preview: targetTweetContent.substring(0, 100),
-  });
-  
-  if (!templateSelection || !templateSelection.template_id) {
-    console.error('❌ Template selection failed');
-    process.exit(1);
-  }
-  
-  console.log(`✅ Template: ${templateSelection.template_id} (${templateSelection.prompt_version})\n`);
-  
-  // Step 5: Generate reply content (with retry if similarity low)
-  console.log('Step 5: Generating reply content...');
-  let replyContent: string;
-  let semanticSimilarity: number;
-  let attempt = 0;
-  const maxAttempts = 2;
-  
-  while (attempt < maxAttempts) {
-    attempt++;
-    console.log(`   Attempt ${attempt}/${maxAttempts}...`);
-    
-    try {
-      const { generateReplyContent } = await import('../src/ai/replyGeneratorAdapter');
-      const normalizedTarget = normalizeTweetText(targetTweetContent);
-      
-      const topic = attempt === 2 
-        ? 'health (quote and respond style - directly reference the target tweet)'
-        : 'health';
-      
-      const replyResult = await generateReplyContent({
-        target_username: targetUsername,
-        target_tweet_content: normalizedTarget,
-        topic: topic,
-        angle: 'reply_context',
-        tone: 'helpful',
-        model: 'gpt-4o-mini',
-        template_id: templateSelection.template_id,
-        prompt_version: templateSelection.prompt_version,
-        reply_context: {
-          target_text: normalizedTarget,
-          root_text: normalizedTarget,
-          root_tweet_id: ancestry.rootTweetId || chosenTweetId,
-        },
-      });
-      
-      if (!replyResult || !replyResult.content) {
-        throw new Error('Generation returned empty content');
-      }
-      
-      replyContent = replyResult.content;
-      
-      // Compute semantic similarity
-      const normalizedReply = normalizeTweetText(replyContent);
-      semanticSimilarity = computeSemanticSimilarity(normalizedTarget, normalizedReply);
-      
-      console.log(`   ✅ Generated (${replyContent.length} chars, similarity: ${semanticSimilarity.toFixed(3)})`);
-      
-      if (semanticSimilarity >= 0.25) {
-        break;
-      }
-      
-      if (attempt < maxAttempts) {
-        console.log(`   ⚠️  Similarity too low (${semanticSimilarity.toFixed(3)} < 0.25), retrying...\n`);
-      }
-    } catch (error: any) {
-      console.error(`   ❌ Generation failed: ${error.message}`);
-      if (attempt >= maxAttempts) {
-        throw error;
-      }
-    }
-  }
-  
-  if (semanticSimilarity < 0.25) {
-    console.error(`❌ Semantic similarity still too low after ${maxAttempts} attempts: ${semanticSimilarity.toFixed(3)}`);
-    process.exit(1);
-  }
   
   console.log(`✅ Final reply: "${replyContent}"\n`);
   
