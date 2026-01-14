@@ -346,7 +346,7 @@ async function main() {
   
   const scheduledAt = new Date().toISOString();
   
-  await supabase
+  const { error: insertError } = await supabase
     .from('content_metadata')
     .insert({
       decision_id: decisionId,
@@ -363,6 +363,31 @@ async function main() {
       created_at: now,
       updated_at: now,
     });
+  
+  if (insertError) {
+    console.error(`❌ Failed to insert content_metadata: ${insertError.message}`);
+    throw insertError;
+  }
+  
+  // Verify status is queued (may be changed by triggers)
+  const { data: verifyData } = await supabase
+    .from('content_metadata')
+    .select('status, error_message, skip_reason')
+    .eq('decision_id', decisionId)
+    .single();
+  
+  if (verifyData?.status !== 'queued') {
+    console.warn(`⚠️  Status after insert: ${verifyData?.status} (expected 'queued')`);
+    if (verifyData?.error_message) console.warn(`   Error: ${verifyData.error_message}`);
+    if (verifyData?.skip_reason) console.warn(`   Skip reason: ${verifyData.skip_reason}`);
+    
+    // Force status to queued if it was changed
+    await supabase
+      .from('content_metadata')
+      .update({ status: 'queued', error_message: null, skip_reason: null })
+      .eq('decision_id', decisionId);
+    console.log(`✅ Reset status to 'queued'`);
+  }
   
   console.log(`✅ Content metadata created (status: queued)\n`);
   
