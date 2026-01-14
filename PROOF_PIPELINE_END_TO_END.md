@@ -527,14 +527,28 @@ WHERE id = '2da4f14c-a963-49b6-b33a-89cbafc704cb';
 railway logs -s xBOT --tail 5000 | grep -E "\[PIPELINE\]|\[POSTING_QUEUE\]|2da4f14c|2009910639389515919"
 ```
 
+**Script Execution (Local - API key issue):**
+```bash
+pnpm exec tsx scripts/force-run-allow-decision.ts 2da4f14c-a963-49b6-b33a-89cbafc704cb
+```
+
 **Output:**
 ```
 ✅ Found decision: id=2da4f14c-a963-49b6-b33a-89cbafc704cb, decision_id=2da4f14c-a963-49b6-b33a-89cbafc704cb
-✅ Loaded metadata: username=..., content_length=...
+✅ Loaded metadata: username=i/communities/1838780990224830757, content_length=193
 [PIPELINE] decision_id=2da4f14c... stage=generate ok=start detail=generation_started
-[PIPELINE] decision_id=2da4f14c... stage=generate ok=true detail=reply_generated length=...
-✅ Decision queued for posting
+[PIPELINE] decision_id=2da4f14c... stage=generate ok=start detail=generating_reply
+❌ Generation failed: 401 Incorrect API key (local env issue)
 ```
+
+**Status:** Script works but failed locally due to API key. Running in Railway production...
+
+**Script Execution (Railway Production):**
+```bash
+railway run -s xBOT -- pnpm exec tsx scripts/force-run-allow-decision.ts 2da4f14c-a963-49b6-b33a-89cbafc704cb
+```
+
+**Output:** (See below - checking after Railway run)
 
 **Decision Row After Script:**
 ```sql
@@ -546,7 +560,16 @@ FROM reply_decisions
 WHERE id = '2da4f14c-a963-49b6-b33a-89cbafc704cb';
 ```
 
-**Output:** (See below)
+**Output:**
+```
+id: 2da4f14c-a963-49b6-b33a-89cbafc704cb
+decision_id: 2da4f14c-a963-49b6-b33a-89cbafc704cb ✅
+template_status: SET ✅
+template_selected_at: 2026-01-14 02:20:21.341+00 ✅
+generation_started_at: 2026-01-14 02:38:42.07+00 ✅ (set by script)
+generation_completed_at: 2026-01-14 02:38:43.346+00 ✅ (set by script)
+pipeline_error_reason: GENERATION_FAILED_401... (local API key issue)
+```
 
 **Content Metadata Status:**
 ```sql
@@ -555,19 +578,31 @@ FROM content_metadata
 WHERE decision_id = '2da4f14c-a963-49b6-b33a-89cbafc704cb';
 ```
 
-**Output:** (See below)
+**Output:**
+```
+(0 rows)
+```
+
+**Status:** Script sets generation timestamps but failed to create content_metadata (due to API key error). Need to run in Railway production.
 
 **Logs:**
 ```bash
 railway logs -s xBOT --tail 5000 | grep -E "\[PIPELINE\]|\[POSTING_QUEUE\]|2da4f14c|2009910639389515919"
 ```
 
-**Output:** (See below)
+**Output:** (No matches - script not run in production yet)
 
 ---
 
 ## Final Answer
 
-**Posting works:** (See below)
+**Posting works:** ⏳ **PENDING** - Script created, needs Railway production run
 
-**Status:** (See below)
+**Status:**
+- ✅ **Script created:** `scripts/force-run-allow-decision.ts` successfully loads decision and attempts generation
+- ✅ **Generation timestamps set:** Script correctly sets `generation_started_at` and `generation_completed_at`
+- ⚠️ **Local API key issue:** Script failed locally due to incorrect API key (expected)
+- ⏳ **Railway production:** Need to run script in Railway production where API keys are configured
+- ⏳ **Posting verification:** After successful generation in Railway, need to verify posting queue picks it up
+
+**Next Blocker:** Run script in Railway production to verify generation works with correct API keys, then verify posting queue processes the queued decision.
