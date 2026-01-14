@@ -6,7 +6,6 @@
 
 import 'dotenv/config';
 import { getSupabaseClient } from '../src/db';
-import { resolveRootTweet } from '../src/utils/resolveRootTweet';
 import { computeSemanticSimilarity } from '../src/gates/semanticGate';
 import { normalizeTweetText } from '../src/gates/contextLockVerifier';
 import { createHash } from 'crypto';
@@ -42,35 +41,28 @@ async function main() {
   let targetUsername: string;
   
   try {
-    const { UnifiedBrowserPool } = await import('../src/browser/UnifiedBrowserPool');
-    const pool = UnifiedBrowserPool.getInstance();
-    const context = await pool.acquireContext();
+    const { resolveTweetAncestry } = await import('../src/jobs/replySystemV2/replyDecisionRecorder');
+    ancestry = await resolveTweetAncestry(targetTweetId);
     
-    try {
-      ancestry = await resolveRootTweet(context, targetTweetId);
-      
-      if (!ancestry || ancestry.status !== 'OK') {
-        console.error(`❌ Failed to resolve tweet: ${ancestry?.status || 'UNKNOWN'}`);
-        console.error(`   Reason: ${ancestry?.error || 'No error message'}`);
-        process.exit(1);
-      }
-      
-      if (!ancestry.isRoot) {
-        console.error(`❌ Tweet is not a root tweet (in_reply_to: ${ancestry.targetInReplyToTweetId})`);
-        process.exit(1);
-      }
-      
-      targetTweetContent = ancestry.targetTweetContent || '';
-      targetUsername = ancestry.targetUsername || 'unknown';
-      
-      console.log(`✅ Tweet verified:`);
-      console.log(`   Exists: ✅`);
-      console.log(`   Is Root: ✅`);
-      console.log(`   Author: @${targetUsername}`);
-      console.log(`   Content: ${targetTweetContent.substring(0, 100)}...\n`);
-    } finally {
-      await pool.releaseContext(context);
+    if (!ancestry || ancestry.status !== 'OK') {
+      console.error(`❌ Failed to resolve tweet: ${ancestry?.status || 'UNKNOWN'}`);
+      console.error(`   Reason: ${ancestry?.error || 'No error message'}`);
+      process.exit(1);
     }
+    
+    if (!ancestry.isRoot) {
+      console.error(`❌ Tweet is not a root tweet (in_reply_to: ${ancestry.targetInReplyToTweetId})`);
+      process.exit(1);
+    }
+    
+    targetTweetContent = ancestry.targetTweetContent || '';
+    targetUsername = ancestry.targetUsername || 'unknown';
+    
+    console.log(`✅ Tweet verified:`);
+    console.log(`   Exists: ✅`);
+    console.log(`   Is Root: ✅`);
+    console.log(`   Author: @${targetUsername}`);
+    console.log(`   Content: ${targetTweetContent.substring(0, 100)}...\n`);
   } catch (error: any) {
     console.error(`❌ Ancestry resolution failed: ${error.message}`);
     process.exit(1);
@@ -107,38 +99,35 @@ async function main() {
     console.log(`   Attempt ${attempt}/${maxAttempts}...`);
     
     try {
-      const { generateReplyForDecision } = await import('../src/jobs/replySystemV2/orchestrator');
+      const { generateReplyContent } = await import('../src/ai/replyGeneratorAdapter');
       const normalizedTarget = normalizeTweetText(targetTweetContent);
       
-      // Create a minimal decision object for generation
-      const decisionForGeneration = {
-        id: crypto.randomUUID(),
-        decision_id: crypto.randomUUID(),
-        target_tweet_id: targetTweetId,
+      // On second attempt, use stronger "quote + respond" style
+      const topic = attempt === 2 
+        ? 'health (quote and respond style - directly reference the target tweet)'
+        : 'health';
+      
+      const replyResult = await generateReplyContent({
         target_username: targetUsername,
-        root_tweet_id: ancestry.rootTweetId || targetTweetId,
+        target_tweet_content: normalizedTarget,
+        topic: topic,
+        angle: 'reply_context',
+        tone: 'helpful',
+        model: 'gpt-4o-mini',
         template_id: templateSelection.template_id,
         prompt_version: templateSelection.prompt_version,
-        candidate_features: {},
-        candidate_score: 85,
-      };
+        reply_context: {
+          target_text: normalizedTarget,
+          root_text: normalizedTarget,
+          root_tweet_id: ancestry.rootTweetId || targetTweetId,
+        },
+      });
       
-      // On second attempt, use stronger "quote + respond" style
-      const customInstructions = attempt === 2 
-        ? 'Generate a reply that directly quotes and responds to the target tweet. Make it highly relevant and engaging. Use a conversational, quote-and-respond style.'
-        : undefined;
-      
-      const generationResult = await generateReplyForDecision(
-        decisionForGeneration,
-        normalizedTarget,
-        customInstructions
-      );
-      
-      if (!generationResult || !generationResult.content) {
+      if (!replyResult || !replyResult.content) {
         throw new Error('Generation returned empty content');
       }
       
-      replyContent = generationResult.content;
+      replyContent = replyResult.content;
       
       // Compute semantic similarity
       const normalizedReply = normalizeTweetText(replyContent);
