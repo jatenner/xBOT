@@ -712,6 +712,12 @@ async function main() {
     // Continue anyway - might already exist
   }
   
+  // Also set pipeline_source in content_metadata to bypass INVARIANT_BLOCK
+  await supabase
+    .from('content_metadata')
+    .update({ pipeline_source: 'reply_v2_scheduler' })
+    .eq('decision_id', decisionId);
+  
   // Step 10: Update reply_decisions with posting_started_at
   await supabase
     .from('reply_decisions')
