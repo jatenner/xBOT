@@ -94,10 +94,28 @@ async function main() {
     .order('created_at', { ascending: false })
     .limit(maxCandidates);
   
-  // Combine and deduplicate (prioritize queue candidates)
+  // Tertiary source: reply_opportunities (last 24 hours, validated root tweets)
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: oppCandidates, error: oppError } = await supabase
+    .from('reply_opportunities')
+    .select('target_tweet_id, tweet_posted_at')
+    .eq('is_root_tweet', true)
+    .gte('tweet_posted_at', oneDayAgo)
+    .order('tweet_posted_at', { ascending: false })
+    .limit(maxCandidates);
+  
+  // Convert opportunities to candidate format
+  const oppCandidatesFormatted = (oppCandidates || []).map(o => ({
+    candidate_tweet_id: o.target_tweet_id,
+    created_at: o.tweet_posted_at,
+    source: 'opportunities'
+  }));
+  
+  // Combine and deduplicate (prioritize queue > evaluations > opportunities)
   const allCandidates = [
     ...(queueCandidates || []).map(c => ({ candidate_tweet_id: c.candidate_tweet_id, created_at: c.created_at, source: 'queue' })),
-    ...(evalCandidates || []).map(c => ({ candidate_tweet_id: c.candidate_tweet_id, created_at: c.created_at, source: 'evaluations' }))
+    ...(evalCandidates || []).map(c => ({ candidate_tweet_id: c.candidate_tweet_id, created_at: c.created_at, source: 'evaluations' })),
+    ...oppCandidatesFormatted
   ];
   
   // Deduplicate by tweet_id (keep first occurrence, which is from queue)
@@ -119,7 +137,7 @@ async function main() {
     process.exit(1);
   }
   
-  console.log(`✅ Found ${candidates.length} unique candidates (${queueCandidates?.length || 0} from queue, ${evalCandidates?.length || 0} from evaluations)\n`);
+  console.log(`✅ Found ${candidates.length} unique candidates (${queueCandidates?.length || 0} from queue, ${evalCandidates?.length || 0} from evaluations, ${oppCandidatesFormatted.length} from opportunities)\n`);
   
   // Step 2: Filter out recently used tweet IDs (last 48h)
   console.log('Step 2: Filtering out recently used tweets (last 48h)...');
