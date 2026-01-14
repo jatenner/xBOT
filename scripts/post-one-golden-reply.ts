@@ -678,25 +678,45 @@ async function main() {
   
   console.log(`✅ Content metadata created (status: queued)\n`);
   
-  // Step 9: Create reply_opportunities entry (required for INVARIANT_BLOCK check)
+  // Step 9: Create reply_opportunities entry (required for INVARIANT_BLOCK and contextLockGuard checks)
   try {
-    await supabase
+    // Check if opportunity already exists
+    const { data: existingOpp } = await supabase
       .from('reply_opportunities')
-      .insert({
-        decision_id: decisionId,
-        tweet_id: chosenTweetId,
-        target_tweet_id: chosenTweetId,
-        target_tweet_content: targetTweetContent,
-        target_username: targetUsername,
-        root_tweet_id: ancestry.rootTweetId || chosenTweetId,
-        is_root_tweet: ancestry.isRoot,
-        tweet_posted_at: new Date().toISOString(),
-        created_at: now,
-      });
-    console.log(`✅ Reply opportunity created\n`);
+      .select('id')
+      .eq('target_tweet_id', chosenTweetId)
+      .maybeSingle();
+    
+    if (!existingOpp) {
+      await supabase
+        .from('reply_opportunities')
+        .insert({
+          tweet_id: chosenTweetId,
+          target_tweet_id: chosenTweetId,
+          target_tweet_content: targetTweetContent,
+          target_username: targetUsername,
+          root_tweet_id: ancestry.rootTweetId || chosenTweetId,
+          is_root_tweet: ancestry.isRoot,
+          tweet_posted_at: new Date().toISOString(),
+          created_at: now,
+        });
+      console.log(`✅ Reply opportunity created\n`);
+    } else {
+      // Update existing opportunity to ensure it has correct fields
+      await supabase
+        .from('reply_opportunities')
+        .update({
+          target_tweet_content: targetTweetContent,
+          target_username: targetUsername,
+          root_tweet_id: ancestry.rootTweetId || chosenTweetId,
+          is_root_tweet: ancestry.isRoot,
+        })
+        .eq('target_tweet_id', chosenTweetId);
+      console.log(`✅ Reply opportunity updated\n`);
+    }
   } catch (oppError: any) {
-    console.warn(`⚠️  Failed to create reply_opportunities entry: ${oppError.message}`);
-    // Continue anyway - might already exist
+    console.warn(`⚠️  Failed to create/update reply_opportunities entry: ${oppError.message}`);
+    // Continue anyway - pipeline_source bypass should handle it
   }
   
   // Also set pipeline_source in content_metadata to bypass INVARIANT_BLOCK
