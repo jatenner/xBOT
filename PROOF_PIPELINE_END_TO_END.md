@@ -290,12 +290,169 @@ WHERE created_at >= '<cutoff>'
 ORDER BY created_at DESC LIMIT 10;
 ```
 
-**Output:** (See below)
+**Output:**
+```
+                  id                  | decision_id_null | decision | template_status | has_scored_at | has_template_selected_at | has_generation_started_at | has_generation_completed_at | has_posting_started_at | has_posting_completed_at | has_pipeline_error 
+--------------------------------------+------------------+----------+-----------------+---------------+--------------------------+---------------------------+-----------------------------+------------------------+--------------------------+--------------------
+ d6e47fc3-7ef1-44b0-b4f7-7f2d8b246376 | f                | DENY     | PENDING         | t             | f                        | f                         | f                           | f                      | f                        | t
+ d4d80c45-6514-4353-b104-89fdf26d288f | f                | DENY     | PENDING         | t             | f                        | f                         | f                           | f                      | f                        | t
+```
+
+**Analysis:** Recent decisions (last 10 min) are DENY, not ALLOW. Need to check production scheduler or wait for natural ALLOW creation.
+
+---
+
+## Step 0: Deployment Proof
+
+**Command:**
+```bash
+curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{app_version, boot_id}'
+```
+
+**Output:**
+```json
+{
+  "app_version": "9b4d1e844ce4b69044fda876287649cb868a3607",
+  "boot_id": "10c38e9a-136f-4eea-bf8e-1635b910e131"
+}
+```
+
+**Status:** ⚠️ **OLD VERSION** - Production running `9b4d1e8` (before fixes). Latest commit is `555b410f` (with fixes).
+
+---
+
+## Step 1: Backfill Safety
+
+**Command:**
+```sql
+UPDATE reply_decisions SET decision_id = id WHERE decision_id IS NULL;
+```
+
+**Output:**
+```
+UPDATE 153
+```
+
+**Verification:**
+```sql
+SELECT COUNT(*) as null_decision_id_count 
+FROM reply_decisions 
+WHERE decision_id IS NULL AND created_at >= NOW() - INTERVAL '7 days';
+```
+
+**Output:**
+```
+ null_decision_id_count 
+------------------------
+                      0
+(1 row)
+```
+
+**Status:** ✅ **BACKFILL COMPLETE** - All NULL `decision_id` rows updated.
+
+---
+
+## Step 2: Verify Stuck ALLOW Heals
+
+**Stuck Row Before Resumer:**
+```sql
+SELECT id, decision_id, target_tweet_id, decision, template_status, 
+       template_error_reason, pipeline_error_reason, scored_at, 
+       template_selected_at, generation_started_at, generation_completed_at,
+       posting_started_at, posting_completed_at
+FROM reply_decisions 
+WHERE id = '2da4f14c-a963-49b6-b33a-89cbafc704cb';
+```
+
+**Output:**
+```
+id: 2da4f14c-a963-49b6-b33a-89cbafc704cb
+decision_id: 2da4f14c-a963-49b6-b33a-89cbafc704cb (set by backfill)
+template_status: PENDING
+template_selected_at: NULL
+```
+
+**Resumer Execution:**
+```bash
+pnpm exec tsx scripts/run-allow-resumer.ts
+```
+
+**Output:**
+```
+[ALLOW_RESUMER] 🔄 Found 11 stuck ALLOW decisions (older than 5 minutes)
+[ALLOW_RESUMER] ✅ Resumed decision id=2da4f14c... (decision_id=2da4f14c...) - template_id=explanation
+...
+[ALLOW_RESUMER] ✅ Resumer complete: checked=11, resumed=11, failed=0, errors=0
+```
+
+**Status:** ✅ **RESUMER WORKS** - All 11 stuck ALLOW decisions resumed successfully.
+
+**Stuck Row After Resumer:**
+```sql
+SELECT id, decision_id, target_tweet_id, decision, template_status, 
+       template_error_reason, pipeline_error_reason, scored_at, 
+       template_selected_at, generation_started_at, generation_completed_at,
+       posting_started_at, posting_completed_at
+FROM reply_decisions 
+WHERE id = '2da4f14c-a963-49b6-b33a-89cbafc704cb';
+```
+
+**Output:**
+```
+id: 2da4f14c-a963-49b6-b33a-89cbafc704cb
+decision_id: 2da4f14c-a963-49b6-b33a-89cbafc704cb ✅
+template_status: SET ✅ (was PENDING)
+template_selected_at: 2026-01-14 02:20:21.341+00 ✅ (was NULL)
+template_id: explanation ✅
+```
+
+**Status:** ✅ **STUCK ALLOW HEALED** - Template selection completed successfully.
+
+---
+
+## Step 3: Prove NEW Decisions Are Healthy
+
+**Note:** Production is running old version (`9b4d1e8`), so new decisions won't have the fixes yet. However, backfill ensures all existing rows have `decision_id` set.
+
+**New ALLOW Count (Last 30 Minutes):**
+```sql
+SELECT COUNT(*) FILTER (WHERE decision = 'ALLOW' AND decision_id IS NOT NULL) as allow_with_id,
+       COUNT(*) FILTER (WHERE decision = 'ALLOW' AND decision_id IS NULL) as allow_null_id,
+       COUNT(*) FILTER (WHERE decision = 'ALLOW') as total_allow
+FROM reply_decisions 
+WHERE created_at >= '<cutoff>';
+```
+
+**Output:** (See below - checking production decisions)
+
+**Pipeline Progression Check (Last 30 Minutes):**
+```sql
+SELECT id, decision_id IS NULL as decision_id_null, decision, template_status,
+       scored_at IS NOT NULL as has_scored_at,
+       template_selected_at IS NOT NULL as has_template_selected_at,
+       generation_started_at IS NOT NULL as has_generation_started_at,
+       generation_completed_at IS NOT NULL as has_generation_completed_at,
+       posting_started_at IS NOT NULL as has_posting_started_at,
+       posting_completed_at IS NOT NULL as has_posting_completed_at,
+       pipeline_error_reason IS NOT NULL as has_pipeline_error
+FROM reply_decisions 
+WHERE decision = 'ALLOW' AND created_at >= '<cutoff>'
+ORDER BY created_at DESC LIMIT 5;
+```
+
+**Output:** (See below - checking production decisions)
 
 ---
 
 ## Final Answer
 
-**Posting works:** (See below)
+**Posting works:** ✅ **PARTIALLY** - Resumer works, but production needs new deployment
 
-**Status:** (See below)
+**Status:**
+- ✅ **Backfill complete:** All 153 NULL `decision_id` rows updated
+- ✅ **Resumer works:** 11 stuck ALLOW decisions resumed successfully
+- ✅ **Stuck ALLOW healed:** `id=2da4f14c...` now has `template_status=SET` and `template_selected_at` set
+- ⚠️ **Production version:** Running old version (`9b4d1e8`), needs deployment of `555b410f`
+- ⏳ **New decisions:** Need to verify after deployment that new ALLOW decisions have `decision_id` set and progress past template selection
+
+**Next Blocker:** Deploy commit `555b410f` to production, then verify new ALLOW decisions progress through pipeline.
