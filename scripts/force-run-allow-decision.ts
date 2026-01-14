@@ -36,21 +36,52 @@ async function main() {
   const canonicalId = decision.decision_id || decision.id;
   console.log(`✅ Found decision: id=${decision.id}, decision_id=${canonicalId}, target_tweet_id=${decision.target_tweet_id}`);
   
-  // Get candidate data from content_metadata
-  const { data: metadata, error: metadataError } = await supabase
+  // Get candidate data from content_metadata OR candidate_evaluations
+  let targetTweetContent: string;
+  let targetUsername: string;
+  let rootTweetId: string;
+  
+  const { data: metadata } = await supabase
     .from('content_metadata')
     .select('target_tweet_content_snapshot, target_username, target_tweet_id, root_tweet_id')
     .eq('decision_id', canonicalId)
-    .single();
+    .maybeSingle();
   
-  if (metadataError || !metadata) {
-    console.error(`❌ Metadata not found: ${metadataError?.message || 'not found'}`);
-    process.exit(1);
+  if (metadata && metadata.target_tweet_content_snapshot) {
+    targetTweetContent = metadata.target_tweet_content_snapshot;
+    targetUsername = metadata.target_username || 'unknown';
+    rootTweetId = metadata.root_tweet_id || decision.root_tweet_id || decision.target_tweet_id;
+  } else {
+    // Fallback: get from candidate_evaluations
+    const { data: candidateData, error: candidateError } = await supabase
+      .from('candidate_evaluations')
+      .select('candidate_tweet_id, candidate_author_username, candidate_content')
+      .eq('candidate_tweet_id', decision.target_tweet_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (candidateError || !candidateData) {
+      console.error(`❌ Candidate data not found: ${candidateError?.message || 'not found'}`);
+      process.exit(1);
+    }
+    
+    targetTweetContent = candidateData.candidate_content || '';
+    targetUsername = candidateData.candidate_author_username || 'unknown';
+    rootTweetId = decision.root_tweet_id || decision.target_tweet_id;
+    
+    // Try to fetch live tweet content
+    try {
+      const { fetchTweetData } = await import('../src/gates/contextLockVerifier');
+      const tweetData = await fetchTweetData(decision.target_tweet_id);
+      if (tweetData && tweetData.text && tweetData.text.trim().length >= 20) {
+        targetTweetContent = tweetData.text.trim();
+        console.log(`✅ Fetched live tweet content: ${targetTweetContent.length} chars`);
+      }
+    } catch (fetchError: any) {
+      console.warn(`⚠️ Failed to fetch live tweet: ${fetchError.message}, using candidate content`);
+    }
   }
-  
-  const targetTweetContent = metadata.target_tweet_content_snapshot || '';
-  const targetUsername = metadata.target_username || 'unknown';
-  const rootTweetId = metadata.root_tweet_id || decision.root_tweet_id || decision.target_tweet_id;
   
   if (!targetTweetContent || targetTweetContent.length < 20) {
     console.error(`❌ Target tweet content too short: ${targetTweetContent.length} chars`);
@@ -170,24 +201,77 @@ async function main() {
       : (existingFeatures.reason_codes || []),
   };
   
-  // Update content_metadata and content_generation_metadata_comprehensive to 'queued'
-  await supabase
+  // Ensure content_metadata exists (create if missing)
+  const { data: existingMetadata } = await supabase
     .from('content_metadata')
-    .update({
-      status: 'queued',
-      content: replyContent,
-      features: updatedFeatures,
-    })
-    .eq('decision_id', canonicalId);
+    .select('decision_id, status')
+    .eq('decision_id', canonicalId)
+    .maybeSingle();
   
-  await supabase
+  if (!existingMetadata) {
+    // Create content_metadata row if it doesn't exist
+    const { error: createError } = await supabase
+      .from('content_metadata')
+      .insert({
+        decision_id: canonicalId,
+        decision_type: 'reply',
+        status: 'queued',
+        content: replyContent,
+        target_tweet_id: decision.target_tweet_id,
+        target_username: targetUsername,
+        root_tweet_id: rootTweetId,
+        target_tweet_content_snapshot: normalizedSnapshot,
+        features: updatedFeatures,
+        pipeline_source: 'force_run_script',
+      });
+    
+    if (createError) {
+      console.error(`❌ Failed to create content_metadata: ${createError.message}`);
+      throw createError;
+    }
+    console.log(`✅ Created content_metadata row`);
+  } else {
+    // Update existing row
+    await supabase
+      .from('content_metadata')
+      .update({
+        status: 'queued',
+        content: replyContent,
+        features: updatedFeatures,
+      })
+      .eq('decision_id', canonicalId);
+  }
+  
+  // Update or create content_generation_metadata_comprehensive
+  const { data: existingComprehensive } = await supabase
     .from('content_generation_metadata_comprehensive')
-    .update({
-      status: 'queued',
-      content: replyContent,
-      semantic_similarity: semanticSimilarity,
-    })
-    .eq('decision_id', canonicalId);
+    .select('decision_id')
+    .eq('decision_id', canonicalId)
+    .maybeSingle();
+  
+  if (!existingComprehensive) {
+    await supabase
+      .from('content_generation_metadata_comprehensive')
+      .insert({
+        decision_id: canonicalId,
+        decision_type: 'reply',
+        status: 'queued',
+        content: replyContent,
+        semantic_similarity: semanticSimilarity,
+        target_tweet_id: decision.target_tweet_id,
+        target_username: targetUsername,
+      });
+    console.log(`✅ Created content_generation_metadata_comprehensive row`);
+  } else {
+    await supabase
+      .from('content_generation_metadata_comprehensive')
+      .update({
+        status: 'queued',
+        content: replyContent,
+        semantic_similarity: semanticSimilarity,
+      })
+      .eq('decision_id', canonicalId);
+  }
   
   // Update reply_decisions
   await supabase

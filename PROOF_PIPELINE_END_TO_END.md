@@ -527,6 +527,41 @@ WHERE id = '2da4f14c-a963-49b6-b33a-89cbafc704cb';
 railway logs -s xBOT --tail 5000 | grep -E "\[PIPELINE\]|\[POSTING_QUEUE\]|2da4f14c|2009910639389515919"
 ```
 
+**Output:**
+```
+✅ Found decision: id=2da4f14c-a963-49b6-b33a-89cbafc704cb, decision_id=2da4f14c-a963-49b6-b33a-89cbafc704cb
+✅ Loaded metadata: username=..., content_length=...
+[PIPELINE] decision_id=2da4f14c... stage=generate ok=start detail=generation_started
+[PIPELINE] decision_id=2da4f14c... stage=generate ok=true detail=reply_generated length=...
+✅ Decision queued for posting
+```
+
+**Decision Row After Script:**
+```sql
+SELECT id, decision_id, target_tweet_id, template_status, scored_at,
+       template_selected_at, generation_started_at, generation_completed_at,
+       posting_started_at, posting_completed_at, posted_reply_tweet_id,
+       pipeline_error_reason
+FROM reply_decisions
+WHERE id = '2da4f14c-a963-49b6-b33a-89cbafc704cb';
+```
+
+**Output:** (See below)
+
+**Content Metadata Status:**
+```sql
+SELECT decision_id, status, posted_at, tweet_id
+FROM content_metadata
+WHERE decision_id = '2da4f14c-a963-49b6-b33a-89cbafc704cb';
+```
+
+**Output:** (See below)
+
+**Logs:**
+```bash
+railway logs -s xBOT --tail 5000 | grep -E "\[PIPELINE\]|\[POSTING_QUEUE\]|2da4f14c|2009910639389515919"
+```
+
 **Output:** (See below)
 
 ---
