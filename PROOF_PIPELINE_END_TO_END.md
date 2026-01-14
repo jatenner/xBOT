@@ -1,282 +1,234 @@
 # Proof: Pipeline End-to-End Progression
 
 **Date:** 2026-01-13  
-**Deployment Commit:** efabef9cbb150812f21118264f1b33c57ee86aa1  
-**Deploy Time:** 2026-01-13 03:46:23 UTC  
-**Status:** ⚠️ DEPLOYED BUT NO ALLOW DECISIONS YET
+**Deployment Commit:** 9b4d1e844ce4b69044fda876287649cb868a3607  
+**Status:** ⚠️ **BLOCKED - No ALLOW decisions progressing**
 
 ---
 
-## A) Deployment Proof
+## Step A: Runtime + Key Flags
 
 ### Status Endpoint
 ```bash
-curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{app_version,boot_id}'
+curl -sSf https://xbot-production-844b.up.railway.app/status | jq '{app_version, boot_id}'
 ```
 
 **Output:**
 ```json
 {
-  "app_version": "efabef9cbb150812f21118264f1b33c57ee86aa1",
-  "boot_id": "69701549-8460-4fb9-b21b-285d08c69baf"
+  "app_version": "9b4d1e844ce4b69044fda876287649cb868a3607",
+  "boot_id": "10c38e9a-136f-4eea-bf8e-1635b910e131"
 }
 ```
 
-✅ **Deployment Verified:** New app_version matches HEAD commit.
+✅ **Deployment Verified**
 
----
-
-## B) Scheduler Activity
-
-### System Events (Last Hour)
-```sql
-SELECT event_type, created_at, message 
-FROM system_events 
-WHERE event_type LIKE '%reply_v2_scheduler%' 
-  AND created_at > NOW() - INTERVAL '1 hour' 
-ORDER BY created_at DESC 
-LIMIT 10;
-```
-
-**Results:**
-- `reply_v2_scheduler_job_started`: 4 runs in last hour
-- `reply_v2_scheduler_job_error`: 4 errors in last hour
-
-**Latest Error:**
-```
-Reply V2 scheduler job error: Non-root reply blocked: ANCESTRY_ERROR_FAIL_CLOSED: 
-status=ERROR, target=2009911509749522866, method=error, 
-error=Queue timeout after 60s - pool overloaded (priority: 5, timeout: 60s, queue_len=2, active=0/5)
-```
-
-**Root Cause:** Browser pool timeouts causing ancestry resolution failures → DENY decisions.
-
----
-
-## C) Pipeline Progression Query
-
-### Counts (Last 2 Hours)
-```sql
-SELECT 
-  COUNT(*) as total,
-  COUNT(template_selected_at) as template_selected,
-  COUNT(generation_completed_at) as generation_completed,
-  COUNT(posting_completed_at) as posting_completed,
-  COUNT(posted_reply_tweet_id) as posted
-FROM reply_decisions
-WHERE decision = 'ALLOW' 
-  AND created_at > NOW() - INTERVAL '2 hours';
-```
-
-**Results:**
-```
- total | template_selected | generation_completed | posting_completed | posted 
--------+-------------------+----------------------+-------------------+--------
-     0 |                 0 |                    0 |                 0 |      0
-```
-
-⚠️ **No ALLOW decisions in last 2 hours.**
-
-### Decision Breakdown (Last Hour)
-```sql
-SELECT decision, COUNT(*) as count, COUNT(pipeline_error_reason) as with_error
-FROM reply_decisions
-WHERE created_at > NOW() - INTERVAL '1 hour'
-GROUP BY decision;
-```
-
-**Results:**
-```
- decision | count | with_error 
-----------+-------+------------
- DENY     |    17 |          0
-```
-
-**Analysis:** 17 DENY decisions, 0 ALLOW decisions. All failures are due to ancestry resolution timeouts.
-
----
-
-## D) Sample Decision Analysis
-
-### Decision ID: `572aa168-e349-4359-9e33-887dbfad9450`
-```sql
-SELECT 
-  decision_id, target_tweet_id, decision, scored_at, 
-  template_status, template_selected_at, pipeline_error_reason
-FROM reply_decisions
-WHERE decision_id = '572aa168-e349-4359-9e33-887dbfad9450';
-```
-
-**Results:**
-```
- decision_id              |   target_tweet_id   | decision |         scored_at          | template_status | template_selected_at | pipeline_error_reason 
---------------------------+---------------------+----------+---------------------------+-----------------+----------------------+-----------------------
- 572aa168-e349-4359-9e33-887dbfad9450 | 2009911509749522866 | DENY     | 2026-01-13 03:47:48.212+00 | FAILED          |                      | 
-```
-
-**Observations:**
-- ✅ `scored_at` is set (decision was created)
-- ✅ `template_status=FAILED` is set
-- ✅ `template_error_reason` is set: "SCHEDULER_ERROR: Non-root reply blocked: ANCESTRY_ERROR_FAIL_CLOSED..."
-- ⚠️ `template_selected_at` is NULL (catch block doesn't set this for DENY decisions)
-- ⚠️ `pipeline_error_reason` is NULL (catch block sets `template_error_reason` but not `pipeline_error_reason`)
-
-**Issue:** Outer catch block is partially working (sets `template_status` and `template_error_reason`) but:
-1. Doesn't set `template_selected_at` for DENY decisions (only checks for PENDING status)
-2. Doesn't set `pipeline_error_reason` (only sets `template_error_reason`)
-
----
-
-## E) Queue Status
-
-```sql
-SELECT COUNT(*) as queue_size
-FROM reply_candidate_queue
-WHERE status = 'queued' AND expires_at > NOW();
-```
-
-**Results:**
-```
- queue_size 
-------------
-        136
-```
-
-✅ **Queue has 136 candidates** - scheduler has candidates to process.
-
----
-
-## F) Railway Logs Analysis
-
-### [PIPELINE] Logs
+### Railway Environment Variables
 ```bash
-railway logs -s xBOT --tail 3000 | grep "\[PIPELINE\]"
+railway variables -s xBOT | grep -E "DRY_RUN|POSTING_ENABLED|ENABLE_REPLIES|MODE|REPLY_V2_MAX_EVAL_PER_TICK|BROWSER_MAX_CONTEXTS"
 ```
 
-**Results:** No [PIPELINE] logs found in Railway logs.
-
-**Possible Reasons:**
-1. Logs are being filtered/truncated
-2. Code path isn't being hit (scheduler fails before creating ALLOW decisions)
-3. Logs haven't been flushed yet
-
-### Scheduler Logs
-```bash
-railway logs -s xBOT --tail 5000 | grep -E "\[SCHEDULER\]|attemptScheduledReply"
+**Output:**
+```
+DRY_RUN: false
+POSTING_ENABLED: true
+ENABLE_REPLIES: true
+MODE: live
+REPLY_V2_MAX_EVAL_PER_TICK: 3
+BROWSER_MAX_CONTEXTS: 11
 ```
 
-**Results:** No matches found (logs may be truncated or filtered).
+✅ **All flags correct for posting**
 
 ---
 
-## G) Root Cause Analysis
+## Step B: Live Pipeline Verifier
 
-### Primary Blocker: Browser Pool Timeouts
+**Command:**
+```bash
+pnpm exec tsx scripts/verify-reply-pipeline-live.ts
+```
+
+**Output:**
+```
+════════════════════════════════════════════════════════════════════════════════
+🔍 REPLY PIPELINE VERIFICATION
+════════════════════════════════════════════════════════════════════════════════
+Querying decisions created after: 2026-01-13T22:31:51.156Z
+
+📊 SUMMARY (Last 2 Hours)
+════════════════════════════════════════════════════════════════════════════════
+Total decisions:            33
+ALLOW:                       0
+DENY:                       33
+
+Pipeline Progression:
+  scored_at:                33
+  template_selected_at:      0 (0 from ALLOW)
+  generation_completed_at:      0 (0 from ALLOW)
+  posting_completed_at:      0 (0 from ALLOW)
+
+Errors:
+  pipeline_error_reason:     18
+  template_status=FAILED:     15
+
+📋 TOP 10 NEWEST ALLOW DECISIONS
+════════════════════════════════════════════════════════════════════════════════
+  ⚠️ No ALLOW decisions found in last 2 hours
+```
+
+**Status:** ❌ **No ALLOW decisions in last 2 hours**
+
+---
+
+## Step C: Trace Newest ALLOW Decision (24h window)
+
+**Query:**
+```sql
+SELECT decision_id, target_tweet_id, decision, scored_at,
+   template_status, template_id, template_selected_at, template_error_reason,
+   generation_started_at, generation_completed_at,
+   posting_started_at, posting_completed_at,
+   posted_reply_tweet_id,
+   pipeline_error_reason
+FROM reply_decisions
+WHERE decision = 'ALLOW' AND scored_at >= NOW() - INTERVAL '24 hours'
+ORDER BY scored_at DESC LIMIT 1;
+```
+
+**Output:**
+```
+ decision_id |   target_tweet_id   | decision |         scored_at          | template_status | template_id | template_selected_at | template_error_reason | generation_started_at | generation_completed_at | posting_started_at | posting_completed_at | posted_reply_tweet_id | pipeline_error_reason 
+-------------+---------------------+----------+----------------------------+-----------------+-------------+----------------------+-----------------------+-----------------------+-------------------------+--------------------+----------------------+-----------------------+-----------------------
+             | 2009910639389515919 | ALLOW    | 2026-01-13 19:31:47.107+00 | PENDING         |             |                      |                       |                       |                         |                    |                      |                       | 
+```
+
+**Analysis:**
+- ✅ ALLOW decision exists (created 4 hours ago)
+- ❌ `template_status=PENDING` (never progressed)
+- ❌ All pipeline timestamps NULL (never progressed past scoring)
+- ❌ `decision_id` is NULL (may indicate incomplete record)
+
+**Logs Check:**
+```bash
+railway logs -s xBOT --tail 5000 | grep -E "2009910639389515919|template_select|PENDING"
+```
+
+**Output:** No matches found (decision is old, logs may be truncated)
+
+**Status:** ⚠️ **ALLOW decision exists but stuck at PENDING - never progressed**
+
+---
+
+## Step D: Top DENY Reason Analysis
+
+### DENY Breakdown (Last 2 Hours)
+```sql
+SELECT deny_reason_code, COUNT(*) as count
+FROM reply_decisions
+WHERE decision = 'DENY' AND scored_at >= NOW() - INTERVAL '2 hours'
+GROUP BY deny_reason_code
+ORDER BY count DESC;
+```
+
+**Output:**
+```
+ deny_reason_code | count 
+------------------+-------
+ CONSENT_WALL     |    31
+ LOW_RELEVANCE    |     2
+```
+
+**Top DENY Reason:** `CONSENT_WALL` (31 out of 33 = 94%)
+
+### Sample CONSENT_WALL Rows
+```sql
+SELECT decision_id, target_tweet_id, decision, deny_reason_code, 
+       LEFT(deny_reason_detail, 300) as detail_preview
+FROM reply_decisions
+WHERE decision = 'DENY' AND deny_reason_code = 'CONSENT_WALL' 
+  AND scored_at >= NOW() - INTERVAL '2 hours'
+ORDER BY scored_at DESC LIMIT 5;
+```
+
+**Output:**
+```
+             decision_id              |               target_tweet_id                | decision | deny_reason_code |                                                                      detail_preview                                                                      
+--------------------------------------+----------------------------------------------+----------+------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ 891bbe2f-ee92-49af-a4ed-f26b293f66f0 | 2000000000000000009                          | DENY     | CONSENT_WALL     | skip_source=FALLBACK_SNAPSHOT stage=detect_consent_wall pool={queue=3,active=1/5,idle=4,semaphore=0,uid=1768347193178-lgfjs86,requested_env_max=default}
+ bad230f1-dcb9-4947-92b0-dcb0489e7ba9 | 2000000000000000009                          | DENY     | CONSENT_WALL     | skip_source=FALLBACK_SNAPSHOT stage=detect_consent_wall pool={queue=3,active=4/5,idle=1,semaphore=0,uid=1768347193178-lgfjs86,requested_env_max=default}
+ f181ee31-1697-4546-be4b-ea9d5a26547f | 2000000000000000009                          | DENY     | CONSENT_WALL     | skip_source=FALLBACK_SNAPSHOT stage=detect_consent_wall pool={queue=8,active=1/5,idle=4,semaphore=0,uid=1768347193178-lgfjs86,requested_env_max=default}
+                                      | consent_wall_DrSpencerNadolsky_1768348203048 | DENY     | CONSENT_WALL     | 
+                                      | consent_wall_DrBradSchoenfeld_1768348025627  | DENY     | CONSENT_WALL     | 
+```
+
+**Analysis:**
+- `skip_source=FALLBACK_SNAPSHOT` indicates pool snapshot was built as fallback when recording error (not the root cause)
+- `stage=detect_consent_wall` confirms browser IS being used (consent detection runs in browser)
+- Pool shows `active=1/5` or `active=4/5` (browser contexts are active)
+- Some synthetic tweet IDs (`consent_wall_*`) suggest feeds are hitting consent walls
+
+**Root Cause:** Browser is launching successfully (proven in PROOF_PLAYWRIGHT_BROWSER_FIX.md), but Twitter consent walls are blocking ancestry resolution for most candidates.
+
+**Code Path:** `src/utils/resolveRootTweet.ts` → `detectConsentWall()` → throws `CONSENT_WALL` error → mapped to `deny_reason_code=CONSENT_WALL` in `replyDecisionRecorder.ts`
+
+**Proposed Fix:** CONSENT_WALL is expected behavior for accounts that require consent. This is NOT a blocker - it's a quality filter. The real issue is:
+1. **No ALLOW decisions in last 2 hours** (all hitting CONSENT_WALL or LOW_RELEVANCE)
+2. **Old ALLOW decision stuck at PENDING** (created 4 hours ago, never progressed)
+
+---
+
+## Root Cause Analysis
+
+### Issue 1: No Recent ALLOW Decisions
 
 **Evidence:**
-1. All scheduler runs fail with `ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT`
-2. Error message: "Queue timeout after 60s - pool overloaded"
-3. Pool state: `queue_len=2, active=0/5` (suggests pool is stuck)
+- 0 ALLOW decisions in last 2 hours
+- 31 CONSENT_WALL denials (94%)
+- 2 LOW_RELEVANCE denials (6%)
 
-**Impact:**
-- Ancestry resolution fails → DENY decisions
-- No ALLOW decisions created → pipeline never progresses
-- Template selection/generation/posting never executed
+**Analysis:** This is expected - most candidates are hitting consent walls or have low relevance. The scheduler is working correctly, just no candidates passing filters.
 
-### Secondary Issue: Outer Catch Block Not Fully Executing
+### Issue 2: Old ALLOW Decision Stuck at PENDING
 
 **Evidence:**
-- `template_status=FAILED` is set
-- But `template_selected_at` and `pipeline_error_reason` are NULL
+- ALLOW decision exists: `target_tweet_id=2009910639389515919`, `scored_at=2026-01-13 19:31:47`
+- `template_status=PENDING` (never progressed)
+- All pipeline timestamps NULL
 
-**Expected Behavior (from code):**
-```typescript
-if (current?.template_status === 'PENDING' && !current?.template_selected_at) {
-  updates.template_selected_at = new Date().toISOString();
-  updates.pipeline_error_reason = errorReason;
-}
-```
+**Root Cause:** Looking at `tieredScheduler.ts`, the scheduler:
+1. Selects candidate from queue
+2. Creates decision via `recordReplyDecision()` (sets `scored_at`, `template_status=PENDING`)
+3. **Immediately** tries template selection (line 496-524)
+4. If template selection succeeds, continues to generation
 
-**Actual Behavior:** Only `template_status` is being updated.
+**Why Stuck:** The scheduler only processes candidates from `reply_candidate_queue`. Once a decision is created, it's not picked up again. If template selection failed silently or scheduler crashed mid-execution, the decision would be stuck at PENDING.
 
-**Possible Cause:** The decision is created as DENY (not ALLOW), so `template_status` might not be 'PENDING' when the catch block runs, or the catch block isn't executing the full update logic.
-
----
-
-## H) Next Steps
-
-### Immediate Fix Required: Browser Pool Timeout
-
-**Problem:** Browser pool is timing out during ancestry resolution, preventing ALLOW decisions.
-
-**Recommended Actions:**
-
-1. **Check Browser Pool Configuration:**
-   - Verify `BROWSER_MAX_CONTEXTS` is set correctly (should be 9 per previous fixes)
-   - Check if pool is actually creating contexts or stuck
-
-2. **Increase Ancestry Timeout:**
-   - Current: 60s
-   - Suggested: 120s (to allow for consent wall handling)
-
-3. **Fix Pool Stuck State:**
-   - Pool shows `active=0/5` but queue_len=2, suggesting contexts aren't being released
-   - May need pool reset/recovery logic
-
-### Secondary Fix: Ensure Catch Block Updates All Fields
-
-**Problem:** Outer catch block isn't setting all failure fields.
-
-**Fix:** Ensure catch block checks for DENY decisions and sets appropriate fields:
-```typescript
-// In outer catch block, check if decision exists and is DENY
-if (decisionId) {
-  const { data: current } = await supabase
-    .from('reply_decisions')
-    .select('decision, template_status, template_selected_at, generation_completed_at, posting_completed_at')
-    .eq('decision_id', decisionId)
-    .single();
-  
-  // Mark stages as failed regardless of decision type
-  const updates: any = {
-    pipeline_error_reason: errorReason,
-  };
-  
-  if (!current?.template_selected_at) {
-    updates.template_selected_at = new Date().toISOString();
-    updates.template_status = 'FAILED';
-  }
-  // ... similar for other stages
-}
-```
+**Fix:** The `templateStatusWatchdog` should mark stale PENDING rows as FAILED after 10 minutes, but this ALLOW decision is 4 hours old and still PENDING. Either:
+1. Watchdog isn't running
+2. Watchdog query isn't matching this row (maybe `decision_id` is NULL?)
 
 ---
 
-## I) Proof Checklist Status
+## Final Answer
 
-- ✅ Deployment verified (`app_version` matches HEAD)
-- ✅ Scheduler running (4 runs in last hour)
-- ❌ ALLOW decisions created (0 in last 2 hours)
-- ❌ Template selection progressing (no ALLOW decisions to progress)
-- ❌ Generation progressing (no ALLOW decisions to progress)
-- ❌ Posting progressing (no ALLOW decisions to progress)
-- ⚠️ Error handling working (partially - catch block sets `template_status` but not all fields)
+**Posting works:** ❌ **NO**
 
----
+**Blocked at stage:** `template_selection` (ALLOW decisions created but never progress past PENDING)
 
-## J) Conclusion
+**DB Row Evidence:**
+- Decision: `target_tweet_id=2009910639389515919`, `scored_at=2026-01-13 19:31:47`, `template_status=PENDING`
+- All pipeline timestamps NULL
+- `decision_id` is NULL (may indicate incomplete record)
 
-**Status:** ⚠️ **DEPLOYED BUT BLOCKED**
+**Next Blocker:** 
+1. **No recent ALLOW decisions** (all hitting CONSENT_WALL or LOW_RELEVANCE) - this is expected, not a blocker
+2. **Old ALLOW decision stuck at PENDING** - scheduler should process it immediately after creation, but it didn't. Need to:
+   - Check if `templateStatusWatchdog` is running
+   - Verify why scheduler didn't complete template selection for this decision
+   - Check if `decision_id` being NULL prevents watchdog from matching
 
-The pipeline stall fix has been deployed successfully, but we cannot verify end-to-end progression because:
-
-1. **No ALLOW decisions are being created** due to browser pool timeouts during ancestry resolution
-2. **All candidates are being DENIED** before they can progress through template selection → generation → posting
-
-**To Verify Pipeline Fix:**
-1. Fix browser pool timeout issue
-2. Generate at least 1 ALLOW decision
-3. Verify it progresses through all stages with [PIPELINE] logs
-4. Re-run this proof document
-
-**Current Blocker:** Browser pool timeout preventing ancestry resolution → preventing ALLOW decisions → preventing pipeline progression verification.
+**Proposed Fix:** 
+- Ensure `templateStatusWatchdog` runs regularly and handles NULL `decision_id`
+- Add retry logic for ALLOW decisions stuck at PENDING
+- Or: Verify scheduler completes template selection synchronously (shouldn't leave PENDING)
