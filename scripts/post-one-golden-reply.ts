@@ -270,7 +270,68 @@ async function main() {
       
       if (generationSuccess && semanticSimilarity >= 0.25) {
         console.log(`   ✅ Successfully generated reply\n`);
-        break candidateLoop; // Found valid candidate with successful generation
+        
+        // Step 6: Preflight gate report (before breaking loop)
+        const normalizedTarget = normalizeTweetText(targetTweetContent);
+        const targetTweetContentHash = createHash('sha256')
+          .update(normalizedTarget)
+          .digest('hex');
+        
+        const missingFields: string[] = [];
+        if (!targetTweetContentHash) missingFields.push('target_tweet_content_hash');
+        if (semanticSimilarity === undefined) missingFields.push('semantic_similarity');
+        if (!ancestry.rootTweetId) missingFields.push('root_tweet_id');
+        
+        const preflightReport: PreflightReport = {
+          target_exists: ancestry.status === 'OK',
+          is_root: ancestry.isRoot,
+          semantic_similarity: semanticSimilarity,
+          missing_fields: missingFields,
+          will_pass_gates: false,
+        };
+        
+        if (!preflightReport.is_root) {
+          preflightReport.failure_reason = 'target_not_root';
+        } else if (preflightReport.semantic_similarity < 0.25) {
+          preflightReport.failure_reason = 'low_semantic_similarity';
+        } else if (missingFields.length > 0) {
+          preflightReport.failure_reason = `missing_fields: ${missingFields.join(', ')}`;
+        } else {
+          preflightReport.will_pass_gates = true;
+        }
+        
+        // Print strengthened preflight report
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('           📋 PREFLIGHT GATE REPORT');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+        console.log(`chosen target_tweet_id: ${chosenTweetId}`);
+        console.log(`\nValidation outcome:`);
+        console.log(`  target_exists: ${preflightReport.target_exists ? '✅ YES' : '❌ NO'}`);
+        console.log(`  is_root: ${preflightReport.is_root ? '✅ YES' : '❌ NO'}`);
+        console.log(`  status: ${ancestry.status || 'UNKNOWN'}`);
+        console.log(`  method: ${ancestry.method || 'unknown'}`);
+        console.log(`\nGate fields:`);
+        console.log(`  semantic_similarity: ${preflightReport.semantic_similarity.toFixed(3)} ${preflightReport.semantic_similarity >= 0.25 ? '✅' : '❌'} (threshold: 0.25)`);
+        console.log(`  missing_fields: ${preflightReport.missing_fields.length > 0 ? '❌ ' + preflightReport.missing_fields.join(', ') : '✅ None'}`);
+        console.log(`  target_tweet_content_hash: ${targetTweetContentHash ? '✅ Present' : '❌ Missing'}`);
+        console.log(`  root_tweet_id: ${ancestry.rootTweetId || chosenTweetId} ${ancestry.rootTweetId ? '✅' : '⚠️'}`);
+        console.log(`\nwill_pass_gates: ${preflightReport.will_pass_gates ? '✅ YES' : '❌ NO'}`);
+        if (preflightReport.failure_reason) {
+          console.log(`failure_reason: ${preflightReport.failure_reason}`);
+        }
+        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+        
+        if (!preflightReport.will_pass_gates) {
+          const reason = preflightReport.failure_reason || 'unknown';
+          skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+          console.log(`❌ Preflight check failed: ${reason} - Trying next candidate...\n`);
+          chosenTweetId = null;
+          ancestry = null;
+          continue candidateLoop;
+        }
+        
+        // All checks passed - break out of loop
+        break candidateLoop;
       } else {
         console.log(`   ❌ Generation failed or similarity too low - Trying next candidate...\n`);
         chosenTweetId = null;
@@ -278,6 +339,8 @@ async function main() {
         continue candidateLoop;
       }
     } catch (error: any) {
+      const reason = error.message?.substring(0, 50) || 'unknown_error';
+      skipReasons[reason] = (skipReasons[reason] || 0) + 1;
       console.log(`   ❌ Error: ${error.message} - Skipping\n`);
       continue candidateLoop;
     }
@@ -298,69 +361,7 @@ async function main() {
   }
   
   console.log(`✅ Chosen target tweet: ${chosenTweetId}\n`);
-  
   console.log(`✅ Final reply: "${replyContent}"\n`);
-  
-  // Step 6: Preflight gate report
-  console.log('Step 6: Preflight gate checks...\n');
-  
-  const normalizedTarget = normalizeTweetText(targetTweetContent);
-  const targetTweetContentHash = createHash('sha256')
-    .update(normalizedTarget)
-    .digest('hex');
-  
-  const missingFields: string[] = [];
-  if (!targetTweetContentHash) missingFields.push('target_tweet_content_hash');
-  if (semanticSimilarity === undefined) missingFields.push('semantic_similarity');
-  if (!ancestry.rootTweetId) missingFields.push('root_tweet_id');
-  
-  const preflightReport: PreflightReport = {
-    target_exists: ancestry.status === 'OK',
-    is_root: ancestry.isRoot,
-    semantic_similarity: semanticSimilarity,
-    missing_fields: missingFields,
-    will_pass_gates: false,
-  };
-  
-  if (!preflightReport.is_root) {
-    preflightReport.failure_reason = 'target_not_root';
-  } else if (preflightReport.semantic_similarity < 0.25) {
-    preflightReport.failure_reason = 'low_semantic_similarity';
-  } else if (missingFields.length > 0) {
-    preflightReport.failure_reason = `missing_fields: ${missingFields.join(', ')}`;
-  } else {
-    preflightReport.will_pass_gates = true;
-  }
-  
-  // Print strengthened preflight report
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('           📋 PREFLIGHT GATE REPORT');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-  console.log(`chosen target_tweet_id: ${chosenTweetId}`);
-  console.log(`\nValidation outcome:`);
-  console.log(`  target_exists: ${preflightReport.target_exists ? '✅ YES' : '❌ NO'}`);
-  console.log(`  is_root: ${preflightReport.is_root ? '✅ YES' : '❌ NO'}`);
-  console.log(`  status: ${ancestry.status || 'UNKNOWN'}`);
-  console.log(`  method: ${ancestry.method || 'unknown'}`);
-  console.log(`\nGate fields:`);
-  console.log(`  semantic_similarity: ${preflightReport.semantic_similarity.toFixed(3)} ${preflightReport.semantic_similarity >= 0.25 ? '✅' : '❌'} (threshold: 0.25)`);
-  console.log(`  missing_fields: ${preflightReport.missing_fields.length > 0 ? '❌ ' + preflightReport.missing_fields.join(', ') : '✅ None'}`);
-  console.log(`  target_tweet_content_hash: ${targetTweetContentHash ? '✅ Present' : '❌ Missing'}`);
-  console.log(`  root_tweet_id: ${ancestry.rootTweetId || chosenTweetId} ${ancestry.rootTweetId ? '✅' : '⚠️'}`);
-  console.log(`\nwill_pass_gates: ${preflightReport.will_pass_gates ? '✅ YES' : '❌ NO'}`);
-  if (preflightReport.failure_reason) {
-    console.log(`failure_reason: ${preflightReport.failure_reason}`);
-  }
-  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-  
-  if (!preflightReport.will_pass_gates) {
-    const reason = preflightReport.failure_reason || 'unknown';
-    skipReasons[reason] = (skipReasons[reason] || 0) + 1;
-    console.log(`❌ Preflight check failed: ${reason} - Trying next candidate...\n`);
-    chosenTweetId = null;
-    ancestry = null;
-    continue candidateLoop;
-  }
   
   // Step 7: Create decision record
   console.log('Step 7: Creating decision record...');
