@@ -483,11 +483,16 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     }
     
     // 🎯 PIPELINE STAGES: Mark generation started
+    // 🔒 FIX: Use id as fallback if decision_id is NULL (reuse decisionRow from template selection)
+    const updateIdForGen = decisionRow?.id || decisionId;
     const generationStartedAt = new Date().toISOString();
     await supabase
       .from('reply_decisions')
-      .update({ generation_started_at: generationStartedAt })
-      .eq('decision_id', decisionId);
+      .update({
+        generation_started_at: generationStartedAt,
+        decision_id: decisionId, // Ensure decision_id is set
+      })
+      .eq('id', updateIdForGen);
     console.log(`[PIPELINE] decision_id=${decisionId} stage=generate_start ok=true detail=generation_started_at_set`);
     
     // 🎨 QUALITY TRACKING: Select reply template
