@@ -80,7 +80,6 @@ async function main() {
     .from('reply_candidate_queue')
     .select('candidate_tweet_id, created_at')
     .gte('created_at', sixHoursAgo)
-    .not('candidate_tweet_id', 'like', '200000000000000000%') // Exclude fake test IDs
     .order('created_at', { ascending: false })
     .limit(maxCandidates);
   
@@ -92,7 +91,6 @@ async function main() {
     .eq('is_root_tweet', true)
     .eq('passed_hard_filters', true)
     .gte('created_at', twoHoursAgo)
-    .not('candidate_tweet_id', 'like', '200000000000000000%') // Exclude fake test IDs
     .order('created_at', { ascending: false })
     .limit(maxCandidates);
   
@@ -103,8 +101,13 @@ async function main() {
   ];
   
   // Deduplicate by tweet_id (keep first occurrence, which is from queue)
+  // Also filter out fake test tweet IDs (200000000000000000*)
   const seen = new Set<string>();
   const candidates = allCandidates.filter(c => {
+    // Filter out fake test IDs
+    if (c.candidate_tweet_id.startsWith('200000000000000000')) {
+      return false;
+    }
     if (seen.has(c.candidate_tweet_id)) return false;
     seen.add(c.candidate_tweet_id);
     return true;
