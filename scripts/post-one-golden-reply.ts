@@ -605,6 +605,12 @@ async function main() {
   console.log(`✅ Chosen target tweet: ${chosenTweetId}\n`);
   console.log(`✅ Final reply: "${replyContent}"\n`);
   
+  // Compute content hash and normalized target for Step 8
+  const normalizedTarget = normalizeTweetText(targetTweetContent);
+  const targetTweetContentHash = createHash('sha256')
+    .update(normalizedTarget)
+    .digest('hex');
+  
   // Step 7: Create decision record
   console.log('Step 7: Creating decision record...');
   const decisionId = crypto.randomUUID();
