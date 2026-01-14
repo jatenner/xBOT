@@ -612,17 +612,20 @@ async function main() {
         continue candidateLoop;
       }
     } catch (error: any) {
-      const errorCode = error.message?.includes('CONSENT_WALL') || error.message?.includes('ANCESTRY_NAV_TIMEOUT')
-        ? 'consent_wall'
-        : 'unknown_error';
+      const errorMsg = String(error.message || '');
+      const isConsentWall = errorMsg.includes('CONSENT_WALL') || errorMsg.includes('ANCESTRY_NAV_TIMEOUT');
       
-      if (errorCode === 'consent_wall') {
+      if (isConsentWall) {
         consentWallCount++;
+        const reason = 'consent_wall';
+        skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+        console.log(`   ⚠️  Consent wall/timeout - Skipping (${consentWallCount}/${maxConsentSkips})\n`);
+        continue candidateLoop;
       }
       
-      const reason = errorCode === 'consent_wall' ? 'consent_wall' : (error.message?.substring(0, 50) || 'unknown_error');
+      const reason = errorMsg.substring(0, 50) || 'unknown_error';
       skipReasons[reason] = (skipReasons[reason] || 0) + 1;
-      console.log(`   ❌ Error: ${error.message} - Skipping\n`);
+      console.log(`   ❌ Error: ${errorMsg} - Skipping\n`);
       continue candidateLoop;
     }
   }
