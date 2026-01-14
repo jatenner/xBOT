@@ -62,11 +62,8 @@ async function main() {
   }
   console.log('');
   
-  // Check for manual tweet ID override
-  const manualTweetId = process.argv.find(arg => arg.startsWith('--tweetId='))?.split('=')[1];
-  
   const maxCandidates = parseInt(
-    process.argv.find(arg => arg.startsWith('--maxCandidates='))?.split('=')[1] || (manualTweetId ? '1' : '12'),
+    process.argv.find(arg => arg.startsWith('--maxCandidates='))?.split('=')[1] || '12',
     10
   );
   const maxConsentSkips = parseInt(
@@ -77,12 +74,13 @@ async function main() {
     process.argv.find(arg => arg.startsWith('--maxSeconds='))?.split('=')[1] || '240',
     10
   );
+  const manualTweetId = process.argv.find(arg => arg.startsWith('--tweetId='))?.split('=')[1];
   
   console.log(`Max candidates to check: ${maxCandidates}`);
   console.log(`Max consent wall skips: ${maxConsentSkips}`);
   console.log(`Hard timeout: ${maxSeconds}s`);
   if (manualTweetId) {
-    console.log(`🎯 MANUAL MODE: Targeting tweet ${manualTweetId}\n`);
+    console.log(`Manual tweet ID: ${manualTweetId}\n`);
   } else {
     console.log('');
   }
@@ -92,160 +90,301 @@ async function main() {
   
   const supabase = getSupabaseClient();
   
-  // MANUAL MODE: If --tweetId provided, skip sourcing and validate only that tweet
-  let availableCandidates: Array<{ candidate_tweet_id: string; created_at: string }> = [];
-  
+  // TASK 1: Manual override mode
   if (manualTweetId) {
-    console.log('🎯 MANUAL MODE: Validating single tweet...\n');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('           🎯 MANUAL OVERRIDE MODE');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     
-    // Validate tweet ID format
-    if (!manualTweetId.match(/^\d{15,20}$/)) {
-      console.error(`❌ Invalid tweet ID format: ${manualTweetId} (must be 15-20 digits)`);
-      process.exit(1);
-    }
-    
-    // Create single candidate array
-    availableCandidates = [{
-      candidate_tweet_id: manualTweetId,
-      created_at: new Date().toISOString(),
-    }];
-    
-    console.log(`✅ Manual tweet ID validated: ${manualTweetId}\n`);
-  } else {
-    // Step 1: Get candidate tweet IDs from production tables (fresh-first, DB-prefiltered)
-    console.log('Step 1: Fetching candidate tweet IDs (fresh-first, DB-prefiltered)...\n');
-    
-    // DB-first prefilter: Only last 60 minutes
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    
-    // Get consent wall skip list (last 24h)
-    const { data: consentWallEvents } = await supabase
-      .from('system_events')
-      .select('event_data')
-      .eq('event_type', 'CONSENT_WALL_SEEN')
-      .gte('created_at', oneDayAgo);
-    
-    const consentWallTweetIds = new Set<string>();
-    (consentWallEvents || []).forEach(event => {
-      const data = typeof event.event_data === 'string' ? JSON.parse(event.event_data) : event.event_data;
-      if (data?.tweet_id) consentWallTweetIds.add(String(data.tweet_id));
-    });
-    
-    // Get target_not_found_or_deleted skip list (ever)
-    const { data: notFoundEvents } = await supabase
-      .from('system_events')
-      .select('event_data')
-      .eq('event_type', 'POST_FAILED')
-      .like('event_data->>reason', '%target_not_found_or_deleted%');
-    
-    const notFoundTweetIds = new Set<string>();
-    (notFoundEvents || []).forEach(event => {
-      const data = typeof event.event_data === 'string' ? JSON.parse(event.event_data) : event.event_data;
-      if (data?.target_tweet_id) notFoundTweetIds.add(String(data.target_tweet_id));
-    });
-    
-    console.log(`   Excluding ${consentWallTweetIds.size} consent wall tweets (24h)`);
-    console.log(`   Excluding ${notFoundTweetIds.size} not-found tweets (ever)\n`);
-    
-    // Primary source: reply_candidate_queue (last 60 minutes only)
-    const { data: queueCandidates, error: queueError } = await supabase
-      .from('reply_candidate_queue')
-      .select('candidate_tweet_id, created_at')
-      .gte('created_at', oneHourAgo)
-      .order('created_at', { ascending: false })
-      .limit(maxCandidates * 2); // Fetch more to account for filtering
-    
-    // Secondary source: candidate_evaluations (last 7 days)
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: evalCandidates, error: evalError } = await supabase
-      .from('candidate_evaluations')
-      .select('candidate_tweet_id, created_at')
-      .eq('is_root_tweet', true)
-      .eq('passed_hard_filters', true)
-      .gte('created_at', sevenDaysAgo)
-      .order('created_at', { ascending: false })
-      .limit(maxCandidates * 2);
-    
-    // Tertiary source: reply_opportunities (last 24 hours, validated root tweets)
-    const { data: oppCandidates, error: oppError } = await supabase
-      .from('reply_opportunities')
-      .select('target_tweet_id, tweet_posted_at')
-      .eq('is_root_tweet', true)
-      .gte('tweet_posted_at', oneDayAgo)
-      .order('tweet_posted_at', { ascending: false })
-      .limit(maxCandidates * 2);
-    
-    if (queueError) {
-      console.warn(`⚠️  Error fetching queue candidates: ${queueError.message}`);
-    }
-    if (evalError) {
-      console.warn(`⚠️  Error fetching eval candidates: ${evalError.message}`);
-    }
-    if (oppError) {
-      console.warn(`⚠️  Error fetching opp candidates: ${oppError.message}`);
-    }
-    
-    // Format opportunities as candidates
-    const oppCandidatesFormatted = (oppCandidates || []).map(opp => ({
-      candidate_tweet_id: opp.target_tweet_id,
-      created_at: opp.tweet_posted_at || new Date().toISOString(),
-    }));
-    
-    // Combine all sources
-    let allCandidates = [
-      ...(queueCandidates || []),
-      ...(evalCandidates || []),
-      ...oppCandidatesFormatted,
-    ];
-    
-    // Apply DB prefilters
-    allCandidates = allCandidates.filter(c => {
-      const tweetId = String(c.candidate_tweet_id);
-      if (consentWallTweetIds.has(tweetId)) return false;
-      if (notFoundTweetIds.has(tweetId)) return false;
-      return true;
-    });
-    
-    // Filter fake test IDs
-    const seen = new Set<string>();
-    allCandidates = allCandidates.filter(c => {
-      const tweetId = String(c.candidate_tweet_id);
-      if (!tweetId.match(/^\d{15,20}$/)) return false;
-      if (tweetId.startsWith('2000000000000') || tweetId === '2000000000000000003') return false;
-      if (seen.has(tweetId)) return false;
-      seen.add(tweetId);
-      return true;
-    });
-    
-    // Limit to maxCandidates after filtering
-    allCandidates = allCandidates.slice(0, maxCandidates);
-    
-    console.log(`✅ Prefiltered candidates: ${allCandidates.length} (after DB exclusions)\n`);
-    
-    // Step 2: Filter out recently used tweet IDs (last 48h)
-    console.log('Step 2: Filtering out recently used tweets (last 48h)...');
-    
-    const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    const { data: recentDecisions } = await supabase
-      .from('reply_decisions')
-      .select('target_tweet_id')
-      .gte('created_at', twoDaysAgo);
-    
-    const usedTweetIds = new Set((recentDecisions || []).map(d => d.target_tweet_id));
-    availableCandidates = allCandidates.filter(c => !usedTweetIds.has(c.candidate_tweet_id));
-    
-    console.log(`✅ Filtered: ${allCandidates.length} → ${availableCandidates.length} available (removed ${allCandidates.length - availableCandidates.length} recently used)\n`);
-    
-    if (availableCandidates.length === 0) {
-      console.error('❌ No available candidates after filtering');
+    try {
+      // Validate tweet ID format
+      if (!manualTweetId.match(/^\d{15,20}$/)) {
+        console.error(`❌ Invalid tweet ID format: ${manualTweetId}`);
+        console.error(`   Must be 15-20 digits\n`);
+        process.exit(1);
+      }
+      
+      // Step 1: Validate ONLY this tweet
+      console.log(`Step 1: Validating tweet ${manualTweetId}...\n`);
+      
+      // Clear cache to force fresh resolution
+      await supabase
+        .from('reply_ancestry_cache')
+        .delete()
+        .eq('tweet_id', manualTweetId);
+      
+      const ancestry = await resolveTweetAncestry(manualTweetId);
+      
+      if (!ancestry || ancestry.status === 'ERROR') {
+        const denyReason = (ancestry as any)?.denyReasonCode || (ancestry as any)?.reason || 'UNKNOWN';
+        console.error(`❌ Validation failed: ${denyReason}`);
+        console.error(`   Stage: ancestry_resolution`);
+        console.error(`   deny_reason_code: ${denyReason}\n`);
+        process.exit(1);
+      }
+      
+      if (ancestry.status !== 'OK' || !ancestry.isRoot) {
+        console.error(`❌ Validation failed: Not a valid root tweet`);
+        console.error(`   Stage: root_verification`);
+        console.error(`   status: ${ancestry.status}`);
+        console.error(`   is_root: ${ancestry.isRoot}`);
+        console.error(`   deny_reason_code: ${ancestry.status === 'UNCERTAIN' ? 'UNCERTAIN' : 'NOT_ROOT'}\n`);
+        process.exit(1);
+      }
+      
+      console.log(`✅ Validation passed: status=OK, is_root=true\n`);
+      
+      // Step 2: Fetch live content
+      console.log(`Step 2: Fetching live tweet content...\n`);
+      const { fetchTweetData } = await import('../src/gates/contextLockVerifier');
+      const tweetData = await fetchTweetData(manualTweetId);
+      
+      if (!tweetData || !tweetData.text || tweetData.text.trim().length < 20) {
+        console.error(`❌ Content fetch failed: Tweet not found or too short`);
+        console.error(`   Stage: content_fetch\n`);
+        process.exit(1);
+      }
+      
+      const targetTweetContent = tweetData.text.trim();
+      const targetUsername = tweetData.author || 'unknown';
+      console.log(`✅ Fetched content (${targetTweetContent.length} chars, author: @${targetUsername})\n`);
+      
+      // Step 3: Generate reply
+      console.log(`Step 3: Generating reply...\n`);
+      const { selectReplyTemplate } = await import('../src/jobs/replySystemV2/replyTemplateSelector');
+      const templateSelection = await selectReplyTemplate({
+        topic_relevance_score: 0.8,
+        candidate_score: 85,
+        topic: 'general',
+        content_preview: targetTweetContent.substring(0, 100),
+      });
+      
+      if (!templateSelection || !templateSelection.template_id) {
+        console.error(`❌ Template selection failed`);
+        console.error(`   Stage: template_selection\n`);
+        process.exit(1);
+      }
+      
+      const { generateReplyContent } = await import('../src/ai/replyGeneratorAdapter');
+      const normalizedTarget = normalizeTweetText(targetTweetContent);
+      const replyResult = await generateReplyContent({
+        target_username: targetUsername,
+        target_tweet_content: normalizedTarget,
+        topic: 'health',
+        angle: 'reply_context',
+        tone: 'helpful',
+        model: 'gpt-4o-mini',
+        template_id: templateSelection.template_id,
+        prompt_version: templateSelection.prompt_version,
+        reply_context: {
+          target_text: normalizedTarget,
+          root_text: normalizedTarget,
+          root_tweet_id: ancestry.rootTweetId || manualTweetId,
+        },
+      });
+      
+      if (!replyResult || !replyResult.content) {
+        console.error(`❌ Reply generation failed`);
+        console.error(`   Stage: reply_generation\n`);
+        process.exit(1);
+      }
+      
+      const replyContent = replyResult.content;
+      const normalizedReply = normalizeTweetText(replyContent);
+      const semanticSimilarity = computeSemanticSimilarity(normalizedTarget, normalizedReply);
+      
+      if (semanticSimilarity < 0.25) {
+        console.error(`❌ Semantic similarity too low: ${semanticSimilarity.toFixed(3)} < 0.25`);
+        console.error(`   Stage: semantic_gate\n`);
+        process.exit(1);
+      }
+      
+      console.log(`✅ Generated reply (${replyContent.length} chars, similarity: ${semanticSimilarity.toFixed(3)})\n`);
+      
+      // Step 4: Create decision and metadata (reuse existing code)
+      console.log(`Step 4: Creating decision record...\n`);
+      const decisionId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      
+      const { recordReplyDecision } = await import('../src/jobs/replySystemV2/replyDecisionRecorder');
+      await recordReplyDecision({
+        decision_id: decisionId,
+        target_tweet_id: manualTweetId,
+        target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId || null,
+        root_tweet_id: ancestry.rootTweetId || manualTweetId,
+        ancestry_depth: ancestry.ancestryDepth ?? 0,
+        is_root: ancestry.isRoot,
+        decision: 'ALLOW',
+        reason: 'manual_override',
+        status: 'OK',
+        confidence: 'HIGH',
+        method: 'manual_script',
+        template_id: templateSelection.template_id,
+        prompt_version: templateSelection.prompt_version,
+        template_status: 'SET',
+        template_selected_at: now,
+        generation_started_at: now,
+        generation_completed_at: now,
+        scored_at: now,
+      });
+      
+      const normalizedTargetForHash = normalizeTweetText(targetTweetContent);
+      const targetTweetContentHash = createHash('sha256')
+        .update(normalizedTargetForHash)
+        .digest('hex');
+      
+      await supabase.from('content_metadata').insert({
+        decision_id: decisionId,
+        decision_type: 'reply',
+        content: replyContent,
+        status: 'queued',
+        target_tweet_id: manualTweetId,
+        target_tweet_content_hash: targetTweetContentHash,
+        semantic_similarity: semanticSimilarity,
+        scheduled_at: now,
+        target_tweet_content_snapshot: normalizedTargetForHash,
+        target_username: targetUsername,
+        root_tweet_id: ancestry.rootTweetId || manualTweetId,
+        pipeline_source: 'reply_v2_scheduler',
+        created_at: now,
+        updated_at: now,
+      });
+      
+      // Create reply_opportunities entry
+      const tweetUrl = `https://x.com/i/status/${manualTweetId}`;
+      await supabase.from('reply_opportunities').upsert({
+        target_tweet_id: manualTweetId,
+        target_tweet_url: tweetUrl,
+        target_tweet_content: targetTweetContent,
+        target_username: targetUsername,
+        account_username: targetUsername,
+        root_tweet_id: ancestry.rootTweetId || manualTweetId,
+        is_root_tweet: ancestry.isRoot,
+        tweet_posted_at: new Date().toISOString(),
+        status: 'pending',
+        replied_to: false,
+        like_count: 0,
+        reply_count: 0,
+        retweet_count: 0,
+        opportunity_score: 0,
+        created_at: now,
+      }, { onConflict: 'target_tweet_id', ignoreDuplicates: false });
+      
+      await supabase.from('reply_decisions').update({
+        posting_started_at: now,
+      }).eq('decision_id', decisionId);
+      
+      console.log(`✅ Decision created: ${decisionId}\n`);
+      
+      // Step 5: Run posting queue once
+      console.log(`Step 5: Running posting queue...\n`);
+      await processPostingQueue({ maxItems: 1 });
+      
+      // Step 6: Verify POST_SUCCESS
+      console.log(`\nStep 6: Verifying post success...\n`);
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      const { data: decisionRow } = await supabase
+        .from('reply_decisions')
+        .select('posted_reply_tweet_id, posting_completed_at, pipeline_error_reason')
+        .eq('decision_id', decisionId)
+        .single();
+      
+      const { data: successEvent } = await supabase
+        .from('system_events')
+        .select('event_data, created_at')
+        .eq('event_type', 'POST_SUCCESS')
+        .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (decisionRow?.posted_reply_tweet_id) {
+        const tweetId = decisionRow.posted_reply_tweet_id;
+        const tweetUrl = `https://x.com/i/status/${tweetId}`;
+        console.log(`✅ POST_SUCCESS`);
+        console.log(`   Target tweet: ${manualTweetId}`);
+        console.log(`   Posted reply tweet ID: ${tweetId}`);
+        console.log(`   URL: ${tweetUrl}\n`);
+        process.exit(0);
+      } else if (decisionRow?.pipeline_error_reason) {
+        console.error(`❌ POST_FAILED`);
+        console.error(`   Stage: posting_queue`);
+        console.error(`   pipeline_error_reason: ${decisionRow.pipeline_error_reason}\n`);
+        process.exit(1);
+      } else {
+        console.error(`⚠️  Post status unclear - check logs`);
+        console.error(`   Stage: verification\n`);
+        process.exit(1);
+      }
+    } catch (error: any) {
+      console.error(`❌ Manual override failed: ${error.message}`);
+      console.error(`   Stage: ${error.stage || 'unknown'}`);
+      if (error.denyReasonCode) {
+        console.error(`   deny_reason_code: ${error.denyReasonCode}`);
+      }
+      console.error(`\n`);
       process.exit(1);
     }
   }
+  
+  // Step 1: Get candidate tweet IDs from production tables (fresh-first)
+  console.log('Step 1: Fetching candidate tweet IDs (fresh-first)...\n');
+  
+  // TASK 2: DB-first prefilter to reduce Playwright calls
+  // Query only candidates from last 60 minutes
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  
+  // Get tweet IDs that had CONSENT_WALL in last 24h
+  const { data: consentWallEvents } = await supabase
+    .from('system_events')
+    .select('event_data')
+    .eq('event_type', 'CONSENT_WALL_SEEN')
+    .gte('created_at', oneDayAgo);
+  
+  const consentWallTweetIds = new Set<string>();
+  if (consentWallEvents) {
+    for (const event of consentWallEvents) {
+      const eventData = typeof event.event_data === 'string' 
+        ? JSON.parse(event.event_data) 
+        : event.event_data;
+      if (eventData.tweet_id) {
+        consentWallTweetIds.add(String(eventData.tweet_id));
+      }
+    }
+  }
+  
+  // Get tweet IDs that had target_not_found_or_deleted ever
+  const { data: notFoundEvents } = await supabase
+    .from('system_events')
+    .select('event_data')
+    .in('event_type', ['POST_FAILED', 'REPLY_DENIED'])
+    .or('event_data->>reason.like.%target_not_found_or_deleted%,event_data->>deny_reason_code.eq.target_not_found_or_deleted');
+  
+  const notFoundTweetIds = new Set<string>();
+  if (notFoundEvents) {
+    for (const event of notFoundEvents) {
+      const eventData = typeof event.event_data === 'string'
+        ? JSON.parse(event.event_data)
+        : event.event_data;
+      if (eventData.target_tweet_id) {
+        notFoundTweetIds.add(String(eventData.target_tweet_id));
+      }
+      if (eventData.tweet_id) {
+        notFoundTweetIds.add(String(eventData.tweet_id));
+      }
+    }
+  }
+  
+  console.log(`   Excluding ${consentWallTweetIds.size} consent wall tweets (last 24h)`);
+  console.log(`   Excluding ${notFoundTweetIds.size} not-found tweets (ever)\n`);
+  
+  // Primary source: reply_candidate_queue (newest first, last 60 minutes)
   const { data: queueCandidates, error: queueError } = await supabase
     .from('reply_candidate_queue')
     .select('candidate_tweet_id, created_at')
-    .gte('created_at', oneDayAgo)
+    .gte('created_at', oneHourAgo)
     .order('created_at', { ascending: false })
     .limit(maxCandidates);
   
@@ -313,7 +452,7 @@ async function main() {
   ];
   
   // Deduplicate by tweet_id (keep first occurrence, which is from queue)
-  // Also filter out fake test tweet IDs at DB level + JS level
+  // Also filter out fake test tweet IDs, consent walls, and not-found tweets
   const seen = new Set<string>();
   const candidates = allCandidates.filter(c => {
     const tweetId = String(c.candidate_tweet_id);
@@ -328,7 +467,17 @@ async function main() {
       return false;
     }
     
-    // C) Deduplicate
+    // C) Exclude consent wall tweets (TASK 3: sticky skip)
+    if (consentWallTweetIds.has(tweetId)) {
+      return false;
+    }
+    
+    // D) Exclude not-found tweets
+    if (notFoundTweetIds.has(tweetId)) {
+      return false;
+    }
+    
+    // E) Deduplicate
     if (seen.has(tweetId)) return false;
     seen.add(tweetId);
     return true;
@@ -371,10 +520,6 @@ async function main() {
   let semanticSimilarity: number = 0;
   let templateSelection: any = null;
   const skipReasons: Record<string, number> = {};
-  let consentWallCount = 0;
-  let uncertainCount = 0;
-  let nonRootCount = 0;
-  let notFoundCount = 0;
   
   candidateLoop: for (let i = 0; i < availableCandidates.length; i++) {
     const candidate = availableCandidates[i];
@@ -408,35 +553,25 @@ async function main() {
                              errorMsg?.includes('ANCESTRY_NAV_TIMEOUT');
         
         if (isConsentWall) {
+          // TASK 3: Record consent wall in system_events for sticky skip
+          try {
+            await supabase.from('system_events').insert({
+              event_type: 'CONSENT_WALL_SEEN',
+              severity: 'warning',
+              event_data: {
+                tweet_id: tweetId,
+                deny_reason_code: denyReason,
+                timestamp: new Date().toISOString(),
+              },
+              created_at: new Date().toISOString(),
+            });
+          } catch (logError: any) {
+            // Non-critical - continue
+          }
+          
           consentWallCount++;
           const reason = 'consent_wall';
           skipReasons[reason] = (skipReasons[reason] || 0) + 1;
-          
-          // TASK 3: Record consent wall in system_events for sticky skip
-          try {
-            await supabase
-              .from('system_events')
-              .insert({
-                event_type: 'CONSENT_WALL_SEEN',
-                event_data: {
-                  tweet_id: tweetId,
-                  deny_reason_code: denyReason || 'CONSENT_WALL',
-                  timestamp: new Date().toISOString(),
-                },
-                created_at: new Date().toISOString(),
-              });
-          } catch (eventError: any) {
-            console.warn(`   ⚠️  Failed to record consent wall event: ${eventError.message}`);
-          }
-          
-          if (manualTweetId) {
-            console.error(`\n❌ MANUAL MODE FAILED: Consent wall detected`);
-            console.error(`   Tweet ID: ${tweetId}`);
-            console.error(`   Deny reason: ${denyReason || 'CONSENT_WALL'}`);
-            console.error(`   Try a different tweet ID\n`);
-            process.exit(1);
-          }
-          
           console.log(`   ⚠️  Consent wall/timeout - Skipping (${consentWallCount}/${maxConsentSkips})\n`);
           continue candidateLoop;
         }
@@ -444,15 +579,6 @@ async function main() {
         const reason = 'target_not_found';
         skipReasons[reason] = (skipReasons[reason] || 0) + 1;
         notFoundCount++;
-        
-        if (manualTweetId) {
-          console.error(`\n❌ MANUAL MODE FAILED: Target not found or deleted`);
-          console.error(`   Tweet ID: ${tweetId}`);
-          console.error(`   Deny reason: ${denyReason || 'UNKNOWN'}`);
-          console.error(`   Error: ${errorMsg || 'No details'}\n`);
-          process.exit(1);
-        }
-        
         console.log(`   ❌ Phase 1 failed: ${reason} (error: ${denyReason || 'UNKNOWN'}) - Skipping\n`);
         continue candidateLoop;
       }
@@ -789,19 +915,6 @@ async function main() {
         if (!preflightReport.will_pass_gates) {
           const reason = preflightReport.failure_reason || 'unknown';
           skipReasons[reason] = (skipReasons[reason] || 0) + 1;
-          
-          if (manualTweetId) {
-            console.error(`\n❌ MANUAL MODE FAILED: Preflight gates failed`);
-            console.error(`   Tweet ID: ${chosenTweetId}`);
-            console.error(`   Failure reason: ${reason}`);
-            console.error(`   Details:`);
-            console.error(`     - target_exists: ${preflightReport.target_exists}`);
-            console.error(`     - is_root: ${preflightReport.is_root}`);
-            console.error(`     - semantic_similarity: ${preflightReport.semantic_similarity.toFixed(3)} (threshold: 0.25)`);
-            console.error(`     - missing_fields: ${preflightReport.missing_fields.join(', ') || 'None'}\n`);
-            process.exit(1);
-          }
-          
           console.log(`❌ Preflight check failed: ${reason} - Trying next candidate...\n`);
           chosenTweetId = null;
           ancestry = null;
@@ -811,14 +924,6 @@ async function main() {
         // All checks passed - break out of loop
         break candidateLoop;
       } else {
-        if (manualTweetId) {
-          console.error(`\n❌ MANUAL MODE FAILED: Generation failed or similarity too low`);
-          console.error(`   Tweet ID: ${chosenTweetId}`);
-          console.error(`   Similarity: ${semanticSimilarity.toFixed(3)} (threshold: 0.25)`);
-          console.error(`   Try a different tweet ID\n`);
-          process.exit(1);
-        }
-        
         console.log(`   ❌ Generation failed or similarity too low - Trying next candidate...\n`);
         chosenTweetId = null;
         ancestry = null;
@@ -844,15 +949,6 @@ async function main() {
   }
   
   if (!chosenTweetId || !ancestry || !replyContent || semanticSimilarity < 0.25) {
-    if (manualTweetId) {
-      console.error('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.error('           ❌ MANUAL MODE FAILED');
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-      console.error(`Tweet ID: ${manualTweetId}`);
-      console.error(`Status: No valid candidate found after validation\n`);
-      process.exit(1);
-    }
-    
     console.error('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.error('           ❌ NO VALID CANDIDATE FOUND');
     console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
@@ -870,8 +966,8 @@ async function main() {
     // Print sample tweet IDs for top reasons
     console.error('\nSample tweet IDs for top failing reasons:');
     const topReason = sortedReasons[0]?.[0];
-    if (topReason && candidatesToValidate) {
-      const sampleIds = candidatesToValidate
+    if (topReason) {
+      const sampleIds = availableCandidates
         .slice(0, 5)
         .map(c => c.candidate_tweet_id)
         .join(', ');
