@@ -22,14 +22,51 @@ interface PreflightReport {
 }
 
 async function main() {
+  // Hard guard: Must run in Railway environment
+  if (!process.env.RAILWAY_ENVIRONMENT && !process.env.RAILWAY_SERVICE_NAME) {
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('           ❌ ENVIRONMENT CHECK FAILED');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    console.error('This script must be run via: railway run -s xBOT -- pnpm exec tsx scripts/post-one-golden-reply.ts');
+    console.error('\nDetected environment:');
+    console.error(`  RAILWAY_ENVIRONMENT: ${process.env.RAILWAY_ENVIRONMENT || 'NOT SET'}`);
+    console.error(`  RAILWAY_SERVICE_NAME: ${process.env.RAILWAY_SERVICE_NAME || 'NOT SET'}`);
+    console.error(`  NODE_ENV: ${process.env.NODE_ENV || 'NOT SET'}`);
+    console.error(`  PLAYWRIGHT_BROWSERS_PATH: ${process.env.PLAYWRIGHT_BROWSERS_PATH || 'NOT SET'}\n`);
+    process.exit(1);
+  }
+  
+  // Log environment info
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  console.log('           🎯 POST ONE GOLDEN REPLY\n');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  console.log('Environment check: ✅ Running in Railway\n');
+  console.log(`  RAILWAY_ENVIRONMENT: ${process.env.RAILWAY_ENVIRONMENT || 'NOT SET'}`);
+  console.log(`  RAILWAY_SERVICE_NAME: ${process.env.RAILWAY_SERVICE_NAME || 'NOT SET'}`);
+  console.log(`  PLAYWRIGHT_BROWSERS_PATH: ${process.env.PLAYWRIGHT_BROWSERS_PATH || 'NOT SET'}`);
+  
+  // Check for /ms-playwright directory
+  try {
+    const fs = await import('fs');
+    const path = await import('path');
+    const playwrightPath = process.env.PLAYWRIGHT_BROWSERS_PATH || '/ms-playwright';
+    if (fs.existsSync(playwrightPath)) {
+      console.log(`  ✅ Playwright browsers path exists: ${playwrightPath}`);
+      const contents = fs.readdirSync(playwrightPath);
+      console.log(`  ✅ Contents: ${contents.slice(0, 5).join(', ')}${contents.length > 5 ? '...' : ''}`);
+    } else {
+      console.log(`  ⚠️  Playwright browsers path not found: ${playwrightPath}`);
+    }
+  } catch (error: any) {
+    console.log(`  ⚠️  Could not check Playwright path: ${error.message}`);
+  }
+  console.log('');
+  
   const maxCandidates = parseInt(
     process.argv.find(arg => arg.startsWith('--maxCandidates='))?.split('=')[1] || '50',
     10
   );
   
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-  console.log('           🎯 POST ONE GOLDEN REPLY\n');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   console.log(`Max candidates to check: ${maxCandidates}\n`);
   
   const supabase = getSupabaseClient();

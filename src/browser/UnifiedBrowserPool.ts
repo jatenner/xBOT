@@ -1126,8 +1126,14 @@ export class UnifiedBrowserPool {
 
     const chromiumLaunchStart = Date.now();
     try {
+      // Check for Railway Playwright path
+      const playwrightBrowsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH || '/ms-playwright';
+      const chromiumPath = `${playwrightBrowsersPath}/chromium_headless_shell-*/chrome-headless-shell-*/headless_shell`;
+      
       console.log(`[BROWSER_POOL][INIT_BROWSER] calling_chromium.launch`);
-      this.browser = await chromium.launch({
+      console.log(`[BROWSER_POOL][INIT_BROWSER] PLAYWRIGHT_BROWSERS_PATH=${playwrightBrowsersPath}`);
+      
+      const launchOptions: any = {
         headless: true,
         args: [
           '--no-sandbox',
@@ -1147,7 +1153,32 @@ export class UnifiedBrowserPool {
           // Force new headless mode for better stability
           '--headless=new'
         ]
-      });
+      };
+      
+      // If PLAYWRIGHT_BROWSERS_PATH is set and path exists, try to use it
+      if (process.env.PLAYWRIGHT_BROWSERS_PATH && fs.existsSync(process.env.PLAYWRIGHT_BROWSERS_PATH)) {
+        // Try to find chromium executable in the path
+        try {
+          const chromiumDirs = fs.readdirSync(process.env.PLAYWRIGHT_BROWSERS_PATH);
+          const chromiumDir = chromiumDirs.find(d => d.startsWith('chromium'));
+          if (chromiumDir) {
+            const chromiumPath = `${process.env.PLAYWRIGHT_BROWSERS_PATH}/${chromiumDir}`;
+            const shellDirs = fs.readdirSync(chromiumPath);
+            const shellDir = shellDirs.find(d => d.includes('headless') || d.includes('chrome'));
+            if (shellDir) {
+              const executablePath = `${chromiumPath}/${shellDir}/headless_shell`;
+              if (fs.existsSync(executablePath)) {
+                launchOptions.executablePath = executablePath;
+                console.log(`[BROWSER_POOL][INIT_BROWSER] Using executablePath=${executablePath}`);
+              }
+            }
+          }
+        } catch (pathError: any) {
+          console.warn(`[BROWSER_POOL][INIT_BROWSER] Could not resolve executablePath: ${pathError.message}`);
+        }
+      }
+      
+      this.browser = await chromium.launch(launchOptions);
       const chromiumLaunchDuration = Date.now() - chromiumLaunchStart;
       console.log(`[BROWSER_POOL][INIT_BROWSER] chromium.launch_success duration_ms=${chromiumLaunchDuration}`);
     } catch (error: any) {
