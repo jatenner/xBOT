@@ -464,7 +464,15 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
     if (error) {
       console.error(`[REPLY_DECISION] ❌ Failed to record decision: ${error.message}`);
     } else {
-      console.log(`[REPLY_DECISION] ✅ Recorded: ${record.decision} for ${record.target_tweet_id} (depth=${record.ancestry_depth}, root=${record.is_root})`);
+      // 🔒 FIX: Ensure decision_id matches id if not provided
+      if (!record.decision_id && insertedRow?.id) {
+        await supabase
+          .from('reply_decisions')
+          .update({ decision_id: insertedRow.id })
+          .eq('id', insertedRow.id);
+        console.log(`[REPLY_DECISION] ✅ Set decision_id=${insertedRow.id} to match id`);
+      }
+      console.log(`[REPLY_DECISION] ✅ Recorded: ${record.decision} for ${record.target_tweet_id} (id=${insertedRow?.id}, decision_id=${record.decision_id || insertedRow?.id}, depth=${record.ancestry_depth}, root=${record.is_root})`);
     }
   } catch (error: any) {
     console.error(`[REPLY_DECISION] ❌ Error recording decision: ${error.message}`);

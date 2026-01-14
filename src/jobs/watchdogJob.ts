@@ -6,11 +6,18 @@
 
 import { getSupabaseClient } from '../db/index';
 import { log } from '../lib/logger';
+import { runAllowResumer } from './replySystemV2/allowResumer';
 
 const WATCHDOG_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 const STUCK_THRESHOLD_MS = 90 * 60 * 1000; // 90 minutes
 
 async function runWatchdog(): Promise<void> {
+  // 🔄 NEW: Run allow resumer first (handles stuck ALLOW decisions)
+  try {
+    await runAllowResumer();
+  } catch (resumerError: any) {
+    console.error('[WATCHDOG] ❌ Allow resumer failed:', resumerError.message);
+  }
   if (process.env.ENABLE_WATCHDOG_JOB !== 'true') {
     return; // Feature disabled
   }

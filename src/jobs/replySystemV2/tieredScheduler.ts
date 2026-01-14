@@ -509,7 +509,19 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       
       // 🎯 PIPELINE STAGES: Mark template selected
       templateSelectedAt = new Date().toISOString();
-      await supabase
+      // 🔒 FIX: Use id as fallback if decision_id is NULL
+      const { data: decisionRow } = await supabase
+        .from('reply_decisions')
+        .select('id, decision_id')
+        .or(`decision_id.eq.${decisionId},id.eq.${decisionId}`)
+        .eq('target_tweet_id', candidate.candidate_tweet_id)
+        .eq('decision', 'ALLOW')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      const updateId = decisionRow?.id || decisionId;
+      const { error: updateError } = await supabase
         .from('reply_decisions')
         .update({
           template_selected_at: templateSelectedAt,
@@ -517,8 +529,13 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           prompt_version: templateSelection.prompt_version,
           template_status: 'SET',
           template_error_reason: null,
+          decision_id: decisionId, // Ensure decision_id is set
         })
-        .eq('decision_id', decisionId);
+        .eq('id', updateId);
+      
+      if (updateError) {
+        throw new Error(`Update failed: ${updateError.message}`);
+      }
       
       console.log(`[PIPELINE] decision_id=${decisionId} stage=template_select ok=true detail=template_id=${templateSelection.template_id} prompt_version=${templateSelection.prompt_version}`);
       console.log(`[SCHEDULER] 🎨 Selected template: ${templateSelection.template_id} (${templateSelection.template_name}) - ${templateSelection.selection_reason} at ${templateSelectedAt}`);
