@@ -4676,6 +4676,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       is_root: ancestry.isRoot,
       decision: 'DENY',
       reason: `Final gate: ${allowCheck.reason}`,
+      deny_reason_code: allowCheck.deny_reason_code || 'NON_ROOT',
       status: ancestry.status, // 🔒 REQUIRED
       confidence: ancestry.confidence, // 🔒 REQUIRED
       method: ancestry.method || 'unknown', // 🔒 REQUIRED
@@ -4687,7 +4688,86 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       error: errorMsg,
     });
     
+    // 🔒 TASK B.1: Mark content_metadata as blocked
+    await supabase
+      .from('content_metadata')
+      .update({ 
+        status: 'blocked',
+        skip_reason: 'SAFETY_GATE_NON_ROOT_TARGET'
+      })
+      .eq('decision_id', decision.id);
+    
+    // 🔒 TASK B.1: Record POST_FAILED event with detailed context
+    await supabase.from('system_events').insert({
+      event_type: 'POST_FAILED',
+      severity: 'error',
+      event_data: {
+        decision_id: decision.id,
+        target_tweet_id: decision.target_tweet_id,
+        in_reply_to_status_id: ancestry.targetInReplyToTweetId,
+        resolver_status: ancestry.status,
+        resolver_method: ancestry.method,
+        resolver_depth: ancestry.ancestryDepth,
+        resolver_is_root: ancestry.isRoot,
+        deny_reason_code: allowCheck.deny_reason_code || 'NON_ROOT',
+        deny_reason_detail: allowCheck.deny_reason_detail,
+        reason: `SAFETY_GATE_NON_ROOT_TARGET: ${allowCheck.reason}`,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    // 🔒 TASK B.1: Update reply_decisions pipeline_error_reason
+    await supabase
+      .from('reply_decisions')
+      .update({ 
+        pipeline_error_reason: `SAFETY_GATE_NON_ROOT_TARGET: ${allowCheck.deny_reason_code || 'NON_ROOT'}`,
+        posting_completed_at: new Date().toISOString(),
+      })
+      .eq('decision_id', decision.id);
+    
     throw new Error(errorMsg);
+  }
+  
+  // 🔒 TASK B.1: ADDITIONAL HARD CHECK - Verify in_reply_to_status_id is NULL
+  // This is a redundant but critical check - even if shouldAllowReply passes, verify directly
+  if (ancestry.targetInReplyToTweetId !== null && ancestry.targetInReplyToTweetId !== undefined) {
+    const hardBlockMsg = `HARD_GATE_BLOCKED: Target has in_reply_to_status_id=${ancestry.targetInReplyToTweetId} (NOT NULL)`;
+    console.error(`[POSTING_QUEUE] 🚫 ${hardBlockMsg}`);
+    
+    // Mark as blocked
+    await supabase
+      .from('content_metadata')
+      .update({ 
+        status: 'blocked',
+        skip_reason: 'SAFETY_GATE_NON_ROOT_TARGET'
+      })
+      .eq('decision_id', decision.id);
+    
+    // Record POST_FAILED
+    await supabase.from('system_events').insert({
+      event_type: 'POST_FAILED',
+      severity: 'error',
+      event_data: {
+        decision_id: decision.id,
+        target_tweet_id: decision.target_tweet_id,
+        in_reply_to_status_id: ancestry.targetInReplyToTweetId,
+        resolver_status: ancestry.status,
+        resolver_method: ancestry.method,
+        reason: 'SAFETY_GATE_NON_ROOT_TARGET_HARD_CHECK',
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    // Update reply_decisions
+    await supabase
+      .from('reply_decisions')
+      .update({ 
+        pipeline_error_reason: 'SAFETY_GATE_NON_ROOT_TARGET_HARD_CHECK',
+        posting_completed_at: new Date().toISOString(),
+      })
+      .eq('decision_id', decision.id);
+    
+    throw new Error(hardBlockMsg);
   }
   
   // 🎯 PIPELINE STAGES: Mark posting started

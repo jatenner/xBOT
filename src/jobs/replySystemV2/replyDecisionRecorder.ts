@@ -671,6 +671,17 @@ export async function shouldAllowReply(ancestry: ReplyAncestry): Promise<{ allow
     };
   }
   
+  // 🔒 FAIL-CLOSED: Target must NOT have a parent (in_reply_to_status_id must be NULL)
+  // This is the most authoritative check - if target has a parent, it's a reply, not root
+  if (ancestry.targetInReplyToTweetId !== null && ancestry.targetInReplyToTweetId !== undefined) {
+    return {
+      allow: false,
+      reason: `Target tweet is a reply (has parent): target=${ancestry.targetTweetId}, in_reply_to=${ancestry.targetInReplyToTweetId}, root=${ancestry.rootTweetId || 'null'}`,
+      deny_reason_code: 'NON_ROOT',
+      deny_reason_detail: `in_reply_to_status_id=${ancestry.targetInReplyToTweetId}`,
+    };
+  }
+  
   // 🔒 FAIL-CLOSED: Depth must be exactly 0 (root tweet)
   if (ancestry.ancestryDepth === null || ancestry.ancestryDepth !== 0) {
     return {

@@ -116,19 +116,34 @@ async function main() {
       const ancestry = await resolveTweetAncestry(manualTweetId);
       
       if (!ancestry || ancestry.status === 'ERROR') {
-        const denyReason = (ancestry as any)?.denyReasonCode || (ancestry as any)?.reason || 'UNKNOWN';
-        console.error(`❌ Validation failed: ${denyReason}`);
+        const denyReason = (ancestry as any)?.denyReasonCode || 
+                          (ancestry as any)?.reason || 
+                          (ancestry as any)?.error?.substring(0, 50) || 
+                          'UNKNOWN';
+        const errorDetail = (ancestry as any)?.error || '';
+        console.error(`❌ Validation failed`);
         console.error(`   Stage: ancestry_resolution`);
-        console.error(`   deny_reason_code: ${denyReason}\n`);
+        console.error(`   deny_reason_code: ${denyReason}`);
+        if (errorDetail) {
+          console.error(`   detail: ${errorDetail.substring(0, 200)}\n`);
+        } else {
+          console.error(`\n`);
+        }
         process.exit(1);
       }
       
       if (ancestry.status !== 'OK' || !ancestry.isRoot) {
+        const denyReasonCode = ancestry.status === 'UNCERTAIN' ? 'UNCERTAIN' : 'NOT_ROOT';
         console.error(`❌ Validation failed: Not a valid root tweet`);
         console.error(`   Stage: root_verification`);
         console.error(`   status: ${ancestry.status}`);
         console.error(`   is_root: ${ancestry.isRoot}`);
-        console.error(`   deny_reason_code: ${ancestry.status === 'UNCERTAIN' ? 'UNCERTAIN' : 'NOT_ROOT'}\n`);
+        console.error(`   deny_reason_code: ${denyReasonCode}`);
+        if (ancestry.error) {
+          console.error(`   detail: ${ancestry.error.substring(0, 200)}\n`);
+        } else {
+          console.error(`\n`);
+        }
         process.exit(1);
       }
       
@@ -161,7 +176,9 @@ async function main() {
       
       if (!templateSelection || !templateSelection.template_id) {
         console.error(`❌ Template selection failed`);
-        console.error(`   Stage: template_selection\n`);
+        console.error(`   Stage: template_selection`);
+        console.error(`   deny_reason_code: TEMPLATE_SELECTION_FAILED`);
+        console.error(`   detail: No template selected\n`);
         process.exit(1);
       }
       
@@ -195,7 +212,9 @@ async function main() {
       
       if (semanticSimilarity < 0.25) {
         console.error(`❌ Semantic similarity too low: ${semanticSimilarity.toFixed(3)} < 0.25`);
-        console.error(`   Stage: semantic_gate\n`);
+        console.error(`   Stage: semantic_gate`);
+        console.error(`   deny_reason_code: LOW_SEMANTIC_SIMILARITY`);
+        console.error(`   detail: Similarity ${semanticSimilarity.toFixed(3)} below threshold 0.25\n`);
         process.exit(1);
       }
       
@@ -310,11 +329,33 @@ async function main() {
       } else if (decisionRow?.pipeline_error_reason) {
         console.error(`❌ POST_FAILED`);
         console.error(`   Stage: posting_queue`);
-        console.error(`   pipeline_error_reason: ${decisionRow.pipeline_error_reason}\n`);
+        console.error(`   deny_reason_code: ${decisionRow.pipeline_error_reason}`);
+        console.error(`   detail: ${decisionRow.pipeline_error_reason}\n`);
         process.exit(1);
       } else {
-        console.error(`⚠️  Post status unclear - check logs`);
-        console.error(`   Stage: verification\n`);
+        // Check for POST_FAILED event
+        const { data: failedEvent } = await supabase
+          .from('system_events')
+          .select('event_data, created_at')
+          .eq('event_type', 'POST_FAILED')
+          .eq('event_data->>decision_id', decisionId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (failedEvent?.event_data) {
+          const eventData = typeof failedEvent.event_data === 'string'
+            ? JSON.parse(failedEvent.event_data)
+            : failedEvent.event_data;
+          console.error(`❌ POST_FAILED`);
+          console.error(`   Stage: posting_queue`);
+          console.error(`   deny_reason_code: ${eventData.pipeline_error_reason || 'UNKNOWN'}`);
+          console.error(`   detail: ${eventData.error_message || eventData.reason || 'Unknown error'}\n`);
+        } else {
+          console.error(`⚠️  Post status unclear - check logs`);
+          console.error(`   Stage: verification`);
+          console.error(`   decision_id: ${decisionId}\n`);
+        }
         process.exit(1);
       }
     } catch (error: any) {
@@ -336,7 +377,7 @@ async function main() {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   
-  // Get tweet IDs that had CONSENT_WALL in last 24h
+  // Get tweet IDs that had CONSENT_WALL in last 24h from system_events
   const { data: consentWallEvents } = await supabase
     .from('system_events')
     .select('event_data')
@@ -355,7 +396,21 @@ async function main() {
     }
   }
   
+  // Also check reply_decisions for CONSENT_WALL deny_reason_code in last 24h
+  const { data: consentWallDecisions } = await supabase
+    .from('reply_decisions')
+    .select('target_tweet_id')
+    .eq('deny_reason_code', 'CONSENT_WALL')
+    .gte('created_at', oneDayAgo);
+  
+  if (consentWallDecisions) {
+    for (const decision of consentWallDecisions) {
+      consentWallTweetIds.add(String(decision.target_tweet_id));
+    }
+  }
+  
   // Get tweet IDs that had target_not_found_or_deleted ever
+  // Check system_events
   const { data: notFoundEvents } = await supabase
     .from('system_events')
     .select('event_data')
@@ -374,6 +429,18 @@ async function main() {
       if (eventData.tweet_id) {
         notFoundTweetIds.add(String(eventData.tweet_id));
       }
+    }
+  }
+  
+  // Also check reply_decisions for target_not_found_or_deleted deny_reason_code (ever)
+  const { data: notFoundDecisions } = await supabase
+    .from('reply_decisions')
+    .select('target_tweet_id')
+    .eq('deny_reason_code', 'target_not_found_or_deleted');
+  
+  if (notFoundDecisions) {
+    for (const decision of notFoundDecisions) {
+      notFoundTweetIds.add(String(decision.target_tweet_id));
     }
   }
   
@@ -520,6 +587,10 @@ async function main() {
   let semanticSimilarity: number = 0;
   let templateSelection: any = null;
   const skipReasons: Record<string, number> = {};
+  let consentWallCount = 0;
+  let notFoundCount = 0;
+  let uncertainCount = 0;
+  let nonRootCount = 0;
   
   candidateLoop: for (let i = 0; i < availableCandidates.length; i++) {
     const candidate = availableCandidates[i];
@@ -560,13 +631,14 @@ async function main() {
               severity: 'warning',
               event_data: {
                 tweet_id: tweetId,
-                deny_reason_code: denyReason,
+                deny_reason_code: denyReason || 'CONSENT_WALL',
                 timestamp: new Date().toISOString(),
               },
               created_at: new Date().toISOString(),
             });
           } catch (logError: any) {
             // Non-critical - continue
+            console.warn(`   ⚠️  Failed to record CONSENT_WALL_SEEN event: ${logError.message}`);
           }
           
           consentWallCount++;
@@ -934,6 +1006,23 @@ async function main() {
       const isConsentWall = errorMsg.includes('CONSENT_WALL') || errorMsg.includes('ANCESTRY_NAV_TIMEOUT');
       
       if (isConsentWall) {
+        // TASK 3: Record consent wall in system_events for sticky skip
+        try {
+          await supabase.from('system_events').insert({
+            event_type: 'CONSENT_WALL_SEEN',
+            severity: 'warning',
+            event_data: {
+              tweet_id: tweetId,
+              deny_reason_code: 'CONSENT_WALL',
+              timestamp: new Date().toISOString(),
+            },
+            created_at: new Date().toISOString(),
+          });
+        } catch (logError: any) {
+          // Non-critical - continue
+          console.warn(`   ⚠️  Failed to record CONSENT_WALL_SEEN event: ${logError.message}`);
+        }
+        
         consentWallCount++;
         const reason = 'consent_wall';
         skipReasons[reason] = (skipReasons[reason] || 0) + 1;
