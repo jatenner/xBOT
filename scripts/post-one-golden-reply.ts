@@ -679,41 +679,31 @@ async function main() {
   console.log(`✅ Content metadata created (status: queued)\n`);
   
   // Step 9: Create reply_opportunities entry (required for INVARIANT_BLOCK and contextLockGuard checks)
+  // Use upsert to handle both insert and update cases
   try {
-    // Check if opportunity already exists
-    const { data: existingOpp } = await supabase
+    const tweetUrl = `https://x.com/i/status/${chosenTweetId}`;
+    await supabase
       .from('reply_opportunities')
-      .select('id')
-      .eq('target_tweet_id', chosenTweetId)
-      .maybeSingle();
-    
-    if (!existingOpp) {
-      await supabase
-        .from('reply_opportunities')
-        .insert({
-          tweet_id: chosenTweetId,
-          target_tweet_id: chosenTweetId,
-          target_tweet_content: targetTweetContent,
-          target_username: targetUsername,
-          root_tweet_id: ancestry.rootTweetId || chosenTweetId,
-          is_root_tweet: ancestry.isRoot,
-          tweet_posted_at: new Date().toISOString(),
-          created_at: now,
-        });
-      console.log(`✅ Reply opportunity created\n`);
-    } else {
-      // Update existing opportunity to ensure it has correct fields
-      await supabase
-        .from('reply_opportunities')
-        .update({
-          target_tweet_content: targetTweetContent,
-          target_username: targetUsername,
-          root_tweet_id: ancestry.rootTweetId || chosenTweetId,
-          is_root_tweet: ancestry.isRoot,
-        })
-        .eq('target_tweet_id', chosenTweetId);
-      console.log(`✅ Reply opportunity updated\n`);
-    }
+      .upsert({
+        tweet_id: chosenTweetId,
+        target_tweet_id: chosenTweetId,
+        tweet_url: tweetUrl,
+        tweet_content: targetTweetContent,
+        target_tweet_content: targetTweetContent,
+        tweet_author: targetUsername,
+        target_username: targetUsername,
+        account_username: targetUsername,
+        root_tweet_id: ancestry.rootTweetId || chosenTweetId,
+        is_root_tweet: ancestry.isRoot,
+        tweet_posted_at: new Date().toISOString(),
+        status: 'pending',
+        replied_to: false,
+        created_at: now,
+      }, {
+        onConflict: 'target_tweet_id',
+        ignoreDuplicates: false
+      });
+    console.log(`✅ Reply opportunity created/updated\n`);
   } catch (oppError: any) {
     console.warn(`⚠️  Failed to create/update reply_opportunities entry: ${oppError.message}`);
     // Continue anyway - pipeline_source bypass should handle it
