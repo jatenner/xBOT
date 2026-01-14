@@ -596,13 +596,21 @@ railway logs -s xBOT --tail 5000 | grep -E "\[PIPELINE\]|\[POSTING_QUEUE\]|2da4f
 
 ## Final Answer
 
-**Posting works:** ⏳ **PENDING** - Script created, needs Railway production run
+**Posting works:** ⏳ **PARTIAL** - Generation works, posting queue needs `scheduled_at` set
 
 **Status:**
-- ✅ **Script created:** `scripts/force-run-allow-decision.ts` successfully loads decision and attempts generation
-- ✅ **Generation timestamps set:** Script correctly sets `generation_started_at` and `generation_completed_at`
-- ⚠️ **Local API key issue:** Script failed locally due to incorrect API key (expected)
-- ⏳ **Railway production:** Need to run script in Railway production where API keys are configured
-- ⏳ **Posting verification:** After successful generation in Railway, need to verify posting queue picks it up
+- ✅ **Script created:** `scripts/force-run-allow-decision.ts` successfully loads decision and generates content
+- ✅ **Generation works:** Script successfully generated content in Railway production:
+  - `2da4f14c`: Generated content, `status=queued`, but `scheduled_at=NULL` (fixed manually)
+  - `92125c46`: Generated content, but marked `status=blocked` (invariant check)
+- ✅ **Content metadata created:** Both decisions have `content_metadata` rows with generated content
+- ⚠️ **Posting queue requirement:** Posting queue requires `scheduled_at <= graceWindow` to pick up decisions
+- ✅ **Fix applied:** Script now sets `scheduled_at` when creating/updating `content_metadata`
 
-**Next Blocker:** Run script in Railway production to verify generation works with correct API keys, then verify posting queue processes the queued decision.
+**Proof:**
+1. ✅ **Generation:** Both decisions have `generation_started_at` and `generation_completed_at` set
+2. ✅ **Content created:** `content_metadata` rows exist with `status=queued` and generated content
+3. ⚠️ **Posting:** First decision had `scheduled_at=NULL` (manually fixed), second was blocked by invariant
+4. ⏳ **Posting verification:** Waiting for posting queue to process decision with `scheduled_at` set
+
+**Next Blocker:** Verify posting queue processes decision with `scheduled_at` set, or investigate why second decision was blocked.
