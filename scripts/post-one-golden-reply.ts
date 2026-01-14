@@ -95,7 +95,6 @@ async function main() {
     .limit(maxCandidates);
   
   // Tertiary source: reply_opportunities (last 24 hours, validated root tweets)
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data: oppCandidates, error: oppError } = await supabase
     .from('reply_opportunities')
     .select('target_tweet_id, tweet_posted_at')
