@@ -596,21 +596,27 @@ railway logs -s xBOT --tail 5000 | grep -E "\[PIPELINE\]|\[POSTING_QUEUE\]|2da4f
 
 ## Final Answer
 
-**Posting works:** ⏳ **PARTIAL** - Generation works, posting queue needs `scheduled_at` set
+**Posting works:** ⚠️ **PARTIAL** - Generation works end-to-end, posting queue processes but decisions fail
 
 **Status:**
 - ✅ **Script created:** `scripts/force-run-allow-decision.ts` successfully loads decision and generates content
 - ✅ **Generation works:** Script successfully generated content in Railway production:
-  - `2da4f14c`: Generated content, `status=queued`, but `scheduled_at=NULL` (fixed manually)
-  - `92125c46`: Generated content, but marked `status=blocked` (invariant check)
+  - `2da4f14c`: Generated content, `status=queued`, `scheduled_at` set, but marked `status=failed` by posting queue
+  - `92125c46`: Generated content, but marked `status=blocked` (`skip_reason=missing_gate_data_safety_block`)
 - ✅ **Content metadata created:** Both decisions have `content_metadata` rows with generated content
-- ⚠️ **Posting queue requirement:** Posting queue requires `scheduled_at <= graceWindow` to pick up decisions
-- ✅ **Fix applied:** Script now sets `scheduled_at` when creating/updating `content_metadata`
+- ✅ **Posting queue picks up:** Posting queue processes decisions with `scheduled_at` set
+- ⚠️ **Posting fails:** Decisions are processed but fail (need to investigate failure reason)
 
 **Proof:**
-1. ✅ **Generation:** Both decisions have `generation_started_at` and `generation_completed_at` set
-2. ✅ **Content created:** `content_metadata` rows exist with `status=queued` and generated content
-3. ⚠️ **Posting:** First decision had `scheduled_at=NULL` (manually fixed), second was blocked by invariant
-4. ⏳ **Posting verification:** Waiting for posting queue to process decision with `scheduled_at` set
+1. ✅ **Template selection:** `template_status=SET`, `template_selected_at` set
+2. ✅ **Generation:** `generation_started_at` and `generation_completed_at` set
+3. ✅ **Content created:** `content_metadata` rows exist with `status=queued` and generated content
+4. ✅ **Posting queue:** Decision with `scheduled_at` set was picked up by posting queue
+5. ⚠️ **Posting result:** Decision marked `status=failed` (need to check logs for reason)
 
-**Next Blocker:** Verify posting queue processes decision with `scheduled_at` set, or investigate why second decision was blocked.
+**Pipeline Progression:**
+- ✅ **Template selection:** Working
+- ✅ **Generation:** Working
+- ⚠️ **Posting:** Queue processes decisions but they fail (need to investigate failure reason)
+
+**Next Blocker:** Investigate why posting queue marks decisions as `failed` - check logs for specific error.
