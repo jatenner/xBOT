@@ -63,11 +63,24 @@ async function main() {
   console.log('');
   
   const maxCandidates = parseInt(
-    process.argv.find(arg => arg.startsWith('--maxCandidates='))?.split('=')[1] || '50',
+    process.argv.find(arg => arg.startsWith('--maxCandidates='))?.split('=')[1] || '25',
+    10
+  );
+  const maxConsentSkips = parseInt(
+    process.argv.find(arg => arg.startsWith('--maxConsentSkips='))?.split('=')[1] || '10',
+    10
+  );
+  const maxSeconds = parseInt(
+    process.argv.find(arg => arg.startsWith('--maxSeconds='))?.split('=')[1] || '240',
     10
   );
   
-  console.log(`Max candidates to check: ${maxCandidates}\n`);
+  console.log(`Max candidates to check: ${maxCandidates}`);
+  console.log(`Max consent wall skips: ${maxConsentSkips}`);
+  console.log(`Hard timeout: ${maxSeconds}s\n`);
+  
+  const startTime = Date.now();
+  const timeoutMs = maxSeconds * 1000;
   
   const supabase = getSupabaseClient();
   
@@ -227,6 +240,18 @@ async function main() {
       
       ancestry = await resolveTweetAncestry(tweetId);
       
+      // Fast skip consent walls
+      if (!ancestry || ancestry.status === 'ERROR') {
+        const errorCode = ancestry?.denyReasonCode || 'UNKNOWN';
+        if (errorCode === 'CONSENT_WALL' || errorCode === 'ANCESTRY_NAV_TIMEOUT') {
+          consentWallCount++;
+          const reason = 'consent_wall';
+          skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+          console.log(`   ⚠️  Consent wall/timeout - Skipping (${consentWallCount}/${maxConsentSkips})\n`);
+          continue candidateLoop;
+        }
+      }
+      
       // C) 2-phase validation with relaxed root confirmation
       // Phase 1: Validate target exists
       // Note: resolveTweetAncestry doesn't return targetTweetContent directly
@@ -234,6 +259,7 @@ async function main() {
       if (!ancestry) {
         const reason = 'target_not_found';
         skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+        notFoundCount++;
         console.log(`   ❌ Phase 1 failed: ${reason} - Skipping\n`);
         continue candidateLoop;
       }
@@ -319,6 +345,11 @@ async function main() {
         // Target is already the root (or no root resolved)
         if (ancestry.status !== 'OK' || !ancestry.isRoot) {
           // If target doesn't validate as root, skip
+          if (ancestry.status === 'UNCERTAIN') {
+            uncertainCount++;
+          } else if (!ancestry.isRoot) {
+            nonRootCount++;
+          }
           const reason = ancestry.status === 'UNCERTAIN' ? 'target_uncertain' : `target_status=${ancestry.status}`;
           skipReasons[reason] = (skipReasons[reason] || 0) + 1;
           console.log(`   ❌ Phase 2 failed: target not confirmed as root (status=${ancestry.status}, is_root=${ancestry.isRoot}) - Skipping\n`);
@@ -579,13 +610,34 @@ async function main() {
     console.error('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.error('           ❌ NO VALID CANDIDATE FOUND');
     console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-    console.error('Skip reasons breakdown:');
-    Object.entries(skipReasons)
+    
+    // Print skip histogram
+    console.error('Skip reasons histogram (top 5):');
+    const sortedReasons = Object.entries(skipReasons)
       .sort((a, b) => b[1] - a[1])
-      .forEach(([reason, count]) => {
-        console.error(`  ${reason}: ${count}`);
-      });
-    console.error('\n');
+      .slice(0, 5);
+    
+    sortedReasons.forEach(([reason, count]) => {
+      console.error(`  ${reason}: ${count}`);
+    });
+    
+    // Print sample tweet IDs for top reasons
+    console.error('\nSample tweet IDs for top failing reasons:');
+    const topReason = sortedReasons[0]?.[0];
+    if (topReason) {
+      const sampleIds = availableCandidates
+        .slice(0, 5)
+        .map(c => c.candidate_tweet_id)
+        .join(', ');
+      console.error(`  ${topReason}: ${sampleIds}`);
+    }
+    
+    console.error(`\nCounters:`);
+    console.error(`  Consent walls: ${consentWallCount}`);
+    console.error(`  Uncertain: ${uncertainCount}`);
+    console.error(`  Non-root: ${nonRootCount}`);
+    console.error(`  Not found: ${notFoundCount}\n`);
+    
     process.exit(1);
   }
   
@@ -733,12 +785,75 @@ async function main() {
     })
     .eq('decision_id', decisionId);
   
-  // Step 11: Run posting queue once
+  // Step 11: Run posting queue once (EARLY EXIT after success)
   console.log('Step 11: Running posting queue...\n');
+  
+  let postedTweetId: string | null = null;
+  let postedTweetUrl: string | null = null;
   
   try {
     const { processPostingQueue } = await import('../src/jobs/postingQueue');
     await processPostingQueue({ maxItems: 1 });
+    
+    // Step 12: Verify post success and get tweet URL
+    console.log('\nStep 12: Verifying post success...\n');
+    
+    // Check system_events for POST_SUCCESS
+    const { data: successEvent } = await supabase
+      .from('system_events')
+      .select('event_data, created_at')
+      .eq('event_type', 'POST_SUCCESS')
+      .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    if (successEvent?.event_data) {
+      const eventData = typeof successEvent.event_data === 'string' 
+        ? JSON.parse(successEvent.event_data) 
+        : successEvent.event_data;
+      postedTweetId = eventData.posted_reply_tweet_id || eventData.tweet_id || null;
+    }
+    
+    // Also check reply_decisions for posted_reply_tweet_id
+    if (!postedTweetId) {
+      const { data: decision } = await supabase
+        .from('reply_decisions')
+        .select('posted_reply_tweet_id')
+        .eq('decision_id', decisionId)
+        .not('posted_reply_tweet_id', 'is', null)
+        .maybeSingle();
+      
+      if (decision?.posted_reply_tweet_id) {
+        postedTweetId = decision.posted_reply_tweet_id;
+      }
+    }
+    
+    if (postedTweetId) {
+      postedTweetUrl = `https://x.com/i/status/${postedTweetId}`;
+      console.log(`✅ POST_SUCCESS: Tweet posted!`);
+      console.log(`   Tweet ID: ${postedTweetId}`);
+      console.log(`   URL: ${postedTweetUrl}\n`);
+    } else {
+      // Check for POST_FAILED
+      const { data: failedEvent } = await supabase
+        .from('system_events')
+        .select('event_data, created_at')
+        .eq('event_type', 'POST_FAILED')
+        .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (failedEvent?.event_data) {
+        const eventData = typeof failedEvent.event_data === 'string'
+          ? JSON.parse(failedEvent.event_data)
+          : failedEvent.event_data;
+        console.log(`❌ POST_FAILED: ${eventData.reason || 'unknown reason'}\n`);
+      } else {
+        console.log(`⚠️  Post status unknown - check logs\n`);
+      }
+    }
     console.log('✅ Posting queue completed\n');
   } catch (error: any) {
     console.error(`❌ Posting queue error: ${error.message}`);
