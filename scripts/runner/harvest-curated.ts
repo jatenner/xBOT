@@ -462,10 +462,104 @@ async function validateAndInsert(
   }
 }
 
+/**
+ * Check session status
+ */
+async function checkSessionStatus(): Promise<{ status: 'SESSION_OK' | 'SESSION_EXPIRED'; url: string; reason: string }> {
+  const { launchPersistent } = await import('../../src/infra/playwright/launcher');
+  
+  const context = await launchPersistent();
+  const page = await context.newPage();
+  
+  try {
+    await page.goto('https://x.com/home', { waitUntil: 'networkidle', timeout: 30000 });
+    await page.waitForTimeout(3000);
+    
+    const currentUrl = page.url();
+    
+    // Check for login redirect
+    if (currentUrl.includes('/i/flow/login') || currentUrl.includes('/login')) {
+      await context.close();
+      return {
+        status: 'SESSION_EXPIRED',
+        url: currentUrl,
+        reason: 'Redirected to login page',
+      };
+    }
+    
+    // Check for login button/text
+    const hasLoginButton = await page.locator('text="Sign in"').isVisible({ timeout: 2000 }).catch(() => false) ||
+                          await page.locator('text="Log in"').isVisible({ timeout: 2000 }).catch(() => false);
+    
+    if (hasLoginButton) {
+      await context.close();
+      return {
+        status: 'SESSION_EXPIRED',
+        url: currentUrl,
+        reason: 'Login button visible',
+      };
+    }
+    
+    // Check for logged-in indicators
+    const hasTimeline = await page.evaluate(() => {
+      return !!document.querySelector('[data-testid="primaryColumn"]') ||
+             !!document.querySelector('article[data-testid="tweet"]') ||
+             !!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
+    });
+    
+    if (!hasTimeline) {
+      await page.waitForTimeout(3000);
+      const hasTimelineAfterWait = await page.evaluate(() => {
+        return !!document.querySelector('[data-testid="primaryColumn"]') ||
+               !!document.querySelector('article[data-testid="tweet"]');
+      });
+      
+      if (!hasTimelineAfterWait) {
+        await context.close();
+        return {
+          status: 'SESSION_EXPIRED',
+          url: currentUrl,
+          reason: 'No timeline elements found',
+        };
+      }
+    }
+    
+    await context.close();
+    return {
+      status: 'SESSION_OK',
+      url: currentUrl,
+      reason: 'Timeline elements present',
+    };
+    
+  } catch (error: any) {
+    await context.close().catch(() => {});
+    return {
+      status: 'SESSION_EXPIRED',
+      url: page.url().catch(() => 'unknown'),
+      reason: `Error: ${error.message}`,
+    };
+  }
+}
+
 async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           🌾 MAC RUNNER CURATED HARVESTER');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  
+  // Check session first
+  console.log('🔐 Checking session status...');
+  const sessionCheck = await checkSessionStatus();
+  
+  if (sessionCheck.status === 'SESSION_EXPIRED') {
+    console.log(`\n❌ SESSION_EXPIRED`);
+    console.log(`   URL: ${sessionCheck.url}`);
+    console.log(`   Reason: ${sessionCheck.reason}`);
+    console.log(`\n⚠️  Need manual login refresh: run pnpm run runner:login\n`);
+    process.exit(2);
+  }
+  
+  console.log(`✅ ${sessionCheck.status}`);
+  console.log(`   URL: ${sessionCheck.url}\n`);
   
   console.log(`Mode: ${HARVEST_MODE}`);
   console.log(`Max validations per run: ${MAX_VALIDATIONS_PER_RUN}`);
