@@ -226,16 +226,37 @@ async function pollAndPost(once: boolean): Promise<{ queued: number; processed: 
 }
 
 async function main() {
-  // 🔒 CHECK ENV SYNC FIRST
-  try {
-    const { execSync } = require('child_process');
-    execSync('pnpm exec tsx scripts/runner/check-env-sync.ts', {
-      stdio: 'inherit',
-      cwd: process.cwd(),
-    });
-  } catch (error: any) {
-    console.error('\n❌ Env sync check failed. Runner will not start.');
-    process.exit(1);
+  const noSync = process.argv.includes('--noSync');
+  
+  if (!noSync) {
+    // 🔄 AUTO-SYNC ENV FROM RAILWAY FIRST
+    console.log('[RUNNER] 🔄 Auto-syncing environment from Railway...');
+    try {
+      const { execSync } = require('child_process');
+      execSync('pnpm exec tsx scripts/runner/auto-sync.ts', {
+        stdio: 'inherit',
+        cwd: process.cwd(),
+      });
+      console.log('[RUNNER] ✅ Auto-sync completed\n');
+    } catch (error: any) {
+      console.error('\n❌ Auto-sync failed. Runner will not start (fail-closed).');
+      console.error('   Use --noSync flag for debugging only (not recommended).');
+      process.exit(1);
+    }
+
+    // 🔒 CHECK ENV SYNC AFTER AUTO-SYNC
+    try {
+      const { execSync } = require('child_process');
+      execSync('pnpm exec tsx scripts/runner/check-env-sync.ts', {
+        stdio: 'inherit',
+        cwd: process.cwd(),
+      });
+    } catch (error: any) {
+      console.error('\n❌ Env sync check failed after auto-sync. Runner will not start.');
+      process.exit(1);
+    }
+  } else {
+    console.warn('[RUNNER] ⚠️  --noSync flag enabled (debugging mode - skipping auto-sync)');
   }
 
   const once = process.argv.includes('--once');

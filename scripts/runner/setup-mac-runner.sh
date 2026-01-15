@@ -7,6 +7,7 @@ set -e
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROFILE_DIR="$REPO_DIR/.runner-profile"
 PLIST_PATH="$HOME/Library/LaunchAgents/com.xbot.runner.plist"
+SYNC_PLIST_PATH="$HOME/Library/LaunchAgents/com.xbot.runner.sync.plist"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "           🏃 MAC RUNNER SETUP"
@@ -70,21 +71,72 @@ fi
 echo "🚀 Loading LaunchAgent..."
 launchctl load -w "$PLIST_PATH"
 
+# Create periodic sync LaunchAgent (every 6 hours)
+echo ""
+echo "📝 Creating periodic sync LaunchAgent (every 6 hours)..."
+
+cat > "$SYNC_PLIST_PATH" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.xbot.runner.sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd $REPO_DIR && pnpm run runner:autosync</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>21600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>$REPO_DIR/.runner-profile/sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>$REPO_DIR/.runner-profile/sync.error.log</string>
+  <key>WorkingDirectory</key>
+  <string>$REPO_DIR</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>
+EOF
+
+echo "✅ Periodic sync LaunchAgent plist created: $SYNC_PLIST_PATH"
+
+# Unload existing sync agent if present
+if launchctl list | grep -q com.xbot.runner.sync; then
+  echo "🔄 Unloading existing sync LaunchAgent..."
+  launchctl unload "$SYNC_PLIST_PATH" 2>/dev/null || true
+fi
+
+# Load sync LaunchAgent
+echo "🚀 Loading periodic sync LaunchAgent..."
+launchctl load -w "$SYNC_PLIST_PATH"
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "           ✅ SETUP COMPLETE"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "Runner will start automatically on Mac boot."
+echo "Periodic env sync runs every 6 hours automatically."
 echo ""
 echo "Commands:"
 echo "  Check status: launchctl list | grep com.xbot.runner"
 echo "  View logs: tail -f $REPO_DIR/.runner-profile/runner.log"
+echo "  View sync logs: tail -f $REPO_DIR/.runner-profile/sync.log"
 echo "  Stop: launchctl unload $PLIST_PATH"
 echo "  Start: launchctl load -w $PLIST_PATH"
 echo ""
-echo "Alternative (PM2):"
-echo "  pm2 start pnpm --name \"xbot-runner\" -- exec tsx scripts/runner/poll-and-post.ts"
-echo "  pm2 save"
-echo "  pm2 startup"
+echo "Or use npm scripts:"
+echo "  pnpm run runner:start"
+echo "  pnpm run runner:stop"
+echo "  pnpm run runner:restart"
+echo "  pnpm run runner:logs"
 echo ""

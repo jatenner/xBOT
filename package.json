@@ -36,8 +36,13 @@
     "metrics:once": "tsx scripts/metrics-once.ts",
     "runner:sync": "tsx scripts/runner/sync-env-from-railway.ts",
     "runner:check": "tsx scripts/runner/check-env-sync.ts",
+    "runner:autosync": "tsx scripts/runner/auto-sync.ts",
     "runner:login": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/login.ts",
-    "runner:once": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/poll-and-post.ts --once"
+    "runner:once": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/poll-and-post.ts --once",
+    "runner:start": "launchctl load -w ~/Library/LaunchAgents/com.xbot.runner.plist",
+    "runner:stop": "launchctl unload ~/Library/LaunchAgents/com.xbot.runner.plist",
+    "runner:restart": "pnpm run runner:stop && pnpm run runner:start",
+    "runner:logs": "tail -f ./.runner-profile/runner.log"
   },
   "dependencies": {
     "@sentry/node": "^10.32.1",
