@@ -516,8 +516,11 @@ async function validateTweetWithCDP(tweetId: string): Promise<{
     await context.close();
     
     if (!tweetData.exists) {
+      const errorReason = tweetData.reason === 'unavailable' ? 'unavailable' : 
+                          tweetData.reason === 'no_article' ? 'No content detected' :
+                          'not_found';
       console.log(`   ❌ Tweet ${tweetId} ${tweetData.reason || 'not found'}`);
-      return { exists: false, isRoot: false, author: null, content: null, error: tweetData.reason || 'not_found' };
+      return { exists: false, isRoot: false, author: null, content: null, error: errorReason };
     }
     
     console.log(`   ✅ Tweet ${tweetId} exists: author=@${tweetData.author || 'unknown'}, isReply=${tweetData.isReply}`);
@@ -586,8 +589,12 @@ async function validateAndInsert(
     }
     
     if (!validationResult.exists) {
-      result.skipped_by_reason['target_not_exists'] = (result.skipped_by_reason['target_not_exists'] || 0) + 1;
-      console.log(`   ⏭️  Skipped ${tweetId}: ${validationResult.error || 'target_not_exists'}`);
+      const skipReason = validationResult.error === 'unavailable' ? 'unavailable' : 
+                        validationResult.error === 'Login required' ? 'login_required' :
+                        validationResult.error === 'No content detected' ? 'no_content_detected' :
+                        'target_not_exists';
+      result.skipped_by_reason[skipReason] = (result.skipped_by_reason[skipReason] || 0) + 1;
+      console.log(`   ⏭️  Skipped ${tweetId}: ${skipReason}`);
       return;
     }
     
