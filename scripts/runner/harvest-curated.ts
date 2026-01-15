@@ -643,7 +643,6 @@ async function validateAndInsert(
     }
     
     // Insert opportunity
-    const supabase = getSupabaseClient();
     const { error: insertError } = await supabase
       .from('reply_opportunities')
       .insert({
