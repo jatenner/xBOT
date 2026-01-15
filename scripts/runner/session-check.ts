@@ -38,10 +38,11 @@ async function checkSession(): Promise<{
     hasTimeline: boolean;
   };
 }> {
-  const { launchPersistent } = await import('../../src/infra/playwright/launcher');
+  // Use runner launcher for Mac Runner (system Chrome)
+  const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
   const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
   
-  const context = await launchPersistent();
+  const context = await launchRunnerPersistent(true); // headless for session check
   const page = await context.newPage();
   
   try {
@@ -61,6 +62,7 @@ async function checkSession(): Promise<{
       return {
         hasLoginButton: !!(
           document.querySelector('[data-testid="loginButton"]') ||
+          document.querySelector('a[href="/i/flow/login"]') ||
           bodyText.includes('Sign in') ||
           bodyText.includes('Log in')
         ),
@@ -81,7 +83,9 @@ async function checkSession(): Promise<{
         hasTimeline: !!(
           document.querySelector('[data-testid="primaryColumn"]') ||
           document.querySelector('article[data-testid="tweet"]') ||
-          document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]')
+          document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]') ||
+          document.querySelector('[data-testid="AppTabBar_Home_Link"]') ||
+          document.querySelector('a[href="/home"][aria-label*="Home"]')
         ),
       };
     });
@@ -119,34 +123,63 @@ async function checkSession(): Promise<{
       };
     }
     
+    // Check for UI_NOT_RENDERING (black screen / empty page)
+    const bodyState = await page.evaluate(() => {
+      const bodyText = document.body.textContent || '';
+      const htmlLength = document.body.innerHTML.length;
+      const bodyHeight = document.body.offsetHeight;
+      const hasXLogoSplash = !!document.querySelector('svg[aria-label="X"]') && htmlLength < 5000;
+      
+      return {
+        htmlLength,
+        bodyHeight,
+        hasXLogoSplash,
+        bodyTextLength: bodyText.length,
+      };
+    });
+    
+    if (bodyState.htmlLength < 1000 || (bodyState.bodyHeight < 100 && !bodyState.hasXLogoSplash)) {
+      const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
+      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+      await context.close();
+      return {
+        status: 'SESSION_EXPIRED',
+        url: currentUrl,
+        reason: `UI_NOT_RENDERING (body HTML length: ${bodyState.htmlLength}, height: ${bodyState.bodyHeight}px)`,
+        diagnostics,
+      };
+    }
+    
     if (!diagnostics.hasTimeline) {
       // Double-check: wait a bit more and check again
       await page.waitForTimeout(3000);
       const hasTimelineAfterWait = await page.evaluate(() => {
         return !!document.querySelector('[data-testid="primaryColumn"]') ||
-               !!document.querySelector('article[data-testid="tweet"]');
+               !!document.querySelector('article[data-testid="tweet"]') ||
+               !!document.querySelector('[data-testid="AppTabBar_Home_Link"]') ||
+               !!document.querySelector('a[href="/home"][aria-label*="Home"]');
       });
       
       if (!hasTimelineAfterWait) {
         const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
         await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
         await context.close();
-    // Check if it's a consent wall or challenge
-    let reason = 'No timeline elements found';
-    if (diagnostics.hasConsentWall) {
-      reason = 'Consent wall detected (cookies/consent prompt)';
-    } else if (diagnostics.hasChallenge) {
-      reason = 'Challenge detected (verification/unusual activity)';
-    } else if (diagnostics.hasLoginButton) {
-      reason = 'Login required (login button visible)';
-    }
-    
-    return {
-      status: 'SESSION_EXPIRED',
-      url: currentUrl,
-      reason,
-      diagnostics,
-    };
+        // Check if it's a consent wall or challenge
+        let reason = 'No timeline elements found';
+        if (diagnostics.hasConsentWall) {
+          reason = 'Consent wall detected (cookies/consent prompt)';
+        } else if (diagnostics.hasChallenge) {
+          reason = 'Challenge detected (verification/unusual activity)';
+        } else if (diagnostics.hasLoginButton) {
+          reason = 'Login required (login button visible)';
+        }
+        
+        return {
+          status: 'SESSION_EXPIRED',
+          url: currentUrl,
+          reason,
+          diagnostics,
+        };
       }
     }
     

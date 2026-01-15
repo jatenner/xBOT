@@ -46,7 +46,8 @@
     "runner:harvest-once": "HARVEST_MODE=home_scroll RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/harvest-curated.ts",
     "runner:harvest-search": "HARVEST_MODE=search_queries RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/harvest-curated.ts",
     "runner:go-live": "tsx scripts/runner/go-live.ts",
-    "runner:go-live2": "tsx scripts/runner/go-live-with-login.ts"
+    "runner:go-live2": "tsx scripts/runner/go-live-with-login.ts",
+    "runner:login-debug": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/login-debug.ts"
   },
   "dependencies": {
     "@sentry/node": "^10.32.1",
