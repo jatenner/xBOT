@@ -48,8 +48,8 @@ async function checkSession(): Promise<{
     console.log('🔐 Checking X.com session...');
     console.log(`   Profile: ${RUNNER_PROFILE_DIR}`);
     
-    await page.goto('https://x.com/home', { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(3000); // Let page settle
+    await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.waitForTimeout(5000); // Let page settle
     
     const currentUrl = page.url();
     
@@ -60,25 +60,23 @@ async function checkSession(): Promise<{
       
       return {
         hasLoginButton: !!(
-          document.querySelector('text="Sign in"') ||
-          document.querySelector('text="Log in"') ||
           document.querySelector('[data-testid="loginButton"]') ||
           bodyText.includes('Sign in') ||
           bodyText.includes('Log in')
         ),
         hasConsentWall: !!(
           bodyText.includes('Before you continue') ||
-          bodyText.includes('cookies') ||
-          bodyText.includes('consent') ||
+          bodyText.toLowerCase().includes('cookies') ||
+          bodyText.toLowerCase().includes('consent') ||
           bodyText.includes('Accept all') ||
-          pageContent.includes('consent')
+          pageContent.toLowerCase().includes('consent')
         ),
         hasChallenge: !!(
-          bodyText.includes('unusual activity') ||
-          bodyText.includes('verify') ||
-          bodyText.includes('suspicious') ||
-          bodyText.includes('challenge') ||
-          pageContent.includes('challenge')
+          bodyText.toLowerCase().includes('unusual activity') ||
+          bodyText.toLowerCase().includes('verify') ||
+          bodyText.toLowerCase().includes('suspicious') ||
+          bodyText.toLowerCase().includes('challenge') ||
+          pageContent.toLowerCase().includes('challenge')
         ),
         hasTimeline: !!(
           document.querySelector('[data-testid="primaryColumn"]') ||
@@ -170,8 +168,36 @@ async function checkSession(): Promise<{
     
   } catch (error: any) {
     let url = 'unknown';
+    let diagnostics: any = undefined;
+    
     try {
       url = page.url();
+      // Try to get diagnostics even on error
+      diagnostics = await page.evaluate(() => {
+        const bodyText = document.body.textContent || '';
+        const pageContent = document.documentElement.innerHTML;
+        
+        return {
+          hasLoginButton: !!(
+            bodyText.includes('Sign in') ||
+            bodyText.includes('Log in')
+          ),
+          hasConsentWall: !!(
+            bodyText.includes('Before you continue') ||
+            bodyText.includes('cookies') ||
+            bodyText.includes('consent')
+          ),
+          hasChallenge: !!(
+            bodyText.includes('unusual activity') ||
+            bodyText.includes('verify') ||
+            bodyText.includes('suspicious')
+          ),
+          hasTimeline: !!(
+            document.querySelector('[data-testid="primaryColumn"]') ||
+            document.querySelector('article[data-testid="tweet"]')
+          ),
+        };
+      }).catch(() => undefined);
     } catch {}
     
     // Save screenshot on error
@@ -183,6 +209,7 @@ async function checkSession(): Promise<{
       status: 'SESSION_EXPIRED',
       url,
       reason: `Error checking session: ${error.message}`,
+      diagnostics,
     };
   }
 }
