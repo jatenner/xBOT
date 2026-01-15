@@ -27,53 +27,101 @@ if (!process.env.RUNNER_PROFILE_DIR) {
   process.env.RUNNER_PROFILE_DIR = path.join(process.cwd(), '.runner-profile');
 }
 
-async function checkSession(): Promise<{ status: 'SESSION_OK' | 'SESSION_EXPIRED'; url: string; reason: string }> {
+async function checkSession(): Promise<{ 
+  status: 'SESSION_OK' | 'SESSION_EXPIRED'; 
+  url: string; 
+  reason: string;
+  diagnostics?: {
+    hasLoginButton: boolean;
+    hasConsentWall: boolean;
+    hasChallenge: boolean;
+    hasTimeline: boolean;
+  };
+}> {
   const { launchPersistent } = await import('../../src/infra/playwright/launcher');
+  const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
   
   const context = await launchPersistent();
   const page = await context.newPage();
   
   try {
     console.log('🔐 Checking X.com session...');
-    console.log(`   Profile: ${process.env.RUNNER_PROFILE_DIR}`);
+    console.log(`   Profile: ${RUNNER_PROFILE_DIR}`);
     
     await page.goto('https://x.com/home', { waitUntil: 'networkidle', timeout: 30000 });
     await page.waitForTimeout(3000); // Let page settle
     
     const currentUrl = page.url();
     
+    // Collect diagnostics
+    const diagnostics = await page.evaluate(() => {
+      const bodyText = document.body.textContent || '';
+      const pageContent = document.documentElement.innerHTML;
+      
+      return {
+        hasLoginButton: !!(
+          document.querySelector('text="Sign in"') ||
+          document.querySelector('text="Log in"') ||
+          document.querySelector('[data-testid="loginButton"]') ||
+          bodyText.includes('Sign in') ||
+          bodyText.includes('Log in')
+        ),
+        hasConsentWall: !!(
+          bodyText.includes('Before you continue') ||
+          bodyText.includes('cookies') ||
+          bodyText.includes('consent') ||
+          bodyText.includes('Accept all') ||
+          pageContent.includes('consent')
+        ),
+        hasChallenge: !!(
+          bodyText.includes('unusual activity') ||
+          bodyText.includes('verify') ||
+          bodyText.includes('suspicious') ||
+          bodyText.includes('challenge') ||
+          pageContent.includes('challenge')
+        ),
+        hasTimeline: !!(
+          document.querySelector('[data-testid="primaryColumn"]') ||
+          document.querySelector('article[data-testid="tweet"]') ||
+          document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]')
+        ),
+      };
+    });
+    
+    // Also check with locators
+    const hasLoginButtonLocator = await page.locator('text="Sign in"').isVisible({ timeout: 2000 }).catch(() => false) ||
+                                  await page.locator('text="Log in"').isVisible({ timeout: 2000 }).catch(() => false) ||
+                                  await page.locator('[data-testid="loginButton"]').isVisible({ timeout: 2000 }).catch(() => false);
+    
+    diagnostics.hasLoginButton = diagnostics.hasLoginButton || hasLoginButtonLocator;
+    
     // Check for login redirect
     if (currentUrl.includes('/i/flow/login') || currentUrl.includes('/login')) {
+      // Save screenshot before closing
+      const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
+      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
       await context.close();
       return {
         status: 'SESSION_EXPIRED',
         url: currentUrl,
         reason: 'Redirected to login page',
+        diagnostics,
       };
     }
     
-    // Check for login button/text
-    const hasLoginButton = await page.locator('text="Sign in"').isVisible({ timeout: 2000 }).catch(() => false) ||
-                          await page.locator('text="Log in"').isVisible({ timeout: 2000 }).catch(() => false) ||
-                          await page.locator('[data-testid="loginButton"]').isVisible({ timeout: 2000 }).catch(() => false);
-    
-    if (hasLoginButton) {
+    if (diagnostics.hasLoginButton) {
+      const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
+      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
       await context.close();
       return {
         status: 'SESSION_EXPIRED',
         url: currentUrl,
         reason: 'Login button visible',
+        diagnostics,
       };
     }
     
-    // Check for logged-in indicators
-    const hasTimeline = await page.evaluate(() => {
-      return !!document.querySelector('[data-testid="primaryColumn"]') ||
-             !!document.querySelector('article[data-testid="tweet"]') ||
-             !!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
-    });
-    
-    if (!hasTimeline) {
+    if (!diagnostics.hasTimeline) {
       // Double-check: wait a bit more and check again
       await page.waitForTimeout(3000);
       const hasTimelineAfterWait = await page.evaluate(() => {
@@ -82,11 +130,14 @@ async function checkSession(): Promise<{ status: 'SESSION_OK' | 'SESSION_EXPIRED
       });
       
       if (!hasTimelineAfterWait) {
+        const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
+        await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
         await context.close();
         return {
           status: 'SESSION_EXPIRED',
           url: currentUrl,
           reason: 'No timeline elements found',
+          diagnostics,
         };
       }
     }
@@ -98,11 +149,14 @@ async function checkSession(): Promise<{ status: 'SESSION_OK' | 'SESSION_EXPIRED
     });
     
     if (!hasNav) {
+      const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
+      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
       await context.close();
       return {
         status: 'SESSION_EXPIRED',
         url: currentUrl,
         reason: 'No navigation elements found',
+        diagnostics,
       };
     }
     
@@ -111,6 +165,7 @@ async function checkSession(): Promise<{ status: 'SESSION_OK' | 'SESSION_EXPIRED
       status: 'SESSION_OK',
       url: currentUrl,
       reason: 'Timeline and navigation elements present',
+      diagnostics,
     };
     
   } catch (error: any) {
@@ -118,6 +173,11 @@ async function checkSession(): Promise<{ status: 'SESSION_OK' | 'SESSION_EXPIRED
     try {
       url = page.url();
     } catch {}
+    
+    // Save screenshot on error
+    const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
+    await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+    
     await context.close().catch(() => {});
     return {
       status: 'SESSION_EXPIRED',
@@ -129,6 +189,7 @@ async function checkSession(): Promise<{ status: 'SESSION_OK' | 'SESSION_EXPIRED
 
 async function main() {
   const result = await checkSession();
+  const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
   
   console.log('');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -136,10 +197,22 @@ async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(`URL: ${result.url}`);
   console.log(`Reason: ${result.reason}`);
+  
+  if (result.status === 'SESSION_EXPIRED' && result.diagnostics) {
+    console.log('');
+    console.log('📊 Diagnostics:');
+    console.log(`   hasLoginButton: ${result.diagnostics.hasLoginButton}`);
+    console.log(`   hasConsentWall: ${result.diagnostics.hasConsentWall}`);
+    console.log(`   hasChallenge: ${result.diagnostics.hasChallenge}`);
+    console.log(`   hasTimeline: ${result.diagnostics.hasTimeline}`);
+    console.log('');
+    console.log(`📸 Screenshot saved: ${path.join(RUNNER_PROFILE_DIR, 'session_check.png')}`);
+  }
+  
   console.log('');
   
   if (result.status === 'SESSION_EXPIRED') {
-    process.exit(1);
+    process.exit(2); // Exit code 2 for SESSION_EXPIRED
   } else {
     process.exit(0);
   }
