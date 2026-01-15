@@ -89,6 +89,20 @@ async function isTweetAlreadyUsed(tweetId: string): Promise<boolean> {
   return (events && events.length > 0) || false;
 }
 
+// Global browser context (reused across handles)
+let browserContext: any = null;
+
+/**
+ * Get or create browser context
+ */
+async function getBrowserContext() {
+  if (!browserContext) {
+    const { launchPersistent } = await import('../../src/infra/playwright/launcher');
+    browserContext = await launchPersistent();
+  }
+  return browserContext;
+}
+
 /**
  * Fetch user tweets using persistent Playwright profile
  */
@@ -98,12 +112,9 @@ async function fetchUserTweets(handle: string): Promise<Array<{
   posted_at: Date;
   author: string;
 }>> {
-  // Use runner's persistent profile launcher
-  const { launchPersistent } = await import('../../src/infra/playwright/launcher');
-  
   const tweets: Array<{ tweet_id: string; text: string; posted_at: Date; author: string }> = [];
   
-  const context = await launchPersistent();
+  const context = await getBrowserContext();
   const page = await context.newPage();
   
   try {
@@ -111,54 +122,88 @@ async function fetchUserTweets(handle: string): Promise<Array<{
     console.log(`   🌐 Navigating to ${url}...`);
     
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(3000); // Let page load
+    await page.waitForTimeout(5000); // Let page load
     
-    // Check for consent wall
-    const consentWall = await page.locator('text="This post is from an account that no longer exists"').isVisible({ timeout: 2000 }).catch(() => false) ||
-                       await page.locator('text="Something went wrong"').isVisible({ timeout: 2000 }).catch(() => false);
+    // Wait longer for page to fully load
+    await page.waitForTimeout(8000);
     
-    if (consentWall) {
+    // Check for consent wall or login required
+    const pageContent = await page.content();
+    if (pageContent.includes('This post is from an account that no longer exists') || 
+        pageContent.includes('Something went wrong') ||
+        pageContent.includes('Try another search')) {
       throw new Error('CONSENT_WALL');
     }
     
-    // Extract tweets from timeline
+    // Check if we're logged in (should see timeline elements)
+    const isLoggedIn = await page.evaluate(() => {
+      return !!document.querySelector('[data-testid="primaryColumn"]') || 
+             !!document.querySelector('[data-testid="tweet"]');
+    });
+    
+    if (!isLoggedIn) {
+      console.log(`   ⚠️  May not be logged in - page structure suggests login required`);
+    }
+    
+    // Scroll to load more tweets
+    await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight / 3);
+    });
+    await page.waitForTimeout(3000);
+    
+    // Try multiple selectors for tweets
     const extractedTweets = await page.evaluate((maxTweets) => {
-      const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+      // Try multiple selectors
+      let articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+      if (articles.length === 0) {
+        articles = Array.from(document.querySelectorAll('article'));
+      }
+      
       const results: Array<{ tweet_id: string; text: string; posted_at: string }> = [];
       
       for (const article of articles.slice(0, maxTweets * 2)) { // Get more to filter
-        // Extract tweet ID from link
-        const link = article.querySelector('a[href*="/status/"]');
-        if (!link) continue;
-        
-        const href = link.getAttribute('href') || '';
-        const match = href.match(/\/status\/(\d+)/);
-        if (!match) continue;
-        
-        const tweetId = match[1];
-        
-        // Extract text
-        const textEl = article.querySelector('[data-testid="tweetText"]');
-        const text = textEl?.textContent?.trim() || '';
-        
-        if (text.length < 10) continue; // Skip empty tweets
-        
-        // Extract timestamp
-        const timeEl = article.querySelector('time');
-        const postedAt = timeEl?.getAttribute('datetime') || new Date().toISOString();
-        
-        // Check if it's a reply (skip if text starts with @ or has "Replying to" text)
-        if (text.startsWith('@') || text.toLowerCase().includes('replying to')) {
-          continue; // Skip replies
+        try {
+          // Extract tweet ID from link
+          const links = article.querySelectorAll('a[href*="/status/"]');
+          let tweetId: string | null = null;
+          
+          for (const link of Array.from(links)) {
+            const href = link.getAttribute('href') || '';
+            const match = href.match(/\/status\/(\d+)/);
+            if (match) {
+              tweetId = match[1];
+              break;
+            }
+          }
+          
+          if (!tweetId) continue;
+          
+          // Extract text
+          const textEl = article.querySelector('[data-testid="tweetText"]');
+          const text = textEl?.textContent?.trim() || '';
+          
+          if (text.length < 10) continue; // Skip empty tweets
+          
+          // Extract timestamp
+          const timeEl = article.querySelector('time');
+          const postedAt = timeEl?.getAttribute('datetime') || new Date().toISOString();
+          
+          // Check if it's a reply (skip if text starts with @ or has "Replying to" text)
+          if (text.startsWith('@') || text.toLowerCase().includes('replying to')) {
+            continue; // Skip replies
+          }
+          
+          // Also check for reply indicator in DOM
+          const articleText = article.textContent || '';
+          if (articleText.includes('Replying to')) {
+            continue; // Skip replies
+          }
+          
+          results.push({ tweet_id: tweetId, text, posted_at: postedAt });
+        } catch (e) {
+          // Skip this article if extraction fails
+          continue;
         }
-        
-        // Also check for reply indicator in DOM
-        const articleText = article.textContent || '';
-        if (articleText.includes('Replying to')) {
-          continue; // Skip replies
-        }
-        
-        results.push({ tweet_id: tweetId, text, posted_at: postedAt });
       }
       
       return results;
@@ -178,8 +223,13 @@ async function fetchUserTweets(handle: string): Promise<Array<{
         });
       }
     }
+  } catch (error: any) {
+    if (error.message === 'CONSENT_WALL') {
+      throw error; // Re-throw to be caught by caller
+    }
+    throw new Error(`Browser fetch failed: ${error.message}`);
   } finally {
-    await context.close();
+    await page.close(); // Close page, keep context open
   }
   
   return tweets;
@@ -389,6 +439,7 @@ async function main() {
   } else {
     console.log(`⚠️  No opportunities inserted. Check failures above.`);
   }
+  
 }
 
 main().catch((error) => {
