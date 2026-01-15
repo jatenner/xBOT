@@ -60,18 +60,31 @@ function fetchRailwayVariables(): Record<string, string> {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    const variables = JSON.parse(output.trim());
+    const parsed = JSON.parse(output.trim());
     
-    // Railway CLI returns array of { name, value } objects
-    if (!Array.isArray(variables)) {
-      throw new Error('Railway CLI output is not an array');
-    }
-
+    // Railway CLI returns a JSON object with key-value pairs directly
     const result: Record<string, string> = {};
-    for (const item of variables) {
-      if (item.name && item.value) {
-        result[item.name] = item.value;
+    
+    if (Array.isArray(parsed)) {
+      // If array format, extract name/value pairs
+      for (const item of parsed) {
+        if (item && typeof item === 'object') {
+          const name = item.name || item.key || item.variable;
+          const value = item.value || item.val;
+          if (name && value) {
+            result[name] = String(value);
+          }
+        }
       }
+    } else if (parsed && typeof parsed === 'object') {
+      // If object format, treat keys as variable names
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          result[key] = String(value);
+        }
+      }
+    } else {
+      throw new Error('Railway CLI output format not recognized');
     }
 
     return result;
