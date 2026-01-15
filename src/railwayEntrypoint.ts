@@ -27,13 +27,15 @@ function startHealthServer(): void {
   const port = Number(process.env.PORT ?? 8080);
   const host = '0.0.0.0';
   // Prefer APP_VERSION (set at build time) over Railway's env vars for deterministic versioning
-  const gitSha = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+  // IMPORTANT: Do NOT use hardcoded defaults - let 'unknown' show if env vars are missing
   const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
 
   // 🔒 PHASE 4.B: DEPLOYMENT INTEGRITY CHECK - Log at boot
+  const appVersion = process.env.APP_VERSION ?? 'unknown';
+  const gitSha = process.env.APP_VERSION ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
   console.log(`[BOOT] git_sha=${gitSha}`);
-  console.log(`[BOOT] railway_git_commit_sha=${process.env.RAILWAY_GIT_COMMIT_SHA || 'missing'}`);
-  console.log(`[BOOT] app_version=${process.env.APP_VERSION || gitSha}`);
+  console.log(`[BOOT] railway_git_commit_sha=${process.env.RAILWAY_GIT_COMMIT_SHA ?? 'missing'}`);
+  console.log(`[BOOT] app_version=${appVersion}`);
   console.log(`[BOOT] boot_id=${bootId}`);
   console.log(`[BOOT] boot_time=${bootTime}`);
   
@@ -67,11 +69,15 @@ function startHealthServer(): void {
         'Content-Type': 'application/json',
         'Cache-Control': 'no-cache'
       });
+      // Compute version fields dynamically (do NOT cache - read env vars at request time)
+      const appVersion = process.env.APP_VERSION ?? 'unknown';
+      const gitSha = process.env.APP_VERSION ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
+      
       res.end(JSON.stringify({
         ok: true,
         status: 'healthy',
         git_sha: gitSha,
-        app_version: process.env.APP_VERSION || 'unknown',
+        app_version: appVersion,
         service_name: serviceName,
         timestamp: new Date().toISOString(),
         // Anti-lie fields
@@ -79,13 +85,13 @@ function startHealthServer(): void {
         boot_time: bootTime,
         hostname: hostname,
         pid: pid,
-        git_sha_env: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'missing',
-        railway_git_commit_sha: process.env.RAILWAY_GIT_COMMIT_SHA || 'missing',
-        railway_git_author: process.env.RAILWAY_GIT_AUTHOR || 'missing',
-        railway_git_branch: process.env.RAILWAY_GIT_BRANCH || 'missing',
-        railway_git_commit_message: process.env.RAILWAY_GIT_COMMIT_MESSAGE || 'missing',
-        railway_service_name: process.env.RAILWAY_SERVICE_NAME || 'missing',
-        railway_environment: process.env.RAILWAY_ENVIRONMENT || 'missing',
+        git_sha_env: process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'missing',
+        railway_git_commit_sha: process.env.RAILWAY_GIT_COMMIT_SHA ?? 'missing',
+        railway_git_author: process.env.RAILWAY_GIT_AUTHOR ?? 'missing',
+        railway_git_branch: process.env.RAILWAY_GIT_BRANCH ?? 'missing',
+        railway_git_commit_message: process.env.RAILWAY_GIT_COMMIT_MESSAGE ?? 'missing',
+        railway_service_name: process.env.RAILWAY_SERVICE_NAME ?? 'missing',
+        railway_environment: process.env.RAILWAY_ENVIRONMENT ?? 'missing',
         // Session path info
         session_canonical_path_env: process.env.SESSION_CANONICAL_PATH || '(not set)',
         session_path_resolved: sessionPathInfo.resolvedPath || 'unknown',
