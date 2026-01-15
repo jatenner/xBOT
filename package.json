@@ -42,7 +42,8 @@
     "runner:start": "launchctl load -w ~/Library/LaunchAgents/com.xbot.runner.plist",
     "runner:stop": "launchctl unload ~/Library/LaunchAgents/com.xbot.runner.plist",
     "runner:restart": "pnpm run runner:stop && pnpm run runner:start",
-    "runner:logs": "tail -f ./.runner-profile/runner.log"
+    "runner:logs": "tail -f ./.runner-profile/runner.log",
+    "runner:harvest-once": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/harvest-curated.ts"
   },
   "dependencies": {
     "@sentry/node": "^10.32.1",

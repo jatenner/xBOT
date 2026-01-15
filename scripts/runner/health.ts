@@ -59,9 +59,44 @@ async function main() {
     .eq('event_type', 'POST_FAILED')
     .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
 
+  // Get opportunities inserted last hour
+  const { count: oppsLastHour } = await supabase
+    .from('reply_opportunities')
+    .select('*', { count: 'exact', head: true })
+    .eq('discovery_method', 'mac_curated')
+    .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString());
+
+  // Get candidates inserted last hour
+  const { count: candidatesLastHour } = await supabase
+    .from('reply_candidate_queue')
+    .select('*', { count: 'exact', head: true })
+    .eq('source_type', 'curated')
+    .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString());
+
+  // Get last harvest run time
+  const { data: lastHarvest } = await supabase
+    .from('reply_opportunities')
+    .select('created_at')
+    .eq('discovery_method', 'mac_curated')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   console.log('📊 Last 24 Hours:');
   console.log(`   POST_SUCCESS: ${successCount24h || 0}`);
   console.log(`   POST_FAILED: ${failureCount24h || 0}\n`);
+
+  console.log('🌾 Harvest Stats (Last Hour):');
+  console.log(`   Opportunities inserted: ${oppsLastHour || 0}`);
+  console.log(`   Candidates inserted: ${candidatesLastHour || 0}`);
+  if (lastHarvest) {
+    const lastHarvestTime = new Date(lastHarvest.created_at);
+    const minutesAgo = Math.floor((Date.now() - lastHarvestTime.getTime()) / 60000);
+    console.log(`   Last harvest: ${minutesAgo} minutes ago`);
+  } else {
+    console.log(`   Last harvest: Never`);
+  }
+  console.log('');
 
   console.log('⏰ Last Events:');
   if (lastSuccess) {

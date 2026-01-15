@@ -8,6 +8,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROFILE_DIR="$REPO_DIR/.runner-profile"
 PLIST_PATH="$HOME/Library/LaunchAgents/com.xbot.runner.plist"
 SYNC_PLIST_PATH="$HOME/Library/LaunchAgents/com.xbot.runner.sync.plist"
+HARVEST_PLIST_PATH="$HOME/Library/LaunchAgents/com.xbot.runner.harvest.plist"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "           🏃 MAC RUNNER SETUP"
@@ -38,7 +39,7 @@ cat > "$PLIST_PATH" <<EOF
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>cd $REPO_DIR && RUNNER_MODE=true RUNNER_PROFILE_DIR=$PROFILE_DIR pnpm exec tsx scripts/runner/poll-and-post.ts</string>
+    <string>cd $REPO_DIR && RUNNER_MODE=true RUNNER_PROFILE_DIR=$PROFILE_DIR /Users/jonahtenner/.npm-global/bin/pnpm exec tsx scripts/runner/poll-and-post.ts</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -53,7 +54,7 @@ cat > "$PLIST_PATH" <<EOF
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/Users/jonahtenner/.npm-global/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 </dict>
 </plist>
@@ -86,7 +87,7 @@ cat > "$SYNC_PLIST_PATH" <<EOF
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>cd $REPO_DIR && pnpm run runner:autosync</string>
+    <string>cd $REPO_DIR && /Users/jonahtenner/.npm-global/bin/pnpm run runner:autosync</string>
   </array>
   <key>StartInterval</key>
   <integer>21600</integer>
@@ -101,7 +102,7 @@ cat > "$SYNC_PLIST_PATH" <<EOF
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/Users/jonahtenner/.npm-global/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 </dict>
 </plist>
@@ -119,6 +120,54 @@ fi
 echo "🚀 Loading periodic sync LaunchAgent..."
 launchctl load -w "$SYNC_PLIST_PATH"
 
+# Create periodic harvest LaunchAgent (every 5 minutes)
+echo ""
+echo "📝 Creating periodic harvest LaunchAgent (every 5 minutes)..."
+
+cat > "$HARVEST_PLIST_PATH" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.xbot.runner.harvest</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd $REPO_DIR && /Users/jonahtenner/.npm-global/bin/pnpm run runner:harvest-once</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>$REPO_DIR/.runner-profile/harvest.log</string>
+  <key>StandardErrorPath</key>
+  <string>$REPO_DIR/.runner-profile/harvest.error.log</string>
+  <key>WorkingDirectory</key>
+  <string>$REPO_DIR</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/jonahtenner/.npm-global/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>
+EOF
+
+echo "✅ Periodic harvest LaunchAgent plist created: $HARVEST_PLIST_PATH"
+
+# Unload existing harvest agent if present
+if launchctl list | grep -q com.xbot.runner.harvest; then
+  echo "🔄 Unloading existing harvest LaunchAgent..."
+  launchctl unload "$HARVEST_PLIST_PATH" 2>/dev/null || true
+fi
+
+# Load harvest LaunchAgent
+echo "🚀 Loading periodic harvest LaunchAgent..."
+launchctl load -w "$HARVEST_PLIST_PATH"
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "           ✅ SETUP COMPLETE"
@@ -126,11 +175,13 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo "Runner will start automatically on Mac boot."
 echo "Periodic env sync runs every 6 hours automatically."
+echo "Periodic harvest runs every 5 minutes automatically."
 echo ""
 echo "Commands:"
 echo "  Check status: launchctl list | grep com.xbot.runner"
 echo "  View logs: tail -f $REPO_DIR/.runner-profile/runner.log"
 echo "  View sync logs: tail -f $REPO_DIR/.runner-profile/sync.log"
+echo "  View harvest logs: tail -f $REPO_DIR/.runner-profile/harvest.log"
 echo "  Stop: launchctl unload $PLIST_PATH"
 echo "  Start: launchctl load -w $PLIST_PATH"
 echo ""
