@@ -1,7 +1,7 @@
 /**
  * 🏃 MAC RUNNER LAUNCHER
  * Uses SYSTEM Google Chrome.app (not Chrome for Testing)
- * For headed interactive login and session management
+ * Supports both direct launch and CDP connection modes
  */
 
 import { chromium, BrowserContext } from 'playwright';
@@ -9,6 +9,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
+const RUNNER_BROWSER = process.env.RUNNER_BROWSER || 'cdp'; // 'cdp' or 'direct'
+const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 
 /**
  * Find system Chrome executable on macOS
@@ -38,10 +40,49 @@ function findSystemChrome(): string | null {
 }
 
 /**
+ * Check if CDP is running
+ */
+async function isCDPRunning(): Promise<boolean> {
+  try {
+    const response = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Launch persistent context using SYSTEM Chrome (for Mac Runner)
- * This is for headed interactive use (login, debugging)
+ * Supports CDP mode (connect to running Chrome) or direct launch
  */
 export async function launchRunnerPersistent(headless: boolean = false): Promise<BrowserContext> {
+  // CDP mode: connect to running Chrome
+  if (RUNNER_BROWSER === 'cdp') {
+    console.log(`[RUNNER_LAUNCHER] 🔌 CDP mode: connecting to Chrome on port ${CDP_PORT}`);
+    
+    // Check if CDP is running
+    if (!(await isCDPRunning())) {
+      throw new Error(`Chrome CDP not running on port ${CDP_PORT}. Run: pnpm run runner:chrome-cdp or pnpm run runner:login`);
+    }
+    
+    try {
+      const browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
+      const contexts = browser.contexts();
+      
+      if (contexts.length > 0) {
+        console.log(`[RUNNER_LAUNCHER] ✅ Connected to existing Chrome context (${contexts.length} contexts)`);
+        return contexts[0];
+      } else {
+        const context = await browser.newContext();
+        console.log(`[RUNNER_LAUNCHER] ✅ Created new context in CDP Chrome`);
+        return context;
+      }
+    } catch (error: any) {
+      throw new Error(`Failed to connect to Chrome CDP: ${error.message}`);
+    }
+  }
+  
+  // Direct launch mode (fallback)
   // Ensure profile dir exists
   if (!fs.existsSync(RUNNER_PROFILE_DIR)) {
     fs.mkdirSync(RUNNER_PROFILE_DIR, { recursive: true });

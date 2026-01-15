@@ -99,7 +99,9 @@ async function runLogin(): Promise<boolean> {
   console.log('   3. Press Enter in this terminal when done');
   console.log('');
   
-  const result = await execLive('pnpm run runner:login', 'Interactive login');
+  // Set CDP mode for login
+  process.env.RUNNER_BROWSER = 'cdp';
+  const result = await execLive('RUNNER_BROWSER=cdp pnpm run runner:login', 'Interactive login');
   return result.success;
 }
 

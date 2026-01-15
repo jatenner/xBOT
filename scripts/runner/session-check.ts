@@ -38,9 +38,14 @@ async function checkSession(): Promise<{
     hasTimeline: boolean;
   };
 }> {
-  // Use runner launcher for Mac Runner (system Chrome)
+  // Use runner launcher for Mac Runner (system Chrome via CDP or direct)
   const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
   const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
+  
+  // Set browser mode if not set (default to cdp)
+  if (!process.env.RUNNER_BROWSER) {
+    process.env.RUNNER_BROWSER = 'cdp';
+  }
   
   const context = await launchRunnerPersistent(true); // headless for session check
   const page = await context.newPage();
@@ -99,9 +104,16 @@ async function checkSession(): Promise<{
     
     // Check for login redirect
     if (currentUrl.includes('/i/flow/login') || currentUrl.includes('/login')) {
-      // Save screenshot before closing
+      // Save screenshot and HTML before closing
       const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
       await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+      const htmlPath = path.join(RUNNER_PROFILE_DIR, 'session_check.html');
+      const html = await page.content();
+      const redactedHtml = html
+        .replace(/password="[^"]*"/gi, 'password="[REDACTED]"')
+        .replace(/token="[^"]*"/gi, 'token="[REDACTED]"')
+        .substring(0, 50000);
+      fs.writeFileSync(htmlPath, redactedHtml);
       await context.close();
       return {
         status: 'SESSION_EXPIRED',
@@ -114,6 +126,13 @@ async function checkSession(): Promise<{
     if (diagnostics.hasLoginButton) {
       const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
       await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+      const htmlPath = path.join(RUNNER_PROFILE_DIR, 'session_check.html');
+      const html = await page.content();
+      const redactedHtml = html
+        .replace(/password="[^"]*"/gi, 'password="[REDACTED]"')
+        .replace(/token="[^"]*"/gi, 'token="[REDACTED]"')
+        .substring(0, 50000);
+      fs.writeFileSync(htmlPath, redactedHtml);
       await context.close();
       return {
         status: 'SESSION_EXPIRED',
@@ -163,6 +182,13 @@ async function checkSession(): Promise<{
       if (!hasTimelineAfterWait) {
         const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
         await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+        const htmlPath = path.join(RUNNER_PROFILE_DIR, 'session_check.html');
+        const html = await page.content();
+        const redactedHtml = html
+          .replace(/password="[^"]*"/gi, 'password="[REDACTED]"')
+          .replace(/token="[^"]*"/gi, 'token="[REDACTED]"')
+          .substring(0, 50000);
+        fs.writeFileSync(htmlPath, redactedHtml);
         await context.close();
         // Check if it's a consent wall or challenge
         let reason = 'No timeline elements found';
@@ -192,6 +218,13 @@ async function checkSession(): Promise<{
     if (!hasNav) {
       const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
       await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+      const htmlPath = path.join(RUNNER_PROFILE_DIR, 'session_check.html');
+      const html = await page.content();
+      const redactedHtml = html
+        .replace(/password="[^"]*"/gi, 'password="[REDACTED]"')
+        .replace(/token="[^"]*"/gi, 'token="[REDACTED]"')
+        .substring(0, 50000);
+      fs.writeFileSync(htmlPath, redactedHtml);
       await context.close();
       return {
         status: 'SESSION_EXPIRED',
@@ -243,9 +276,18 @@ async function checkSession(): Promise<{
       }).catch(() => undefined);
     } catch {}
     
-    // Save screenshot on error
+    // Save screenshot and HTML on error
     const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
     await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+    try {
+      const html = await page.content();
+      const htmlPath = path.join(RUNNER_PROFILE_DIR, 'session_check.html');
+      const redactedHtml = html
+        .replace(/password="[^"]*"/gi, 'password="[REDACTED]"')
+        .replace(/token="[^"]*"/gi, 'token="[REDACTED]"')
+        .substring(0, 50000);
+      fs.writeFileSync(htmlPath, redactedHtml);
+    } catch {}
     
     await context.close().catch(() => {});
     return {

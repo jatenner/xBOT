@@ -44,11 +44,78 @@ async function main() {
     console.log(`✅ Created profile directory: ${RUNNER_PROFILE_DIR}\n`);
   }
 
-  console.log('🚀 Launching SYSTEM Chrome in headed mode...');
-  console.log('   Browser will open - please log in to X.com\n');
-
+  // Set browser mode to CDP
+  if (!process.env.RUNNER_BROWSER) {
+    process.env.RUNNER_BROWSER = 'cdp';
+  }
+  
+  console.log('🚀 Starting Chrome CDP launcher...');
+  console.log('   Chrome will open - please log in to X.com\n');
+  
+  // Launch Chrome CDP
+  const { spawn } = require('child_process');
+  const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  const CDP_PORT = 9222;
+  const CDP_PROFILE_DIR = path.join(RUNNER_PROFILE_DIR, '.chrome-cdp-profile');
+  
+  if (!fs.existsSync(CDP_PROFILE_DIR)) {
+    fs.mkdirSync(CDP_PROFILE_DIR, { recursive: true });
+  }
+  
+  console.log(`   Chrome path: ${chromePath}`);
+  console.log(`   CDP port: ${CDP_PORT}`);
+  console.log(`   Profile: ${CDP_PROFILE_DIR}\n`);
+  
+  // Check if CDP already running
+  let cdpRunning = false;
+  try {
+    const response = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`);
+    cdpRunning = response.ok;
+  } catch {}
+  
+  let chromeProcess: any = null;
+  if (!cdpRunning) {
+    console.log('🌐 Launching Chrome with CDP...');
+    chromeProcess = spawn(chromePath, [
+      `--remote-debugging-port=${CDP_PORT}`,
+      `--user-data-dir=${CDP_PROFILE_DIR}`,
+      '--profile-directory=Default',
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-blink-features=AutomationControlled',
+      'https://x.com/i/flow/login',
+    ], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    
+    chromeProcess.unref();
+    
+    // Wait for CDP to become accessible
+    console.log('   Waiting for Chrome to start...');
+    let attempts = 0;
+    while (attempts < 15) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      try {
+        const response = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`);
+        if (response.ok) {
+          console.log('✅ Chrome CDP is ready\n');
+          break;
+        }
+      } catch {}
+      attempts++;
+    }
+    
+    if (attempts >= 15) {
+      throw new Error('Chrome launched but CDP not accessible after 15 seconds');
+    }
+  } else {
+    console.log('✅ Chrome CDP already running\n');
+  }
+  
+  // Connect via CDP
   const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
-  const browser = await launchRunnerPersistent(false); // headed mode
+  const browser = await launchRunnerPersistent(false); // CDP mode
 
   try {
     const page = browser.pages()[0] || await browser.newPage();
@@ -187,8 +254,12 @@ async function main() {
       console.log('   Profile will still be saved, but runner may need to login again');
     }
 
-    // Close browser (profile is saved automatically)
+    // Don't close browser - keep Chrome running for CDP
+    // Just disconnect Playwright connection
     await browser.close();
+    
+    // Note: Chrome process keeps running in background
+    console.log('   Note: Chrome is still running. Close it manually if needed.');
 
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('           ✅ LOGIN COMPLETE');

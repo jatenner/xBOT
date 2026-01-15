@@ -151,10 +151,14 @@ async function checkConsentWall(page: any): Promise<boolean> {
  * Collect tweets from home timeline
  */
 async function collectFromHomeTimeline(): Promise<string[]> {
-  const { launchPersistent } = await import('../../src/infra/playwright/launcher');
+  // Use runner launcher (CDP mode)
+  if (!process.env.RUNNER_BROWSER) {
+    process.env.RUNNER_BROWSER = 'cdp';
+  }
+  const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
   const tweetIds: string[] = [];
   
-  const context = await launchPersistent();
+  const context = await launchRunnerPersistent(true); // headless for harvesting
   const page = await context.newPage();
   
   try {
@@ -271,10 +275,14 @@ async function collectFromHomeTimeline(): Promise<string[]> {
  * Collect tweets from search queries
  */
 async function collectFromSearchQueries(): Promise<string[]> {
-  const { launchPersistent } = await import('../../src/infra/playwright/launcher');
+  // Use runner launcher (CDP mode)
+  if (!process.env.RUNNER_BROWSER) {
+    process.env.RUNNER_BROWSER = 'cdp';
+  }
+  const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
   const tweetIds: string[] = [];
   
-  const context = await launchPersistent();
+  const context = await launchRunnerPersistent(true); // headless for harvesting
   const page = await context.newPage();
   
   try {
