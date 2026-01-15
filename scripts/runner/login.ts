@@ -49,181 +49,46 @@ async function main() {
     process.env.RUNNER_BROWSER = 'cdp';
   }
   
-  console.log('🚀 Starting Chrome CDP launcher...');
-  console.log('   Chrome will open - please log in to X.com\n');
+  console.log('🚀 Resetting Chrome CDP...\n');
   
-  // Launch Chrome CDP
-  const { spawn } = require('child_process');
-  const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-  const CDP_PORT = 9222;
-  const CDP_PROFILE_DIR = path.join(RUNNER_PROFILE_DIR, '.chrome-cdp-profile');
+  // Use reset-chrome script
+  const { execSync } = require('child_process');
+  execSync('RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' tsx scripts/runner/reset-chrome.ts', {
+    stdio: 'inherit',
+    cwd: process.cwd(),
+  });
   
-  if (!fs.existsSync(CDP_PROFILE_DIR)) {
-    fs.mkdirSync(CDP_PROFILE_DIR, { recursive: true });
-  }
+  console.log('\n✅ Chrome CDP reset complete\n');
   
-  console.log(`   Chrome path: ${chromePath}`);
-  console.log(`   CDP port: ${CDP_PORT}`);
-  console.log(`   Profile: ${CDP_PROFILE_DIR}\n`);
-  
-  // Check if CDP already running
-  let cdpRunning = false;
-  try {
-    const response = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`);
-    cdpRunning = response.ok;
-  } catch {}
-  
-  let chromeProcess: any = null;
-  if (!cdpRunning) {
-    console.log('🌐 Launching Chrome with CDP...');
-    chromeProcess = spawn(chromePath, [
-      `--remote-debugging-port=${CDP_PORT}`,
-      `--user-data-dir=${CDP_PROFILE_DIR}`,
-      '--profile-directory=Default',
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--disable-blink-features=AutomationControlled',
-      'https://x.com/i/flow/login',
-    ], {
-      detached: true,
-      stdio: 'ignore',
-    });
-    
-    chromeProcess.unref();
-    
-    // Wait for CDP to become accessible
-    console.log('   Waiting for Chrome to start...');
-    let attempts = 0;
-    while (attempts < 15) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      try {
-        const response = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`);
-        if (response.ok) {
-          console.log('✅ Chrome CDP is ready\n');
-          break;
-        }
-      } catch {}
-      attempts++;
-    }
-    
-    if (attempts >= 15) {
-      throw new Error('Chrome launched but CDP not accessible after 15 seconds');
-    }
-  } else {
-    console.log('✅ Chrome CDP already running\n');
-  }
+  // Wait a moment for Chrome to fully start
+  await new Promise(resolve => setTimeout(resolve, 2000));
   
   // Connect via CDP
   const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
   const browser = await launchRunnerPersistent(false); // CDP mode
 
   try {
+    // Navigate to home (Chrome already opened to home via reset-chrome)
     const page = browser.pages()[0] || await browser.newPage();
     
-    // Capture console messages
-    const consoleMessages: string[] = [];
-    page.on('console', msg => {
-      const text = msg.text();
-      if (!text.includes('password') && !text.includes('token') && !text.includes('secret')) {
-        consoleMessages.push(`[CONSOLE] ${msg.type()}: ${text}`);
-      }
-    });
-    
-    // Capture failed requests
-    const failedRequests: string[] = [];
-    page.on('requestfailed', request => {
-      failedRequests.push(`[FAILED] ${request.method()} ${request.url()} - ${request.failure()?.errorText || 'unknown'}`);
-    });
-    page.on('response', response => {
-      if (response.status() >= 400) {
-        failedRequests.push(`[ERROR] ${response.status()} ${response.url()}`);
-      }
-    });
-    
-    console.log('🌐 Navigating to https://x.com/i/flow/login...');
-    await page.goto('https://x.com/i/flow/login', { waitUntil: 'domcontentloaded', timeout: 45000 });
-    
-    // Wait a bit for page to render
-    await page.waitForTimeout(3000);
-    
-    // Save step 1 screenshot
-    const step1Path = path.join(RUNNER_PROFILE_DIR, 'login_step1.png');
-    await page.screenshot({ path: step1Path, fullPage: true }).catch(() => {});
-    console.log(`📸 Screenshot saved: ${step1Path}`);
-    
-    // Wait for login form or other elements
-    console.log('⏳ Waiting for page elements to load...');
-    try {
-      await Promise.race([
-        page.waitForSelector('input[autocomplete="username"]', { timeout: 10000 }).catch(() => null),
-        page.waitForSelector('[data-testid="loginButton"]', { timeout: 10000 }).catch(() => null),
-        page.waitForSelector('[data-testid="primaryColumn"]', { timeout: 10000 }).catch(() => null),
-      ]);
-    } catch (e) {
-      // Continue anyway
+    // Navigate to home if not already there
+    const currentUrl = page.url();
+    if (!currentUrl.includes('x.com/home')) {
+      console.log('🌐 Navigating to https://x.com/home...');
+      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 45000 });
+      await page.waitForTimeout(2000);
+    } else {
+      console.log('✅ Already on home page');
     }
-    
-    await page.waitForTimeout(2000);
-    
-    // Save step 2 screenshot
-    const step2Path = path.join(RUNNER_PROFILE_DIR, 'login_step2.png');
-    await page.screenshot({ path: step2Path, fullPage: true }).catch(() => {});
-    console.log(`📸 Screenshot saved: ${step2Path}`);
-    
-    // Detect what's on the page
-    const pageState = await page.evaluate(() => {
-      const bodyText = document.body.textContent || '';
-      const hasLoginForm = !!document.querySelector('input[autocomplete="username"]');
-      const hasTimeline = !!document.querySelector('[data-testid="primaryColumn"]');
-      const hasConsent = bodyText.toLowerCase().includes('consent') || bodyText.toLowerCase().includes('cookies');
-      const hasChallenge = bodyText.toLowerCase().includes('verify') || bodyText.toLowerCase().includes('challenge');
-      const bodyLength = document.body.innerHTML.length;
-      
-      return {
-        hasLoginForm,
-        hasTimeline,
-        hasConsent,
-        hasChallenge,
-        bodyLength,
-        url: window.location.href,
-      };
-    });
-    
-    console.log('\n📊 Page state detected:');
-    console.log(`   URL: ${pageState.url}`);
-    console.log(`   Has login form: ${pageState.hasLoginForm}`);
-    console.log(`   Has timeline: ${pageState.hasTimeline}`);
-    console.log(`   Has consent wall: ${pageState.hasConsent}`);
-    console.log(`   Has challenge: ${pageState.hasChallenge}`);
-    console.log(`   Body HTML length: ${pageState.bodyLength}`);
-    
-    // Save artifacts
-    const htmlPath = path.join(RUNNER_PROFILE_DIR, 'login_page.html');
-    const htmlContent = await page.content();
-    // Redact sensitive data
-    const redactedHtml = htmlContent
-      .replace(/password="[^"]*"/gi, 'password="[REDACTED]"')
-      .replace(/token="[^"]*"/gi, 'token="[REDACTED]"')
-      .substring(0, 50000); // Limit size
-    fs.writeFileSync(htmlPath, redactedHtml);
-    console.log(`📄 HTML saved: ${htmlPath} (redacted, truncated)`);
-    
-    const consolePath = path.join(RUNNER_PROFILE_DIR, 'login_console.log');
-    fs.writeFileSync(consolePath, consoleMessages.slice(0, 100).join('\n'));
-    console.log(`📋 Console log saved: ${consolePath}`);
-    
-    const requestsPath = path.join(RUNNER_PROFILE_DIR, 'login_requests.log');
-    fs.writeFileSync(requestsPath, failedRequests.slice(0, 50).join('\n'));
-    console.log(`🌐 Requests log saved: ${requestsPath}`);
     
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('           ⏸️  WAITING FOR LOGIN');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     console.log('📝 Instructions:');
-    console.log('   1. Complete any consent/challenge prompts in the browser');
-    console.log('   2. Log in to X.com');
+    console.log('   1. Complete any consent/challenge prompts in the Chrome window');
+    console.log('   2. Log in to X.com if needed');
     console.log('   3. Complete 2FA if prompted');
-    console.log('   4. Verify you see your timeline (not login page)');
+    console.log('   4. Verify you see your Home timeline (left nav should be visible)');
     console.log('   5. Press Enter in this terminal when done\n');
 
     // Wait for user to press Enter
@@ -233,33 +98,16 @@ async function main() {
     });
 
     await new Promise<void>((resolve) => {
-      rl.question('Press Enter after you\'re logged in... ', () => {
+      rl.question('Press Enter after you\'re logged in and see the Home timeline... ', () => {
         rl.close();
         resolve();
       });
     });
 
-    // Verify login by checking for timeline elements
-    console.log('\n🔍 Verifying login...');
-    const isLoggedIn = await page.evaluate(() => {
-      return !!document.querySelector('[data-testid="primaryColumn"]') ||
-             !!document.querySelector('article[data-testid="tweet"]') ||
-             !!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
-    });
-
-    if (isLoggedIn) {
-      console.log('✅ Login verified - timeline elements found');
-    } else {
-      console.log('⚠️  Warning: Login may not be complete (timeline elements not found)');
-      console.log('   Profile will still be saved, but runner may need to login again');
-    }
-
     // Don't close browser - keep Chrome running for CDP
-    // Just disconnect Playwright connection
     await browser.close();
     
-    // Note: Chrome process keeps running in background
-    console.log('   Note: Chrome is still running. Close it manually if needed.');
+    console.log('\n✅ Login step complete. Chrome is still running for CDP.');
 
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('           ✅ LOGIN COMPLETE');

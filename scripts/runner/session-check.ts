@@ -59,10 +59,35 @@ async function checkSession(): Promise<{
     
     const currentUrl = page.url();
     
-    // Collect diagnostics
+    // Collect diagnostics - improved session detection
     const diagnostics = await page.evaluate(() => {
       const bodyText = document.body.textContent || '';
       const pageContent = document.documentElement.innerHTML;
+      
+      // Check for left navigation (reliable indicator of logged-in state)
+      const hasLeftNav = !!(
+        document.querySelector('nav[role="navigation"]') ||
+        document.querySelector('[data-testid="primaryColumn"]') ||
+        document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]') ||
+        document.querySelector('a[href="/home"]') ||
+        document.querySelector('a[aria-label*="Home"]')
+      );
+      
+      // Check for compose/Post button
+      const hasComposeButton = !!(
+        document.querySelector('[data-testid="SideNav_NewTweet_Button"]') ||
+        document.querySelector('a[href="/compose/tweet"]') ||
+        bodyText.includes('Post')
+      );
+      
+      // Check for user avatar/menu
+      const hasUserAvatar = !!(
+        document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]') ||
+        document.querySelector('[aria-label*="Account menu"]')
+      );
+      
+      // Session is OK if we have left nav OR compose button OR user avatar
+      const sessionOK = hasLeftNav || hasComposeButton || hasUserAvatar;
       
       return {
         hasLoginButton: !!(
@@ -86,12 +111,13 @@ async function checkSession(): Promise<{
           pageContent.toLowerCase().includes('challenge')
         ),
         hasTimeline: !!(
-          document.querySelector('[data-testid="primaryColumn"]') ||
-          document.querySelector('article[data-testid="tweet"]') ||
-          document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]') ||
-          document.querySelector('[data-testid="AppTabBar_Home_Link"]') ||
-          document.querySelector('a[href="/home"][aria-label*="Home"]')
+          document.querySelector('article[data-testid="tweet"]')
         ),
+        // New: reliable session indicators
+        hasLeftNav,
+        hasComposeButton,
+        hasUserAvatar,
+        sessionOK,
       };
     });
     
@@ -102,18 +128,19 @@ async function checkSession(): Promise<{
     
     diagnostics.hasLoginButton = diagnostics.hasLoginButton || hasLoginButtonLocator;
     
-    // Check for login redirect
+    // Save artifacts
+    const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
+    await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+    const htmlPath = path.join(RUNNER_PROFILE_DIR, 'session_check.html');
+    const html = await page.content();
+    const redactedHtml = html
+      .replace(/password="[^"]*"/gi, 'password="[REDACTED]"')
+      .replace(/token="[^"]*"/gi, 'token="[REDACTED]"')
+      .substring(0, 50000);
+    fs.writeFileSync(htmlPath, redactedHtml);
+    
+    // Check for login redirect (strongest signal)
     if (currentUrl.includes('/i/flow/login') || currentUrl.includes('/login')) {
-      // Save screenshot and HTML before closing
-      const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
-      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
-      const htmlPath = path.join(RUNNER_PROFILE_DIR, 'session_check.html');
-      const html = await page.content();
-      const redactedHtml = html
-        .replace(/password="[^"]*"/gi, 'password="[REDACTED]"')
-        .replace(/token="[^"]*"/gi, 'token="[REDACTED]"')
-        .substring(0, 50000);
-      fs.writeFileSync(htmlPath, redactedHtml);
       await context.close();
       return {
         status: 'SESSION_EXPIRED',
@@ -123,16 +150,8 @@ async function checkSession(): Promise<{
       };
     }
     
+    // Check for login button (strong signal)
     if (diagnostics.hasLoginButton) {
-      const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
-      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
-      const htmlPath = path.join(RUNNER_PROFILE_DIR, 'session_check.html');
-      const html = await page.content();
-      const redactedHtml = html
-        .replace(/password="[^"]*"/gi, 'password="[REDACTED]"')
-        .replace(/token="[^"]*"/gi, 'token="[REDACTED]"')
-        .substring(0, 50000);
-      fs.writeFileSync(htmlPath, redactedHtml);
       await context.close();
       return {
         status: 'SESSION_EXPIRED',
@@ -144,22 +163,12 @@ async function checkSession(): Promise<{
     
     // Check for UI_NOT_RENDERING (black screen / empty page)
     const bodyState = await page.evaluate(() => {
-      const bodyText = document.body.textContent || '';
       const htmlLength = document.body.innerHTML.length;
       const bodyHeight = document.body.offsetHeight;
-      const hasXLogoSplash = !!document.querySelector('svg[aria-label="X"]') && htmlLength < 5000;
-      
-      return {
-        htmlLength,
-        bodyHeight,
-        hasXLogoSplash,
-        bodyTextLength: bodyText.length,
-      };
+      return { htmlLength, bodyHeight };
     });
     
-    if (bodyState.htmlLength < 1000 || (bodyState.bodyHeight < 100 && !bodyState.hasXLogoSplash)) {
-      const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
-      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+    if (bodyState.htmlLength < 1000 || bodyState.bodyHeight < 100) {
       await context.close();
       return {
         status: 'SESSION_EXPIRED',
@@ -169,76 +178,42 @@ async function checkSession(): Promise<{
       };
     }
     
-    if (!diagnostics.hasTimeline) {
-      // Double-check: wait a bit more and check again
-      await page.waitForTimeout(3000);
-      const hasTimelineAfterWait = await page.evaluate(() => {
-        return !!document.querySelector('[data-testid="primaryColumn"]') ||
-               !!document.querySelector('article[data-testid="tweet"]') ||
-               !!document.querySelector('[data-testid="AppTabBar_Home_Link"]') ||
-               !!document.querySelector('a[href="/home"][aria-label*="Home"]');
-      });
-      
-      if (!hasTimelineAfterWait) {
-        const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
-        await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
-        const htmlPath = path.join(RUNNER_PROFILE_DIR, 'session_check.html');
-        const html = await page.content();
-        const redactedHtml = html
-          .replace(/password="[^"]*"/gi, 'password="[REDACTED]"')
-          .replace(/token="[^"]*"/gi, 'token="[REDACTED]"')
-          .substring(0, 50000);
-        fs.writeFileSync(htmlPath, redactedHtml);
-        await context.close();
-        // Check if it's a consent wall or challenge
-        let reason = 'No timeline elements found';
-        if (diagnostics.hasConsentWall) {
-          reason = 'Consent wall detected (cookies/consent prompt)';
-        } else if (diagnostics.hasChallenge) {
-          reason = 'Challenge detected (verification/unusual activity)';
-        } else if (diagnostics.hasLoginButton) {
-          reason = 'Login required (login button visible)';
-        }
-        
-        return {
-          status: 'SESSION_EXPIRED',
-          url: currentUrl,
-          reason,
-          diagnostics,
-        };
-      }
-    }
-    
-    // Additional check: look for navigation elements that indicate logged-in state
-    const hasNav = await page.evaluate(() => {
-      return !!document.querySelector('nav[role="navigation"]') ||
-             !!document.querySelector('[data-testid="AppTabBar_Home_Link"]');
-    });
-    
-    if (!hasNav) {
-      const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
-      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
-      const htmlPath = path.join(RUNNER_PROFILE_DIR, 'session_check.html');
-      const html = await page.content();
-      const redactedHtml = html
-        .replace(/password="[^"]*"/gi, 'password="[REDACTED]"')
-        .replace(/token="[^"]*"/gi, 'token="[REDACTED]"')
-        .substring(0, 50000);
-      fs.writeFileSync(htmlPath, redactedHtml);
+    // NEW: Check for reliable session indicators (left nav, compose button, user avatar)
+    // These are present even if tweets are still loading
+    if (diagnostics.sessionOK) {
       await context.close();
       return {
-        status: 'SESSION_EXPIRED',
+        status: 'SESSION_OK',
         url: currentUrl,
-        reason: 'No navigation elements found',
+        reason: `Session OK: left nav=${diagnostics.hasLeftNav}, compose=${diagnostics.hasComposeButton}, avatar=${diagnostics.hasUserAvatar}`,
         diagnostics,
       };
     }
     
+    // Fallback: if we have left nav but sessionOK wasn't set, still consider it OK
+    if (diagnostics.hasLeftNav) {
+      await context.close();
+      return {
+        status: 'SESSION_OK',
+        url: currentUrl,
+        reason: 'Left navigation present (session OK)',
+        diagnostics,
+      };
+    }
+    
+    // If we get here, session is not OK
     await context.close();
+    let reason = 'No session indicators found';
+    if (diagnostics.hasConsentWall) {
+      reason = 'Consent wall detected (cookies/consent prompt)';
+    } else if (diagnostics.hasChallenge) {
+      reason = 'Challenge detected (verification/unusual activity)';
+    }
+    
     return {
-      status: 'SESSION_OK',
+      status: 'SESSION_EXPIRED',
       url: currentUrl,
-      reason: 'Timeline and navigation elements present',
+      reason,
       diagnostics,
     };
     
@@ -316,9 +291,19 @@ async function main() {
     console.log(`   hasLoginButton: ${result.diagnostics.hasLoginButton}`);
     console.log(`   hasConsentWall: ${result.diagnostics.hasConsentWall}`);
     console.log(`   hasChallenge: ${result.diagnostics.hasChallenge}`);
-    console.log(`   hasTimeline: ${result.diagnostics.hasTimeline}`);
+    console.log(`   hasLeftNav: ${result.diagnostics.hasLeftNav}`);
+    console.log(`   hasComposeButton: ${result.diagnostics.hasComposeButton}`);
+    console.log(`   hasUserAvatar: ${result.diagnostics.hasUserAvatar}`);
+    console.log(`   sessionOK: ${result.diagnostics.sessionOK}`);
     console.log('');
     console.log(`📸 Screenshot saved: ${path.join(RUNNER_PROFILE_DIR, 'session_check.png')}`);
+    console.log(`📄 HTML saved: ${path.join(RUNNER_PROFILE_DIR, 'session_check.html')}`);
+  } else if (result.status === 'SESSION_OK' && result.diagnostics) {
+    console.log('');
+    console.log('📊 Session indicators:');
+    console.log(`   hasLeftNav: ${result.diagnostics.hasLeftNav}`);
+    console.log(`   hasComposeButton: ${result.diagnostics.hasComposeButton}`);
+    console.log(`   hasUserAvatar: ${result.diagnostics.hasUserAvatar}`);
   }
   
   console.log('');

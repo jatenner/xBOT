@@ -129,12 +129,11 @@ export async function launchRunnerPersistent(headless: boolean = false): Promise
   }
 
   // In headed mode, avoid args that break UI rendering
+  // NOTE: We don't use direct launch in CDP mode, but keep this for fallback
   if (!headless) {
-    // Minimal args for headed mode - don't disable features that break rendering
-    // Allow multiple instances to avoid SingletonLock errors
+    // Minimal args - NO automation flags that cause Chrome banners
     launchOptions.args = [
-      '--disable-blink-features=AutomationControlled',
-      '--disable-features=ProcessSingleton', // Allow multiple instances
+      // Removed: --disable-blink-features=AutomationControlled (causes banner)
     ];
   } else {
     // More aggressive args for headless

@@ -49,6 +49,7 @@
     "runner:go-live2": "tsx scripts/runner/go-live-with-login.ts",
     "runner:login-debug": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/login-debug.ts",
     "runner:chrome-cdp": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/chrome-cdp.ts",
+    "runner:reset-chrome": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/reset-chrome.ts",
     "runner:session": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile RUNNER_BROWSER=cdp tsx scripts/runner/session-check.ts"
   },
   "dependencies": {
