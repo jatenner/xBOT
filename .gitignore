@@ -95,6 +95,11 @@ twitter_session.b64
 cookies_raw.txt
 cookies_export.json
 
+# Mac Runner profile directory
+.runner-profile/
+.runner-profile
+*.runner-profile
+
 # Large files and artifacts
 railway_logs*.txt
 fast_posting_test.txt
