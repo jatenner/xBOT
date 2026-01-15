@@ -249,6 +249,86 @@ export async function executeAuthorizedPost(
       };
     }
     
+    // 🔒 INVARIANT 5: HARD CHECK - targetInReplyToTweetId must be NULL (redundant but critical)
+    // Fetch from reply_decisions to verify
+    const { data: replyDecision } = await supabase
+      .from('reply_decisions')
+      .select('target_in_reply_to_tweet_id')
+      .eq('decision_id', decision_id)
+      .maybeSingle();
+    
+    if (replyDecision && replyDecision.target_in_reply_to_tweet_id !== null && replyDecision.target_in_reply_to_tweet_id !== undefined) {
+      console.error(`[ATOMIC_POST] ❌ REPLY_GATE_FAILED: targetInReplyToTweetId is NOT NULL`);
+      console.error(`[ATOMIC_POST]   target_in_reply_to_tweet_id=${replyDecision.target_in_reply_to_tweet_id}`);
+      
+      await supabase
+        .from('content_generation_metadata_comprehensive')
+        .update({
+          status: 'blocked',
+          skip_reason: 'reply_gate_target_in_reply_to_not_null',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('decision_id', decision_id);
+      
+      await supabase.from('system_events').insert({
+        event_type: 'reply_gate_blocked',
+        severity: 'critical',
+        message: `Reply blocked: targetInReplyToTweetId is not NULL`,
+        event_data: {
+          decision_id,
+          decision_type,
+          pipeline_source,
+          target_in_reply_to_tweet_id: replyDecision.target_in_reply_to_tweet_id,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      return {
+        success: false,
+        error: 'REPLY_GATE_FAILED: targetInReplyToTweetId must be NULL (target is a reply)',
+      };
+    }
+    
+    // 🔒 INVARIANT 6: NO THREAD REPLIES - Content must be single tweet (no thread_parts)
+    // Check if content contains thread markers or if thread_parts exists in DB
+    const { data: contentMeta } = await supabase
+      .from('content_metadata')
+      .select('thread_parts')
+      .eq('decision_id', decision_id)
+      .maybeSingle();
+    
+    if (contentMeta?.thread_parts && Array.isArray(contentMeta.thread_parts) && contentMeta.thread_parts.length > 1) {
+      console.error(`[ATOMIC_POST] ❌ REPLY_GATE_FAILED: Thread reply detected`);
+      console.error(`[ATOMIC_POST]   thread_parts count=${contentMeta.thread_parts.length}`);
+      
+      await supabase
+        .from('content_generation_metadata_comprehensive')
+        .update({
+          status: 'blocked',
+          skip_reason: 'SAFETY_GATE_THREAD_REPLY_FORBIDDEN',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('decision_id', decision_id);
+      
+      await supabase.from('system_events').insert({
+        event_type: 'POST_FAILED',
+        severity: 'error',
+        message: `Reply blocked: Thread reply forbidden`,
+        event_data: {
+          decision_id,
+          target_tweet_id: metadata.target_tweet_id,
+          pipeline_error_reason: 'SAFETY_GATE_THREAD_REPLY_FORBIDDEN',
+          thread_parts_count: contentMeta.thread_parts.length,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      return {
+        success: false,
+        error: 'REPLY_GATE_FAILED: Thread replies are forbidden (multi-segment reply detected)',
+      };
+    }
+    
     // INVARIANT 4: NO SELF-REPLY (CRITICAL)
     const ourHandle = (process.env.TWITTER_USERNAME || 'SignalAndSynapse').toLowerCase();
     const targetAuthor = metadata.target_username ? String(metadata.target_username).toLowerCase().trim() : null;

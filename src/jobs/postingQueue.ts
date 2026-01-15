@@ -4651,10 +4651,49 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     throw new Error('Replies paused via PAUSE_REPLIES env flag');
   }
   
+  // Get Supabase client early (needed for all checks)
+  const { getSupabaseClient } = await import('../db/index');
+  const supabase = getSupabaseClient();
+  
+  // 🔍 FORENSIC PIPELINE: Log POST_ATTEMPT before any checks
+  const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+  await supabase.from('system_events').insert({
+    event_type: 'POST_ATTEMPT',
+    severity: 'info',
+    message: `Reply posting attempt: decision_id=${decision.id}`,
+    event_data: {
+      decision_id: decision.id,
+      target_tweet_id: decision.target_tweet_id,
+      app_version: appVersion,
+      pipeline_source: (decision as any).pipeline_source || 'posting_queue',
+    },
+    created_at: new Date().toISOString(),
+  });
+  
   // 🔍 FORENSIC PIPELINE: Final ancestry check before posting
   const { resolveTweetAncestry, recordReplyDecision, shouldAllowReply } = await import('./replySystemV2/replyDecisionRecorder');
   const ancestry = await resolveTweetAncestry(decision.target_tweet_id || '');
   const allowCheck = await shouldAllowReply(ancestry);
+  
+  // Update POST_ATTEMPT with gate result
+  await supabase.from('system_events').insert({
+    event_type: 'POST_ATTEMPT',
+    severity: 'info',
+    message: `Reply gate check result: decision_id=${decision.id}`,
+    event_data: {
+      decision_id: decision.id,
+      target_tweet_id: decision.target_tweet_id,
+      target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId || null,
+      app_version: appVersion,
+      gate_result: allowCheck.allow ? 'PASS' : 'BLOCK',
+      deny_reason_code: allowCheck.deny_reason_code || null,
+      deny_reason_detail: allowCheck.deny_reason_detail || null,
+      ancestry_status: ancestry.status,
+      ancestry_depth: ancestry.ancestryDepth,
+      is_root: ancestry.isRoot,
+    },
+    created_at: new Date().toISOString(),
+  });
   
   // Get trace info from decision metadata if available
   const traceId = (decision as any).scheduler_run_id || (decision as any).feed_run_id || null;
@@ -4698,13 +4737,16 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       .eq('decision_id', decision.id);
     
     // 🔒 TASK B.1: Record POST_FAILED event with detailed context
+    const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
     await supabase.from('system_events').insert({
       event_type: 'POST_FAILED',
       severity: 'error',
       event_data: {
         decision_id: decision.id,
         target_tweet_id: decision.target_tweet_id,
+        target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
         in_reply_to_status_id: ancestry.targetInReplyToTweetId,
+        app_version: appVersion,
         resolver_status: ancestry.status,
         resolver_method: ancestry.method,
         resolver_depth: ancestry.ancestryDepth,
@@ -4744,12 +4786,15 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       .eq('decision_id', decision.id);
     
     // Record POST_FAILED
+    const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
     await supabase.from('system_events').insert({
       event_type: 'POST_FAILED',
       severity: 'error',
       event_data: {
         decision_id: decision.id,
         target_tweet_id: decision.target_tweet_id,
+        target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
+        app_version: appVersion,
         in_reply_to_status_id: ancestry.targetInReplyToTweetId,
         resolver_status: ancestry.status,
         resolver_method: ancestry.method,
@@ -4770,9 +4815,104 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     throw new Error(hardBlockMsg);
   }
   
+  // 🔒 TASK B: NO THREAD REPLIES - Block multi-segment replies
+  const { data: contentMeta } = await supabase
+    .from('content_metadata')
+    .select('thread_parts, content')
+    .eq('decision_id', decision.id)
+    .maybeSingle();
+  
+  // Check for thread_parts array with >1 segment
+  if (contentMeta?.thread_parts && Array.isArray(contentMeta.thread_parts) && contentMeta.thread_parts.length > 1) {
+    const threadBlockMsg = `SAFETY_GATE_THREAD_REPLY_FORBIDDEN: Reply has ${contentMeta.thread_parts.length} segments (thread replies forbidden)`;
+    console.error(`[POSTING_QUEUE] 🚫 ${threadBlockMsg}`);
+    
+    // Mark as blocked
+    await supabase
+      .from('content_metadata')
+      .update({ 
+        status: 'blocked',
+        skip_reason: 'SAFETY_GATE_THREAD_REPLY_FORBIDDEN'
+      })
+      .eq('decision_id', decision.id);
+    
+    // Record POST_FAILED
+    const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+    await supabase.from('system_events').insert({
+      event_type: 'POST_FAILED',
+      severity: 'error',
+      event_data: {
+        decision_id: decision.id,
+        target_tweet_id: decision.target_tweet_id,
+        target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
+        app_version: appVersion,
+        pipeline_error_reason: 'SAFETY_GATE_THREAD_REPLY_FORBIDDEN',
+        thread_parts_count: contentMeta.thread_parts.length,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    // Update reply_decisions
+    await supabase
+      .from('reply_decisions')
+      .update({ 
+        pipeline_error_reason: 'SAFETY_GATE_THREAD_REPLY_FORBIDDEN',
+        posting_completed_at: new Date().toISOString(),
+      })
+      .eq('decision_id', decision.id);
+    
+    throw new Error(threadBlockMsg);
+  }
+  
+  // Also check content for thread markers (redundant check)
+  const content = decision.content || contentMeta?.content || '';
+  const threadPatterns = [
+    /\b\d+\/\d+\b/,           // "2/6", "3/6"
+    /^\s*\d+\/\d+/,           // Starts with "1/5"
+    /🧵/,                      // Thread emoji
+  ];
+  
+  for (const pattern of threadPatterns) {
+    if (pattern.test(content)) {
+      const threadMarkerMsg = `SAFETY_GATE_THREAD_REPLY_FORBIDDEN: Reply contains thread marker (${pattern.source})`;
+      console.error(`[POSTING_QUEUE] 🚫 ${threadMarkerMsg}`);
+      
+      await supabase
+        .from('content_metadata')
+        .update({ 
+          status: 'blocked',
+          skip_reason: 'SAFETY_GATE_THREAD_REPLY_FORBIDDEN'
+        })
+        .eq('decision_id', decision.id);
+      
+      const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+      await supabase.from('system_events').insert({
+        event_type: 'POST_FAILED',
+        severity: 'error',
+        event_data: {
+          decision_id: decision.id,
+          target_tweet_id: decision.target_tweet_id,
+          target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
+          app_version: appVersion,
+          pipeline_error_reason: 'SAFETY_GATE_THREAD_REPLY_FORBIDDEN',
+          thread_marker_pattern: pattern.source,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      await supabase
+        .from('reply_decisions')
+        .update({ 
+          pipeline_error_reason: 'SAFETY_GATE_THREAD_REPLY_FORBIDDEN',
+          posting_completed_at: new Date().toISOString(),
+        })
+        .eq('decision_id', decision.id);
+      
+      throw new Error(threadMarkerMsg);
+    }
+  }
+  
   // 🎯 PIPELINE STAGES: Mark posting started
-  const { getSupabaseClient } = await import('../db/index');
-  const supabase = getSupabaseClient();
   const postingStartedAt = new Date().toISOString();
   await supabase
     .from('reply_decisions')
@@ -5197,7 +5337,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       console.log(`[POSTING_QUEUE] 🎯 Pipeline stage: posting_completed_at=${postingCompletedAt} for decision_id=${decision.id}`);
       
       // 🔒 POST_SUCCESS: Emit structured proof signal
-      console.log(`[POST_SUCCESS] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} posted_reply_tweet_id=${result.tweetId} template_id=${templateId || 'null'} prompt_version=${promptVersion || 'null'}`);
+      const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+      console.log(`[POST_SUCCESS] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} posted_reply_tweet_id=${result.tweetId} template_id=${templateId || 'null'} prompt_version=${promptVersion || 'null'} app_version=${appVersion}`);
       
       // Write POST_SUCCESS to system_events
       await supabase.from('system_events').insert({
@@ -5207,9 +5348,11 @@ async function postReply(decision: QueuedDecision): Promise<string> {
         event_data: {
           decision_id: decision.id,
           target_tweet_id: decision.target_tweet_id,
+          target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId || null,
           posted_reply_tweet_id: result.tweetId,
           template_id: templateId,
           prompt_version: promptVersion,
+          app_version: appVersion,
           posted_at: postingCompletedAt,
         },
         created_at: new Date().toISOString(),
@@ -5231,7 +5374,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       console.error(`[PIPELINE] decision_id=${decision.id} stage=post ok=false detail=${errorReason}`);
       
       // 🔒 POST_FAILED: Emit structured proof signal
-      console.log(`[POST_FAILED] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} pipeline_error_reason=${errorReason}`);
+      const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+      console.log(`[POST_FAILED] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} pipeline_error_reason=${errorReason} app_version=${appVersion}`);
       
       // Write POST_FAILED to system_events
       await supabase.from('system_events').insert({
@@ -5241,8 +5385,10 @@ async function postReply(decision: QueuedDecision): Promise<string> {
         event_data: {
           decision_id: decision.id,
           target_tweet_id: decision.target_tweet_id,
+          target_in_reply_to_tweet_id: ancestry?.targetInReplyToTweetId || null,
           pipeline_error_reason: errorReason,
           error_message: innerError.message,
+          app_version: appVersion,
           failed_at: postingCompletedAt,
         },
         created_at: new Date().toISOString(),

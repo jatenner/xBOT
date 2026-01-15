@@ -270,6 +270,69 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     const ancestry = await resolveTweetAncestry(candidate.candidate_tweet_id);
     const allowCheck = await shouldAllowReply(ancestry);
     
+    // 🔒 TASK C: TARGET QUALITY FILTER - Prefilter before generation
+    const { filterTargetQuality } = await import('../../gates/replyTargetQualityFilter');
+    const qualityFilter = filterTargetQuality(
+      normalizedSnapshot,
+      candidateData.candidate_author_username,
+      (candidateData as any).candidate_author_bio || undefined,
+      normalizedSnapshot // Use snapshot as extracted context
+    );
+    
+    if (!qualityFilter.pass) {
+      console.error(`[SCHEDULER] 🚫 Quality filter blocked: ${qualityFilter.deny_reason_code} - ${qualityFilter.reason}`);
+      
+      // Record DENY decision
+      await recordReplyDecision({
+        decision_id: decisionId,
+        target_tweet_id: candidate.candidate_tweet_id,
+        target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
+        root_tweet_id: ancestry.rootTweetId || 'null',
+        ancestry_depth: ancestry.ancestryDepth ?? -1,
+        is_root: ancestry.isRoot,
+        decision: 'DENY',
+        reason: `Quality filter: ${qualityFilter.reason}`,
+        deny_reason_code: qualityFilter.deny_reason_code,
+        status: ancestry.status,
+        confidence: ancestry.confidence,
+        method: ancestry.method || 'unknown',
+        cache_hit: ancestry.method?.startsWith('cache:') || false,
+        trace_id: schedulerRunId,
+        job_run_id: schedulerRunId,
+        pipeline_source: 'reply_v2_scheduler',
+      } as any);
+      
+      // Mark as blocked
+      await supabase
+        .from('content_metadata')
+        .update({ 
+          status: 'blocked',
+          skip_reason: qualityFilter.deny_reason_code || 'QUALITY_FILTER_BLOCKED'
+        })
+        .eq('decision_id', decisionId);
+      
+      // Log POST_FAILED
+      const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+      await supabase.from('system_events').insert({
+        event_type: 'POST_FAILED',
+        severity: 'error',
+        event_data: {
+          decision_id: decisionId,
+          target_tweet_id: candidate.candidate_tweet_id,
+          target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
+          app_version: appVersion,
+          pipeline_error_reason: qualityFilter.deny_reason_code || 'QUALITY_FILTER_BLOCKED',
+          reason: qualityFilter.reason,
+          quality_filter_details: qualityFilter.details,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      throw new Error(`Quality filter blocked: ${qualityFilter.deny_reason_code}`);
+    }
+    
+    console.log(`[SCHEDULER] ✅ Quality filter passed: ${qualityFilter.reason}`);
+    
     // 🎨 QUALITY TRACKING: Get candidate score for logging (from candidateData)
     const candidateScore = candidateData.overall_score || candidate.overall_score || 0;
     const candidateFeatures = {
@@ -483,16 +546,13 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     }
     
     // 🎯 PIPELINE STAGES: Mark generation started
-    // 🔒 FIX: Use id as fallback if decision_id is NULL (reuse decisionRow from template selection)
-    const updateIdForGen = decisionRow?.id || decisionId;
     const generationStartedAt = new Date().toISOString();
     await supabase
       .from('reply_decisions')
       .update({
         generation_started_at: generationStartedAt,
-        decision_id: decisionId, // Ensure decision_id is set
       })
-      .eq('id', updateIdForGen);
+      .eq('decision_id', decisionId);
     console.log(`[PIPELINE] decision_id=${decisionId} stage=generate_start ok=true detail=generation_started_at_set`);
     
     // 🎨 QUALITY TRACKING: Select reply template
@@ -619,6 +679,72 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         console.log(`[PIPELINE] decision_id=${decisionId} stage=generate ok=true detail=reply_generated length=${replyContent.length}`);
         console.log(`[SCHEDULER] ✅ Reply generated: ${replyContent.length} chars`);
       }
+      
+      // 🔒 TASK D: CONTEXT GROUNDING GATE - Verify reply references target tweet
+      const { verifyContextGrounding } = await import('../../gates/replyContextGroundingGate');
+      const groundingCheck = verifyContextGrounding(
+        replyContent,
+        normalizedSnapshot,
+        undefined, // extractedCaption - not available yet
+        undefined  // extractedAltText - not available yet
+      );
+      
+      if (!groundingCheck.pass) {
+        console.error(`[SCHEDULER] 🚫 Context grounding failed: ${groundingCheck.deny_reason_code} - ${groundingCheck.reason}`);
+        
+        // Mark as blocked
+        await supabase
+          .from('content_metadata')
+          .update({ 
+            status: 'blocked',
+            skip_reason: groundingCheck.deny_reason_code || 'UNGROUNDED_REPLY'
+          })
+          .eq('decision_id', decisionId);
+        
+        // Update reply_decisions
+        await supabase
+          .from('reply_decisions')
+          .update({
+            generation_completed_at: new Date().toISOString(),
+            pipeline_error_reason: groundingCheck.deny_reason_code || 'UNGROUNDED_REPLY',
+          })
+          .eq('decision_id', decisionId);
+        
+        // Log POST_FAILED
+        const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+        await supabase.from('system_events').insert({
+          event_type: 'POST_FAILED',
+          severity: 'error',
+          event_data: {
+            decision_id: decisionId,
+            target_tweet_id: candidate.candidate_tweet_id,
+            target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
+            app_version: appVersion,
+            pipeline_error_reason: groundingCheck.deny_reason_code || 'UNGROUNDED_REPLY',
+            reason: groundingCheck.reason,
+            grounding_evidence: groundingCheck.grounding_evidence,
+          },
+          created_at: new Date().toISOString(),
+        });
+        
+        throw new Error(`Context grounding failed: ${groundingCheck.deny_reason_code}`);
+      }
+      
+      console.log(`[SCHEDULER] ✅ Context grounding passed: ${groundingCheck.reason}`);
+      if (groundingCheck.grounding_evidence?.matched_keyphrases.length) {
+        console.log(`[SCHEDULER]   Matched keyphrases: ${groundingCheck.grounding_evidence.matched_keyphrases.slice(0, 3).join(', ')}`);
+      }
+      
+      // Store grounding evidence in content_metadata
+      await supabase
+        .from('content_metadata')
+        .update({
+          features: {
+            ...((await supabase.from('content_metadata').select('features').eq('decision_id', decisionId).maybeSingle()).data?.features || {}),
+            grounding_evidence: groundingCheck.grounding_evidence,
+          }
+        })
+        .eq('decision_id', decisionId);
       
       // Mark generation completed
       generationCompletedAt = new Date().toISOString();

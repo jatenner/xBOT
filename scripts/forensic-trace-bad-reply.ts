@@ -37,6 +37,15 @@ async function main() {
     .eq('posted_reply_tweet_id', postedReplyTweetId)
     .maybeSingle();
   
+  // Also query system_events for app_version at post time
+  const { data: postEvents } = await supabase
+    .from('system_events')
+    .select('event_data, created_at')
+    .in('event_type', ['POST_SUCCESS', 'POST_FAILED', 'POST_ATTEMPT'])
+    .contains('event_data', { decision_id: decision?.decision_id || '' })
+    .order('created_at', { ascending: false })
+    .limit(5);
+  
   if (decisionError) {
     console.error(`❌ Error querying reply_decisions: ${decisionError.message}`);
     process.exit(1);
@@ -98,7 +107,19 @@ async function main() {
   console.log(`   status: ${decision.status}`);
   console.log(`   confidence: ${decision.confidence}`);
   console.log(`   method: ${decision.method}`);
-  console.log(`   created_at: ${decision.created_at}\n`);
+  console.log(`   created_at: ${decision.created_at}`);
+  
+  // Display app_version from system_events if available
+  if (postEvents && postEvents.length > 0) {
+    console.log(`\n   📊 SYSTEM_EVENTS (app_version at post time):`);
+    for (const event of postEvents) {
+      const eventData = typeof event.event_data === 'string' ? JSON.parse(event.event_data) : event.event_data;
+      if (eventData.app_version) {
+        console.log(`     ${event.created_at}: ${eventData.app_version}`);
+      }
+    }
+  }
+  console.log('');
   
   // TASK A.2: Determine if target_tweet_id is root or reply
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -199,6 +220,56 @@ async function main() {
       console.log(`     status: ${contentMeta.status}`);
       console.log(`     skip_reason: ${contentMeta.skip_reason || 'N/A'}`);
       console.log(`     pipeline_source: ${contentMeta.pipeline_source || 'N/A'}`);
+    }
+  }
+  
+  // TASK A.4: Check which gate failed to block it
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('           STEP 4: GATE FAILURE ANALYSIS');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  
+  console.log('🔍 GATE CHECK ANALYSIS:\n');
+  
+  // Check content_metadata for skip_reason
+  if (decision.decision_id) {
+    const { data: contentMeta } = await supabase
+      .from('content_metadata')
+      .select('status, skip_reason, pipeline_source, build_sha, thread_parts')
+      .eq('decision_id', decision.decision_id)
+      .maybeSingle();
+    
+    if (contentMeta) {
+      console.log(`   Content metadata:`);
+      console.log(`     status: ${contentMeta.status}`);
+      console.log(`     skip_reason: ${contentMeta.skip_reason || 'N/A'}`);
+      console.log(`     pipeline_source: ${contentMeta.pipeline_source || 'N/A'}`);
+      console.log(`     build_sha: ${contentMeta.build_sha || 'N/A'}`);
+      
+      if (contentMeta.thread_parts && Array.isArray(contentMeta.thread_parts) && contentMeta.thread_parts.length > 1) {
+        console.log(`     ⚠️  THREAD_REPLY DETECTED: ${contentMeta.thread_parts.length} segments`);
+      }
+    }
+  }
+  
+  // Check system_events for gate failures
+  if (decision.decision_id) {
+    const { data: gateEvents } = await supabase
+      .from('system_events')
+      .select('event_type, event_data, created_at')
+      .eq('event_type', 'POST_FAILED')
+      .contains('event_data', { decision_id: decision.decision_id })
+      .order('created_at', { ascending: false })
+      .limit(3);
+    
+    if (gateEvents && gateEvents.length > 0) {
+      console.log(`\n   POST_FAILED events:`);
+      for (const event of gateEvents) {
+        const eventData = typeof event.event_data === 'string' ? JSON.parse(event.event_data) : event.event_data;
+        console.log(`     ${event.created_at}: ${eventData.pipeline_error_reason || 'N/A'}`);
+        if (eventData.deny_reason_code) {
+          console.log(`       deny_reason_code: ${eventData.deny_reason_code}`);
+        }
+      }
     }
   }
   
