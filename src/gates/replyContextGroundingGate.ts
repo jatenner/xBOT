@@ -72,11 +72,119 @@ function hasDirectReference(replyText: string, keyphrases: string[]): { matched:
 }
 
 /**
- * Check if reply paraphrases or quotes the target claim
+ * Check if reply contains a quoted snippet (6-12 words) from target
  */
-function hasParaphraseOrQuote(replyText: string, targetText: string): { matched: string[]; method: 'paraphrase' | 'quote' } | null {
+function hasQuotedSnippet(replyText: string, targetText: string): { matched: string[]; method: 'quote' } | null {
   const replyLower = replyText.toLowerCase();
   const targetLower = targetText.toLowerCase();
+  
+  // Extract 6-12 word sequences from target
+  const targetWords = targetLower.split(/\s+/).filter(w => w.length > 0);
+  const matchedSequences: string[] = [];
+  
+  for (let len = 6; len <= 12 && len <= targetWords.length; len++) {
+    for (let i = 0; i <= targetWords.length - len; i++) {
+      const sequence = targetWords.slice(i, i + len).join(' ');
+      if (replyLower.includes(sequence)) {
+        matchedSequences.push(sequence);
+      }
+    }
+  }
+  
+  if (matchedSequences.length > 0) {
+    return { matched: matchedSequences.slice(0, 3), method: 'quote' as const };
+  }
+  
+  return null;
+}
+
+/**
+ * Check if reply contains author handle + paraphrase marker
+ */
+function hasAuthorParaphrase(replyText: string, targetText: string, authorUsername?: string): { matched: string[]; method: 'paraphrase' } | null {
+  if (!authorUsername) return null;
+  
+  const replyLower = replyText.toLowerCase();
+  const authorLower = authorUsername.toLowerCase().replace('@', '');
+  
+  // Check for patterns like "your point about X", "you mentioned X", "as you said about X"
+  const paraphrasePatterns = [
+    new RegExp(`(your|you|@${authorLower})\\s+(point|mention|said|noted|discussed|asked|wrote|shared)\\s+(about|regarding|on|that|how|why|what)\\s+([\\w\\s]+)`, 'i'),
+    new RegExp(`(your|you|@${authorLower})\\s+([\\w\\s]+)\\s+(point|claim|question|statement|observation)`, 'i'),
+  ];
+  
+  const matched: string[] = [];
+  for (const pattern of paraphrasePatterns) {
+    const match = replyText.match(pattern);
+    if (match) {
+      matched.push(match[0]);
+    }
+  }
+  
+  if (matched.length > 0) {
+    return { matched, method: 'paraphrase' as const };
+  }
+  
+  return null;
+}
+
+/**
+ * Check if reply contains >=2 target keywords (excluding stopwords)
+ */
+function hasTargetKeywords(replyText: string, targetText: string): { matched: string[]; method: 'direct' } | null {
+  const stopwords = new Set([
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+    'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
+    'will', 'would', 'should', 'could', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those',
+    'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
+  ]);
+  
+  const targetWords = targetText
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 4 && !stopwords.has(w));
+  
+  const replyLower = replyText.toLowerCase();
+  const matched: string[] = [];
+  
+  for (const word of targetWords) {
+    if (replyLower.includes(word)) {
+      matched.push(word);
+    }
+  }
+  
+  if (matched.length >= 2) {
+    return { matched: [...new Set(matched)].slice(0, 5), method: 'direct' as const };
+  }
+  
+  return null;
+}
+
+/**
+ * Check if reply paraphrases or quotes the target claim
+ */
+function hasParaphraseOrQuote(replyText: string, targetText: string, authorUsername?: string): { matched: string[]; method: 'paraphrase' | 'quote' } | null {
+  const replyLower = replyText.toLowerCase();
+  const targetLower = targetText.toLowerCase();
+  
+  // Check for quoted snippet (6-12 words)
+  const quoteMatch = hasQuotedSnippet(replyText, targetText);
+  if (quoteMatch) {
+    return quoteMatch;
+  }
+  
+  // Check for author handle + paraphrase marker
+  const authorMatch = hasAuthorParaphrase(replyText, targetText, authorUsername);
+  if (authorMatch) {
+    return authorMatch;
+  }
+  
+  // Check for >=2 target keywords
+  const keywordMatch = hasTargetKeywords(replyText, targetText);
+  if (keywordMatch) {
+    return keywordMatch;
+  }
   
   // Extract numbers and specific terms from target
   const targetNumbers = targetLower.match(/\d+[%kmg]?/g) || [];
@@ -94,29 +202,23 @@ function hasParaphraseOrQuote(replyText: string, targetText: string): { matched:
     return { matched: matchedNumbers, method: 'paraphrase' as const };
   }
   
-  // Check for quote-like patterns (repeating exact phrases)
-  const targetWords = targetLower.split(/\s+/).filter(w => w.length > 5);
-  const replyWords = replyLower.split(/\s+/);
-  
-  // Find 3+ word sequences that appear in both
-  for (let i = 0; i <= targetWords.length - 3; i++) {
-    const sequence = targetWords.slice(i, i + 3).join(' ');
-    if (replyLower.includes(sequence)) {
-      return { matched: [sequence], method: 'quote' as const };
-    }
-  }
-  
   return null;
 }
 
 /**
  * Verify context grounding - reply must reference target tweet
+ * 
+ * Pass if one of:
+ * - contains a short quoted snippet from target (6-12 words)
+ * - contains >=2 target keywords (excluding stopwords)
+ * - contains author handle + paraphrase marker (e.g. "your point about <keyword>")
  */
 export function verifyContextGrounding(
   replyText: string,
   targetText: string,
   extractedCaption?: string,
-  extractedAltText?: string
+  extractedAltText?: string,
+  authorUsername?: string
 ): ContextGroundingResult {
   // Combine all target context sources
   const allTargetContext = [
@@ -165,12 +267,12 @@ export function verifyContextGrounding(
     };
   }
   
-  // Check for paraphrase or quote
-  const paraphraseMatch = hasParaphraseOrQuote(replyText, targetText);
+  // Check for paraphrase or quote (with author username if available)
+  const paraphraseMatch = hasParaphraseOrQuote(replyText, targetText, authorUsername);
   if (paraphraseMatch && paraphraseMatch.matched.length > 0) {
     return {
       pass: true,
-      reason: `Reply contains paraphrase/quote reference`,
+      reason: `Reply contains ${paraphraseMatch.method} reference`,
       grounding_evidence: {
         matched_keyphrases: paraphraseMatch.matched.slice(0, 5),
         matched_method: paraphraseMatch.method

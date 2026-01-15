@@ -270,17 +270,20 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     const ancestry = await resolveTweetAncestry(candidate.candidate_tweet_id);
     const allowCheck = await shouldAllowReply(ancestry);
     
-    // 🔒 TASK C: TARGET QUALITY FILTER - Prefilter before generation
-    const { filterTargetQuality } = await import('../../gates/replyTargetQualityFilter');
-    const qualityFilter = filterTargetQuality(
+    // 🔒 TASK 1: TARGET SCORING - Pre-generation scoring (0-100)
+    const { scoreTarget } = await import('../../scoring/targetScorer');
+    const targetScore = scoreTarget(
       normalizedSnapshot,
       candidateData.candidate_author_username,
       (candidateData as any).candidate_author_bio || undefined,
       normalizedSnapshot // Use snapshot as extracted context
     );
     
-    if (!qualityFilter.pass) {
-      console.error(`[SCHEDULER] 🚫 Quality filter blocked: ${qualityFilter.deny_reason_code} - ${qualityFilter.reason}`);
+    // Hard deny if score < 60
+    if (targetScore.target_score < 60) {
+      const denyReasonCode = targetScore.reasons[0] || 'TARGET_QUALITY_BLOCK';
+      console.error(`[SCHEDULER] 🚫 Target scoring blocked: score=${targetScore.target_score}/100, reasons=${targetScore.reasons.join(', ')}`);
+      console.error(`[SCHEDULER]   Details: ${JSON.stringify(targetScore.details, null, 2)}`);
       
       // Record DENY decision
       await recordReplyDecision({
@@ -291,8 +294,8 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         ancestry_depth: ancestry.ancestryDepth ?? -1,
         is_root: ancestry.isRoot,
         decision: 'DENY',
-        reason: `Quality filter: ${qualityFilter.reason}`,
-        deny_reason_code: qualityFilter.deny_reason_code,
+        reason: `Target score ${targetScore.target_score}/100 below threshold (60). Reasons: ${targetScore.reasons.join(', ')}`,
+        deny_reason_code: denyReasonCode,
         status: ancestry.status,
         confidence: ancestry.confidence,
         method: ancestry.method || 'unknown',
@@ -307,7 +310,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         .from('content_metadata')
         .update({ 
           status: 'blocked',
-          skip_reason: qualityFilter.deny_reason_code || 'QUALITY_FILTER_BLOCKED'
+          skip_reason: denyReasonCode || 'TARGET_QUALITY_BLOCK'
         })
         .eq('decision_id', decisionId);
       
@@ -680,13 +683,14 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         console.log(`[SCHEDULER] ✅ Reply generated: ${replyContent.length} chars`);
       }
       
-      // 🔒 TASK D: CONTEXT GROUNDING GATE - Verify reply references target tweet
+      // 🔒 TASK 2: GROUNDING GUARANTEE - Verify reply references target tweet
       const { verifyContextGrounding } = await import('../../gates/replyContextGroundingGate');
       const groundingCheck = verifyContextGrounding(
         replyContent,
         normalizedSnapshot,
         undefined, // extractedCaption - not available yet
-        undefined  // extractedAltText - not available yet
+        undefined, // extractedAltText - not available yet
+        candidateData.candidate_author_username // authorUsername for paraphrase detection
       );
       
       if (!groundingCheck.pass) {
