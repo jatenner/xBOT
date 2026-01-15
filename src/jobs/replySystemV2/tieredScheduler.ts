@@ -270,22 +270,21 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     const ancestry = await resolveTweetAncestry(candidate.candidate_tweet_id);
     const allowCheck = await shouldAllowReply(ancestry);
     
-    // 🔒 TASK 1: TARGET SCORING - Pre-generation scoring (0-100)
-    const { scoreTarget } = await import('../../scoring/targetScorer');
-    const targetScore = scoreTarget(
+    // 🔒 PHASE 1.1: TARGET QUALITY FILTER - Pre-generation filter (MUST be enforced)
+    const { filterTargetQuality } = await import('../../gates/replyTargetQualityFilter');
+    const qualityFilter = filterTargetQuality(
       normalizedSnapshot,
       candidateData.candidate_author_username,
       (candidateData as any).candidate_author_bio || undefined,
       normalizedSnapshot // Use snapshot as extracted context
     );
     
-    // Hard deny if score < 60
-    if (targetScore.target_score < 60) {
-      const denyReasonCode = targetScore.reasons[0] || 'TARGET_QUALITY_BLOCK';
-      console.error(`[SCHEDULER] 🚫 Target scoring blocked: score=${targetScore.target_score}/100, reasons=${targetScore.reasons.join(', ')}`);
-      console.error(`[SCHEDULER]   Details: ${JSON.stringify(targetScore.details, null, 2)}`);
+    if (!qualityFilter.pass) {
+      const denyReasonCode = qualityFilter.deny_reason_code || qualityFilter.code || 'TARGET_QUALITY_BLOCK';
+      console.error(`[SCHEDULER] 🚫 Target quality filter blocked: ${denyReasonCode} - ${qualityFilter.reason}`);
+      console.error(`[SCHEDULER]   Detail: ${JSON.stringify(qualityFilter.detail || qualityFilter.details, null, 2)}`);
       
-      // Record DENY decision
+      // Record DENY decision with structured detail JSON
       await recordReplyDecision({
         decision_id: decisionId,
         target_tweet_id: candidate.candidate_tweet_id,
@@ -294,8 +293,13 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         ancestry_depth: ancestry.ancestryDepth ?? -1,
         is_root: ancestry.isRoot,
         decision: 'DENY',
-        reason: `Target score ${targetScore.target_score}/100 below threshold (60). Reasons: ${targetScore.reasons.join(', ')}`,
+        reason: `Quality filter: ${qualityFilter.reason}`,
         deny_reason_code: denyReasonCode,
+        deny_reason_detail: JSON.stringify({
+          code: qualityFilter.code,
+          detail: qualityFilter.detail || qualityFilter.details,
+          score: qualityFilter.score
+        }),
         status: ancestry.status,
         confidence: ancestry.confidence,
         method: ancestry.method || 'unknown',
@@ -310,31 +314,34 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         .from('content_metadata')
         .update({ 
           status: 'blocked',
-          skip_reason: denyReasonCode || 'TARGET_QUALITY_BLOCK'
+          skip_reason: denyReasonCode
         })
         .eq('decision_id', decisionId);
       
-      // Log POST_FAILED
+      // Log POST_FAILED with structured metadata
       const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
       await supabase.from('system_events').insert({
         event_type: 'POST_FAILED',
         severity: 'error',
+        message: `Target quality filter blocked: ${denyReasonCode}`,
         event_data: {
           decision_id: decisionId,
           target_tweet_id: candidate.candidate_tweet_id,
-          target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
+          target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId || null,
           app_version: appVersion,
-          pipeline_error_reason: qualityFilter.deny_reason_code || 'QUALITY_FILTER_BLOCKED',
+          gate_result: 'BLOCK',
+          deny_reason_code: denyReasonCode,
+          pipeline_error_reason: denyReasonCode,
           reason: qualityFilter.reason,
-          quality_filter_details: qualityFilter.details,
+          detail: qualityFilter.detail || qualityFilter.details,
         },
         created_at: new Date().toISOString(),
       });
       
-      throw new Error(`Quality filter blocked: ${qualityFilter.deny_reason_code}`);
+      throw new Error(`Quality filter blocked: ${denyReasonCode}`);
     }
     
-    console.log(`[SCHEDULER] ✅ Quality filter passed: ${qualityFilter.reason}`);
+    console.log(`[SCHEDULER] ✅ Quality filter passed: ${qualityFilter.reason} (score: ${qualityFilter.score || 'N/A'})`);
     
     // 🎨 QUALITY TRACKING: Get candidate score for logging (from candidateData)
     const candidateScore = candidateData.overall_score || candidate.overall_score || 0;
@@ -714,19 +721,25 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           })
           .eq('decision_id', decisionId);
         
-        // Log POST_FAILED
+        // Log POST_FAILED with structured metadata
         const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
         await supabase.from('system_events').insert({
           event_type: 'POST_FAILED',
           severity: 'error',
+          message: `Context grounding failed: ${groundingCheck.deny_reason_code || 'UNGROUNDED_REPLY'}`,
           event_data: {
             decision_id: decisionId,
             target_tweet_id: candidate.candidate_tweet_id,
-            target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId,
+            target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId || null,
             app_version: appVersion,
+            gate_result: 'BLOCK',
+            deny_reason_code: groundingCheck.deny_reason_code || 'UNGROUNDED_REPLY',
             pipeline_error_reason: groundingCheck.deny_reason_code || 'UNGROUNDED_REPLY',
             reason: groundingCheck.reason,
-            grounding_evidence: groundingCheck.grounding_evidence,
+            detail: {
+              grounding_evidence: groundingCheck.grounding_evidence,
+              missing_criteria: 'No quoted snippet, <2 keywords, no author paraphrase'
+            }
           },
           created_at: new Date().toISOString(),
         });

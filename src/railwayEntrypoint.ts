@@ -30,6 +30,13 @@ function startHealthServer(): void {
   const gitSha = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
   const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
 
+  // 🔒 PHASE 4.B: DEPLOYMENT INTEGRITY CHECK - Log at boot
+  console.log(`[BOOT] git_sha=${gitSha}`);
+  console.log(`[BOOT] railway_git_commit_sha=${process.env.RAILWAY_GIT_COMMIT_SHA || 'missing'}`);
+  console.log(`[BOOT] app_version=${process.env.APP_VERSION || gitSha}`);
+  console.log(`[BOOT] boot_id=${bootId}`);
+  console.log(`[BOOT] boot_time=${bootTime}`);
+  
   console.log(`[HEALTH] Starting health server on ${host}:${port}...`);
   console.log(`[HEALTH] Boot ID: ${bootId}`);
   console.log(`[HEALTH] Boot time: ${bootTime}`);

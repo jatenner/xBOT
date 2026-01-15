@@ -5340,7 +5340,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
       console.log(`[POST_SUCCESS] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} posted_reply_tweet_id=${result.tweetId} template_id=${templateId || 'null'} prompt_version=${promptVersion || 'null'} app_version=${appVersion}`);
       
-      // Write POST_SUCCESS to system_events
+      // Write POST_SUCCESS to system_events with tweet_url
+      const tweetUrl = `https://x.com/i/status/${result.tweetId}`;
       await supabase.from('system_events').insert({
         event_type: 'POST_SUCCESS',
         severity: 'info',
@@ -5350,6 +5351,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
           target_tweet_id: decision.target_tweet_id,
           target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId || null,
           posted_reply_tweet_id: result.tweetId,
+          tweet_url: tweetUrl,
           template_id: templateId,
           prompt_version: promptVersion,
           app_version: appVersion,

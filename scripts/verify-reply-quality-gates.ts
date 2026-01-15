@@ -2,7 +2,8 @@
 /**
  * 🔒 VERIFY REPLY QUALITY GATES
  * 
- * Shows last 24h gate blocks by reason code
+ * Prints last 24h blocks grouped by deny_reason_code and sub-reason,
+ * shows 5 example tweet_ids each.
  * 
  * Usage:
  *   railway run -s xBOT -- pnpm exec tsx scripts/verify-reply-quality-gates.ts
@@ -27,98 +28,113 @@ async function main() {
     .gte('created_at', oneDayAgo)
     .order('created_at', { ascending: false });
   
-  if (!failedEvents || failedEvents.length === 0) {
-    console.log('ℹ️  No POST_FAILED events found in last 24h\n');
+  // Query reply_decisions for deny reasons
+  const { data: denyDecisions } = await supabase
+    .from('reply_decisions')
+    .select('decision_id, target_tweet_id, deny_reason_code, deny_reason_detail, created_at')
+    .not('deny_reason_code', 'is', null)
+    .gte('created_at', oneDayAgo)
+    .order('created_at', { ascending: false });
+  
+  if ((!failedEvents || failedEvents.length === 0) && (!denyDecisions || denyDecisions.length === 0)) {
+    console.log('ℹ️  No gate blocks found in last 24h\n');
     return;
   }
   
-  // Categorize by deny_reason_code
-  const gateBlocks: Record<string, number> = {
-    'NON_ROOT': 0,
-    'SAFETY_GATE_THREAD_REPLY_FORBIDDEN': 0,
-    'LOW_SIGNAL_TARGET': 0,
-    'EMOJI_SPAM_TARGET': 0,
-    'PARODY_OR_BOT_SIGNAL': 0,
-    'NON_HEALTH_TOPIC': 0,
-    'UNGROUNDED_REPLY': 0,
-    'OTHER': 0,
-  };
+  // Group by deny_reason_code
+  const blocksByReason: Record<string, {
+    count: number;
+    examples: Array<{
+      decision_id: string;
+      target_tweet_id: string;
+      created_at: string;
+      detail?: any;
+    }>;
+  }> = {};
   
-  const gateDetails: Array<{
-    created_at: string;
-    deny_reason_code: string;
-    decision_id: string;
-    target_tweet_id: string;
-    app_version: string;
-  }> = [];
-  
-  for (const event of failedEvents) {
-    const eventData = typeof event.event_data === 'string' 
-      ? JSON.parse(event.event_data) 
-      : event.event_data;
-    
-    const denyReason = eventData.deny_reason_code || 
-                      eventData.pipeline_error_reason || 
-                      'OTHER';
-    
-    // Map to gate categories
-    if (denyReason === 'NON_ROOT' || denyReason.includes('NON_ROOT')) {
-      gateBlocks['NON_ROOT']++;
-    } else if (denyReason === 'SAFETY_GATE_THREAD_REPLY_FORBIDDEN' || denyReason.includes('THREAD_REPLY')) {
-      gateBlocks['SAFETY_GATE_THREAD_REPLY_FORBIDDEN']++;
-    } else if (denyReason === 'LOW_SIGNAL_TARGET') {
-      gateBlocks['LOW_SIGNAL_TARGET']++;
-    } else if (denyReason === 'EMOJI_SPAM_TARGET') {
-      gateBlocks['EMOJI_SPAM_TARGET']++;
-    } else if (denyReason === 'PARODY_OR_BOT_SIGNAL') {
-      gateBlocks['PARODY_OR_BOT_SIGNAL']++;
-    } else if (denyReason === 'NON_HEALTH_TOPIC') {
-      gateBlocks['NON_HEALTH_TOPIC']++;
-    } else if (denyReason === 'UNGROUNDED_REPLY') {
-      gateBlocks['UNGROUNDED_REPLY']++;
-    } else {
-      gateBlocks['OTHER']++;
-    }
-    
-    // Store details for top 10
-    if (gateDetails.length < 10) {
-      gateDetails.push({
-        created_at: event.created_at,
-        deny_reason_code: denyReason,
-        decision_id: eventData.decision_id || 'N/A',
-        target_tweet_id: eventData.target_tweet_id || 'N/A',
-        app_version: eventData.app_version || 'unknown',
-      });
+  // Process system_events POST_FAILED
+  if (failedEvents) {
+    for (const event of failedEvents) {
+      const eventData = typeof event.event_data === 'string' 
+        ? JSON.parse(event.event_data) 
+        : event.event_data;
+      
+      const denyReason = eventData.deny_reason_code || 
+                        eventData.pipeline_error_reason || 
+                        'OTHER';
+      
+      if (!blocksByReason[denyReason]) {
+        blocksByReason[denyReason] = { count: 0, examples: [] };
+      }
+      
+      blocksByReason[denyReason].count++;
+      
+      if (blocksByReason[denyReason].examples.length < 5) {
+        blocksByReason[denyReason].examples.push({
+          decision_id: eventData.decision_id || 'N/A',
+          target_tweet_id: eventData.target_tweet_id || 'N/A',
+          created_at: event.created_at,
+          detail: eventData.detail || eventData.quality_filter_details || eventData.grounding_evidence
+        });
+      }
     }
   }
   
-  console.log('📊 GATE BLOCKS (Last 24h):\n');
-  for (const [reason, count] of Object.entries(gateBlocks)) {
-    if (count > 0) {
-      console.log(`   ${reason}: ${count}`);
+  // Process reply_decisions denies
+  if (denyDecisions) {
+    for (const decision of denyDecisions) {
+      const denyReason = decision.deny_reason_code || 'OTHER';
+      
+      if (!blocksByReason[denyReason]) {
+        blocksByReason[denyReason] = { count: 0, examples: [] };
+      }
+      
+      blocksByReason[denyReason].count++;
+      
+      if (blocksByReason[denyReason].examples.length < 5) {
+        let detail: any = null;
+        if (decision.deny_reason_detail) {
+          try {
+            detail = typeof decision.deny_reason_detail === 'string' 
+              ? JSON.parse(decision.deny_reason_detail)
+              : decision.deny_reason_detail;
+          } catch (e) {
+            detail = decision.deny_reason_detail;
+          }
+        }
+        
+        blocksByReason[denyReason].examples.push({
+          decision_id: decision.decision_id,
+          target_tweet_id: decision.target_tweet_id,
+          created_at: decision.created_at,
+          detail: detail
+        });
+      }
     }
   }
   
-  // Query reply_decisions for additional context
-  const { data: replyDecisions } = await supabase
-    .from('reply_decisions')
-    .select('decision_id, target_tweet_id, deny_reason_code, created_at')
-    .not('deny_reason_code', 'is', null)
-    .gte('created_at', oneDayAgo)
-    .order('created_at', { ascending: false })
-    .limit(20);
+  console.log('📊 GATE BLOCKS BY DENY_REASON_CODE (Last 24h):\n');
   
-  if (replyDecisions && replyDecisions.length > 0) {
-    console.log(`\n📋 REPLY_DECISIONS DENIES (Last 24h, top 20):\n`);
-    const decisionBlocks: Record<string, number> = {};
-    for (const decision of replyDecisions) {
-      const reason = decision.deny_reason_code || 'UNKNOWN';
-      decisionBlocks[reason] = (decisionBlocks[reason] || 0) + 1;
-    }
+  const sortedReasons = Object.entries(blocksByReason).sort((a, b) => b[1].count - a[1].count);
+  
+  for (const [reason, data] of sortedReasons) {
+    console.log(`${reason}: ${data.count} blocks`);
     
-    for (const [reason, count] of Object.entries(decisionBlocks)) {
-      console.log(`   ${reason}: ${count}`);
+    if (data.examples.length > 0) {
+      console.log(`   Examples (${data.examples.length}):`);
+      for (const example of data.examples) {
+        console.log(`     - decision_id: ${example.decision_id}`);
+        console.log(`       target_tweet_id: ${example.target_tweet_id}`);
+        console.log(`       created_at: ${example.created_at}`);
+        if (example.detail) {
+          const detailStr = typeof example.detail === 'string' 
+            ? example.detail 
+            : JSON.stringify(example.detail).substring(0, 100);
+          console.log(`       detail: ${detailStr}...`);
+        }
+      }
     }
+    console.log('');
   }
   
   // Query POST_SUCCESS count
@@ -128,19 +144,7 @@ async function main() {
     .eq('event_type', 'POST_SUCCESS')
     .gte('created_at', oneDayAgo);
   
-  console.log(`\n✅ POST_SUCCESS (Last 24h): ${successCount || 0}`);
-  
-  if (gateDetails.length > 0) {
-    console.log(`\n📋 RECENT GATE BLOCKS (Top 10):\n`);
-    gateDetails.forEach((detail, i) => {
-      console.log(`${i + 1}. ${detail.created_at}`);
-      console.log(`   deny_reason_code: ${detail.deny_reason_code}`);
-      console.log(`   decision_id: ${detail.decision_id}`);
-      console.log(`   target_tweet_id: ${detail.target_tweet_id}`);
-      console.log(`   app_version: ${detail.app_version}`);
-      console.log('');
-    });
-  }
+  console.log(`✅ POST_SUCCESS (Last 24h): ${successCount || 0}\n`);
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 }

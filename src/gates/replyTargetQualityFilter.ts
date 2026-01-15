@@ -10,9 +10,12 @@
 
 export interface TargetQualityFilterResult {
   pass: boolean;
-  deny_reason_code?: 'LOW_SIGNAL_TARGET' | 'NON_HEALTH_TOPIC' | 'EMOJI_SPAM_TARGET' | 'PARODY_OR_BOT_SIGNAL';
+  code: string; // Deny reason code
+  deny_reason_code?: 'LOW_SIGNAL_TARGET' | 'NON_HEALTH_TOPIC' | 'EMOJI_SPAM_TARGET' | 'PARODY_OR_BOT_SIGNAL' | 'TARGET_QUALITY_BLOCK';
   reason: string;
-  details?: Record<string, any>;
+  detail: Record<string, any>; // Structured detail object
+  details?: Record<string, any>; // Alias for compatibility
+  score?: number; // Quality score 0-100
 }
 
 /**
@@ -54,6 +57,44 @@ function extractMeaningfulContext(text: string): string[] {
 }
 
 /**
+ * Check for engagement bait patterns
+ */
+function hasEngagementBait(text: string): boolean {
+  const baitPatterns = [
+    /\bfollow\s+(me|us|for)\b/i,
+    /\bdm\s+(me|us)\b/i,
+    /\bretweet\s+(if|this)\b/i,
+    /\blike\s+if\b/i,
+    /\bshare\s+(if|this)\b/i,
+    /\bcomment\s+(below|if)\b/i,
+    /\bclick\s+(link|here)\b/i,
+  ];
+  
+  return baitPatterns.some(pattern => pattern.test(text));
+}
+
+/**
+ * Check if text contains a claim or question
+ */
+function hasClaimOrQuestion(text: string): boolean {
+  const claimIndicators = [
+    /\b(claim|says|states|argues|suggests|proves|shows|demonstrates|finds|discovered|study|research|data|evidence)\b/i,
+    /\b(should|must|need|require|important|critical|essential|vital)\b/i,
+    /\b(better|worse|best|worst|more|less|most|least)\b/i,
+    /\d+%/, // Percentages
+    /\d+\s*(mg|g|kg|ml|l|calories?|grams?|pounds?|lbs?)/i, // Quantities
+  ];
+  
+  const questionIndicators = [
+    /\?/, // Question mark
+    /\b(what|when|where|why|how|which|who|whom|whose|can|could|should|would|will|do|does|did|is|are|was|were)\s+\w+/i,
+  ];
+  
+  return claimIndicators.some(pattern => pattern.test(text)) ||
+         questionIndicators.some(pattern => pattern.test(text));
+}
+
+/**
  * Check if text is health-relevant
  */
 function isHealthRelevant(text: string): boolean {
@@ -75,31 +116,48 @@ function isHealthRelevant(text: string): boolean {
 /**
  * Check for parody/bot signals
  */
-function hasParodyOrBotSignals(text: string, authorName?: string, authorBio?: string): boolean {
-  const parodyKeywords = ['parody', 'satire', 'joke', 'meme', 'humor', 'fake', 'not real'];
-  const botKeywords = ['bot', 'automated', 'ai generated', 'chatbot'];
+function hasParodyOrBotSignals(text: string, authorName?: string, authorBio?: string): {
+  hasParody: boolean;
+  hasBot: boolean;
+  signals: string[];
+} {
+  const parodyKeywords = ['parody', 'satire', 'joke', 'meme', 'humor', 'fake', 'not real', 'rp ', 'fan account'];
+  const botKeywords = ['bot', 'automated', 'ai generated', 'chatbot', 'auto reply'];
   
   const combinedText = `${text} ${authorName || ''} ${authorBio || ''}`.toLowerCase();
+  const signals: string[] = [];
   
   // Check for parody keywords
-  if (parodyKeywords.some(keyword => combinedText.includes(keyword))) {
-    return true;
+  const foundParody = parodyKeywords.find(keyword => combinedText.includes(keyword));
+  if (foundParody) {
+    signals.push(`parody_keyword:${foundParody}`);
   }
   
   // Check for bot signals in author name/bio
-  if (authorName && botKeywords.some(keyword => authorName.toLowerCase().includes(keyword))) {
-    return true;
+  if (authorName) {
+    const foundBot = botKeywords.find(keyword => authorName.toLowerCase().includes(keyword));
+    if (foundBot) {
+      signals.push(`bot_in_name:${foundBot}`);
+    }
   }
   
-  if (authorBio && botKeywords.some(keyword => authorBio.toLowerCase().includes(keyword))) {
-    return true;
+  if (authorBio) {
+    const foundBot = botKeywords.find(keyword => authorBio.toLowerCase().includes(keyword));
+    if (foundBot) {
+      signals.push(`bot_in_bio:${foundBot}`);
+    }
   }
   
-  return false;
+  return {
+    hasParody: !!foundParody,
+    hasBot: signals.some(s => s.startsWith('bot_')),
+    signals
+  };
 }
 
 /**
  * Filter target quality before generation
+ * Returns structured result with code, detail, and score
  */
 export function filterTargetQuality(
   targetText: string,
@@ -107,48 +165,105 @@ export function filterTargetQuality(
   authorBio?: string,
   extractedContext?: string
 ): TargetQualityFilterResult {
-  // Rule 1: Low signal - text length < 40 AND no meaningful context
   const textLength = targetText.length;
   const meaningfulContext = extractedContext || targetText;
   const meaningfulTokens = extractMeaningfulContext(meaningfulContext);
+  const emojiRatio = calculateEmojiRatio(targetText);
+  const hasRepeatedEmojis = (targetText.match(/\n/g) || []).length > 0 && 
+                             targetText.split('\n').filter(line => {
+                               const clean = line.trim();
+                               if (clean.length === 0) return false;
+                               const emojiCount = (clean.match(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu) || []).length;
+                               const nonEmojiChars = clean.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim().length;
+                               return emojiCount > 0 && nonEmojiChars < 3;
+                             }).length >= 2;
+  
+  // Rule 1: Low signal - text length < 40 AND no meaningful context OR no claim/question
+  const hasClaim = hasClaimOrQuestion(targetText);
+  const hasBait = hasEngagementBait(targetText);
   
   if (textLength < 40 && meaningfulTokens.length < 3) {
     return {
       pass: false,
+      code: 'LOW_SIGNAL_TARGET',
       deny_reason_code: 'LOW_SIGNAL_TARGET',
       reason: `Target text too short (${textLength} chars) with insufficient context (${meaningfulTokens.length} meaningful tokens)`,
+      detail: {
+        text_length: textLength,
+        meaningful_tokens: meaningfulTokens.length,
+        tokens: meaningfulTokens.slice(0, 5),
+        has_claim_or_question: hasClaim,
+        has_engagement_bait: hasBait
+      },
       details: {
         text_length: textLength,
         meaningful_tokens: meaningfulTokens.length,
         tokens: meaningfulTokens.slice(0, 5)
-      }
+      },
+      score: Math.max(0, Math.min(100, (textLength / 40) * 30 + meaningfulTokens.length * 5))
     };
   }
   
-  // Rule 2: Emoji spam - emoji ratio > 0.35
-  const emojiRatio = calculateEmojiRatio(targetText);
-  if (emojiRatio > 0.35) {
+  // Rule 1b: Generic engagement bait without claim/question
+  if (hasBait && !hasClaim && textLength < 100) {
     return {
       pass: false,
+      code: 'LOW_SIGNAL_TARGET',
+      deny_reason_code: 'LOW_SIGNAL_TARGET',
+      reason: `Target is generic engagement bait without claim/question`,
+      detail: {
+        text_length: textLength,
+        has_engagement_bait: true,
+        has_claim_or_question: false
+      },
+      details: {
+        text_length: textLength,
+        has_engagement_bait: true
+      },
+      score: 20
+    };
+  }
+  
+  // Rule 2: Emoji spam - emoji ratio > 0.35 OR repeated emoji lines
+  if (emojiRatio > 0.35 || hasRepeatedEmojis) {
+    return {
+      pass: false,
+      code: 'EMOJI_SPAM_TARGET',
       deny_reason_code: 'EMOJI_SPAM_TARGET',
-      reason: `Target has high emoji ratio (${(emojiRatio * 100).toFixed(1)}% > 35%)`,
+      reason: `Target has high emoji ratio (${(emojiRatio * 100).toFixed(1)}% > 35%)${hasRepeatedEmojis ? ' or repeated emoji lines' : ''}`,
+      detail: {
+        emoji_ratio: emojiRatio,
+        text_length: textLength,
+        has_repeated_emoji_lines: hasRepeatedEmojis
+      },
       details: {
         emoji_ratio: emojiRatio,
         text_length: textLength
-      }
+      },
+      score: Math.max(0, 100 - (emojiRatio * 200))
     };
   }
   
   // Rule 3: Parody/bot signals
-  if (hasParodyOrBotSignals(targetText, authorName, authorBio)) {
+  const parodyBotCheck = hasParodyOrBotSignals(targetText, authorName, authorBio);
+  if (parodyBotCheck.hasParody || parodyBotCheck.hasBot) {
     return {
       pass: false,
+      code: 'PARODY_OR_BOT_SIGNAL',
       deny_reason_code: 'PARODY_OR_BOT_SIGNAL',
-      reason: `Target contains parody/bot signals`,
+      reason: `Target contains parody/bot signals: ${parodyBotCheck.signals.join(', ')}`,
+      detail: {
+        author_name: authorName,
+        author_bio: authorBio ? authorBio.substring(0, 100) : undefined,
+        has_parody: parodyBotCheck.hasParody,
+        has_bot: parodyBotCheck.hasBot,
+        signals: parodyBotCheck.signals
+      },
       details: {
         author_name: authorName,
         has_parody_keywords: true
-      }
+      },
+      score: 0
     };
   }
   
@@ -156,23 +271,48 @@ export function filterTargetQuality(
   if (!isHealthRelevant(targetText)) {
     return {
       pass: false,
+      code: 'NON_HEALTH_TOPIC',
       deny_reason_code: 'NON_HEALTH_TOPIC',
       reason: `Target is not health-relevant`,
+      detail: {
+        text_preview: targetText.substring(0, 100),
+        text_length: textLength,
+        meaningful_tokens: meaningfulTokens.length
+      },
       details: {
         text_preview: targetText.substring(0, 100)
-      }
+      },
+      score: 30
     };
   }
+  
+  // Calculate quality score (0-100)
+  let score = 100;
+  if (textLength < 60) score -= 10;
+  if (meaningfulTokens.length < 5) score -= 10;
+  if (!hasClaim) score -= 15;
+  if (emojiRatio > 0.15) score -= 10;
+  score = Math.max(0, Math.min(100, score));
   
   // All checks passed
   return {
     pass: true,
+    code: 'PASS',
     reason: 'Target passed all quality filters',
+    detail: {
+      text_length: textLength,
+      emoji_ratio: emojiRatio,
+      meaningful_tokens: meaningfulTokens.length,
+      has_claim_or_question: hasClaim,
+      is_health_relevant: true,
+      score: score
+    },
     details: {
       text_length: textLength,
       emoji_ratio: emojiRatio,
       meaningful_tokens: meaningfulTokens.length,
       is_health_relevant: true
-    }
+    },
+    score: score
   };
 }
