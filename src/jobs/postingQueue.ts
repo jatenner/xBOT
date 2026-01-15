@@ -4332,6 +4332,22 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
   if (config.FEATURE_X_API_POSTING) {
     console.log('[POSTING_QUEUE] 🔌 Using official X API posting...');
     
+    // 🔒 ENSURE POST_ATTEMPT WRITTEN BEFORE X API CALL
+    const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+    await supabase.from('system_events').insert({
+      event_type: 'POST_ATTEMPT',
+      severity: 'info',
+      message: `X API posting attempt: decision_id=${decision.id}`,
+      event_data: {
+        decision_id: decision.id,
+        target_tweet_id: decision.target_tweet_id || null,
+        app_version: appVersion,
+        pipeline_source: (decision as any).pipeline_source || 'posting_queue',
+        method: 'X_API',
+      },
+      created_at: new Date().toISOString(),
+    });
+    
     try {
       const { XApiPoster } = await import('../posting/xApiPoster');
       const apiPoster = new XApiPoster();

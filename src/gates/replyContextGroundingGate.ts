@@ -131,7 +131,7 @@ function hasAuthorParaphrase(replyText: string, targetText: string, authorUserna
 /**
  * Check if reply contains >=2 target keywords (excluding stopwords)
  */
-function hasTargetKeywords(replyText: string, targetText: string): { matched: string[]; method: 'direct' } | null {
+function hasTargetKeywords(replyText: string, targetText: string): { matched: string[]; method: 'paraphrase' } | null {
   const stopwords = new Set([
     'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
     'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
@@ -155,7 +155,7 @@ function hasTargetKeywords(replyText: string, targetText: string): { matched: st
   }
   
   if (matched.length >= 2) {
-    return { matched: [...new Set(matched)].slice(0, 5), method: 'direct' as const };
+    return { matched: [...new Set(matched)].slice(0, 5), method: 'paraphrase' as const };
   }
   
   return null;
