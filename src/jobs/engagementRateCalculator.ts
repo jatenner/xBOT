@@ -49,6 +49,12 @@ export async function calculateEngagementRates(): Promise<void> {
     try {
       console.log(`[ENGAGEMENT_CALC] 🔍 Calculating @${account.username} (${account.follower_count?.toLocaleString()} followers)...`);
       
+      // 🔒 RAILWAY GATE: Playwright scraping only runs on Mac Runner
+      if (process.env.RUNNER_MODE !== 'true') {
+        console.log('[ENGAGEMENT_RATE] ⏭️  Skipping Playwright scraping on Railway (RUNNER_MODE not set)');
+        return null; // Skip silently
+      }
+      
       const engagementRate = await withBrowserLock(
         `engagement_calc_${account.username}`,
         BrowserPriority.HARVESTING,

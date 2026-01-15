@@ -4325,6 +4325,14 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
   console.log(`[POSTING_QUEUE][SEM_TIMEOUT] decision_id=${decision.id} type=${decision.decision_type} timeoutMs=${timeoutMs}`);
   
   return await withBrowserLock('posting', BrowserPriority.POSTING, async () => {
+    // 🔒 RAILWAY GATE: Playwright posting only runs on Mac Runner (RUNNER_MODE=true)
+    // Railway IPs trigger consent/challenge walls - all browser activity must run on residential IP
+    if (process.env.RUNNER_MODE !== 'true') {
+      const errorMsg = `[POSTING_QUEUE] ❌ Playwright posting disabled on Railway (RUNNER_MODE not set). Railway IPs trigger X consent/challenge walls. All browser activity must run on Mac Runner with RUNNER_MODE=true.`;
+      console.error(errorMsg);
+      throw new Error('Playwright posting disabled on Railway - use Mac Runner');
+    }
+    
     // Check feature flag for posting method
     const { getEnvConfig } = await import('../config/env');
     const config = getEnvConfig();
@@ -4979,6 +4987,13 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       reject(new Error(`Reply posting timeout after ${REPLY_TIMEOUT_MS/1000}s`));
     }, REPLY_TIMEOUT_MS);
   });
+  
+  // 🔒 RAILWAY GATE: Playwright posting only runs on Mac Runner (RUNNER_MODE=true)
+  if (process.env.RUNNER_MODE !== 'true') {
+    const errorMsg = `[POSTING_QUEUE] ❌ Playwright reply posting disabled on Railway (RUNNER_MODE not set). Railway IPs trigger X consent/challenge walls. All browser activity must run on Mac Runner with RUNNER_MODE=true.`;
+    console.error(errorMsg);
+    throw new Error('Playwright reply posting disabled on Railway - use Mac Runner');
+  }
   
   const postingPromise = withBrowserLock('reply_posting', BrowserPriority.REPLIES, async () => {
     if (!decision.target_tweet_id) {

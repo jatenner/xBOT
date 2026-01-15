@@ -151,6 +151,10 @@ async function main() {
   console.log('           🚀 MAC RUNNER GO-LIVE WITH LOGIN');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
+  console.log('⚠️  IMPORTANT: If Mac sleeps, bot stops. Keep Mac awake.');
+  console.log('   Use: caffeinate -d (prevents display sleep)');
+  console.log('   Or: System Settings → Energy Saver → Prevent computer from sleeping');
+  console.log('');
   
   // Step 1: Auto-sync env
   console.log('STEP 1: Syncing environment from Railway...');
@@ -172,13 +176,27 @@ async function main() {
   console.log('\nSTEP 2: Checking X.com session...');
   let sessionStatus = await checkSessionStatus();
   
-  // Step 3: Handle expired session
+  // Step 3: Handle expired session or consent/challenge
   if (sessionStatus === 'SESSION_EXPIRED') {
-    console.log('\n⚠️  Session expired detected');
+    console.log('\n⚠️  Session expired or consent/challenge detected');
     const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
     if (fs.existsSync(screenshotPath)) {
       console.log(`📸 Screenshot saved: ${screenshotPath}`);
+      console.log('   Check screenshot to see if it\'s a consent wall, challenge, or login prompt');
     }
+    
+    console.log('\n');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('           ⚠️  LOGIN REQUIRED NOW');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('');
+    console.log('The browser will open. Please:');
+    console.log('   1. Complete any consent/challenge prompts');
+    console.log('   2. Log in to X.com if needed');
+    console.log('   3. Complete 2FA if prompted');
+    console.log('   4. Verify you see your timeline (not login page)');
+    console.log('   5. Press Enter in this terminal when done');
+    console.log('');
     
     const loginSuccess = await runLogin();
     if (!loginSuccess) {
@@ -186,14 +204,20 @@ async function main() {
       process.exit(1);
     }
     
-    // Re-check session after login
+    // Re-check session after login (with retries)
     console.log('\nSTEP 2b: Re-checking session after login...');
-    sessionStatus = await checkSessionStatus();
+    let retries = 3;
+    while (retries > 0 && sessionStatus === 'SESSION_EXPIRED') {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before re-check
+      sessionStatus = await checkSessionStatus();
+      retries--;
+    }
     
     if (sessionStatus === 'SESSION_EXPIRED') {
       console.error('\n❌ LOGIN FAILED / STILL BLOCKED');
       console.error(`   Screenshot: ${screenshotPath}`);
       console.error('   Please check the screenshot and try again');
+      console.error('   If consent wall persists, wait 24h or use different IP');
       process.exit(1);
     }
   }

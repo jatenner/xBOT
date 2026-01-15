@@ -239,6 +239,12 @@ export async function metricsScraperJob(): Promise<void> {
     // 🔒 BROWSER SEMAPHORE: Acquire ONE browser lock for ALL tweets (BATCHED)
     const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
     
+    // 🔒 RAILWAY GATE: Playwright scraping only runs on Mac Runner
+    if (process.env.RUNNER_MODE !== 'true') {
+      console.log('[METRICS_SCRAPER] ⏭️  Skipping Playwright scraping on Railway (RUNNER_MODE not set)');
+      return; // Skip silently - metrics can be fetched via API if needed
+    }
+    
     await withBrowserLock('metrics_batch', BrowserPriority.METRICS, async () => {
       // Use UnifiedBrowserPool (same as working discovery system)
       const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');

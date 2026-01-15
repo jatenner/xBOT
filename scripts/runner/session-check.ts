@@ -131,12 +131,22 @@ async function checkSession(): Promise<{
         const screenshotPath = path.join(RUNNER_PROFILE_DIR, 'session_check.png');
         await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
         await context.close();
-        return {
-          status: 'SESSION_EXPIRED',
-          url: currentUrl,
-          reason: 'No timeline elements found',
-          diagnostics,
-        };
+    // Check if it's a consent wall or challenge
+    let reason = 'No timeline elements found';
+    if (diagnostics.hasConsentWall) {
+      reason = 'Consent wall detected (cookies/consent prompt)';
+    } else if (diagnostics.hasChallenge) {
+      reason = 'Challenge detected (verification/unusual activity)';
+    } else if (diagnostics.hasLoginButton) {
+      reason = 'Login required (login button visible)';
+    }
+    
+    return {
+      status: 'SESSION_EXPIRED',
+      url: currentUrl,
+      reason,
+      diagnostics,
+    };
       }
     }
     

@@ -213,6 +213,12 @@ async function trackFollowerSnapshot(): Promise<void> {
     // 🔒 BROWSER SEMAPHORE: Use browser lock to prevent conflicts
     const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
     
+    // 🔒 RAILWAY GATE: Playwright scraping only runs on Mac Runner
+    if (process.env.RUNNER_MODE !== 'true') {
+      console.log('[VELOCITY_TRACKER] ⏭️  Skipping Playwright follower snapshot on Railway (RUNNER_MODE not set)');
+      return; // Skip silently
+    }
+    
     await withBrowserLock('follower_snapshot', BrowserPriority.FOLLOWER_TRACK, async () => {
       const supabase = getSupabaseClient();
       const scraper = getBulletproofScraper();
