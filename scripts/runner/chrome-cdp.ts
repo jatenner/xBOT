@@ -141,13 +141,13 @@ async function main() {
   } catch (error: any) {
     console.error(`❌ Failed to launch Chrome CDP: ${error.message}`);
     process.exit(1);
-  } finally {
-    if (chromeProcess) {
-      console.log('\n🛑 Closing Chrome...');
-      chromeProcess.kill();
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
+  } catch (error: any) {
+    console.error(`❌ Failed to launch Chrome CDP: ${error.message}`);
+    process.exit(1);
   }
+  
+  // Don't close Chrome - keep it running
+  console.log('\n✅ Chrome CDP launcher complete. Chrome will stay running.');
 }
 
 main().catch((error) => {

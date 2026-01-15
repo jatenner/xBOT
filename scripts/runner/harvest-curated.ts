@@ -153,18 +153,31 @@ async function checkConsentWall(page: any): Promise<boolean> {
 async function collectFromHomeTimeline(): Promise<string[]> {
   // Use runner launcher (CDP mode)
   if (!process.env.RUNNER_BROWSER) {
-    process.env.RUNNER_BROWSER = 'cdp';
+    process.env.RUNNER_BROWSER = process.env.RUNNER_MODE === 'true' ? 'cdp' : 'direct';
   }
   const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
   const tweetIds: string[] = [];
   
   const context = await launchRunnerPersistent(true); // headless for harvesting
-  const page = await context.newPage();
+  
+  // In CDP mode, reuse existing page if available, otherwise create new
+  let page = context.pages()[0];
+  if (!page) {
+    page = await context.newPage();
+  }
   
   try {
-    console.log('   🌐 Navigating to https://x.com/home...');
-    await page.goto('https://x.com/home', { waitUntil: 'networkidle', timeout: 45000 });
-    await jitter(5000, 8000); // Wait for page to fully load
+    // Check current URL - if already on home, don't navigate again
+    const currentUrl = page.url();
+    if (!currentUrl.includes('x.com/home')) {
+      console.log('   🌐 Navigating to https://x.com/home...');
+      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 45000 });
+      await jitter(3000, 5000);
+    } else {
+      console.log('   ✅ Already on home page, refreshing...');
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+      await jitter(3000, 5000);
+    }
     
     // Check if we're logged in
     const isLoggedIn = await page.evaluate(() => {
@@ -277,7 +290,7 @@ async function collectFromHomeTimeline(): Promise<string[]> {
 async function collectFromSearchQueries(): Promise<string[]> {
   // Use runner launcher (CDP mode)
   if (!process.env.RUNNER_BROWSER) {
-    process.env.RUNNER_BROWSER = 'cdp';
+    process.env.RUNNER_BROWSER = process.env.RUNNER_MODE === 'true' ? 'cdp' : 'direct';
   }
   const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
   const tweetIds: string[] = [];
@@ -474,14 +487,16 @@ async function validateAndInsert(
  * Check session status
  */
 async function checkSessionStatus(): Promise<{ status: 'SESSION_OK' | 'SESSION_EXPIRED'; url: string; reason: string }> {
-  const { launchPersistent } = await import('../../src/infra/playwright/launcher');
+  // Use runner launcher (CDP mode when RUNNER_MODE=true)
+  const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
   
-  const context = await launchPersistent();
+  const context = await launchRunnerPersistent(true); // headless for session check
   const page = await context.newPage();
   
   try {
-    await page.goto('https://x.com/home', { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(3000);
+    // Navigate to home, but don't wait for networkidle (can timeout)
+    await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.waitForTimeout(5000); // Give page time to load
     
     const currentUrl = page.url();
     
@@ -508,42 +523,57 @@ async function checkSessionStatus(): Promise<{ status: 'SESSION_OK' | 'SESSION_E
       };
     }
     
-    // Check for logged-in indicators
-    const hasTimeline = await page.evaluate(() => {
-      return !!document.querySelector('[data-testid="primaryColumn"]') ||
-             !!document.querySelector('article[data-testid="tweet"]') ||
-             !!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
+    // Check for logged-in indicators (left nav, compose, avatar - more reliable than timeline tweets)
+    const sessionIndicators = await page.evaluate(() => {
+      const hasLeftNav = !!(
+        document.querySelector('nav[role="navigation"]') ||
+        document.querySelector('[data-testid="primaryColumn"]') ||
+        document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]') ||
+        document.querySelector('a[href="/home"]')
+      );
+      
+      const hasComposeButton = !!(
+        document.querySelector('[data-testid="SideNav_NewTweet_Button"]') ||
+        document.querySelector('a[href="/compose/tweet"]')
+      );
+      
+      const hasUserAvatar = !!(
+        document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]')
+      );
+      
+      return {
+        hasLeftNav,
+        hasComposeButton,
+        hasUserAvatar,
+        sessionOK: hasLeftNav || hasComposeButton || hasUserAvatar,
+      };
     });
     
-    if (!hasTimeline) {
-      await page.waitForTimeout(3000);
-      const hasTimelineAfterWait = await page.evaluate(() => {
-        return !!document.querySelector('[data-testid="primaryColumn"]') ||
-               !!document.querySelector('article[data-testid="tweet"]');
-      });
-      
-      if (!hasTimelineAfterWait) {
-        await context.close();
-        return {
-          status: 'SESSION_EXPIRED',
-          url: currentUrl,
-          reason: 'No timeline elements found',
-        };
-      }
+    if (sessionIndicators.sessionOK) {
+      await context.close();
+      return {
+        status: 'SESSION_OK',
+        url: currentUrl,
+        reason: `Session OK: left nav=${sessionIndicators.hasLeftNav}, compose=${sessionIndicators.hasComposeButton}, avatar=${sessionIndicators.hasUserAvatar}`,
+      };
     }
     
     await context.close();
     return {
-      status: 'SESSION_OK',
+      status: 'SESSION_EXPIRED',
       url: currentUrl,
-      reason: 'Timeline elements present',
+      reason: 'No session indicators found (left nav/compose/avatar)',
     };
     
   } catch (error: any) {
+    let url = 'unknown';
+    try {
+      url = page.url();
+    } catch {}
     await context.close().catch(() => {});
     return {
       status: 'SESSION_EXPIRED',
-      url: page.url().catch(() => 'unknown'),
+      url,
       reason: `Error: ${error.message}`,
     };
   }
@@ -553,6 +583,11 @@ async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           🌾 MAC RUNNER CURATED HARVESTER');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  
+  // Set browser mode for session check
+  if (!process.env.RUNNER_BROWSER) {
+    process.env.RUNNER_BROWSER = process.env.RUNNER_MODE === 'true' ? 'cdp' : 'direct';
+  }
   
   // Check session first
   console.log('🔐 Checking session status...');
