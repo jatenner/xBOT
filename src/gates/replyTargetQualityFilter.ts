@@ -20,14 +20,14 @@ export interface TargetQualityFilterResult {
  */
 function calculateEmojiRatio(text: string): number {
   const emojiRegex = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
-  const emojiMatches = text.match(emojiRegex) || [];
-  const emojiCount = emojiMatches.length;
+  const emojiMatchResult = text.match(emojiRegex);
+  const emojiMatches: string[] = emojiMatchResult ? Array.from(emojiMatchResult) : [];
   const totalChars = text.length;
   
   if (totalChars === 0) return 0;
   
   // Count emoji characters (some emojis are multi-character)
-  const emojiCharCount = emojiMatches.reduce((sum, emoji) => sum + emoji.length, 0);
+  const emojiCharCount = emojiMatches.reduce((sum: number, emoji: string) => sum + emoji.length, 0);
   return emojiCharCount / totalChars;
 }
 

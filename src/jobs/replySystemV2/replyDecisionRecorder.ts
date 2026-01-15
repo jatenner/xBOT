@@ -423,7 +423,7 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
       record.method = record.method || 'unknown';
     }
     
-    const { error } = await supabase.from('reply_decisions').insert({
+    const { data, error } = await supabase.from('reply_decisions').insert({
       decision_id: record.decision_id || null,
       target_tweet_id: record.target_tweet_id,
       target_in_reply_to_tweet_id: record.target_in_reply_to_tweet_id || null,
@@ -459,11 +459,14 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
       error: record.error || null,
       deny_reason_detail: (record as any).deny_reason_detail || null,
       build_sha: process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || 'unknown',
-    });
+    }).select().single();
     
     if (error) {
       console.error(`[REPLY_DECISION] ❌ Failed to record decision: ${error.message}`);
     } else {
+      // Get the inserted row
+      const insertedRow = data as any;
+      
       // 🔒 FIX: Ensure decision_id matches id if not provided
       if (!record.decision_id && insertedRow?.id) {
         await supabase
