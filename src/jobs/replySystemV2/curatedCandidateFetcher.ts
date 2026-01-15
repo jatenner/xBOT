@@ -128,11 +128,11 @@ export async function fetchCuratedCandidates(): Promise<{
   if (fetched === 0) {
     console.log(`[CURATED_FETCHER] 🔄 Using feed pipeline fallback...`);
     
-    // Query reply_opportunities filtered by author handles
+    // Query reply_opportunities filtered by author handles (use target_username)
     const { data: opportunities, error: oppError } = await supabase
       .from('reply_opportunities')
-      .select('target_tweet_id, author_handle, tweet_posted_at, target_in_reply_to_tweet_id')
-      .in('author_handle', CURATED_HANDLES)
+      .select('target_tweet_id, target_username, tweet_posted_at, target_in_reply_to_tweet_id')
+      .in('target_username', CURATED_HANDLES)
       .gte('tweet_posted_at', cutoffTime)
       .is('target_in_reply_to_tweet_id', null) // Root only
       .eq('is_root_tweet', true)
@@ -158,7 +158,7 @@ export async function fetchCuratedCandidates(): Promise<{
             expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
             metadata: {
               source: 'curated_feed_pipeline',
-              author_handle: opp.author_handle,
+              author_handle: opp.target_username,
             },
           })
           .select();
