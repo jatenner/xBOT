@@ -131,7 +131,7 @@ export async function fetchCuratedCandidates(): Promise<{
     // Query reply_opportunities filtered by author handles
     const { data: opportunities, error: oppError } = await supabase
       .from('reply_opportunities')
-      .select('tweet_id, author_handle, tweet_posted_at, target_in_reply_to_tweet_id')
+      .select('target_tweet_id, author_handle, tweet_posted_at, target_in_reply_to_tweet_id')
       .in('author_handle', CURATED_HANDLES)
       .gte('tweet_posted_at', cutoffTime)
       .is('target_in_reply_to_tweet_id', null) // Root only
@@ -149,7 +149,7 @@ export async function fetchCuratedCandidates(): Promise<{
         const { error: insertError } = await supabase
           .from('reply_candidate_queue')
           .insert({
-            candidate_tweet_id: opp.tweet_id,
+            candidate_tweet_id: opp.target_tweet_id,
             overall_score: 75.0, // Default score for curated candidates
             predicted_tier: 2, // Default tier 2
             source_type: 'curated',
