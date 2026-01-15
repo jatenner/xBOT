@@ -55,14 +55,24 @@ async function main() {
 
   // Step 2: Pull candidates from queue (last 6h, curated handles)
   console.log(`📋 Loading candidates from queue (last ${MAX_AGE_HOURS}h)...`);
-  const { data: candidates, error: queueError } = await supabase
+  const { data: allCandidates, error: queueError } = await supabase
     .from('reply_candidate_queue')
-    .select('candidate_tweet_id, author_handle, created_at, metadata')
-    .in('author_handle', curatedHandles)
+    .select('candidate_tweet_id, created_at, metadata')
     .gte('created_at', cutoffTime)
     .eq('status', 'queued')
     .order('created_at', { ascending: false })
-    .limit(MAX_CANDIDATES);
+    .limit(MAX_CANDIDATES * 2); // Get more to filter by handle
+
+  if (queueError) {
+    console.error(`❌ Queue query error: ${queueError.message}`);
+    process.exit(1);
+  }
+
+  // Filter by curated handles (stored in metadata.author_handle)
+  const candidates = (allCandidates || []).filter(c => {
+    const authorHandle = c.metadata?.author_handle?.toLowerCase().replace('@', '');
+    return authorHandle && curatedHandles.includes(authorHandle);
+  }).slice(0, MAX_CANDIDATES);
 
   if (queueError) {
     console.error(`❌ Queue query error: ${queueError.message}`);
@@ -112,9 +122,10 @@ async function main() {
 
       // 3c: Quality filter
       console.log('🔍 Running quality filter...');
+      const authorHandle = candidate.metadata?.author_handle || undefined;
       const qualityResult = filterTargetQuality(
         targetText,
-        candidate.author_handle || undefined,
+        authorHandle,
         undefined,
         targetText
       );

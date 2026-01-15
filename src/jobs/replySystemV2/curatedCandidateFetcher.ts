@@ -86,12 +86,11 @@ export async function fetchCuratedCandidates(): Promise<{
 
           fetched++;
 
-          // Persist to reply_candidate_queue
+          // Persist to reply_candidate_queue (author_handle stored in metadata)
           const { error: insertError } = await supabase
             .from('reply_candidate_queue')
             .insert({
               candidate_tweet_id: tweet.id,
-              author_handle: handle,
               created_at: tweet.created_at,
               status: 'queued',
               expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1h TTL
@@ -147,7 +146,6 @@ export async function fetchCuratedCandidates(): Promise<{
           .from('reply_candidate_queue')
           .insert({
             candidate_tweet_id: opp.tweet_id,
-            author_handle: opp.author_handle,
             created_at: opp.tweet_posted_at,
             status: 'queued',
             expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
