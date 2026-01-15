@@ -126,12 +126,66 @@ async function recordConsentWall(mode: string, url: string): Promise<void> {
 
 /**
  * Check for consent wall on page
+ * For search pages: Only flag consent wall if logged-in shell is missing
  */
-async function checkConsentWall(page: any): Promise<boolean> {
-  const pageContent = await page.content().catch(() => '');
-  const pageText = await page.textContent('body').catch(() => '');
+async function checkConsentWall(page: any, isSearchPage: boolean = false): Promise<boolean> {
+  const currentUrl = page.url();
   
-  // Only check for explicit consent wall indicators
+  // Check for explicit redirects to consent/login flows
+  if (currentUrl.includes('/i/flow/consent') || currentUrl.includes('/i/flow/login')) {
+    return true;
+  }
+  
+  // For search pages: First check if logged-in shell exists
+  if (isSearchPage) {
+    const hasShell = await page.evaluate(() => {
+      return !!(
+        document.querySelector('nav[role="navigation"]') ||
+        document.querySelector('[data-testid="SideNav_NewTweet_Button"]') ||
+        document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]') ||
+        document.querySelector('a[href="/home"]') ||
+        document.querySelector('[data-testid="primaryColumn"]')
+      );
+    });
+    
+    // If shell exists, we're logged in - not a consent wall
+    if (hasShell) {
+      return false;
+    }
+  }
+  
+  // Check for login button/form visible (only if shell is missing)
+  const hasLoginButton = await page.locator('text="Sign in"').isVisible({ timeout: 2000 }).catch(() => false) ||
+                         await page.locator('text="Log in"').isVisible({ timeout: 2000 }).catch(() => false);
+  
+  if (hasLoginButton && isSearchPage) {
+    // On search page with login button but no shell = consent wall
+    return true;
+  }
+  
+  // Check for explicit consent text (only if shell is missing)
+  const pageContent = await page.content().catch(() => '');
+  const hasConsentText = pageContent.includes('Before you continue to X') ||
+                        pageContent.includes('Cookies') && pageContent.includes('consent') ||
+                        pageContent.includes('Accept cookies');
+  
+  if (hasConsentText && isSearchPage) {
+    // Wait a bit to see if tweets load despite consent text
+    await page.waitForTimeout(3000);
+    const hasTweets = await page.evaluate(() => {
+      return !!document.querySelector('article[data-testid="tweet"]');
+    });
+    
+    // If tweets exist, it's not a consent wall (just a banner)
+    if (hasTweets) {
+      return false;
+    }
+    
+    // No tweets + consent text + no shell = consent wall
+    return true;
+  }
+  
+  // Check for explicit error messages (always flag these)
   if (pageContent.includes('This post is from an account that no longer exists') || 
       pageContent.includes('Something went wrong') ||
       pageContent.includes('rate limit exceeded') ||
@@ -140,7 +194,7 @@ async function checkConsentWall(page: any): Promise<boolean> {
     return true;
   }
   
-  // Check for explicit error messages
+  // Check for explicit error messages in DOM
   const hasError = await page.locator('text="Something went wrong"').isVisible({ timeout: 1000 }).catch(() => false) ||
                    await page.locator('text="This post is from an account that no longer exists"').isVisible({ timeout: 1000 }).catch(() => false);
   
@@ -342,10 +396,34 @@ async function collectFromSearchQueries(): Promise<string[]> {
         await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
         await jitter(2000, 4000);
         
-        // Check for consent wall
-        if (await checkConsentWall(page)) {
+        // Wait for search results to load (up to 10s)
+        const searchResultsLoaded = await Promise.race([
+          page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 }).then(() => 'tweets'),
+          page.waitForSelector('[data-testid="primaryColumn"]', { timeout: 10000 }).then(() => 'column'),
+          page.waitForSelector('[data-testid="cellInnerDiv"]', { timeout: 10000 }).then(() => 'results'),
+          new Promise(resolve => setTimeout(() => resolve(null), 10000)), // Fallback timeout
+        ]).catch(() => null);
+        
+        if (!searchResultsLoaded) {
+          console.log(`   ⚠️  Search results did not load for @${handle}`);
+        }
+        
+        // Check for consent wall (with search page flag)
+        const consentWallDetected = await checkConsentWall(page, true);
+        
+        if (consentWallDetected) {
+          // Save debug artifacts
+          const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'harvest_debug');
+          if (!fs.existsSync(debugDir)) {
+            fs.mkdirSync(debugDir, { recursive: true });
+          }
+          const timestamp = Date.now();
+          await page.screenshot({ path: path.join(debugDir, `consent_wall_search_${handle}_${timestamp}.png`) }).catch(() => {});
+          const html = await page.content().catch(() => '');
+          fs.writeFileSync(path.join(debugDir, `consent_wall_search_${handle}_${timestamp}.html`), html);
+          
           await recordConsentWall('search_queries', searchUrl);
-          console.log(`   ⚠️  CONSENT_WALL detected, skipping search`);
+          console.log(`   ⚠️  CONSENT_WALL detected, skipping search (artifacts saved)`);
           continue;
         }
         
@@ -820,13 +898,48 @@ async function main() {
   try {
     // Collect tweet IDs based on mode
     let tweetIds: string[] = [];
+    let searchFailed = false;
+    let searchFailureReason = '';
     
     if (HARVEST_MODE === 'home_scroll') {
       console.log('📜 Collecting from home timeline...\n');
       tweetIds = await collectFromHomeTimeline();
     } else if (HARVEST_MODE === 'search_queries') {
       console.log('🔍 Collecting from search queries...\n');
-      tweetIds = await collectFromSearchQueries();
+      try {
+        tweetIds = await collectFromSearchQueries();
+        
+        // Check if search failed (0 results or consent wall)
+        if (tweetIds.length === 0) {
+          searchFailed = true;
+          searchFailureReason = 'zero_results';
+        }
+      } catch (error: any) {
+        if (error.message.includes('CONSENT_WALL')) {
+          searchFailed = true;
+          searchFailureReason = 'consent_wall';
+        } else {
+          searchFailed = true;
+          searchFailureReason = `error: ${error.message}`;
+        }
+      }
+      
+      // Fallback to home_scroll if search failed
+      if (searchFailed) {
+        console.log(`\n⚠️  SEARCH MODE FAILED → FALLING BACK TO HOME_SCROLL`);
+        console.log(`   Reason: ${searchFailureReason}\n`);
+        result.consent_wall_seen = searchFailureReason === 'consent_wall';
+        
+        try {
+          console.log('📜 Collecting from home timeline (fallback)...\n');
+          const fallbackIds = await collectFromHomeTimeline();
+          tweetIds = fallbackIds;
+          console.log(`✅ Fallback collected ${tweetIds.length} tweet IDs\n`);
+        } catch (fallbackError: any) {
+          console.error(`❌ Fallback also failed: ${fallbackError.message}`);
+          throw fallbackError;
+        }
+      }
     } else {
       throw new Error(`Unknown HARVEST_MODE: ${HARVEST_MODE}`);
     }
