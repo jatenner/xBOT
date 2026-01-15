@@ -28,9 +28,10 @@ if (!process.env.RUNNER_PROFILE_DIR) {
   process.env.RUNNER_PROFILE_DIR = path.join(process.cwd(), '.runner-profile');
 }
 
-import { getSupabaseClient } from '../../src/db';
-import { resolveTweetAncestry } from '../../src/jobs/replySystemV2/replyDecisionRecorder';
-import { filterTargetQuality } from '../../src/gates/replyTargetQualityFilter';
+// Lazy imports after env is loaded
+let getSupabaseClient: any;
+let resolveTweetAncestry: any;
+let filterTargetQuality: any;
 
 const CURATED_HANDLES_STR = process.env.REPLY_CURATED_HANDLES || '';
 const CURATED_HANDLES = CURATED_HANDLES_STR
@@ -57,6 +58,10 @@ interface HarvestResult {
  * Check if tweet was already used/attempted in last 48h
  */
 async function isTweetAlreadyUsed(tweetId: string): Promise<boolean> {
+  if (!getSupabaseClient) {
+    const db = await import('../../src/db');
+    getSupabaseClient = db.getSupabaseClient;
+  }
   const supabase = getSupabaseClient();
   const cutoffTime = new Date(Date.now() - MAX_AGE_HOURS * 60 * 60 * 1000).toISOString();
 
@@ -198,6 +203,10 @@ async function harvestHandle(handle: string): Promise<HarvestResult> {
     }
     
     // Process each tweet
+    if (!getSupabaseClient) {
+      const db = await import('../../src/db');
+      getSupabaseClient = db.getSupabaseClient;
+    }
     const supabase = getSupabaseClient();
     
     for (const tweet of tweets) {
@@ -207,6 +216,20 @@ async function harvestHandle(handle: string): Promise<HarvestResult> {
         if (alreadyUsed) {
           result.skipped_already_replied++;
           continue;
+        }
+        
+        // Lazy import modules
+        if (!resolveTweetAncestry) {
+          const recorder = await import('../../src/jobs/replySystemV2/replyDecisionRecorder');
+          resolveTweetAncestry = recorder.resolveTweetAncestry;
+        }
+        if (!filterTargetQuality) {
+          const filter = await import('../../src/gates/replyTargetQualityFilter');
+          filterTargetQuality = filter.filterTargetQuality;
+        }
+        if (!getSupabaseClient) {
+          const db = await import('../../src/db');
+          getSupabaseClient = db.getSupabaseClient;
         }
         
         // Validate root + quality filter

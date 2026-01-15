@@ -26,6 +26,11 @@ const REQUIRED_KEYS = [
   'OPENAI_API_KEY',
 ];
 
+// Optional keys (included if present)
+const OPTIONAL_KEYS = [
+  'REPLY_CURATED_HANDLES',
+];
+
 // Runner defaults (always included)
 const RUNNER_DEFAULTS: Record<string, string> = {
   RUNNER_MODE: 'true',
@@ -116,6 +121,16 @@ function generateEnvContent(railwayVars: Record<string, string>): string {
       throw new Error(`Missing required Railway variable: ${key}`);
     }
     lines.push(`${key}=${value}`);
+  }
+
+  lines.push('');
+
+  // Add optional keys if present
+  for (const key of OPTIONAL_KEYS) {
+    const value = railwayVars[key];
+    if (value) {
+      lines.push(`${key}=${value}`);
+    }
   }
 
   lines.push('');
