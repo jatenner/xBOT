@@ -13,7 +13,29 @@
 import fs from 'fs';
 import path from 'path';
 
-// Load .env.local first (preferred), then .env
+// 🔄 AUTO-SYNC ENV FROM RAILWAY FIRST (before loading env vars)
+// Check if --noSync flag is present
+const noSync = process.argv.includes('--noSync');
+
+if (!noSync) {
+  console.log('[RUNNER] 🔄 Auto-syncing environment from Railway...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('pnpm exec tsx scripts/runner/auto-sync.ts', {
+      stdio: 'inherit',
+      cwd: process.cwd(),
+    });
+    console.log('[RUNNER] ✅ Auto-sync completed\n');
+  } catch (error: any) {
+    console.error('\n❌ Auto-sync failed. Runner will not start (fail-closed).');
+    console.error('   Use --noSync flag for debugging only (not recommended).');
+    process.exit(1);
+  }
+} else {
+  console.warn('[RUNNER] ⚠️  --noSync flag enabled (debugging mode - skipping auto-sync)');
+}
+
+// Load .env.local first (preferred), then .env (after sync)
 const envLocalPath = path.join(process.cwd(), '.env.local');
 const envPath = path.join(process.cwd(), '.env');
 
@@ -226,25 +248,8 @@ async function pollAndPost(once: boolean): Promise<{ queued: number; processed: 
 }
 
 async function main() {
-  const noSync = process.argv.includes('--noSync');
-  
+  // 🔒 CHECK ENV SYNC AFTER AUTO-SYNC (if not skipped)
   if (!noSync) {
-    // 🔄 AUTO-SYNC ENV FROM RAILWAY FIRST
-    console.log('[RUNNER] 🔄 Auto-syncing environment from Railway...');
-    try {
-      const { execSync } = require('child_process');
-      execSync('pnpm exec tsx scripts/runner/auto-sync.ts', {
-        stdio: 'inherit',
-        cwd: process.cwd(),
-      });
-      console.log('[RUNNER] ✅ Auto-sync completed\n');
-    } catch (error: any) {
-      console.error('\n❌ Auto-sync failed. Runner will not start (fail-closed).');
-      console.error('   Use --noSync flag for debugging only (not recommended).');
-      process.exit(1);
-    }
-
-    // 🔒 CHECK ENV SYNC AFTER AUTO-SYNC
     try {
       const { execSync } = require('child_process');
       execSync('pnpm exec tsx scripts/runner/check-env-sync.ts', {
@@ -255,8 +260,6 @@ async function main() {
       console.error('\n❌ Env sync check failed after auto-sync. Runner will not start.');
       process.exit(1);
     }
-  } else {
-    console.warn('[RUNNER] ⚠️  --noSync flag enabled (debugging mode - skipping auto-sync)');
   }
 
   const once = process.argv.includes('--once');
