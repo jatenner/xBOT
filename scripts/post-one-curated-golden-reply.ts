@@ -69,23 +69,27 @@ async function main() {
   }
 
   // Filter by curated handles (stored in metadata.author_handle)
-  const candidates = (allCandidates || []).filter(c => {
+  let candidates = (allCandidates || []).filter(c => {
     const authorHandle = c.metadata?.author_handle?.toLowerCase().replace('@', '');
     return authorHandle && curatedHandles.includes(authorHandle);
   }).slice(0, MAX_CANDIDATES);
 
-  if (queueError) {
-    console.error(`❌ Queue query error: ${queueError.message}`);
-    process.exit(1);
-  }
-
+  // STEP 5 FALLBACK: If no curated candidates, use ANY candidates from queue (apply quality filter + root-only)
   if (!candidates || candidates.length === 0) {
-    console.error(`❌ No curated candidates found in queue (last ${MAX_AGE_HOURS}h)`);
-    console.error(`   Try: Set REPLY_CURATED_HANDLES and ensure candidates are being fetched`);
-    process.exit(1);
+    console.log(`⚠️  No curated candidates found, using FALLBACK: any candidates from queue`);
+    console.log(`   Will apply quality filter + root-only invariant\n`);
+    
+    candidates = (allCandidates || []).slice(0, MAX_CANDIDATES);
+    
+    if (!candidates || candidates.length === 0) {
+      console.error(`❌ No candidates found in queue at all (last ${MAX_AGE_HOURS}h)`);
+      process.exit(1);
+    }
+    
+    console.log(`✅ Found ${candidates.length} candidates (fallback mode)\n`);
+  } else {
+    console.log(`✅ Found ${candidates.length} curated candidates\n`);
   }
-
-  console.log(`✅ Found ${candidates.length} candidates\n`);
 
   // Step 3: Validate each candidate (root + exists + quality + grounding)
   for (let i = 0; i < candidates.length; i++) {
