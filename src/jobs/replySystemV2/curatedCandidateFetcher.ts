@@ -87,10 +87,14 @@ export async function fetchCuratedCandidates(): Promise<{
           fetched++;
 
           // Persist to reply_candidate_queue (author_handle stored in metadata)
+          // Required fields: overall_score, predicted_tier, source_type
           const { error: insertError } = await supabase
             .from('reply_candidate_queue')
             .insert({
               candidate_tweet_id: tweet.id,
+              overall_score: 75.0, // Default score for curated candidates
+              predicted_tier: 2, // Default tier 2 (>=1000 views)
+              source_type: 'curated',
               created_at: tweet.created_at,
               status: 'queued',
               expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1h TTL
@@ -146,6 +150,9 @@ export async function fetchCuratedCandidates(): Promise<{
           .from('reply_candidate_queue')
           .insert({
             candidate_tweet_id: opp.tweet_id,
+            overall_score: 75.0, // Default score for curated candidates
+            predicted_tier: 2, // Default tier 2
+            source_type: 'curated',
             created_at: opp.tweet_posted_at,
             status: 'queued',
             expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
