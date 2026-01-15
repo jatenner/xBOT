@@ -54,8 +54,7 @@ if (!process.env.RUNNER_MODE) {
   process.env.RUNNER_MODE = 'true';
 }
 
-import { getSupabaseClient } from '../../src/db';
-import { processPostingQueue } from '../../src/jobs/postingQueue';
+// Imports moved to main() to avoid env validation before auto-sync
 
 const POLL_INTERVAL_MS = 60 * 1000; // 60 seconds
 const MAX_DECISIONS_PER_POLL = parseInt(process.env.RUNNER_MAX_DECISIONS || '5', 10);
@@ -94,7 +93,7 @@ function isInBackoff(): boolean {
 /**
  * Start backoff period
  */
-async function startBackoff(reason: string): Promise<void> {
+async function startBackoff(reason: string, getSupabaseClient: () => any): Promise<void> {
   backoffState = {
     active: true,
     reason,
@@ -138,7 +137,11 @@ function setupProfileDirectory(): void {
 /**
  * Process one polling cycle
  */
-async function pollAndPost(once: boolean): Promise<{ queued: number; processed: number; success: number; failed: number }> {
+async function pollAndPost(
+  once: boolean,
+  getSupabaseClient: () => any,
+  processPostingQueue: (opts: any) => Promise<void>
+): Promise<{ queued: number; processed: number; success: number; failed: number }> {
   if (isInBackoff()) {
     if (once) {
       console.log(`[RUNNER] ⏸️  Skipping poll (in backoff)`);
@@ -206,14 +209,14 @@ async function pollAndPost(once: boolean): Promise<{ queued: number; processed: 
 
         // Check for CONSENT_WALL
         if (message.includes('CONSENT_WALL') || eventData.deny_reason_code === 'CONSENT_WALL') {
-          await startBackoff('CONSENT_WALL detected');
-          return;
+          await startBackoff('CONSENT_WALL detected', getSupabaseClient);
+          return { queued: queuedCount || 0, processed, success, failed };
         }
 
         // Check for login required
         if (message.includes('login') || message.includes('not logged in') || message.includes('authentication')) {
-          await startBackoff('Login required');
-          return;
+          await startBackoff('Login required', getSupabaseClient);
+          return { queued: queuedCount || 0, processed, success, failed };
         }
       }
     }
@@ -232,12 +235,12 @@ async function pollAndPost(once: boolean): Promise<{ queued: number; processed: 
     // Check if error is CONSENT_WALL or login related
     const errorMsg = error.message.toLowerCase();
     if (errorMsg.includes('consent_wall') || errorMsg.includes('consent')) {
-      await startBackoff('CONSENT_WALL error');
-      return;
+      await startBackoff('CONSENT_WALL error', getSupabaseClient);
+      return { queued: queuedCount || 0, processed, success, failed };
     }
     if (errorMsg.includes('login') || errorMsg.includes('not logged in') || errorMsg.includes('authentication')) {
-      await startBackoff('Login error');
-      return;
+      await startBackoff('Login error', getSupabaseClient);
+      return { queued: queuedCount || 0, processed, success, failed };
     }
 
     // For other errors, don't backoff (might be transient)
@@ -261,6 +264,10 @@ async function main() {
       process.exit(1);
     }
   }
+
+  // Lazy import after env is synced and loaded
+  const { getSupabaseClient } = await import('../../src/db');
+  const { processPostingQueue } = await import('../../src/jobs/postingQueue');
 
   const once = process.argv.includes('--once');
   
@@ -297,7 +304,7 @@ async function main() {
 
   if (once) {
     // Single poll mode
-    const result = await pollAndPost(true);
+    const result = await pollAndPost(true, getSupabaseClient, processPostingQueue);
     console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     console.log('           📊 POLL SUMMARY');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
@@ -313,7 +320,7 @@ async function main() {
   console.log(`🚀 Starting continuous polling (every ${POLL_INTERVAL_MS / 1000}s)...\n`);
 
   while (true) {
-    const result = await pollAndPost(false);
+    const result = await pollAndPost(false, getSupabaseClient, processPostingQueue);
     
     if (result.success > 0 || result.failed > 0) {
       console.log(`[RUNNER] 📊 Poll result: ${result.success} success, ${result.failed} failed`);
