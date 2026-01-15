@@ -5360,23 +5360,48 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       
       // Write POST_SUCCESS to system_events with tweet_url
       const tweetUrl = `https://x.com/i/status/${result.tweetId}`;
+      const successEventData = {
+        decision_id: decision.id,
+        target_tweet_id: decision.target_tweet_id,
+        target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId || null,
+        posted_reply_tweet_id: result.tweetId,
+        tweet_url: tweetUrl,
+        template_id: templateId,
+        prompt_version: promptVersion,
+        app_version: appVersion,
+        posted_at: postingCompletedAt,
+      };
+
       await supabase.from('system_events').insert({
         event_type: 'POST_SUCCESS',
         severity: 'info',
         message: `Reply posted successfully: decision_id=${decision.id} posted_reply_tweet_id=${result.tweetId}`,
-        event_data: {
-          decision_id: decision.id,
-          target_tweet_id: decision.target_tweet_id,
-          target_in_reply_to_tweet_id: ancestry.targetInReplyToTweetId || null,
-          posted_reply_tweet_id: result.tweetId,
-          tweet_url: tweetUrl,
-          template_id: templateId,
-          prompt_version: promptVersion,
-          app_version: appVersion,
-          posted_at: postingCompletedAt,
-        },
+        event_data: successEventData,
         created_at: new Date().toISOString(),
       });
+
+      // 🔔 TASK C: Auto-notify via webhook if configured
+      const webhookUrl = process.env.POST_SUCCESS_WEBHOOK_URL;
+      if (webhookUrl) {
+        try {
+          const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              event_type: 'POST_SUCCESS',
+              ...successEventData,
+            }),
+          });
+          
+          if (!response.ok) {
+            console.warn(`[POST_SUCCESS] ⚠️ Webhook notification failed: ${response.status} ${response.statusText}`);
+          } else {
+            console.log(`[POST_SUCCESS] ✅ Webhook notification sent to ${webhookUrl}`);
+          }
+        } catch (webhookError: any) {
+          console.warn(`[POST_SUCCESS] ⚠️ Webhook error: ${webhookError.message}`);
+        }
+      }
       
       console.log(`[REPLY_TRUTH] step=RETURN_TWEETID tweet_id=${result.tweetId}`);
       return result.tweetId;
