@@ -8,7 +8,9 @@ import { chromium, BrowserContext } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const PROFILE_DIR = '/tmp/xbot-profile';
+// Use runner profile directory if RUNNER_MODE is enabled, otherwise use temp dir
+const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
+const PROFILE_DIR = process.env.RUNNER_MODE === 'true' ? RUNNER_PROFILE_DIR : '/tmp/xbot-profile';
 
 export async function launchPersistent(): Promise<BrowserContext> {
   // Ensure profile dir exists
@@ -16,7 +18,11 @@ export async function launchPersistent(): Promise<BrowserContext> {
     fs.mkdirSync(PROFILE_DIR, { recursive: true });
   }
 
-  console.log(`[PW_LAUNCHER] Launching persistent context with STEALTH mode...`);
+  if (process.env.RUNNER_MODE === 'true') {
+    console.log(`[PW_LAUNCHER] 🏃 RUNNER MODE: Using persistent profile: ${PROFILE_DIR}`);
+  } else {
+    console.log(`[PW_LAUNCHER] Launching persistent context with STEALTH mode...`);
+  }
 
   const ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
     headless: true,
