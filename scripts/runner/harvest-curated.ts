@@ -122,11 +122,11 @@ async function fetchUserTweets(handle: string): Promise<Array<{
     }
     
     // Extract tweets from timeline
-    const extractedTweets = await page.evaluate(() => {
+    const extractedTweets = await page.evaluate((maxTweets) => {
       const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
       const results: Array<{ tweet_id: string; text: string; posted_at: string }> = [];
       
-      for (const article of articles.slice(0, MAX_TWEETS_PER_HANDLE * 2)) { // Get more to filter
+      for (const article of articles.slice(0, maxTweets * 2)) { // Get more to filter
         // Extract tweet ID from link
         const link = article.querySelector('a[href*="/status/"]');
         if (!link) continue;
@@ -147,15 +147,22 @@ async function fetchUserTweets(handle: string): Promise<Array<{
         const timeEl = article.querySelector('time');
         const postedAt = timeEl?.getAttribute('datetime') || new Date().toISOString();
         
-        // Check if it's a reply (skip if has "Replying to" indicator)
-        const replyingTo = article.querySelector('[data-testid="Tweet-User-Avatar"] ~ div:has-text("Replying to")');
-        if (replyingTo) continue; // Skip replies
+        // Check if it's a reply (skip if text starts with @ or has "Replying to" text)
+        if (text.startsWith('@') || text.toLowerCase().includes('replying to')) {
+          continue; // Skip replies
+        }
+        
+        // Also check for reply indicator in DOM
+        const articleText = article.textContent || '';
+        if (articleText.includes('Replying to')) {
+          continue; // Skip replies
+        }
         
         results.push({ tweet_id: tweetId, text, posted_at: postedAt });
       }
       
       return results;
-    });
+    }, MAX_TWEETS_PER_HANDLE);
     
     // Filter by age (last 24h)
     const cutoffTime = Date.now() - HARVEST_AGE_HOURS * 60 * 60 * 1000;
