@@ -6,18 +6,34 @@
  * Uses persistent profile directory for X login persistence.
  * 
  * Usage:
- *   pnpm exec tsx scripts/runner/poll-and-post.ts
- *   pnpm exec tsx scripts/runner/poll-and-post.ts --once
+ *   RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile pnpm exec tsx scripts/runner/poll-and-post.ts
+ *   RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile pnpm exec tsx scripts/runner/poll-and-post.ts --once
  */
 
-import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
+
+// Load .env.local first (preferred), then .env
+const envLocalPath = path.join(process.cwd(), '.env.local');
+const envPath = path.join(process.cwd(), '.env');
+
+if (fs.existsSync(envLocalPath)) {
+  require('dotenv').config({ path: envLocalPath });
+  console.log(`[RUNNER] ✅ Loaded .env.local`);
+} else if (fs.existsSync(envPath)) {
+  require('dotenv').config({ path: envPath });
+  console.log(`[RUNNER] ✅ Loaded .env`);
+} else {
+  console.warn(`[RUNNER] ⚠️  No .env.local or .env file found`);
+}
+
+// Set runner mode if not already set
+if (!process.env.RUNNER_MODE) {
+  process.env.RUNNER_MODE = 'true';
+}
+
 import { getSupabaseClient } from '../../src/db';
 import { processPostingQueue } from '../../src/jobs/postingQueue';
-import path from 'path';
-import fs from 'fs';
-
-// Override browser launcher to use persistent profile for runner
-process.env.RUNNER_MODE = 'true';
 
 const POLL_INTERVAL_MS = 60 * 1000; // 60 seconds
 const MAX_DECISIONS_PER_POLL = parseInt(process.env.RUNNER_MAX_DECISIONS || '5', 10);
@@ -100,23 +116,52 @@ function setupProfileDirectory(): void {
 /**
  * Process one polling cycle
  */
-async function pollAndPost(once: boolean): Promise<void> {
+async function pollAndPost(once: boolean): Promise<{ queued: number; processed: number; success: number; failed: number }> {
   if (isInBackoff()) {
     if (once) {
       console.log(`[RUNNER] ⏸️  Skipping poll (in backoff)`);
       process.exit(0);
     }
-    return;
+    return { queued: 0, processed: 0, success: 0, failed: 0 };
   }
 
   console.log(`[RUNNER] 🔍 Polling for queued decisions...`);
 
+  // Get queued count before processing
+  const supabase = getSupabaseClient();
+  const { count: queuedCount } = await supabase
+    .from('content_metadata')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'queued')
+    .lte('scheduled_at', new Date(Date.now() + 5 * 60 * 1000).toISOString());
+
+  let processed = 0;
+  let success = 0;
+  let failed = 0;
+
   try {
+    // Get recent POST_SUCCESS/POST_FAILED counts before processing
+    const beforeTime = new Date().toISOString();
+    
     // Use existing processPostingQueue function
     await processPostingQueue({
       certMode: false, // Process all decision types
       maxItems: MAX_DECISIONS_PER_POLL,
     });
+
+    processed = MAX_DECISIONS_PER_POLL; // Approximate
+
+    // Count POST_SUCCESS/POST_FAILED events created in this run
+    const { data: newEvents } = await supabase
+      .from('system_events')
+      .select('event_type')
+      .in('event_type', ['POST_SUCCESS', 'POST_FAILED'])
+      .gte('created_at', beforeTime);
+
+    if (newEvents) {
+      success = newEvents.filter(e => e.event_type === 'POST_SUCCESS').length;
+      failed = newEvents.filter(e => e.event_type === 'POST_FAILED').length;
+    }
 
     // Check for CONSENT_WALL or login failures in recent system_events
     const supabase = getSupabaseClient();
@@ -157,6 +202,8 @@ async function pollAndPost(once: boolean): Promise<void> {
       backoffState.attempts = 0;
     }
 
+    return { queued: queuedCount || 0, processed, success, failed };
+
   } catch (error: any) {
     console.error(`[RUNNER] ❌ Poll error: ${error.message}`);
     
@@ -174,6 +221,8 @@ async function pollAndPost(once: boolean): Promise<void> {
     // For other errors, don't backoff (might be transient)
     console.log(`[RUNNER] ⚠️  Non-fatal error, continuing...`);
   }
+
+  return { queued: queuedCount || 0, processed, success, failed };
 }
 
 async function main() {
@@ -183,9 +232,15 @@ async function main() {
   console.log('           🏃 MAC RUNNER - POLL AND POST');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
-  console.log(`Mode: ${once ? 'once (single poll)' : 'continuous (every 60s)'}`);
-  console.log(`Max decisions per poll: ${MAX_DECISIONS_PER_POLL}`);
-  console.log(`Profile directory: ${RUNNER_PROFILE_DIR}\n`);
+  // Startup banner with env info
+  console.log('📋 Configuration:');
+  console.log(`   Mode: ${once ? 'once (single poll)' : 'continuous (every 60s)'}`);
+  console.log(`   Max decisions per poll: ${MAX_DECISIONS_PER_POLL}`);
+  console.log(`   RUNNER_PROFILE_DIR: ${RUNNER_PROFILE_DIR}`);
+  console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
+  console.log(`   DATABASE_URL: ${process.env.DATABASE_URL ? '✅ set' : '❌ not set'}`);
+  console.log(`   TWITTER_SESSION_B64: ${process.env.TWITTER_SESSION_B64 ? '✅ set' : '⚠️  not set (using profile login)'}`);
+  console.log('');
 
   // Setup profile directory
   setupProfileDirectory();
@@ -206,8 +261,15 @@ async function main() {
 
   if (once) {
     // Single poll mode
-    await pollAndPost(true);
-    console.log(`\n✅ Single poll complete`);
+    const result = await pollAndPost(true);
+    console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log('           📊 POLL SUMMARY');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    console.log(`Queued decisions polled: ${result.queued}`);
+    console.log(`Decisions processed: ${result.processed}`);
+    console.log(`POST_SUCCESS: ${result.success}`);
+    console.log(`POST_FAILED: ${result.failed}\n`);
+    console.log(`✅ Single poll complete`);
     process.exit(0);
   }
 
@@ -215,7 +277,11 @@ async function main() {
   console.log(`🚀 Starting continuous polling (every ${POLL_INTERVAL_MS / 1000}s)...\n`);
 
   while (true) {
-    await pollAndPost(false);
+    const result = await pollAndPost(false);
+    
+    if (result.success > 0 || result.failed > 0) {
+      console.log(`[RUNNER] 📊 Poll result: ${result.success} success, ${result.failed} failed`);
+    }
     
     // Wait before next poll
     await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));

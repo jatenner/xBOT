@@ -68,9 +68,10 @@ async function main() {
     const eventData = typeof lastSuccess.event_data === 'string'
       ? JSON.parse(lastSuccess.event_data)
       : lastSuccess.event_data || {};
-    const tweetUrl = eventData.tweet_url || 'N/A';
+    const tweetUrl = eventData.tweet_url || `https://x.com/i/status/${eventData.posted_reply_tweet_id || 'N/A'}`;
     console.log(`   ✅ Last POST_SUCCESS: ${lastSuccess.created_at}`);
-    console.log(`      URL: ${tweetUrl}`);
+    console.log(`      Tweet URL: ${tweetUrl}`);
+    console.log(`      Decision ID: ${eventData.decision_id || 'N/A'}`);
   } else {
     console.log(`   ⚠️  No POST_SUCCESS events found`);
   }
