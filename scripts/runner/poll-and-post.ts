@@ -226,6 +226,18 @@ async function pollAndPost(once: boolean): Promise<{ queued: number; processed: 
 }
 
 async function main() {
+  // 🔒 CHECK ENV SYNC FIRST
+  try {
+    const { execSync } = require('child_process');
+    execSync('pnpm exec tsx scripts/runner/check-env-sync.ts', {
+      stdio: 'inherit',
+      cwd: process.cwd(),
+    });
+  } catch (error: any) {
+    console.error('\n❌ Env sync check failed. Runner will not start.');
+    process.exit(1);
+  }
+
   const once = process.argv.includes('--once');
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

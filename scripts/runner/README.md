@@ -17,32 +17,55 @@ pnpm install
 pnpm exec playwright install chromium
 ```
 
-### Step 2: Configure Environment
+### Step 2: Sync Environment from Railway
 
-Create `.env.local` (preferred) or `.env` with:
+**⚠️ IMPORTANT: Never edit `.env.local` manually. It is auto-generated from Railway.**
+
 ```bash
-DATABASE_URL=your_supabase_connection_string
-RUNNER_PROFILE_DIR=./.runner-profile
-RUNNER_MAX_DECISIONS=5
+# Sync environment variables from Railway service "xBOT"
+pnpm run runner:sync
 ```
 
-**Note**: `.env.local` is preferred and will be loaded first. Both `.env.local` and `.runner-profile` are gitignored.
+This will:
+1. Fetch required variables from Railway (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `OPENAI_API_KEY`)
+2. Write them to `.env.local` (auto-generated, do not edit)
+3. Add runner defaults (`RUNNER_MODE=true`, `RUNNER_PROFILE_DIR=./.runner-profile`)
+4. Create sync metadata in `.runner-profile/env.sync.json`
+
+**Prerequisites:**
+- Railway CLI installed: `npm install -g @railway/cli`
+- Logged into Railway: `railway login`
+- Railway service "xBOT" exists and has required variables
 
 ### Step 3: One-Time Interactive Login
 
 ```bash
-RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile pnpm exec tsx scripts/runner/login.ts
+pnpm run runner:login
 ```
 
 This will:
-1. Open Chromium in headed mode (visible browser)
-2. Navigate to https://x.com/home
-3. Wait for you to log in manually
-4. Save login state to `.runner-profile` directory
+1. Check that `.env.local` is in sync (fails if out of sync)
+2. Open Chromium in headed mode (visible browser)
+3. Navigate to https://x.com/home
+4. Wait for you to log in manually
+5. Save login state to `.runner-profile` directory
 
 **Important**: Complete the login in the browser window, then press Enter in the terminal.
 
-### Step 4: Start Runner
+### Step 4: Test Runner (Single Poll)
+
+```bash
+# Test with a single poll (checks env sync automatically)
+pnpm run runner:once
+```
+
+This will:
+1. Check that `.env.local` is in sync (fails if out of sync)
+2. Poll Supabase for queued decisions
+3. Process up to 5 decisions
+4. Print summary: queued/processed/success/failed counts
+
+### Step 5: Start Runner
 
 **Option A: LaunchAgent (Recommended - Auto-starts on reboot)**
 
@@ -70,7 +93,7 @@ pm2 startup
 # Follow the command it prints (usually involves sudo)
 ```
 
-### Step 5: Keep Mac Awake
+### Step 6: Keep Mac Awake
 
 **Option A: Caffeinate (Terminal)**
 
@@ -137,11 +160,17 @@ pm2 delete xbot-runner
 ### Health & Debugging
 
 ```bash
+# Check env sync status
+pnpm run runner:check
+
+# Sync env from Railway (if out of sync)
+pnpm run runner:sync
+
 # Check health (last success/failure + backoff state)
 pnpm exec tsx scripts/runner/health.ts
 
 # Single poll (debug mode)
-RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile pnpm exec tsx scripts/runner/poll-and-post.ts --once
+pnpm run runner:once
 
 # Verify recent posts
 pnpm exec tsx scripts/verify-post-success.ts --minutes=240
@@ -196,19 +225,59 @@ After a POST_SUCCESS event:
    - Verify it appears on @SignalAndSynapse timeline
    - Check replies tab if it's a reply
 
+## Environment Sync
+
+**⚠️ CRITICAL: `.env.local` is auto-generated. Never edit it manually.**
+
+The runner uses Railway variables as the single source of truth. Before starting, the runner checks that `.env.local` matches the last sync from Railway.
+
+### Sync Commands
+
+```bash
+# Sync env from Railway (do this first, or when Railway vars change)
+pnpm run runner:sync
+
+# Check if env is in sync (runner does this automatically)
+pnpm run runner:check
+```
+
+### When to Re-sync
+
+- After Railway variables are updated
+- After cloning the repo (`.env.local` is gitignored)
+- If runner fails with "ENV OUT OF SYNC" error
+
+### Troubleshooting Sync
+
+**"Railway CLI not found"**
+```bash
+npm install -g @railway/cli
+```
+
+**"Not logged into Railway"**
+```bash
+railway login
+```
+
+**"Missing required Railway variable"**
+- Check Railway dashboard → xBOT service → Variables
+- Ensure all required keys exist: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `OPENAI_API_KEY`
+
 ## Troubleshooting
 
-### Runner not posting
-1. Check logs: `tail -f ./.runner-profile/runner.log` (LaunchAgent) or `pm2 logs xbot-runner` (PM2)
-2. Check health: `pnpm exec tsx scripts/runner/health.ts`
-3. Verify database connection: Check `DATABASE_URL` in `.env.local` or `.env`
-4. Check for backoff: Health script shows if backoff is active
-5. Verify login: Run login helper again if profile seems invalid
+### Runner not starting
+1. Check env sync: `pnpm run runner:check`
+2. If out of sync: `pnpm run runner:sync`
+3. Check logs: `tail -f ./.runner-profile/runner.log` (LaunchAgent) or `pm2 logs xbot-runner` (PM2)
+4. Check health: `pnpm exec tsx scripts/runner/health.ts`
+5. Verify database connection: Check `DATABASE_URL` in `.env.local` (auto-generated)
+6. Check for backoff: Health script shows if backoff is active
+7. Verify login: Run login helper again if profile seems invalid
 
 ### CONSENT_WALL errors
 - Runner automatically enters 30-minute backoff
 - Check `RUNNER_ALERT` events in system_events table
-- Re-run login helper: `RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile pnpm exec tsx scripts/runner/login.ts`
+- Re-run login helper: `pnpm run runner:login`
 
 ### Profile directory issues
 - Default location: `./.runner-profile`

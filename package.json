@@ -33,7 +33,11 @@
     "reply:dry": "DRY_RUN=true POSTING_ENABLED=false REPLIES_ENABLED=false tsx scripts/reply-once.ts",
     "reply:once": "tsx scripts/reply-once.ts",
     "reply:live": "pnpm env:pull && tsx scripts/reply-once.ts",
-    "metrics:once": "tsx scripts/metrics-once.ts"
+    "metrics:once": "tsx scripts/metrics-once.ts",
+    "runner:sync": "tsx scripts/runner/sync-env-from-railway.ts",
+    "runner:check": "tsx scripts/runner/check-env-sync.ts",
+    "runner:login": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/login.ts",
+    "runner:once": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/poll-and-post.ts --once"
   },
   "dependencies": {
     "@sentry/node": "^10.32.1",

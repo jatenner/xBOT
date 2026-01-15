@@ -18,6 +18,18 @@ import readline from 'readline';
 const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
 
 async function main() {
+  // 🔒 CHECK ENV SYNC FIRST
+  try {
+    const { execSync } = require('child_process');
+    execSync('pnpm exec tsx scripts/runner/check-env-sync.ts', {
+      stdio: 'inherit',
+      cwd: process.cwd(),
+    });
+  } catch (error: any) {
+    console.error('\n❌ Env sync check failed. Login helper will not start.');
+    process.exit(1);
+  }
+
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           🔐 MAC RUNNER LOGIN HELPER');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
