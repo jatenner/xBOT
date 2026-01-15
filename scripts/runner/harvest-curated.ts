@@ -160,52 +160,90 @@ async function collectFromHomeTimeline(): Promise<string[]> {
   
   const context = await launchRunnerPersistent(true); // headless for harvesting
   
-  // In CDP mode, reuse existing page if available, otherwise create new
-  let page = context.pages()[0];
-  if (!page) {
-    page = await context.newPage();
-  }
+  // ALWAYS create a NEW page for harvesting (don't reuse existing pages in CDP mode)
+  let page = await context.newPage();
+  console.log('   📄 Created new page for harvesting');
   
   try {
-    // Check current URL - if already on home, don't navigate again
-    const currentUrl = page.url();
-    if (!currentUrl.includes('x.com/home')) {
-      console.log('   🌐 Navigating to https://x.com/home...');
-      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 45000 });
-      await jitter(3000, 5000);
-    } else {
-      console.log('   ✅ Already on home page, refreshing...');
-      await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
-      await jitter(3000, 5000);
-    }
+    // Navigate with retry logic
+    let navigationSuccess = false;
+    let retryCount = 0;
+    const maxRetries = 1;
     
-    // Check if we're logged in
-    const isLoggedIn = await page.evaluate(() => {
-      return !!document.querySelector('[data-testid="primaryColumn"]') ||
-             !!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]') ||
-             !!document.querySelector('nav[role="navigation"]');
-    });
-    
-    if (!isLoggedIn) {
-      console.log('   ⚠️  Not logged in - may need to re-run login helper');
-      // Check for login prompt
-      const hasLoginPrompt = await page.locator('text="Sign in"').isVisible({ timeout: 2000 }).catch(() => false);
-      if (hasLoginPrompt) {
-        await recordConsentWall('home_scroll', 'https://x.com/home');
-        throw new Error('CONSENT_WALL - Login required');
+    while (!navigationSuccess && retryCount <= maxRetries) {
+      try {
+        if (retryCount > 0) {
+          console.log(`   🔄 Retry ${retryCount}/${maxRetries}: Stopping current navigation and creating fresh page...`);
+          await page.evaluate(() => window.stop()).catch(() => {});
+          await page.close().catch(() => {});
+          page = await context.newPage();
+          console.log('   📄 Created fresh page for retry');
+        }
+        
+        console.log('   🌐 Navigating to https://x.com/home...');
+        await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
+        const finalUrl = page.url();
+        console.log(`   ✅ Navigation complete: ${finalUrl}`);
+        
+        // Wait for lightweight "logged in shell" selectors (left nav/compose/avatar)
+        // Don't wait for tweets - they may load slowly
+        const shellDetected = await Promise.race([
+          page.waitForSelector('nav[role="navigation"]', { timeout: 5000 }).then(() => 'leftNav'),
+          page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 5000 }).then(() => 'compose'),
+          page.waitForSelector('[data-testid="SideNav_AccountSwitcher_Button"]', { timeout: 5000 }).then(() => 'avatar'),
+          page.waitForSelector('a[href="/home"]', { timeout: 5000 }).then(() => 'homeLink'),
+          page.waitForSelector('[data-testid="primaryColumn"]', { timeout: 5000 }).then(() => 'primaryColumn'),
+        ]).catch(() => null);
+        
+        if (shellDetected) {
+          console.log(`   ✅ Shell detected: ${shellDetected}`);
+          navigationSuccess = true;
+        } else {
+          // Check if we're actually logged in (maybe selectors are different)
+          const hasShell = await page.evaluate(() => {
+            return !!(
+              document.querySelector('nav[role="navigation"]') ||
+              document.querySelector('[data-testid="SideNav_NewTweet_Button"]') ||
+              document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]') ||
+              document.querySelector('a[href="/home"]') ||
+              document.querySelector('[data-testid="primaryColumn"]')
+            );
+          });
+          
+          if (hasShell) {
+            console.log('   ✅ Shell detected: (evaluated check)');
+            navigationSuccess = true;
+          } else {
+            // Check for login redirect
+            const currentUrl = page.url();
+            if (currentUrl.includes('/i/flow/login') || currentUrl.includes('/login')) {
+              await recordConsentWall('home_scroll', currentUrl);
+              throw new Error('CONSENT_WALL - Login required');
+            }
+            
+            if (retryCount < maxRetries) {
+              console.log('   ⚠️  Shell not detected, will retry...');
+              retryCount++;
+              await jitter(1000, 2000);
+              continue;
+            } else {
+              throw new Error('Shell not detected after retries');
+            }
+          }
+        }
+      } catch (error: any) {
+        if (error.message.includes('CONSENT_WALL')) {
+          throw error;
+        }
+        
+        if (retryCount < maxRetries) {
+          console.log(`   ⚠️  Navigation failed: ${error.message}, retrying...`);
+          retryCount++;
+          await jitter(1000, 2000);
+        } else {
+          throw new Error(`Navigation failed after ${maxRetries + 1} attempts: ${error.message}`);
+        }
       }
-    } else {
-      console.log('   ✅ Appears to be logged in');
-    }
-    
-    // Wait for timeline to load (give it more time)
-    try {
-      await page.waitForSelector('article[data-testid="tweet"]', { timeout: 20000 });
-      console.log('   ✅ Timeline loaded');
-    } catch (e) {
-      console.log('   ⚠️  Timeline not found, trying alternative selectors...');
-      // Try waiting for any content
-      await page.waitForTimeout(5000);
     }
     
     // Check for explicit consent wall (only if we see error messages)
@@ -215,22 +253,8 @@ async function collectFromHomeTimeline(): Promise<string[]> {
       throw new Error('CONSENT_WALL');
     }
     
-    // Debug: Check what's on the page
-    const pageInfo = await page.evaluate(() => {
-      const articles = document.querySelectorAll('article[data-testid="tweet"]');
-      const allArticles = document.querySelectorAll('article');
-      const links = document.querySelectorAll('a[href*="/status/"]');
-      const primaryColumn = document.querySelector('[data-testid="primaryColumn"]');
-      return {
-        tweetArticles: articles.length,
-        allArticles: allArticles.length,
-        statusLinks: links.length,
-        url: window.location.href,
-        title: document.title,
-        hasPrimaryColumn: !!primaryColumn,
-      };
-    });
-    console.log(`   🔍 Page info: ${pageInfo.tweetArticles} tweet articles, ${pageInfo.allArticles} total articles, ${pageInfo.statusLinks} status links, primaryColumn: ${pageInfo.hasPrimaryColumn}`);
+    // Give page a moment to render tweets (but don't wait for them)
+    await jitter(2000, 3000);
     
     // Scroll and collect tweets
     for (let i = 0; i < SCROLL_COUNT; i++) {
@@ -264,6 +288,12 @@ async function collectFromHomeTimeline(): Promise<string[]> {
       tweetIds.push(...ids);
       console.log(`   📜 Scroll ${i + 1}/${SCROLL_COUNT}: Found ${ids.length} tweet IDs (total: ${tweetIds.length})`);
       
+      // Early exit if we've collected enough (keep runs lightweight)
+      if (tweetIds.length >= 20) {
+        console.log(`   ✅ Collected ${tweetIds.length} tweet IDs, stopping early (max 20 per run)`);
+        break;
+      }
+      
       // Scroll down
       await page.evaluate(() => {
         window.scrollBy(0, window.innerHeight * 2);
@@ -296,7 +326,10 @@ async function collectFromSearchQueries(): Promise<string[]> {
   const tweetIds: string[] = [];
   
   const context = await launchRunnerPersistent(true); // headless for harvesting
-  const page = await context.newPage();
+  
+  // ALWAYS create a NEW page for harvesting (don't reuse existing pages in CDP mode)
+  let page = await context.newPage();
+  console.log('   📄 Created new page for search harvesting');
   
   try {
     for (const handle of CURATED_HANDLES.slice(0, 5)) { // Limit to first 5 handles
@@ -634,7 +667,8 @@ async function main() {
     result.tweet_ids_collected = tweetIds.length;
     result.tweets_seen = tweetIds.length; // Approximate
     
-    console.log(`\n✅ Collected ${tweetIds.length} unique tweet IDs\n`);
+    console.log(`\n✅ Collected ${tweetIds.length} unique tweet IDs`);
+    console.log(`   Tweet IDs collected: ${result.tweet_ids_collected}\n`);
     
     if (tweetIds.length === 0) {
       console.log('⚠️  No tweets collected');
