@@ -4333,6 +4333,8 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
     console.log('[POSTING_QUEUE] 🔌 Using official X API posting...');
     
     // 🔒 ENSURE POST_ATTEMPT WRITTEN BEFORE X API CALL
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
     const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
     await supabase.from('system_events').insert({
       event_type: 'POST_ATTEMPT',
