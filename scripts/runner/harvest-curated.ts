@@ -187,12 +187,14 @@ async function collectFromHomeTimeline(): Promise<string[]> {
         
         // Wait for lightweight "logged in shell" selectors (left nav/compose/avatar)
         // Don't wait for tweets - they may load slowly
+        // Use a timeout wrapper to ensure Promise.race doesn't hang
         const shellDetected = await Promise.race([
-          page.waitForSelector('nav[role="navigation"]', { timeout: 5000 }).then(() => 'leftNav'),
-          page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 5000 }).then(() => 'compose'),
-          page.waitForSelector('[data-testid="SideNav_AccountSwitcher_Button"]', { timeout: 5000 }).then(() => 'avatar'),
-          page.waitForSelector('a[href="/home"]', { timeout: 5000 }).then(() => 'homeLink'),
-          page.waitForSelector('[data-testid="primaryColumn"]', { timeout: 5000 }).then(() => 'primaryColumn'),
+          page.waitForSelector('nav[role="navigation"]', { timeout: 5000 }).then(() => 'leftNav').catch(() => null),
+          page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 5000 }).then(() => 'compose').catch(() => null),
+          page.waitForSelector('[data-testid="SideNav_AccountSwitcher_Button"]', { timeout: 5000 }).then(() => 'avatar').catch(() => null),
+          page.waitForSelector('a[href="/home"]', { timeout: 5000 }).then(() => 'homeLink').catch(() => null),
+          page.waitForSelector('[data-testid="primaryColumn"]', { timeout: 5000 }).then(() => 'primaryColumn').catch(() => null),
+          new Promise(resolve => setTimeout(() => resolve(null), 6000)), // Fallback timeout
         ]).catch(() => null);
         
         if (shellDetected) {
