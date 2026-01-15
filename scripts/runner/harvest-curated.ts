@@ -406,6 +406,138 @@ async function collectFromSearchQueries(): Promise<string[]> {
 }
 
 /**
+ * Validate tweet using CDP-authenticated session (Mac Runner only)
+ */
+async function validateTweetWithCDP(tweetId: string): Promise<{
+  exists: boolean;
+  isRoot: boolean;
+  author: string | null;
+  content: string | null;
+  error?: string;
+}> {
+  // Only use CDP validation in RUNNER_MODE with CDP browser
+  if (process.env.RUNNER_MODE !== 'true' || process.env.RUNNER_BROWSER !== 'cdp') {
+    // Fallback to legacy validation
+    return { exists: false, isRoot: false, author: null, content: null, error: 'Not in CDP mode' };
+  }
+  
+  const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
+  const context = await launchRunnerPersistent(true); // headless
+  const page = await context.newPage();
+  
+  const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'harvest_debug');
+  if (!fs.existsSync(debugDir)) {
+    fs.mkdirSync(debugDir, { recursive: true });
+  }
+  
+  try {
+    const tweetUrl = `https://x.com/i/status/${tweetId}`;
+    console.log(`   🔍 Validating ${tweetId} via CDP...`);
+    
+    await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(3000); // Let page settle
+    
+    const finalUrl = page.url();
+    
+    // Check for login redirect
+    if (finalUrl.includes('/i/flow/login') || finalUrl.includes('/login')) {
+      console.log(`   ⚠️  Login redirect detected for ${tweetId}`);
+      await page.screenshot({ path: path.join(debugDir, `login_redirect_${tweetId}.png`) });
+      await page.close();
+      await context.close();
+      return { exists: false, isRoot: false, author: null, content: null, error: 'Login required' };
+    }
+    
+    // Wait for lightweight shell selectors OR tweet article
+    const shellOrTweet = await Promise.race([
+      page.waitForSelector('nav[role="navigation"]', { timeout: 5000 }).then(() => 'shell').catch(() => null),
+      page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 5000 }).then(() => 'shell').catch(() => null),
+      page.waitForSelector('article[data-testid="tweet"]', { timeout: 5000 }).then(() => 'tweet').catch(() => null),
+      new Promise(resolve => setTimeout(() => resolve(null), 6000)), // Fallback timeout
+    ]).catch(() => null);
+    
+    if (!shellOrTweet) {
+      console.log(`   ⚠️  No shell or tweet detected for ${tweetId}`);
+      await page.screenshot({ path: path.join(debugDir, `no_content_${tweetId}.png`) });
+      const html = await page.content();
+      fs.writeFileSync(path.join(debugDir, `no_content_${tweetId}.html`), html);
+      await page.close();
+      await context.close();
+      return { exists: false, isRoot: false, author: null, content: null, error: 'No content detected' };
+    }
+    
+    // Extract tweet data
+    const tweetData = await page.evaluate(() => {
+      // Check for "This Post is unavailable" or "doesn't exist" messages
+      const bodyText = document.body.textContent || '';
+      const isUnavailable = bodyText.includes('This Post is unavailable') || 
+                           bodyText.includes("doesn't exist") ||
+                           bodyText.includes('Post not found');
+      
+      if (isUnavailable) {
+        return { exists: false, reason: 'unavailable' };
+      }
+      
+      // Find main tweet article
+      const mainArticle = document.querySelector('article[data-testid="tweet"]:first-of-type');
+      if (!mainArticle) {
+        return { exists: false, reason: 'no_article' };
+      }
+      
+      // Extract author
+      const authorElement = mainArticle.querySelector('[data-testid="User-Name"] a');
+      const author = authorElement?.textContent?.replace('@', '').trim() || null;
+      
+      // Extract content
+      const tweetText = mainArticle.querySelector('[data-testid="tweetText"]');
+      const content = tweetText?.textContent?.trim() || null;
+      
+      // Check if it's a reply (look for "Replying to" text)
+      const articleText = mainArticle.textContent || '';
+      const isReply = /Replying to\s+@/i.test(articleText) || 
+                     !!mainArticle.querySelector('[data-testid="socialContext"]');
+      
+      // Extract tweet ID from article link
+      const articleLink = mainArticle.querySelector('a[href*="/status/"]');
+      const href = articleLink?.getAttribute('href') || '';
+      const match = href.match(/\/status\/(\d+)/);
+      const articleTweetId = match ? match[1] : null;
+      
+      return {
+        exists: true,
+        author,
+        content,
+        isReply,
+        articleTweetId,
+      };
+    });
+    
+    await page.close();
+    await context.close();
+    
+    if (!tweetData.exists) {
+      console.log(`   ❌ Tweet ${tweetId} ${tweetData.reason || 'not found'}`);
+      return { exists: false, isRoot: false, author: null, content: null, error: tweetData.reason || 'not_found' };
+    }
+    
+    console.log(`   ✅ Tweet ${tweetId} exists: author=@${tweetData.author || 'unknown'}, isReply=${tweetData.isReply}`);
+    return {
+      exists: true,
+      isRoot: !tweetData.isReply,
+      author: tweetData.author || null,
+      content: tweetData.content || null,
+    };
+    
+  } catch (error: any) {
+    console.log(`   ❌ Validation error for ${tweetId}: ${error.message}`);
+    await page.screenshot({ path: path.join(debugDir, `error_${tweetId}.png`) }).catch(() => {});
+    await page.close().catch(() => {});
+    await context.close().catch(() => {});
+    return { exists: false, isRoot: false, author: null, content: null, error: error.message };
+  }
+}
+
+/**
  * Validate and insert a tweet
  */
 async function validateAndInsert(
@@ -421,10 +553,6 @@ async function validateAndInsert(
   validatedCount.count++;
   
   // Lazy import modules
-  if (!resolveTweetAncestry) {
-    const recorder = await import('../../src/jobs/replySystemV2/replyDecisionRecorder');
-    resolveTweetAncestry = recorder.resolveTweetAncestry;
-  }
   if (!filterTargetQuality) {
     const filter = await import('../../src/gates/replyTargetQualityFilter');
     filterTargetQuality = filter.filterTargetQuality;
@@ -435,16 +563,37 @@ async function validateAndInsert(
   }
   
   try {
-    // Resolve ancestry
-    const ancestry = await resolveTweetAncestry(tweetId);
+    // Use CDP validation in RUNNER_MODE with CDP browser
+    let validationResult: { exists: boolean; isRoot: boolean; author: string | null; content: string | null; error?: string };
     
-    if (!ancestry.target_exists) {
+    if (process.env.RUNNER_MODE === 'true' && process.env.RUNNER_BROWSER === 'cdp') {
+      // Use CDP-authenticated validation
+      validationResult = await validateTweetWithCDP(tweetId);
+    } else {
+      // Fallback to legacy resolveTweetAncestry (for Railway)
+      if (!resolveTweetAncestry) {
+        const recorder = await import('../../src/jobs/replySystemV2/replyDecisionRecorder');
+        resolveTweetAncestry = recorder.resolveTweetAncestry;
+      }
+      const ancestry = await resolveTweetAncestry(tweetId);
+      validationResult = {
+        exists: ancestry.status === 'OK',
+        isRoot: ancestry.isRoot && ancestry.status === 'OK',
+        author: null, // Will be extracted from ancestry if needed
+        content: null,
+        error: ancestry.status !== 'OK' ? ancestry.error : undefined,
+      };
+    }
+    
+    if (!validationResult.exists) {
       result.skipped_by_reason['target_not_exists'] = (result.skipped_by_reason['target_not_exists'] || 0) + 1;
+      console.log(`   ⏭️  Skipped ${tweetId}: ${validationResult.error || 'target_not_exists'}`);
       return;
     }
     
-    if (!ancestry.isRoot || ancestry.targetInReplyToTweetId !== null) {
+    if (!validationResult.isRoot) {
       result.skipped_by_reason['not_root'] = (result.skipped_by_reason['not_root'] || 0) + 1;
+      console.log(`   ⏭️  Skipped ${tweetId}: not_root`);
       return;
     }
     
@@ -470,10 +619,18 @@ async function validateAndInsert(
     }
     
     // Apply quality filter
-    const targetText = ancestry.normalizedSnapshot || '';
+    const targetText = validationResult.content || '';
+    const targetAuthor = validationResult.author || 'unknown';
+    
+    if (!targetText) {
+      result.skipped_by_reason['no_content'] = (result.skipped_by_reason['no_content'] || 0) + 1;
+      console.log(`   ⏭️  Skipped ${tweetId}: no_content`);
+      return;
+    }
+    
     const qualityResult = filterTargetQuality(
       targetText,
-      ancestry.targetAuthor || 'unknown',
+      targetAuthor,
       undefined,
       targetText
     );
@@ -481,18 +638,20 @@ async function validateAndInsert(
     if (!qualityResult.pass) {
       result.skipped_by_reason[qualityResult.deny_reason_code || 'quality_filter'] = 
         (result.skipped_by_reason[qualityResult.deny_reason_code || 'quality_filter'] || 0) + 1;
+      console.log(`   ⏭️  Skipped ${tweetId}: ${qualityResult.deny_reason_code || 'quality_filter'}`);
       return;
     }
     
     // Insert opportunity
+    const supabase = getSupabaseClient();
     const { error: insertError } = await supabase
       .from('reply_opportunities')
       .insert({
         target_tweet_id: tweetId,
-        target_username: ancestry.targetAuthor || 'unknown',
+        target_username: targetAuthor,
         target_tweet_url: `https://x.com/i/status/${tweetId}`,
         target_tweet_content: targetText.substring(0, 500),
-        tweet_posted_at: ancestry.targetPostedAt ? new Date(ancestry.targetPostedAt).toISOString() : new Date().toISOString(),
+        tweet_posted_at: new Date().toISOString(), // Use current time since we don't have posted_at from CDP
         is_root_tweet: true,
         root_tweet_id: tweetId,
         target_in_reply_to_tweet_id: null,
@@ -500,7 +659,7 @@ async function validateAndInsert(
         replied_to: false,
         opportunity_score: qualityResult.score || 75.0,
         discovery_method: HARVEST_MODE === 'home_scroll' ? 'mac_home_scroll' : 'mac_search',
-        account_username: ancestry.targetAuthor || 'unknown',
+        account_username: targetAuthor,
       });
     
     if (insertError) {
