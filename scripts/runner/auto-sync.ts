@@ -10,8 +10,6 @@
  */
 
 import { execSync } from 'child_process';
-import { getSupabaseClient } from '../../src/db';
-import path from 'path';
 
 const SERVICE_NAME = 'xBOT';
 
@@ -32,8 +30,10 @@ async function main() {
   } catch (error: any) {
     console.error(`[AUTO-SYNC] ❌ Sync failed: ${error.message}`);
 
-    // Write RUNNER_ALERT system event
+    // Write RUNNER_ALERT system event (lazy import to avoid env validation)
     try {
+      // Load env after sync attempt (may have partial env from .env.local)
+      const { getSupabaseClient } = await import('../../src/db');
       const supabase = getSupabaseClient();
       await supabase.from('system_events').insert({
         event_type: 'RUNNER_ALERT',
@@ -49,6 +49,7 @@ async function main() {
       console.log('[AUTO-SYNC] ✅ Wrote RUNNER_ALERT event to system_events');
     } catch (dbError: any) {
       console.error(`[AUTO-SYNC] ⚠️  Failed to write RUNNER_ALERT: ${dbError.message}`);
+      console.error(`[AUTO-SYNC]    (This is expected if env vars are missing)`);
     }
 
     process.exit(1);
