@@ -339,7 +339,45 @@ export function filterTargetQuality(
   const authorHandle = authorName?.replace('@', '') || undefined;
   const healthCheck = isHealthRelevant(targetText, authorHandle);
   
-  if (!healthCheck.isRelevant) {
+  // 🔒 MINIMAL FIX: If curated handle OR contains any medical keyword AND extracted_text_len>40 → PASS
+  const curatedHandles = (process.env.REPLY_CURATED_HANDLES || '').split(',').map(h => h.trim().toLowerCase());
+  const normalizedHandle = authorHandle?.toLowerCase().replace('@', '') || '';
+  const isCuratedHandle = curatedHandles.includes(normalizedHandle);
+  
+  // Check if text contains any medical keywords (broader check)
+  const medicalKeywords = [
+    'disease', 'syndrome', 'cancer', 'diabetes', 'lupus', 'autoimmune', 'clinical', 'trial',
+    'treatment', 'patient', 'symptoms', 'medication', 'vaccine', 'infection', 'mental health',
+    'depression', 'anxiety', 'therapy', 'public health', 'epidemiology', 'research', 'study',
+    'biospecimen', 'collaboration', 'medical', 'doctor', 'health', 'fitness', 'nutrition',
+  ];
+  const textLower = targetText.toLowerCase();
+  const hasMedicalKeyword = medicalKeywords.some(kw => textLower.includes(kw.toLowerCase()));
+  
+  // 🔒 ADJUSTED THRESHOLD: Only call NON_HEALTH_TOPIC if extracted_text_len>=20 AND health_score < threshold AND no medical keywords
+  // If curated handle OR has medical keyword AND text length > 40 → PASS
+  if (textLength >= 20 && (isCuratedHandle || (hasMedicalKeyword && textLength > 40))) {
+    // Override: treat as health-relevant
+    return {
+      pass: true,
+      code: 'PASS',
+      reason: `Target passed health filter (curated=${isCuratedHandle}, medical_keyword=${hasMedicalKeyword}, len=${textLength})`,
+      detail: {
+        text_length: textLength,
+        is_curated_handle: isCuratedHandle,
+        has_medical_keyword: hasMedicalKeyword,
+        health_score: healthCheck.healthScore + (isCuratedHandle ? 40 : 0) + (hasMedicalKeyword ? 30 : 0),
+        matched_keywords: healthCheck.matchedKeywords,
+      },
+      details: {
+        text_length: textLength,
+        is_curated_handle: isCuratedHandle,
+      },
+      score: Math.min(100, healthCheck.healthScore + (isCuratedHandle ? 40 : 0) + (hasMedicalKeyword ? 30 : 0))
+    };
+  }
+  
+  if (!healthCheck.isRelevant && textLength >= 20 && healthCheck.healthScore < 30 && !hasMedicalKeyword) {
     // Extract target tweet ID from context if available (for URL generation)
     let targetTweetId: string | undefined;
     if (extractedContext && typeof extractedContext === 'string') {
@@ -358,16 +396,36 @@ export function filterTargetQuality(
       app_version: appVersion,
       text_preview: targetText.substring(0, 100),
       meaningful_tokens: meaningfulTokens.length,
+      has_medical_keyword: hasMedicalKeyword,
+      is_curated_handle: isCuratedHandle,
     };
     
     return {
       pass: false,
       code: 'NON_HEALTH_TOPIC',
       deny_reason_code: 'NON_HEALTH_TOPIC',
-      reason: `Target is not health-relevant (health_score=${healthCheck.healthScore}, matched_keywords=${healthCheck.matchedKeywords.length})`,
+      reason: `Target is not health-relevant (health_score=${healthCheck.healthScore}, matched_keywords=${healthCheck.matchedKeywords.length}, medical_keyword=${hasMedicalKeyword}, curated=${isCuratedHandle})`,
       detail: debugData,
       details: debugData,
       score: healthCheck.healthScore
+    };
+  }
+  
+  // If text is too short (< 20), don't classify as NON_HEALTH_TOPIC
+  if (textLength < 20) {
+    return {
+      pass: false,
+      code: 'LOW_SIGNAL_TARGET',
+      deny_reason_code: 'LOW_SIGNAL_TARGET',
+      reason: `Target text too short (${textLength} chars) - cannot classify health relevance`,
+      detail: {
+        text_length: textLength,
+        extracted_text: targetText.substring(0, 100),
+      },
+      details: {
+        text_length: textLength,
+      },
+      score: 10
     };
   }
   
