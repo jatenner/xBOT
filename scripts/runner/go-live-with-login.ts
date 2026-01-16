@@ -287,8 +287,7 @@ async function main() {
   console.log('\nSTEP 7: Verifying POST_SUCCESS events...');
   const verifyResult = await execLive('pnpm exec tsx scripts/verify-post-success.ts --minutes=240', 'Verify POST_SUCCESS');
   
-  // Load env before DB import
-  const envLocalPath = path.join(process.cwd(), '.env.local');
+  // Load env before DB import (envLocalPath already declared earlier)
   if (fs.existsSync(envLocalPath)) {
     require('dotenv').config({ path: envLocalPath });
   }
