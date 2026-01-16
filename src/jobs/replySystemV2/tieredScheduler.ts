@@ -33,25 +33,48 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   const slotTime = new Date();
   
   // 🔒 CRITICAL: Log job start IMMEDIATELY (before any work)
+  const runnerMode = process.env.RUNNER_MODE === 'true' ? 'MAC_RUNNER' : 'RAILWAY';
+  const earlyExitReason = process.env.RUNNER_MODE !== 'true' ? 'RUNNER_MODE_NOT_SET' : null;
+  
   try {
     await supabase.from('system_events').insert({
       event_type: 'reply_v2_scheduler_job_started',
       severity: 'info',
-      message: `Reply V2 scheduler job started: scheduler_run_id=${schedulerRunId}`,
+      message: `Reply V2 scheduler job started: scheduler_run_id=${schedulerRunId} runner_mode=${runnerMode}`,
       event_data: {
         scheduler_run_id: schedulerRunId,
         slot_time: slotTime.toISOString(),
+        runner_mode: runnerMode,
+        early_exit_reason: earlyExitReason,
       },
       created_at: new Date().toISOString(),
     });
-    console.log(`[SCHEDULER] ✅ Job start logged: ${schedulerRunId}`);
+    console.log(`[SCHEDULER] ✅ Job start logged: ${schedulerRunId} (runner_mode=${runnerMode})`);
   } catch (logError: any) {
     console.error(`[SCHEDULER] ❌ Failed to log job start: ${logError.message}`);
     // Continue anyway - logging failure shouldn't block scheduler
   }
   
+  // Early exit check for Railway (Playwright disabled)
+  if (process.env.RUNNER_MODE !== 'true') {
+    const exitMsg = `[SCHEDULER] ⏸️ Early exit: RUNNER_MODE not set. Scheduler requires browser access (Playwright disabled on Railway). Run on Mac Runner with RUNNER_MODE=true.`;
+    console.log(exitMsg);
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_scheduler_early_exit',
+      severity: 'warning',
+      message: exitMsg,
+      event_data: { scheduler_run_id: schedulerRunId, reason: 'RUNNER_MODE_NOT_SET' },
+      created_at: new Date().toISOString(),
+    });
+    return {
+      posted: false,
+      reason: 'RUNNER_MODE_NOT_SET',
+      behind_schedule: false,
+    };
+  }
+  
   console.log('[SCHEDULER] ⏰ Attempting scheduled reply...');
-  console.log(`[PIPELINE] scheduler_run_id=${schedulerRunId} stage=scheduler_start ok=true detail=attempting_reply`);
+  console.log(`[PIPELINE] scheduler_run_id=${schedulerRunId} stage=scheduler_start ok=true detail=attempting_reply runner_mode=${runnerMode}`);
   
   // 🔒 MANDATE 3: Reset stuck "selected" candidates BEFORE selecting new one
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();

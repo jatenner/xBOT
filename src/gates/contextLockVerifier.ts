@@ -68,13 +68,21 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
   isReply: boolean;
 } | null> {
   let page: Page | null = null;
+  let context: any = null;
 
   try {
-    // Get browser pool
-    const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
-    const pool = UnifiedBrowserPool.getInstance();
-
-    page = await pool.acquirePage('context_verifier');
+    // Use CDP mode on Mac Runner
+    if (process.env.RUNNER_MODE === 'true' && process.env.RUNNER_BROWSER === 'cdp') {
+      const { launchRunnerPersistent } = await import('../infra/playwright/runnerLauncher');
+      context = await launchRunnerPersistent(true); // headless
+      page = await context.newPage();
+      console.log(`[CONTEXT_LOCK_VERIFY] 🔌 Using CDP mode for tweet fetch`);
+    } else {
+      // Use browser pool on Railway
+      const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+      const pool = UnifiedBrowserPool.getInstance();
+      page = await pool.acquirePage('context_verifier');
+    }
 
     const tweetUrl = `https://x.com/i/status/${targetTweetId}`;
     console.log(`[CONTEXT_LOCK_VERIFY] 🌐 Navigating to ${tweetUrl}`);
@@ -120,9 +128,16 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
   } finally {
     if (page) {
       try {
-        const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
-        const pool = UnifiedBrowserPool.getInstance();
-        await pool.releasePage(page);
+        if (context) {
+          // CDP mode: close page and context
+          await page.close();
+          await context.close();
+        } else {
+          // Browser pool mode: release page
+          const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+          const pool = UnifiedBrowserPool.getInstance();
+          await pool.releasePage(page);
+        }
       } catch (e) {
         console.error('[CONTEXT_LOCK_VERIFY] Error releasing page:', e);
       }

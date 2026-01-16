@@ -50,7 +50,9 @@
     "runner:login-debug": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/login-debug.ts",
     "runner:chrome-cdp": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/chrome-cdp.ts",
     "runner:reset-chrome": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/reset-chrome.ts",
-    "runner:session": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile RUNNER_BROWSER=cdp tsx scripts/runner/session-check.ts"
+    "runner:session": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile RUNNER_BROWSER=cdp tsx scripts/runner/session-check.ts",
+    "runner:schedule-once": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile RUNNER_BROWSER=cdp tsx scripts/runner/schedule-and-post.ts",
+    "runner:schedule-loop": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile RUNNER_BROWSER=cdp tsx scripts/runner/schedule-and-post.ts --loop"
   },
   "dependencies": {
     "@sentry/node": "^10.32.1",
