@@ -566,9 +566,40 @@ async function validateTweetWithCDP(tweetId: string): Promise<{
       const authorElement = mainArticle.querySelector('[data-testid="User-Name"] a');
       const author = authorElement?.textContent?.replace('@', '').trim() || null;
       
-      // Extract content
-      const tweetText = mainArticle.querySelector('[data-testid="tweetText"]');
-      const content = tweetText?.textContent?.trim() || null;
+      // Extract content - collect all spans inside tweetText container
+      const tweetTextEl = mainArticle.querySelector('[data-testid="tweetText"]');
+      let content: string | null = null;
+      
+      if (tweetTextEl) {
+        // Collect all text from spans inside
+        const spans = tweetTextEl.querySelectorAll('span');
+        const texts: string[] = [];
+        spans.forEach((span: Element) => {
+          const text = span.textContent?.trim();
+          if (text && text.length > 0) {
+            texts.push(text);
+          }
+        });
+        
+        // If we got spans, join them; otherwise use textContent
+        if (texts.length > 0) {
+          content = texts.join(' ');
+        } else {
+          content = tweetTextEl.textContent?.trim() || null;
+        }
+      }
+      
+      // Handle "Show more" button if present and content is short
+      if (content && content.length < 100) {
+        const showMoreButton = mainArticle.querySelector('span:has-text("Show more")');
+        if (showMoreButton) {
+          // Note: We can't click here in evaluate, but we'll try to get expanded text
+          const expandedText = mainArticle.textContent || '';
+          if (expandedText.length > content.length) {
+            content = expandedText.substring(0, 500); // Limit to reasonable length
+          }
+        }
+      }
       
       // Check if it's a reply (look for "Replying to" text)
       const articleText = mainArticle.textContent || '';

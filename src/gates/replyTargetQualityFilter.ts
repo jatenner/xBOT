@@ -95,10 +95,15 @@ function hasClaimOrQuestion(text: string): boolean {
 }
 
 /**
- * Check if text is health-relevant
+ * Check if text is health-relevant (broadened to include medical/research/public health)
  */
-function isHealthRelevant(text: string): boolean {
+function isHealthRelevant(text: string, authorHandle?: string): { 
+  isRelevant: boolean; 
+  matchedKeywords: string[];
+  healthScore: number;
+} {
   const healthKeywords = [
+    // Core health terms
     'health', 'fitness', 'nutrition', 'wellness', 'exercise', 'diet', 'workout',
     'supplement', 'vitamin', 'protein', 'cardio', 'strength', 'metabolism',
     'cholesterol', 'blood', 'pressure', 'heart', 'muscle', 'weight', 'fat',
@@ -106,11 +111,72 @@ function isHealthRelevant(text: string): boolean {
     'medical', 'doctor', 'patient', 'treatment', 'therapy', 'medication',
     'disease', 'condition', 'symptom', 'diagnosis', 'prevention', 'cure',
     'ozempic', 'creatine', 'zone 2', 'vo2 max', 'glucose', 'insulin', 'keto',
-    'mediterranean', 'paleo', 'vegan', 'vegetarian', 'organic', 'natural'
+    'mediterranean', 'paleo', 'vegan', 'vegetarian', 'organic', 'natural',
+    // Medical/disease terms (added)
+    'syndrome', 'cancer', 'diabetes', 'lupus', 'autoimmune', 'clinical', 'trial',
+    'symptoms', 'medication', 'vaccine', 'infection', 'mental health', 'depression',
+    'anxiety', 'therapy', 'public health', 'epidemiology', 'research', 'study',
+    'patient', 'treatment', 'diagnosis', 'disease', 'disorder', 'syndrome',
+    'chronic', 'acute', 'pathology', 'physiology', 'biomarker', 'genetic',
+    'molecular', 'pharmaceutical', 'drug', 'medicine', 'surgery', 'procedure',
+    'diagnostic', 'prognosis', 'mortality', 'morbidity', 'prevalence', 'incidence',
+    'outbreak', 'pandemic', 'epidemic', 'virus', 'bacteria', 'pathogen',
+    'immune system', 'inflammation', 'allergy', 'asthma', 'arthritis', 'osteoporosis',
+    'cardiovascular', 'neurological', 'psychiatric', 'oncology', 'hematology',
+    'endocrinology', 'gastroenterology', 'dermatology', 'ophthalmology', 'urology',
+    'gynecology', 'pediatrics', 'geriatrics', 'radiology', 'pathology',
+    // Research/public health terms
+    'biospecimen', 'data', 'collaboration', 'biobank', 'registry', 'cohort',
+    'longitudinal', 'observational', 'intervention', 'randomized', 'placebo',
+    'efficacy', 'safety', 'adverse', 'side effect', 'contraindication',
+    'dosage', 'administration', 'pharmacokinetics', 'pharmacodynamics',
+    'biomarker', 'surrogate', 'endpoint', 'outcome', 'quality of life',
+    'healthcare', 'hospital', 'clinic', 'emergency', 'icu', 'icu', 'ward',
+    'nurse', 'physician', 'surgeon', 'specialist', 'practitioner',
   ];
   
   const textLower = text.toLowerCase();
-  return healthKeywords.some(keyword => textLower.includes(keyword));
+  const matchedKeywords: string[] = [];
+  
+  // Check for keyword matches
+  for (const keyword of healthKeywords) {
+    if (textLower.includes(keyword.toLowerCase())) {
+      matchedKeywords.push(keyword);
+    }
+  }
+  
+  // Calculate health score (0-100)
+  let healthScore = matchedKeywords.length * 5; // Base score from matches
+  if (matchedKeywords.length > 0) {
+    healthScore = Math.min(100, healthScore + 20); // Bonus for any match
+  }
+  
+  // Strong health signals boost score
+  const strongSignals = ['disease', 'treatment', 'patient', 'clinical', 'research', 'medical', 'health'];
+  const hasStrongSignal = strongSignals.some(signal => matchedKeywords.some(k => k.toLowerCase().includes(signal)));
+  if (hasStrongSignal) {
+    healthScore = Math.min(100, healthScore + 30);
+  }
+  
+  // Check if author is in curated handles (strong prior)
+  if (authorHandle) {
+    const curatedHandles = (process.env.REPLY_CURATED_HANDLES || '').split(',').map(h => h.trim().toLowerCase());
+    const normalizedHandle = authorHandle.toLowerCase().replace('@', '');
+    if (curatedHandles.includes(normalizedHandle)) {
+      // Curated handles get lower threshold - if they have ANY health signal, pass
+      healthScore = Math.min(100, healthScore + 40);
+      if (matchedKeywords.length > 0 || textLower.length > 50) {
+        // Curated handle + any health keyword or substantial text = pass
+        return { isRelevant: true, matchedKeywords, healthScore: Math.min(100, healthScore) };
+      }
+    }
+  }
+  
+  // Threshold: need at least 1 match OR substantial text length with medical context
+  const isRelevant = matchedKeywords.length > 0 || 
+                     (textLower.length > 100 && (textLower.includes('research') || textLower.includes('study') || textLower.includes('clinical')));
+  
+  return { isRelevant, matchedKeywords, healthScore };
 }
 
 /**
@@ -165,6 +231,8 @@ export function filterTargetQuality(
   authorBio?: string,
   extractedContext?: string
 ): TargetQualityFilterResult {
+  const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+  const gateVersion = '2.0'; // Updated version with broadened health detection
   const textLength = targetText.length;
   const meaningfulContext = extractedContext || targetText;
   const meaningfulTokens = extractMeaningfulContext(meaningfulContext);
@@ -267,22 +335,39 @@ export function filterTargetQuality(
     };
   }
   
-  // Rule 4: Non-health topic (lightweight classifier)
-  if (!isHealthRelevant(targetText)) {
+  // Rule 4: Non-health topic (lightweight classifier with instrumentation)
+  const authorHandle = authorName?.replace('@', '') || undefined;
+  const healthCheck = isHealthRelevant(targetText, authorHandle);
+  
+  if (!healthCheck.isRelevant) {
+    // Extract target tweet ID from context if available (for URL generation)
+    let targetTweetId: string | undefined;
+    if (extractedContext && typeof extractedContext === 'string') {
+      const idMatch = extractedContext.match(/status[\/](\d+)/);
+      if (idMatch) targetTweetId = idMatch[1];
+    }
+    
+    const debugData = {
+      extracted_text: targetText.substring(0, 280),
+      extracted_text_len: textLength,
+      author_handle: authorHandle || 'unknown',
+      url: targetTweetId ? `https://x.com/i/status/${targetTweetId}` : undefined,
+      health_signals: healthCheck.matchedKeywords,
+      health_score: healthCheck.healthScore,
+      gate_version: gateVersion,
+      app_version: appVersion,
+      text_preview: targetText.substring(0, 100),
+      meaningful_tokens: meaningfulTokens.length,
+    };
+    
     return {
       pass: false,
       code: 'NON_HEALTH_TOPIC',
       deny_reason_code: 'NON_HEALTH_TOPIC',
-      reason: `Target is not health-relevant`,
-      detail: {
-        text_preview: targetText.substring(0, 100),
-        text_length: textLength,
-        meaningful_tokens: meaningfulTokens.length
-      },
-      details: {
-        text_preview: targetText.substring(0, 100)
-      },
-      score: 30
+      reason: `Target is not health-relevant (health_score=${healthCheck.healthScore}, matched_keywords=${healthCheck.matchedKeywords.length})`,
+      detail: debugData,
+      details: debugData,
+      score: healthCheck.healthScore
     };
   }
   

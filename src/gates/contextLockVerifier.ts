@@ -96,13 +96,66 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
     await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 });
     await page.waitForTimeout(2000); // Let content stabilize
 
-    // Extract tweet text
-    const tweetText = await page
-      .$eval('article[data-testid="tweet"] div[data-testid="tweetText"]', el => el.textContent || '')
-      .catch(() => '');
+    // Handle "Show more" button if present
+    try {
+      const showMoreButton = await page.$('article[data-testid="tweet"] span:has-text("Show more")').catch(() => null);
+      if (showMoreButton) {
+        await showMoreButton.click().catch(() => {});
+        await page.waitForTimeout(1000); // Wait for expansion
+      }
+    } catch (e) {
+      // Ignore show more errors
+    }
 
-    if (!tweetText) {
-      console.warn(`[CONTEXT_LOCK_VERIFY] ⚠️ Could not extract tweet text for ${targetTweetId}`);
+    // Extract tweet text - collect all spans inside tweetText container
+    const tweetText = await page.evaluate(() => {
+      const article = document.querySelector('article[data-testid="tweet"]');
+      if (!article) return '';
+      
+      // Try primary selector first
+      const tweetTextEl = article.querySelector('[data-testid="tweetText"]');
+      if (tweetTextEl) {
+        // Collect all text from spans inside
+        const spans = tweetTextEl.querySelectorAll('span');
+        const texts: string[] = [];
+        spans.forEach(span => {
+          const text = span.textContent?.trim();
+          if (text && text.length > 0) {
+            texts.push(text);
+          }
+        });
+        
+        // If we got spans, join them; otherwise use textContent
+        if (texts.length > 0) {
+          return texts.join(' ');
+        }
+        return tweetTextEl.textContent || '';
+      }
+      
+      // Fallback: try to find any text container in article
+      const allText = article.textContent || '';
+      return allText;
+    }).catch(() => '');
+
+    if (!tweetText || tweetText.trim().length < 10) {
+      console.warn(`[CONTEXT_LOCK_VERIFY] ⚠️ Could not extract tweet text for ${targetTweetId} (length=${tweetText?.length || 0})`);
+      
+      // Save debug artifacts in CDP mode
+      if (process.env.RUNNER_MODE === 'true' && process.env.RUNNER_BROWSER === 'cdp') {
+        const fs = require('fs');
+        const path = require('path');
+        const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'harvest_debug');
+        if (!fs.existsSync(debugDir)) {
+          fs.mkdirSync(debugDir, { recursive: true });
+        }
+        
+        await page.screenshot({ path: path.join(debugDir, `${targetTweetId}_no_content.png`) }).catch(() => {});
+        const html = await page.content().catch(() => '');
+        if (html) {
+          fs.writeFileSync(path.join(debugDir, `${targetTweetId}_no_content.html`), html);
+        }
+      }
+      
       return null;
     }
 
