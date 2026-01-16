@@ -287,6 +287,12 @@ async function main() {
   console.log('\nSTEP 7: Verifying POST_SUCCESS events...');
   const verifyResult = await execLive('pnpm exec tsx scripts/verify-post-success.ts --minutes=240', 'Verify POST_SUCCESS');
   
+  // Load env before DB import
+  const envLocalPath = path.join(process.cwd(), '.env.local');
+  if (fs.existsSync(envLocalPath)) {
+    require('dotenv').config({ path: envLocalPath });
+  }
+  
   // Get final counts from DB
   const { getSupabaseClient } = await import('../../src/db');
   const supabase = getSupabaseClient();
