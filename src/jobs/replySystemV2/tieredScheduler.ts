@@ -344,6 +344,17 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       }
       
       // Record DENY decision with structured detail JSON (including debug data for NON_HEALTH_TOPIC)
+      const denyReasonDetail = denyReasonCode === 'NON_HEALTH_TOPIC' ? {
+        ...qualityFilter.detail,
+        target_tweet_id: candidate.candidate_tweet_id,
+        target_username: candidateData.candidate_author_username,
+        url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+      } : {
+        code: qualityFilter.code,
+        detail: qualityFilter.detail || qualityFilter.details,
+        score: qualityFilter.score
+      };
+      
       await recordReplyDecision({
         decision_id: decisionId,
         target_tweet_id: candidate.candidate_tweet_id,
@@ -354,11 +365,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         decision: 'DENY',
         reason: `Quality filter: ${qualityFilter.reason}`,
         deny_reason_code: denyReasonCode,
-        deny_reason_detail: JSON.stringify({
-          code: qualityFilter.code,
-          detail: qualityFilter.detail || qualityFilter.details,
-          score: qualityFilter.score
-        }),
+        deny_reason_detail: typeof denyReasonDetail === 'string' ? denyReasonDetail : JSON.stringify(denyReasonDetail),
         status: ancestry.status,
         confidence: ancestry.confidence,
         method: ancestry.method || 'unknown',
