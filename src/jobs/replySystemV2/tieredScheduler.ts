@@ -304,17 +304,19 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     
     // Instrument NON_HEALTH_TOPIC decisions with debug data
     if (qualityFilter.deny_reason_code === 'NON_HEALTH_TOPIC') {
+      const healthScore = (qualityFilter.detail as any)?.health_score || 0;
       const debugData = {
         ...qualityFilter.detail,
         target_tweet_id: candidate.candidate_tweet_id,
         target_username: candidateData.candidate_author_username,
         url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+        health_score: healthScore,
       };
       
       await supabase.from('system_events').insert({
         event_type: 'NON_HEALTH_TOPIC_DEBUG',
         severity: 'info',
-        message: `NON_HEALTH_TOPIC decision: target=${candidate.candidate_tweet_id} health_score=${debugData.health_score || 0}`,
+        message: `NON_HEALTH_TOPIC decision: target=${candidate.candidate_tweet_id} health_score=${healthScore}`,
         event_data: debugData,
         created_at: new Date().toISOString(),
       });
@@ -327,17 +329,19 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       
       // Instrument NON_HEALTH_TOPIC decisions with debug data
       if (denyReasonCode === 'NON_HEALTH_TOPIC') {
+        const healthScore = (qualityFilter.detail as any)?.health_score || 0;
         const debugData = {
           ...qualityFilter.detail,
           target_tweet_id: candidate.candidate_tweet_id,
           target_username: candidateData.candidate_author_username,
           url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+          health_score: healthScore,
         };
         
         await supabase.from('system_events').insert({
           event_type: 'NON_HEALTH_TOPIC_DEBUG',
           severity: 'info',
-          message: `NON_HEALTH_TOPIC decision: target=${candidate.candidate_tweet_id} health_score=${debugData.health_score || 0}`,
+          message: `NON_HEALTH_TOPIC decision: target=${candidate.candidate_tweet_id} health_score=${healthScore}`,
           event_data: debugData,
           created_at: new Date().toISOString(),
         });
