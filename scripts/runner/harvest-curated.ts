@@ -415,19 +415,29 @@ async function collectFromSearchQueries(): Promise<string[]> {
         const consentWallDetected = consentWallResult.detected;
         
         if (consentWallDetected) {
-          // Save debug artifacts
-          const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'harvest_debug');
-          if (!fs.existsSync(debugDir)) {
-            fs.mkdirSync(debugDir, { recursive: true });
-          }
-          const timestamp = Date.now();
-          await page.screenshot({ path: path.join(debugDir, `consent_wall_search_${handle}_${timestamp}.png`) }).catch(() => {});
-          const html = await page.content().catch(() => '');
-          fs.writeFileSync(path.join(debugDir, `consent_wall_search_${handle}_${timestamp}.html`), html);
-          
-          await recordConsentWall('search_queries', searchUrl);
-          console.log(`   ⚠️  CONSENT_WALL detected, skipping search (artifacts saved)`);
+          await recordConsentWall('search_queries', searchUrl, consentWallResult.debug, page);
+          console.log(`   ⚠️  CONSENT_WALL detected, skipping search`);
+          console.log(`   Debug: ${JSON.stringify(consentWallResult.debug, null, 2)}`);
           continue;
+        }
+        
+        // If shell exists but no tweet article, retry once with fresh page
+        if (consentWallResult.debug.hasShell.leftNav || consentWallResult.debug.hasShell.compose || consentWallResult.debug.hasShell.avatar) {
+          if (!consentWallResult.debug.hasTweetArticle) {
+            console.log('   ⚠️  Shell present but no tweet article, retrying with fresh page...');
+            await page.evaluate(() => window.stop()).catch(() => {});
+            await page.close().catch(() => {});
+            page = await context.newPage();
+            await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.waitForTimeout(3000);
+            
+            const retryResult = await checkConsentWall(page, true);
+            if (!retryResult.debug.hasTweetArticle && (retryResult.debug.hasShell.leftNav || retryResult.debug.hasShell.compose || retryResult.debug.hasShell.avatar)) {
+              console.log('   ⚠️  Still no tweet article after retry, classifying as NO_CONTENT_DETECTED');
+              result.skipped_by_reason['no_content_detected'] = (result.skipped_by_reason['no_content_detected'] || 0) + 1;
+              continue;
+            }
+          }
         }
         
         // Scroll a few times

@@ -239,39 +239,123 @@ async function main() {
   
   console.log('✅ Session OK - proceeding with workflow\n');
   
-  // Step 5: Harvest opportunities
-  console.log('STEP 4: Harvesting opportunities...');
-  const harvestResult = await execLive('RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' RUNNER_BROWSER=cdp pnpm run runner:harvest-once', 'Harvest opportunities');
-  if (!harvestResult.success && harvestResult.exitCode === 2) {
-    // Exit code 2 = session expired during harvest
-    console.error('\n❌ Harvest failed due to session expiry');
-    process.exit(1);
+  // Step 4: Harvest opportunities
+  console.log('\nSTEP 4: Harvesting opportunities...');
+  let opportunitiesInserted = 0;
+  try {
+    const harvestOutput = execSync(
+      'HARVEST_MODE=search_queries RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' RUNNER_BROWSER=cdp pnpm run runner:harvest-search',
+      { encoding: 'utf-8', stdio: 'pipe', timeout: 120000 }
+    );
+    
+    const insertMatch = harvestOutput.match(/Inserted:\s*(\d+)/);
+    opportunitiesInserted = insertMatch ? parseInt(insertMatch[1], 10) : 0;
+    console.log(`✅ Harvest complete: ${opportunitiesInserted} opportunities inserted`);
+    console.log(harvestOutput);
+  } catch (error: any) {
+    console.error(`⚠️  Harvest failed: ${error.message}`);
+  }
+  
+  // Step 5: Schedule and create decisions
+  console.log('\nSTEP 5: Scheduling decisions...');
+  let candidatesProcessed = 0;
+  let decisionsCreated = 0;
+  try {
+    const scheduleOutput = execSync(
+      'RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' RUNNER_BROWSER=cdp pnpm run runner:schedule-once',
+      { encoding: 'utf-8', stdio: 'pipe', timeout: 120000 }
+    );
+    
+    const candidatesMatch = scheduleOutput.match(/Candidates fetched:\s*(\d+)/);
+    candidatesProcessed = candidatesMatch ? parseInt(candidatesMatch[1], 10) : 0;
+    
+    const decisionsMatch = scheduleOutput.match(/Decisions created:\s*(\d+)/);
+    decisionsCreated = decisionsMatch ? parseInt(decisionsMatch[1], 10) : 0;
+    
+    console.log(`✅ Schedule complete: ${candidatesProcessed} candidates processed, ${decisionsCreated} decisions created`);
+    console.log(scheduleOutput);
+  } catch (error: any) {
+    console.error(`⚠️  Schedule failed: ${error.message}`);
   }
   
   // Step 6: Process posting queue
-  console.log('\nSTEP 5: Processing posting queue...');
+  console.log('\nSTEP 6: Processing posting queue...');
   const postResult = await execLive('RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' RUNNER_BROWSER=cdp pnpm run runner:once', 'Process posting queue');
   // Non-fatal if no candidates
   
   // Step 7: Verify POST_SUCCESS
-  console.log('\nSTEP 6: Verifying POST_SUCCESS events...');
-  const verifyResult = await execLive('pnpm exec tsx scripts/verify-post-success.ts', 'Verify POST_SUCCESS');
+  console.log('\nSTEP 7: Verifying POST_SUCCESS events...');
+  const verifyResult = await execLive('pnpm exec tsx scripts/verify-post-success.ts --minutes=240', 'Verify POST_SUCCESS');
+  
+  // Get final counts from DB
+  const { getSupabaseClient } = await import('../../src/db');
+  const supabase = getSupabaseClient();
+  
+  const { count: queuedDecisions } = await supabase
+    .from('reply_decisions')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'queued')
+    .gte('created_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString());
+  
+  const { data: recentDenies } = await supabase
+    .from('reply_decisions')
+    .select('deny_reason_code')
+    .eq('decision', 'DENY')
+    .gte('created_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString());
+  
+  const denyCounts: Record<string, number> = {};
+  recentDenies?.forEach(d => {
+    const code = d.deny_reason_code || 'NO_CODE';
+    denyCounts[code] = (denyCounts[code] || 0) + 1;
+  });
+  
+  const consentWallCount = denyCounts['CONSENT_WALL'] || 0;
   
   // Extract tweet URL from database
   const tweetUrl = await extractTweetUrl();
   
-  // Final status
+  // Final summary
   console.log('\n');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('           📊 FINAL STATUS');
+  console.log('           📊 FINAL SUMMARY');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
   
+  console.log(`Opportunities inserted: ${opportunitiesInserted}`);
+  console.log(`Candidates processed: ${candidatesProcessed}`);
+  console.log(`Decisions created: ${decisionsCreated}`);
+  console.log(`Queued decisions: ${queuedDecisions || 0}`);
+  console.log(`POST_SUCCESS count: ${tweetUrl ? 1 : 0}`);
+  console.log(`CONSENT_WALL count: ${consentWallCount}`);
+  
   if (tweetUrl) {
-    console.log(`✅ POST_SUCCESS: ${tweetUrl}`);
+    console.log(`\n✅ POST_SUCCESS: ${tweetUrl}`);
   } else {
-    console.log('⚠️  No POST_SUCCESS in last 240 minutes (this can be normal)');
-    console.log('   Check POST_FAILED reasons above if expected posts are missing');
+    console.log('\n⚠️  No POST_SUCCESS found');
+    
+    // Print top 3 deny reasons
+    const topDenies = Object.entries(denyCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+    
+    if (topDenies.length > 0) {
+      console.log('\nTop 3 deny reasons:');
+      topDenies.forEach(([code, count], i) => {
+        console.log(`   ${i + 1}. ${code}: ${count}`);
+      });
+    }
+    
+    // Print debug artifact paths
+    const consentDebugDir = path.join(RUNNER_PROFILE_DIR, 'consent_debug');
+    if (fs.existsSync(consentDebugDir)) {
+      const artifacts = fs.readdirSync(consentDebugDir).filter(f => f.includes('consent_wall_'));
+      if (artifacts.length > 0) {
+        console.log('\nDebug artifacts:');
+        artifacts.slice(0, 3).forEach(artifact => {
+          console.log(`   ${path.join(consentDebugDir, artifact)}`);
+        });
+      }
+    }
   }
   
   console.log('');
