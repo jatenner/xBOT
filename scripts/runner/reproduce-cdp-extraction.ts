@@ -24,8 +24,11 @@ if (!process.env.RUNNER_BROWSER) {
 }
 
 async function reproduceExtraction(tweetId: string) {
+  // Clean tweet ID (remove any extra spaces/IDs)
+  const cleanTweetId = tweetId.trim().split(/\s+/)[0];
+  
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-  console.log(`🔍 REPRODUCING CDP EXTRACTION: ${tweetId}`);
+  console.log(`🔍 REPRODUCING CDP EXTRACTION: ${cleanTweetId}`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
   
   const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
@@ -38,7 +41,7 @@ async function reproduceExtraction(tweetId: string) {
   }
   
   try {
-    const tweetUrl = `https://x.com/i/status/${tweetId}`;
+    const tweetUrl = `https://x.com/i/status/${cleanTweetId}`;
     console.log(`🌐 Navigating to ${tweetUrl}...`);
     
     await page.goto(tweetUrl, {
@@ -149,7 +152,7 @@ async function reproduceExtraction(tweetId: string) {
     await context.close();
     
     return {
-      tweetId,
+      tweetId: cleanTweetId,
       extractedText,
       textLength,
       method: extractionResult.method,
@@ -159,7 +162,7 @@ async function reproduceExtraction(tweetId: string) {
     
   } catch (error: any) {
     console.error(`\n❌ ERROR: ${error.message}`);
-    await page.screenshot({ path: path.join(debugDir, `${tweetId}_error.png`) }).catch(() => {});
+    await page.screenshot({ path: path.join(debugDir, `${cleanTweetId}_error.png`) }).catch(() => {});
     await page.close().catch(() => {});
     await context.close().catch(() => {});
     throw error;
