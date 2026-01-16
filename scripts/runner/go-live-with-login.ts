@@ -147,6 +147,9 @@ async function extractTweetUrl(): Promise<string | null> {
   }
 }
 
+/**
+ * End-to-end go-live flow: autosync -> reset-chrome -> session-check -> harvest -> schedule -> post -> verify
+ */
 async function main() {
   console.log('\n');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

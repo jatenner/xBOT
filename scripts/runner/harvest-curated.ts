@@ -272,8 +272,9 @@ async function collectFromHomeTimeline(): Promise<string[]> {
           } else {
             // Check for login redirect
             const currentUrl = page.url();
-            if (currentUrl.includes('/i/flow/login') || currentUrl.includes('/login')) {
-              await recordConsentWall('home_scroll', currentUrl);
+            if (currentUrl.includes('/i/flow/login') || currentUrl.includes('/login') || currentUrl.includes('/account/access')) {
+              const consentResult = await checkConsentWall(page, false);
+              await recordConsentWall('home_scroll', currentUrl, consentResult.debug, page);
               throw new Error('CONSENT_WALL - Login required');
             }
             
@@ -305,7 +306,8 @@ async function collectFromHomeTimeline(): Promise<string[]> {
     // Check for explicit consent wall (only if we see error messages)
     const hasExplicitError = await page.locator('text="Something went wrong"').isVisible({ timeout: 2000 }).catch(() => false);
     if (hasExplicitError) {
-      await recordConsentWall('home_scroll', 'https://x.com/home');
+      const consentResult = await checkConsentWall(page, false);
+      await recordConsentWall('home_scroll', 'https://x.com/home', consentResult.debug, page);
       throw new Error('CONSENT_WALL');
     }
     
@@ -409,7 +411,8 @@ async function collectFromSearchQueries(): Promise<string[]> {
         }
         
         // Check for consent wall (with search page flag)
-        const consentWallDetected = await checkConsentWall(page, true);
+        const consentWallResult = await checkConsentWall(page, true);
+        const consentWallDetected = consentWallResult.detected;
         
         if (consentWallDetected) {
           // Save debug artifacts
