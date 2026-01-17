@@ -71,28 +71,59 @@ async function main() {
   const { getSupabaseClient } = await import('../../src/db');
   const supabase = getSupabaseClient();
   
-  // Step 4: Fetch candidates from queue
+  // Step 4: Fetch candidates from queue (prefer fresh ones created after runStartedAt if provided)
   console.log('📋 Step 3: Fetching candidates from reply_candidate_queue...');
-  const { data: candidates, error: queueError } = await supabase
-    .from('reply_candidate_queue')
-    .select('*')
-    .eq('status', 'queued')
-    .gt('expires_at', new Date().toISOString())
-    .order('predicted_tier', { ascending: true })
-    .order('overall_score', { ascending: false })
-    .limit(5);
+  const runStartedAt = process.env.RUN_STARTED_AT || null;
   
-  if (queueError) {
-    console.error(`❌ Failed to fetch candidates: ${queueError.message}`);
-    process.exit(1);
+  // Try to fetch fresh candidates first (created after runStartedAt)
+  let candidates: any[] | null = null;
+  let candidatesAreFresh = false;
+  
+  if (runStartedAt) {
+    const { data: freshCandidates, error: freshError } = await supabase
+      .from('reply_candidate_queue')
+      .select('*')
+      .eq('status', 'queued')
+      .gt('expires_at', new Date().toISOString())
+      .gte('created_at', runStartedAt)
+      .order('predicted_tier', { ascending: true })
+      .order('overall_score', { ascending: false })
+      .limit(5);
+    
+    if (!freshError && freshCandidates && freshCandidates.length > 0) {
+      candidates = freshCandidates;
+      candidatesAreFresh = true;
+      console.log(`✅ Found ${candidates.length} fresh candidates (created after ${runStartedAt})\n`);
+    }
   }
   
+  // Fallback to any queued candidates if no fresh ones found
   if (!candidates || candidates.length === 0) {
-    console.log('⚠️  No candidates available in queue');
-    process.exit(0);
+    const { data: allCandidates, error: queueError } = await supabase
+      .from('reply_candidate_queue')
+      .select('*')
+      .eq('status', 'queued')
+      .gt('expires_at', new Date().toISOString())
+      .order('predicted_tier', { ascending: true })
+      .order('overall_score', { ascending: false })
+      .limit(5);
+    
+    if (queueError) {
+      console.error(`❌ Failed to fetch candidates: ${queueError.message}`);
+      process.exit(1);
+    }
+    
+    if (!allCandidates || allCandidates.length === 0) {
+      console.log('⚠️  No candidates available in queue');
+      process.exit(0);
+    }
+    
+    candidates = allCandidates;
+    if (runStartedAt) {
+      console.log(`⚠️  WARNING: No fresh candidates found, using existing queue (may contain stale candidates)\n`);
+    }
+    console.log(`✅ Found ${candidates.length} candidates\n`);
   }
-  
-  console.log(`✅ Found ${candidates.length} candidates\n`);
   
   // Step 5: Process candidates through scheduler (one at a time)
   let decisionsCreated = 0;

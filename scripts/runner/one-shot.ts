@@ -150,11 +150,12 @@ async function main() {
   console.log('✅ Session OK - proceeding with workflow\n');
   
   // Step 4: Harvest opportunities (default mode is curated_profile_posts) - 60s timeout
+  // Use HARVEST_IGNORE_STATE=true to ignore harvest_state.json for this run
   console.log('\nSTEP 4: Harvesting opportunities...');
   let opportunitiesInserted = 0;
   try {
     const harvestOutput = execSync(
-      'HARVEST_MODE=curated_profile_posts RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' RUNNER_BROWSER=cdp tsx scripts/runner/harvest-curated.ts',
+      'HARVEST_MODE=curated_profile_posts HARVEST_IGNORE_STATE=true RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' RUNNER_BROWSER=cdp tsx scripts/runner/harvest-curated.ts',
       { encoding: 'utf-8', stdio: 'pipe', timeout: 60000 } // 60s timeout
     );
     
@@ -174,6 +175,22 @@ async function main() {
   console.log('\nSTEP 5: Evaluation will be handled by scheduler...');
   let evaluated = 0;
   let passed = 0;
+  
+  // Step 5a: Cleanup stale candidates from queue
+  console.log('\nSTEP 5a: Cleaning up candidate queue...');
+  try {
+    const cleanupOutput = execSync(
+      'RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' tsx scripts/runner/cleanup-candidate-queue.ts',
+      { encoding: 'utf-8', stdio: 'pipe', timeout: 30000 } // 30s timeout
+    );
+    console.log(cleanupOutput);
+  } catch (error: any) {
+    if (error.signal === 'SIGTERM' || error.message.includes('timeout')) {
+      console.error(`❌ Cleanup TIMED OUT after 30s - step hung at cleanup`);
+      process.exit(1);
+    }
+    console.error(`⚠️  Cleanup failed: ${error.message}`);
+  }
   
   // Step 5b: Refresh candidate queue (evaluations → queue) - 30s timeout
   console.log('\nSTEP 5b: Refreshing candidate queue...');
@@ -210,8 +227,9 @@ async function main() {
   let decisionsCreated = 0;
   let gateReasons: Record<string, number> = {};
   try {
+    // Pass runStartedAt to scheduler so it prefers fresh candidates
     const scheduleOutput = execSync(
-      'RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' RUNNER_BROWSER=cdp pnpm run runner:schedule-once',
+      `RUN_STARTED_AT=${runStartedAt} RUNNER_MODE=true RUNNER_PROFILE_DIR=${RUNNER_PROFILE_DIR} RUNNER_BROWSER=cdp pnpm run runner:schedule-once`,
       { encoding: 'utf-8', stdio: 'pipe', timeout: 60000 } // 60s timeout
     );
     

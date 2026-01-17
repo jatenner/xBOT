@@ -523,9 +523,14 @@ async function collectFromCuratedProfiles(): Promise<string[]> {
   
   const context = await launchRunnerPersistent(true); // headless for harvesting
   
-  // Load harvest state
-  const harvestState = loadHarvestState();
-  const perHandleLastSeen: Record<string, string> = harvestState.perHandleLastSeenTweetId || {};
+  // Load harvest state (unless HARVEST_IGNORE_STATE=true)
+  const ignoreState = process.env.HARVEST_IGNORE_STATE === 'true';
+  const harvestState = ignoreState ? {} : loadHarvestState();
+  const perHandleLastSeen: Record<string, string> = ignoreState ? {} : (harvestState.perHandleLastSeenTweetId || {});
+  
+  if (ignoreState) {
+    console.log('   ⚠️  HARVEST_IGNORE_STATE=true: Ignoring harvest_state.json filtering');
+  }
   
   // Limit to HARVEST_MAX_HANDLES handles per run
   const handlesToProcess = CURATED_HANDLES.slice(0, HARVEST_MAX_HANDLES);
@@ -629,7 +634,8 @@ async function collectFromCuratedProfiles(): Promise<string[]> {
       });
       
       // Filter out tweets we've already seen (skip if tweetId <= lastSeenTweetId)
-      const newIds = ids.filter(id => {
+      // Skip this filtering if HARVEST_IGNORE_STATE=true
+      const newIds = ignoreState ? ids : ids.filter(id => {
         if (lastSeenTweetId && id <= lastSeenTweetId) {
           return false; // Skip already-seen tweets
         }
@@ -680,13 +686,15 @@ async function collectFromCuratedProfiles(): Promise<string[]> {
           return [...new Set(results)];
         });
         
-        // Filter and add new IDs
-        const moreNewIds = moreIds.filter(id => {
-          if (lastSeenTweetId && id <= lastSeenTweetId) {
-            return false;
-          }
-          return !handleTweetIds.includes(id); // Avoid duplicates within handle
-        });
+        // Filter and add new IDs (skip state filtering if HARVEST_IGNORE_STATE=true)
+        const moreNewIds = ignoreState 
+          ? moreIds.filter(id => !handleTweetIds.includes(id)) // Only dedupe within handle
+          : moreIds.filter(id => {
+              if (lastSeenTweetId && id <= lastSeenTweetId) {
+                return false;
+              }
+              return !handleTweetIds.includes(id); // Avoid duplicates within handle
+            });
         
         handleTweetIds.push(...moreNewIds.slice(0, HARVEST_MAX_TWEETS_PER_HANDLE - handleTweetIds.length));
       }
