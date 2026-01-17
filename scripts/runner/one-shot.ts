@@ -149,14 +149,14 @@ async function main() {
   
   console.log('✅ Session OK - proceeding with workflow\n');
   
-  // Step 4: Harvest opportunities (default mode is curated_profile_posts) - 60s timeout
+  // Step 4: Harvest opportunities (default mode is curated_profile_posts) - 90s timeout
   // Use HARVEST_IGNORE_STATE=true to ignore harvest_state.json for this run
   console.log('\nSTEP 4: Harvesting opportunities...');
   let opportunitiesInserted = 0;
   try {
     const harvestOutput = execSync(
-      'HARVEST_MODE=curated_profile_posts HARVEST_IGNORE_STATE=true RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' RUNNER_BROWSER=cdp tsx scripts/runner/harvest-curated.ts',
-      { encoding: 'utf-8', stdio: 'pipe', timeout: 60000 } // 60s timeout
+      'HARVEST_MODE=curated_profile_posts HARVEST_IGNORE_STATE=true RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' RUNNER_BROWSER=cdp pnpm exec tsx scripts/runner/harvest-curated.ts',
+      { encoding: 'utf-8', stdio: 'pipe', timeout: 90000 } // 90s timeout (harvest can be slow)
     );
     
     const insertMatch = harvestOutput.match(/Inserted:\s*(\d+)/);
@@ -165,7 +165,7 @@ async function main() {
     console.log(harvestOutput);
   } catch (error: any) {
     if (error.signal === 'SIGTERM' || error.message.includes('timeout')) {
-      console.error(`❌ Harvest TIMED OUT after 60s - step hung at harvest`);
+      console.error(`❌ Harvest TIMED OUT after 90s - step hung at harvest`);
       process.exit(1);
     }
     console.error(`⚠️  Harvest failed: ${error.message}`);
