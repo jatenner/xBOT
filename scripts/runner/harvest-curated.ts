@@ -43,11 +43,24 @@ const CURATED_HANDLES = CURATED_HANDLES_STR
   .map(h => h.trim().toLowerCase().replace('@', ''))
   .filter(Boolean);
 
-const HARVEST_MODE = process.env.HARVEST_MODE || 'home_scroll'; // 'home_scroll' or 'search_queries'
+const HARVEST_MODE = process.env.HARVEST_MODE || 'curated_profile_posts'; // 'curated_profile_posts', 'home_scroll', or 'search_queries'
 const MAX_VALIDATIONS_PER_RUN = parseInt(process.env.MAX_VALIDATIONS_PER_RUN || '12', 10);
 const MAX_AGE_HOURS = 48; // Check last 48h for duplicates
 const HARVEST_AGE_HOURS = 24; // Only harvest tweets from last 24h
 const SCROLL_COUNT = parseInt(process.env.SCROLL_COUNT || '8', 10);
+
+// Hard caps for curated_profile_posts (read from env with defaults)
+const HARVEST_MAX_HANDLES = parseInt(process.env.HARVEST_MAX_HANDLES || '6', 10);
+const HARVEST_MAX_TWEETS_PER_HANDLE = parseInt(process.env.HARVEST_MAX_TWEETS_PER_HANDLE || '4', 10);
+const HARVEST_MAX_SCROLLS_PER_HANDLE = parseInt(process.env.HARVEST_MAX_SCROLLS_PER_HANDLE || '1', 10);
+const HARVEST_MAX_INSERTS_PER_RUN = parseInt(process.env.HARVEST_MAX_INSERTS_PER_RUN || '10', 10);
+const HARVEST_HANDLE_TIMEOUT_MS = parseInt(process.env.HARVEST_HANDLE_TIMEOUT_MS || '15000', 10);
+const HARVEST_NAV_TIMEOUT_MS = parseInt(process.env.HARVEST_NAV_TIMEOUT_MS || '12000', 10);
+
+// Legacy constants (kept for compatibility)
+const MAX_PROFILE_SCROLLS = HARVEST_MAX_SCROLLS_PER_HANDLE;
+const MAX_TWEET_IDS_COLLECTED = HARVEST_MAX_HANDLES * HARVEST_MAX_TWEETS_PER_HANDLE;
+const MAX_INSERTS_PER_RUN_LEGACY = HARVEST_MAX_INSERTS_PER_RUN;
 
 interface HarvestResult {
   tweets_seen: number;
@@ -104,7 +117,7 @@ async function isTweetAlreadyUsed(tweetId: string): Promise<boolean> {
 /**
  * Record CONSENT_WALL event
  */
-async function recordConsentWall(mode: string, url: string): Promise<void> {
+async function recordConsentWall(mode: string, url: string, debug?: any, page?: any): Promise<void> {
   if (!getSupabaseClient) {
     const db = await import('../../src/db');
     getSupabaseClient = db.getSupabaseClient;
@@ -128,48 +141,72 @@ async function recordConsentWall(mode: string, url: string): Promise<void> {
  * Check for consent wall on page
  * For search pages: Only flag consent wall if logged-in shell is missing
  */
-async function checkConsentWall(page: any, isSearchPage: boolean = false): Promise<boolean> {
+async function checkConsentWall(page: any, isSearchPage: boolean = false): Promise<{ detected: boolean; debug: { url: string; hasShell: { leftNav: boolean; compose: boolean; avatar: boolean }; hasTweetArticle: boolean } }> {
   const currentUrl = page.url();
+  
+  // Check shell indicators
+  const shellIndicators = await page.evaluate(() => {
+    return {
+      leftNav: !!(document.querySelector('nav[role="navigation"]') || document.querySelector('a[href="/home"]')),
+      compose: !!document.querySelector('[data-testid="SideNav_NewTweet_Button"]'),
+      avatar: !!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]'),
+    };
+  });
+  
+  const hasShell = shellIndicators.leftNav || shellIndicators.compose || shellIndicators.avatar;
+  
+  // Check for tweet articles
+  const hasTweetArticle = await page.evaluate(() => {
+    return !!document.querySelector('article[data-testid="tweet"]');
+  });
   
   // Check for explicit redirects to consent/login flows
   if (currentUrl.includes('/i/flow/consent') || currentUrl.includes('/i/flow/login')) {
-    return true;
+    return {
+      detected: true,
+      debug: {
+        url: currentUrl,
+        hasShell: shellIndicators,
+        hasTweetArticle,
+      },
+    };
   }
   
-  // For search pages: First check if logged-in shell exists
-  if (isSearchPage) {
-    const hasShell = await page.evaluate(() => {
-      return !!(
-        document.querySelector('nav[role="navigation"]') ||
-        document.querySelector('[data-testid="SideNav_NewTweet_Button"]') ||
-        document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]') ||
-        document.querySelector('a[href="/home"]') ||
-        document.querySelector('[data-testid="primaryColumn"]')
-      );
-    });
-    
-    // If shell exists, we're logged in - not a consent wall
-    if (hasShell) {
-      return false;
-    }
+  // For search pages: If shell exists, we're logged in - not a consent wall
+  if (isSearchPage && hasShell) {
+    return {
+      detected: false,
+      debug: {
+        url: currentUrl,
+        hasShell: shellIndicators,
+        hasTweetArticle,
+      },
+    };
   }
   
   // Check for login button/form visible (only if shell is missing)
   const hasLoginButton = await page.locator('text="Sign in"').isVisible({ timeout: 2000 }).catch(() => false) ||
                          await page.locator('text="Log in"').isVisible({ timeout: 2000 }).catch(() => false);
   
-  if (hasLoginButton && isSearchPage) {
+  if (hasLoginButton && isSearchPage && !hasShell) {
     // On search page with login button but no shell = consent wall
-    return true;
+    return {
+      detected: true,
+      debug: {
+        url: currentUrl,
+        hasShell: shellIndicators,
+        hasTweetArticle,
+      },
+    };
   }
   
   // Check for explicit consent text (only if shell is missing)
   const pageContent = await page.content().catch(() => '');
   const hasConsentText = pageContent.includes('Before you continue to X') ||
-                        pageContent.includes('Cookies') && pageContent.includes('consent') ||
+                        (pageContent.includes('Cookies') && pageContent.includes('consent')) ||
                         pageContent.includes('Accept cookies');
   
-  if (hasConsentText && isSearchPage) {
+  if (hasConsentText && isSearchPage && !hasShell) {
     // Wait a bit to see if tweets load despite consent text
     await page.waitForTimeout(3000);
     const hasTweets = await page.evaluate(() => {
@@ -178,11 +215,25 @@ async function checkConsentWall(page: any, isSearchPage: boolean = false): Promi
     
     // If tweets exist, it's not a consent wall (just a banner)
     if (hasTweets) {
-      return false;
+      return {
+        detected: false,
+        debug: {
+          url: currentUrl,
+          hasShell: shellIndicators,
+          hasTweetArticle: true,
+        },
+      };
     }
     
     // No tweets + consent text + no shell = consent wall
-    return true;
+    return {
+      detected: true,
+      debug: {
+        url: currentUrl,
+        hasShell: shellIndicators,
+        hasTweetArticle: false,
+      },
+    };
   }
   
   // Check for explicit error messages (always flag these)
@@ -191,14 +242,28 @@ async function checkConsentWall(page: any, isSearchPage: boolean = false): Promi
       pageContent.includes('rate limit exceeded') ||
       pageContent.includes('suspended') ||
       pageContent.includes('This account doesn\'t exist')) {
-    return true;
+    return {
+      detected: true,
+      debug: {
+        url: currentUrl,
+        hasShell: shellIndicators,
+        hasTweetArticle,
+      },
+    };
   }
   
   // Check for explicit error messages in DOM
   const hasError = await page.locator('text="Something went wrong"').isVisible({ timeout: 1000 }).catch(() => false) ||
                    await page.locator('text="This post is from an account that no longer exists"').isVisible({ timeout: 1000 }).catch(() => false);
   
-  return hasError;
+  return {
+    detected: hasError,
+    debug: {
+      url: currentUrl,
+      hasShell: shellIndicators,
+      hasTweetArticle,
+    },
+  };
 }
 
 /**
@@ -274,7 +339,7 @@ async function collectFromHomeTimeline(): Promise<string[]> {
             const currentUrl = page.url();
             if (currentUrl.includes('/i/flow/login') || currentUrl.includes('/login') || currentUrl.includes('/account/access')) {
               const consentResult = await checkConsentWall(page, false);
-              await recordConsentWall('home_scroll', currentUrl, consentResult.debug, page);
+              await recordConsentWall('home_scroll', currentUrl);
               throw new Error('CONSENT_WALL - Login required');
             }
             
@@ -307,7 +372,7 @@ async function collectFromHomeTimeline(): Promise<string[]> {
     const hasExplicitError = await page.locator('text="Something went wrong"').isVisible({ timeout: 2000 }).catch(() => false);
     if (hasExplicitError) {
       const consentResult = await checkConsentWall(page, false);
-      await recordConsentWall('home_scroll', 'https://x.com/home', consentResult.debug, page);
+      await recordConsentWall('home_scroll', 'https://x.com/home');
       throw new Error('CONSENT_WALL');
     }
     
@@ -373,6 +438,319 @@ async function collectFromHomeTimeline(): Promise<string[]> {
 }
 
 /**
+ * Load harvest state from disk
+ */
+function loadHarvestState(): { lastRunAt?: string; perHandleLastSeenTweetId?: Record<string, string> } {
+  const statePath = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'harvest_state.json');
+  if (fs.existsSync(statePath)) {
+    try {
+      return JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+/**
+ * Save harvest state to disk
+ */
+function saveHarvestState(state: { lastRunAt: string; perHandleLastSeenTweetId: Record<string, string> }): void {
+  const statePath = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'harvest_state.json');
+  const stateDir = path.dirname(statePath);
+  if (!fs.existsSync(stateDir)) {
+    fs.mkdirSync(stateDir, { recursive: true });
+  }
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+}
+
+/**
+ * Setup resource blocking on page (block images/media/fonts/stylesheets)
+ */
+async function setupResourceBlocking(page: any): Promise<void> {
+  try {
+    // Use CDP route interception to block resource-heavy types
+    const client = await page.context().newCDPSession(page);
+    await client.send('Network.enable');
+    await client.send('Network.setRequestInterception', {
+      patterns: [
+        { urlPattern: '*', resourceType: 'Image', interceptionStage: 'HeadersReceived' },
+        { urlPattern: '*', resourceType: 'Media', interceptionStage: 'HeadersReceived' },
+        { urlPattern: '*', resourceType: 'Font', interceptionStage: 'HeadersReceived' },
+        { urlPattern: '*', resourceType: 'Stylesheet', interceptionStage: 'HeadersReceived' },
+      ],
+    });
+    
+    // Fallback: use route() if CDP interception doesn't work
+    await page.route('**/*', (route: any) => {
+      const resourceType = route.request().resourceType();
+      if (['image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
+        route.abort();
+      } else {
+        route.continue();
+      }
+    });
+  } catch (error: any) {
+    // If CDP route fails, try Playwright route
+    try {
+      await page.route('**/*', (route: any) => {
+        const resourceType = route.request().resourceType();
+        if (['image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
+          route.abort();
+        } else {
+          route.continue();
+        }
+      });
+    } catch {
+      // If both fail, continue without blocking (non-fatal)
+      console.log('   ⚠️  Resource blocking not available, continuing...');
+    }
+  }
+}
+
+/**
+ * Collect tweets from curated handle profiles (optimized with caps + timeouts + resource blocking)
+ */
+async function collectFromCuratedProfiles(): Promise<string[]> {
+  const harvestStartTime = Date.now();
+  
+  // Use runner launcher (CDP mode)
+  if (!process.env.RUNNER_BROWSER) {
+    process.env.RUNNER_BROWSER = process.env.RUNNER_MODE === 'true' ? 'cdp' : 'direct';
+  }
+  const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
+  const tweetIds: string[] = [];
+  
+  const context = await launchRunnerPersistent(true); // headless for harvesting
+  
+  // Load harvest state
+  const harvestState = loadHarvestState();
+  const perHandleLastSeen: Record<string, string> = harvestState.perHandleLastSeenTweetId || {};
+  
+  // Limit to HARVEST_MAX_HANDLES handles per run
+  const handlesToProcess = CURATED_HANDLES.slice(0, HARVEST_MAX_HANDLES);
+  
+  if (handlesToProcess.length === 0) {
+    console.log('   ⚠️  No curated handles configured (REPLY_CURATED_HANDLES is empty)');
+    await context.close();
+    return [];
+  }
+  
+  console.log(`   📋 Processing ${handlesToProcess.length} curated handles (max ${HARVEST_MAX_TWEETS_PER_HANDLE} tweets/handle, ${HARVEST_MAX_SCROLLS_PER_HANDLE} scrolls/handle)...`);
+  
+  let handlesAttempted = 0;
+  let handlesSucceeded = 0;
+  let handlesTimedOut = 0;
+  let failedHandles: Array<{ handle: string; reason: string }> = [];
+  
+  for (const handle of handlesToProcess) {
+    handlesAttempted++;
+    
+    // Early exit: stop if we've collected enough tweet IDs
+    const maxTweetIds = HARVEST_MAX_HANDLES * HARVEST_MAX_TWEETS_PER_HANDLE;
+    if (tweetIds.length >= maxTweetIds) {
+      console.log(`   ✅ Collected ${tweetIds.length} tweet IDs, stopping early (max ${maxTweetIds})`);
+      break;
+    }
+    
+    // ALWAYS create a NEW page for each profile
+    const page = await context.newPage();
+    const handleStartTime = Date.now();
+    
+    try {
+      // Setup resource blocking
+      await setupResourceBlocking(page);
+      
+      const profileUrl = `https://x.com/${handle}`;
+      console.log(`   🔍 Visiting @${handle}...`);
+      
+      // Navigate with HARVEST_NAV_TIMEOUT_MS timeout
+      await Promise.race([
+        page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: HARVEST_NAV_TIMEOUT_MS }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Navigation timeout')), HARVEST_NAV_TIMEOUT_MS)),
+      ]);
+      
+      // Wait for shell indicators (lightweight check only)
+      const shellDetected = await Promise.race([
+        page.waitForSelector('nav[role="navigation"]', { timeout: 3000 }).then(() => 'leftNav').catch(() => null),
+        page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 3000 }).then(() => 'compose').catch(() => null),
+        page.waitForSelector('[data-testid="SideNav_AccountSwitcher_Button"]', { timeout: 3000 }).then(() => 'avatar').catch(() => null),
+        new Promise(resolve => setTimeout(() => resolve(null), 4000)), // Fallback timeout
+      ]).catch(() => null);
+      
+      if (!shellDetected) {
+        // Quick check if we're actually logged in
+        const hasShell = await page.evaluate(() => {
+          return !!(
+            document.querySelector('nav[role="navigation"]') ||
+            document.querySelector('[data-testid="SideNav_NewTweet_Button"]') ||
+            document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]') ||
+            document.querySelector('a[href="/home"]')
+          );
+        });
+        
+        if (!hasShell) {
+          failedHandles.push({ handle, reason: 'profile_load_failed' });
+          console.log(`   ⚠️  @${handle}: profile_load_failed (no shell detected)`);
+          await page.close();
+          continue;
+        }
+      }
+      
+      // Collect tweet IDs from first screen (no waiting for tweets to load)
+      const handleTweetIds: string[] = [];
+      const lastSeenTweetId = perHandleLastSeen[handle];
+      
+      // Extract tweet IDs from visible tweets (root posts only)
+      const ids = await page.evaluate(() => {
+        const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+        const results: string[] = [];
+        
+        for (const article of articles) {
+          // Skip replies (look for "Replying to" text)
+          const articleText = article.textContent || '';
+          if (articleText.includes('Replying to')) {
+            continue;
+          }
+          
+          // Extract tweet ID from article link
+          const links = article.querySelectorAll('a[href*="/status/"]');
+          for (const link of Array.from(links)) {
+            const href = link.getAttribute('href') || '';
+            const match = href.match(/\/status\/(\d+)/);
+            if (match) {
+              results.push(match[1]);
+              break;
+            }
+          }
+        }
+        
+        return [...new Set(results)]; // Deduplicate
+      });
+      
+      // Filter out tweets we've already seen (skip if tweetId <= lastSeenTweetId)
+      const newIds = ids.filter(id => {
+        if (lastSeenTweetId && id <= lastSeenTweetId) {
+          return false; // Skip already-seen tweets
+        }
+        return true;
+      });
+      
+      handleTweetIds.push(...newIds.slice(0, HARVEST_MAX_TWEETS_PER_HANDLE));
+      
+      // Do at most HARVEST_MAX_SCROLLS_PER_HANDLE scroll(s)
+      for (let scrollIdx = 0; scrollIdx < HARVEST_MAX_SCROLLS_PER_HANDLE && handleTweetIds.length < HARVEST_MAX_TWEETS_PER_HANDLE; scrollIdx++) {
+        // Check time budget
+        const elapsed = Date.now() - handleStartTime;
+        if (elapsed >= HARVEST_HANDLE_TIMEOUT_MS) {
+          console.log(`   ⏱️  @${handle}: Timeout (${elapsed}ms >= ${HARVEST_HANDLE_TIMEOUT_MS}ms)`);
+          handlesTimedOut++;
+          break;
+        }
+        
+        // Scroll down
+        await page.evaluate(() => {
+          window.scrollBy(0, window.innerHeight * 2);
+        });
+        
+        await jitter(300, 600); // Faster scroll delay
+        
+        // Extract more tweet IDs
+        const moreIds = await page.evaluate(() => {
+          const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+          const results: string[] = [];
+          
+          for (const article of articles) {
+            const articleText = article.textContent || '';
+            if (articleText.includes('Replying to')) {
+              continue;
+            }
+            
+            const links = article.querySelectorAll('a[href*="/status/"]');
+            for (const link of Array.from(links)) {
+              const href = link.getAttribute('href') || '';
+              const match = href.match(/\/status\/(\d+)/);
+              if (match) {
+                results.push(match[1]);
+                break;
+              }
+            }
+          }
+          
+          return [...new Set(results)];
+        });
+        
+        // Filter and add new IDs
+        const moreNewIds = moreIds.filter(id => {
+          if (lastSeenTweetId && id <= lastSeenTweetId) {
+            return false;
+          }
+          return !handleTweetIds.includes(id); // Avoid duplicates within handle
+        });
+        
+        handleTweetIds.push(...moreNewIds.slice(0, HARVEST_MAX_TWEETS_PER_HANDLE - handleTweetIds.length));
+      }
+      
+      // Update last seen tweet ID for this handle (use highest ID)
+      if (handleTweetIds.length > 0) {
+        const sortedIds = handleTweetIds.sort((a, b) => b.localeCompare(a)); // Descending
+        perHandleLastSeen[handle] = sortedIds[0];
+        handlesSucceeded++;
+      }
+      
+      tweetIds.push(...handleTweetIds);
+      console.log(`   ✅ @${handle}: Collected ${handleTweetIds.length} tweet IDs (${Date.now() - handleStartTime}ms)`);
+      
+    } catch (error: any) {
+      const elapsed = Date.now() - handleStartTime;
+      if (elapsed >= HARVEST_HANDLE_TIMEOUT_MS || error.message.includes('timeout') || error.message.includes('Timeout')) {
+        handlesTimedOut++;
+        failedHandles.push({ handle, reason: `timeout (${elapsed}ms)` });
+        console.log(`   ⏱️  @${handle}: timeout (${elapsed}ms)`);
+      } else {
+        failedHandles.push({ handle, reason: `error: ${error.message}` });
+        console.log(`   ⚠️  @${handle}: error: ${error.message}`);
+      }
+    } finally {
+      // Always close the page
+      await page.close().catch(() => {});
+      
+      // Check time budget for entire handle
+      const elapsed = Date.now() - handleStartTime;
+      if (elapsed >= HARVEST_HANDLE_TIMEOUT_MS) {
+        // Already handled above
+      }
+    }
+    
+    // Early exit: stop if we've collected enough tweet IDs
+    if (tweetIds.length >= maxTweetIds) {
+      break;
+    }
+  }
+  
+  await context.close();
+  
+  // Save harvest state
+  saveHarvestState({
+    lastRunAt: new Date().toISOString(),
+    perHandleLastSeenTweetId: perHandleLastSeen,
+  });
+  
+  // Log warnings for failed handles
+  if (failedHandles.length > 0) {
+    console.log(`\n   ⚠️  Failed handles (${failedHandles.length}):`);
+    failedHandles.forEach(({ handle, reason }) => {
+      console.log(`      @${handle}: ${reason}`);
+    });
+  }
+  
+  const harvestDuration = Date.now() - harvestStartTime;
+  console.log(`\n   📊 Harvest stats: ${handlesAttempted} attempted, ${handlesSucceeded} succeeded, ${handlesTimedOut} timed out (${harvestDuration}ms)`);
+  
+  return [...new Set(tweetIds)]; // Deduplicate final list
+}
+
+/**
  * Collect tweets from search queries
  */
 async function collectFromSearchQueries(): Promise<string[]> {
@@ -415,28 +793,29 @@ async function collectFromSearchQueries(): Promise<string[]> {
         const consentWallDetected = consentWallResult.detected;
         
         if (consentWallDetected) {
-          await recordConsentWall('search_queries', searchUrl, consentWallResult.debug, page);
+          await recordConsentWall('search_queries', searchUrl);
           console.log(`   ⚠️  CONSENT_WALL detected, skipping search`);
           console.log(`   Debug: ${JSON.stringify(consentWallResult.debug, null, 2)}`);
           continue;
         }
         
         // If shell exists but no tweet article, retry once with fresh page
-        if (consentWallResult.debug.hasShell.leftNav || consentWallResult.debug.hasShell.compose || consentWallResult.debug.hasShell.avatar) {
-          if (!consentWallResult.debug.hasTweetArticle) {
-            console.log('   ⚠️  Shell present but no tweet article, retrying with fresh page...');
-            await page.evaluate(() => window.stop()).catch(() => {});
-            await page.close().catch(() => {});
-            page = await context.newPage();
-            await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            await page.waitForTimeout(3000);
-            
-            const retryResult = await checkConsentWall(page, true);
-            if (!retryResult.debug.hasTweetArticle && (retryResult.debug.hasShell.leftNav || retryResult.debug.hasShell.compose || retryResult.debug.hasShell.avatar)) {
-              console.log('   ⚠️  Still no tweet article after retry, classifying as NO_CONTENT_DETECTED');
-              result.skipped_by_reason['no_content_detected'] = (result.skipped_by_reason['no_content_detected'] || 0) + 1;
-              continue;
-            }
+        const hasShell = consentWallResult.debug.hasShell.leftNav || consentWallResult.debug.hasShell.compose || consentWallResult.debug.hasShell.avatar;
+        const hasTweetArticle = consentWallResult.debug.hasTweetArticle;
+        if (hasShell && !hasTweetArticle) {
+          console.log('   ⚠️  Shell present but no tweet article, retrying with fresh page...');
+          await page.evaluate(() => window.stop()).catch(() => {});
+          await page.close().catch(() => {});
+          page = await context.newPage();
+          await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          await page.waitForTimeout(3000);
+          
+          const retryResult = await checkConsentWall(page, true);
+          const retryHasShell = retryResult.debug.hasShell.leftNav || retryResult.debug.hasShell.compose || retryResult.debug.hasShell.avatar;
+          const retryHasTweetArticle = retryResult.debug.hasTweetArticle;
+          if (!retryHasTweetArticle && retryHasShell) {
+            console.log('   ⚠️  Still no tweet article after retry, skipping search');
+            continue;
           }
         }
         
@@ -575,9 +954,20 @@ async function validateTweetWithCDP(tweetId: string): Promise<{
         return { exists: false, reason: 'no_article' };
       }
       
-      // Extract author
-      const authorElement = mainArticle.querySelector('[data-testid="User-Name"] a');
-      const author = authorElement?.textContent?.replace('@', '').trim() || null;
+      // Extract author handle from href (more reliable than display name)
+      const authorElement = mainArticle.querySelector('[data-testid="User-Name"] a[href*="/"]');
+      let author: string | null = null;
+      if (authorElement) {
+        const href = authorElement.getAttribute('href') || '';
+        const handleMatch = href.match(/\/([^\/]+)$/);
+        if (handleMatch) {
+          author = handleMatch[1].toLowerCase(); // Normalize to lowercase
+        }
+      }
+      // Fallback to display name if href extraction fails
+      if (!author) {
+        author = authorElement?.textContent?.replace('@', '').trim().toLowerCase() || null;
+      }
       
       // Extract content - collect all spans inside tweetText container
       const tweetTextEl = mainArticle.querySelector('[data-testid="tweetText"]');
@@ -604,9 +994,17 @@ async function validateTweetWithCDP(tweetId: string): Promise<{
       
       // Handle "Show more" button if present and content is short
       if (content && content.length < 100) {
-        const showMoreButton = mainArticle.querySelector('span:has-text("Show more")');
-        if (showMoreButton) {
-          // Note: We can't click here in evaluate, but we'll try to get expanded text
+        // Check for "Show more" text in any span (can't use :has-text() in querySelector)
+        const allSpans = mainArticle.querySelectorAll('span');
+        let hasShowMore = false;
+        for (const span of Array.from(allSpans)) {
+          if (span.textContent?.includes('Show more')) {
+            hasShowMore = true;
+            break;
+          }
+        }
+        if (hasShowMore) {
+          // Try to get expanded text from article
           const expandedText = mainArticle.textContent || '';
           if (expandedText.length > content.length) {
             content = expandedText.substring(0, 500); // Limit to reasonable length
@@ -747,7 +1145,7 @@ async function validateAndInsert(
       return;
     }
     
-    // Apply quality filter
+    // Apply health-only filtering BEFORE quality filter
     const targetText = validationResult.content || '';
     const targetAuthor = validationResult.author || 'unknown';
     
@@ -757,6 +1155,59 @@ async function validateAndInsert(
       return;
     }
     
+    // 🔒 HEALTH-ONLY FILTER: Extract and normalize author handle
+    const authorHandleRaw = targetAuthor.replace('@', '').trim().toLowerCase();
+    const isCurated = CURATED_HANDLES.includes(authorHandleRaw);
+    
+    // Health keywords list
+    const healthKeywords = [
+      'sleep', 'insulin', 'resistance', 'metabolic', 'health', 'zone 2', 'protein', 'glucose', 'keto',
+      'nutrition', 'fitness', 'exercise', 'training', 'cardio', 'strength', 'muscle', 'recovery',
+      'hormone', 'testosterone', 'cortisol', 'stress', 'anxiety', 'depression', 'mental health',
+      'cardiovascular', 'heart', 'blood pressure', 'cholesterol', 'diabetes', 'obesity', 'weight',
+      'fasting', 'intermittent', 'diet', 'supplement', 'vitamin', 'mineral', 'micronutrient',
+      'research', 'study', 'clinical', 'trial', 'evidence', 'science', 'medical', 'doctor', 'physician',
+      'longevity', 'aging', 'biomarker', 'inflammation', 'immune', 'autoimmune', 'chronic disease',
+    ];
+    
+    // Off-topic blacklist
+    const offTopicBlacklist = [
+      'trump', 'biden', 'modi', 'election', 'vote', 'political', 'politics', 'democrat', 'republican',
+      'crypto', 'bitcoin', 'btc', 'ethereum', 'eth', 'sol', 'solana', 'nft', 'blockchain', 'dogecoin',
+      'meme', 'viral', 'trending', 'fyp', 'foryou', 'foryoupage',
+      'war', 'conflict', 'military', 'weapon', 'gun', 'shooting',
+      'wallstreet', 'stock', 'trading', 'invest', 'finance', 'market',
+    ];
+    
+    const textLower = targetText.toLowerCase();
+    const hasHealthKeyword = healthKeywords.some(kw => textLower.includes(kw.toLowerCase()));
+    const hasOffTopicKeyword = offTopicBlacklist.some(kw => textLower.includes(kw.toLowerCase()));
+    
+    // 🔒 HEALTH-ONLY INSERT RULE:
+    // - If curated: allow unless (blacklist hit AND no health keyword)
+    // - If NOT curated: require hasHealthKeyword AND NOT blacklist hit
+    if (isCurated) {
+      if (hasOffTopicKeyword && !hasHealthKeyword) {
+        result.skipped_by_reason['harvest_blacklist_offtopic'] = (result.skipped_by_reason['harvest_blacklist_offtopic'] || 0) + 1;
+        console.log(`   ⏭️  Skipped ${tweetId}: harvest_blacklist_offtopic (curated but off-topic)`);
+        return;
+      }
+      // Curated handle passes health filter
+    } else {
+      // NOT curated: require health keyword AND no blacklist
+      if (!hasHealthKeyword) {
+        result.skipped_by_reason['harvest_not_curated_no_health'] = (result.skipped_by_reason['harvest_not_curated_no_health'] || 0) + 1;
+        console.log(`   ⏭️  Skipped ${tweetId}: harvest_not_curated_no_health`);
+        return;
+      }
+      if (hasOffTopicKeyword) {
+        result.skipped_by_reason['harvest_blacklist_offtopic'] = (result.skipped_by_reason['harvest_blacklist_offtopic'] || 0) + 1;
+        console.log(`   ⏭️  Skipped ${tweetId}: harvest_blacklist_offtopic`);
+        return;
+      }
+    }
+    
+    // Now apply quality filter (after health filter passes)
     const qualityResult = filterTargetQuality(
       targetText,
       targetAuthor,
@@ -786,7 +1237,8 @@ async function validateAndInsert(
         status: 'pending',
         replied_to: false,
         opportunity_score: qualityResult.score || 75.0,
-        discovery_method: HARVEST_MODE === 'home_scroll' ? 'mac_home_scroll' : 'mac_search',
+        discovery_method: HARVEST_MODE === 'curated_profile_posts' ? 'curated_profile_posts' :
+                          HARVEST_MODE === 'home_scroll' ? 'mac_home_scroll' : 'mac_search',
         account_username: targetAuthor,
       });
     
@@ -902,6 +1354,8 @@ async function checkSessionStatus(): Promise<{ status: 'SESSION_OK' | 'SESSION_E
 }
 
 async function main() {
+  (global as any).harvestStartTime = Date.now();
+  
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           🌾 MAC RUNNER CURATED HARVESTER');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
@@ -927,8 +1381,12 @@ async function main() {
   console.log(`   URL: ${sessionCheck.url}\n`);
   
   console.log(`Mode: ${HARVEST_MODE}`);
+  if (HARVEST_MODE === 'curated_profile_posts') {
+    console.log(`Caps: ${HARVEST_MAX_HANDLES} handles, ${HARVEST_MAX_TWEETS_PER_HANDLE} tweets/handle, ${HARVEST_MAX_SCROLLS_PER_HANDLE} scrolls/handle`);
+    console.log(`Timeouts: ${HARVEST_HANDLE_TIMEOUT_MS}ms/handle, ${HARVEST_NAV_TIMEOUT_MS}ms/nav`);
+  }
   console.log(`Max validations per run: ${MAX_VALIDATIONS_PER_RUN}`);
-  console.log(`Scroll count: ${SCROLL_COUNT}\n`);
+  console.log(`Max inserts per run: ${HARVEST_MAX_INSERTS_PER_RUN}\n`);
   
   const result: HarvestResult = {
     tweets_seen: 0,
@@ -945,7 +1403,48 @@ async function main() {
     let searchFailed = false;
     let searchFailureReason = '';
     
-    if (HARVEST_MODE === 'home_scroll') {
+    if (HARVEST_MODE === 'curated_profile_posts') {
+      console.log('👤 Collecting from curated handle profiles...\n');
+      tweetIds = await collectFromCuratedProfiles();
+      
+      // If curated profiles yielded <3 tweet IDs and we have curated handles configured, log warning
+      if (tweetIds.length < 3 && CURATED_HANDLES.length > 0) {
+        console.log(`\n⚠️  WARNING: Curated profile harvest yielded only ${tweetIds.length} tweet IDs`);
+        console.log(`   Configured handles: ${CURATED_HANDLES.slice(0, 5).join(', ')}${CURATED_HANDLES.length > 5 ? '...' : ''}`);
+        console.log(`   This may indicate profile load failures or no recent posts\n`);
+      }
+      
+      // Fallback to search_queries if curated profiles failed and we have handles
+      if (tweetIds.length === 0 && CURATED_HANDLES.length > 0) {
+        console.log(`\n⚠️  CURATED_PROFILE_POSTS FAILED → FALLING BACK TO SEARCH_QUERIES`);
+        try {
+          console.log('🔍 Collecting from search queries (fallback)...\n');
+          const fallbackIds = await collectFromSearchQueries();
+          tweetIds = fallbackIds;
+          console.log(`✅ Fallback collected ${tweetIds.length} tweet IDs\n`);
+        } catch (fallbackError: any) {
+          if (fallbackError.message.includes('CONSENT_WALL')) {
+            result.consent_wall_seen = true;
+            console.error(`❌ Fallback also failed: CONSENT_WALL`);
+          } else {
+            console.error(`❌ Fallback also failed: ${fallbackError.message}`);
+          }
+          
+          // Last resort: home_scroll
+          if (tweetIds.length === 0) {
+            console.log(`\n⚠️  SEARCH_QUERIES FAILED → FALLING BACK TO HOME_SCROLL (last resort)`);
+            try {
+              console.log('📜 Collecting from home timeline (last resort)...\n');
+              const lastResortIds = await collectFromHomeTimeline();
+              tweetIds = lastResortIds;
+              console.log(`✅ Last resort collected ${tweetIds.length} tweet IDs\n`);
+            } catch (lastResortError: any) {
+              console.error(`❌ Last resort also failed: ${lastResortError.message}`);
+            }
+          }
+        }
+      }
+    } else if (HARVEST_MODE === 'home_scroll') {
       console.log('📜 Collecting from home timeline...\n');
       tweetIds = await collectFromHomeTimeline();
     } else if (HARVEST_MODE === 'search_queries') {
@@ -1000,17 +1499,23 @@ async function main() {
     }
     
     // Validate and insert (with cap)
-    console.log(`🔍 Validating up to ${MAX_VALIDATIONS_PER_RUN} tweets...\n`);
+    console.log(`🔍 Validating up to ${MAX_VALIDATIONS_PER_RUN} tweets (max ${HARVEST_MAX_INSERTS_PER_RUN} inserts)...\n`);
     const validatedCount = { count: 0 };
     
     for (const tweetId of tweetIds.slice(0, MAX_VALIDATIONS_PER_RUN * 2)) { // Process more than cap to account for skips
+      // Early exit: stop if we've inserted enough
+      if (result.inserted >= HARVEST_MAX_INSERTS_PER_RUN) {
+        console.log(`   ✅ Reached max inserts (${HARVEST_MAX_INSERTS_PER_RUN}), stopping validation`);
+        break;
+      }
+      
       await validateAndInsert(tweetId, result, validatedCount);
       
       if (validatedCount.count >= MAX_VALIDATIONS_PER_RUN) {
         break;
       }
       
-      await jitter(300, 900); // Pace validations
+      await jitter(300, 600); // Faster validation pacing
     }
     
   } catch (error: any) {
@@ -1022,22 +1527,23 @@ async function main() {
     }
   }
   
-  // Final report
+  // Final report (compact)
+  const harvestDuration = Date.now() - (global as any).harvestStartTime || 0;
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           📊 HARVEST REPORT');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
-  console.log(`Tweets seen: ${result.tweets_seen}`);
   console.log(`Tweet IDs collected: ${result.tweet_ids_collected}`);
   console.log(`Validated OK: ${result.validated_ok}`);
   console.log(`Inserted: ${result.inserted}`);
-  console.log(`Consent wall seen: ${result.consent_wall_seen ? 'YES' : 'NO'}\n`);
+  console.log(`Duration: ${harvestDuration}ms`);
+  console.log(`Consent wall: ${result.consent_wall_seen ? 'YES' : 'NO'}\n`);
   
   if (Object.keys(result.skipped_by_reason).length > 0) {
-    console.log('Skipped by reason:');
+    console.log('Top skip reasons:');
     const sorted = Object.entries(result.skipped_by_reason)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 5);
+      .slice(0, 3);
     
     for (const [reason, count] of sorted) {
       console.log(`   ${reason}: ${count}`);

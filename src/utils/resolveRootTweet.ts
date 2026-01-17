@@ -39,17 +39,32 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
     const tweetUrl = `https://x.com/i/web/status/${tweetId}`;
     const decisionId = `ancestry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // 🎯 PART A: Trace pool usage
-    const pool = UnifiedBrowserPool.getInstance();
-    const poolAny = pool as any;
-    const poolMetricsBefore = pool.getMetrics();
-    const poolId = `pool-${poolMetricsBefore.contextsCreated || 0}`;
+    // 🔒 CDP MODE: Use CDP-authenticated session on Mac runner
+    const useCDP = process.env.RUNNER_MODE === 'true' && process.env.RUNNER_BROWSER === 'cdp';
     
-    console.log(`[ANCESTRY_TRACE] start decision_id=${decisionId} target=${tweetId} used_pool=true pool_id=${poolId} queue_len=${poolAny.queue?.length || 0} active=${poolAny.getActiveCount?.() || 0}`);
+    let pool: any = null;
+    let poolAny: any = null;
+    let poolMetricsBefore: any = null;
+    let poolId = 'cdp';
+    let context: any = null;
     
-    // Track ancestry attempt (for metrics)
-    (global as any).ancestryAttemptsLast1h = ((global as any).ancestryAttemptsLast1h || 0) + 1;
-    (global as any).ancestryUsedPoolLast1h = ((global as any).ancestryUsedPoolLast1h || 0) + 1;
+    if (!useCDP) {
+      // 🎯 PART A: Trace pool usage (Railway mode)
+      pool = UnifiedBrowserPool.getInstance();
+      poolAny = pool as any;
+      poolMetricsBefore = pool.getMetrics();
+      poolId = `pool-${poolMetricsBefore.contextsCreated || 0}`;
+      
+      console.log(`[ANCESTRY_TRACE] start decision_id=${decisionId} target=${tweetId} used_pool=true pool_id=${poolId} queue_len=${poolAny.queue?.length || 0} active=${poolAny.getActiveCount?.() || 0}`);
+      
+      // Track ancestry attempt (for metrics)
+      (global as any).ancestryAttemptsLast1h = ((global as any).ancestryAttemptsLast1h || 0) + 1;
+      (global as any).ancestryUsedPoolLast1h = ((global as any).ancestryUsedPoolLast1h || 0) + 1;
+    } else {
+      console.log(`[ANCESTRY_TRACE] start decision_id=${decisionId} target=${tweetId} used_cdp=true`);
+      (global as any).ancestryAttemptsLast1h = ((global as any).ancestryAttemptsLast1h || 0) + 1;
+      (global as any).ancestryUsedCDPLast1h = ((global as any).ancestryUsedCDPLast1h || 0) + 1;
+    }
     
     let page;
     let resolutionAttempted = false;
@@ -64,9 +79,19 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
       currentStage = 'acquire_context';
       stageStartTime = Date.now();
       try {
-        page = await pool.acquirePage('resolve_root_tweet');
-        stageTimings[currentStage] = Date.now() - stageStartTime;
-        console.log(`[ANCESTRY_TRACE] stage=${currentStage} decision_id=${decisionId} duration_ms=${stageTimings[currentStage]} success=true`);
+        if (useCDP) {
+          // Use CDP-authenticated session
+          const { launchRunnerPersistent } = await import('../infra/playwright/runnerLauncher');
+          context = await launchRunnerPersistent(true); // headless
+          page = await context.newPage();
+          stageTimings[currentStage] = Date.now() - stageStartTime;
+          console.log(`[ANCESTRY_TRACE] stage=${currentStage} decision_id=${decisionId} duration_ms=${stageTimings[currentStage]} success=true used_cdp=true`);
+        } else {
+          // Use UnifiedBrowserPool (Railway mode)
+          page = await pool.acquirePage('resolve_root_tweet');
+          stageTimings[currentStage] = Date.now() - stageStartTime;
+          console.log(`[ANCESTRY_TRACE] stage=${currentStage} decision_id=${decisionId} duration_ms=${stageTimings[currentStage]} success=true`);
+        }
       } catch (acquireError: any) {
         stageTimings[currentStage] = Date.now() - stageStartTime;
         stageError = `acquire_context_timeout: ${acquireError.message}`;
@@ -440,9 +465,18 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
         currentStage = 'close_context';
         stageStartTime = Date.now();
         try {
-          await pool.releasePage(page);
-          stageTimings[currentStage] = Date.now() - stageStartTime;
-          console.log(`[ANCESTRY_TRACE] stage=${currentStage} decision_id=${decisionId} duration_ms=${stageTimings[currentStage]} success=true`);
+          const useCDPForClose = process.env.RUNNER_MODE === 'true' && process.env.RUNNER_BROWSER === 'cdp';
+          if (useCDPForClose) {
+            // CDP mode: just close the page (context persists)
+            await page.close();
+            stageTimings[currentStage] = Date.now() - stageStartTime;
+            console.log(`[ANCESTRY_TRACE] stage=${currentStage} decision_id=${decisionId} duration_ms=${stageTimings[currentStage]} success=true used_cdp=true`);
+          } else {
+            // Railway mode: release page back to pool
+            await pool.releasePage(page);
+            stageTimings[currentStage] = Date.now() - stageStartTime;
+            console.log(`[ANCESTRY_TRACE] stage=${currentStage} decision_id=${decisionId} duration_ms=${stageTimings[currentStage]} success=true`);
+          }
         } catch (closeError: any) {
           stageTimings[currentStage] = Date.now() - stageStartTime;
           console.warn(`[ANCESTRY_TRACE] stage=${currentStage} decision_id=${decisionId} duration_ms=${stageTimings[currentStage]} error=${closeError.message}`);
@@ -451,8 +485,9 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
     }
     });
   } catch (limiterError: any) {
-    // 🎯 LOAD SHAPING: Handle ANCESTRY_SKIPPED_OVERLOAD from limiter
-    if (limiterError.message && limiterError.message.includes('ANCESTRY_SKIPPED_OVERLOAD')) {
+    // 🎯 LOAD SHAPING: Handle ANCESTRY_SKIPPED_OVERLOAD from limiter (only in Railway mode)
+    const useCDPForLimiter = process.env.RUNNER_MODE === 'true' && process.env.RUNNER_BROWSER === 'cdp';
+    if (!useCDPForLimiter && limiterError.message && limiterError.message.includes('ANCESTRY_SKIPPED_OVERLOAD')) {
       const pool = UnifiedBrowserPool.getInstance();
       const poolAny = pool as any;
       const poolSnapshot: {
