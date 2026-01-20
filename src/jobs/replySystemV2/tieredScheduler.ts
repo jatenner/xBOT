@@ -400,6 +400,9 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     const fetchStartTime = Date.now();
     console.log(`[SCHEDULER] 💓 Heartbeat: Starting tweet fetch (timeout: ${FETCH_TWEET_TIMEOUT_MS}ms)...`);
     
+    // Store isReply from fetch for fail-open logic
+    let isReplyFromFetch: boolean | undefined = undefined;
+    
     try {
       // Use the EXACT same fetch function as contextLockVerifier
       const { fetchTweetData } = await import('../../gates/contextLockVerifier');
@@ -418,7 +421,8 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         targetTweetContentSnapshot = tweetData.text.trim();
         snapshotLenLive = tweetData.text.trim().length;
         snapshotSource = 'live_fetch';
-        console.log(`[SCHEDULER] ✅ Fetched full tweet text in ${fetchElapsed}ms: ${snapshotLenLive} chars`);
+        isReplyFromFetch = tweetData.isReply || false; // Store isReply for fail-open logic
+        console.log(`[SCHEDULER] ✅ Fetched full tweet text in ${fetchElapsed}ms: ${snapshotLenLive} chars, isReply=${isReplyFromFetch}`);
       } else {
         throw new Error(`Fetched text too short or null: ${tweetData?.text?.length || 0} chars`);
       }
@@ -562,7 +566,18 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     
     const allowCheckStartTime = Date.now();
     console.log(`[SCHEDULER] 💓 Heartbeat: Starting allow check...`);
-    const allowCheck = await shouldAllowReply(ancestry);
+    
+    // Check for consent_wall in ancestry error
+    const hasConsentWall = ancestry.error?.toLowerCase().includes('consent_wall') || false;
+    
+    // Pass context to shouldAllowReply for fail-open logic
+    // isReplyFromFetch is already set from fetchTweetData above (or undefined if fetch failed)
+    const allowCheck = await shouldAllowReply(ancestry, {
+      consent_wall: hasConsentWall,
+      isReply: isReplyFromFetch, // Will be undefined if fetch failed, false if root, true if reply
+      author_handle: candidateData.candidate_author_username,
+      tweet_id: candidate.candidate_tweet_id,
+    });
     const allowCheckElapsed = Date.now() - allowCheckStartTime;
     stageTimings.allow_ms = allowCheckElapsed;
     console.log(`[SCHEDULER] 💓 Heartbeat: Allow check completed in ${allowCheckElapsed}ms`);

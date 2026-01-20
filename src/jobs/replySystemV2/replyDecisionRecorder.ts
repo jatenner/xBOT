@@ -488,12 +488,71 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
  * All other cases (UNCERTAIN, ERROR, depth>=1, method=unknown) result in DENY
  * 🎯 ANALYTICS: Returns deny_reason_code for structured analytics
  */
-export async function shouldAllowReply(ancestry: ReplyAncestry): Promise<{ allow: boolean; reason: string; deny_reason_code?: string; deny_reason_detail?: string }> {
+export async function shouldAllowReply(ancestry: ReplyAncestry, context?: { consent_wall?: boolean; isReply?: boolean; author_handle?: string; tweet_id?: string }): Promise<{ allow: boolean; reason: string; deny_reason_code?: string; deny_reason_detail?: string }> {
   // 🔒 FAIL-CLOSED: Must have OK status
   if (ancestry.status !== 'OK') {
     const statusReason = ancestry.status === 'UNCERTAIN' 
       ? 'ANCESTRY_UNCERTAIN_FAIL_CLOSED'
       : 'ANCESTRY_ERROR_FAIL_CLOSED';
+    
+    // 🎯 FAIL-OPEN: Allow UNCERTAIN if we have evidence it's a root tweet
+    if (ancestry.status === 'UNCERTAIN') {
+      // Check for consent_wall in error message (if present)
+      const hasConsentWall = ancestry.error?.toLowerCase().includes('consent_wall') || false;
+      const consentWallPassed = !hasConsentWall; // consent_wall=false means we passed
+      
+      // Check if fetchTweetData detected it as a reply
+      const isReplyFromContext = context?.isReply === false; // isReply=false means likely root
+      
+      // Check reply signals - all should be false for a root tweet
+      const signals = ancestry.signals || {};
+      const hasNoReplySignals = 
+        ((signals as any).replying_to_text === false || (signals as any).replying_to_text === undefined) &&
+        ((signals as any).social_context === false || (signals as any).social_context === undefined) &&
+        ((signals as any).main_article_reply_indicator === false || (signals as any).main_article_reply_indicator === undefined);
+      
+      // Check that target has no parent (most authoritative)
+      const hasNoParent = ancestry.targetInReplyToTweetId === null || ancestry.targetInReplyToTweetId === undefined;
+      
+      // Fail-open condition: UNCERTAIN + consent_wall passed + not a reply + no reply signals + no parent
+      if (consentWallPassed && isReplyFromContext && hasNoReplySignals && hasNoParent) {
+        const supabase = getSupabaseClient();
+        const tweetId = context?.tweet_id || ancestry.targetTweetId;
+        const authorHandle = context?.author_handle || 'unknown';
+        const url = `https://x.com/i/status/${tweetId}`;
+        
+        // Log fail-open event
+        await supabase.from('system_events').insert({
+          event_type: 'ALLOW_FAILOPEN_ANCESTRY_UNCERTAIN',
+          severity: 'info',
+          message: `Fail-open ALLOW for UNCERTAIN ancestry: tweet_id=${tweetId}`,
+          event_data: {
+            tweet_id: tweetId,
+            url: url,
+            author_handle: authorHandle,
+            consent_wall: !hasConsentWall,
+            isReply: context?.isReply || false,
+            reply_signals: {
+              replying_to_text: (signals as any).replying_to_text || false,
+              social_context: (signals as any).social_context || false,
+              main_article_reply_indicator: (signals as any).main_article_reply_indicator || false,
+              multiple_articles: (signals as any).multiple_articles || false,
+            },
+            has_no_parent: hasNoParent,
+            ancestry_method: ancestry.method,
+            ancestry_confidence: ancestry.confidence,
+          },
+          created_at: new Date().toISOString(),
+        });
+        
+        console.log(`[REPLY_DECISION] ✅ FAIL-OPEN ALLOW: UNCERTAIN ancestry treated as root tweet_id=${tweetId} consent_wall=${!hasConsentWall} isReply=${context?.isReply} no_reply_signals=${hasNoReplySignals} no_parent=${hasNoParent}`);
+        
+        return {
+          allow: true,
+          reason: `Fail-open ALLOW: UNCERTAIN ancestry treated as root (consent_wall=${!hasConsentWall}, isReply=${context?.isReply}, no_reply_signals=${hasNoReplySignals}, no_parent=${hasNoParent})`,
+        };
+      }
+    }
     
     // 🎯 SPECIFIC ERROR BUCKETS: Map error to specific deny_reason_code (stage-aware)
     let denyReasonCode: string = ancestry.status === 'UNCERTAIN' ? 'ANCESTRY_UNCERTAIN' : 'ANCESTRY_ERROR';
