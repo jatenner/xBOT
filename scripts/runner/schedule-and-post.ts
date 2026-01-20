@@ -28,14 +28,48 @@ if (!process.env.RUNNER_BROWSER) {
 
 async function main() {
   const isLoop = process.argv.includes('--loop');
+  const GLOBAL_TIMEOUT_MS = 60000; // 60s hard global timeout
+  const globalStartTime = Date.now();
+  let lastCandidateSeen: string | null = null;
+  let lastStageSeen: string | null = null;
   
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('           🎯 MAC RUNNER SCHEDULER + POSTER');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  // Global timeout watchdog
+  const globalTimeoutTimer = setTimeout(() => {
+    console.error('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('           ❌ SCHEDULER GLOBAL TIMEOUT');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error(`Timeout after ${GLOBAL_TIMEOUT_MS}ms`);
+    console.error(`Last candidate seen: ${lastCandidateSeen || 'none'}`);
+    console.error(`Last stage seen: ${lastStageSeen || 'none'}`);
+    console.error('Error: scheduler_global_timeout');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    
+    // Try to release any stuck candidates
+    if (lastCandidateSeen) {
+      const { getSupabaseClient } = require('../../src/db');
+      const supabase = getSupabaseClient();
+      supabase
+        .from('reply_candidate_queue')
+        .update({ status: 'queued', selected_at: null, lease_id: null })
+        .eq('candidate_tweet_id', lastCandidateSeen)
+        .then(() => console.error(`🔧 Released stuck candidate: ${lastCandidateSeen}`))
+        .catch(() => {});
+    }
+    
+    process.exit(1);
+  }, GLOBAL_TIMEOUT_MS);
   
-  if (isLoop) {
-    console.log('🔄 Loop mode: Running every 60s with backoff\n');
-  }
+  // Clear timeout on successful completion
+  const clearGlobalTimeout = () => clearTimeout(globalTimeoutTimer);
+  
+  try {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('           🎯 MAC RUNNER SCHEDULER + POSTER');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    
+    if (isLoop) {
+      console.log('🔄 Loop mode: Running every 60s with backoff\n');
+    }
   
   // Step 1: Auto-sync env (fail-closed)
   console.log('📥 Step 1: Syncing env from Railway...');
@@ -99,22 +133,35 @@ async function main() {
   
   // Fallback to any queued candidates if no fresh ones found
   if (!candidates || candidates.length === 0) {
-    const { data: allCandidates, error: queueError } = await supabase
+    let query = supabase
       .from('reply_candidate_queue')
       .select('*')
       .eq('status', 'queued')
-      .gt('expires_at', new Date().toISOString())
+      .gt('expires_at', new Date().toISOString());
+    
+    // SCHEDULER_SINGLE_ID: Process exactly one candidate by tweet_id
+    const singleId = process.env.SCHEDULER_SINGLE_ID;
+    if (singleId) {
+      query = query.eq('candidate_tweet_id', singleId);
+      console.log(`🎯 SINGLE_ID mode: Processing only candidate ${singleId}\n`);
+    }
+    
+    query = query
       .order('predicted_tier', { ascending: true })
       .order('overall_score', { ascending: false })
-      .limit(5);
+      .limit(singleId ? 1 : 5);
+    
+    const { data: allCandidates, error: queueError } = await query;
     
     if (queueError) {
       console.error(`❌ Failed to fetch candidates: ${queueError.message}`);
+      clearGlobalTimeout();
       process.exit(1);
     }
     
     if (!allCandidates || allCandidates.length === 0) {
       console.log('⚠️  No candidates available in queue');
+      clearGlobalTimeout();
       process.exit(0);
     }
     
@@ -123,6 +170,14 @@ async function main() {
       console.log(`⚠️  WARNING: No fresh candidates found, using existing queue (may contain stale candidates)\n`);
     }
     console.log(`✅ Found ${candidates.length} candidates\n`);
+  }
+  
+  // If SINGLE_ID mode and no candidates match, exit
+  const singleId = process.env.SCHEDULER_SINGLE_ID;
+  if (singleId && (!candidates || candidates.length === 0 || candidates[0].candidate_tweet_id !== singleId)) {
+    console.log(`⚠️  Candidate ${singleId} not found in queue`);
+    clearGlobalTimeout();
+    process.exit(0);
   }
   
   // Step 5: Process candidates through scheduler (one at a time)
@@ -185,6 +240,7 @@ async function main() {
         return await attemptScheduledReply();
       })();
       
+      lastStageSeen = 'scheduler_executing';
       const schedulerResult = await withTimeout(
         schedulerPromise,
         CANDIDATE_MAX_TIME_MS,
@@ -192,6 +248,7 @@ async function main() {
       );
       
       if (schedulerResult.posted) {
+        lastStageSeen = 'decision_created';
         decisionsCreated++;
         console.log(`   ✅ Decision created and queued: ${schedulerResult.candidate_tweet_id || candidate.candidate_tweet_id}`);
         
@@ -199,6 +256,7 @@ async function main() {
         await new Promise(resolve => setTimeout(resolve, 2000));
         
         // Immediately process posting queue
+        lastStageSeen = 'posting_queue';
         console.log(`   📮 Processing posting queue...`);
         const { processPostingQueue } = await import('../../src/jobs/postingQueue');
         await processPostingQueue({ maxItems: 1 });
@@ -229,11 +287,13 @@ async function main() {
             // Early exit: stop once we get 1 POST_SUCCESS (for fast one-shot runs)
             if (postedSuccess >= 1) {
               console.log(`\n🎯 Early exit: Achieved 1 POST_SUCCESS - stopping scheduler`);
+              clearGlobalTimeout();
               break; // Exit the loop
             }
           }
         } else {
           // Check for POST_FAILED
+          lastStageSeen = 'posting_failed_check';
           const { data: failedPosts } = await supabase
             .from('system_events')
             .select('event_type, event_data, created_at')
@@ -260,6 +320,7 @@ async function main() {
         failureReasons[schedulerResult.reason || 'skipped'] = (failureReasons[schedulerResult.reason || 'skipped'] || 0) + 1;
       }
     } catch (error: any) {
+      lastStageSeen = 'error';
       const elapsed = Date.now() - candidateStartTime;
       if (error.message.includes('TIMED OUT') || elapsed >= CANDIDATE_MAX_TIME_MS) {
         console.error(`   ⏱️  Candidate ${candidate.candidate_tweet_id} exceeded ${CANDIDATE_MAX_TIME_MS}ms watchdog - SKIPPING`);
@@ -269,16 +330,30 @@ async function main() {
         failureReasons['error'] = (failureReasons['error'] || 0) + 1;
       }
       
-      // Reset candidate status if it was stuck in "selected"
+      // Reset candidate status if it was stuck (release lease if exists)
       try {
-        await supabase
-          .from('reply_candidate_queue')
-          .update({ status: 'queued', selected_at: null })
-          .eq('id', candidate.id);
-        console.log(`   🔧 Reset candidate ${candidate.candidate_tweet_id} status to queued`);
-      } catch (resetError: any) {
-        console.warn(`   ⚠️  Failed to reset candidate status: ${resetError.message}`);
+        const { releaseLease } = await import('../../src/jobs/replySystemV2/queueManager');
+        await releaseLease(candidate.candidate_tweet_id, candidate.lease_id);
+        console.log(`   🔧 Released candidate ${candidate.candidate_tweet_id} (lease released)`);
+      } catch (releaseError: any) {
+        // Fallback: try direct update
+        try {
+          await supabase
+            .from('reply_candidate_queue')
+            .update({ status: 'queued', selected_at: null, lease_id: null })
+            .eq('id', candidate.id);
+          console.log(`   🔧 Reset candidate ${candidate.candidate_tweet_id} status to queued`);
+        } catch (resetError: any) {
+          console.warn(`   ⚠️  Failed to reset candidate status: ${resetError.message}`);
+        }
       }
+    }
+    
+    // If SINGLE_ID mode, exit after first candidate
+    if (singleId) {
+      console.log(`\n🎯 SINGLE_ID mode: Exiting after processing ${candidate.candidate_tweet_id}`);
+      clearGlobalTimeout();
+      break;
     }
   }
   
@@ -349,6 +424,9 @@ async function main() {
   }
   
   console.log('');
+  
+  // Clear global timeout on successful completion
+  clearGlobalTimeout();
   
   // Loop mode
   if (isLoop) {
