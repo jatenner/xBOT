@@ -142,9 +142,21 @@ async function main() {
   console.log('\nSTEP 3: Checking session...');
   const sessionResult = await execLive('RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' RUNNER_BROWSER=cdp pnpm run runner:session', 'Session check');
   
-  if (sessionResult.exitCode !== 0) {
-    console.error('\n❌ Session check failed - please run pnpm run runner:login first');
-    process.exit(1);
+  if (sessionResult.exitCode !== 0 || sessionResult.output.includes('SESSION_EXPIRED')) {
+    console.error('\n❌ SESSION_EXPIRED - Login required');
+    console.error('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('           🔐 LOGIN REQUIRED');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('\nPlease complete login/2FA in Chrome until you are on https://x.com/home');
+    console.error('Then rerun:');
+    console.error('  HARVEST_IGNORE_STATE=true ONE_SHOT_FRESH_ONLY=true pnpm run runner:one-shot');
+    console.error('');
+    
+    // Try to run login helper
+    console.log('Running login helper...');
+    await execLive('pnpm run runner:login', 'Login helper');
+    console.error('\n⚠️  Please complete login in Chrome, then rerun the command above\n');
+    process.exit(2);
   }
   
   console.log('✅ Session OK - proceeding with workflow\n');
@@ -156,7 +168,7 @@ async function main() {
   try {
     const harvestOutput = execSync(
       'HARVEST_MODE=curated_profile_posts HARVEST_IGNORE_STATE=true RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' RUNNER_BROWSER=cdp pnpm exec tsx scripts/runner/harvest-curated.ts',
-      { encoding: 'utf-8', stdio: 'pipe', timeout: 90000 } // 90s timeout (harvest can be slow)
+      { encoding: 'utf-8', stdio: 'pipe', timeout: 120000 } // 120s timeout (harvest can be slow, ~110s observed)
     );
     
     const insertMatch = harvestOutput.match(/Inserted:\s*(\d+)/);
@@ -165,7 +177,7 @@ async function main() {
     console.log(harvestOutput);
   } catch (error: any) {
     if (error.signal === 'SIGTERM' || error.message.includes('timeout')) {
-      console.error(`❌ Harvest TIMED OUT after 90s - step hung at harvest`);
+      console.error(`❌ Harvest TIMED OUT after 120s - step hung at harvest`);
       process.exit(1);
     }
     console.error(`⚠️  Harvest failed: ${error.message}`);
@@ -180,7 +192,7 @@ async function main() {
   console.log('\nSTEP 5a: Cleaning up candidate queue...');
   try {
     const cleanupOutput = execSync(
-      'RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' tsx scripts/runner/cleanup-candidate-queue.ts',
+      'RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' pnpm exec tsx scripts/runner/cleanup-candidate-queue.ts',
       { encoding: 'utf-8', stdio: 'pipe', timeout: 30000 } // 30s timeout
     );
     console.log(cleanupOutput);
@@ -338,6 +350,16 @@ async function main() {
   // Extract tweet URL from database (filtered by run start time)
   const tweetUrl = await extractTweetUrl(runStartedAt);
   
+  // Check ONE_SHOT_FRESH_ONLY flag
+  const freshOnly = process.env.ONE_SHOT_FRESH_ONLY === 'true';
+  if (freshOnly && opportunitiesInserted === 0 && (candidatesQueuedCount || 0) === 0) {
+    console.error('\n❌ ONE_SHOT_FRESH_ONLY=true: FAIL-CLOSED');
+    console.error(`   Opportunities inserted: ${opportunitiesInserted}`);
+    console.error(`   Candidates queued after ${runStartedAt}: ${candidatesQueuedCount || 0}`);
+    console.error('   Pipeline ran but did nothing - this indicates a systemic issue');
+    process.exit(1);
+  }
+  
   // Final summary
   console.log('\n');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -347,7 +369,7 @@ async function main() {
   
   console.log(`Run started at: ${runStartedAt}`);
   console.log(`Opportunities inserted: ${opportunitiesInserted}`);
-  console.log(`Candidates queued: ${candidatesQueuedCount || 0}`);
+  console.log(`Candidates queued (after run start): ${candidatesQueuedCount || 0}`);
   console.log(`Candidates processed: ${candidatesProcessed}`);
   console.log(`Decisions created: ${decisionsCreated}`);
   console.log(`Queued decisions: ${queuedDecisions || 0}`);
@@ -415,6 +437,39 @@ async function main() {
     console.log(`\n✅ POST_SUCCESS: ${tweetUrl}`);
   } else {
     console.log('\n⚠️  No POST_SUCCESS found');
+    
+    // Identify where pipeline died
+    let pipelineStage = 'unknown';
+    if (opportunitiesInserted === 0) {
+      pipelineStage = 'harvest';
+    } else if ((candidatesQueuedCount || 0) === 0) {
+      pipelineStage = 'evaluate/queue';
+    } else if (decisionsCreated === 0) {
+      pipelineStage = 'schedule';
+    } else if ((queuedDecisions || 0) === 0) {
+      pipelineStage = 'decisions';
+    } else if (postSuccessCount === 0) {
+      pipelineStage = 'post';
+    }
+    
+    console.log(`\nPipeline stopped at: ${pipelineStage}`);
+    
+    // Print top 5 skip/deny reasons
+    const allReasons: Record<string, number> = { ...denyCounts };
+    
+    // Add skip reasons from harvest if available (would need to parse from harvest output)
+    // For now, just show deny reasons from scheduler
+    
+    const top5Reasons = Object.entries(allReasons)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    
+    if (top5Reasons.length > 0) {
+      console.log('\nTop skip/deny reasons:');
+      top5Reasons.forEach(([reason, count], i) => {
+        console.log(`   ${i + 1}. ${reason}: ${count}`);
+      });
+    }
     
     // Print debug artifact paths
     const consentDebugDir = path.join(RUNNER_PROFILE_DIR, 'consent_debug');
