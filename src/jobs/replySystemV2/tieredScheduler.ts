@@ -188,7 +188,14 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   console.log('[SCHEDULER] ⏰ Attempting scheduled reply...');
   console.log(`[PIPELINE] scheduler_run_id=${schedulerRunId} stage=scheduler_start ok=true detail=attempting_reply runner_mode=${runnerMode}`);
   
-  // 🔒 MANDATE 3: Reset stuck "selected" candidates BEFORE selecting new one
+  // 🔒 MANDATE 3: Cleanup expired leases BEFORE selecting new one
+  const { cleanupExpiredLeases } = await import('./queueManager');
+  const cleanedLeases = await cleanupExpiredLeases();
+  if (cleanedLeases > 0) {
+    console.log(`[SCHEDULER] 🔧 Cleaned up ${cleanedLeases} expired leases`);
+  }
+  
+  // Also cleanup old "selected" status for backward compatibility
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const { count: stuckCount } = await supabase
     .from('reply_candidate_queue')
@@ -233,15 +240,21 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   // Try tiers in order
   let candidate = await getNextCandidateFromQueue(1, deniedTweetIds); // Tier 1 first
   let tier = 1;
+  let candidateLeaseId: string | undefined = candidate?.lease_id;
+  let candidateQueueId: string | undefined = candidate?.id;
   
   if (!candidate) {
     candidate = await getNextCandidateFromQueue(2, deniedTweetIds); // Tier 2
     tier = 2;
+    candidateLeaseId = candidate?.lease_id;
+    candidateQueueId = candidate?.id;
   }
   
   if (!candidate && behindSchedule) {
     candidate = await getNextCandidateFromQueue(3, deniedTweetIds); // Tier 3 only if behind
     tier = 3;
+    candidateLeaseId = candidate?.lease_id;
+    candidateQueueId = candidate?.id;
   }
   
   // Get queue metrics for SLO tracking
@@ -299,20 +312,45 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     };
   }
   
-  console.log(`[SCHEDULER] 🎯 Selected candidate: ${candidate.candidate_tweet_id} (tier ${tier})`);
+  console.log(`[SCHEDULER] 🎯 Selected candidate: ${candidate.candidate_tweet_id} (tier ${tier}, lease_id=${candidateLeaseId})`);
   
   // Initialize tracking for this candidate
   const candidateStartTime = Date.now();
-  let stageTimings: { fetch_ms?: number; ancestry_ms?: number; quality_ms?: number; allow_ms?: number; total_ms: number } = { total_ms: 0 };
+  let stageTimings: { fetch_ms?: number; ancestry_ms?: number; quality_ms?: number; allow_ms?: number; generation_ms?: number; total_ms: number } = { total_ms: 0 };
   
   // 🔒 MANDATE 1: Create decision + permit IMMEDIATELY after selection, BEFORE generation
   let decisionId: string;
   let permit_id: string;
-  let queueId: string | undefined;
+  let queueId: string | undefined = candidateQueueId;
   let candidateData: any = null;
+  const WATCHDOG_TIMEOUT_MS = 45000; // 45s total watchdog
+  
+  // Watchdog: Abort if total time exceeds 45s
+  const watchdogTimer = setTimeout(async () => {
+    if (candidateLeaseId) {
+      console.error(`[SCHEDULER] ⚠️ WATCHDOG: Candidate ${candidate.candidate_tweet_id} exceeded ${WATCHDOG_TIMEOUT_MS}ms - releasing lease`);
+      const { releaseLease } = await import('./queueManager');
+      await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+      
+      stageTimings.total_ms = Date.now() - candidateStartTime;
+      await logOutcome(supabase, schedulerRunId, {
+        outcome_type: 'TIMEOUT',
+        candidate_tweet_id: candidate.candidate_tweet_id,
+        candidate_id: candidate.evaluation_id,
+        url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+        error_stage: 'watchdog',
+        error_message: `Total processing time exceeded ${WATCHDOG_TIMEOUT_MS}ms`,
+        stage_timings: stageTimings,
+      });
+    }
+  }, WATCHDOG_TIMEOUT_MS);
   
   try {
+    console.log(`[SCHEDULER] 💓 Heartbeat: Starting candidate processing for ${candidate.candidate_tweet_id}`);
+    
     // Get candidate details (including scores for quality tracking)
+    const dataFetchStart = Date.now();
+    console.log(`[SCHEDULER] 💓 Heartbeat: Fetching candidate data...`);
     const { data: fetchedCandidateData } = await supabase
       .from('candidate_evaluations')
       .select('candidate_tweet_id, candidate_author_username, candidate_content, topic_relevance_score, velocity_score, recency_score, author_signal_score, predicted_tier, predicted_24h_views, overall_score')
@@ -320,6 +358,8 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       .single();
     
     candidateData = fetchedCandidateData;
+    const dataFetchElapsed = Date.now() - dataFetchStart;
+    console.log(`[SCHEDULER] 💓 Heartbeat: Candidate data fetched in ${dataFetchElapsed}ms`);
     
     if (!candidateData) {
       stageTimings.total_ms = Date.now() - candidateStartTime;
@@ -335,24 +375,14 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       throw new Error('Candidate data not found');
     }
     
-    // Get queue entry ID for traceability
-    const { data: queueEntry } = await supabase
-      .from('reply_candidate_queue')
-      .select('id')
-      .eq('candidate_tweet_id', candidate.candidate_tweet_id)
-      .eq('status', 'selected')
-      .order('selected_at', { ascending: false })
-      .limit(1)
-      .single();
-    
-    queueId = queueEntry?.id;
-    
-    // Update queue with scheduler_run_id
-    if (queueId) {
+    // Use lease_id for traceability (already have queueId from getNextCandidateFromQueue)
+    if (queueId && candidateLeaseId) {
+      // Update queue with scheduler_run_id (keep lease active)
       await supabase
         .from('reply_candidate_queue')
         .update({ scheduler_run_id: schedulerRunId })
-        .eq('id', queueId);
+        .eq('id', queueId)
+        .eq('lease_id', candidateLeaseId); // Only update our lease
     }
     
     // 🔒 TASK 2: Create decision in DRAFT/PENDING state FIRST (before generation)
@@ -366,8 +396,9 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     let snapshotSource: 'live_fetch' | 'candidate_extract' = 'live_fetch';
     let snapshotLenLive = 0;
     
-    const FETCH_TWEET_TIMEOUT_MS = 10000; // 10s timeout for tweet fetch
+    const FETCH_TWEET_TIMEOUT_MS = 12000; // 12s hard timeout for tweet fetch
     const fetchStartTime = Date.now();
+    console.log(`[SCHEDULER] 💓 Heartbeat: Starting tweet fetch (timeout: ${FETCH_TWEET_TIMEOUT_MS}ms)...`);
     
     try {
       // Use the EXACT same fetch function as contextLockVerifier
@@ -381,6 +412,8 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       
       const fetchElapsed = Date.now() - fetchStartTime;
       stageTimings.fetch_ms = fetchElapsed;
+      console.log(`[SCHEDULER] 💓 Heartbeat: Tweet fetch completed in ${fetchElapsed}ms`);
+      
       if (tweetData && tweetData.text && tweetData.text.trim().length >= 20) {
         targetTweetContentSnapshot = tweetData.text.trim();
         snapshotLenLive = tweetData.text.trim().length;
@@ -399,7 +432,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       
       // If it's a timeout, log it but continue with fallback
       if (fetchError.message.includes('TIMEOUT')) {
-        // Don't log timeout yet - we can still use fallback content
+        console.log(`[SCHEDULER] 💓 Heartbeat: Fetch timeout after ${fetchElapsed}ms - using fallback`);
       }
       // Fallback to candidate content
       targetTweetContentSnapshot = candidateData.candidate_content || '';
@@ -407,7 +440,15 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       snapshotLenLive = 0;
       
       if (!targetTweetContentSnapshot || targetTweetContentSnapshot.length < 20) {
+        clearTimeout(watchdogTimer);
         stageTimings.total_ms = Date.now() - candidateStartTime;
+        
+        // Release lease on failure
+        if (candidateLeaseId) {
+          const { releaseLease } = await import('./queueManager');
+          await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+        }
+        
         await logOutcome(supabase, schedulerRunId, {
           outcome_type: 'ERROR',
           candidate_tweet_id: candidate.candidate_tweet_id,
@@ -462,8 +503,8 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     
     // Add timeout and logging around ancestry resolution
     const ancestryStartTime = Date.now();
-    const ANCESTRY_TIMEOUT_MS = 12000; // 12s timeout for ancestry
-    console.log(`[SCHEDULER] 🔍 Resolving ancestry for ${candidate.candidate_tweet_id} (timeout: ${ANCESTRY_TIMEOUT_MS}ms)...`);
+    const ANCESTRY_TIMEOUT_MS = 12000; // 12s hard timeout for ancestry
+    console.log(`[SCHEDULER] 💓 Heartbeat: Starting ancestry resolution (timeout: ${ANCESTRY_TIMEOUT_MS}ms)...`);
     
     let ancestry;
     try {
@@ -475,6 +516,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       ]) as any;
       const ancestryElapsed = Date.now() - ancestryStartTime;
       stageTimings.ancestry_ms = ancestryElapsed;
+      console.log(`[SCHEDULER] 💓 Heartbeat: Ancestry resolution completed in ${ancestryElapsed}ms`);
       console.log(`[SCHEDULER] ✅ Ancestry resolved in ${ancestryElapsed}ms: status=${ancestry.status}, isRoot=${ancestry.isRoot}`);
     } catch (ancestryError: any) {
       const ancestryElapsed = Date.now() - ancestryStartTime;
@@ -495,8 +537,15 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         cache_hit: false,
       };
       
-      // Log timeout outcome (candidateData may not be available yet if fetch failed)
+      // Log timeout outcome and release lease
+      clearTimeout(watchdogTimer);
       stageTimings.total_ms = Date.now() - candidateStartTime;
+      
+      if (candidateLeaseId) {
+        const { releaseLease } = await import('./queueManager');
+        await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+      }
+      
       await logOutcome(supabase, schedulerRunId, {
         outcome_type: 'TIMEOUT',
         candidate_tweet_id: candidate.candidate_tweet_id,
@@ -512,24 +561,35 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     }
     
     const allowCheckStartTime = Date.now();
-    console.log(`[SCHEDULER] 🔍 Checking if reply allowed for ${candidate.candidate_tweet_id}...`);
+    console.log(`[SCHEDULER] 💓 Heartbeat: Starting allow check...`);
     const allowCheck = await shouldAllowReply(ancestry);
     const allowCheckElapsed = Date.now() - allowCheckStartTime;
     stageTimings.allow_ms = allowCheckElapsed;
+    console.log(`[SCHEDULER] 💓 Heartbeat: Allow check completed in ${allowCheckElapsed}ms`);
     console.log(`[SCHEDULER] ✅ Allow check completed in ${allowCheckElapsed}ms: allow=${allowCheck.allow}, reason=${allowCheck.reason}`);
     
     // 🔒 PHASE 1.1: TARGET QUALITY FILTER - Pre-generation filter (MUST be enforced)
     const qualityFilterStartTime = Date.now();
-    console.log(`[SCHEDULER] 🔍 Running quality filter for ${candidate.candidate_tweet_id}...`);
+    console.log(`[SCHEDULER] 💓 Heartbeat: Starting quality filter (timeout: 2s)...`);
     const { filterTargetQuality } = await import('../../gates/replyTargetQualityFilter');
-    const qualityFilter = filterTargetQuality(
-      normalizedSnapshot,
-      candidateData.candidate_author_username,
-      (candidateData as any).candidate_author_bio || undefined,
-      normalizedSnapshot // Use snapshot as extracted context
-    );
+    
+    // Wrap quality filter in timeout (2s max)
+    const QUALITY_FILTER_TIMEOUT_MS = 2000;
+    const qualityFilter = await Promise.race([
+      Promise.resolve(filterTargetQuality(
+        normalizedSnapshot,
+        candidateData.candidate_author_username,
+        (candidateData as any).candidate_author_bio || undefined,
+        normalizedSnapshot // Use snapshot as extracted context
+      )),
+      new Promise<any>((_, reject) => {
+        setTimeout(() => reject(new Error('QUALITY_FILTER_TIMEOUT')), QUALITY_FILTER_TIMEOUT_MS);
+      }),
+    ]) as any;
+    
     const qualityFilterElapsed = Date.now() - qualityFilterStartTime;
     stageTimings.quality_ms = qualityFilterElapsed;
+    console.log(`[SCHEDULER] 💓 Heartbeat: Quality filter completed in ${qualityFilterElapsed}ms`);
     console.log(`[SCHEDULER] ✅ Quality filter completed in ${qualityFilterElapsed}ms: pass=${qualityFilter.pass}, reason=${qualityFilter.reason}`);
     
     // Instrument OFF_LIMITS_TOPIC decisions with debug data
@@ -713,8 +773,15 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         .eq('decision_id', decisionId);
       console.error(`[PIPELINE] decision_id=${decisionId} stage=scored ok=false detail=${denyReason}`);
       
-      // Log DENY outcome
+      // Log DENY outcome and release lease
+      clearTimeout(watchdogTimer);
       stageTimings.total_ms = Date.now() - candidateStartTime;
+      
+      if (candidateLeaseId) {
+        const { releaseLease } = await import('./queueManager');
+        await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+      }
+      
       await logOutcome(supabase, schedulerRunId, {
         outcome_type: 'DENY',
         candidate_tweet_id: candidate.candidate_tweet_id,
@@ -972,6 +1039,10 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     // 🔒 CERT_MODE: Check if cert mode is enabled (env var or global flag)
     const certMode = process.env.CERT_MODE === 'true' || (global as any).CERT_MODE === true;
     
+    const generationStartTime = Date.now();
+    const GENERATION_TIMEOUT_MS = 25000; // 25s hard timeout for OpenAI generation
+    console.log(`[SCHEDULER] 💓 Heartbeat: Starting generation (timeout: ${GENERATION_TIMEOUT_MS}ms)...`);
+    
     try {
       console.log(`[PIPELINE] decision_id=${decisionId} stage=generate ok=start detail=generating_reply cert_mode=${certMode}`);
       if (certMode) {
@@ -979,18 +1050,26 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         console.log(`[SCHEDULER] 🔒 CERT_MODE enabled - using certified reply generator`);
         const { generateCertModeReply } = await import('../../ai/replyGeneratorAdapter');
         // Note: Template selection already done above, will be logged in reply_decisions
-        const certResult = await generateCertModeReply({
-          target_username: candidateData.candidate_author_username,
-          target_tweet_content: normalizedSnapshot,
-          topic: 'health',
-          angle: 'reply_context',
-          tone: 'helpful',
-          model: 'gpt-4o-mini',
-          template_id: templateSelection.template_id, // 🎨 QUALITY TRACKING
-          prompt_version: promptVersion, // 🎨 QUALITY TRACKING
-        });
+        const certResult = await Promise.race([
+          generateCertModeReply({
+            target_username: candidateData.candidate_author_username,
+            target_tweet_content: normalizedSnapshot,
+            topic: 'health',
+            angle: 'reply_context',
+            tone: 'helpful',
+            model: 'gpt-4o-mini',
+            template_id: templateSelection.template_id, // 🎨 QUALITY TRACKING
+            prompt_version: promptVersion, // 🎨 QUALITY TRACKING
+          }),
+          new Promise<any>((_, reject) => {
+            setTimeout(() => reject(new Error('GENERATION_TIMEOUT')), GENERATION_TIMEOUT_MS);
+          }),
+        ]) as any;
         
         replyContent = certResult.content;
+        const generationElapsed = Date.now() - generationStartTime;
+        stageTimings.generation_ms = generationElapsed;
+        console.log(`[SCHEDULER] 💓 Heartbeat: Generation completed in ${generationElapsed}ms`);
         console.log(`[SCHEDULER] ✅ CERT reply generated: ${replyContent.length} chars`);
       } else {
         // Normal generation path
@@ -1001,23 +1080,31 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         // Get template prompt structure (if available)
         const templatePrompt = await getTemplatePrompt(templateSelection.template_id);
         
-        const replyResult = await generateReplyContent({
-          target_username: candidateData.candidate_author_username,
-          target_tweet_content: normalizedSnapshot,
-          topic: keywords.join(', ') || 'health',
-          angle: 'reply_context',
-          tone: 'helpful',
-          model: 'gpt-4o-mini',
-          template_id: templateSelection.template_id, // 🎨 QUALITY TRACKING
-          prompt_version: promptVersion, // 🎨 QUALITY TRACKING
-          reply_context: {
-            target_text: normalizedSnapshot,
-            root_text: replyContext.root_tweet_text || normalizedSnapshot,
-            root_tweet_id: candidate.candidate_tweet_id,
-          },
-        });
+        const replyResult = await Promise.race([
+          generateReplyContent({
+            target_username: candidateData.candidate_author_username,
+            target_tweet_content: normalizedSnapshot,
+            topic: keywords.join(', ') || 'health',
+            angle: 'reply_context',
+            tone: 'helpful',
+            model: 'gpt-4o-mini',
+            template_id: templateSelection.template_id, // 🎨 QUALITY TRACKING
+            prompt_version: promptVersion, // 🎨 QUALITY TRACKING
+            reply_context: {
+              target_text: normalizedSnapshot,
+              root_text: replyContext.root_tweet_text || normalizedSnapshot,
+              root_tweet_id: candidate.candidate_tweet_id,
+            },
+          }),
+          new Promise<any>((_, reject) => {
+            setTimeout(() => reject(new Error('GENERATION_TIMEOUT')), GENERATION_TIMEOUT_MS);
+          }),
+        ]) as any;
         
         replyContent = replyResult.content;
+        const generationElapsed = Date.now() - generationStartTime;
+        stageTimings.generation_ms = generationElapsed;
+        console.log(`[SCHEDULER] 💓 Heartbeat: Generation completed in ${generationElapsed}ms`);
         console.log(`[PIPELINE] decision_id=${decisionId} stage=generate ok=true detail=reply_generated length=${replyContent.length}`);
         console.log(`[SCHEDULER] ✅ Reply generated: ${replyContent.length} chars`);
       }
@@ -1589,14 +1676,24 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         slo_target: TARGET_REPLIES_PER_HOUR,
       });
     
-    // Update queue status
-    await supabase
-      .from('reply_candidate_queue')
-      .update({
-        status: 'posted',
-        posted_at: new Date().toISOString(),
-      })
-      .eq('candidate_tweet_id', candidate.candidate_tweet_id);
+    // Update queue status (release lease and mark as posted)
+    clearTimeout(watchdogTimer);
+    if (candidateLeaseId) {
+      const { markCandidateProcessed } = await import('./queueManager');
+      await markCandidateProcessed(candidate.candidate_tweet_id, candidateLeaseId, 'posted');
+    } else {
+      // Fallback: update directly
+      await supabase
+        .from('reply_candidate_queue')
+        .update({
+          status: 'posted',
+          posted_at: new Date().toISOString(),
+          lease_id: null,
+          leased_at: null,
+          leased_until: null,
+        })
+        .eq('candidate_tweet_id', candidate.candidate_tweet_id);
+    }
     
     // Update evaluation status
     await supabase
@@ -1789,18 +1886,28 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       }
     }
     
-    // 🔒 CRITICAL: Reset candidate status to 'queued' on failure so it can be retried
+    // 🔒 CRITICAL: Release lease on failure so candidate can be retried
+    clearTimeout(watchdogTimer);
     try {
-      await supabase
-        .from('reply_candidate_queue')
-        .update({ 
-          status: 'queued',
-          selected_at: null, // Clear selection timestamp
-        })
-        .eq('candidate_tweet_id', candidate.candidate_tweet_id);
-      console.log(`[SCHEDULER] ✅ Reset candidate ${candidate.candidate_tweet_id} to queued status`);
+      if (candidateLeaseId) {
+        const { releaseLease } = await import('./queueManager');
+        await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+      } else {
+        // Fallback: update directly
+        await supabase
+          .from('reply_candidate_queue')
+          .update({ 
+            status: 'queued',
+            selected_at: null,
+            lease_id: null,
+            leased_at: null,
+            leased_until: null,
+          })
+          .eq('candidate_tweet_id', candidate.candidate_tweet_id);
+      }
+      console.log(`[SCHEDULER] ✅ Released lease for candidate ${candidate.candidate_tweet_id}`);
     } catch (resetError: any) {
-      console.error(`[SCHEDULER] ❌ Failed to reset candidate status: ${resetError.message}`);
+      console.error(`[SCHEDULER] ❌ Failed to release lease: ${resetError.message}`);
     }
     
     // Log SLO event for failure

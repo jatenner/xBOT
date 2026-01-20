@@ -77,6 +77,32 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
       context = await launchRunnerPersistent(true); // headless
       page = await context.newPage();
       console.log(`[CONTEXT_LOCK_VERIFY] 🔌 Using CDP mode for tweet fetch`);
+      
+      // Setup resource blocking for CDP mode (images, media, fonts, stylesheets)
+      try {
+        const client = await page.context().newCDPSession(page);
+        await client.send('Network.enable');
+        await client.send('Network.setRequestInterception', {
+          patterns: [
+            { urlPattern: '*', resourceType: 'Image', interceptionStage: 'HeadersReceived' },
+            { urlPattern: '*', resourceType: 'Media', interceptionStage: 'HeadersReceived' },
+            { urlPattern: '*', resourceType: 'Font', interceptionStage: 'HeadersReceived' },
+            { urlPattern: '*', resourceType: 'Stylesheet', interceptionStage: 'HeadersReceived' },
+          ],
+        });
+        
+        // Fallback: use route() for resource blocking
+        await page.route('**/*', (route: any) => {
+          const resourceType = route.request().resourceType();
+          if (['image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
+            route.abort();
+          } else {
+            route.continue();
+          }
+        });
+      } catch (routeError: any) {
+        console.warn(`[CONTEXT_LOCK_VERIFY] ⚠️ Resource blocking setup failed: ${routeError.message}`);
+      }
     } else {
       // Use browser pool on Railway
       const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
@@ -89,12 +115,38 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
 
     await page.goto(tweetUrl, {
       waitUntil: 'domcontentloaded',
-      timeout: 15000
+      timeout: 12000 // 12s timeout (reduced from 15s)
     });
 
-    // Wait for tweet article to load
-    await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 });
-    await page.waitForTimeout(2000); // Let content stabilize
+    // Wait for shell indicators first (faster than tweet article)
+    const shellOrTweet = await Promise.race([
+      page.waitForSelector('nav[role="navigation"]', { timeout: 5000 }).then(() => 'shell').catch(() => null),
+      page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 5000 }).then(() => 'shell').catch(() => null),
+      page.waitForSelector('article[data-testid="tweet"]', { timeout: 8000 }).then(() => 'tweet').catch(() => null),
+      new Promise(resolve => setTimeout(() => resolve(null), 9000)), // Fallback timeout
+    ]).catch(() => null);
+    
+    if (!shellOrTweet) {
+      // Shell present but tweet missing - try reload once
+      console.warn(`[CONTEXT_LOCK_VERIFY] ⚠️ Shell present but tweet missing for ${targetTweetId}, attempting reload...`);
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(2000);
+    }
+    
+    // Wait for tweet article to load (with shorter timeout)
+    try {
+      await page.waitForSelector('article[data-testid="tweet"]', { timeout: 8000 });
+    } catch (waitError: any) {
+      // Check if shell is present but tweet is missing
+      const hasShell = await page.$('nav[role="navigation"]').catch(() => null);
+      if (hasShell) {
+        console.warn(`[CONTEXT_LOCK_VERIFY] ⚠️ Shell present but tweet article not found for ${targetTweetId} - returning NO_CONTENT_DETECTED`);
+        return null; // Treat as NO_CONTENT_DETECTED, not consent wall
+      }
+      throw waitError;
+    }
+    
+    await page.waitForTimeout(1000); // Reduced from 2s - let content stabilize
 
     // Handle "Show more" button if present
     try {

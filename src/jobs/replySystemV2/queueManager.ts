@@ -156,28 +156,112 @@ function calculateTTL(ageMinutes: number, velocityScore: number): number {
 }
 
 /**
- * Get next candidate from queue for posting
+ * Check if lease columns exist (graceful fallback if not)
+ */
+async function hasLeaseColumns(): Promise<boolean> {
+  try {
+    const supabase = getSupabaseClient();
+    // Try to query a single row to check if columns exist
+    const { error } = await supabase
+      .from('reply_candidate_queue')
+      .select('lease_id, leased_at, leased_until')
+      .limit(1);
+    
+    // If error mentions missing column, lease columns don't exist
+    if (error && error.message.includes('does not exist')) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Cleanup expired leases (revert to queued) - graceful fallback if columns don't exist
+ */
+export async function cleanupExpiredLeases(): Promise<number> {
+  const supabase = getSupabaseClient();
+  
+  // Check if lease columns exist
+  if (!(await hasLeaseColumns())) {
+    // Fallback: cleanup old "selected" status candidates
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: stuckSelected } = await supabase
+      .from('reply_candidate_queue')
+      .update({ status: 'queued', selected_at: null })
+      .eq('status', 'selected')
+      .lt('selected_at', tenMinutesAgo)
+      .select();
+    
+    return stuckSelected?.length || 0;
+  }
+  
+  const now = new Date().toISOString();
+  
+  // Release any candidates stuck in 'leased' status past their leased_until
+  const { data: expiredLeases, error } = await supabase
+    .from('reply_candidate_queue')
+    .update({ 
+      status: 'queued',
+      lease_id: null,
+      leased_at: null,
+      leased_until: null,
+      selected_at: null
+    })
+    .eq('status', 'leased')
+    .lt('leased_until', now)
+    .select();
+  
+  if (error) {
+    console.warn(`[QUEUE_MANAGER] ⚠️ Failed to cleanup expired leases: ${error.message}`);
+    return 0;
+  }
+  
+  const cleaned = expiredLeases?.length || 0;
+  if (cleaned > 0) {
+    console.log(`[QUEUE_MANAGER] 🔧 Cleaned up ${cleaned} expired leases`);
+  }
+  
+  return cleaned;
+}
+
+/**
+ * Get next candidate from queue for posting with atomic lease mechanism (graceful fallback)
  */
 export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: Set<string>): Promise<{
   candidate_tweet_id: string;
   evaluation_id: string;
   predicted_tier: number;
   overall_score: number;
+  id?: string; // Queue row ID for lease management
+  lease_id?: string; // Lease ID for tracking
 } | null> {
   const supabase = getSupabaseClient();
   
+  // Cleanup expired leases first
+  await cleanupExpiredLeases();
+  
+  // Check if lease columns exist - if not, use old behavior
+  const hasLeases = await hasLeaseColumns();
+  
+  // Find candidate
   let query = supabase
     .from('reply_candidate_queue')
-    .select('candidate_tweet_id, evaluation_id, predicted_tier, overall_score')
+    .select('id, candidate_tweet_id, evaluation_id, predicted_tier, overall_score')
     .eq('status', 'queued')
     .gt('expires_at', new Date().toISOString());
+  
+  // Only filter by lease_id if columns exist
+  if (hasLeases) {
+    query = query.is('lease_id', null); // Only select unleased candidates
+  }
+  
+  const now = new Date();
   
   // 🎯 PART B: Exclude denied tweet IDs if provided
   if (deniedTweetIds && deniedTweetIds.size > 0) {
     const deniedArray = Array.from(deniedTweetIds);
-    // Use filter with neq (not equal) for each ID, or use PostgREST array syntax
-    // PostgREST expects: candidate_tweet_id=not.in.(id1,id2)
-    // But Supabase JS client handles this differently - use filter with neq for each
     for (const deniedId of deniedArray) {
       query = query.neq('candidate_tweet_id', deniedId);
     }
@@ -192,30 +276,199 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
     query = query.eq('predicted_tier', tier);
   }
   
-  const { data, error } = await query.single();
+  const { data: candidates, error } = await query;
   
   if (error) {
     console.log(`[QUEUE_MANAGER] ⚠️ Query error for tier ${tier}: ${error.message} (code: ${error.code})`);
     return null;
   }
   
-  if (!data) {
+  if (!candidates || candidates.length === 0) {
     // Debug: Check if any candidates exist without filters
     const { count: totalCount } = await supabase
       .from('reply_candidate_queue')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'queued')
-      .gt('expires_at', new Date().toISOString());
+      .gt('expires_at', now.toISOString());
     console.log(`[QUEUE_MANAGER] ⚠️ No candidate found for tier ${tier} (total available: ${totalCount || 0})`);
     return null;
   }
   
-  // Mark as selected
-  await supabase
-    .from('reply_candidate_queue')
-    .update({ status: 'selected', selected_at: new Date().toISOString() })
-    .eq('candidate_tweet_id', data.candidate_tweet_id);
+  const candidate = candidates[0];
   
-  return data;
+  // If lease columns exist, atomically lease the candidate
+  if (hasLeases) {
+    const { v4: uuidv4 } = await import('uuid');
+    const leaseId = uuidv4();
+    const now = new Date();
+    const leasedUntil = new Date(now.getTime() + 2 * 60 * 1000); // 2 minute lease
+    
+    // Atomically lease the candidate (only if still queued and unleased)
+    const { data: leasedCandidate, error: leaseError } = await supabase
+      .from('reply_candidate_queue')
+      .update({ 
+        status: 'leased',
+        lease_id: leaseId,
+        leased_at: now.toISOString(),
+        leased_until: leasedUntil.toISOString(),
+        selected_at: now.toISOString() // Keep for backward compatibility
+      })
+      .eq('id', candidate.id)
+      .eq('status', 'queued') // Only update if still queued (prevent race condition)
+      .is('lease_id', null) // Only update if unleased
+      .select('candidate_tweet_id, evaluation_id, predicted_tier, overall_score, id, lease_id')
+      .single();
+    
+    if (leaseError || !leasedCandidate) {
+      // Another process got it first - try next candidate
+      console.log(`[QUEUE_MANAGER] ⚠️ Candidate ${candidate.candidate_tweet_id} already leased, retrying...`);
+      // Recursive retry once (prevents infinite loop)
+      return getNextCandidateFromQueue(tier, deniedTweetIds);
+    }
+    
+    console.log(`[QUEUE_MANAGER] 🔒 Leased candidate ${candidate.candidate_tweet_id} with lease_id=${leaseId} until ${leasedUntil.toISOString()}`);
+    
+    return {
+      ...leasedCandidate,
+      id: leasedCandidate.id,
+      lease_id: leaseId,
+    };
+  } else {
+    // Fallback: use old "selected" status behavior
+    await supabase
+      .from('reply_candidate_queue')
+      .update({ status: 'selected', selected_at: new Date().toISOString() })
+      .eq('candidate_tweet_id', candidate.candidate_tweet_id);
+    
+    console.log(`[QUEUE_MANAGER] ✅ Selected candidate ${candidate.candidate_tweet_id} (lease columns not available, using selected status)`);
+    
+    return {
+      ...candidate,
+      id: candidate.id,
+    };
+  }
+}
+
+/**
+ * Release lease (revert candidate to queued) - graceful fallback if columns don't exist
+ */
+export async function releaseLease(candidateTweetId: string, leaseId?: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  
+  // Check if lease columns exist
+  if (!(await hasLeaseColumns())) {
+    // Fallback: revert to queued using old behavior
+    const { error } = await supabase
+      .from('reply_candidate_queue')
+      .update({ 
+        status: 'queued',
+        selected_at: null
+      })
+      .eq('candidate_tweet_id', candidateTweetId);
+    
+    if (!error) {
+      console.log(`[QUEUE_MANAGER] 🔓 Released candidate ${candidateTweetId} to queued (fallback mode)`);
+    }
+    return;
+  }
+  
+  // Use lease-based release
+  if (!leaseId) {
+    // No lease_id provided, just revert to queued
+    await supabase
+      .from('reply_candidate_queue')
+      .update({ 
+        status: 'queued',
+        lease_id: null,
+        leased_at: null,
+        leased_until: null,
+        selected_at: null
+      })
+      .eq('candidate_tweet_id', candidateTweetId);
+    return;
+  }
+  
+  // Only release if lease_id matches (prevents releasing someone else's lease)
+  const { error } = await supabase
+    .from('reply_candidate_queue')
+    .update({ 
+      status: 'queued',
+      lease_id: null,
+      leased_at: null,
+      leased_until: null,
+      selected_at: null
+    })
+    .eq('candidate_tweet_id', candidateTweetId)
+    .eq('lease_id', leaseId)
+    .eq('status', 'leased');
+  
+  if (error) {
+    console.warn(`[QUEUE_MANAGER] ⚠️ Failed to release lease for ${candidateTweetId}: ${error.message}`);
+  } else {
+    console.log(`[QUEUE_MANAGER] 🔓 Released lease for ${candidateTweetId} (lease_id=${leaseId})`);
+  }
+}
+
+/**
+ * Mark candidate as processed (post attempt completed) - graceful fallback if columns don't exist
+ */
+export async function markCandidateProcessed(candidateTweetId: string, leaseId?: string, status: 'posted' | 'queued' = 'queued', reason?: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  
+  // Check if lease columns exist
+  if (!(await hasLeaseColumns())) {
+    // Fallback: use old behavior
+    const updateData: any = {
+      selected_at: null,
+    };
+    
+    if (status === 'posted') {
+      updateData.status = 'posted';
+      updateData.posted_at = new Date().toISOString();
+    } else {
+      updateData.status = 'queued';
+    }
+    
+    const { error } = await supabase
+      .from('reply_candidate_queue')
+      .update(updateData)
+      .eq('candidate_tweet_id', candidateTweetId);
+    
+    if (!error) {
+      console.log(`[QUEUE_MANAGER] ✅ Marked candidate ${candidateTweetId} as ${status} (fallback mode)`);
+    }
+    return;
+  }
+  
+  // Use lease-based update
+  const updateData: any = {
+    lease_id: null,
+    leased_at: null,
+    leased_until: null,
+    selected_at: null,
+  };
+  
+  if (status === 'posted') {
+    updateData.status = 'posted';
+    updateData.posted_at = new Date().toISOString();
+  } else {
+    updateData.status = 'queued';
+  }
+  
+  // Only update if lease_id matches (if provided)
+  let updateQuery = supabase
+    .from('reply_candidate_queue')
+    .update(updateData)
+    .eq('candidate_tweet_id', candidateTweetId);
+  
+  if (leaseId) {
+    updateQuery = updateQuery.eq('lease_id', leaseId);
+  }
+  
+  const { error } = await updateQuery;
+  
+  if (error) {
+    console.warn(`[QUEUE_MANAGER] ⚠️ Failed to mark candidate processed for ${candidateTweetId}: ${error.message}`);
+  }
 }
 
