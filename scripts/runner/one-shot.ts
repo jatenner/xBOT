@@ -233,7 +233,7 @@ async function main() {
     console.error(`⚠️  Queue refresh failed: ${error.message}`);
   }
   
-  // Step 6: Schedule and create decisions - 60s timeout
+  // Step 6: Schedule and create decisions - 90s timeout (allows time for ancestry resolution)
   console.log('\nSTEP 6: Scheduling decisions...');
   let candidatesProcessed = 0;
   let decisionsCreated = 0;
@@ -242,7 +242,7 @@ async function main() {
     // Pass runStartedAt to scheduler so it prefers fresh candidates
     const scheduleOutput = execSync(
       `RUN_STARTED_AT=${runStartedAt} RUNNER_MODE=true RUNNER_PROFILE_DIR=${RUNNER_PROFILE_DIR} RUNNER_BROWSER=cdp pnpm run runner:schedule-once`,
-      { encoding: 'utf-8', stdio: 'pipe', timeout: 60000 } // 60s timeout
+      { encoding: 'utf-8', stdio: 'pipe', timeout: 90000 } // 90s timeout (allows time for ancestry with our 15s watchdog)
     );
     
     const candidatesMatch = scheduleOutput.match(/Candidates fetched:\s*(\d+)/);
@@ -273,8 +273,10 @@ async function main() {
     }
   } catch (error: any) {
     if (error.signal === 'SIGTERM' || error.message.includes('timeout')) {
-      console.error(`❌ Schedule TIMED OUT after 60s - step hung at schedule`);
-      process.exit(1);
+      console.error(`❌ Schedule TIMED OUT after 90s - step hung at schedule`);
+      console.error(`   This usually means ancestry resolution or browser operations are hanging.`);
+      console.error(`   Check logs above for timeout details.`);
+      // Don't exit - let it continue to post step to see if there are any decisions already created
     }
     console.error(`⚠️  Schedule failed: ${error.message}`);
   }

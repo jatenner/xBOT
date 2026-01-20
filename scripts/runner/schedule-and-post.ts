@@ -131,16 +131,56 @@ async function main() {
   let postedFailed = 0;
   const failureReasons: Record<string, number> = {};
   
+  // Helper: Timeout wrapper with logging
+  async function withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    operationName: string
+  ): Promise<T> {
+    const startTime = Date.now();
+    console.log(`   ⏱️  Starting ${operationName} (timeout: ${timeoutMs}ms)...`);
+    
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        setTimeout(() => {
+          const elapsed = Date.now() - startTime;
+          reject(new Error(`${operationName} TIMED OUT after ${elapsed}ms (limit: ${timeoutMs}ms)`));
+        }, timeoutMs);
+      }),
+    ]).then(result => {
+      const elapsed = Date.now() - startTime;
+      console.log(`   ✅ ${operationName} completed in ${elapsed}ms`);
+      return result;
+    }).catch(error => {
+      const elapsed = Date.now() - startTime;
+      console.error(`   ❌ ${operationName} failed after ${elapsed}ms: ${error.message}`);
+      throw error;
+    });
+  }
+  
   // attemptScheduledReply processes one candidate and creates reply_decisions
   // We'll call it once per candidate
   for (let i = 0; i < Math.min(candidates.length, 3); i++) { // Limit to 3 per run
     const candidate = candidates[i];
+    const candidateStartTime = Date.now();
+    const CANDIDATE_MAX_TIME_MS = 15000; // 15s watchdog per candidate
+    
     try {
       console.log(`\n🎯 Processing candidate ${i + 1}/${Math.min(candidates.length, 3)}: ${candidate.candidate_tweet_id} (tier=${candidate.predicted_tier}, score=${candidate.overall_score})`);
       
-      // Run tieredScheduler (it fetches from queue internally and creates reply_decisions)
-      const { attemptScheduledReply } = await import('../../src/jobs/replySystemV2/tieredScheduler');
-      const schedulerResult = await attemptScheduledReply();
+      // Watchdog: If candidate takes too long, skip it
+      const schedulerPromise = (async () => {
+        // Run tieredScheduler (it fetches from queue internally and creates reply_decisions)
+        const { attemptScheduledReply } = await import('../../src/jobs/replySystemV2/tieredScheduler');
+        return await attemptScheduledReply();
+      })();
+      
+      const schedulerResult = await withTimeout(
+        schedulerPromise,
+        CANDIDATE_MAX_TIME_MS,
+        `Candidate ${candidate.candidate_tweet_id} processing`
+      );
       
       if (schedulerResult.posted) {
         decisionsCreated++;
@@ -204,8 +244,25 @@ async function main() {
         failureReasons[schedulerResult.reason || 'skipped'] = (failureReasons[schedulerResult.reason || 'skipped'] || 0) + 1;
       }
     } catch (error: any) {
-      console.error(`   ❌ Error processing candidate: ${error.message}`);
-      failureReasons['error'] = (failureReasons['error'] || 0) + 1;
+      const elapsed = Date.now() - candidateStartTime;
+      if (error.message.includes('TIMED OUT') || elapsed >= CANDIDATE_MAX_TIME_MS) {
+        console.error(`   ⏱️  Candidate ${candidate.candidate_tweet_id} exceeded ${CANDIDATE_MAX_TIME_MS}ms watchdog - SKIPPING`);
+        failureReasons['candidate_timeout'] = (failureReasons['candidate_timeout'] || 0) + 1;
+      } else {
+        console.error(`   ❌ Error processing candidate: ${error.message} (${elapsed}ms)`);
+        failureReasons['error'] = (failureReasons['error'] || 0) + 1;
+      }
+      
+      // Reset candidate status if it was stuck in "selected"
+      try {
+        await supabase
+          .from('reply_candidate_queue')
+          .update({ status: 'queued', selected_at: null })
+          .eq('id', candidate.id);
+        console.log(`   🔧 Reset candidate ${candidate.candidate_tweet_id} status to queued`);
+      } catch (resetError: any) {
+        console.warn(`   ⚠️  Failed to reset candidate status: ${resetError.message}`);
+      }
     }
   }
   
@@ -215,6 +272,7 @@ async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
   console.log(`Candidates fetched: ${candidates.length}`);
+  console.log(`Candidates processed: ${Math.min(candidates.length, 3)}`);
   console.log(`Decisions created: ${decisionsCreated}`);
   console.log(`POST_SUCCESS: ${postedSuccess}`);
   console.log(`POST_FAILED: ${postedFailed}`);

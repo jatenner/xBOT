@@ -228,21 +228,34 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     let snapshotSource: 'live_fetch' | 'candidate_extract' = 'live_fetch';
     let snapshotLenLive = 0;
     
+    const FETCH_TWEET_TIMEOUT_MS = 10000; // 10s timeout for tweet fetch
+    const fetchStartTime = Date.now();
+    
     try {
       // Use the EXACT same fetch function as contextLockVerifier
       const { fetchTweetData } = await import('../../gates/contextLockVerifier');
-      const tweetData = await fetchTweetData(candidate.candidate_tweet_id);
+      const tweetData = await Promise.race([
+        fetchTweetData(candidate.candidate_tweet_id),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('FETCH_TWEET_TIMEOUT')), FETCH_TWEET_TIMEOUT_MS);
+        }),
+      ]) as any;
       
+      const fetchElapsed = Date.now() - fetchStartTime;
       if (tweetData && tweetData.text && tweetData.text.trim().length >= 20) {
         targetTweetContentSnapshot = tweetData.text.trim();
         snapshotLenLive = tweetData.text.trim().length;
         snapshotSource = 'live_fetch';
-        console.log(`[SCHEDULER] ✅ Fetched full tweet text: ${snapshotLenLive} chars`);
+        console.log(`[SCHEDULER] ✅ Fetched full tweet text in ${fetchElapsed}ms: ${snapshotLenLive} chars`);
       } else {
         throw new Error(`Fetched text too short or null: ${tweetData?.text?.length || 0} chars`);
       }
     } catch (fetchError: any) {
-      console.warn(`[SCHEDULER] ⚠️ Failed to fetch live tweet text: ${fetchError.message}, falling back to candidate content`);
+      const fetchElapsed = Date.now() - fetchStartTime;
+      const errorMsg = fetchError.message.includes('TIMEOUT') 
+        ? `fetch timed out after ${fetchElapsed}ms` 
+        : fetchError.message;
+      console.warn(`[SCHEDULER] ⚠️ Failed to fetch live tweet text (${fetchElapsed}ms): ${errorMsg}, falling back to candidate content`);
       // Fallback to candidate content
       targetTweetContentSnapshot = candidateData.candidate_content || '';
       snapshotSource = 'candidate_extract';
@@ -290,10 +303,50 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     
     // 🔍 FORENSIC PIPELINE: Resolve ancestry and record decision
     const { resolveTweetAncestry, recordReplyDecision, shouldAllowReply } = await import('./replyDecisionRecorder');
-    const ancestry = await resolveTweetAncestry(candidate.candidate_tweet_id);
+    
+    // Add timeout and logging around ancestry resolution
+    const ancestryStartTime = Date.now();
+    const ANCESTRY_TIMEOUT_MS = 12000; // 12s timeout for ancestry
+    console.log(`[SCHEDULER] 🔍 Resolving ancestry for ${candidate.candidate_tweet_id} (timeout: ${ANCESTRY_TIMEOUT_MS}ms)...`);
+    
+    let ancestry;
+    try {
+      ancestry = await Promise.race([
+        resolveTweetAncestry(candidate.candidate_tweet_id),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('ANCESTRY_TIMEOUT')), ANCESTRY_TIMEOUT_MS);
+        }),
+      ]) as any;
+      const ancestryElapsed = Date.now() - ancestryStartTime;
+      console.log(`[SCHEDULER] ✅ Ancestry resolved in ${ancestryElapsed}ms: status=${ancestry.status}, isRoot=${ancestry.isRoot}`);
+    } catch (ancestryError: any) {
+      const ancestryElapsed = Date.now() - ancestryStartTime;
+      console.error(`[SCHEDULER] ❌ Ancestry resolution failed after ${ancestryElapsed}ms: ${ancestryError.message}`);
+      
+      // Return an error ancestry result
+      ancestry = {
+        targetTweetId: candidate.candidate_tweet_id,
+        targetInReplyToTweetId: null,
+        rootTweetId: null,
+        ancestryDepth: null,
+        isRoot: false,
+        status: 'ERROR' as const,
+        confidence: 'LOW' as const,
+        method: 'timeout',
+        error: `ANCESTRY_TIMEOUT: ${ancestryError.message}`,
+        cache_hit: false,
+      };
+    }
+    
+    const allowCheckStartTime = Date.now();
+    console.log(`[SCHEDULER] 🔍 Checking if reply allowed for ${candidate.candidate_tweet_id}...`);
     const allowCheck = await shouldAllowReply(ancestry);
+    const allowCheckElapsed = Date.now() - allowCheckStartTime;
+    console.log(`[SCHEDULER] ✅ Allow check completed in ${allowCheckElapsed}ms: allow=${allowCheck.allow}, reason=${allowCheck.reason}`);
     
     // 🔒 PHASE 1.1: TARGET QUALITY FILTER - Pre-generation filter (MUST be enforced)
+    const qualityFilterStartTime = Date.now();
+    console.log(`[SCHEDULER] 🔍 Running quality filter for ${candidate.candidate_tweet_id}...`);
     const { filterTargetQuality } = await import('../../gates/replyTargetQualityFilter');
     const qualityFilter = filterTargetQuality(
       normalizedSnapshot,
@@ -301,6 +354,8 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       (candidateData as any).candidate_author_bio || undefined,
       normalizedSnapshot // Use snapshot as extracted context
     );
+    const qualityFilterElapsed = Date.now() - qualityFilterStartTime;
+    console.log(`[SCHEDULER] ✅ Quality filter completed in ${qualityFilterElapsed}ms: pass=${qualityFilter.pass}, reason=${qualityFilter.reason}`);
     
     // Instrument NON_HEALTH_TOPIC decisions with debug data
     if (qualityFilter.deny_reason_code === 'NON_HEALTH_TOPIC') {
