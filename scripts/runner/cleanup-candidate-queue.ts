@@ -72,9 +72,9 @@ async function main() {
     .select('candidate_tweet_id, target_in_reply_to_tweet_id')
     .in('candidate_tweet_id', tweetIds);
   
-  evaluations?.forEach(eval => {
-    if (!parentMap.has(eval.candidate_tweet_id)) {
-      parentMap.set(eval.candidate_tweet_id, eval.target_in_reply_to_tweet_id || null);
+  evaluations?.forEach(evaluation => {
+    if (!parentMap.has(evaluation.candidate_tweet_id)) {
+      parentMap.set(evaluation.candidate_tweet_id, evaluation.target_in_reply_to_tweet_id || null);
     }
   });
   
