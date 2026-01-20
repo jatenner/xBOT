@@ -259,6 +259,13 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
   
   const now = new Date();
   
+  // 🎯 SCHEDULER_SINGLE_ID: Process exactly one candidate by tweet_id
+  const singleId = process.env.SCHEDULER_SINGLE_ID;
+  if (singleId) {
+    query = query.eq('candidate_tweet_id', singleId);
+    console.log(`[QUEUE_MANAGER] 🎯 SINGLE_ID mode: Selecting candidate ${singleId}`);
+  }
+  
   // 🎯 PART B: Exclude denied tweet IDs if provided
   if (deniedTweetIds && deniedTweetIds.size > 0) {
     const deniedArray = Array.from(deniedTweetIds);
@@ -272,7 +279,8 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
     .order('overall_score', { ascending: false }) // Then by score
     .limit(1);
   
-  if (tier !== undefined) {
+  if (tier !== undefined && !singleId) {
+    // Only filter by tier if not in SINGLE_ID mode
     query = query.eq('predicted_tier', tier);
   }
   
