@@ -161,13 +161,13 @@ async function main() {
   
   console.log('✅ Session OK - proceeding with workflow\n');
   
-  // Step 4: Harvest opportunities (default mode is curated_profile_posts) - 90s timeout
-  // Use HARVEST_IGNORE_STATE=true to ignore harvest_state.json for this run
+  // Step 4: Harvest opportunities (default mode is curated_profile_posts) - enforce HARVEST_IGNORE_STATE=true
+  const harvestIgnoreState = process.env.HARVEST_IGNORE_STATE !== 'false'; // Default to true unless explicitly false
   console.log('\nSTEP 4: Harvesting opportunities...');
   let opportunitiesInserted = 0;
   try {
     const harvestOutput = execSync(
-      'HARVEST_MODE=curated_profile_posts HARVEST_IGNORE_STATE=true RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' RUNNER_BROWSER=cdp pnpm exec tsx scripts/runner/harvest-curated.ts',
+      `HARVEST_MODE=curated_profile_posts HARVEST_IGNORE_STATE=${harvestIgnoreState ? 'true' : 'false'} RUNNER_MODE=true RUNNER_PROFILE_DIR=${RUNNER_PROFILE_DIR} RUNNER_BROWSER=cdp pnpm exec tsx scripts/runner/harvest-curated.ts`,
       { encoding: 'utf-8', stdio: 'pipe', timeout: 120000 } // 120s timeout (harvest can be slow, ~110s observed)
     );
     
@@ -233,16 +233,16 @@ async function main() {
     console.error(`⚠️  Queue refresh failed: ${error.message}`);
   }
   
-  // Step 6: Schedule and create decisions - 90s timeout (allows time for ancestry resolution)
+  // Step 6: Schedule and create decisions - limit to 10 fresh candidates for speed, stop early on success
   console.log('\nSTEP 6: Scheduling decisions...');
   let candidatesProcessed = 0;
   let decisionsCreated = 0;
   let gateReasons: Record<string, number> = {};
   try {
-    // Pass runStartedAt to scheduler so it prefers fresh candidates
+    // Pass runStartedAt to scheduler and limit to 10 candidates for speed
     const scheduleOutput = execSync(
-      `RUN_STARTED_AT=${runStartedAt} RUNNER_MODE=true RUNNER_PROFILE_DIR=${RUNNER_PROFILE_DIR} RUNNER_BROWSER=cdp pnpm run runner:schedule-once`,
-      { encoding: 'utf-8', stdio: 'pipe', timeout: 90000 } // 90s timeout (allows time for ancestry with our 15s watchdog)
+      `RUN_STARTED_AT=${runStartedAt} SCHEDULER_DEBUG_LIMIT=10 RUNNER_MODE=true RUNNER_PROFILE_DIR=${RUNNER_PROFILE_DIR} RUNNER_BROWSER=cdp pnpm run runner:schedule-once`,
+      { encoding: 'utf-8', stdio: 'pipe', timeout: 120000 } // 120s timeout for up to 10 candidates
     );
     
     const candidatesMatch = scheduleOutput.match(/Candidates fetched:\s*(\d+)/);
@@ -426,11 +426,17 @@ async function main() {
       console.log(`   ${i + 1}. ${url}`);
       console.log(`      Deny reason: ${d.deny_reason_code || 'NO_CODE'}`);
       if (d.deny_reason_detail) {
-        const detail = typeof d.deny_reason_detail === 'string' ? JSON.parse(d.deny_reason_detail) : d.deny_reason_detail;
-        if (detail.isCurated !== undefined) console.log(`      isCurated: ${detail.isCurated}`);
-        if (detail.author_handle_norm) console.log(`      Handle: @${detail.author_handle_norm}`);
-        if (detail.extracted_text_len) console.log(`      Text length: ${detail.extracted_text_len}`);
-        if (detail.first_120_chars) console.log(`      Preview: ${detail.first_120_chars.substring(0, 80)}...`);
+        try {
+          const detail = typeof d.deny_reason_detail === 'string' ? JSON.parse(d.deny_reason_detail) : d.deny_reason_detail;
+          if (detail && typeof detail === 'object') {
+            if (detail.isCurated !== undefined) console.log(`      isCurated: ${detail.isCurated}`);
+            if (detail.author_handle_norm) console.log(`      Handle: @${detail.author_handle_norm}`);
+            if (detail.extracted_text_len) console.log(`      Text length: ${detail.extracted_text_len}`);
+            if (detail.first_120_chars) console.log(`      Preview: ${detail.first_120_chars.substring(0, 80)}...`);
+          }
+        } catch (parseError) {
+          // Skip if JSON parsing fails
+        }
       }
     });
   }

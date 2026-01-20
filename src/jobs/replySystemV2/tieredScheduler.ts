@@ -532,8 +532,8 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     stageTimings.quality_ms = qualityFilterElapsed;
     console.log(`[SCHEDULER] ✅ Quality filter completed in ${qualityFilterElapsed}ms: pass=${qualityFilter.pass}, reason=${qualityFilter.reason}`);
     
-    // Instrument NON_HEALTH_TOPIC decisions with debug data
-    if (qualityFilter.deny_reason_code === 'NON_HEALTH_TOPIC') {
+    // Instrument OFF_LIMITS_TOPIC decisions with debug data
+    if (qualityFilter.deny_reason_code === 'OFF_LIMITS_TOPIC') {
       const healthScore = (qualityFilter.detail as any)?.health_score || 0;
       const debugData = {
         ...qualityFilter.detail,
@@ -557,8 +557,8 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       console.error(`[SCHEDULER] 🚫 Target quality filter blocked: ${denyReasonCode} - ${qualityFilter.reason}`);
       console.error(`[SCHEDULER]   Detail: ${JSON.stringify(qualityFilter.detail || qualityFilter.details, null, 2)}`);
       
-      // Instrument NON_HEALTH_TOPIC decisions with debug data
-      if (denyReasonCode === 'NON_HEALTH_TOPIC') {
+      // Instrument OFF_LIMITS_TOPIC decisions with debug data
+      if (denyReasonCode === 'OFF_LIMITS_TOPIC') {
         const healthScore = (qualityFilter.detail as any)?.health_score || 0;
         const debugData = {
           ...qualityFilter.detail,
@@ -569,16 +569,16 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         };
         
         await supabase.from('system_events').insert({
-          event_type: 'NON_HEALTH_TOPIC_DEBUG',
+          event_type: 'OFF_LIMITS_TOPIC_DEBUG',
           severity: 'info',
-          message: `NON_HEALTH_TOPIC decision: target=${candidate.candidate_tweet_id} health_score=${healthScore}`,
+          message: `OFF_LIMITS_TOPIC decision: target=${candidate.candidate_tweet_id}`,
           event_data: debugData,
           created_at: new Date().toISOString(),
         });
       }
       
-      // Record DENY decision with structured detail JSON (including debug data for NON_HEALTH_TOPIC)
-      const denyReasonDetail = denyReasonCode === 'NON_HEALTH_TOPIC' ? {
+      // Record DENY decision with structured detail JSON (including debug data for OFF_LIMITS_TOPIC)
+      const denyReasonDetail = denyReasonCode === 'OFF_LIMITS_TOPIC' ? {
         ...qualityFilter.detail,
         target_tweet_id: candidate.candidate_tweet_id,
         target_username: candidateData.candidate_author_username,

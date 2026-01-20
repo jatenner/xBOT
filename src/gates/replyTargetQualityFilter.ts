@@ -5,13 +5,15 @@
  * - Low signal (length < 40 AND no meaningful context)
  * - Emoji spam (emoji_ratio > 0.35)
  * - Parody/bot signals
- * - Non-health topics
+ * - Off-limits topics (scams, hate, explicit sexual content, extremist propaganda)
+ * 
+ * NOTE: Allowed topics include non-health content - reply generation must be health-anchored.
  */
 
 export interface TargetQualityFilterResult {
   pass: boolean;
   code: string; // Deny reason code
-  deny_reason_code?: 'LOW_SIGNAL_TARGET' | 'NON_HEALTH_TOPIC' | 'EMOJI_SPAM_TARGET' | 'PARODY_OR_BOT_SIGNAL' | 'TARGET_QUALITY_BLOCK';
+  deny_reason_code?: 'LOW_SIGNAL_TARGET' | 'OFF_LIMITS_TOPIC' | 'EMOJI_SPAM_TARGET' | 'PARODY_OR_BOT_SIGNAL' | 'TARGET_QUALITY_BLOCK';
   reason: string;
   detail: Record<string, any>; // Structured detail object
   details?: Record<string, any>; // Alias for compatibility
@@ -335,49 +337,26 @@ export function filterTargetQuality(
     };
   }
   
-  // Rule 4: Non-health topic (lightweight classifier with instrumentation)
-  const authorHandle = authorName?.replace('@', '') || undefined;
-  const healthCheck = isHealthRelevant(targetText, authorHandle);
-  
-  // 🔒 MINIMAL FIX: If curated handle OR contains any medical keyword AND extracted_text_len>40 → PASS
-  const curatedHandles = (process.env.REPLY_CURATED_HANDLES || '').split(',').map(h => h.trim().toLowerCase());
-  const normalizedHandle = authorHandle?.toLowerCase().replace('@', '') || '';
-  const isCuratedHandle = curatedHandles.includes(normalizedHandle);
-  
-  // Check if text contains any medical keywords (broader check)
-  const medicalKeywords = [
-    'disease', 'syndrome', 'cancer', 'diabetes', 'lupus', 'autoimmune', 'clinical', 'trial',
-    'treatment', 'patient', 'symptoms', 'medication', 'vaccine', 'infection', 'mental health',
-    'depression', 'anxiety', 'therapy', 'public health', 'epidemiology', 'research', 'study',
-    'biospecimen', 'collaboration', 'medical', 'doctor', 'health', 'fitness', 'nutrition',
-  ];
+  // Rule 4: Off-limits topics only (allow any topic, reply must be health-anchored)
+  // Only DENY if explicit off-limits topics: scams, hate/harassment, explicit porn, extremist propaganda
   const textLower = targetText.toLowerCase();
-  const hasMedicalKeyword = medicalKeywords.some(kw => textLower.includes(kw.toLowerCase()));
+  const authorHandle = authorName?.replace('@', '') || undefined;
   
-  // 🔒 ADJUSTED THRESHOLD: Only call NON_HEALTH_TOPIC if extracted_text_len>=20 AND health_score < threshold AND no medical keywords
-  // If curated handle OR has medical keyword AND text length > 40 → PASS
-  if (textLength >= 20 && (isCuratedHandle || (hasMedicalKeyword && textLength > 40))) {
-    // Override: treat as health-relevant
-    return {
-      pass: true,
-      code: 'PASS',
-      reason: `Target passed health filter (curated=${isCuratedHandle}, medical_keyword=${hasMedicalKeyword}, len=${textLength})`,
-      detail: {
-        text_length: textLength,
-        is_curated_handle: isCuratedHandle,
-        has_medical_keyword: hasMedicalKeyword,
-        health_score: healthCheck.healthScore + (isCuratedHandle ? 40 : 0) + (hasMedicalKeyword ? 30 : 0),
-        matched_keywords: healthCheck.matchedKeywords,
-      },
-      details: {
-        text_length: textLength,
-        is_curated_handle: isCuratedHandle,
-      },
-      score: Math.min(100, healthCheck.healthScore + (isCuratedHandle ? 40 : 0) + (hasMedicalKeyword ? 30 : 0))
-    };
-  }
+  // Off-limits topic patterns (strict blacklist)
+  const offLimitsPatterns = [
+    // Scams/fraud
+    /\b(crypto\s*scam|nft\s*scam|investment\s*scam|ponzi|pyramid\s*scheme|get\s*rich\s*quick)\b/i,
+    // Hate/harassment
+    /\b(kill\s*all|death\s*to|exterminate|genocide|ethnic\s*cleansing)\b/i,
+    // Explicit sexual content
+    /\b(hardcore|explicit|porn|xxx|nsfw\s*sexual|explicitly\s*sexual)\b/i,
+    // Extremist propaganda
+    /\b(terrorist|jihad|extremist\s*propaganda|radical\s*ideology|violent\s*extremism)\b/i,
+  ];
   
-  if (!healthCheck.isRelevant && textLength >= 20 && healthCheck.healthScore < 30 && !hasMedicalKeyword) {
+  const hasOffLimitsTopic = offLimitsPatterns.some(pattern => pattern.test(textLower));
+  
+  if (hasOffLimitsTopic && textLength >= 20) {
     // Extract target tweet ID from context if available (for URL generation)
     let targetTweetId: string | undefined;
     if (extractedContext && typeof extractedContext === 'string') {
@@ -390,24 +369,21 @@ export function filterTargetQuality(
       extracted_text_len: textLength,
       author_handle: authorHandle || 'unknown',
       url: targetTweetId ? `https://x.com/i/status/${targetTweetId}` : undefined,
-      health_signals: healthCheck.matchedKeywords,
-      health_score: healthCheck.healthScore,
       gate_version: gateVersion,
       app_version: appVersion,
       text_preview: targetText.substring(0, 100),
       meaningful_tokens: meaningfulTokens.length,
-      has_medical_keyword: hasMedicalKeyword,
-      is_curated_handle: isCuratedHandle,
+      off_limits_pattern_matched: true,
     };
     
     return {
       pass: false,
-      code: 'NON_HEALTH_TOPIC',
-      deny_reason_code: 'NON_HEALTH_TOPIC',
-      reason: `Target is not health-relevant (health_score=${healthCheck.healthScore}, matched_keywords=${healthCheck.matchedKeywords.length}, medical_keyword=${hasMedicalKeyword}, curated=${isCuratedHandle})`,
+      code: 'OFF_LIMITS_TOPIC',
+      deny_reason_code: 'OFF_LIMITS_TOPIC',
+      reason: `Target contains off-limits topic (scams, hate, explicit sexual content, or extremist propaganda)`,
       detail: debugData,
       details: debugData,
-      score: healthCheck.healthScore
+      score: 0
     };
   }
   

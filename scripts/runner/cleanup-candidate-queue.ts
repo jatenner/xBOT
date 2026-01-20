@@ -51,21 +51,45 @@ async function main() {
   const idsToDelete: string[] = [];
   const reasons: Record<string, number> = {};
   
-  // Lazy import health filter
-  const { filterTargetQuality } = await import('../../src/gates/replyTargetQualityFilter');
-  
   for (const candidate of candidates) {
     let shouldDelete = false;
     let reason = '';
     
-    // Check 1: Older than 6 hours
-    const createdAt = new Date(candidate.created_at);
-    if (createdAt < sixHoursAgo) {
-      shouldDelete = true;
-      reason = 'older_than_6h';
+    // Check 1: Test/synthetic candidates (highest priority)
+    if (!shouldDelete) {
+      const username = (candidate.candidate_author_username || '').toLowerCase();
+      const tweetId = candidate.candidate_tweet_id || '';
+      const content = (candidate.candidate_tweet_content || '').toLowerCase();
+      
+      // Test username (starts with "test_")
+      if (username.startsWith('test_')) {
+        shouldDelete = true;
+        reason = 'test_username';
+      }
+      
+      // Synthetic tweet ID (e.g., 2000000000000000xxx range)
+      if (!shouldDelete && /^2000000000000000\d{3}$/.test(tweetId)) {
+        shouldDelete = true;
+        reason = 'synthetic_tweet_id';
+      }
+      
+      // Test content
+      if (!shouldDelete && content.includes('test tweet content')) {
+        shouldDelete = true;
+        reason = 'test_content';
+      }
     }
     
-    // Check 2: Missing required metadata
+    // Check 2: Older than 6 hours
+    if (!shouldDelete) {
+      const createdAt = new Date(candidate.created_at);
+      if (createdAt < sixHoursAgo) {
+        shouldDelete = true;
+        reason = 'older_than_6h';
+      }
+    }
+    
+    // Check 3: Missing required metadata
     if (!shouldDelete) {
       const hasRequiredFields = candidate.candidate_tweet_id && 
                                 candidate.candidate_author_username &&
@@ -74,21 +98,6 @@ async function main() {
       if (!hasRequiredFields) {
         shouldDelete = true;
         reason = 'missing_metadata';
-      }
-    }
-    
-    // Check 3: Fail health relevance scoring
-    if (!shouldDelete && candidate.candidate_tweet_content) {
-      const qualityResult = filterTargetQuality(
-        candidate.candidate_tweet_content,
-        candidate.candidate_author_username || 'unknown',
-        undefined,
-        candidate.candidate_tweet_content
-      );
-      
-      if (!qualityResult.pass) {
-        shouldDelete = true;
-        reason = `non_health_${qualityResult.deny_reason_code || 'quality_filter'}`;
       }
     }
     
@@ -103,7 +112,17 @@ async function main() {
     return;
   }
   
+  // Separate test candidates from other stale candidates
+  const testReasons = ['test_username', 'synthetic_tweet_id', 'test_content'];
+  const removedTestCandidates = Object.entries(reasons)
+    .filter(([reason]) => testReasons.includes(reason))
+    .reduce((sum, [, count]) => sum + count, 0);
+  const removedOtherStale = idsToDelete.length - removedTestCandidates;
+  
   console.log(`🗑️  Deleting ${idsToDelete.length} candidates:\n`);
+  console.log(`   Removed test/synthetic candidates: ${removedTestCandidates}`);
+  console.log(`   Removed other stale candidates: ${removedOtherStale}\n`);
+  
   Object.entries(reasons)
     .sort((a, b) => b[1] - a[1])
     .forEach(([reason, count]) => {

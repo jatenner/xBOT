@@ -223,7 +223,14 @@ async function main() {
           // Only count if posted in last 10 seconds
           if (now - postTime < 10000) {
             postedSuccess++;
-            console.log(`   ✅ POST_SUCCESS: ${data.tweet_url || `https://x.com/i/status/${data.posted_reply_tweet_id}`}`);
+            const tweetUrl = data.tweet_url || `https://x.com/i/status/${data.posted_reply_tweet_id}`;
+            console.log(`   ✅ POST_SUCCESS: ${tweetUrl}`);
+            
+            // Early exit: stop once we get 1 POST_SUCCESS (for fast one-shot runs)
+            if (postedSuccess >= 1) {
+              console.log(`\n🎯 Early exit: Achieved 1 POST_SUCCESS - stopping scheduler`);
+              break; // Exit the loop
+            }
           }
         } else {
           // Check for POST_FAILED
