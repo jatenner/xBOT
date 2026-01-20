@@ -1127,8 +1127,8 @@ async function validateAndInsert(
     }
     
     if (!validationResult.isRoot) {
-      result.skipped_by_reason['not_root'] = (result.skipped_by_reason['not_root'] || 0) + 1;
-      console.log(`   ⏭️  Skipped ${tweetId}: not_root`);
+      result.skipped_by_reason['harvest_is_reply'] = (result.skipped_by_reason['harvest_is_reply'] || 0) + 1;
+      console.log(`   ⏭️  Skipped ${tweetId}: harvest_is_reply (not a root tweet)`);
       return;
     }
     

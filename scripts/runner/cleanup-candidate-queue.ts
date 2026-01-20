@@ -51,16 +51,51 @@ async function main() {
   const idsToDelete: string[] = [];
   const reasons: Record<string, number> = {};
   
+  // Get tweet IDs to check for parent tweets
+  const tweetIds = candidates.map(c => c.candidate_tweet_id).filter(Boolean);
+  
+  // Batch check for parent tweets in reply_opportunities
+  const { data: opportunities } = await supabase
+    .from('reply_opportunities')
+    .select('target_tweet_id, target_in_reply_to_tweet_id')
+    .in('target_tweet_id', tweetIds);
+  
+  // Build map of tweet_id -> parent_tweet_id
+  const parentMap = new Map<string, string | null>();
+  opportunities?.forEach(opp => {
+    parentMap.set(opp.target_tweet_id, opp.target_in_reply_to_tweet_id);
+  });
+  
+  // Also check candidate_evaluations
+  const { data: evaluations } = await supabase
+    .from('candidate_evaluations')
+    .select('candidate_tweet_id, target_in_reply_to_tweet_id')
+    .in('candidate_tweet_id', tweetIds);
+  
+  evaluations?.forEach(eval => {
+    if (!parentMap.has(eval.candidate_tweet_id)) {
+      parentMap.set(eval.candidate_tweet_id, eval.target_in_reply_to_tweet_id || null);
+    }
+  });
+  
+  // Off-limits content patterns (matching replyTargetQualityFilter)
+  const offLimitsPatterns = [
+    /\b(hardcore|explicit|porn|xxx|nsfw\s*sexual|explicitly\s*sexual)\b/i,
+    /\b(crypto\s*scam|nft\s*scam|investment\s*scam|ponzi|pyramid\s*scheme|get\s*rich\s*quick)\b/i,
+    /\b(kill\s*all|death\s*to|exterminate|genocide|ethnic\s*cleansing)\b/i,
+    /\b(terrorist|jihad|extremist\s*propaganda|radical\s*ideology|violent\s*extremism)\b/i,
+  ];
+  
   for (const candidate of candidates) {
     let shouldDelete = false;
     let reason = '';
     
+    const username = (candidate.candidate_author_username || '').toLowerCase();
+    const tweetId = candidate.candidate_tweet_id || '';
+    const content = (candidate.candidate_tweet_content || '').toLowerCase();
+    
     // Check 1: Test/synthetic candidates (highest priority)
     if (!shouldDelete) {
-      const username = (candidate.candidate_author_username || '').toLowerCase();
-      const tweetId = candidate.candidate_tweet_id || '';
-      const content = (candidate.candidate_tweet_content || '').toLowerCase();
-      
       // Test username (starts with "test_")
       if (username.startsWith('test_')) {
         shouldDelete = true;
@@ -80,7 +115,25 @@ async function main() {
       }
     }
     
-    // Check 2: Older than 6 hours
+    // Check 2: Parent tweet exists (reply candidate, not root)
+    if (!shouldDelete && tweetId) {
+      const parentTweetId = parentMap.get(tweetId);
+      if (parentTweetId !== null && parentTweetId !== undefined) {
+        shouldDelete = true;
+        reason = 'has_parent_tweet';
+      }
+    }
+    
+    // Check 3: Off-limits content patterns
+    if (!shouldDelete && content) {
+      const hasOffLimitsPattern = offLimitsPatterns.some(pattern => pattern.test(content));
+      if (hasOffLimitsPattern) {
+        shouldDelete = true;
+        reason = 'off_limits_content';
+      }
+    }
+    
+    // Check 4: Older than 6 hours
     if (!shouldDelete) {
       const createdAt = new Date(candidate.created_at);
       if (createdAt < sixHoursAgo) {
@@ -89,7 +142,7 @@ async function main() {
       }
     }
     
-    // Check 3: Missing required metadata
+    // Check 5: Missing required metadata
     if (!shouldDelete) {
       const hasRequiredFields = candidate.candidate_tweet_id && 
                                 candidate.candidate_author_username &&

@@ -188,24 +188,8 @@ async function main() {
   let evaluated = 0;
   let passed = 0;
   
-  // Step 5a: Cleanup stale candidates from queue
-  console.log('\nSTEP 5a: Cleaning up candidate queue...');
-  try {
-    const cleanupOutput = execSync(
-      'RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' pnpm exec tsx scripts/runner/cleanup-candidate-queue.ts',
-      { encoding: 'utf-8', stdio: 'pipe', timeout: 30000 } // 30s timeout
-    );
-    console.log(cleanupOutput);
-  } catch (error: any) {
-    if (error.signal === 'SIGTERM' || error.message.includes('timeout')) {
-      console.error(`❌ Cleanup TIMED OUT after 30s - step hung at cleanup`);
-      process.exit(1);
-    }
-    console.error(`⚠️  Cleanup failed: ${error.message}`);
-  }
-  
-  // Step 5b: Refresh candidate queue (evaluations → queue) - 30s timeout
-  console.log('\nSTEP 5b: Refreshing candidate queue...');
+  // Step 5a: Refresh candidate queue (evaluations → queue) - 30s timeout
+  console.log('\nSTEP 5a: Refreshing candidate queue...');
   let candidatesQueued = 0;
   try {
     // Load env before import
@@ -231,6 +215,28 @@ async function main() {
     console.log(`✅ Queue refresh complete: ${candidatesQueued} candidates queued`);
   } catch (error: any) {
     console.error(`⚠️  Queue refresh failed: ${error.message}`);
+  }
+  
+  // Step 5b: Cleanup bad candidates from queue (replies, off-limits, old)
+  console.log('\nSTEP 5b: Cleaning up candidate queue...');
+  let candidatesRemoved = 0;
+  try {
+    const cleanupOutput = execSync(
+      'RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' pnpm exec tsx scripts/runner/cleanup-candidate-queue.ts',
+      { encoding: 'utf-8', stdio: 'pipe', timeout: 30000 } // 30s timeout
+    );
+    
+    // Extract count of removed candidates
+    const removedMatch = cleanupOutput.match(/Deleting (\d+) candidates/);
+    candidatesRemoved = removedMatch ? parseInt(removedMatch[1], 10) : 0;
+    
+    console.log(cleanupOutput);
+  } catch (error: any) {
+    if (error.signal === 'SIGTERM' || error.message.includes('timeout')) {
+      console.error(`❌ Cleanup TIMED OUT after 30s - step hung at cleanup`);
+      process.exit(1);
+    }
+    console.error(`⚠️  Cleanup failed: ${error.message}`);
   }
   
   // Step 6: Schedule and create decisions - limit to 10 fresh candidates for speed, stop early on success
@@ -372,6 +378,7 @@ async function main() {
   console.log(`Run started at: ${runStartedAt}`);
   console.log(`Opportunities inserted: ${opportunitiesInserted}`);
   console.log(`Candidates queued (after run start): ${candidatesQueuedCount || 0}`);
+  console.log(`Candidates removed by cleanup: ${candidatesRemoved || 0}`);
   console.log(`Candidates processed: ${candidatesProcessed}`);
   console.log(`Decisions created: ${decisionsCreated}`);
   console.log(`Queued decisions: ${queuedDecisions || 0}`);
