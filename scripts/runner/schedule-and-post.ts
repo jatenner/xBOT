@@ -131,6 +131,15 @@ async function main() {
   let postedFailed = 0;
   const failureReasons: Record<string, number> = {};
   
+  // Debug limit: only process N candidates if SCHEDULER_DEBUG_LIMIT is set
+  const debugLimit = process.env.SCHEDULER_DEBUG_LIMIT ? parseInt(process.env.SCHEDULER_DEBUG_LIMIT, 10) : null;
+  const maxCandidates = debugLimit || 3; // Default to 3, or use debug limit
+  const candidatesToProcess = candidates.slice(0, maxCandidates);
+  
+  if (debugLimit) {
+    console.log(`🔍 DEBUG MODE: Processing only ${debugLimit} candidates`);
+  }
+  
   // Helper: Timeout wrapper with logging
   async function withTimeout<T>(
     promise: Promise<T>,
@@ -161,13 +170,13 @@ async function main() {
   
   // attemptScheduledReply processes one candidate and creates reply_decisions
   // We'll call it once per candidate
-  for (let i = 0; i < Math.min(candidates.length, 3); i++) { // Limit to 3 per run
-    const candidate = candidates[i];
+  for (let i = 0; i < candidatesToProcess.length; i++) {
+    const candidate = candidatesToProcess[i];
     const candidateStartTime = Date.now();
     const CANDIDATE_MAX_TIME_MS = 15000; // 15s watchdog per candidate
     
     try {
-      console.log(`\n🎯 Processing candidate ${i + 1}/${Math.min(candidates.length, 3)}: ${candidate.candidate_tweet_id} (tier=${candidate.predicted_tier}, score=${candidate.overall_score})`);
+      console.log(`\n🎯 Processing candidate ${i + 1}/${candidatesToProcess.length}: ${candidate.candidate_tweet_id} (tier=${candidate.predicted_tier}, score=${candidate.overall_score})`);
       
       // Watchdog: If candidate takes too long, skip it
       const schedulerPromise = (async () => {
@@ -266,25 +275,70 @@ async function main() {
     }
   }
   
-  // Final summary
+  // Final summary with detailed counters
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           📊 SCHEDULER SUMMARY');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
   console.log(`Candidates fetched: ${candidates.length}`);
-  console.log(`Candidates processed: ${Math.min(candidates.length, 3)}`);
+  console.log(`Candidates considered: ${candidatesToProcess.length}`);
+  console.log(`Candidates processed: ${candidatesToProcess.length}`);
   console.log(`Decisions created: ${decisionsCreated}`);
   console.log(`POST_SUCCESS: ${postedSuccess}`);
   console.log(`POST_FAILED: ${postedFailed}`);
   
+  // Count decisions from DB to verify accounting
+  const { count: dbDecisionsCount } = await supabase
+    .from('reply_decisions')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'queued')
+    .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString()); // Last 5 minutes
+  
+  console.log(`\nAccounting check:`);
+  console.log(`   DB queued decisions (last 5min): ${dbDecisionsCount || 0}`);
+  console.log(`   Logged decisions created: ${decisionsCreated}`);
+  
+  if (dbDecisionsCount !== decisionsCreated && dbDecisionsCount && decisionsCreated > 0) {
+    console.log(`   ⚠️  Accounting mismatch: DB shows ${dbDecisionsCount || 0}, we counted ${decisionsCreated}`);
+  }
+  
   if (Object.keys(failureReasons).length > 0) {
-    console.log('\nTop failure reasons:');
+    console.log('\nFailure reasons:');
     Object.entries(failureReasons)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
       .forEach(([reason, count]) => {
         console.log(`   ${reason}: ${count}`);
       });
+  }
+  
+  // Get outcomes from DB (last 5 minutes)
+  const { data: recentOutcomes } = await supabase
+    .from('system_events')
+    .select('event_data, created_at')
+    .eq('event_type', 'scheduler_outcome')
+    .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+    .order('created_at', { ascending: false });
+  
+  if (recentOutcomes && recentOutcomes.length > 0) {
+    console.log('\nPer-candidate outcomes (from DB):');
+    recentOutcomes.forEach((outcome, i) => {
+      const data = typeof outcome.event_data === 'string' 
+        ? JSON.parse(outcome.event_data) 
+        : outcome.event_data;
+      const type = data.outcome_type || 'UNKNOWN';
+      const tweetId = data.candidate_tweet_id || 'N/A';
+      const reason = data.deny_reason_code || data.error_stage || 'OK';
+      const timings = data.stage_timings || {};
+      const totalMs = timings.total_ms || 0;
+      console.log(`   ${i + 1}. ${type}: ${tweetId} | ${reason} | ${totalMs}ms`);
+      if (timings.fetch_ms || timings.ancestry_ms || timings.quality_ms) {
+        const parts = [];
+        if (timings.fetch_ms) parts.push(`fetch=${timings.fetch_ms}ms`);
+        if (timings.ancestry_ms) parts.push(`ancestry=${timings.ancestry_ms}ms`);
+        if (timings.quality_ms) parts.push(`quality=${timings.quality_ms}ms`);
+        console.log(`      ${parts.join(', ')}`);
+      }
+    });
   }
   
   console.log('');

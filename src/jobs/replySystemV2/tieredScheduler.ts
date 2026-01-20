@@ -10,6 +10,28 @@ import { getNextCandidateFromQueue } from './queueManager';
 import { createHash } from 'crypto';
 import { computeSemanticSimilarity } from '../../gates/semanticGate';
 
+// Outcome tracking interface
+interface OutcomeData {
+  outcome_type: 'DECISION_CREATED' | 'DENY' | 'SKIP' | 'ERROR' | 'TIMEOUT';
+  candidate_tweet_id: string;
+  candidate_id?: string;
+  author_handle?: string;
+  url: string;
+  stage_timings?: {
+    fetch_ms?: number;
+    ancestry_ms?: number;
+    quality_ms?: number;
+    allow_ms?: number;
+    total_ms: number;
+  };
+  deny_reason_code?: string;
+  deny_reason_detail?: any;
+  error_stage?: string;
+  error_message?: string;
+  decision_id?: string;
+}
+
+
 // 🔒 TASK 4: Throughput knobs via env vars (safe, reversible)
 const REPLY_V2_TICK_SECONDS = parseInt(process.env.REPLY_V2_TICK_SECONDS || '900', 10); // Default: 15 min (900s)
 const POSTING_INTERVAL_MINUTES = REPLY_V2_TICK_SECONDS / 60;
@@ -22,6 +44,86 @@ export interface SchedulerResult {
   tier?: number;
   reason: string;
   behind_schedule: boolean;
+}
+
+// Outcome tracking interface
+interface OutcomeData {
+  outcome_type: 'DECISION_CREATED' | 'DENY' | 'SKIP' | 'ERROR' | 'TIMEOUT';
+  candidate_tweet_id: string;
+  candidate_id?: string;
+  author_handle?: string;
+  url: string;
+  stage_timings?: {
+    fetch_ms?: number;
+    ancestry_ms?: number;
+    quality_ms?: number;
+    allow_ms?: number;
+    total_ms: number;
+  };
+  deny_reason_code?: string;
+  deny_reason_detail?: any;
+  error_stage?: string;
+  error_message?: string;
+  decision_id?: string;
+}
+
+// Global counters for this run
+const runCounters = {
+  candidates_fetched: 0,
+  candidates_considered: 0,
+  decisions_created: 0,
+  denies_by_reason: {} as Record<string, number>,
+  skips_by_reason: {} as Record<string, number>,
+  timeouts_by_stage: {} as Record<string, number>,
+  insert_failures: 0,
+  errors: [] as Array<{ stage: string; message: string }>,
+};
+
+/**
+ * Log outcome to console and DB
+ */
+async function logOutcome(supabase: any, schedulerRunId: string, outcome: OutcomeData): Promise<void> {
+  const logLine = `[OUTCOME] ${outcome.outcome_type}: ${outcome.candidate_tweet_id} | ${outcome.deny_reason_code || outcome.error_stage || 'OK'} | ${outcome.stage_timings?.total_ms || 0}ms`;
+  
+  if (outcome.outcome_type === 'DECISION_CREATED') {
+    console.log(`✅ ${logLine}`);
+    runCounters.decisions_created++;
+  } else if (outcome.outcome_type === 'DENY') {
+    const reason = outcome.deny_reason_code || 'UNKNOWN';
+    console.log(`🚫 ${logLine}`);
+    runCounters.denies_by_reason[reason] = (runCounters.denies_by_reason[reason] || 0) + 1;
+  } else if (outcome.outcome_type === 'SKIP') {
+    const reason = outcome.deny_reason_code || 'UNKNOWN';
+    console.log(`⏭️  ${logLine}`);
+    runCounters.skips_by_reason[reason] = (runCounters.skips_by_reason[reason] || 0) + 1;
+  } else if (outcome.outcome_type === 'TIMEOUT') {
+    const stage = outcome.error_stage || 'UNKNOWN';
+    console.log(`⏱️  ${logLine}`);
+    runCounters.timeouts_by_stage[stage] = (runCounters.timeouts_by_stage[stage] || 0) + 1;
+  } else {
+    console.error(`❌ ${logLine}`);
+    runCounters.errors.push({
+      stage: outcome.error_stage || 'UNKNOWN',
+      message: outcome.error_message || 'Unknown error',
+    });
+  }
+  
+  // Persist to DB
+  try {
+    await supabase.from('system_events').insert({
+      event_type: 'scheduler_outcome',
+      severity: outcome.outcome_type === 'DECISION_CREATED' ? 'info' : 
+                outcome.outcome_type === 'TIMEOUT' ? 'warning' : 'error',
+      message: logLine,
+      event_data: {
+        scheduler_run_id: schedulerRunId,
+        ...outcome,
+      },
+      created_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn(`[SCHEDULER] Failed to log outcome to DB: ${(e as Error).message}`);
+  }
 }
 
 /**
@@ -66,6 +168,16 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       event_data: { scheduler_run_id: schedulerRunId, reason: 'RUNNER_MODE_NOT_SET' },
       created_at: new Date().toISOString(),
     });
+    
+    // Log outcome
+    await logOutcome(supabase, schedulerRunId, {
+      outcome_type: 'SKIP',
+      candidate_tweet_id: 'N/A',
+      url: 'N/A',
+      deny_reason_code: 'RUNNER_MODE_NOT_SET',
+      stage_timings: { total_ms: 0 },
+    });
+    
     return {
       posted: false,
       reason: 'RUNNER_MODE_NOT_SET',
@@ -171,6 +283,15 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       await refreshCandidateQueue();
     }
     
+    // Log outcome
+    await logOutcome(supabase, schedulerRunId, {
+      outcome_type: 'SKIP',
+      candidate_tweet_id: 'N/A',
+      url: 'N/A',
+      deny_reason_code: 'queue_empty',
+      stage_timings: { total_ms: 0 },
+    });
+    
     return {
       posted: false,
       reason: 'queue_empty',
@@ -180,20 +301,37 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   
   console.log(`[SCHEDULER] 🎯 Selected candidate: ${candidate.candidate_tweet_id} (tier ${tier})`);
   
+  // Initialize tracking for this candidate
+  const candidateStartTime = Date.now();
+  let stageTimings: { fetch_ms?: number; ancestry_ms?: number; quality_ms?: number; allow_ms?: number; total_ms: number } = { total_ms: 0 };
+  
   // 🔒 MANDATE 1: Create decision + permit IMMEDIATELY after selection, BEFORE generation
   let decisionId: string;
   let permit_id: string;
   let queueId: string | undefined;
+  let candidateData: any = null;
   
   try {
     // Get candidate details (including scores for quality tracking)
-    const { data: candidateData } = await supabase
+    const { data: fetchedCandidateData } = await supabase
       .from('candidate_evaluations')
       .select('candidate_tweet_id, candidate_author_username, candidate_content, topic_relevance_score, velocity_score, recency_score, author_signal_score, predicted_tier, predicted_24h_views, overall_score')
       .eq('id', candidate.evaluation_id)
       .single();
     
+    candidateData = fetchedCandidateData;
+    
     if (!candidateData) {
+      stageTimings.total_ms = Date.now() - candidateStartTime;
+      await logOutcome(supabase, schedulerRunId, {
+        outcome_type: 'ERROR',
+        candidate_tweet_id: candidate.candidate_tweet_id,
+        candidate_id: candidate.evaluation_id,
+        url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+        error_stage: 'data_fetch',
+        error_message: 'Candidate data not found',
+        stage_timings: stageTimings,
+      });
       throw new Error('Candidate data not found');
     }
     
@@ -242,6 +380,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       ]) as any;
       
       const fetchElapsed = Date.now() - fetchStartTime;
+      stageTimings.fetch_ms = fetchElapsed;
       if (tweetData && tweetData.text && tweetData.text.trim().length >= 20) {
         targetTweetContentSnapshot = tweetData.text.trim();
         snapshotLenLive = tweetData.text.trim().length;
@@ -252,16 +391,33 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       }
     } catch (fetchError: any) {
       const fetchElapsed = Date.now() - fetchStartTime;
+      stageTimings.fetch_ms = fetchElapsed;
       const errorMsg = fetchError.message.includes('TIMEOUT') 
         ? `fetch timed out after ${fetchElapsed}ms` 
         : fetchError.message;
       console.warn(`[SCHEDULER] ⚠️ Failed to fetch live tweet text (${fetchElapsed}ms): ${errorMsg}, falling back to candidate content`);
+      
+      // If it's a timeout, log it but continue with fallback
+      if (fetchError.message.includes('TIMEOUT')) {
+        // Don't log timeout yet - we can still use fallback content
+      }
       // Fallback to candidate content
       targetTweetContentSnapshot = candidateData.candidate_content || '';
       snapshotSource = 'candidate_extract';
       snapshotLenLive = 0;
       
       if (!targetTweetContentSnapshot || targetTweetContentSnapshot.length < 20) {
+        stageTimings.total_ms = Date.now() - candidateStartTime;
+        await logOutcome(supabase, schedulerRunId, {
+          outcome_type: 'ERROR',
+          candidate_tweet_id: candidate.candidate_tweet_id,
+          candidate_id: candidate.evaluation_id,
+          author_handle: candidateData.candidate_author_username,
+          url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+          error_stage: 'fetch',
+          error_message: `Candidate content too short: ${targetTweetContentSnapshot.length} chars`,
+          stage_timings: stageTimings,
+        });
         throw new Error(`Candidate content too short: ${targetTweetContentSnapshot.length} chars`);
       }
     }
@@ -318,9 +474,11 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         }),
       ]) as any;
       const ancestryElapsed = Date.now() - ancestryStartTime;
+      stageTimings.ancestry_ms = ancestryElapsed;
       console.log(`[SCHEDULER] ✅ Ancestry resolved in ${ancestryElapsed}ms: status=${ancestry.status}, isRoot=${ancestry.isRoot}`);
     } catch (ancestryError: any) {
       const ancestryElapsed = Date.now() - ancestryStartTime;
+      stageTimings.ancestry_ms = ancestryElapsed;
       console.error(`[SCHEDULER] ❌ Ancestry resolution failed after ${ancestryElapsed}ms: ${ancestryError.message}`);
       
       // Return an error ancestry result
@@ -336,12 +494,28 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         error: `ANCESTRY_TIMEOUT: ${ancestryError.message}`,
         cache_hit: false,
       };
+      
+      // Log timeout outcome (candidateData may not be available yet if fetch failed)
+      stageTimings.total_ms = Date.now() - candidateStartTime;
+      await logOutcome(supabase, schedulerRunId, {
+        outcome_type: 'TIMEOUT',
+        candidate_tweet_id: candidate.candidate_tweet_id,
+        candidate_id: candidate.evaluation_id,
+        author_handle: (candidateData as any)?.candidate_author_username,
+        url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+        error_stage: 'ancestry',
+        error_message: ancestryError.message,
+        stage_timings: stageTimings,
+      });
+      
+      throw new Error(`Ancestry resolution timeout: ${ancestryError.message}`);
     }
     
     const allowCheckStartTime = Date.now();
     console.log(`[SCHEDULER] 🔍 Checking if reply allowed for ${candidate.candidate_tweet_id}...`);
     const allowCheck = await shouldAllowReply(ancestry);
     const allowCheckElapsed = Date.now() - allowCheckStartTime;
+    stageTimings.allow_ms = allowCheckElapsed;
     console.log(`[SCHEDULER] ✅ Allow check completed in ${allowCheckElapsed}ms: allow=${allowCheck.allow}, reason=${allowCheck.reason}`);
     
     // 🔒 PHASE 1.1: TARGET QUALITY FILTER - Pre-generation filter (MUST be enforced)
@@ -355,6 +529,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       normalizedSnapshot // Use snapshot as extracted context
     );
     const qualityFilterElapsed = Date.now() - qualityFilterStartTime;
+    stageTimings.quality_ms = qualityFilterElapsed;
     console.log(`[SCHEDULER] ✅ Quality filter completed in ${qualityFilterElapsed}ms: pass=${qualityFilter.pass}, reason=${qualityFilter.reason}`);
     
     // Instrument NON_HEALTH_TOPIC decisions with debug data
@@ -463,6 +638,20 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         created_at: new Date().toISOString(),
       });
       
+      // Log DENY outcome
+      stageTimings.total_ms = Date.now() - candidateStartTime;
+      await logOutcome(supabase, schedulerRunId, {
+        outcome_type: 'DENY',
+        candidate_tweet_id: candidate.candidate_tweet_id,
+        candidate_id: candidate.evaluation_id,
+        author_handle: candidateData.candidate_author_username,
+        url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+        deny_reason_code: denyReasonCode,
+        deny_reason_detail: denyReasonDetail,
+        decision_id: decisionId,
+        stage_timings: stageTimings,
+      });
+      
       throw new Error(`Quality filter blocked: ${denyReasonCode}`);
     }
     
@@ -513,13 +702,31 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     // 🔒 HARD INVARIANT: Deny non-root replies
     if (!allowCheck.allow) {
       const denyReason = `DENY_NON_ROOT: ${allowCheck.reason}`;
+      const denyReasonCode = allowCheck.deny_reason_code || 'NON_ROOT_REPLY';
+      
       await supabase
         .from('reply_decisions')
         .update({
           pipeline_error_reason: denyReason,
+          deny_reason_code: denyReasonCode,
         })
         .eq('decision_id', decisionId);
       console.error(`[PIPELINE] decision_id=${decisionId} stage=scored ok=false detail=${denyReason}`);
+      
+      // Log DENY outcome
+      stageTimings.total_ms = Date.now() - candidateStartTime;
+      await logOutcome(supabase, schedulerRunId, {
+        outcome_type: 'DENY',
+        candidate_tweet_id: candidate.candidate_tweet_id,
+        candidate_id: candidate.evaluation_id,
+        author_handle: candidateData.candidate_author_username,
+        url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+        deny_reason_code: denyReasonCode,
+        deny_reason_detail: allowCheck.deny_reason_detail,
+        decision_id: decisionId,
+        stage_timings: stageTimings,
+      });
+      
       throw new Error(`Non-root reply blocked: ${allowCheck.reason}`);
     }
     
@@ -1403,6 +1610,18 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     console.log(`[SCHEDULER] ✅ Queued reply: ${replyDecisionId} to ${candidate.candidate_tweet_id}`);
     console.log(`[SCHEDULER] 🆔 Traceability: feed_run_id -> eval_id -> queue_id -> scheduler_run_id -> decision_id`);
     
+    // Log DECISION_CREATED outcome
+    stageTimings.total_ms = Date.now() - candidateStartTime;
+      await logOutcome(supabase, schedulerRunId, {
+        outcome_type: 'DECISION_CREATED',
+        candidate_tweet_id: candidate.candidate_tweet_id,
+        candidate_id: candidate.evaluation_id,
+        author_handle: candidateData.candidate_author_username,
+        url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+        decision_id: replyDecisionId,
+        stage_timings: stageTimings,
+      });
+    
     // Log job success to system_events
     try {
       await supabase.from('system_events').insert({
@@ -1426,6 +1645,56 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     };
   } catch (error: any) {
     console.error(`[SCHEDULER] ❌ Failed to post reply: ${error.message}`);
+    
+    // Determine error stage and type
+    let errorStage = 'unknown';
+    let outcomeType: 'ERROR' | 'TIMEOUT' = 'ERROR';
+    
+    if (error.message.includes('TIMEOUT') || error.message.includes('timeout')) {
+      outcomeType = 'TIMEOUT';
+      if (error.message.includes('ANCESTRY')) {
+        errorStage = 'ancestry';
+      } else if (error.message.includes('FETCH')) {
+        errorStage = 'fetch';
+      } else if (error.message.includes('candidate')) {
+        errorStage = 'processing';
+      } else {
+        errorStage = 'unknown';
+      }
+    } else if (error.message.includes('Quality filter')) {
+      errorStage = 'quality_filter';
+      // Already logged as DENY above, skip
+    } else if (error.message.includes('Non-root')) {
+      errorStage = 'allow_check';
+      // Already logged as DENY above, skip
+    } else {
+      errorStage = 'processing';
+    }
+    
+    // Log ERROR outcome (unless already logged as DENY)
+    if (!error.message.includes('Quality filter') && !error.message.includes('Non-root')) {
+      // Ensure stageTimings exists (might not be initialized if error happened very early)
+      if (!stageTimings || !stageTimings.total_ms) {
+        stageTimings = { total_ms: Date.now() - candidateStartTime };
+      } else {
+        stageTimings.total_ms = Date.now() - candidateStartTime;
+      }
+      
+      // Get candidateData if available (may not be initialized if error happened early)
+      const candidateAuthor = candidateData?.candidate_author_username || 'unknown';
+      
+      await logOutcome(supabase, schedulerRunId, {
+        outcome_type: outcomeType,
+        candidate_tweet_id: candidate.candidate_tweet_id,
+        candidate_id: candidate.evaluation_id,
+        author_handle: candidateAuthor,
+        url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+        error_stage: errorStage,
+        error_message: error.message,
+        decision_id: decisionId,
+        stage_timings: stageTimings,
+      });
+    }
     
     // 🎯 PIPELINE STAGES: Mark all unset stages as FAILED
     if (decisionId) {
