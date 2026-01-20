@@ -31,10 +31,10 @@ async function main() {
   const GLOBAL_TIMEOUT_MS = 60000; // 60s hard global timeout
   const globalStartTime = Date.now();
   let lastCandidateSeen: string | null = null;
-  let lastStageSeen: string | null = null;
+  let lastStageSeen: string | null = 'initializing';
   
   // Global timeout watchdog
-  const globalTimeoutTimer = setTimeout(() => {
+  const globalTimeoutTimer = setTimeout(async () => {
     console.error('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.error('           ❌ SCHEDULER GLOBAL TIMEOUT');
     console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -46,14 +46,15 @@ async function main() {
     
     // Try to release any stuck candidates
     if (lastCandidateSeen) {
-      const { getSupabaseClient } = require('../../src/db');
-      const supabase = getSupabaseClient();
-      supabase
-        .from('reply_candidate_queue')
-        .update({ status: 'queued', selected_at: null, lease_id: null })
-        .eq('candidate_tweet_id', lastCandidateSeen)
-        .then(() => console.error(`🔧 Released stuck candidate: ${lastCandidateSeen}`))
-        .catch(() => {});
+      try {
+        const { getSupabaseClient } = await import('../../src/db');
+        const { releaseLease } = await import('../../src/jobs/replySystemV2/queueManager');
+        const supabase = getSupabaseClient();
+        await releaseLease(lastCandidateSeen);
+        console.error(`🔧 Released stuck candidate: ${lastCandidateSeen}`);
+      } catch (releaseError: any) {
+        console.error(`⚠️  Failed to release candidate: ${releaseError.message}`);
+      }
     }
     
     process.exit(1);
@@ -425,15 +426,34 @@ async function main() {
   
   console.log('');
   
-  // Clear global timeout on successful completion
-  clearGlobalTimeout();
-  
-  // Loop mode
-  if (isLoop) {
-    const delay = 60 * 1000; // 60 seconds
-    console.log(`⏰ Waiting ${delay / 1000}s before next run...\n`);
-    await new Promise(resolve => setTimeout(resolve, delay));
-    return main(); // Recursive call
+    // Clear global timeout on successful completion
+    clearGlobalTimeout();
+    
+    // Loop mode
+    if (isLoop) {
+      const delay = 60 * 1000; // 60 seconds
+      console.log(`⏰ Waiting ${delay / 1000}s before next run...\n`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return main(); // Recursive call
+    }
+  } catch (error: any) {
+    // Clear timeout on error
+    clearGlobalTimeout();
+    console.error('\n❌ Scheduler error:', error.message);
+    console.error(`Last candidate seen: ${lastCandidateSeen || 'none'}`);
+    console.error(`Last stage seen: ${lastStageSeen || 'none'}`);
+    
+    // Release stuck candidate
+    if (lastCandidateSeen) {
+      try {
+        const { releaseLease } = await import('../../src/jobs/replySystemV2/queueManager');
+        await releaseLease(lastCandidateSeen);
+      } catch (releaseError: any) {
+        console.warn(`⚠️  Failed to release candidate: ${releaseError.message}`);
+      }
+    }
+    
+    throw error;
   }
 }
 
