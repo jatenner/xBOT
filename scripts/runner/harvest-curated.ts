@@ -1058,26 +1058,47 @@ async function validateTweetWithCDPReuse(
     return { exists: false, isRoot: false, author: null, content: null, error: error.message };
   }
 }
+
+/**
+ * Validate tweet using CDP-authenticated session (Mac Runner only) - creates new context/page
+ */
+async function validateTweetWithCDP(tweetId: string): Promise<{
+  exists: boolean;
+  isRoot: boolean;
+  author: string | null;
+  content: string | null;
+  error?: string;
+}> {
+  // Only use CDP validation in RUNNER_MODE with CDP browser
+  if (process.env.RUNNER_MODE !== 'true' || process.env.RUNNER_BROWSER !== 'cdp') {
+    // Fallback to legacy validation
+    return { exists: false, isRoot: false, author: null, content: null, error: 'Not in CDP mode' };
+  }
+
+  const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
+  const context = await launchRunnerPersistent(true); // headless
+  const page = await context.newPage();
   
   const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'harvest_debug');
   if (!fs.existsSync(debugDir)) {
     fs.mkdirSync(debugDir, { recursive: true });
   }
-  
+
   try {
     const tweetUrl = `https://x.com/i/status/${tweetId}`;
     console.log(`   🔍 Validating ${tweetId} via CDP...`);
-    
+
     await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(3000); // Let page settle
-    
+
     const finalUrl = page.url();
-    
+
     // Check for login redirect
     if (finalUrl.includes('/i/flow/login') || finalUrl.includes('/login')) {
       console.log(`   ⚠️  Login redirect detected for ${tweetId}`);
-      await page.screenshot({ path: path.join(debugDir, `login_redirect_${tweetId}.png`) }).catch(() => {});
-      // Don't close context/page - they're reused
+      await page.screenshot({ path: path.join(debugDir, `login_redirect_${tweetId}.png`) });
+      await page.close();
+      await context.close();
       return { exists: false, isRoot: false, author: null, content: null, error: 'Login required' };
     }
 
@@ -1091,12 +1112,11 @@ async function validateTweetWithCDPReuse(
 
     if (!shellOrTweet) {
       console.log(`   ⚠️  No shell or tweet detected for ${tweetId}`);
-      await page.screenshot({ path: path.join(debugDir, `no_content_${tweetId}.png`) }).catch(() => {});
-      const html = await page.content().catch(() => '');
-      if (html) {
-        fs.writeFileSync(path.join(debugDir, `no_content_${tweetId}.html`), html);
-      }
-      // Don't close context/page - they're reused
+      await page.screenshot({ path: path.join(debugDir, `no_content_${tweetId}.png`) });
+      const html = await page.content();
+      fs.writeFileSync(path.join(debugDir, `no_content_${tweetId}.html`), html);
+      await page.close();
+      await context.close();
       return { exists: false, isRoot: false, author: null, content: null, error: 'No content detected' };
     }
     
@@ -1196,7 +1216,8 @@ async function validateTweetWithCDPReuse(
       };
     });
     
-    // Don't close context/page - they're reused across validations
+    await page.close();
+    await context.close();
     
     if (!tweetData.exists) {
       const errorReason = tweetData.reason === 'unavailable' ? 'unavailable' : 
@@ -1217,65 +1238,11 @@ async function validateTweetWithCDPReuse(
   } catch (error: any) {
     console.log(`   ❌ Validation error for ${tweetId}: ${error.message}`);
     await page.screenshot({ path: path.join(debugDir, `error_${tweetId}.png`) }).catch(() => {});
-    // Don't close context/page - they're reused across validations
+    await page.close().catch(() => {});
+    await context.close().catch(() => {});
     return { exists: false, isRoot: false, author: null, content: null, error: error.message };
   }
 }
-
-/**
- * Validate tweet using CDP-authenticated session (Mac Runner only) - creates new context/page
- */
-async function validateTweetWithCDP(tweetId: string): Promise<{
-  exists: boolean;
-  isRoot: boolean;
-  author: string | null;
-  content: string | null;
-  error?: string;
-}> {
-  // Only use CDP validation in RUNNER_MODE with CDP browser
-  if (process.env.RUNNER_MODE !== 'true' || process.env.RUNNER_BROWSER !== 'cdp') {
-    // Fallback to legacy validation
-    return { exists: false, isRoot: false, author: null, content: null, error: 'Not in CDP mode' };
-  }
-
-  const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
-  const context = await launchRunnerPersistent(true); // headless
-  const page = await context.newPage();
-  
-  const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'harvest_debug');
-  if (!fs.existsSync(debugDir)) {
-    fs.mkdirSync(debugDir, { recursive: true });
-  }
-
-  try {
-    const tweetUrl = `https://x.com/i/status/${tweetId}`;
-    console.log(`   🔍 Validating ${tweetId} via CDP...`);
-
-    await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(3000); // Let page settle
-
-    const finalUrl = page.url();
-
-    // Check for login redirect
-    if (finalUrl.includes('/i/flow/login') || finalUrl.includes('/login')) {
-      console.log(`   ⚠️  Login redirect detected for ${tweetId}`);
-      await page.screenshot({ path: path.join(debugDir, `login_redirect_${tweetId}.png`) });
-      await page.close();
-      await context.close();
-      return { exists: false, isRoot: false, author: null, content: null, error: 'Login required' };
-    }
-
-    // Wait for lightweight shell selectors OR tweet article
-    const shellOrTweet = await Promise.race([
-      page.waitForSelector('nav[role="navigation"]', { timeout: 5000 }).then(() => 'shell').catch(() => null),
-      page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 5000 }).then(() => 'shell').catch(() => null),
-      page.waitForSelector('article[data-testid="tweet"]', { timeout: 5000 }).then(() => 'tweet').catch(() => null),
-      new Promise(resolve => setTimeout(() => resolve(null), 6000)), // Fallback timeout
-    ]).catch(() => null);
-
-    if (!shellOrTweet) {
-      console.log(`   ⚠️  No shell or tweet detected for ${tweetId}`);
-      await page.screenshot({ path: path.join(debugDir, `no_content_${tweetId}.png`) });
 
 /**
  * Validate and insert a tweet (reuses CDP context/page if provided)
