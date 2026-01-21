@@ -168,7 +168,7 @@ async function main() {
   try {
     const harvestOutput = execSync(
       `HARVEST_MODE=curated_profile_posts HARVEST_IGNORE_STATE=${harvestIgnoreState ? 'true' : 'false'} RUNNER_MODE=true RUNNER_PROFILE_DIR=${RUNNER_PROFILE_DIR} RUNNER_BROWSER=cdp pnpm exec tsx scripts/runner/harvest-curated.ts`,
-      { encoding: 'utf-8', stdio: 'pipe', timeout: 120000 } // 120s timeout (harvest can be slow, ~110s observed)
+      { encoding: 'utf-8', stdio: 'pipe', timeout: 60000 } // 60s watchdog - harvest must finish fast
     );
     
     const insertMatch = harvestOutput.match(/Inserted:\s*(\d+)/);
@@ -177,10 +177,12 @@ async function main() {
     console.log(harvestOutput);
   } catch (error: any) {
     if (error.signal === 'SIGTERM' || error.message.includes('timeout')) {
-      console.error(`❌ Harvest TIMED OUT after 120s - step hung at harvest`);
-      process.exit(1);
+      console.error(`⚠️  HARVEST_TIMEOUT: Harvest exceeded 60s watchdog - continuing pipeline with existing opportunities`);
+      // Don't exit - continue pipeline with whatever opportunities exist (from this run or prior)
+      opportunitiesInserted = 0; // Set to 0 since we didn't complete harvest
+    } else {
+      console.error(`⚠️  Harvest failed: ${error.message}`);
     }
-    console.error(`⚠️  Harvest failed: ${error.message}`);
   }
   
   // Step 5: Evaluate opportunities → candidate_evaluations (lightweight, no browser/X session)

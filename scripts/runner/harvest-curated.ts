@@ -49,13 +49,13 @@ const MAX_AGE_HOURS = 48; // Check last 48h for duplicates
 const HARVEST_AGE_HOURS = 24; // Only harvest tweets from last 24h
 const SCROLL_COUNT = parseInt(process.env.SCROLL_COUNT || '8', 10);
 
-// Hard caps for curated_profile_posts (read from env with defaults)
-const HARVEST_MAX_HANDLES = parseInt(process.env.HARVEST_MAX_HANDLES || '6', 10);
-const HARVEST_MAX_TWEETS_PER_HANDLE = parseInt(process.env.HARVEST_MAX_TWEETS_PER_HANDLE || '4', 10);
+// Hard caps for curated_profile_posts (read from env with defaults - tuned for <60s harvest)
+const HARVEST_MAX_HANDLES = parseInt(process.env.HARVEST_MAX_HANDLES || '5', 10);
+const HARVEST_MAX_TWEETS_PER_HANDLE = parseInt(process.env.HARVEST_MAX_TWEETS_PER_HANDLE || '3', 10);
 const HARVEST_MAX_SCROLLS_PER_HANDLE = parseInt(process.env.HARVEST_MAX_SCROLLS_PER_HANDLE || '1', 10);
-const HARVEST_MAX_INSERTS_PER_RUN = parseInt(process.env.HARVEST_MAX_INSERTS_PER_RUN || '10', 10);
-const HARVEST_HANDLE_TIMEOUT_MS = parseInt(process.env.HARVEST_HANDLE_TIMEOUT_MS || '15000', 10);
-const HARVEST_NAV_TIMEOUT_MS = parseInt(process.env.HARVEST_NAV_TIMEOUT_MS || '12000', 10);
+const HARVEST_MAX_INSERTS_PER_RUN = parseInt(process.env.HARVEST_MAX_INSERTS_PER_RUN || '8', 10);
+const HARVEST_HANDLE_TIMEOUT_MS = parseInt(process.env.HARVEST_HANDLE_TIMEOUT_MS || '12000', 10);
+const HARVEST_NAV_TIMEOUT_MS = parseInt(process.env.HARVEST_NAV_TIMEOUT_MS || '8000', 10);
 
 // Legacy constants (kept for compatibility)
 const MAX_PROFILE_SCROLLS = HARVEST_MAX_SCROLLS_PER_HANDLE;
