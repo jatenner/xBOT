@@ -401,30 +401,60 @@ export class UltimateTwitterPoster {
   /**
    * 🌐 MIGRATED TO UNIFIED BROWSER POOL
    * Acquires page from pool (manages browser lifecycle automatically)
+   * Supports CDP mode when RUNNER_MODE=true and RUNNER_BROWSER=cdp
    */
   private async ensureContext(): Promise<void> {
     if (!this.page) {
-      const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
-      const browserPool = UnifiedBrowserPool.getInstance();
+      const runnerMode = process.env.RUNNER_MODE === 'true';
+      const runnerBrowser = process.env.RUNNER_BROWSER || 'not set';
       
-      const operationName = this.purpose === 'reply' ? 'reply_posting' : 'tweet_posting';
-      console.log(`ULTIMATE_POSTER: Acquiring page from UnifiedBrowserPool (operation: ${operationName})...`);
-      
-      // 🔥 OPTIMIZATION: Use PRIORITY 0 (highest) so posting never waits
-      this.page = await browserPool.withContext(
-        operationName,
-        async (context) => {
-          return await context.newPage();
-        },
-        0 // 🔥 HIGHEST PRIORITY - posting is critical, should never wait
-      );
-      
-      // Set up error handling
-      this.page.on('pageerror', (error) => {
-        console.error('ULTIMATE_POSTER: Page error:', error.message);
-      });
-      
-      console.log('ULTIMATE_POSTER: ✅ Page acquired from pool');
+      // CDP mode: use runner launcher instead of UnifiedBrowserPool
+      if (runnerMode && runnerBrowser === 'cdp') {
+        console.log('[POSTING] Using CDP mode (connecting to system Chrome via CDP)');
+        
+        try {
+          const { launchRunnerPersistent } = await import('../infra/playwright/runnerLauncher');
+          const context = await launchRunnerPersistent(false); // Get CDP context
+          
+          const contexts = context.browser()?.contexts() || [];
+          console.log(`[POSTING] CDP connection: ${contexts.length} context(s) available`);
+          
+          // Create new page in CDP context
+          this.page = await context.newPage();
+          console.log('[POSTING] ✅ Page created in CDP context');
+          
+          // Set up error handling
+          this.page.on('pageerror', (error) => {
+            console.error('ULTIMATE_POSTER: Page error:', error.message);
+          });
+        } catch (cdpError: any) {
+          console.error(`[POSTING] ❌ CDP connection failed: ${cdpError.message}`);
+          throw new Error(`Failed to connect to CDP: ${cdpError.message}`);
+        }
+      } else {
+        // Playwright mode: use UnifiedBrowserPool
+        const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+        const browserPool = UnifiedBrowserPool.getInstance();
+        
+        const operationName = this.purpose === 'reply' ? 'reply_posting' : 'tweet_posting';
+        console.log(`ULTIMATE_POSTER: Acquiring page from UnifiedBrowserPool (operation: ${operationName})...`);
+        
+        // 🔥 OPTIMIZATION: Use PRIORITY 0 (highest) so posting never waits
+        this.page = await browserPool.withContext(
+          operationName,
+          async (context) => {
+            return await context.newPage();
+          },
+          0 // 🔥 HIGHEST PRIORITY - posting is critical, should never wait
+        );
+        
+        // Set up error handling
+        this.page.on('pageerror', (error) => {
+          console.error('ULTIMATE_POSTER: Page error:', error.message);
+        });
+        
+        console.log('ULTIMATE_POSTER: ✅ Page acquired from pool');
+      }
     }
   }
 

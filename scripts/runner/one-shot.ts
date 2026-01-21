@@ -556,16 +556,50 @@ async function main() {
   
   // Step 7: Process posting queue - 60s timeout
   console.log('\nSTEP 7: Processing posting queue...');
+  let postingMode = 'unknown';
+  let decisionsReadyBeforeDeferral = 0;
+  let decisionsReadyAfterDeferral = 0;
+  let postingAttemptedCount = 0;
+  let postingSkippedRetryCount = 0;
+  
   try {
     const postOutput = execSync(
       'RUNNER_MODE=true RUNNER_PROFILE_DIR=' + RUNNER_PROFILE_DIR + ' RUNNER_BROWSER=cdp pnpm run runner:once',
       { encoding: 'utf-8', stdio: 'pipe', timeout: 60000 } // 60s timeout
     );
     console.log(postOutput);
+    
+    // Extract posting mode from output
+    if (postOutput.includes('[POSTING] Using CDP mode')) {
+      postingMode = 'cdp';
+    } else if (postOutput.includes('[POSTING] Using Playwright mode')) {
+      postingMode = 'playwright';
+    }
+    
+    // Extract counts from posting output
+    const readyBeforeMatch = postOutput.match(/Total decisions ready: (\d+)/);
+    if (readyBeforeMatch) {
+      decisionsReadyBeforeDeferral = parseInt(readyBeforeMatch[1], 10);
+    }
+    
+    const readyAfterMatch = postOutput.match(/After rate limits: (\d+) decisions can post/);
+    if (readyAfterMatch) {
+      decisionsReadyAfterDeferral = parseInt(readyAfterMatch[1], 10);
+    }
+    
+    const retryDeferralMatch = postOutput.match(/Retry deferral removed (\d+) items/);
+    if (retryDeferralMatch) {
+      postingSkippedRetryCount = parseInt(retryDeferralMatch[1], 10);
+    }
+    
+    const attemptedMatch = postOutput.match(/Posted (\d+)\/(\d+) decisions/);
+    if (attemptedMatch) {
+      postingAttemptedCount = parseInt(attemptedMatch[1], 10);
+    }
   } catch (error: any) {
     if (error.signal === 'SIGTERM' || error.message.includes('timeout')) {
       console.error(`❌ Post queue TIMED OUT after 60s - step hung at post queue`);
-      process.exit(1);
+      // Don't exit - allow summary to run
     }
     console.error(`⚠️  Post queue failed: ${error.message}`);
   }
@@ -738,21 +772,29 @@ async function main() {
   } else {
     console.log('\n⚠️  No POST_SUCCESS found');
     
-    // Identify where pipeline died
+    // Identify where pipeline died (only if posting step didn't run)
+    // Don't claim "stopped at harvest" if later steps executed
     let pipelineStage = 'unknown';
-    if (opportunitiesInserted === 0) {
+    const postingStepRan = postingMode !== 'unknown' || decisionsReadyBeforeDeferral > 0;
+    
+    if (postingStepRan && postSuccessCount === 0) {
+      // Posting ran but no success
+      pipelineStage = 'post';
+    } else if (opportunitiesInserted === 0 && !postingStepRan) {
       pipelineStage = 'harvest';
-    } else if ((candidatesQueuedCount || 0) === 0) {
+    } else if ((candidatesQueuedCount || 0) === 0 && !postingStepRan) {
       pipelineStage = 'evaluate/queue';
-    } else if (decisionsCreated === 0) {
+    } else if (decisionsCreated === 0 && !postingStepRan) {
       pipelineStage = 'schedule';
-    } else if ((queuedDecisions || 0) === 0) {
+    } else if ((queuedDecisions || 0) === 0 && !postingStepRan) {
       pipelineStage = 'decisions';
-    } else if (postSuccessCount === 0) {
+    } else if (postSuccessCount === 0 && postingStepRan) {
       pipelineStage = 'post';
     }
     
-    console.log(`\nPipeline stopped at: ${pipelineStage}`);
+    if (pipelineStage !== 'unknown') {
+      console.log(`\nPipeline stopped at: ${pipelineStage}`);
+    }
     
     // Print top 5 skip/deny reasons
     const allReasons: Record<string, number> = { ...denyCounts };

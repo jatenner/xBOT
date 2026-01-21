@@ -2542,6 +2542,15 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       }
 
       if (retryCount > 0 && scheduledTs > nowTs) {
+        // 🧪 TEST FLAG: Bypass retry deferral when POSTING_BYPASS_RETRY_DEFERRAL=true (RUNNER_MODE only)
+        const bypassRetryDeferral = process.env.POSTING_BYPASS_RETRY_DEFERRAL === 'true' && process.env.RUNNER_MODE === 'true';
+        
+        if (bypassRetryDeferral) {
+          console.log(`[POSTING_QUEUE] 🧪 TEST MODE: Bypassing retry deferral for ${decisionId} (POSTING_BYPASS_RETRY_DEFERRAL=true)`);
+          throttledRows.push(row); // Allow processing despite deferral
+          continue;
+        }
+        
         // 🔒 TASK 2: Check if deferral expired (TTL)
         const ttlMinutes = certMode ? 30 : 120; // 30min cert / 2h normal
         const deferralAge = scheduledTs - nowTs; // Positive if future
