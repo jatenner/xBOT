@@ -69,7 +69,7 @@
     "go-live:status": "tsx scripts/go-live-monitor.ts",
     "go-live:monitor": "tsx scripts/monitor/go_live_monitor.ts loop",
     "go-live:monitor-once": "tsx scripts/monitor/go_live_monitor.ts once",
-    "go-live:report-day1": "tsx scripts/monitor/generate_daily_report.ts 1",
+    "go-live:report-day1": "tsx scripts/monitor/generate_24h_stability_report.ts",
     "go-live:report-day2": "tsx scripts/monitor/generate_daily_report.ts 2",
     "go-live:report-final": "tsx scripts/generate-72h-bake-report.ts",
     "cooldown:monitor": "tsx scripts/monitor/cooldown_monitor.ts",

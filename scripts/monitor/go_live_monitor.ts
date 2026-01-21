@@ -320,9 +320,9 @@ async function main() {
 
         // Generate daily report at 24h, 48h marks
         if (elapsed >= 24 && elapsed < 26) {
-          log('Generating Day 1 report...');
+          log('Generating Day 1 24h stability report...');
           try {
-            execSync('pnpm run go-live:report-day1', { stdio: 'pipe', timeout: 60000 });
+            execSync('pnpm run go-live:report-day1', { stdio: 'pipe', timeout: 120000 });
             log('✅ Day 1 report generated');
           } catch (err: any) {
             log(`Failed to generate Day 1 report: ${err.message}`, 'error');
@@ -427,9 +427,9 @@ async function main() {
 
       // Check if we should generate reports
       if (elapsed >= 24 && elapsed < 26) {
-        log('Generating Day 1 report...');
+        log('Generating Day 1 24h stability report...');
         try {
-          execSync('pnpm run go-live:report-day1', { stdio: 'pipe', timeout: 60000 });
+          execSync('pnpm run go-live:report-day1', { stdio: 'pipe', timeout: 120000 });
           log('✅ Day 1 report generated');
         } catch (err: any) {
           log(`Failed to generate Day 1 report: ${err.message}`, 'error');
