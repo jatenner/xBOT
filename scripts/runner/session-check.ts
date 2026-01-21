@@ -27,7 +27,7 @@ if (!process.env.RUNNER_PROFILE_DIR) {
   process.env.RUNNER_PROFILE_DIR = path.join(process.cwd(), '.runner-profile');
 }
 
-async function checkSession(): Promise<{ 
+export async function checkSession(): Promise<{ 
   status: 'SESSION_OK' | 'SESSION_EXPIRED'; 
   url: string; 
   reason: string;
