@@ -112,29 +112,55 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
       guardResults.root_check = { pass: true };
       console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=true reason=structural_check_passed`);
       
-      // 4) FRESHNESS CHECK - Velocity-aware age limits
-      // Prioritize ACTIVE tweets (high velocity) over stale viral tweets
+      // 4) FRESHNESS CHECK - Enforce maximum tweet age (default 48h)
+      // 🧪 TEST BYPASS: RUNNER_TEST_MODE=true (requires RUNNER_MODE=true)
+      const isTestMode = process.env.RUNNER_TEST_MODE === 'true' && process.env.RUNNER_MODE === 'true';
+      const bypassFreshness = isTestMode;
+      
+      // Default: 48 hours max age (configurable via REPLY_MAX_TWEET_AGE_HOURS)
+      const MAX_TWEET_AGE_HOURS = parseInt(process.env.REPLY_MAX_TWEET_AGE_HOURS || '48', 10);
+      const MAX_TWEET_AGE_MS = MAX_TWEET_AGE_HOURS * 60 * 60 * 1000;
+      
       if (opportunity.tweet_posted_at) {
         const postedAt = new Date(opportunity.tweet_posted_at);
-        const ageMinutes = (Date.now() - postedAt.getTime()) / (60 * 1000);
+        const ageMs = Date.now() - postedAt.getTime();
+        const ageHours = ageMs / (60 * 60 * 1000);
+        const ageMinutes = ageMs / (60 * 1000);
         const likeCount = Number(opportunity.like_count || 0);
-        const velocity = likeCount / Math.max(ageMinutes, 10);
         
-        // Velocity-aware freshness limits
-        // PREFERRED: <= 6 hours | HARD MAX: <= 12 hours (with high velocity)
-        let maxAgeMin = 360; // Default: 6 hours (preferred)
-        if (velocity >= 200) maxAgeMin = 24 * 60;      // EXTREME velocity: 24h
-        else if (velocity >= 100) maxAgeMin = 12 * 60; // HIGH velocity: 12h
-        else if (velocity >= 30) maxAgeMin = 6 * 60;   // MEDIUM velocity: 6h
-        else maxAgeMin = 3 * 60;                       // LOW velocity: 3h
-        
-        if (ageMinutes > maxAgeMin) {
-          guardResults.freshness_check = { pass: false, age_min: Math.round(ageMinutes), max: maxAgeMin, likes: likeCount, velocity: Math.round(velocity) };
-          console.log(`[INVARIANT] freshness_check=FAIL age_min=${Math.round(ageMinutes)} max=${maxAgeMin} likes=${likeCount} velocity=${velocity.toFixed(1)}`);
+        if (bypassFreshness) {
+          console.log(`[INVARIANT] 🧪 TEST MODE: BYPASS_ACTIVE: FRESHNESS_CHECK (age=${ageHours.toFixed(1)}h, max=${MAX_TWEET_AGE_HOURS}h)`);
+          guardResults.freshness_check = { pass: true, age_min: Math.round(ageMinutes), age_hours: ageHours.toFixed(1), bypassed: true };
+        } else if (ageMs > MAX_TWEET_AGE_MS) {
+          guardResults.freshness_check = { 
+            pass: false, 
+            age_min: Math.round(ageMinutes), 
+            age_hours: ageHours.toFixed(1),
+            max_hours: MAX_TWEET_AGE_HOURS,
+            likes: likeCount
+          };
+          console.log(`[INVARIANT] freshness_check=FAIL age=${ageHours.toFixed(1)}h (max=${MAX_TWEET_AGE_HOURS}h) likes=${likeCount}`);
           return { pass: false, reason: 'target_too_old', guard_results: guardResults };
+        } else {
+          guardResults.freshness_check = { 
+            pass: true, 
+            age_min: Math.round(ageMinutes), 
+            age_hours: ageHours.toFixed(1),
+            max_hours: MAX_TWEET_AGE_HOURS,
+            likes: likeCount
+          };
+          console.log(`[INVARIANT] freshness_check=pass age=${ageHours.toFixed(1)}h (max=${MAX_TWEET_AGE_HOURS}h) likes=${likeCount}`);
         }
-        guardResults.freshness_check = { pass: true, age_min: Math.round(ageMinutes), max: maxAgeMin, likes: likeCount, velocity: Math.round(velocity) };
-        console.log(`[INVARIANT] freshness_check=pass age_min=${Math.round(ageMinutes)} max=${maxAgeMin} likes=${likeCount} velocity=${velocity.toFixed(1)}`);
+      } else {
+        // No tweet_posted_at available - fail closed unless test mode
+        if (bypassFreshness) {
+          console.log(`[INVARIANT] 🧪 TEST MODE: BYPASS_ACTIVE: FRESHNESS_CHECK (no timestamp available)`);
+          guardResults.freshness_check = { pass: true, bypassed: true, missing_timestamp: true };
+        } else {
+          guardResults.freshness_check = { pass: false, reason: 'missing_tweet_posted_at' };
+          console.log(`[INVARIANT] freshness_check=FAIL missing tweet_posted_at timestamp`);
+          return { pass: false, reason: 'missing_tweet_timestamp', guard_results: guardResults };
+        }
       }
     } else {
       // No opportunity found - check if this is from reply_v2_scheduler (CERT_MODE or normal scheduler)
@@ -352,53 +378,95 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
   // This is a DETERMINISTIC check (not LLM-based):
   // - Extract meaningful words (4+ chars) from both content and snapshot
   // - Require at least 1 word overlap OR a number/fact reference
+  // 🧪 TEST BYPASS: RUNNER_TEST_MODE=true (requires RUNNER_MODE=true)
+  const isTestMode = process.env.RUNNER_TEST_MODE === 'true' && process.env.RUNNER_MODE === 'true';
+  const bypassAnchor = isTestMode;
+  
   try {
     // Access snapshot from decision metadata
     const snapshot = (decision.target_tweet_content_snapshot || '') as string;
     
     if (snapshot && snapshot.length >= 20) {
-      // Extract meaningful words (4+ chars, alphanumeric only)
-      const extractWords = (text: string): Set<string> => {
+      // Extract 3-8 meaningful anchor terms from target tweet (nouns, phrases, hashtags, keywords)
+      const extractAnchors = (text: string): string[] => {
+        const anchors: string[] = [];
+        
+        // Extract hashtags
+        const hashtags = text.match(/#\w+/gi) || [];
+        anchors.push(...hashtags.map(h => h.toLowerCase()));
+        
+        // Extract numbers/percentages
+        const numbers = text.match(/\d+(\.\d+)?%?/g) || [];
+        anchors.push(...numbers);
+        
+        // Extract meaningful words (4+ chars, not stopwords)
+        const stopwords = new Set(['this', 'that', 'have', 'been', 'with', 'from', 'they', 'your', 'will', 'just', 'more', 'when', 'what', 'than', 'very', 'also', 'some', 'like', 'into', 'there', 'their', 'these', 'those', 'would', 'could', 'should', 'about', 'which', 'where']);
         const words = text.toLowerCase()
-          .replace(/[^a-z0-9\s]/gi, ' ')
+          .replace(/[^a-z0-9\s#]/gi, ' ')
           .split(/\s+/)
-          .filter(w => w.length >= 4)
-          .filter(w => !['this', 'that', 'have', 'been', 'with', 'from', 'they', 'your', 'will', 'just', 'more', 'when', 'what', 'than', 'very', 'also', 'some', 'like', 'into'].includes(w));
-        return new Set(words);
+          .filter(w => w.length >= 4 && !stopwords.has(w));
+        
+        // Prioritize longer words and unique terms
+        const wordFreq = new Map<string, number>();
+        words.forEach(w => wordFreq.set(w, (wordFreq.get(w) || 0) + 1));
+        const uniqueWords = Array.from(wordFreq.entries())
+          .filter(([w, count]) => count === 1) // Prefer unique terms
+          .map(([w]) => w)
+          .sort((a, b) => b.length - a.length) // Longer words first
+          .slice(0, 8);
+        
+        anchors.push(...uniqueWords);
+        
+        // Return 3-8 anchors
+        return anchors.slice(0, 8).slice(0, Math.max(3, anchors.length));
       };
       
-      const contentWords = extractWords(content);
-      const snapshotWords = extractWords(snapshot);
+      const snapshotAnchors = extractAnchors(snapshot);
+      const contentLower = content.toLowerCase();
       
-      // Find overlapping words
-      const overlap = [...contentWords].filter(w => snapshotWords.has(w));
+      // Check if reply contains at least one anchor (substring match)
+      const matchedAnchors = snapshotAnchors.filter(anchor => 
+        contentLower.includes(anchor.toLowerCase())
+      );
       
-      // Extract numbers from both      
+      // Also check for number overlap
       const contentNumbers: string[] = content.match(/\d+(\.\d+)?%?/g) || [];             
       const snapshotNumbers: string[] = snapshot.match(/\d+(\.\d+)?%?/g) || [];           
       const numberOverlap = contentNumbers.filter(n => snapshotNumbers.includes(n));
       
-      const hasWordAnchor = overlap.length >= 1;
+      const hasAnchor = matchedAnchors.length >= 1;
       const hasNumberAnchor = numberOverlap.length >= 1;
       
-      if (!hasWordAnchor && !hasNumberAnchor) {
+      if (bypassAnchor) {
+        console.log(`[ANCHOR_CHECK] 🧪 TEST MODE: BYPASS_ACTIVE: ANCHOR_CHECK`);
+        guardResults.anchor_check = { 
+          pass: true, 
+          anchors_matched: matchedAnchors.length,
+          anchors_total: snapshotAnchors.length,
+          number_overlap: numberOverlap.length,
+          bypassed: true
+        };
+      } else if (!hasAnchor && !hasNumberAnchor) {
         guardResults.anchor_check = { 
           pass: false, 
           reason: 'no_content_anchor',
-          word_overlap: overlap.length,
+          anchors_matched: matchedAnchors.length,
+          anchors_total: snapshotAnchors.length,
+          anchors_extracted: snapshotAnchors.slice(0, 5),
           number_overlap: numberOverlap.length
         };
-        console.log(`[ANCHOR_CHECK] FAIL: no_content_anchor word_overlap=${overlap.length} number_overlap=${numberOverlap.length}`);
+        console.log(`[ANCHOR_CHECK] FAIL: no_content_anchor matched=${matchedAnchors.length}/${snapshotAnchors.length} anchors=${snapshotAnchors.slice(0, 3).join(',')} number_overlap=${numberOverlap.length}`);
         return { pass: false, reason: 'no_content_anchor', guard_results: guardResults };
+      } else {
+        guardResults.anchor_check = { 
+          pass: true, 
+          anchors_matched: matchedAnchors.length,
+          anchors_total: snapshotAnchors.length,
+          matched_anchors: matchedAnchors.slice(0, 3),
+          number_overlap: numberOverlap.length
+        };
+        console.log(`[ANCHOR_CHECK] pass=true matched=${matchedAnchors.length}/${snapshotAnchors.length} anchors=${matchedAnchors.slice(0, 3).join(',')} number_overlap=${numberOverlap.length}`);
       }
-      
-      guardResults.anchor_check = { 
-        pass: true, 
-        word_overlap: overlap.length,
-        number_overlap: numberOverlap.length,
-        anchor_words: overlap.slice(0, 3)
-      };
-      console.log(`[ANCHOR_CHECK] pass=true word_overlap=${overlap.length} number_overlap=${numberOverlap.length} anchors=${overlap.slice(0, 3).join(',')}`);
     } else {
       // No snapshot to check against - fail closed
       guardResults.anchor_check = { pass: false, reason: 'missing_snapshot_for_anchor' };
@@ -2540,11 +2608,12 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       }
 
       if (retryCount > 0 && scheduledTs > nowTs) {
-        // 🧪 TEST FLAG: Bypass retry deferral when POSTING_BYPASS_RETRY_DEFERRAL=true (RUNNER_MODE only)
-        const bypassRetryDeferral = process.env.POSTING_BYPASS_RETRY_DEFERRAL === 'true' && process.env.RUNNER_MODE === 'true';
+        // 🧪 TEST FLAG: Bypass retry deferral when RUNNER_TEST_MODE=true (requires RUNNER_MODE=true)
+        const isTestMode = process.env.RUNNER_TEST_MODE === 'true' && process.env.RUNNER_MODE === 'true';
+        const bypassRetryDeferral = isTestMode;
         
         if (bypassRetryDeferral) {
-          console.log(`[POSTING_QUEUE] 🧪 TEST MODE: Bypassing retry deferral for ${decisionId} (POSTING_BYPASS_RETRY_DEFERRAL=true)`);
+          console.log(`[POSTING_QUEUE] 🧪 TEST MODE: BYPASS_ACTIVE: RETRY_DEFERRAL for ${decisionId}`);
           throttledRows.push(row); // Allow processing despite deferral
           continue;
         }
@@ -2774,24 +2843,47 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
     console.warn(`[TRUTH_GUARD] ⚠️ Guard check failed: ${guardErr.message}, allowing posting (fail open)`);
   }
   
-  // 🚨 RATE LIMIT CHECK: Enforce max posts/replies per hour
-  try {
-    const { checkRateLimits } = await import('../utils/rateLimiter');
-    const rateLimitCheck = await checkRateLimits();
-    
-    if (decision.decision_type === 'reply' && !rateLimitCheck.canPostReply) {
-      console.log(`[RATE_LIMIT] ⏸️  Reply rate limit reached (${rateLimitCheck.repliesThisHour}/4 this hour) - skipping decision ${decision.id}`);
-      return false; // Don't process, don't count as failure
+  // 🎯 GROWTH CONTROLLER: Check plan limits (if enabled)
+  const growthControllerEnabled = process.env.GROWTH_CONTROLLER_ENABLED === 'true';
+  if (growthControllerEnabled) {
+    try {
+      const { canPost } = await import('./growthController');
+      const controllerCheck = await canPost(decision.decision_type);
+      
+      if (!controllerCheck.allowed) {
+        console.log(`[GROWTH_CONTROLLER] ⛔ BLOCKED: ${controllerCheck.reason} - skipping decision ${decision.id}`);
+        return false; // Don't process, don't count as failure
+      }
+      
+      if (controllerCheck.plan) {
+        console.log(`[GROWTH_CONTROLLER] ✅ Allowed: ${controllerCheck.reason} (plan_id: ${controllerCheck.plan.plan_id})`);
+      }
+    } catch (controllerError: any) {
+      console.warn(`[GROWTH_CONTROLLER] ⚠️ Controller check failed: ${controllerError.message}, falling back to rate limiter`);
+      // Fail-closed: if controller check fails, fall back to rate limiter
     }
-    
-    if ((decision.decision_type === 'single' || decision.decision_type === 'thread') && !rateLimitCheck.canPostContent) {
-      console.log(`[RATE_LIMIT] ⏸️  Post rate limit reached (${rateLimitCheck.postsThisHour}/2 this hour) - skipping decision ${decision.id}`);
-      return false; // Don't process, don't count as failure
+  }
+  
+  // 🚨 RATE LIMIT CHECK: Enforce max posts/replies per hour (fallback if controller disabled)
+  if (!growthControllerEnabled) {
+    try {
+      const { checkRateLimits } = await import('../utils/rateLimiter');
+      const rateLimitCheck = await checkRateLimits();
+
+      if (decision.decision_type === 'reply' && !rateLimitCheck.canPostReply) {
+        console.log(`[RATE_LIMIT] ⏸️  Reply rate limit reached (${rateLimitCheck.repliesThisHour}/4 this hour) - skipping decision ${decision.id}`);
+        return false; // Don't process, don't count as failure
+      }
+
+      if ((decision.decision_type === 'single' || decision.decision_type === 'thread') && !rateLimitCheck.canPostContent) {
+        console.log(`[RATE_LIMIT] ⏸️  Post rate limit reached (${rateLimitCheck.postsThisHour}/2 this hour) - skipping decision ${decision.id}`);
+        return false; // Don't process, don't count as failure
+      }
+      
+      console.log(`[RATE_LIMIT] ✅ Rate check passed - Posts: ${rateLimitCheck.postsThisHour}/2, Replies: ${rateLimitCheck.repliesThisHour}/4`);
+    } catch (rateLimitError: any) {
+      console.warn(`[RATE_LIMIT] ⚠️ Rate limit check failed: ${rateLimitError.message}, allowing posting (fail open)`);
     }
-    
-    console.log(`[RATE_LIMIT] ✅ Rate check passed - Posts: ${rateLimitCheck.postsThisHour}/2, Replies: ${rateLimitCheck.repliesThisHour}/4`);
-  } catch (rateLimitErr: any) {
-    console.warn(`[RATE_LIMIT] ⚠️ Rate limit check failed: ${rateLimitErr.message}, allowing posting (fail open)`);
   }
   
   const isThread = decision.decision_type === 'thread';
@@ -4717,9 +4809,20 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   });
   
   // 🔍 FORENSIC PIPELINE: Final ancestry check before posting
+  // 🧪 TEST BYPASS: RUNNER_TEST_MODE=true (requires RUNNER_MODE=true)
+  const isTestMode = process.env.RUNNER_TEST_MODE === 'true' && process.env.RUNNER_MODE === 'true';
+  const bypassAncestry = isTestMode;
+  
   const { resolveTweetAncestry, recordReplyDecision, shouldAllowReply } = await import('./replySystemV2/replyDecisionRecorder');
   const ancestry = await resolveTweetAncestry(decision.target_tweet_id || '');
-  const allowCheck = await shouldAllowReply(ancestry);
+  
+  let allowCheck: { allow: boolean; reason: string; deny_reason_code?: string; deny_reason_detail?: string };
+  if (bypassAncestry) {
+    console.log(`[POSTING_QUEUE] 🧪 TEST MODE: BYPASS_ACTIVE: ANCESTRY_CHECK`);
+    allowCheck = { allow: true, reason: 'TEST_BYPASS_ANCESTRY' };
+  } else {
+    allowCheck = await shouldAllowReply(ancestry);
+  }
   
   // Update POST_ATTEMPT with gate result
   await supabase.from('system_events').insert({
@@ -4818,7 +4921,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   
   // 🔒 TASK B.1: ADDITIONAL HARD CHECK - Verify in_reply_to_status_id is NULL
   // This is a redundant but critical check - even if shouldAllowReply passes, verify directly
-  if (ancestry.targetInReplyToTweetId !== null && ancestry.targetInReplyToTweetId !== undefined) {
+  // 🧪 TEST BYPASS: Skip hard check if ancestry bypass is enabled
+  if (!bypassAncestry && ancestry.targetInReplyToTweetId !== null && ancestry.targetInReplyToTweetId !== undefined) {
     const hardBlockMsg = `HARD_GATE_BLOCKED: Target has in_reply_to_status_id=${ancestry.targetInReplyToTweetId} (NOT NULL)`;
     console.error(`[POSTING_QUEUE] 🚫 ${hardBlockMsg}`);
     
@@ -5415,6 +5519,27 @@ async function postReply(decision: QueuedDecision): Promise<string> {
         created_at: new Date().toISOString(),
       });
 
+      // 📊 GROWTH_TELEMETRY: Enqueue performance snapshots
+      // 🎯 GROWTH_CONTROLLER: Record reply in execution counters
+      if (process.env.GROWTH_CONTROLLER_ENABLED === 'true') {
+        try {
+          const { getActiveGrowthPlan, recordPost } = await import('./growthController');
+          const plan = await getActiveGrowthPlan();
+          if (plan) {
+            await recordPost(plan.plan_id, 'reply');
+          }
+        } catch (controllerError: any) {
+          console.warn(`[GROWTH_CONTROLLER] ⚠️ Failed to record reply: ${controllerError.message}`);
+        }
+      }
+      
+      try {
+        const { enqueuePerformanceSnapshots } = await import('./performanceSnapshotJob');
+        await enqueuePerformanceSnapshots(decision.id, result.tweetId, new Date(postingCompletedAt));
+      } catch (telemetryError: any) {
+        console.warn(`[POST_SUCCESS] ⚠️ Failed to enqueue snapshots: ${telemetryError.message}`);
+      }
+
       // 🔔 TASK C: Auto-notify via webhook if configured
       const webhookUrl = process.env.POST_SUCCESS_WEBHOOK_URL;
       if (webhookUrl) {
@@ -5673,6 +5798,53 @@ export async function markDecisionPosted(
         
         dbSaveSuccess = true;
         console.log(`[POSTING_QUEUE] ✅ Database updated (attempt ${dbAttempt}/${MAX_DB_RETRIES}): tweet_id ${tweetId} saved for decision ${decisionId}`);
+        
+        // 📊 GROWTH_TELEMETRY: Emit POST_SUCCESS and enqueue snapshots
+        try {
+          // Get decision type from content_metadata
+          const { data: decisionData } = await supabase
+            .from('content_metadata')
+            .select('decision_type')
+            .eq('decision_id', decisionId)
+            .maybeSingle();
+          
+          const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+          const finalTweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
+          
+          await supabase.from('system_events').insert({
+            event_type: 'POST_SUCCESS',
+            severity: 'info',
+            message: `Content posted successfully: decision_id=${decisionId} tweet_id=${tweetId}`,
+            event_data: {
+              decision_id: decisionId,
+              tweet_id: tweetId,
+              tweet_url: finalTweetUrl,
+              decision_type: decisionData?.decision_type || 'unknown',
+              app_version: appVersion,
+              posted_at: new Date().toISOString(),
+            },
+            created_at: new Date().toISOString(),
+          });
+          
+          // 🎯 GROWTH_CONTROLLER: Record post in execution counters
+          if (process.env.GROWTH_CONTROLLER_ENABLED === 'true') {
+            try {
+              const { getActiveGrowthPlan, recordPost } = await import('./growthController');
+              const plan = await getActiveGrowthPlan();
+              if (plan) {
+                await recordPost(plan.plan_id, (decisionData?.decision_type as 'single' | 'thread' | 'reply') || 'single');
+              }
+            } catch (controllerError: any) {
+              console.warn(`[GROWTH_CONTROLLER] ⚠️ Failed to record post: ${controllerError.message}`);
+            }
+          }
+          
+          // Enqueue performance snapshots
+          const { enqueuePerformanceSnapshots } = await import('./performanceSnapshotJob');
+          await enqueuePerformanceSnapshots(decisionId, tweetId, new Date());
+        } catch (telemetryError: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Failed to emit POST_SUCCESS/enqueue snapshots: ${telemetryError.message}`);
+        }
         
         // ✅ SUCCESS log removed - caller (processDecision) will log SUCCESS with correct decision_type
         // Removed duplicate: console.log(`[POSTING_QUEUE][SUCCESS] decision_id=${decisionId} type=unknown tweet_id=${tweetId} url=${finalTweetUrl}`);
