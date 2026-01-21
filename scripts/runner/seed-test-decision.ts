@@ -12,6 +12,18 @@
  *   - --tweet_id required (target tweet ID to reply to)
  */
 
+import fs from 'fs';
+import path from 'path';
+
+// Load env from .env.local or .env (required for DB connection)
+const envLocalPath = path.join(process.cwd(), '.env.local');
+const envPath = path.join(process.cwd(), '.env');
+if (fs.existsSync(envLocalPath)) {
+  require('dotenv').config({ path: envLocalPath });
+} else if (fs.existsSync(envPath)) {
+  require('dotenv').config({ path: envPath });
+}
+
 import { getSupabaseClient } from '../../src/db';
 import { v4 as uuidv4 } from 'uuid';
 
