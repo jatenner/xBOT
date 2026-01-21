@@ -71,6 +71,14 @@ async function main() {
     if (isLoop) {
       console.log('🔄 Loop mode: Running every 60s with backoff\n');
     }
+    
+    // Log configuration at start
+    console.log('📋 Scheduler configuration:');
+    console.log(`   RUNNER_MODE: ${process.env.RUNNER_MODE || 'not set'}`);
+    console.log(`   RUNNER_BROWSER: ${process.env.RUNNER_BROWSER || 'not set'}`);
+    console.log(`   RUNNER_PROFILE_DIR: ${process.env.RUNNER_PROFILE_DIR || 'not set'}`);
+    console.log(`   RUN_STARTED_AT: ${process.env.RUN_STARTED_AT || 'not set'}`);
+    console.log('');
   
   // Step 1: Auto-sync env (fail-closed)
   console.log('📥 Step 1: Syncing env from Railway...');
@@ -83,34 +91,46 @@ async function main() {
     process.exit(1);
   }
   
-  // Step 2: Check session (with timeout to prevent hanging)
+  // Step 2: Check session (direct function call, no execSync)
   console.log('🔐 Step 2: Checking session...');
-  const { execSync } = require('child_process');
-  try {
-    const sessionOutput = execSync(
-      'RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile RUNNER_BROWSER=cdp pnpm exec tsx scripts/runner/session-check.ts',
-      { encoding: 'utf-8', stdio: 'pipe', timeout: 15000 } // 15s timeout for session check
-    );
-    
-    if (!sessionOutput.includes('SESSION_OK')) {
-      console.error('❌ Session expired. Run: pnpm run runner:login');
+  console.log(`   RUNNER_MODE: ${process.env.RUNNER_MODE || 'not set'}`);
+  console.log(`   RUNNER_BROWSER: ${process.env.RUNNER_BROWSER || 'not set'}`);
+  console.log(`   RUNNER_PROFILE_DIR: ${process.env.RUNNER_PROFILE_DIR || 'not set'}`);
+  
+  // Check if session was already confirmed (from one-shot)
+  const sessionAlreadyConfirmed = process.env.SESSION_CONFIRMED === 'true';
+  
+  let sessionOk = false;
+  if (sessionAlreadyConfirmed) {
+    console.log('✅ Session already confirmed by one-shot workflow');
+    sessionOk = true;
+  } else {
+    // Import and call checkSession function directly
+    try {
+      const { checkSession } = await import('./session-check');
+      const sessionResult = await checkSession();
+      sessionOk = sessionResult.status === 'SESSION_OK';
+      
+      if (sessionOk) {
+        console.log('✅ Session OK\n');
+        console.log(`   URL: ${sessionResult.url}`);
+        console.log(`   Reason: ${sessionResult.reason}`);
+      } else {
+        console.error(`❌ Session expired: ${sessionResult.reason}`);
+        console.error('   Run: pnpm run runner:login');
+        clearGlobalTimeout();
+        process.exit(1); // Exit 1 for session expiry (real failure)
+      }
+    } catch (error: any) {
+      console.error(`❌ Session check failed: ${error.message}`);
+      console.error(`   Stack: ${error.stack?.split('\n')[0]}`);
       clearGlobalTimeout();
+      // Exit 1 for actual errors (not timeouts, which are handled by checkSession)
       process.exit(1);
     }
-    console.log('✅ Session OK\n');
-  } catch (error: any) {
-    if (error.signal === 'SIGTERM' || error.message.includes('timeout')) {
-      console.error(`❌ Session check TIMED OUT after 15s`);
-      console.error(`   Operation: session_check`);
-      clearGlobalTimeout();
-      console.log('⚠️  Non-fatal: Exiting gracefully due to timeout');
-      process.exit(0); // Exit 0 (non-fatal, fast-noop)
-    }
-    console.error(`❌ Session check failed: ${error.message}`);
-    clearGlobalTimeout();
-    console.log('⚠️  Non-fatal: Exiting gracefully due to session check error');
-    process.exit(0); // Exit 0 instead of 1 (non-fatal, fast-noop)
   }
+  
+  console.log(`   session_ok: ${sessionOk}\n`);
   
   // Step 3: Lazy import after env is loaded
   const { getSupabaseClient } = await import('../../src/db');

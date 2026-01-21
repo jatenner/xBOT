@@ -60,11 +60,11 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
     .order('overall_score', { ascending: false });
   
   if (runStartedAt) {
-    // Prioritize fresh evaluations from this run
+    // ONE_SHOT_FRESH_ONLY=true: Filter strictly by runStartedAt
     query = query.gte('created_at', runStartedAt);
     console.log(`[QUEUE_MANAGER] 🔍 Filtering for fresh evaluations (created_at >= ${runStartedAt})`);
   } else {
-    // Fallback: include evaluations from last 2h
+    // ONE_SHOT_FRESH_ONLY=false: Use recent valid evaluations from last 2h
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     query = query.gte('created_at', twoHoursAgo);
     console.log(`[QUEUE_MANAGER] 🔍 Filtering for recent evaluations (created_at >= ${twoHoursAgo})`);

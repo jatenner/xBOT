@@ -468,8 +468,9 @@ async function main() {
     
     const queueStartTime = Date.now();
     const { refreshCandidateQueue } = await import('../../src/jobs/replySystemV2/queueManager');
-    // Pass runStartedAt to prioritize fresh evaluations from this run
-    const queueResult = await refreshCandidateQueue(runStartedAt);
+    // Pass runStartedAt only if ONE_SHOT_FRESH_ONLY=true, otherwise allow recent valid evaluations
+    const freshOnly = process.env.ONE_SHOT_FRESH_ONLY === 'true';
+    const queueResult = await refreshCandidateQueue(freshOnly ? runStartedAt : undefined);
     const queueDuration = Date.now() - queueStartTime;
     
     if (queueDuration > 30000) {
@@ -624,8 +625,12 @@ async function main() {
   // Extract tweet URL from database (filtered by run start time)
   const tweetUrl = await extractTweetUrl(runStartedAt);
   
-  // Check ONE_SHOT_FRESH_ONLY flag (use DB count even if harvest timed out)
+  // Check ONE_SHOT_FRESH_ONLY flag (default to false, use DB count even if harvest timed out)
   const freshOnly = process.env.ONE_SHOT_FRESH_ONLY === 'true';
+  
+  if (!process.env.ONE_SHOT_FRESH_ONLY) {
+    console.log('ℹ️  ONE_SHOT_FRESH_ONLY not set, defaulting to false (allows using existing evaluations)');
+  }
   // Use DB count for opportunities (handles timeout case where harvest inserted before watchdog)
   const { count: opportunitiesInsertedDb } = await supabase
     .from('reply_opportunities')
