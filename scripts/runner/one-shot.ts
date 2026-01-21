@@ -183,10 +183,138 @@ async function main() {
     console.error(`⚠️  Harvest failed: ${error.message}`);
   }
   
-  // Step 5: Evaluate opportunities → candidate_evaluations (handled by scheduler)
-  console.log('\nSTEP 5: Evaluation will be handled by scheduler...');
-  let evaluated = 0;
-  let passed = 0;
+  // Step 5: Evaluate opportunities → candidate_evaluations
+  console.log('\nSTEP 5: Evaluating opportunities...');
+  let opportunitiesEvaluated = 0;
+  let candidateEvaluationsCreated = 0;
+  try {
+    // Load env before import
+    const envLocalPath = path.join(process.cwd(), '.env.local');
+    const envPath = path.join(process.cwd(), '.env');
+    if (fs.existsSync(envLocalPath)) {
+      require('dotenv').config({ path: envLocalPath });
+    } else if (fs.existsSync(envPath)) {
+      require('dotenv').config({ path: envPath });
+    }
+    
+    const { getSupabaseClient } = await import('../../src/db');
+    const { scoreCandidate } = await import('../../src/jobs/replySystemV2/candidateScorer');
+    const supabase = getSupabaseClient();
+    
+    // Get opportunities from this run
+    const { data: opportunities, error: fetchError } = await supabase
+      .from('reply_opportunities')
+      .select('target_tweet_id, target_username, target_tweet_content, tweet_posted_at, opportunity_score, discovery_method, account_username, is_root_tweet, root_tweet_id, target_in_reply_to_tweet_id')
+      .gte('created_at', runStartedAt)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    
+    if (fetchError) {
+      console.error(`⚠️  Failed to fetch opportunities: ${fetchError.message}`);
+    } else if (!opportunities || opportunities.length === 0) {
+      console.log(`⚠️  No opportunities to evaluate (inserted: ${opportunitiesInserted})`);
+    } else {
+      console.log(`📋 Found ${opportunities.length} opportunities to evaluate...`);
+      
+      // Generate feed run ID for traceability
+      const feedRunId = `one-shot-${Date.now()}`;
+      
+      for (const opp of opportunities) {
+        try {
+          opportunitiesEvaluated++;
+          
+          // Score the candidate
+          const score = await scoreCandidate(
+            opp.target_tweet_id,
+            opp.target_username || opp.account_username || 'unknown',
+            opp.target_tweet_content || '',
+            opp.tweet_posted_at || new Date().toISOString(),
+            0, // likeCount - not available in opportunities
+            0, // replyCount - not available
+            0, // retweetCount - not available
+            feedRunId
+          );
+          
+          // Check if evaluation already exists
+          const { data: existing } = await supabase
+            .from('candidate_evaluations')
+            .select('id')
+            .eq('candidate_tweet_id', opp.target_tweet_id)
+            .maybeSingle();
+          
+          if (existing) {
+            console.log(`   ⏭️  Skipped ${opp.target_tweet_id}: already evaluated`);
+            continue;
+          }
+          
+          // Insert evaluation
+          const { error: insertError } = await supabase
+            .from('candidate_evaluations')
+            .insert({
+              candidate_tweet_id: opp.target_tweet_id,
+              candidate_author_username: opp.target_username || opp.account_username || 'unknown',
+              candidate_content: opp.target_tweet_content || '',
+              candidate_posted_at: opp.tweet_posted_at || new Date().toISOString(),
+              source_id: opp.target_tweet_id,
+              source_type: 'reply_opportunity',
+              source_feed_name: opp.discovery_method || 'one_shot',
+              feed_run_id: feedRunId,
+              is_root_tweet: opp.is_root_tweet ?? true,
+              is_parody: false,
+              topic_relevance_score: score.topic_relevance_score,
+              spam_score: score.spam_score,
+              velocity_score: score.velocity_score,
+              recency_score: score.recency_score,
+              author_signal_score: score.author_signal_score,
+              overall_score: score.overall_score,
+              passed_hard_filters: score.passed_hard_filters,
+              filter_reason: score.filter_reason,
+              predicted_24h_views: score.predicted_24h_views,
+              predicted_tier: score.predicted_tier,
+              status: score.passed_hard_filters ? 'evaluated' : 'blocked',
+              ai_judge_decision: score.judge_decision ? {
+                relevance: score.judge_decision.relevance,
+                replyability: score.judge_decision.replyability,
+                momentum: score.judge_decision.momentum,
+                audience_fit: score.judge_decision.audience_fit,
+                spam_risk: score.judge_decision.spam_risk,
+                expected_views_bucket: score.judge_decision.expected_views_bucket,
+                decision: score.judge_decision.decision,
+                reasons: score.judge_decision.reasons
+              } : null,
+              judge_relevance: score.judge_decision?.relevance,
+              judge_replyability: score.judge_decision?.replyability,
+            });
+          
+          if (insertError) {
+            if (insertError.message.includes('duplicate') || insertError.message.includes('unique')) {
+              console.log(`   ⏭️  Skipped ${opp.target_tweet_id}: duplicate evaluation`);
+            } else {
+              console.error(`   ❌ Failed to evaluate ${opp.target_tweet_id}: ${insertError.message}`);
+            }
+          } else {
+            candidateEvaluationsCreated++;
+            console.log(`   ✅ Evaluated ${opp.target_tweet_id} (score: ${score.overall_score.toFixed(1)}, tier: ${score.predicted_tier}, passed: ${score.passed_hard_filters})`);
+          }
+        } catch (error: any) {
+          console.error(`   ❌ Evaluation error for ${opp.target_tweet_id}: ${error.message}`);
+        }
+      }
+      
+      console.log(`✅ Evaluation complete: ${opportunitiesEvaluated} opportunities evaluated, ${candidateEvaluationsCreated} evaluations created`);
+    }
+  } catch (error: any) {
+    console.error(`⚠️  Evaluation failed: ${error.message}`);
+  }
+  
+  // Fail-closed safety: if opportunities were inserted but none evaluated, error
+  if (opportunitiesInserted > 0 && opportunitiesEvaluated === 0) {
+    console.error('\n❌ EVALUATION_MISSING_OR_FAILED: Opportunities inserted but none evaluated');
+    console.error(`   Opportunities inserted: ${opportunitiesInserted}`);
+    console.error(`   Opportunities evaluated: ${opportunitiesEvaluated}`);
+    console.error('   This indicates a systemic issue - opportunities are not being evaluated');
+    process.exit(1);
+  }
   
   // Step 5a: Refresh candidate queue (evaluations → queue) - 30s timeout
   console.log('\nSTEP 5a: Refreshing candidate queue...');
@@ -377,6 +505,8 @@ async function main() {
   
   console.log(`Run started at: ${runStartedAt}`);
   console.log(`Opportunities inserted: ${opportunitiesInserted}`);
+  console.log(`Opportunities evaluated: ${opportunitiesEvaluated || 0}`);
+  console.log(`Candidate evaluations created: ${candidateEvaluationsCreated || 0}`);
   console.log(`Candidates queued (after run start): ${candidatesQueuedCount || 0}`);
   console.log(`Candidates removed by cleanup: ${candidatesRemoved || 0}`);
   console.log(`Candidates processed: ${candidatesProcessed}`);
