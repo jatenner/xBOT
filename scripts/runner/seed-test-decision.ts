@@ -14,6 +14,21 @@
 
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
+
+// Step 1: Auto-sync env from Railway (like other runner scripts)
+console.log('📥 Syncing env from Railway...');
+try {
+  execSync('pnpm run runner:autosync', { 
+    stdio: 'pipe',
+    encoding: 'utf-8',
+    cwd: process.cwd()
+  });
+  console.log('✅ Env synced\n');
+} catch (error: any) {
+  console.error('❌ Failed to sync env from Railway:', error.message);
+  console.error('   Continuing with existing .env.local if available...\n');
+}
 
 // Load env from .env.local or .env (required for DB connection)
 const envLocalPath = path.join(process.cwd(), '.env.local');
