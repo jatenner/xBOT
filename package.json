@@ -56,6 +56,7 @@
     "runner:schedule-debug": "SCHEDULER_DEBUG_LIMIT=5 RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile RUNNER_BROWSER=cdp tsx scripts/runner/schedule-and-post.ts",
     "runner:one-shot": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile RUNNER_BROWSER=cdp tsx scripts/runner/one-shot.ts",
     "runner:cleanup-queue": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/cleanup-candidate-queue.ts",
+    "runner:seed-decision": "RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/runner/seed-test-decision.ts",
     "runner:diagnostics": "tsx scripts/runner/diagnostics.ts"
   },
   "dependencies": {

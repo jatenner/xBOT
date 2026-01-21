@@ -128,16 +128,51 @@ pnpm exec tsx scripts/verify-post-success.ts --minutes=60
 
 ---
 
+## Manual Testing Instructions (If Queue Stays Empty)
+
+If `runner:one-shot` produces no ready decisions, use the seed script to guarantee a test post:
+
+### Step 1: Seed Test Decision
+
+```bash
+# Replace TWEET_ID with a real tweet ID you want to reply to
+RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile \
+pnpm run runner:seed-decision -- --tweet_id=TWEET_ID
+```
+
+This creates ONE reply decision in `content_metadata` with:
+- `status='queued'`
+- `scheduled_at <= now` (immediately ready)
+- `retry_count=0` (no deferral)
+- Simple test reply content
+
+### Step 2: Run Posting with CDP + Bypass
+
+```bash
+RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile RUNNER_BROWSER=cdp \
+POSTING_BYPASS_RETRY_DEFERRAL=true \
+pnpm run runner:once -- --once
+```
+
+Expected behavior:
+- `[POSTING] Using CDP mode` should appear
+- Decision should be processed
+- CDP posting path should execute
+
+### Step 3: Verify POST_SUCCESS
+
+```bash
+pnpm exec tsx scripts/verify-post-success.ts --minutes=60
+```
+
+**Goal**: Prove we can create a decision → attempt a post via CDP → see POST_SUCCESS logged.
+
+---
+
 ## Next Steps
 
-1. **Test CDP Posting**: Need a ready decision in queue to verify CDP posting works
-   - Scheduler must create decisions first
-   - Or manually queue a decision for testing
-
+1. **Test CDP Posting**: Use seed script if queue stays empty
 2. **Test Retry Deferral Bypass**: Need a deferred decision to verify bypass works
-   - Create a decision with retry_count > 0 and future scheduled_at
-   - Run with `POSTING_BYPASS_RETRY_DEFERRAL=true`
-
 3. **Verify One-shot Summary**: Run full `runner:one-shot` to verify improved summary tracking
 
 ---
