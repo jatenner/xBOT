@@ -78,6 +78,20 @@ async function main() {
     }
   });
   
+  // Get evaluation data for content/username checks (reply_candidate_queue doesn't have these fields)
+  const evaluationIds = candidates.map(c => c.evaluation_id).filter(Boolean);
+  const evalMap = new Map();
+  if (evaluationIds.length > 0) {
+    const { data: evaluations } = await supabase
+      .from('candidate_evaluations')
+      .select('id, candidate_author_username, candidate_content')
+      .in('id', evaluationIds);
+    
+    evaluations?.forEach(eval => {
+      evalMap.set(eval.id, eval);
+    });
+  }
+  
   // Off-limits content patterns (matching replyTargetQualityFilter)
   const offLimitsPatterns = [
     /\b(hardcore|explicit|porn|xxx|nsfw\s*sexual|explicitly\s*sexual)\b/i,
@@ -90,9 +104,10 @@ async function main() {
     let shouldDelete = false;
     let reason = '';
     
-    const username = (candidate.candidate_author_username || '').toLowerCase();
     const tweetId = candidate.candidate_tweet_id || '';
-    const content = (candidate.candidate_tweet_content || '').toLowerCase();
+    const evaluation = candidate.evaluation_id ? evalMap.get(candidate.evaluation_id) : null;
+    const username = (evaluation?.candidate_author_username || '').toLowerCase();
+    const content = (evaluation?.candidate_content || '').toLowerCase();
     
     // Check 1: Test/synthetic candidates (highest priority)
     if (!shouldDelete) {
@@ -142,15 +157,21 @@ async function main() {
       }
     }
     
-    // Check 5: Missing required metadata
+    // Check 5: Missing required metadata (only check fields that exist in reply_candidate_queue)
     if (!shouldDelete) {
       const hasRequiredFields = candidate.candidate_tweet_id && 
-                                candidate.candidate_author_username &&
+                                candidate.evaluation_id &&
                                 candidate.overall_score !== null &&
                                 candidate.overall_score !== undefined;
       if (!hasRequiredFields) {
         shouldDelete = true;
         reason = 'missing_metadata';
+      } else {
+        // Also check evaluation has required metadata (queue refresh should have filtered, but check for old entries)
+        if (evaluation && (!evaluation.candidate_author_username || !evaluation.candidate_content)) {
+          shouldDelete = true;
+          reason = 'missing_metadata';
+        }
       }
     }
     

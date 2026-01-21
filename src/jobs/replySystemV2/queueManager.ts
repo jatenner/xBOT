@@ -75,8 +75,11 @@ export async function refreshCandidateQueue(): Promise<{
   
   const existingIds = new Set(existingQueue?.map(q => q.candidate_tweet_id) || []);
   
-  // Step 4: Add new candidates to queue
+  // Step 4: Add new candidates to queue (filter synthetic/missing metadata)
   let queuedCount = 0;
+  let rejectedSynthetic = 0;
+  let rejectedMissingMetadata = 0;
+  const missingMetadataFields: Record<string, number> = {};
   const now = new Date();
   
   for (const candidate of topCandidates) {
@@ -88,6 +91,26 @@ export async function refreshCandidateQueue(): Promise<{
     // Skip if we have enough
     if (queuedCount >= shortlistSize) {
       break;
+    }
+    
+    // FILTER: Reject synthetic tweet IDs
+    const tweetId = candidate.candidate_tweet_id || '';
+    if (/^2000000000000000\d{3}$/.test(tweetId)) {
+      rejectedSynthetic++;
+      console.log(`[QUEUE_MANAGER] 🚫 Rejected synthetic candidate: ${tweetId}`);
+      continue;
+    }
+    
+    // FILTER: Reject missing required metadata
+    const authorUsername = candidate.candidate_author_username || null;
+    const content = candidate.candidate_content || null;
+    if (!tweetId || !authorUsername || !content) {
+      rejectedMissingMetadata++;
+      if (!tweetId) missingMetadataFields['candidate_tweet_id'] = (missingMetadataFields['candidate_tweet_id'] || 0) + 1;
+      if (!authorUsername) missingMetadataFields['candidate_author_username'] = (missingMetadataFields['candidate_author_username'] || 0) + 1;
+      if (!content) missingMetadataFields['candidate_content'] = (missingMetadataFields['candidate_content'] || 0) + 1;
+      console.log(`[QUEUE_MANAGER] 🚫 Rejected missing metadata: ${tweetId} (missing: ${Object.keys(missingMetadataFields).join(', ')})`);
+      continue;
     }
     
     // Calculate TTL based on age/velocity
@@ -127,7 +150,14 @@ export async function refreshCandidateQueue(): Promise<{
     existingIds.add(candidate.candidate_tweet_id);
   }
   
-  console.log(`[QUEUE_MANAGER] ✅ Queued ${queuedCount} new candidates`);
+  console.log(`[QUEUE_MANAGER] 📊 Queue refresh stats:`);
+  console.log(`   Considered: ${topCandidates.length}`);
+  console.log(`   Rejected synthetic: ${rejectedSynthetic}`);
+  console.log(`   Rejected missing metadata: ${rejectedMissingMetadata}`);
+  if (Object.keys(missingMetadataFields).length > 0) {
+    console.log(`   Missing fields: ${Object.entries(missingMetadataFields).map(([f, c]) => `${f}=${c}`).join(', ')}`);
+  }
+  console.log(`   Queued: ${queuedCount} new candidates`);
   
   return {
     evaluated: topCandidates.length,

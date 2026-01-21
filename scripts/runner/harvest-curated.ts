@@ -1188,29 +1188,36 @@ async function validateAndInsert(
     ];
     
     const textLower = targetText.toLowerCase();
-    const hasHealthKeyword = healthKeywords.some(kw => textLower.includes(kw.toLowerCase()));
+    const healthKeywordMatches = healthKeywords.filter(kw => textLower.includes(kw.toLowerCase()));
+    const hasHealthKeyword = healthKeywordMatches.length > 0;
     const hasOffTopicKeyword = offTopicBlacklist.some(kw => textLower.includes(kw.toLowerCase()));
     
-    // 🔒 HEALTH-ONLY INSERT RULE:
-    // - If curated: allow unless (blacklist hit AND no health keyword)
+    // 🔒 HEALTH-ONLY INSERT RULE (FIXED: curated authors bypass health keyword requirement):
+    // - If curated: allow UNLESS blacklist hit (no health keyword check for curated)
     // - If NOT curated: require hasHealthKeyword AND NOT blacklist hit
     if (isCurated) {
-      if (hasOffTopicKeyword && !hasHealthKeyword) {
+      // Curated authors: only block if blacklist hit (allow even without health keywords)
+      if (hasOffTopicKeyword) {
         result.skipped_by_reason['harvest_blacklist_offtopic'] = (result.skipped_by_reason['harvest_blacklist_offtopic'] || 0) + 1;
-        console.log(`   ⏭️  Skipped ${tweetId}: harvest_blacklist_offtopic (curated but off-topic)`);
+        const textSnippet = targetText.substring(0, 80).replace(/https?:\/\/\S+/g, '[URL]');
+        console.log(`   ⏭️  [HARVEST_DEBUG] Skipped ${tweetId}: harvest_blacklist_offtopic | author=${authorHandleRaw} | curated=true | health_matches=${healthKeywordMatches.length} | snippet="${textSnippet}..."`);
         return;
       }
-      // Curated handle passes health filter
+      // Curated handle passes (no health keyword required)
+      const textSnippet = targetText.substring(0, 80).replace(/https?:\/\/\S+/g, '[URL]');
+      console.log(`   ✅ [HARVEST_DEBUG] Allowing curated ${tweetId}: author=${authorHandleRaw} | curated=true | health_matches=${healthKeywordMatches.length} | snippet="${textSnippet}..."`);
     } else {
       // NOT curated: require health keyword AND no blacklist
       if (!hasHealthKeyword) {
         result.skipped_by_reason['harvest_not_curated_no_health'] = (result.skipped_by_reason['harvest_not_curated_no_health'] || 0) + 1;
-        console.log(`   ⏭️  Skipped ${tweetId}: harvest_not_curated_no_health`);
+        const textSnippet = targetText.substring(0, 80).replace(/https?:\/\/\S+/g, '[URL]');
+        console.log(`   ⏭️  [HARVEST_DEBUG] Skipped ${tweetId}: harvest_not_curated_no_health | author=${authorHandleRaw} | curated=false | health_matches=0 | snippet="${textSnippet}..."`);
         return;
       }
       if (hasOffTopicKeyword) {
         result.skipped_by_reason['harvest_blacklist_offtopic'] = (result.skipped_by_reason['harvest_blacklist_offtopic'] || 0) + 1;
-        console.log(`   ⏭️  Skipped ${tweetId}: harvest_blacklist_offtopic`);
+        const textSnippet = targetText.substring(0, 80).replace(/https?:\/\/\S+/g, '[URL]');
+        console.log(`   ⏭️  [HARVEST_DEBUG] Skipped ${tweetId}: harvest_blacklist_offtopic | author=${authorHandleRaw} | curated=false | health_matches=${healthKeywordMatches.length} | snippet="${textSnippet}..."`);
         return;
       }
     }
