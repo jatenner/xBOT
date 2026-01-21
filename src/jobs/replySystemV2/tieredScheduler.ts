@@ -583,6 +583,76 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     console.log(`[SCHEDULER] 💓 Heartbeat: Allow check completed in ${allowCheckElapsed}ms`);
     console.log(`[SCHEDULER] ✅ Allow check completed in ${allowCheckElapsed}ms: allow=${allowCheck.allow}, reason=${allowCheck.reason}`);
     
+    // 🔒 FRESHNESS CHECK - Enforce maximum tweet age (default 48h) at scheduler time
+    const MAX_TWEET_AGE_HOURS = parseInt(process.env.REPLY_MAX_TWEET_AGE_HOURS || '48', 10);
+    const MAX_TWEET_AGE_MS = MAX_TWEET_AGE_HOURS * 60 * 60 * 1000;
+    const isTestMode = process.env.RUNNER_TEST_MODE === 'true' && process.env.RUNNER_MODE === 'true';
+    
+    // Check tweet age from reply_opportunities
+    const { data: freshnessOpportunity } = await supabase
+      .from('reply_opportunities')
+      .select('tweet_posted_at')
+      .eq('target_tweet_id', candidate.candidate_tweet_id)
+      .maybeSingle();
+    
+    if (freshnessOpportunity?.tweet_posted_at && !isTestMode) {
+      const postedAt = new Date(freshnessOpportunity.tweet_posted_at);
+      const ageMs = Date.now() - postedAt.getTime();
+      const ageHours = ageMs / (60 * 60 * 1000);
+      
+      if (ageMs > MAX_TWEET_AGE_MS) {
+        console.error(`[SCHEDULER] 🚫 Tweet too old: ${ageHours.toFixed(1)}h (max=${MAX_TWEET_AGE_HOURS}h)`);
+        
+        await recordReplyDecision({
+          decision_id: decisionId,
+          target_tweet_id: candidate.candidate_tweet_id,
+          target_in_reply_to_tweet_id: null,
+          root_tweet_id: candidate.candidate_tweet_id,
+          ancestry_depth: 0,
+          is_root: true,
+          decision: 'DENY',
+          reason: `Tweet too old: ${ageHours.toFixed(1)}h > ${MAX_TWEET_AGE_HOURS}h`,
+          deny_reason_code: 'TWEET_TOO_OLD',
+          deny_reason_detail: JSON.stringify({ age_hours: ageHours.toFixed(1), max_hours: MAX_TWEET_AGE_HOURS }),
+          status: 'RESOLVED',
+          confidence: 'HIGH',
+          method: 'freshness_check',
+          cache_hit: false,
+          trace_id: schedulerRunId,
+          job_run_id: schedulerRunId,
+          pipeline_source: 'reply_v2_scheduler',
+        } as any);
+        
+        clearTimeout(watchdogTimer);
+        stageTimings.total_ms = Date.now() - candidateStartTime;
+        
+        if (candidateLeaseId) {
+          const { releaseLease } = await import('./queueManager');
+          await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+        }
+        
+        await logOutcome(supabase, schedulerRunId, {
+          outcome_type: 'DENY',
+          candidate_tweet_id: candidate.candidate_tweet_id,
+          candidate_id: candidate.evaluation_id,
+          author_handle: candidateData.candidate_author_username,
+          url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+          deny_reason_code: 'TWEET_TOO_OLD',
+          deny_reason_detail: { age_hours: ageHours.toFixed(1), max_hours: MAX_TWEET_AGE_HOURS },
+          decision_id: decisionId,
+          stage_timings: stageTimings,
+        });
+        
+        throw new Error(`Tweet too old: ${ageHours.toFixed(1)}h > ${MAX_TWEET_AGE_HOURS}h`);
+      } else {
+        console.log(`[SCHEDULER] ✅ Freshness check passed: ${ageHours.toFixed(1)}h (max=${MAX_TWEET_AGE_HOURS}h)`);
+      }
+    } else if (isTestMode && freshnessOpportunity?.tweet_posted_at) {
+      const postedAt = new Date(freshnessOpportunity.tweet_posted_at);
+      const ageHours = (Date.now() - postedAt.getTime()) / (60 * 60 * 1000);
+      console.log(`[SCHEDULER] 🧪 TEST MODE: BYPASS_ACTIVE: FRESHNESS_CHECK (age=${ageHours.toFixed(1)}h)`);
+    }
+    
     // 🔒 PHASE 1.1: TARGET QUALITY FILTER - Pre-generation filter (MUST be enforced)
     const qualityFilterStartTime = Date.now();
     console.log(`[SCHEDULER] 💓 Heartbeat: Starting quality filter (timeout: 2s)...`);

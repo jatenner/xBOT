@@ -293,29 +293,83 @@ async function generateRealContent(): Promise<void> {
         // Note: 'dynamicContent' excluded (that's the fallback, not a specialized generator)
       ];
       
-      // Select generator (rotate for variety, or use learning if available)
-      let selectedGenerator: string;
-      try {
-        const { learningSystem } = await import('../learning/learningSystem');
-        const insights = await learningSystem.getLearningInsights();
-        const bestGenerator = (insights as any).best_generator;
-        
-        if (bestGenerator && availableGenerators.includes(bestGenerator)) {
-          selectedGenerator = bestGenerator;
-          console.log(`[UNIFIED_PLAN] 🎯 Using learned best generator: ${selectedGenerator}`);
-        } else {
-          // Rotate through generators for variety
-          const recentGenerators = recentContent?.map(c => c.generator_name).filter(Boolean) || [];
-          const unusedGenerators = availableGenerators.filter(g => !recentGenerators.includes(g));
-          selectedGenerator = unusedGenerators.length > 0
-            ? unusedGenerators[Math.floor(Math.random() * unusedGenerators.length)]
-            : availableGenerators[Math.floor(Math.random() * availableGenerators.length)];
-          console.log(`[UNIFIED_PLAN] 🎲 Rotating to generator: ${selectedGenerator}`);
+      // 🎯 GROWTH_CONTROLLER: Get strategy weights (if enabled)
+      let strategyWeights: {
+        topics: Array<{ topic: string; weight: number }>;
+        formats: Array<{ format: string; weight: number }>;
+        generators: Array<{ generator: string; weight: number }>;
+      } | null = null;
+      
+      if (process.env.GROWTH_CONTROLLER_ENABLED === 'true') {
+        try {
+          const { getStrategyWeights } = await import('./growthController');
+          strategyWeights = await getStrategyWeights();
+          if (strategyWeights) {
+            console.log(`[UNIFIED_PLAN] 🎯 Using strategy weights from Growth Controller`);
+            if (strategyWeights.topics.length > 0) {
+              console.log(`   Top topics: ${strategyWeights.topics.slice(0, 3).map(t => t.topic).join(', ')}`);
+            }
+            if (strategyWeights.generators.length > 0) {
+              console.log(`   Top generators: ${strategyWeights.generators.slice(0, 3).map(g => g.generator).join(', ')}`);
+            }
+          }
+        } catch (controllerError: any) {
+          console.warn(`[UNIFIED_PLAN] ⚠️ Failed to get strategy weights: ${controllerError.message}`);
         }
-      } catch (learningError: any) {
-        // Fallback: random selection
-        selectedGenerator = availableGenerators[Math.floor(Math.random() * availableGenerators.length)];
-        console.log(`[UNIFIED_PLAN] 🎲 Random generator selection: ${selectedGenerator}`);
+      }
+      
+      // Select generator (prioritize strategy weights, then learning, then rotation)
+      let selectedGenerator: string;
+      
+      // Priority 1: Strategy weights from Growth Controller (if enabled and available)
+      if (strategyWeights && strategyWeights.generators.length > 0) {
+        // Weighted random selection from top generators
+        const generatorWeights = strategyWeights.generators
+          .filter(g => availableGenerators.includes(g.generator))
+          .reduce((acc, g) => {
+            acc[g.generator] = g.weight;
+            return acc;
+          }, {} as Record<string, number>);
+        
+        if (Object.keys(generatorWeights).length > 0) {
+          const totalWeight = Object.values(generatorWeights).reduce((sum, w) => sum + w, 0);
+          let random = Math.random() * totalWeight;
+          
+          for (const [gen, weight] of Object.entries(generatorWeights)) {
+            random -= weight;
+            if (random <= 0) {
+              selectedGenerator = gen;
+              console.log(`[UNIFIED_PLAN] 🎯 Using strategy-weighted generator: ${selectedGenerator} (weight: ${(weight / totalWeight * 100).toFixed(1)}%)`);
+              break;
+            }
+          }
+        }
+      }
+      
+      // Priority 2: Learning system (if strategy weights didn't select)
+      if (!selectedGenerator) {
+        try {
+          const { learningSystem } = await import('../learning/learningSystem');
+          const insights = await learningSystem.getLearningInsights();
+          const bestGenerator = (insights as any).best_generator;
+          
+          if (bestGenerator && availableGenerators.includes(bestGenerator)) {
+            selectedGenerator = bestGenerator;
+            console.log(`[UNIFIED_PLAN] 🎯 Using learned best generator: ${selectedGenerator}`);
+          }
+        } catch (learningError: any) {
+          // Continue to fallback
+        }
+      }
+      
+      // Priority 3: Rotation for variety (fallback)
+      if (!selectedGenerator) {
+        const recentGenerators = recentContent?.map(c => c.generator_name).filter(Boolean) || [];
+        const unusedGenerators = availableGenerators.filter(g => !recentGenerators.includes(g));
+        selectedGenerator = unusedGenerators.length > 0
+          ? unusedGenerators[Math.floor(Math.random() * unusedGenerators.length)]
+          : availableGenerators[Math.floor(Math.random() * availableGenerators.length)];
+        console.log(`[UNIFIED_PLAN] 🎲 Rotating to generator: ${selectedGenerator}`);
       }
       
       // Call specialized generator using the same pattern as planJob.ts
@@ -369,8 +423,30 @@ async function generateRealContent(): Promise<void> {
             throw new Error(`Generator function ${config.fn} not found`);
           }
           
+          // 🎯 GROWTH_CONTROLLER: Use strategy-weighted topic if available
+          let selectedTopic = adaptiveTopicHint || 'health optimization';
+          if (strategyWeights && strategyWeights.topics.length > 0) {
+            // Weighted random selection from top topics
+            const topicWeights = strategyWeights.topics.reduce((acc, t) => {
+              acc[t.topic] = t.weight;
+              return acc;
+            }, {} as Record<string, number>);
+            
+            const totalWeight = Object.values(topicWeights).reduce((sum, w) => sum + w, 0);
+            let random = Math.random() * totalWeight;
+            
+            for (const [topic, weight] of Object.entries(topicWeights)) {
+              random -= weight;
+              if (random <= 0) {
+                selectedTopic = topic;
+                console.log(`[UNIFIED_PLAN] 🎯 Using strategy-weighted topic: ${selectedTopic} (weight: ${(weight / totalWeight * 100).toFixed(1)}%)`);
+                break;
+              }
+            }
+          }
+          
           const result = await generateFn({
-            topic: adaptiveTopicHint || 'health optimization',
+            topic: selectedTopic,
             format: 'single', // Threads disabled for now
             angle: undefined,
             tone: undefined,

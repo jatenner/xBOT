@@ -1282,6 +1282,20 @@ export class JobManager {
       );
     }
 
+    // Shadow Controller (Growth Controller plan generation) - every hour
+    // Run at start of hour (0 minutes) to ensure plan is available for the full hour
+    this.scheduleStaggeredJob(
+      'shadow_controller',
+      async () => {
+        await this.safeExecute('shadow_controller', async () => {
+          const { generateShadowPlan } = await import('./shadowControllerJob');
+          await generateShadowPlan();
+        });
+      },
+      60 * MINUTE, // Every 60 minutes
+      0 * MINUTE   // Start immediately (at hour boundary) - ensures plan ready for current hour
+    );
+
     // Status reporting - every hour
     this.timers.set('status', setInterval(() => {
       this.printHourlyStatus();

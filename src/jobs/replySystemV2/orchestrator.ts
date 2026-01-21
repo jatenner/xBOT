@@ -82,21 +82,54 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   let partialSources: string[] = [];
   let failedSources: string[] = [];
   
-  // Get feed weights from control plane
-  const { data: controlState } = await supabase
-    .from('control_plane_state')
-    .select('feed_weights')
-    .is('expires_at', null)
-    .order('effective_at', { ascending: false })
-    .limit(1)
-    .single();
-  
-  const feedWeights = controlState?.feed_weights || {
-    curated_accounts: 0.35, // Reduced from 0.4
-    keyword_search: 0.30,
-    viral_watcher: 0.20,
-    discovered_accounts: 0.15, // 🔒 TASK 3: 15% from discovered accounts (10-20% range)
+  // 🎯 GROWTH_CONTROLLER: Get feed weights from active plan (if enabled)
+  let feedWeights: {
+    curated_accounts: number;
+    keyword_search: number;
+    viral_watcher: number;
+    discovered_accounts: number;
   };
+  
+  if (process.env.GROWTH_CONTROLLER_ENABLED === 'true') {
+    try {
+      const { getFeedWeights } = await import('../../jobs/growthController');
+      feedWeights = await getFeedWeights();
+      console.log(`[ORCHESTRATOR] 🎯 Using feed weights from Growth Controller: ${JSON.stringify(feedWeights)}`);
+    } catch (controllerError: any) {
+      console.warn(`[ORCHESTRATOR] ⚠️ Failed to get feed weights from controller: ${controllerError.message}, using defaults`);
+      // Fallback to control plane or defaults
+      const { data: controlState } = await supabase
+        .from('control_plane_state')
+        .select('feed_weights')
+        .is('expires_at', null)
+        .order('effective_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      feedWeights = controlState?.feed_weights || {
+        curated_accounts: 0.35,
+        keyword_search: 0.30,
+        viral_watcher: 0.20,
+        discovered_accounts: 0.15,
+      };
+    }
+  } else {
+    // Controller disabled, use control plane or defaults
+    const { data: controlState } = await supabase
+      .from('control_plane_state')
+      .select('feed_weights')
+      .is('expires_at', null)
+      .order('effective_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    feedWeights = controlState?.feed_weights || {
+      curated_accounts: 0.35, // Reduced from 0.4
+      keyword_search: 0.30,
+      viral_watcher: 0.20,
+      discovered_accounts: 0.15, // 🔒 TASK 3: 15% from discovered accounts (10-20% range)
+    };
+  }
   
   console.log(`[ORCHESTRATOR] 🎛️ Using feed weights: ${JSON.stringify(feedWeights)}`);
   

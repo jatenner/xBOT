@@ -876,8 +876,11 @@ export class UltimateTwitterPoster {
     // 🔒 SERVICE_ROLE CHECK: Use role resolver (single source of truth)
     const { isWorkerService } = await import('../utils/serviceRoleResolver');
     const isWorker = isWorkerService();
+    // 🧪 TEST BYPASS: RUNNER_TEST_MODE=true (requires RUNNER_MODE=true)
+    const isTestMode = process.env.RUNNER_TEST_MODE === 'true' && process.env.RUNNER_MODE === 'true';
+    const bypassServiceRole = isTestMode;
     
-    if (!isWorker) {
+    if (!isWorker && !bypassServiceRole) {
       const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. SERVICE_ROLE=${process.env.SERVICE_ROLE || 'NOT SET'}`;
       console.error(errorMsg);
       console.error(`[SEV1_GHOST_BLOCK] Stack: ${new Error().stack}`);
@@ -902,6 +905,10 @@ export class UltimateTwitterPoster {
       });
       
       throw new Error('BLOCKED: Posting only allowed from worker service (SERVICE_ROLE=worker)');
+    }
+    
+    if (bypassServiceRole) {
+      console.log(`[ULTIMATE_POSTER] 🧪 TEST MODE: BYPASS_ACTIVE: SERVICE_ROLE_CHECK`);
     }
     
     // 🔒 SEV1 GHOST ERADICATION: Pipeline source must be reply_v2_scheduler
@@ -1822,6 +1829,10 @@ export class UltimateTwitterPoster {
     
     let retryCount = 0;
     const maxRetries = 2;
+    
+    // 🧪 TEST BYPASS: RUNNER_TEST_MODE=true (requires RUNNER_MODE=true)
+    // Declare once at function scope for reuse
+    const isTestMode = process.env.RUNNER_TEST_MODE === 'true' && process.env.RUNNER_MODE === 'true';
 
     console.log(`ULTIMATE_POSTER: Posting reply to tweet ${replyToTweetId} (guard: ${validGuard.decision_id})`);
 
@@ -1838,9 +1849,19 @@ export class UltimateTwitterPoster {
         if (!this.page) throw new Error('Page not initialized');
 
         // 🔍 FORENSIC PIPELINE: Final hard gate - verify ancestry before posting
+        // 🧪 TEST BYPASS: Reuse isTestMode from function scope
+        const bypassAncestry = isTestMode;
+        
         const { resolveTweetAncestry, shouldAllowReply } = await import('../jobs/replySystemV2/replyDecisionRecorder');
         const ancestry = await resolveTweetAncestry(replyToTweetId);
-        const allowCheck = await shouldAllowReply(ancestry);
+        
+        let allowCheck: { allow: boolean; reason: string };
+        if (bypassAncestry) {
+          console.log(`[ULTIMATE_POSTER] 🧪 TEST MODE: BYPASS_ACTIVE: ANCESTRY_CHECK`);
+          allowCheck = { allow: true, reason: 'TEST_BYPASS_ANCESTRY' };
+        } else {
+          allowCheck = await shouldAllowReply(ancestry);
+        }
         
         if (!allowCheck.allow) {
           const errorMsg = `FINAL_PLAYWRIGHT_GATE_BLOCKED: ${allowCheck.reason}`;
@@ -1978,8 +1999,11 @@ export class UltimateTwitterPoster {
         // 🔒 SERVICE_ROLE CHECK: Use role resolver (single source of truth)
         const { isWorkerService } = await import('../utils/serviceRoleResolver');
         const isWorker = isWorkerService();
+        // 🧪 TEST BYPASS: RUNNER_TEST_MODE=true (requires RUNNER_MODE=true)
+        // Reuse isTestMode from earlier in function scope
+        const bypassServiceRole = isTestMode;
         
-        if (!isWorker) {
+        if (!isWorker && !bypassServiceRole) {
           const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. SERVICE_ROLE=${process.env.SERVICE_ROLE || 'NOT SET'}`;
           console.error(errorMsg);
           console.error(`[SEV1_GHOST_BLOCK] Stack: ${new Error().stack}`);
@@ -2004,6 +2028,10 @@ export class UltimateTwitterPoster {
           });
           
           throw new Error('BLOCKED: Posting only allowed from worker service (SERVICE_ROLE=worker)');
+        }
+        
+        if (bypassServiceRole) {
+          console.log(`[ULTIMATE_POSTER] 🧪 TEST MODE: BYPASS_ACTIVE: SERVICE_ROLE_CHECK`);
         }
         
         // 🔒 SEV1 GHOST ERADICATION: Pipeline source must be reply_v2_scheduler

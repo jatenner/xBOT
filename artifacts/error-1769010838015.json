@@ -1,0 +1,6 @@
+{
+  "timestamp": "2026-01-21T15:53:58.131Z",
+  "error": "FINAL_PLAYWRIGHT_GATE_BLOCKED: ANCESTRY_UNCERTAIN_FAIL_CLOSED: status=UNCERTAIN, target=2011833090759680304, method=explicit_signals",
+  "url": "about:blank",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+}

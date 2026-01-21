@@ -73,8 +73,36 @@ export async function generateReplyContent(
   // Use relevance_score if provided
   const relevanceScore = request.relevance_score ?? (isHealthTopic ? 0.7 : 0.3);
   
+  // Extract anchor terms from target tweet for prompt
+  const extractAnchors = (text: string): string[] => {
+    const anchors: string[] = [];
+    const hashtags = text.match(/#\w+/gi) || [];
+    anchors.push(...hashtags);
+    const numbers = text.match(/\d+(\.\d+)?%?/g) || [];
+    anchors.push(...numbers);
+    const stopwords = new Set(['this', 'that', 'have', 'been', 'with', 'from', 'they', 'your', 'will', 'just', 'more', 'when', 'what', 'than', 'very', 'also', 'some', 'like', 'into']);
+    const words = text.toLowerCase()
+      .replace(/[^a-z0-9\s#]/gi, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 4 && !stopwords.has(w));
+    const wordFreq = new Map<string, number>();
+    words.forEach(w => wordFreq.set(w, (wordFreq.get(w) || 0) + 1));
+    const uniqueWords = Array.from(wordFreq.entries())
+      .filter(([w, count]) => count === 1)
+      .map(([w]) => w)
+      .sort((a, b) => b.length - a.length)
+      .slice(0, 8);
+    anchors.push(...uniqueWords);
+    return anchors.slice(0, 8).slice(0, Math.max(3, anchors.length));
+  };
+  
+  const tweetAnchors = extractAnchors(request.target_tweet_content);
+  
   // 🔒 BUILD CONTEXT STRING: Include full conversation context
   let contextString = `TARGET TWEET: "${request.target_tweet_content}"`;
+  if (tweetAnchors.length > 0) {
+    contextString += `\n\nKEY TERMS TO REFERENCE (use at least one): ${tweetAnchors.slice(0, 5).join(', ')}`;
+  }
   if (request.reply_context?.quoted_text) {
     contextString += `\n\nQUOTED TWEET (what they're responding to): "${request.reply_context.quoted_text}"`;
   }
@@ -94,17 +122,19 @@ Health Relevance: ${relevanceScore >= 0.6 ? 'High' : relevanceScore >= 0.3 ? 'Me
 
 YOUR REPLY MUST:
 1. **CRITICAL**: ALWAYS reference a SPECIFIC concrete detail from the target tweet (a claim, metric, term, intervention, mechanism, or named entity). If you cannot reference something specific, return {"content": "", "skip_reason": "no_concrete_detail"}.
-2. Be 1-2 sentences, ≤220 characters (strict)
-3. Sound confident and human, like a real person replying
-4. Never roleplay as the author - don't use "we" or "our" unless the bot account (@SignalAndSynapse) is actually the author
-5. NO corporate voice: Avoid "we're excited", "thrilled", "honored", "proud to announce"
-6. NO emojis by default (unless the tweet is very casual/emoji-heavy)
-7. NO forced health tie-ins if tweet isn't health-related - match the tweet's actual topic
-8. NO generic congratulations for brand partnerships - only for personal milestones
-9. NO generic research openers like "Interestingly,", "Research shows", "Studies suggest"
-10. NO thread markers (🧵, 1/5, Part 1, etc.)
-11. NO generic abstract lines like "ecosystem of our BEING", "ripple effect of life" unless explicitly supported by tweet content
-12. Structure: 1 concrete point + 1 useful nuance/caution + 1 short question OR actionable suggestion
+2. **MANDATORY**: Include at least ONE anchor term from the tweet (extract 3-8 key terms: nouns, phrases, hashtags, numbers, or keywords from the tweet text above).
+3. **MANDATORY**: Mention the tweet topic explicitly and reference at least one concrete detail from the tweet.
+4. Be 1-2 sentences, ≤220 characters (strict)
+5. Sound confident and human, like a real person replying
+6. Never roleplay as the author - don't use "we" or "our" unless the bot account (@SignalAndSynapse) is actually the author
+7. NO corporate voice: Avoid "we're excited", "thrilled", "honored", "proud to announce"
+8. NO emojis by default (unless the tweet is very casual/emoji-heavy)
+9. NO forced health tie-ins if tweet isn't health-related - match the tweet's actual topic
+10. NO generic congratulations for brand partnerships - only for personal milestones
+11. NO generic research openers like "Interestingly,", "Research shows", "Studies suggest"
+12. NO thread markers (🧵, 1/5, Part 1, etc.)
+13. NO generic abstract lines like "ecosystem of our BEING", "ripple effect of life" unless explicitly supported by tweet content
+14. Structure: 1 concrete point from tweet + 1 useful nuance/caution + 1 short question OR actionable suggestion
 
 REPLY_INTENT GUIDANCE:
 - question: Ask a sharp, specific question related to their tweet topic
@@ -144,6 +174,8 @@ Format as JSON:
 }`;
 
   console.log(`[REPLY_ADAPTER] Generating reply for @${request.target_username} using model=${request.model || 'gpt-4o-mini'}`);
+  console.log(`[REPLY_ADAPTER] Tweet text (truncated): "${request.target_tweet_content.substring(0, 80)}..."`);
+  console.log(`[REPLY_ADAPTER] Chosen anchors (${tweetAnchors.length}): ${tweetAnchors.slice(0, 5).join(', ')}`);
   
   const response = await createBudgetedChatCompletion({
     model: request.model || 'gpt-4o-mini',
@@ -241,8 +273,15 @@ Format as JSON:
     }
   }
 
+  // Check anchor match for logging
+  const matchedAnchors = tweetAnchors.filter(anchor => 
+    replyTextLower.includes(anchor.toLowerCase())
+  );
+  
   console.log(`[REPLY_ADAPTER] ✅ Generated reply: ${replyData.content.length} chars`);
-
+  console.log(`[REPLY_ADAPTER] Generated reply: "${replyData.content}"`);
+  console.log(`[REPLY_ADAPTER] Anchor check: matched=${matchedAnchors.length}/${tweetAnchors.length} anchors=${matchedAnchors.slice(0, 3).join(', ')}`);
+  
   return {
     content: replyData.content,
     generator_used: 'reply_adapter',
