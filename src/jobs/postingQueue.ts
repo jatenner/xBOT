@@ -1092,6 +1092,19 @@ export function getCircuitBreakerStatus(): {
 const POSTING_QUEUE_MAX_ITEMS = parseInt(process.env.POSTING_QUEUE_MAX_ITEMS || '2', 10); // Default: 2
 
 export async function processPostingQueue(options?: { certMode?: boolean; maxItems?: number }): Promise<void> {
+  // Log browser mode at start
+  const runnerMode = process.env.RUNNER_MODE === 'true';
+  const runnerBrowser = process.env.RUNNER_BROWSER || 'not set';
+  
+  if (runnerMode && runnerBrowser === 'cdp') {
+    console.log('[POSTING] ⚠️  RUNNER_BROWSER=cdp detected, but posting queue uses Playwright browser pool');
+    console.log('[POSTING] ⚠️  For CDP mode, Playwright browsers must be installed: pnpm exec playwright install');
+    console.log('[POSTING] Using Playwright mode (UnifiedBrowserPool)');
+  } else if (runnerMode) {
+    console.log('[POSTING] Using Playwright mode (RUNNER_MODE=true, RUNNER_BROWSER not set to cdp)');
+  } else {
+    console.log('[POSTING] Using Playwright mode (non-runner environment)');
+  }
   const certMode = options?.certMode || process.env.POSTING_QUEUE_CERT_MODE === 'true';
   // Use explicit maxItems if provided, otherwise use env var (unless certMode, then 1)
   const maxItems = options?.maxItems !== undefined 

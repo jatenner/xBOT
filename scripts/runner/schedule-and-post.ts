@@ -136,15 +136,44 @@ async function main() {
   const { getSupabaseClient } = await import('../../src/db');
   const supabase = getSupabaseClient();
   
-  // Step 4: Fetch candidates from queue (prefer fresh ones created after runStartedAt if provided)
+  // Step 4: Fetch candidates from queue
+  // Only filter by RUN_STARTED_AT when ONE_SHOT_FRESH_ONLY=true
   console.log('📋 Step 3: Fetching candidates from reply_candidate_queue...');
   const runStartedAt = process.env.RUN_STARTED_AT || null;
+  const freshOnly = process.env.ONE_SHOT_FRESH_ONLY === 'true';
   
-  // Try to fetch fresh candidates first (created after runStartedAt)
+  // Log configuration
+  console.log(`   ONE_SHOT_FRESH_ONLY: ${freshOnly}`);
+  console.log(`   RUN_STARTED_AT: ${runStartedAt || 'not set'}`);
+  console.log(`   effective filtering mode: ${freshOnly ? 'fresh-only (strict)' : 'recent (allow existing)'}\n`);
+  
+  // Get total queued candidates count
+  const { count: totalQueuedCount } = await supabase
+    .from('reply_candidate_queue')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'queued')
+    .gt('expires_at', new Date().toISOString());
+  
+  console.log(`   📊 Total queued candidates: ${totalQueuedCount || 0}`);
+  
+  // Get fresh candidates count if RUN_STARTED_AT provided
+  let freshQueuedCount = 0;
+  if (runStartedAt) {
+    const { count: freshCount } = await supabase
+      .from('reply_candidate_queue')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'queued')
+      .gt('expires_at', new Date().toISOString())
+      .gte('created_at', runStartedAt);
+    freshQueuedCount = freshCount || 0;
+    console.log(`   📊 Queued candidates created after ${runStartedAt}: ${freshQueuedCount}`);
+  }
+  
+  // Try to fetch fresh candidates first ONLY if ONE_SHOT_FRESH_ONLY=true
   let candidates: any[] | null = null;
   let candidatesAreFresh = false;
   
-  if (runStartedAt) {
+  if (freshOnly && runStartedAt) {
     const { data: freshCandidates, error: freshError } = await supabase
       .from('reply_candidate_queue')
       .select('*')
@@ -162,7 +191,7 @@ async function main() {
     }
   }
   
-  // Fallback to any queued candidates if no fresh ones found
+  // Fallback to any queued candidates if no fresh ones found (or if fresh-only disabled)
   if (!candidates || candidates.length === 0) {
     let query = supabase
       .from('reply_candidate_queue')
@@ -222,10 +251,13 @@ async function main() {
     }
     
     candidates = allCandidates;
-    if (runStartedAt) {
-      console.log(`⚠️  WARNING: No fresh candidates found, using existing queue (may contain stale candidates)\n`);
+    if (freshOnly && runStartedAt && freshQueuedCount === 0) {
+      console.log(`⚠️  WARNING: ONE_SHOT_FRESH_ONLY=true but no fresh candidates found, using existing queue\n`);
+    } else if (!freshOnly) {
+      console.log(`✅ Using recent queued candidates (ONE_SHOT_FRESH_ONLY=false)\n`);
+    } else {
+      console.log(`✅ Found ${candidates.length} candidates\n`);
     }
-    console.log(`✅ Found ${candidates.length} candidates\n`);
   }
   
   // If SINGLE_ID mode and no candidates match, exit
