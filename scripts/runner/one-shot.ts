@@ -356,6 +356,7 @@ async function main() {
           }
           
           // Insert evaluation (with fallback scores if scoring failed)
+          // source_id must be UUID referencing candidate_sources, so set to null for reply_opportunities
           const { error: insertError } = await supabase
             .from('candidate_evaluations')
             .insert({
@@ -363,7 +364,7 @@ async function main() {
               candidate_author_username: authorUsername,
               candidate_content: content,
               candidate_posted_at: validPostedAt,
-              source_id: tweetId,
+              source_id: null, // UUID reference - null for reply_opportunities (no candidate_source entry)
               source_type: 'reply_opportunity',
               source_feed_name: opp.discovery_method || 'one_shot',
               feed_run_id: feedRunId,
