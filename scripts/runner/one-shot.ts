@@ -468,7 +468,8 @@ async function main() {
     
     const queueStartTime = Date.now();
     const { refreshCandidateQueue } = await import('../../src/jobs/replySystemV2/queueManager');
-    const queueResult = await refreshCandidateQueue();
+    // Pass runStartedAt to prioritize fresh evaluations from this run
+    const queueResult = await refreshCandidateQueue(runStartedAt);
     const queueDuration = Date.now() - queueStartTime;
     
     if (queueDuration > 30000) {

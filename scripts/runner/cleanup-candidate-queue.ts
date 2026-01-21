@@ -87,8 +87,8 @@ async function main() {
       .select('id, candidate_author_username, candidate_content')
       .in('id', evaluationIds);
     
-    evaluations?.forEach(eval => {
-      evalMap.set(eval.id, eval);
+    evaluations?.forEach(evaluation => {
+      evalMap.set(evaluation.id, evaluation);
     });
   }
   

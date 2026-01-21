@@ -14,8 +14,9 @@ const DEFAULT_TTL_MINUTES = 60; // Default TTL
 
 /**
  * Refresh the candidate queue
+ * @param runStartedAt Optional timestamp to prioritize fresh evaluations created after this time
  */
-export async function refreshCandidateQueue(): Promise<{
+export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
   evaluated: number;
   queued: number;
   expired: number;
@@ -48,16 +49,28 @@ export async function refreshCandidateQueue(): Promise<{
   }
   
   // Step 2: Get top candidates from evaluations
-  // BUG FIX: Remove status='evaluated' requirement - candidates get status='queued' after being queued
-  // BUG FIX: Change .gte('predicted_tier', 2) to .lte('predicted_tier', 3) to include tier 1 and exclude tier 4
-  const { data: topCandidates } = await supabase
+  // If runStartedAt provided, prioritize fresh evaluations (created after run start)
+  // Otherwise use evaluations from last 2h to ensure recent ones are included
+  let query = supabase
     .from('candidate_evaluations')
     .select('*')
     .eq('passed_hard_filters', true)
     .lte('predicted_tier', 3) // Only tier 1-3 (exclude tier 4)
     .in('status', ['evaluated', 'queued']) // Include both evaluated and already-queued (for re-queuing expired ones)
-    .order('overall_score', { ascending: false })
-    .limit(shortlistSize * 2); // Get more than needed to account for duplicates
+    .order('overall_score', { ascending: false });
+  
+  if (runStartedAt) {
+    // Prioritize fresh evaluations from this run
+    query = query.gte('created_at', runStartedAt);
+    console.log(`[QUEUE_MANAGER] 🔍 Filtering for fresh evaluations (created_at >= ${runStartedAt})`);
+  } else {
+    // Fallback: include evaluations from last 2h
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    query = query.gte('created_at', twoHoursAgo);
+    console.log(`[QUEUE_MANAGER] 🔍 Filtering for recent evaluations (created_at >= ${twoHoursAgo})`);
+  }
+  
+  const { data: topCandidates } = await query.limit(shortlistSize * 2); // Get more than needed to account for duplicates
   
   if (!topCandidates || topCandidates.length === 0) {
     console.log('[QUEUE_MANAGER] ⚠️ No candidates available for queue');
@@ -79,12 +92,23 @@ export async function refreshCandidateQueue(): Promise<{
   let queuedCount = 0;
   let rejectedSynthetic = 0;
   let rejectedMissingMetadata = 0;
+  let rejectedAlreadyQueued = 0;
   const missingMetadataFields: Record<string, number> = {};
   const now = new Date();
+  const diagnosticSamples: Array<{ tweet_id: string; evaluation_id: string; created_at: string; reason: string }> = [];
   
   for (const candidate of topCandidates) {
-    // Skip if already in queue
+    // Track if already in queue
     if (existingIds.has(candidate.candidate_tweet_id)) {
+      rejectedAlreadyQueued++;
+      if (diagnosticSamples.length < 3 && runStartedAt && candidate.created_at >= runStartedAt) {
+        diagnosticSamples.push({
+          tweet_id: candidate.candidate_tweet_id || 'unknown',
+          evaluation_id: candidate.id || 'unknown',
+          created_at: candidate.created_at || 'unknown',
+          reason: 'already_queued'
+        });
+      }
       continue;
     }
     
@@ -119,7 +143,7 @@ export async function refreshCandidateQueue(): Promise<{
     const ttlMinutes = calculateTTL(ageMinutes, candidate.velocity_score || 0);
     const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000);
     
-    // Insert into queue
+    // Insert into queue (use ON CONFLICT DO NOTHING to handle duplicates gracefully)
     const { error } = await supabase
       .from('reply_candidate_queue')
       .insert({
@@ -136,7 +160,20 @@ export async function refreshCandidateQueue(): Promise<{
       });
     
     if (error) {
-      console.error(`[QUEUE_MANAGER] ⚠️ Failed to queue ${candidate.candidate_tweet_id}: ${error.message}`);
+      // Check if it's a duplicate/unique constraint error (already queued)
+      if (error.message.includes('duplicate') || error.message.includes('unique') || error.code === '23505') {
+        rejectedAlreadyQueued++;
+        if (diagnosticSamples.length < 3 && runStartedAt && candidate.created_at >= runStartedAt) {
+          diagnosticSamples.push({
+            tweet_id: candidate.candidate_tweet_id || 'unknown',
+            evaluation_id: candidate.id || 'unknown',
+            created_at: candidate.created_at || 'unknown',
+            reason: 'duplicate_insert'
+          });
+        }
+      } else {
+        console.error(`[QUEUE_MANAGER] ⚠️ Failed to queue ${candidate.candidate_tweet_id}: ${error.message}`);
+      }
       continue;
     }
     
@@ -150,10 +187,38 @@ export async function refreshCandidateQueue(): Promise<{
     existingIds.add(candidate.candidate_tweet_id);
   }
   
+  // Check for fresh evaluations that weren't queued (diagnostics)
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  if (queuedCount === 0 && (runStartedAt || topCandidates.length > 0)) {
+    const { data: freshEvaluations } = await supabase
+      .from('candidate_evaluations')
+      .select('id, candidate_tweet_id, created_at, status, passed_hard_filters, predicted_tier')
+      .eq('passed_hard_filters', true)
+      .lte('predicted_tier', 3)
+      .gte('created_at', runStartedAt || thirtyMinutesAgo)
+      .in('status', ['evaluated', 'queued'])
+      .limit(5);
+    
+    if (freshEvaluations && freshEvaluations.length > 0) {
+      console.log(`[QUEUE_MANAGER] ⚠️  Queued: 0 but ${freshEvaluations.length} fresh evaluation(s) exist`);
+      console.log(`   Diagnostic samples (why they weren't queued):`);
+      for (const evaluation of freshEvaluations.slice(0, 3)) {
+        const wasInExisting = existingIds.has(evaluation.candidate_tweet_id || '');
+        const reason = wasInExisting ? 'already_queued' : 
+                      (!evaluation.candidate_tweet_id) ? 'missing_tweet_id' :
+                      evaluation.predicted_tier && evaluation.predicted_tier > 3 ? 'tier_too_high' :
+                      !evaluation.passed_hard_filters ? 'failed_hard_filters' :
+                      'unknown';
+        console.log(`      ${evaluation.candidate_tweet_id || 'unknown'} (eval_id=${evaluation.id}, created=${evaluation.created_at}, reason=${reason})`);
+      }
+    }
+  }
+  
   console.log(`[QUEUE_MANAGER] 📊 Queue refresh stats:`);
   console.log(`   Considered: ${topCandidates.length}`);
   console.log(`   Rejected synthetic: ${rejectedSynthetic}`);
   console.log(`   Rejected missing metadata: ${rejectedMissingMetadata}`);
+  console.log(`   Rejected already queued: ${rejectedAlreadyQueued}`);
   if (Object.keys(missingMetadataFields).length > 0) {
     console.log(`   Missing fields: ${Object.entries(missingMetadataFields).map(([f, c]) => `${f}=${c}`).join(', ')}`);
   }

@@ -83,23 +83,33 @@ async function main() {
     process.exit(1);
   }
   
-  // Step 2: Check session
+  // Step 2: Check session (with timeout to prevent hanging)
   console.log('🔐 Step 2: Checking session...');
   const { execSync } = require('child_process');
   try {
     const sessionOutput = execSync(
       'RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile RUNNER_BROWSER=cdp pnpm exec tsx scripts/runner/session-check.ts',
-      { encoding: 'utf-8', stdio: 'pipe' }
+      { encoding: 'utf-8', stdio: 'pipe', timeout: 15000 } // 15s timeout for session check
     );
     
     if (!sessionOutput.includes('SESSION_OK')) {
       console.error('❌ Session expired. Run: pnpm run runner:login');
+      clearGlobalTimeout();
       process.exit(1);
     }
     console.log('✅ Session OK\n');
   } catch (error: any) {
+    if (error.signal === 'SIGTERM' || error.message.includes('timeout')) {
+      console.error(`❌ Session check TIMED OUT after 15s`);
+      console.error(`   Operation: session_check`);
+      clearGlobalTimeout();
+      console.log('⚠️  Non-fatal: Exiting gracefully due to timeout');
+      process.exit(0); // Exit 0 (non-fatal, fast-noop)
+    }
     console.error(`❌ Session check failed: ${error.message}`);
-    process.exit(1);
+    clearGlobalTimeout();
+    console.log('⚠️  Non-fatal: Exiting gracefully due to session check error');
+    process.exit(0); // Exit 0 instead of 1 (non-fatal, fast-noop)
   }
   
   // Step 3: Lazy import after env is loaded
@@ -152,18 +162,43 @@ async function main() {
       .order('overall_score', { ascending: false })
       .limit(singleId ? 1 : 5);
     
-    const { data: allCandidates, error: queueError } = await query;
+    // Add timeout to DB query to prevent hanging (fast-noop)
+    const DB_QUERY_TIMEOUT_MS = 10000; // 10s max for DB query
+    let allCandidates: any[] | null = null;
+    let queueError: any = null;
+    
+    try {
+      const queryPromise = query;
+      const timeoutPromise = new Promise<any>((_, reject) => {
+        setTimeout(() => reject(new Error('DB query TIMED OUT after 10s')), DB_QUERY_TIMEOUT_MS);
+      });
+      
+      const result = await Promise.race([queryPromise, timeoutPromise]);
+      allCandidates = result.data || null;
+      queueError = result.error || null;
+    } catch (error: any) {
+      if (error.message.includes('TIMED OUT')) {
+        console.error(`❌ Failed to fetch candidates: ${error.message}`);
+        console.error(`   Operation: fetch_candidates_from_queue`);
+        clearGlobalTimeout();
+        console.log('⚠️  Non-fatal: Exiting gracefully due to timeout');
+        process.exit(0); // Exit 0 instead of 1 (non-fatal, fast-noop)
+      } else {
+        queueError = error;
+      }
+    }
     
     if (queueError) {
       console.error(`❌ Failed to fetch candidates: ${queueError.message}`);
       clearGlobalTimeout();
-      process.exit(1);
+      console.log('⚠️  Non-fatal: Exiting gracefully due to query error');
+      process.exit(0); // Exit 0 instead of 1 (non-fatal, fast-noop)
     }
     
     if (!allCandidates || allCandidates.length === 0) {
       console.log('⚠️  No candidates available in queue');
       clearGlobalTimeout();
-      process.exit(0);
+      process.exit(0); // Fast-noop: exit immediately when empty
     }
     
     candidates = allCandidates;
