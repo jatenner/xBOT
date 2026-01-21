@@ -87,6 +87,15 @@ export class OpenAIBudgetedClient {
       apiKey: process.env.OPENAI_API_KEY!
     });
     
+    // Initialize config FIRST before any methods that use it
+    this.config = {
+      dailyLimitUSD: parseFloat(process.env.DAILY_OPENAI_LIMIT_USD || '5.0'),
+      rolloverTimezone: process.env.COST_TRACKER_ROLLOVER_TZ || 'UTC',
+      redisKeyPrefix: process.env.REDIS_PREFIX || 'prod:',
+      strictMode: process.env.BUDGET_STRICT !== 'false',
+      alertThreshold: parseFloat(process.env.BUDGET_ALERT_THRESHOLD || '0.8')
+    };
+    
     if (process.env.REDIS_URL) {
       this.redis = new Redis(process.env.REDIS_URL);
       this.redisEnabled = true;
@@ -97,13 +106,6 @@ export class OpenAIBudgetedClient {
       console.warn('⚠️ REDIS_URL not set. OpenAI budget tracking will fall back to in-memory store (non-persistent).');
     }
     
-    this.config = {
-      dailyLimitUSD: parseFloat(process.env.DAILY_OPENAI_LIMIT_USD || '5.0'),
-      rolloverTimezone: process.env.COST_TRACKER_ROLLOVER_TZ || 'UTC',
-      redisKeyPrefix: process.env.REDIS_PREFIX || 'prod:',
-      strictMode: process.env.BUDGET_STRICT !== 'false',
-      alertThreshold: parseFloat(process.env.BUDGET_ALERT_THRESHOLD || '0.8')
-    };
     this.memoryBudget.lastResetDate = this.getTodayDateString();
     
     // Validate pricing on startup

@@ -183,10 +183,11 @@ async function main() {
     console.error(`⚠️  Harvest failed: ${error.message}`);
   }
   
-  // Step 5: Evaluate opportunities → candidate_evaluations
+  // Step 5: Evaluate opportunities → candidate_evaluations (lightweight, no browser/X session)
   console.log('\nSTEP 5: Evaluating opportunities...');
   let opportunitiesEvaluated = 0;
   let candidateEvaluationsCreated = 0;
+  let candidateEvaluationsFailed = 0;
   try {
     // Load env before import
     const envLocalPath = path.join(process.cwd(), '.env.local');
@@ -198,7 +199,6 @@ async function main() {
     }
     
     const { getSupabaseClient } = await import('../../src/db');
-    const { scoreCandidate } = await import('../../src/jobs/replySystemV2/candidateScorer');
     const supabase = getSupabaseClient();
     
     // Get opportunities from this run
@@ -219,47 +219,155 @@ async function main() {
       // Generate feed run ID for traceability
       const feedRunId = `one-shot-${Date.now()}`;
       
+      // Lightweight scoring helpers (no browser/X session required)
+      const scorerModule = await import('../../src/jobs/replySystemV2/candidateScorer');
+      const calculateTopicRelevance = scorerModule.calculateTopicRelevance;
+      const calculateSpamScore = scorerModule.calculateSpamScore;
+      const calculateVelocityScore = scorerModule.calculateVelocityScore;
+      const calculateRecencyScore = scorerModule.calculateRecencyScore;
+      
       for (const opp of opportunities) {
         try {
           opportunitiesEvaluated++;
           
-          // Score the candidate
-          const score = await scoreCandidate(
-            opp.target_tweet_id,
-            opp.target_username || opp.account_username || 'unknown',
-            opp.target_tweet_content || '',
-            opp.tweet_posted_at || new Date().toISOString(),
-            0, // likeCount - not available in opportunities
-            0, // replyCount - not available
-            0, // retweetCount - not available
-            feedRunId
-          );
+          // Validate required fields
+          if (!opp.target_tweet_id) {
+            console.error(`   ❌ Skipped opportunity (no tweet_id)`);
+            candidateEvaluationsFailed++;
+            continue;
+          }
+          
+          const tweetId = opp.target_tweet_id;
+          const authorUsername = opp.target_username || opp.account_username || 'unknown';
+          const content = opp.target_tweet_content || '';
+          const postedAt = opp.tweet_posted_at || new Date().toISOString();
+          
+          // Ensure postedAt is a valid ISO string
+          let validPostedAt: string;
+          try {
+            const postedDate = new Date(postedAt);
+            if (isNaN(postedDate.getTime())) {
+              validPostedAt = new Date().toISOString();
+            } else {
+              validPostedAt = postedDate.toISOString();
+            }
+          } catch {
+            validPostedAt = new Date().toISOString();
+          }
+          
+          console.log(`   🔍 Evaluating ${tweetId} by @${authorUsername}...`);
+          
+          // Trust is_root_tweet from opportunities (no browser check)
+          const isRoot = opp.is_root_tweet ?? true;
+          
+          // Lightweight scoring (no OpenAI judge, no browser checks)
+          let score: any;
+          let evaluationError: string | null = null;
+          
+          try {
+            // Calculate basic scores
+            const topicRelevance = calculateTopicRelevance(content);
+            const spamScore = calculateSpamScore(content);
+            const ageMinutes = Math.max(0.1, (Date.now() - new Date(validPostedAt).getTime()) / (1000 * 60));
+            const velocityScore = calculateVelocityScore(0, 0, 0, ageMinutes); // No engagement metrics available
+            const recencyScore = calculateRecencyScore(ageMinutes);
+            
+            // Author signal (simplified - check curated accounts only)
+            let authorSignalScore = 0.2; // Default for unknown
+            try {
+              const { data: curated } = await supabase
+                .from('curated_accounts')
+                .select('signal_score')
+                .eq('username', authorUsername.toLowerCase())
+                .eq('enabled', true)
+                .maybeSingle();
+              if (curated) {
+                authorSignalScore = curated.signal_score || 0.5;
+              }
+            } catch (err) {
+              // Fail-soft: use default
+            }
+            
+            // Calculate overall score (heuristic, no OpenAI)
+            const overallScore = (
+              topicRelevance * 0.25 +
+              (1 - spamScore) * 0.15 +
+              velocityScore * 0.35 +
+              recencyScore * 0.15 +
+              authorSignalScore * 0.10
+            ) * 100;
+            
+            // Hard filters (using is_root_tweet from opportunities)
+            const passedHardFilters = isRoot && spamScore <= 0.7 && content.trim().length >= 20;
+            const filterReason = !isRoot ? 'not_root_tweet' : 
+                                spamScore > 0.7 ? `high_spam_score_${spamScore.toFixed(2)}` :
+                                content.trim().length < 20 ? `insufficient_text_${content.trim().length}` :
+                                '';
+            
+            // Estimate 24h views (conservative, no engagement data)
+            const predicted24hViews = Math.round(500 * (1 + topicRelevance)); // Base 500, boost for relevance
+            const predictedTier = predicted24hViews >= 5000 ? 1 : predicted24hViews >= 2000 ? 2 : predicted24hViews >= 500 ? 3 : 4;
+            
+            score = {
+              is_root_tweet: isRoot,
+              is_parody: false,
+              topic_relevance_score: topicRelevance,
+              spam_score: spamScore,
+              velocity_score: velocityScore,
+              recency_score: recencyScore,
+              author_signal_score: authorSignalScore,
+              overall_score: overallScore,
+              passed_hard_filters: passedHardFilters,
+              filter_reason: filterReason,
+              predicted_24h_views: predicted24hViews,
+              predicted_tier: predictedTier,
+              judge_decision: null, // No OpenAI judge call
+            };
+          } catch (scoringError: any) {
+            evaluationError = scoringError.message;
+            // Fallback score
+            score = {
+              is_root_tweet: isRoot,
+              is_parody: false,
+              topic_relevance_score: 0.5,
+              spam_score: 0.3,
+              velocity_score: 0.5,
+              recency_score: 0.8,
+              author_signal_score: 0.2,
+              overall_score: 50,
+              passed_hard_filters: isRoot && content.trim().length >= 20,
+              filter_reason: evaluationError ? `scoring_error: ${evaluationError}` : '',
+              predicted_24h_views: 500,
+              predicted_tier: 3,
+              judge_decision: null,
+            };
+          }
           
           // Check if evaluation already exists
           const { data: existing } = await supabase
             .from('candidate_evaluations')
             .select('id')
-            .eq('candidate_tweet_id', opp.target_tweet_id)
+            .eq('candidate_tweet_id', tweetId)
             .maybeSingle();
           
           if (existing) {
-            console.log(`   ⏭️  Skipped ${opp.target_tweet_id}: already evaluated`);
+            console.log(`   ⏭️  Skipped ${tweetId}: already evaluated`);
             continue;
           }
           
-          // Insert evaluation
+          // Insert evaluation (with fallback scores if scoring failed)
           const { error: insertError } = await supabase
             .from('candidate_evaluations')
             .insert({
-              candidate_tweet_id: opp.target_tweet_id,
-              candidate_author_username: opp.target_username || opp.account_username || 'unknown',
-              candidate_content: opp.target_tweet_content || '',
-              candidate_posted_at: opp.tweet_posted_at || new Date().toISOString(),
-              source_id: opp.target_tweet_id,
+              candidate_tweet_id: tweetId,
+              candidate_author_username: authorUsername,
+              candidate_content: content,
+              candidate_posted_at: validPostedAt,
+              source_id: tweetId,
               source_type: 'reply_opportunity',
               source_feed_name: opp.discovery_method || 'one_shot',
               feed_run_id: feedRunId,
-              is_root_tweet: opp.is_root_tweet ?? true,
+              is_root_tweet: isRoot,
               is_parody: false,
               topic_relevance_score: score.topic_relevance_score,
               spam_score: score.spam_score,
@@ -268,40 +376,34 @@ async function main() {
               author_signal_score: score.author_signal_score,
               overall_score: score.overall_score,
               passed_hard_filters: score.passed_hard_filters,
-              filter_reason: score.filter_reason,
+              filter_reason: evaluationError ? `${score.filter_reason} (fallback due to: ${evaluationError})` : score.filter_reason,
               predicted_24h_views: score.predicted_24h_views,
               predicted_tier: score.predicted_tier,
               status: score.passed_hard_filters ? 'evaluated' : 'blocked',
-              ai_judge_decision: score.judge_decision ? {
-                relevance: score.judge_decision.relevance,
-                replyability: score.judge_decision.replyability,
-                momentum: score.judge_decision.momentum,
-                audience_fit: score.judge_decision.audience_fit,
-                spam_risk: score.judge_decision.spam_risk,
-                expected_views_bucket: score.judge_decision.expected_views_bucket,
-                decision: score.judge_decision.decision,
-                reasons: score.judge_decision.reasons
-              } : null,
-              judge_relevance: score.judge_decision?.relevance,
-              judge_replyability: score.judge_decision?.replyability,
+              ai_judge_decision: null, // No OpenAI judge (lightweight evaluation)
+              judge_relevance: null,
+              judge_replyability: null,
             });
           
           if (insertError) {
+            candidateEvaluationsFailed++;
             if (insertError.message.includes('duplicate') || insertError.message.includes('unique')) {
-              console.log(`   ⏭️  Skipped ${opp.target_tweet_id}: duplicate evaluation`);
+              console.log(`   ⏭️  Skipped ${tweetId}: duplicate evaluation`);
             } else {
-              console.error(`   ❌ Failed to evaluate ${opp.target_tweet_id}: ${insertError.message}`);
+              console.error(`   ❌ Failed to evaluate ${tweetId}: ${insertError.message}`);
             }
           } else {
             candidateEvaluationsCreated++;
-            console.log(`   ✅ Evaluated ${opp.target_tweet_id} (score: ${score.overall_score.toFixed(1)}, tier: ${score.predicted_tier}, passed: ${score.passed_hard_filters})`);
+            const statusIcon = evaluationError ? '⚠️' : '✅';
+            console.log(`   ${statusIcon} Evaluated ${tweetId} (score: ${score.overall_score.toFixed(1)}, tier: ${score.predicted_tier}, passed: ${score.passed_hard_filters}${evaluationError ? ', fallback scores' : ''})`);
           }
         } catch (error: any) {
-          console.error(`   ❌ Evaluation error for ${opp.target_tweet_id}: ${error.message}`);
+          candidateEvaluationsFailed++;
+          console.error(`   ❌ Evaluation error for ${opp?.target_tweet_id || 'unknown'}: ${error.message}`);
         }
       }
       
-      console.log(`✅ Evaluation complete: ${opportunitiesEvaluated} opportunities evaluated, ${candidateEvaluationsCreated} evaluations created`);
+      console.log(`✅ Evaluation complete: ${opportunitiesEvaluated} evaluated, ${candidateEvaluationsCreated} created, ${candidateEvaluationsFailed} failed`);
     }
   } catch (error: any) {
     console.error(`⚠️  Evaluation failed: ${error.message}`);
@@ -507,6 +609,7 @@ async function main() {
   console.log(`Opportunities inserted: ${opportunitiesInserted}`);
   console.log(`Opportunities evaluated: ${opportunitiesEvaluated || 0}`);
   console.log(`Candidate evaluations created: ${candidateEvaluationsCreated || 0}`);
+  console.log(`Candidate evaluations failed: ${candidateEvaluationsFailed || 0}`);
   console.log(`Candidates queued (after run start): ${candidatesQueuedCount || 0}`);
   console.log(`Candidates removed by cleanup: ${candidatesRemoved || 0}`);
   console.log(`Candidates processed: ${candidatesProcessed}`);

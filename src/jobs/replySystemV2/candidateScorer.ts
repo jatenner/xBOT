@@ -375,7 +375,7 @@ function checkIsParody(content: string, username: string): boolean {
 /**
  * Calculate topic relevance score (0-1)
  */
-function calculateTopicRelevance(content: string): number {
+export function calculateTopicRelevance(content: string): number {
   // Check for insufficient text first
   if (!content || content.trim().length < 20) {
     return 0; // Insufficient text - will be caught by hard filter
@@ -397,7 +397,7 @@ function calculateTopicRelevance(content: string): number {
 /**
  * Calculate spam score (0-1, higher = more spam)
  */
-function calculateSpamScore(content: string): number {
+export function calculateSpamScore(content: string): number {
   const contentLower = content.toLowerCase();
   let spamIndicators = 0;
   
@@ -419,7 +419,7 @@ function calculateSpamScore(content: string): number {
  * - High reply_rate (replies per minute - indicates conversation)
  * - Recency bonus
  */
-function calculateVelocityScore(
+export function calculateVelocityScore(
   likes: number,
   replies: number,
   retweets: number,
@@ -449,7 +449,7 @@ function calculateVelocityScore(
 /**
  * Calculate recency score (0-1, newer = higher)
  */
-function calculateRecencyScore(ageMinutes: number): number {
+export function calculateRecencyScore(ageMinutes: number): number {
   // Score decays over 60 minutes
   return Math.max(0, 1 - (ageMinutes / 60));
 }
