@@ -884,24 +884,180 @@ async function collectFromSearchQueries(): Promise<string[]> {
 }
 
 /**
- * Validate tweet using CDP-authenticated session (Mac Runner only)
+ * Validate tweet using CDP-authenticated session (Mac Runner only) - REUSES existing context/page
  */
-async function validateTweetWithCDP(tweetId: string): Promise<{
+async function validateTweetWithCDPReuse(
+  tweetId: string,
+  context: any,
+  page: any
+): Promise<{
   exists: boolean;
   isRoot: boolean;
   author: string | null;
   content: string | null;
   error?: string;
 }> {
-  // Only use CDP validation in RUNNER_MODE with CDP browser
-  if (process.env.RUNNER_MODE !== 'true' || process.env.RUNNER_BROWSER !== 'cdp') {
-    // Fallback to legacy validation
-    return { exists: false, isRoot: false, author: null, content: null, error: 'Not in CDP mode' };
+  // Reuse provided context/page - no need to create new connection
+  const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'harvest_debug');
+  if (!fs.existsSync(debugDir)) {
+    fs.mkdirSync(debugDir, { recursive: true });
   }
-  
-  const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
-  const context = await launchRunnerPersistent(true); // headless
-  const page = await context.newPage();
+
+  try {
+    const tweetUrl = `https://x.com/i/status/${tweetId}`;
+    console.log(`   🔍 Validating ${tweetId} via CDP (reused connection)...`);
+
+    await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(3000); // Let page settle
+
+    const finalUrl = page.url();
+
+    // Check for login redirect
+    if (finalUrl.includes('/i/flow/login') || finalUrl.includes('/login')) {
+      console.log(`   ⚠️  Login redirect detected for ${tweetId}`);
+      await page.screenshot({ path: path.join(debugDir, `login_redirect_${tweetId}.png`) }).catch(() => {});
+      // Don't close context/page - they're reused
+      return { exists: false, isRoot: false, author: null, content: null, error: 'Login required' };
+    }
+
+    // Wait for lightweight shell selectors OR tweet article
+    const shellOrTweet = await Promise.race([
+      page.waitForSelector('nav[role="navigation"]', { timeout: 5000 }).then(() => 'shell').catch(() => null),
+      page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 5000 }).then(() => 'shell').catch(() => null),
+      page.waitForSelector('article[data-testid="tweet"]', { timeout: 5000 }).then(() => 'tweet').catch(() => null),
+      new Promise(resolve => setTimeout(() => resolve(null), 6000)), // Fallback timeout
+    ]).catch(() => null);
+
+    if (!shellOrTweet) {
+      console.log(`   ⚠️  No shell or tweet detected for ${tweetId}`);
+      await page.screenshot({ path: path.join(debugDir, `no_content_${tweetId}.png`) }).catch(() => {});
+      const html = await page.content();
+      fs.writeFileSync(path.join(debugDir, `no_content_${tweetId}.html`), html);
+      // Don't close context/page - they're reused
+      return { exists: false, isRoot: false, author: null, content: null, error: 'No content detected' };
+    }
+    
+    // Extract tweet data (same as validateTweetWithCDP)
+    const tweetData = await page.evaluate(() => {
+      // Check for "This Post is unavailable" or "doesn't exist" messages
+      const bodyText = document.body.textContent || '';
+      const isUnavailable = bodyText.includes('This Post is unavailable') || 
+                           bodyText.includes("doesn't exist") ||
+                           bodyText.includes('Post not found');
+      
+      if (isUnavailable) {
+        return { exists: false, reason: 'unavailable' };
+      }
+      
+      // Find main tweet article
+      const mainArticle = document.querySelector('article[data-testid="tweet"]:first-of-type');
+      if (!mainArticle) {
+        return { exists: false, reason: 'no_article' };
+      }
+      
+      // Extract author handle from href (more reliable than display name)
+      const authorElement = mainArticle.querySelector('[data-testid="User-Name"] a[href*="/"]');
+      let author: string | null = null;
+      if (authorElement) {
+        const href = authorElement.getAttribute('href') || '';
+        const handleMatch = href.match(/\/([^\/]+)$/);
+        if (handleMatch) {
+          author = handleMatch[1].toLowerCase(); // Normalize to lowercase
+        }
+      }
+      // Fallback to display name if href extraction fails
+      if (!author) {
+        author = authorElement?.textContent?.replace('@', '').trim().toLowerCase() || null;
+      }
+      
+      // Extract content - collect all spans inside tweetText container
+      const tweetTextEl = mainArticle.querySelector('[data-testid="tweetText"]');
+      let content: string | null = null;
+      
+      if (tweetTextEl) {
+        // Collect all text from spans inside
+        const spans = tweetTextEl.querySelectorAll('span');
+        const texts: string[] = [];
+        spans.forEach((span: Element) => {
+          const text = span.textContent?.trim();
+          if (text && text.length > 0) {
+            texts.push(text);
+          }
+        });
+        
+        // If we got spans, join them; otherwise use textContent
+        if (texts.length > 0) {
+          content = texts.join(' ');
+        } else {
+          content = tweetTextEl.textContent?.trim() || null;
+        }
+      }
+      
+      // Handle "Show more" button if present and content is short
+      if (content && content.length < 100) {
+        // Check for "Show more" text in any span (can't use :has-text() in querySelector)
+        const allSpans = mainArticle.querySelectorAll('span');
+        let hasShowMore = false;
+        for (const span of Array.from(allSpans)) {
+          if (span.textContent?.includes('Show more')) {
+            hasShowMore = true;
+            break;
+          }
+        }
+        if (hasShowMore) {
+          // Try to get expanded text from article
+          const expandedText = mainArticle.textContent || '';
+          if (expandedText.length > content.length) {
+            content = expandedText.substring(0, 500); // Limit to reasonable length
+          }
+        }
+      }
+      
+      // Check if it's a reply (look for "Replying to" text)
+      const articleText = mainArticle.textContent || '';
+      const isReply = /Replying to\s+@/i.test(articleText) || 
+                     !!mainArticle.querySelector('[data-testid="socialContext"]');
+      
+      // Extract tweet ID from article link
+      const articleLink = mainArticle.querySelector('a[href*="/status/"]');
+      const href = articleLink?.getAttribute('href') || '';
+      const match = href.match(/\/status\/(\d+)/);
+      const articleTweetId = match ? match[1] : null;
+      
+      return {
+        exists: true,
+        author,
+        content,
+        isReply,
+        articleTweetId,
+      };
+    });
+    
+    // Don't close context/page - they're reused
+    
+    if (!tweetData.exists) {
+      const errorReason = tweetData.reason === 'unavailable' ? 'unavailable' : 
+                          tweetData.reason === 'no_article' ? 'No content detected' :
+                          'not_found';
+      console.log(`   ❌ Tweet ${tweetId} ${tweetData.reason || 'not found'}`);
+      return { exists: false, isRoot: false, author: null, content: null, error: errorReason };
+    }
+    
+    console.log(`   ✅ Tweet ${tweetId} exists: author=@${tweetData.author || 'unknown'}, isReply=${tweetData.isReply}`);
+    return {
+      exists: true,
+      isRoot: !tweetData.isReply,
+      author: tweetData.author || null,
+      content: tweetData.content || null,
+    };
+    
+  } catch (error: any) {
+    console.log(`   ❌ Validation error for ${tweetId}: ${error.message}`);
+    await page.screenshot({ path: path.join(debugDir, `error_${tweetId}.png`) }).catch(() => {});
+    // Don't close context/page - they're reused
+    return { exists: false, isRoot: false, author: null, content: null, error: error.message };
+  }
+}
   
   const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'harvest_debug');
   if (!fs.existsSync(debugDir)) {
@@ -920,12 +1076,11 @@ async function validateTweetWithCDP(tweetId: string): Promise<{
     // Check for login redirect
     if (finalUrl.includes('/i/flow/login') || finalUrl.includes('/login')) {
       console.log(`   ⚠️  Login redirect detected for ${tweetId}`);
-      await page.screenshot({ path: path.join(debugDir, `login_redirect_${tweetId}.png`) });
-      await page.close();
-      await context.close();
+      await page.screenshot({ path: path.join(debugDir, `login_redirect_${tweetId}.png`) }).catch(() => {});
+      // Don't close context/page - they're reused
       return { exists: false, isRoot: false, author: null, content: null, error: 'Login required' };
     }
-    
+
     // Wait for lightweight shell selectors OR tweet article
     const shellOrTweet = await Promise.race([
       page.waitForSelector('nav[role="navigation"]', { timeout: 5000 }).then(() => 'shell').catch(() => null),
@@ -933,14 +1088,15 @@ async function validateTweetWithCDP(tweetId: string): Promise<{
       page.waitForSelector('article[data-testid="tweet"]', { timeout: 5000 }).then(() => 'tweet').catch(() => null),
       new Promise(resolve => setTimeout(() => resolve(null), 6000)), // Fallback timeout
     ]).catch(() => null);
-    
+
     if (!shellOrTweet) {
       console.log(`   ⚠️  No shell or tweet detected for ${tweetId}`);
-      await page.screenshot({ path: path.join(debugDir, `no_content_${tweetId}.png`) });
-      const html = await page.content();
-      fs.writeFileSync(path.join(debugDir, `no_content_${tweetId}.html`), html);
-      await page.close();
-      await context.close();
+      await page.screenshot({ path: path.join(debugDir, `no_content_${tweetId}.png`) }).catch(() => {});
+      const html = await page.content().catch(() => '');
+      if (html) {
+        fs.writeFileSync(path.join(debugDir, `no_content_${tweetId}.html`), html);
+      }
+      // Don't close context/page - they're reused
       return { exists: false, isRoot: false, author: null, content: null, error: 'No content detected' };
     }
     
@@ -1040,8 +1196,7 @@ async function validateTweetWithCDP(tweetId: string): Promise<{
       };
     });
     
-    await page.close();
-    await context.close();
+    // Don't close context/page - they're reused across validations
     
     if (!tweetData.exists) {
       const errorReason = tweetData.reason === 'unavailable' ? 'unavailable' : 
@@ -1062,19 +1217,75 @@ async function validateTweetWithCDP(tweetId: string): Promise<{
   } catch (error: any) {
     console.log(`   ❌ Validation error for ${tweetId}: ${error.message}`);
     await page.screenshot({ path: path.join(debugDir, `error_${tweetId}.png`) }).catch(() => {});
-    await page.close().catch(() => {});
-    await context.close().catch(() => {});
+    // Don't close context/page - they're reused across validations
     return { exists: false, isRoot: false, author: null, content: null, error: error.message };
   }
 }
 
 /**
- * Validate and insert a tweet
+ * Validate tweet using CDP-authenticated session (Mac Runner only) - creates new context/page
+ */
+async function validateTweetWithCDP(tweetId: string): Promise<{
+  exists: boolean;
+  isRoot: boolean;
+  author: string | null;
+  content: string | null;
+  error?: string;
+}> {
+  // Only use CDP validation in RUNNER_MODE with CDP browser
+  if (process.env.RUNNER_MODE !== 'true' || process.env.RUNNER_BROWSER !== 'cdp') {
+    // Fallback to legacy validation
+    return { exists: false, isRoot: false, author: null, content: null, error: 'Not in CDP mode' };
+  }
+
+  const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
+  const context = await launchRunnerPersistent(true); // headless
+  const page = await context.newPage();
+  
+  const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'harvest_debug');
+  if (!fs.existsSync(debugDir)) {
+    fs.mkdirSync(debugDir, { recursive: true });
+  }
+
+  try {
+    const tweetUrl = `https://x.com/i/status/${tweetId}`;
+    console.log(`   🔍 Validating ${tweetId} via CDP...`);
+
+    await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(3000); // Let page settle
+
+    const finalUrl = page.url();
+
+    // Check for login redirect
+    if (finalUrl.includes('/i/flow/login') || finalUrl.includes('/login')) {
+      console.log(`   ⚠️  Login redirect detected for ${tweetId}`);
+      await page.screenshot({ path: path.join(debugDir, `login_redirect_${tweetId}.png`) });
+      await page.close();
+      await context.close();
+      return { exists: false, isRoot: false, author: null, content: null, error: 'Login required' };
+    }
+
+    // Wait for lightweight shell selectors OR tweet article
+    const shellOrTweet = await Promise.race([
+      page.waitForSelector('nav[role="navigation"]', { timeout: 5000 }).then(() => 'shell').catch(() => null),
+      page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 5000 }).then(() => 'shell').catch(() => null),
+      page.waitForSelector('article[data-testid="tweet"]', { timeout: 5000 }).then(() => 'tweet').catch(() => null),
+      new Promise(resolve => setTimeout(() => resolve(null), 6000)), // Fallback timeout
+    ]).catch(() => null);
+
+    if (!shellOrTweet) {
+      console.log(`   ⚠️  No shell or tweet detected for ${tweetId}`);
+      await page.screenshot({ path: path.join(debugDir, `no_content_${tweetId}.png`) });
+
+/**
+ * Validate and insert a tweet (reuses CDP context/page if provided)
  */
 async function validateAndInsert(
   tweetId: string,
   result: HarvestResult,
-  validatedCount: { count: number }
+  validatedCount: { count: number },
+  reuseContext?: any,
+  reusePage?: any
 ): Promise<void> {
   if (validatedCount.count >= MAX_VALIDATIONS_PER_RUN) {
     result.skipped_by_reason['max_validations_reached'] = (result.skipped_by_reason['max_validations_reached'] || 0) + 1;
@@ -1094,12 +1305,16 @@ async function validateAndInsert(
   }
   
   try {
-    // Use CDP validation in RUNNER_MODE with CDP browser
+    // Use CDP validation in RUNNER_MODE with CDP browser (reuse context/page if provided)
     let validationResult: { exists: boolean; isRoot: boolean; author: string | null; content: string | null; error?: string };
-    
+
     if (process.env.RUNNER_MODE === 'true' && process.env.RUNNER_BROWSER === 'cdp') {
-      // Use CDP-authenticated validation
-      validationResult = await validateTweetWithCDP(tweetId);
+      // Use CDP-authenticated validation (reuse context/page to avoid reconnection overhead)
+      if (reuseContext && reusePage) {
+        validationResult = await validateTweetWithCDPReuse(tweetId, reuseContext, reusePage);
+      } else {
+        validationResult = await validateTweetWithCDP(tweetId);
+      }
     } else {
       // Fallback to legacy resolveTweetAncestry (for Railway)
       if (!resolveTweetAncestry) {
@@ -1412,11 +1627,19 @@ async function main() {
     consent_wall_seen: false,
   };
   
+  // CDP connection and page reuse for validation (single connection per run)
+  let validationContext: any = null;
+  let validationPage: any = null;
+  let validationContextInitialized = false;
+  
+  const timeConnectCdp = Date.now();
+  
   try {
     // Collect tweet IDs based on mode
     let tweetIds: string[] = [];
     let searchFailed = false;
     let searchFailureReason = '';
+    const timeCollectStart = Date.now();
     
     if (HARVEST_MODE === 'curated_profile_posts') {
       console.log('👤 Collecting from curated handle profiles...\n');
@@ -1505,7 +1728,9 @@ async function main() {
     result.tweet_ids_collected = tweetIds.length;
     result.tweets_seen = tweetIds.length; // Approximate
     
-    console.log(`\n✅ Collected ${tweetIds.length} unique tweet IDs`);
+    const timeCollectEnd = Date.now();
+    const timeCollectIds = timeCollectEnd - timeCollectStart;
+    console.log(`\n✅ Collected ${tweetIds.length} unique tweet IDs (${timeCollectIds}ms)`);
     console.log(`   Tweet IDs collected: ${result.tweet_ids_collected}\n`);
     
     if (tweetIds.length === 0) {
@@ -1513,7 +1738,24 @@ async function main() {
       return;
     }
     
-    // Validate and insert (with cap)
+    // Initialize CDP connection once for validation (reuse across all tweets)
+    if (process.env.RUNNER_MODE === 'true' && process.env.RUNNER_BROWSER === 'cdp' && !validationContextInitialized) {
+      try {
+        const { launchRunnerPersistent } = await import('../../src/infra/playwright/runnerLauncher');
+        validationContext = await launchRunnerPersistent(true); // headless
+        validationPage = await validationContext.newPage();
+        validationContextInitialized = true;
+        const timeConnectEnd = Date.now();
+        const timeConnectCdpElapsed = timeConnectEnd - timeConnectCdp;
+        console.log(`🔌 CDP connection initialized for validation (${timeConnectCdpElapsed}ms)\n`);
+      } catch (connectError: any) {
+        console.error(`⚠️  Failed to initialize CDP for validation: ${connectError.message}`);
+        console.error(`   Falling back to per-tweet validation (slower)`);
+      }
+    }
+    
+    // Validate and insert (with cap) - reuse CDP page if available
+    const timeValidateStart = Date.now();
     console.log(`🔍 Validating up to ${MAX_VALIDATIONS_PER_RUN} tweets (max ${HARVEST_MAX_INSERTS_PER_RUN} inserts)...\n`);
     const validatedCount = { count: 0 };
     
@@ -1524,7 +1766,7 @@ async function main() {
         break;
       }
       
-      await validateAndInsert(tweetId, result, validatedCount);
+      await validateAndInsert(tweetId, result, validatedCount, validationContext, validationPage);
       
       if (validatedCount.count >= MAX_VALIDATIONS_PER_RUN) {
         break;
@@ -1533,6 +1775,12 @@ async function main() {
       await jitter(300, 600); // Faster validation pacing
     }
     
+    const timeValidateEnd = Date.now();
+    const timeValidateTotal = timeValidateEnd - timeValidateStart;
+    const timeInsertTotal = timeValidateTotal; // Insert is part of validation
+    
+    console.log(`\n📊 Validation timing: total=${timeValidateTotal}ms`);
+    
   } catch (error: any) {
     if (error.message.includes('CONSENT_WALL')) {
       result.consent_wall_seen = true;
@@ -1540,10 +1788,23 @@ async function main() {
     } else {
       console.error(`\n❌ Harvest failed: ${error.message}`);
     }
+  } finally {
+    // Clean up CDP connection and page if initialized
+    if (validationPage) {
+      try {
+        await validationPage.close().catch(() => {});
+      } catch {}
+    }
+    if (validationContext) {
+      try {
+        await validationContext.close().catch(() => {});
+      } catch {}
+    }
   }
   
   // Final report (compact)
   const harvestDuration = Date.now() - (global as any).harvestStartTime || 0;
+  const timeConnectCdpElapsed = validationContextInitialized ? Date.now() - timeConnectCdp : 0;
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           📊 HARVEST REPORT');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
@@ -1552,6 +1813,9 @@ async function main() {
   console.log(`Validated OK: ${result.validated_ok}`);
   console.log(`Inserted: ${result.inserted}`);
   console.log(`Duration: ${harvestDuration}ms`);
+  if (validationContextInitialized) {
+    console.log(`   time_connect_cdp: ${timeConnectCdpElapsed}ms`);
+  }
   console.log(`Consent wall: ${result.consent_wall_seen ? 'YES' : 'NO'}\n`);
   
   if (Object.keys(result.skipped_by_reason).length > 0) {

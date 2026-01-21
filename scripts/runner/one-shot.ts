@@ -163,12 +163,14 @@ async function main() {
   
   // Step 4: Harvest opportunities (default mode is curated_profile_posts) - enforce HARVEST_IGNORE_STATE=true
   const harvestIgnoreState = process.env.HARVEST_IGNORE_STATE !== 'false'; // Default to true unless explicitly false
-  console.log('\nSTEP 4: Harvesting opportunities...');
+  const harvestWatchdogMs = parseInt(process.env.HARVEST_WATCHDOG_MS || '90000', 10); // Default 90s, configurable
+  console.log(`\nSTEP 4: Harvesting opportunities... (watchdog: ${harvestWatchdogMs}ms)`);
   let opportunitiesInserted = 0;
+  let harvestTimedOut = false;
   try {
     const harvestOutput = execSync(
       `HARVEST_MODE=curated_profile_posts HARVEST_IGNORE_STATE=${harvestIgnoreState ? 'true' : 'false'} RUNNER_MODE=true RUNNER_PROFILE_DIR=${RUNNER_PROFILE_DIR} RUNNER_BROWSER=cdp pnpm exec tsx scripts/runner/harvest-curated.ts`,
-      { encoding: 'utf-8', stdio: 'pipe', timeout: 60000 } // 60s watchdog - harvest must finish fast
+      { encoding: 'utf-8', stdio: 'pipe', timeout: harvestWatchdogMs }
     );
     
     const insertMatch = harvestOutput.match(/Inserted:\s*(\d+)/);
@@ -177,9 +179,39 @@ async function main() {
     console.log(harvestOutput);
   } catch (error: any) {
     if (error.signal === 'SIGTERM' || error.message.includes('timeout')) {
-      console.error(`⚠️  HARVEST_TIMEOUT: Harvest exceeded 60s watchdog - continuing pipeline with existing opportunities`);
-      // Don't exit - continue pipeline with whatever opportunities exist (from this run or prior)
-      opportunitiesInserted = 0; // Set to 0 since we didn't complete harvest
+      harvestTimedOut = true;
+      console.error(`⚠️  HARVEST_TIMEOUT: Harvest exceeded ${harvestWatchdogMs}ms watchdog - checking DB for inserted opportunities`);
+      
+      // Query DB for opportunities inserted since workflow start (even if harvest timed out)
+      try {
+        const envLocalPath = path.join(process.cwd(), '.env.local');
+        const envPath = path.join(process.cwd(), '.env');
+        if (fs.existsSync(envLocalPath)) {
+          require('dotenv').config({ path: envLocalPath });
+        } else if (fs.existsSync(envPath)) {
+          require('dotenv').config({ path: envPath });
+        }
+        
+        const { getSupabaseClient } = await import('../../src/db');
+        const supabase = getSupabaseClient();
+        
+        const { count: insertedSinceStart } = await supabase
+          .from('reply_opportunities')
+          .select('*', { count: 'exact', head: true })
+          .gte('created_at', runStartedAt);
+        
+        opportunitiesInserted = insertedSinceStart || 0;
+        console.log(`   HARVEST_POSTCHECK inserted_since_start=${opportunitiesInserted} (start=${runStartedAt})`);
+        
+        if (opportunitiesInserted > 0) {
+          console.log(`   ✅ Found ${opportunitiesInserted} opportunities inserted before timeout - continuing pipeline`);
+        } else {
+          console.log(`   ⚠️  No opportunities inserted before timeout - pipeline will use existing opportunities if any`);
+        }
+      } catch (dbError: any) {
+        console.error(`   ⚠️  Failed to check DB: ${dbError.message}`);
+        opportunitiesInserted = 0; // Fallback to 0 if DB check fails
+      }
     } else {
       console.error(`⚠️  Harvest failed: ${error.message}`);
     }
@@ -591,15 +623,26 @@ async function main() {
   // Extract tweet URL from database (filtered by run start time)
   const tweetUrl = await extractTweetUrl(runStartedAt);
   
-  // Check ONE_SHOT_FRESH_ONLY flag
+  // Check ONE_SHOT_FRESH_ONLY flag (use DB count even if harvest timed out)
   const freshOnly = process.env.ONE_SHOT_FRESH_ONLY === 'true';
-  if (freshOnly && opportunitiesInserted === 0 && (candidatesQueuedCount || 0) === 0) {
+  // Use DB count for opportunities (handles timeout case where harvest inserted before watchdog)
+  const { count: opportunitiesInsertedDb } = await supabase
+    .from('reply_opportunities')
+    .select('*', { count: 'exact', head: true })
+    .gte('created_at', runStartedAt);
+  
+  const opportunitiesInsertedSinceStart = opportunitiesInsertedDb || 0;
+  
+  if (freshOnly && opportunitiesInsertedSinceStart === 0 && (candidatesQueuedCount || 0) === 0) {
     console.error('\n❌ ONE_SHOT_FRESH_ONLY=true: FAIL-CLOSED');
-    console.error(`   Opportunities inserted: ${opportunitiesInserted}`);
+    console.error(`   Opportunities inserted since ${runStartedAt}: ${opportunitiesInsertedSinceStart}`);
     console.error(`   Candidates queued after ${runStartedAt}: ${candidatesQueuedCount || 0}`);
     console.error('   Pipeline ran but did nothing - this indicates a systemic issue');
     process.exit(1);
   }
+  
+  // Update opportunitiesInserted to use DB count (more accurate after timeout)
+  opportunitiesInserted = opportunitiesInsertedSinceStart;
   
   // Final summary
   console.log('\n');
