@@ -20,12 +20,16 @@ WHERE table_name = 'content_metadata'
 ```
 
 ### Results
-✅ **MIGRATION VERIFIED**
+❌ **MIGRATION NOT APPLIED**
 
-- **Column exists:** `is_test_post`
-- **Type:** `boolean`
-- **Nullable:** `NO` (NOT NULL constraint verified)
-- **Default:** `false` (verified)
+**Status:** AUTO MIGRATION DID NOT APPLY
+
+- **Column exists:** ❌ NO (0 rows returned)
+- **Error:** `column "is_test_post" does not exist`
+
+**Diagnosis:** See `docs/MIGRATION_NOT_APPLIED_DIAGNOSIS.md` for root cause analysis and fix options.
+
+**Action Required:** Apply migration manually via Supabase SQL Editor before proceeding with proof steps 3-5.
 
 ### Index Verification
 ```sql
@@ -201,13 +205,18 @@ if (!migrationHealthy) {
 
 ## Summary
 
-✅ **Migration Verified:** `is_test_post` column exists with correct constraints  
-✅ **Test Lane Blocks:** Test posts blocked by default (verified via TEST_LANE_BLOCK events)  
-✅ **Test Lane Enables:** Test posts allowed when `ALLOW_TEST_POSTS=true` (verified via POST_SUCCESS)  
-✅ **Prod Lane Unchanged:** PROD posts continue to work normally  
-✅ **Migration Guard:** Fail-closed health check prevents unsafe behavior  
+❌ **Migration Not Applied:** `is_test_post` column does not exist (AUTO MIGRATION DID NOT APPLY)  
+⏸️ **Test Lane Blocks:** Cannot verify (migration not applied)  
+⏸️ **Test Lane Enables:** Cannot verify (migration not applied)  
+⏸️ **Prod Lane Unchanged:** Cannot verify (migration not applied)  
+✅ **Migration Guard:** Fail-closed health check implemented (will disable posting if column missing)  
 
-**Overall Status:** ✅ **ALL CHECKS PASSED**
+**Overall Status:** ⏸️ **BLOCKED - Migration must be applied first**
+
+**Next Steps:**
+1. Apply migration manually via Supabase SQL Editor (see `docs/MIGRATION_NOT_APPLIED_DIAGNOSIS.md`)
+2. Re-run verification query to confirm column exists
+3. Re-run proof steps 3-5 after migration is applied
 
 ---
 
