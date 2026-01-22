@@ -75,6 +75,19 @@ async function main() {
     .gte('created_at', new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString())
     .order('created_at', { ascending: false });
 
+  // Also count legacy invalid for INFO
+  const { data: legacyInvalid, error: legacyError } = await supabase
+    .from('system_events')
+    .select('id')
+    .eq('event_type', 'POST_SUCCESS_LEGACY_INVALID')
+    .gte('created_at', new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString());
+
+  if (legacyError) {
+    console.warn(`⚠️  Error querying legacy invalid: ${legacyError.message}`);
+  } else {
+    console.log(`ℹ️  POST_SUCCESS_LEGACY_INVALID in last 6h: ${legacyInvalid?.length || 0}\n`);
+  }
+
   if (eventError) {
     console.error(`❌ Error querying POST_SUCCESS: ${eventError.message}`);
     process.exit(1);
