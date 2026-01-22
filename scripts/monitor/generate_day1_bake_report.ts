@@ -92,6 +92,18 @@ async function main() {
     .gte('created_at', reportStart.toISOString())
     .order('created_at', { ascending: true });
 
+  // Get TEST_LANE_BLOCK events
+  const { data: testLaneBlocks, error: blockError } = await supabase
+    .from('system_events')
+    .select('id, created_at, event_data')
+    .eq('event_type', 'TEST_LANE_BLOCK')
+    .gte('created_at', reportStart.toISOString())
+    .order('created_at', { ascending: true });
+
+  if (blockError) {
+    console.warn(`⚠️  Error querying TEST_LANE_BLOCK events: ${blockError.message}`);
+  }
+
   if (eventsError) {
     console.error(`❌ Error querying POST_SUCCESS events: ${eventsError.message}`);
     process.exit(1);
@@ -109,6 +121,34 @@ async function main() {
     const validation = assertValidTweetId(tweetId);
     return validation.valid;
   });
+
+  // Separate PROD vs TEST posts by checking content_metadata
+  const prodPostSuccess: any[] = [];
+  const testPostSuccess: any[] = [];
+  
+  for (const event of validEvents) {
+    const eventData = typeof event.event_data === 'string'
+      ? JSON.parse(event.event_data)
+      : event.event_data;
+    const decisionId = eventData.decision_id;
+    
+    if (decisionId) {
+      const { data: contentMeta } = await supabase
+        .from('content_metadata')
+        .select('is_test_post')
+        .eq('decision_id', decisionId)
+        .maybeSingle();
+      
+      if (contentMeta?.is_test_post === true) {
+        testPostSuccess.push(event);
+      } else {
+        prodPostSuccess.push(event);
+      }
+    } else {
+      // If no decision_id, treat as PROD (fail-closed)
+      prodPostSuccess.push(event);
+    }
+  }
 
   const invalidEvents = (postSuccessEvents || []).filter((event: any) => {
     const eventData = typeof event.event_data === 'string'
@@ -212,9 +252,12 @@ async function main() {
   reportLines.push('## Executive Summary');
   reportLines.push('');
   reportLines.push(`- **Total POST_SUCCESS Events:** ${postSuccessEvents?.length || 0}`);
+  reportLines.push(`- **POST_SUCCESS_PROD:** ${prodPostSuccess.length}`);
+  reportLines.push(`- **POST_SUCCESS_TEST:** ${testPostSuccess.length}`);
   reportLines.push(`- **Valid Tweet IDs (included):** ${validatedEvents.filter(e => e.valid).length}`);
   reportLines.push(`- **Legacy Invalid Tweet IDs (excluded):** ${invalidEvents.length}`);
   reportLines.push(`- **URLs Verified:** ${validatedEvents.filter(e => e.url_status?.exists).length}`);
+  reportLines.push(`- **TEST_LANE_BLOCK Events:** ${testLaneBlocks?.length || 0}`);
   reportLines.push('');
   
   if (invalidEvents.length > 0) {
@@ -312,6 +355,28 @@ async function main() {
   reportLines.push('');
   reportLines.push('---');
   reportLines.push('');
+  
+  // Add TEST_LANE_BLOCK section if any blocks occurred
+  if (testLaneBlocks && testLaneBlocks.length > 0) {
+    reportLines.push('## TEST_LANE_BLOCK Events');
+    reportLines.push('');
+    reportLines.push(`The following ${testLaneBlocks.length} test post(s) were blocked (ALLOW_TEST_POSTS not enabled):`);
+    reportLines.push('');
+    reportLines.push('| Created | Decision ID |');
+    reportLines.push('|--------|-------------|');
+    testLaneBlocks.forEach((block: any) => {
+      const eventData = typeof block.event_data === 'string'
+        ? JSON.parse(block.event_data)
+        : block.event_data;
+      const decisionId = eventData.decision_id || 'N/A';
+      const created = new Date(block.created_at).toISOString().substring(0, 19) + 'Z';
+      reportLines.push(`| ${created} | ${decisionId.substring(0, 8)}... |`);
+    });
+    reportLines.push('');
+    reportLines.push('---');
+    reportLines.push('');
+  }
+  
   reportLines.push('## Validation Summary');
   reportLines.push('');
 

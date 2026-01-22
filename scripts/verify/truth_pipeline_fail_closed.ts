@@ -37,6 +37,7 @@ async function main() {
       scheduled_at: now.toISOString(),
       generation_source: 'real',
       pipeline_source: 'manual_test',
+      is_test_post: true, // 🔒 TEST LANE: Mark as test post
       features: {
         test_decision: true,
         fail_closed_test: true,

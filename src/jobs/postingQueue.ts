@@ -2259,12 +2259,23 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     const controlledDecisionIdRaw = process.env.CONTROLLED_DECISION_ID;
     const controlledDecisionId = controlledDecisionIdRaw?.trim();
     const isKnownTestId = controlledDecisionId === '03a91e05-9487-47bc-a47a-8280660c1b6e' || controlledDecisionId?.startsWith('03a91e05-9487-47bc-a47a-');
+    // 🔒 TEST LANE GUARDRAIL: Block test posts unless ALLOW_TEST_POSTS=true
+    const allowTestPosts = process.env.ALLOW_TEST_POSTS === 'true';
+    if (!allowTestPosts) {
+      console.log(`[POSTING_QUEUE] 🔒 TEST_LANE_BLOCK: Test posts disabled (ALLOW_TEST_POSTS not set)`);
+    }
+    
     let contentQuery = supabase
       .from('content_metadata')
       .select('*, visual_format')
       .eq('status', 'queued')
       .in('decision_type', ['single', 'thread'])
       .lte('scheduled_at', graceWindow.toISOString()); // Include posts scheduled in past OR near future
+    
+    // Filter out test posts unless explicitly allowed
+    if (!allowTestPosts) {
+      contentQuery = contentQuery.or('is_test_post.is.null,is_test_post.eq.false');
+    }
     
     if (controlledDecisionId && !isKnownTestId) {
       // 🔒 CRITICAL: Only select the controlled decision_id
@@ -2285,6 +2296,11 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       .eq('status', 'queued')
       .eq('decision_type', 'reply')
       .lte('scheduled_at', graceWindow.toISOString()); // Include replies scheduled in past OR near future
+    
+    // Filter out test posts unless explicitly allowed
+    if (!allowTestPosts) {
+      replyQuery = replyQuery.or('is_test_post.is.null,is_test_post.eq.false');
+    }
     
     // 🔒 CERT MODE: Only select replies with reply_v2_scheduler pipeline_source
     if (certMode) {
@@ -2568,12 +2584,38 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     const rows = data as QueuedDecisionRow[];
     
     // DEDUPLICATION: Filter out already-posted content
+    // 🔒 TEST LANE GUARDRAIL: Also filter out test posts if not allowed
     const filteredRows = rows.filter(row => {
       const decisionId = String(row.decision_id ?? '');  // 🔥 FIX: Use decision_id (UUID), not id (integer)
+      
+      // Check for already-posted
       if (postedIds.has(decisionId)) {
         console.log(`[POSTING_QUEUE] ⚠️ Skipping duplicate: ${decisionId} (already posted)`);
         return false;
       }
+      
+      // 🔒 TEST LANE BLOCK: Reject test posts unless ALLOW_TEST_POSTS=true
+      const isTestPost = row.is_test_post === true || row.is_test_post === 'true';
+      if (isTestPost && !allowTestPosts) {
+        console.log(`[TEST_LANE_BLOCK] decision_id=${decisionId} reason=ALLOW_TEST_POSTS_not_enabled`);
+        
+        // Log to system_events for audit trail
+        supabase.from('system_events').insert({
+          event_type: 'TEST_LANE_BLOCK',
+          severity: 'info',
+          message: `Test post blocked: decision_id=${decisionId}`,
+          event_data: {
+            decision_id: decisionId,
+            reason: 'ALLOW_TEST_POSTS_not_enabled',
+            is_test_post: true,
+          }
+        }).catch(err => {
+          console.warn(`[POSTING_QUEUE] Failed to log TEST_LANE_BLOCK: ${err.message}`);
+        });
+        
+        return false;
+      }
+      
       return true;
     });
     

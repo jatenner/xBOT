@@ -124,6 +124,7 @@ async function main() {
       topic_cluster: 'test',
       predicted_er: 0.5,
       quality_score: 0.8,
+      is_test_post: true, // 🔒 TEST LANE: Mark as test post
       // Required fields for FINAL_REPLY_GATE
       target_tweet_content_snapshot: targetTweetSnapshot, // Must be >= 20 chars
       target_tweet_content_hash: targetTweetHash, // Required for context lock
