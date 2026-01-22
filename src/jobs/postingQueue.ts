@@ -2729,6 +2729,45 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     
     console.log(`[POSTING_QUEUE] ✅ After rate limits: ${decisionsWithLimits.length} decisions can post (${contentAllowed} content, ${repliesAllowed} replies available)`);
     
+    // 🔍 DIAGNOSTIC: Log gate results for next 10 decisions (diagnostic-only, no behavior change)
+    const diagnosticCount = Math.min(10, filteredRows.length);
+    if (diagnosticCount > 0) {
+      console.log(`[POSTING_QUEUE] 🔍 DIAGNOSTIC: Analyzing next ${diagnosticCount} decisions for gate results...`);
+      for (let i = 0; i < diagnosticCount; i++) {
+        const row = filteredRows[i];
+        const decisionId = String(row.decision_id ?? '');
+        const decisionType = String(row.decision_type ?? 'single');
+        const features = (row.features || {}) as any;
+        const retryCount = Number(features?.retry_count || 0);
+        const scheduledTs = new Date(String(row.scheduled_at)).getTime();
+        const isFuture = scheduledTs > now.getTime();
+        const isInThrottled = throttledRows.includes(row);
+        const isInLimits = decisionsWithLimits.includes(row);
+        
+        let gateResult = 'PASS';
+        let gateReason = '';
+        
+        if (!isInThrottled) {
+          if (retryCount > 0 && isFuture) {
+            gateResult = 'DEFERRED';
+            gateReason = `retry_deferral (retry #${retryCount}, scheduled ${Math.round((scheduledTs - now.getTime()) / 60000)}min in future)`;
+          } else if (retryCount >= 3) {
+            gateResult = 'BLOCKED';
+            gateReason = 'max_retries_exceeded';
+          }
+        } else if (!isInLimits) {
+          gateResult = 'BLOCKED';
+          if (decisionType === 'reply') {
+            gateReason = `rate_limit_replies (${repliesPosted}/${maxRepliesPerHour})`;
+          } else {
+            gateReason = `rate_limit_content (${contentPosted}/${maxContentPerHour})`;
+          }
+        }
+        
+        console.log(`[POSTING_QUEUE] 🔍 DIAGNOSTIC [${i+1}/${diagnosticCount}]: decision_id=${decisionId} type=${decisionType} gate=${gateResult} reason=${gateReason}`);
+      }
+    }
+    
     const decisions: QueuedDecision[] = decisionsWithLimits.map(row => ({
       id: String(row.decision_id ?? ''),  // 🔥 FIX: Map to decision_id (UUID), not id (integer)!
       content: String(row.content ?? ''),
@@ -4585,13 +4624,142 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         }
         
         // 🛡️ TIMEOUT PROTECTION: Adaptive timeout based on retry count
-        const result = await withTimeout(
-          () => BulletproofThreadComposer.post(formattedThreadParts, decision.id, permit_id),
-          { 
-            timeoutMs: THREAD_POST_TIMEOUT_MS, 
-            operationName: `thread_post_${thread_parts.length}_tweets`
+        let result: any;
+        try {
+          result = await withTimeout(
+            () => BulletproofThreadComposer.post(formattedThreadParts, decision.id, permit_id),
+            { 
+              timeoutMs: THREAD_POST_TIMEOUT_MS, 
+              operationName: `thread_post_${thread_parts.length}_tweets`
+            }
+          );
+        } catch (timeoutError: any) {
+          // Timeout thrown as exception - convert to result format for fallback logic
+          const errorDetails = timeoutError.message || 'Thread posting timeout';
+          console.error(`[POSTING_QUEUE] ❌ Thread timeout: ${errorDetails}`);
+          console.error(`[POSTING_QUEUE] ❌ Thread ID: ${decision.id}`);
+          console.error(`[POSTING_QUEUE] ❌ Thread parts: ${thread_parts.length} tweets`);
+          
+          // 🔍 TASK 4: Thread→single fallback on timeout or browser_disconnected
+          const isTimeoutError = errorDetails.includes('timeout') || errorDetails.includes('TIMEOUT');
+          const isBrowserDisconnected = errorDetails.includes('browser_disconnected') || 
+                                       errorDetails.includes('Target closed') ||
+                                       errorDetails.includes('Browser closed') ||
+                                       errorDetails.includes('has been closed');
+          
+          if ((isTimeoutError || isBrowserDisconnected) && formattedThreadParts.length > 0) {
+            console.log(`[POSTING_QUEUE] 🔄 THREAD→SINGLE FALLBACK: Creating single-tweet version from first thread part...`);
+            
+            try {
+              // Create derived single-tweet version using FIRST thread part
+              const firstPart = formattedThreadParts[0];
+              const maxLength = 270; // X character limit
+              
+              // If first part is already short enough, use it as-is
+              let singleContent = firstPart;
+              if (firstPart.length > maxLength) {
+                // Truncate to fit, preserving word boundaries
+                singleContent = firstPart.substring(0, maxLength - 3).trim();
+                const lastSpace = singleContent.lastIndexOf(' ');
+                if (lastSpace > maxLength - 50) {
+                  singleContent = singleContent.substring(0, lastSpace) + '...';
+                } else {
+                  singleContent = singleContent + '...';
+                }
+              }
+              
+              // Ensure it's within limit
+              if (singleContent.length > maxLength) {
+                singleContent = singleContent.substring(0, maxLength - 3) + '...';
+              }
+              
+              console.log(`[POSTING_QUEUE] ✅ Single-tweet version created: ${singleContent.length} chars`);
+              
+              // Mark original decision as failed with reason
+              const failureReason = isTimeoutError ? 'THREAD_POST_FAILED_TIMEOUT' : 'THREAD_POST_FAILED_BROWSER_DISCONNECTED';
+              await supabase
+                .from('content_metadata')
+                .update({
+                  status: 'failed',
+                  skip_reason: failureReason,
+                  features: {
+                    ...(decision.features || {}),
+                    thread_fallback_applied: true,
+                    thread_fallback_reason: failureReason,
+                    thread_fallback_at: new Date().toISOString(),
+                  }
+                })
+                .eq('decision_id', decision.id);
+              
+              // Queue the derived single post immediately
+              const { data: singleMetadata } = await supabase
+                .from('content_metadata')
+                .select('*')
+                .eq('decision_id', decision.id)
+                .single();
+              
+              if (singleMetadata) {
+                const { data: newDecision, error: insertError } = await supabase
+                  .from('content_metadata')
+                  .insert({
+                    decision_type: 'single',
+                    content: singleContent,
+                    status: 'queued',
+                    scheduled_at: new Date().toISOString(),
+                    created_at: new Date().toISOString(),
+                    raw_topic: singleMetadata.raw_topic || 'health_optimization',
+                    angle: singleMetadata.angle || 'practical_application',
+                    tone: singleMetadata.tone || 'educational',
+                    format_strategy: 'single_fallback',
+                    generator_name: singleMetadata.generator_name || 'thread_fallback',
+                    pipeline_source: 'postingQueue_thread_fallback',
+                    generation_source: singleMetadata.generation_source || 'real',
+                    quality_score: singleMetadata.quality_score || 0.85,
+                    predicted_er: singleMetadata.predicted_er || 0.045,
+                    bandit_arm: singleMetadata.bandit_arm || 'educational',
+                    topic_cluster: singleMetadata.topic_cluster || 'health_optimization',
+                    features: {
+                      original_thread_decision_id: decision.id,
+                      fallback_reason: failureReason,
+                      fallback_applied_at: new Date().toISOString(),
+                    }
+                  })
+                  .select()
+                  .single();
+                
+                if (insertError) {
+                  console.error(`[POSTING_QUEUE] ❌ Failed to create single fallback: ${insertError.message}`);
+                } else {
+                  console.log(`[POSTING_QUEUE] ✅ Single fallback queued: decision_id=${newDecision.decision_id}`);
+                  
+                  // Log fallback event
+                  await supabase.from('system_events').insert({
+                    event_type: 'THREAD_TO_SINGLE_FALLBACK',
+                    severity: 'info',
+                    message: `Thread posting failed, created single-tweet fallback`,
+                    event_data: {
+                      original_decision_id: decision.id,
+                      fallback_decision_id: newDecision.decision_id,
+                      reason: failureReason,
+                      original_parts_count: formattedThreadParts.length,
+                      fallback_content_length: singleContent.length,
+                    },
+                    created_at: new Date().toISOString(),
+                  });
+                  
+                  // Throw error to trigger retry logic (will retry the single post)
+                  throw new Error(`Thread posting failed (timeout), fallback single queued: ${newDecision.decision_id}`);
+                }
+              }
+            } catch (fallbackError: any) {
+              console.error(`[POSTING_QUEUE] ❌ Thread→single fallback failed: ${fallbackError.message}`);
+              // Continue to throw original error
+            }
           }
-        );
+          
+          // Re-throw timeout error to trigger normal retry logic
+          throw timeoutError;
+        }
         
         if (!result.success) {
           // Thread completely failed - ensure we have a detailed error message
@@ -4600,6 +4768,116 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
           console.error(`[POSTING_QUEUE] ❌ Thread mode was: ${result.mode || 'unknown'}`);
           console.error(`[POSTING_QUEUE] ❌ Thread ID: ${decision.id}`);
           console.error(`[POSTING_QUEUE] ❌ Thread parts: ${thread_parts.length} tweets`);
+          
+          // 🔍 TASK 4: Thread→single fallback on timeout or browser_disconnected
+          const isTimeoutError = errorDetails.includes('timeout') || errorDetails.includes('TIMEOUT');
+          const isBrowserDisconnected = errorDetails.includes('browser_disconnected') || 
+                                       errorDetails.includes('Target closed') ||
+                                       errorDetails.includes('Browser closed') ||
+                                       errorDetails.includes('has been closed');
+          
+          if ((isTimeoutError || isBrowserDisconnected) && formattedThreadParts.length > 0) {
+            console.log(`[POSTING_QUEUE] 🔄 THREAD→SINGLE FALLBACK: Creating single-tweet version from first thread part...`);
+            
+            try {
+              // Create derived single-tweet version using FIRST thread part + short hook
+              const firstPart = formattedThreadParts[0];
+              const maxLength = 270; // X character limit
+              
+              // If first part is already short enough, use it as-is
+              let singleContent = firstPart;
+              if (firstPart.length > maxLength) {
+                // Truncate to fit, preserving word boundaries
+                singleContent = firstPart.substring(0, maxLength - 3).trim();
+                const lastSpace = singleContent.lastIndexOf(' ');
+                if (lastSpace > maxLength - 50) {
+                  singleContent = singleContent.substring(0, lastSpace) + '...';
+                } else {
+                  singleContent = singleContent + '...';
+                }
+              }
+              
+              // Ensure it's within limit
+              if (singleContent.length > maxLength) {
+                singleContent = singleContent.substring(0, maxLength - 3) + '...';
+              }
+              
+              console.log(`[POSTING_QUEUE] ✅ Single-tweet version created: ${singleContent.length} chars`);
+              
+              // Mark original decision as failed with reason
+              const failureReason = isTimeoutError ? 'THREAD_POST_FAILED_TIMEOUT' : 'THREAD_POST_FAILED_BROWSER_DISCONNECTED';
+              await supabase
+                .from('content_metadata')
+                .update({
+                  status: 'failed',
+                  skip_reason: failureReason,
+                  features: {
+                    ...(decision.features || {}),
+                    thread_fallback_applied: true,
+                    thread_fallback_reason: failureReason,
+                    thread_fallback_at: new Date().toISOString(),
+                  }
+                })
+                .eq('decision_id', decision.id);
+              
+              // Queue the derived single post immediately
+              const { data: singleMetadata } = await supabase
+                .from('content_metadata')
+                .select('*')
+                .eq('decision_id', decision.id)
+                .single();
+              
+              if (singleMetadata) {
+                const { data: newDecision, error: insertError } = await supabase
+                  .from('content_metadata')
+                  .insert({
+                    decision_type: 'single',
+                    content: singleContent,
+                    status: 'queued',
+                    scheduled_at: new Date().toISOString(),
+                    created_at: new Date().toISOString(),
+                    raw_topic: singleMetadata.raw_topic,
+                    angle: singleMetadata.angle,
+                    tone: singleMetadata.tone,
+                    format_strategy: 'single_fallback',
+                    generator_name: singleMetadata.generator_name || 'thread_fallback',
+                    pipeline_source: 'postingQueue_thread_fallback',
+                    features: {
+                      original_thread_decision_id: decision.id,
+                      fallback_reason: failureReason,
+                      fallback_applied_at: new Date().toISOString(),
+                    }
+                  })
+                  .select()
+                  .single();
+                
+                if (insertError) {
+                  console.error(`[POSTING_QUEUE] ❌ Failed to create single fallback: ${insertError.message}`);
+                } else {
+                  console.log(`[POSTING_QUEUE] ✅ Single fallback queued: decision_id=${newDecision.decision_id}`);
+                  
+                  // Log fallback event
+                  await supabase.from('system_events').insert({
+                    event_type: 'THREAD_TO_SINGLE_FALLBACK',
+                    severity: 'info',
+                    message: `Thread posting failed, created single-tweet fallback`,
+                    event_data: {
+                      original_decision_id: decision.id,
+                      fallback_decision_id: newDecision.decision_id,
+                      reason: failureReason,
+                      original_parts_count: formattedThreadParts.length,
+                      fallback_content_length: singleContent.length,
+                    },
+                    created_at: new Date().toISOString(),
+                  });
+                }
+              }
+            } catch (fallbackError: any) {
+              console.error(`[POSTING_QUEUE] ❌ Thread→single fallback failed: ${fallbackError.message}`);
+              // Continue to throw original error
+            }
+          }
+          
           throw new Error(`Thread posting failed: ${errorDetails}`);
         }
         
@@ -4646,9 +4924,10 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         }
         
         // 🔧 ADAPTIVE TIMEOUT: Progressive timeout per retry attempt
-        // attempt 1 → 120s, attempt 2 → 180s, attempt 3 → 240s
+        // 🔧 TASK: Increased timeout to allow for navigation + modal closing + typing + posting
+        // attempt 1 → 180s, attempt 2 → 240s, attempt 3 → 300s
         const retryCount = Number((decision.features as any)?.retry_count || 0);
-        const adaptiveTimeouts = [120000, 180000, 240000]; // Progressive: 120s, 180s, 240s
+        const adaptiveTimeouts = [180000, 240000, 300000]; // Progressive: 180s, 240s, 300s (increased from 120s base)
         const SINGLE_POST_TIMEOUT_MS = adaptiveTimeouts[Math.min(retryCount, adaptiveTimeouts.length - 1)];
         
         console.log(`[POSTING_QUEUE] ⏱️ Using adaptive timeout: ${SINGLE_POST_TIMEOUT_MS}ms (attempt ${retryCount + 1}, retry_count=${retryCount})`);
@@ -4770,6 +5049,12 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         console.log(`[POSTING_QUEUE] ✅ Tweet ID extracted: ${result.tweetId}`);
         console.log(`[POSTING_QUEUE] ✅ Tweet URL: ${tweetUrl}`);
         console.log(`[CRITICAL] ✅✅✅ postContent() RETURNING - tweetId=${result.tweetId}`);
+        
+        // 🔧 TASK: POST_SUCCESS is now written in atomicPostExecutor immediately after tweet_id capture
+        // No need to call markDecisionPosted for POST_SUCCESS - it's already done
+        // But we still need to call markDecisionPosted to update content_metadata view consistency
+        // (atomicPostExecutor updates content_generation_metadata_comprehensive, but markDecisionPosted
+        //  ensures content_metadata view is consistent and handles thread_tweet_ids)
         
         // Return object with both ID and URL
         return { tweetId: result.tweetId, tweetUrl };
@@ -5799,51 +6084,69 @@ export async function markDecisionPosted(
         dbSaveSuccess = true;
         console.log(`[POSTING_QUEUE] ✅ Database updated (attempt ${dbAttempt}/${MAX_DB_RETRIES}): tweet_id ${tweetId} saved for decision ${decisionId}`);
         
-        // 📊 GROWTH_TELEMETRY: Emit POST_SUCCESS and enqueue snapshots
+        // 🔧 TASK: POST_SUCCESS is now written in atomicPostExecutor immediately after tweet_id capture
+        // This ensures POST_SUCCESS is recorded even if page/context/browser closes after posting.
+        // We still check here for idempotency (in case atomicPostExecutor didn't run for some reason)
         try {
-          // Get decision type from content_metadata
-          const { data: decisionData } = await supabase
-            .from('content_metadata')
-            .select('decision_type')
-            .eq('decision_id', decisionId)
+          // Check if POST_SUCCESS already exists (idempotency)
+          const { data: existingEvent } = await supabase
+            .from('system_events')
+            .select('id')
+            .eq('event_type', 'POST_SUCCESS')
+            .eq('event_data->>decision_id', decisionId)
             .maybeSingle();
           
-          const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
-          const finalTweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
-          
-          await supabase.from('system_events').insert({
-            event_type: 'POST_SUCCESS',
-            severity: 'info',
-            message: `Content posted successfully: decision_id=${decisionId} tweet_id=${tweetId}`,
-            event_data: {
-              decision_id: decisionId,
-              tweet_id: tweetId,
-              tweet_url: finalTweetUrl,
-              decision_type: decisionData?.decision_type || 'unknown',
-              app_version: appVersion,
-              posted_at: new Date().toISOString(),
-            },
-            created_at: new Date().toISOString(),
-          });
-          
-          // 🎯 GROWTH_CONTROLLER: Record post in execution counters
-          if (process.env.GROWTH_CONTROLLER_ENABLED === 'true') {
-            try {
-              const { getActiveGrowthPlan, recordPost } = await import('./growthController');
-              const plan = await getActiveGrowthPlan();
-              if (plan) {
-                await recordPost(plan.plan_id, (decisionData?.decision_type as 'single' | 'thread' | 'reply') || 'single');
+          if (existingEvent) {
+            console.log(`[POSTING_QUEUE] ⏭️ POST_SUCCESS already exists for decision_id=${decisionId} (written by atomicPostExecutor), skipping duplicate`);
+          } else {
+            // Fallback: Write POST_SUCCESS if atomicPostExecutor didn't (shouldn't happen, but safety net)
+            console.log(`[POSTING_QUEUE] ⚠️ POST_SUCCESS missing for decision_id=${decisionId}, writing fallback event`);
+            
+            // Get decision type from content_metadata
+            const { data: decisionData } = await supabase
+              .from('content_metadata')
+              .select('decision_type')
+              .eq('decision_id', decisionId)
+              .maybeSingle();
+            
+            const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+            const finalTweetUrl = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${tweetId}`;
+            
+            await supabase.from('system_events').insert({
+              event_type: 'POST_SUCCESS',
+              severity: 'info',
+              message: `Content posted successfully (fallback): decision_id=${decisionId} tweet_id=${tweetId}`,
+              event_data: {
+                decision_id: decisionId,
+                tweet_id: tweetId,
+                tweet_url: finalTweetUrl,
+                decision_type: decisionData?.decision_type || 'unknown',
+                app_version: appVersion,
+                posted_at: new Date().toISOString(),
+                fallback_written: true,
+              },
+              created_at: new Date().toISOString(),
+            });
+            
+            // 🎯 GROWTH_CONTROLLER: Record post in execution counters (idempotent)
+            if (process.env.GROWTH_CONTROLLER_ENABLED === 'true') {
+              try {
+                const { getActiveGrowthPlan, recordPost } = await import('./growthController');
+                const plan = await getActiveGrowthPlan();
+                if (plan) {
+                  await recordPost(plan.plan_id, (decisionData?.decision_type as 'single' | 'thread' | 'reply') || 'single');
+                }
+              } catch (controllerError: any) {
+                console.warn(`[GROWTH_CONTROLLER] ⚠️ Failed to record post: ${controllerError.message}`);
               }
-            } catch (controllerError: any) {
-              console.warn(`[GROWTH_CONTROLLER] ⚠️ Failed to record post: ${controllerError.message}`);
             }
+            
+            // Enqueue performance snapshots (idempotent)
+            const { enqueuePerformanceSnapshots } = await import('./performanceSnapshotJob');
+            await enqueuePerformanceSnapshots(decisionId, tweetId, new Date());
           }
-          
-          // Enqueue performance snapshots
-          const { enqueuePerformanceSnapshots } = await import('./performanceSnapshotJob');
-          await enqueuePerformanceSnapshots(decisionId, tweetId, new Date());
         } catch (telemetryError: any) {
-          console.warn(`[POSTING_QUEUE] ⚠️ Failed to emit POST_SUCCESS/enqueue snapshots: ${telemetryError.message}`);
+          console.warn(`[POSTING_QUEUE] ⚠️ Failed to check/write POST_SUCCESS fallback: ${telemetryError.message}`);
         }
         
         // ✅ SUCCESS log removed - caller (processDecision) will log SUCCESS with correct decision_type

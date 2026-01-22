@@ -50,6 +50,15 @@ export async function planContent(): Promise<void> {
     } else {
       await generateRealContent();
     }
+    
+    // 🔍 TASK 1: Ensure post buffer (maintain at least 3 queued posts in next 60 minutes)
+    try {
+      const { ensurePostBuffer } = await import('./postBuffer');
+      await ensurePostBuffer();
+    } catch (bufferError: any) {
+      console.warn(`[PLAN_JOB] ⚠️ Post buffer check failed (non-critical): ${bufferError.message}`);
+    }
+    
     log({ op: 'plan_job_complete', outcome: 'success' });
   } catch (error: any) {
     log({ op: 'plan_job_complete', outcome: 'error', error: error.message });

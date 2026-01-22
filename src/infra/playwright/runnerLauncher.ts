@@ -60,6 +60,11 @@ export async function launchRunnerPersistent(headless: boolean = false): Promise
   if (RUNNER_BROWSER === 'cdp') {
     console.log(`[RUNNER_LAUNCHER] 🔌 CDP mode: connecting to Chrome on port ${CDP_PORT}`);
     
+    // 🔍 TASK 1: Log Chrome profile path
+    const CDP_PROFILE_DIR = path.join(RUNNER_PROFILE_DIR, '.chrome-cdp-profile');
+    console.log(`[RUNNER_LAUNCHER] 📁 Chrome profile path: ${CDP_PROFILE_DIR}`);
+    console.log(`[RUNNER_LAUNCHER] 📁 Profile directory (user-data-dir): ${CDP_PROFILE_DIR}`);
+    
     // Check if CDP is running
     if (!(await isCDPRunning())) {
       throw new Error(`Chrome CDP not running on port ${CDP_PORT}. Run: pnpm run runner:chrome-cdp or pnpm run runner:login`);

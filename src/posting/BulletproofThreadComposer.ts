@@ -205,6 +205,58 @@ export class BulletproofThreadComposer {
           page = error.page;
         }
         
+        // 🔍 TASK 3: Check for browser_disconnected error
+        const errorMsg = error.message || error.toString() || 'Unknown thread posting error';
+        const isBrowserDisconnected = this.isClosedError(error) || 
+                                     errorMsg.includes('browser_disconnected') ||
+                                     errorMsg.includes('Target closed') ||
+                                     errorMsg.includes('Browser closed');
+        
+        if (isBrowserDisconnected && attempt < maxRetries) {
+          console.error(`[THREAD_COMPOSER][BROWSER_DISCONNECTED] ⚠️ Browser disconnected on attempt ${attempt}/${maxRetries}`);
+          console.log(`[THREAD_COMPOSER][BROWSER_DISCONNECTED] 🔄 Auto-recovery: closing context, reconnecting CDP, re-running session check...`);
+          
+          try {
+            // a) Close context safely
+            if (page) {
+              try {
+                const context = page.context();
+                if (context) {
+                  await context.close().catch(() => {});
+                }
+              } catch {
+                // Context already closed
+              }
+            }
+            
+            // b) Reconnect to CDP (pool will handle this)
+            console.log(`[THREAD_COMPOSER][BROWSER_DISCONNECTED] 🔄 Resetting browser pool to reconnect...`);
+            await pool.resetPool();
+            console.log(`[THREAD_COMPOSER][BROWSER_DISCONNECTED] ✅ Browser pool reset complete`);
+            
+            // c) Re-run session check
+            const { checkSession } = await import('../../scripts/runner/session-check');
+            const sessionCheck = await checkSession();
+            console.log(`[THREAD_COMPOSER][BROWSER_DISCONNECTED] 🔍 Session check: ${sessionCheck.status}`);
+            
+            if (sessionCheck.status === 'SESSION_EXPIRED') {
+              console.error(`[THREAD_COMPOSER][BROWSER_DISCONNECTED] ❌ Session expired after reconnect: ${sessionCheck.reason}`);
+              throw new Error(`SESSION_EXPIRED: ${sessionCheck.reason}`);
+            }
+            
+            // d) Retry the SAME decision once (max 1 retry for browser_disconnected)
+            console.log(`[THREAD_COMPOSER][BROWSER_DISCONNECTED] 🔄 Retrying thread posting after browser recovery...`);
+            await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3s for CDP to stabilize
+            continue; // Retry the loop
+          } catch (recoveryError: any) {
+            console.error(`[THREAD_COMPOSER][BROWSER_DISCONNECTED] ❌ Recovery failed: ${recoveryError.message}`);
+            if (attempt === maxRetries) {
+              throw new Error(`Browser disconnected and recovery failed: ${recoveryError.message}`);
+            }
+            continue; // Try again
+          }
+        }
+        
         if (error.message === 'Thread posting timeout') {
           const timeoutMs = this.getThreadTimeoutMs(attempt - 1);
           console.error(`[THREAD_COMPOSER][TIMEOUT] ⏱️ Timeout on attempt ${attempt}/${maxRetries} (exceeded ${timeoutMs/1000}s)`);
@@ -227,7 +279,6 @@ export class BulletproofThreadComposer {
           continue;
         }
         
-        const errorMsg = error.message || error.toString() || 'Unknown thread posting error';
         console.error(`[THREAD_COMPOSER] ❌ Attempt ${attempt} error: ${errorMsg}`);
         console.error(`[THREAD_COMPOSER] ❌ Error type: ${error.name || typeof error}`);
         console.error(`[THREAD_COMPOSER] ❌ Stack trace: ${error.stack?.substring(0, 200) || 'No stack'}`);
@@ -611,6 +662,44 @@ export class BulletproofThreadComposer {
       page = await this.safeWait(page, 2000, { decisionId: threadDecisionId, attempt, stage: 'navigation_stabilize' }, pool); // Let page stabilize
       const navDuration = Date.now() - navStartTime;
       console.log(`[THREAD_COMPOSER][STAGE] ✅ Stage: navigation - Completed in ${navDuration}ms`);
+      
+      // 🔍 TASK 2: Interstitial/consent/login detection BEFORE posting
+      try {
+        const { detectConsentWall } = await import('../playwright/twitterSession');
+        const currentUrl = page.url();
+        const wallCheck = await detectConsentWall(page);
+        
+        console.log(`[THREAD_COMPOSER][INTERSTITIAL] 🔍 Checking for interstitial/consent/login...`);
+        console.log(`[THREAD_COMPOSER][INTERSTITIAL]   URL: ${currentUrl}`);
+        console.log(`[THREAD_COMPOSER][INTERSTITIAL]   Wall detected: ${wallCheck.detected}`);
+        console.log(`[THREAD_COMPOSER][INTERSTITIAL]   Wall type: ${wallCheck.wallType || 'none'}`);
+        console.log(`[THREAD_COMPOSER][INTERSTITIAL]   Logged in: ${wallCheck.logged_in || false}`);
+        
+        // Check for explicit redirects to consent/login flows
+        if (currentUrl.includes('/i/flow/consent') || currentUrl.includes('/i/flow/login') || currentUrl.includes('/i/flow/verify')) {
+          const reasonCode = currentUrl.includes('/i/flow/consent') ? 'INTERSTITIAL_CONSENT' :
+                           currentUrl.includes('/i/flow/login') ? 'INTERSTITIAL_LOGIN' :
+                           'INTERSTITIAL_VERIFY';
+          console.error(`[THREAD_COMPOSER][INTERSTITIAL] ⛔ BLOCKED: ${reasonCode} - URL redirect detected`);
+          throw new Error(`${reasonCode}: Redirected to ${currentUrl}`);
+        }
+        
+        // Check for wall blocking
+        if (wallCheck.detected && (wallCheck.wallType === 'login' || wallCheck.wallType === 'consent')) {
+          const reasonCode = wallCheck.wallType === 'login' ? 'INTERSTITIAL_LOGIN' : 'INTERSTITIAL_CONSENT';
+          console.error(`[THREAD_COMPOSER][INTERSTITIAL] ⛔ BLOCKED: ${reasonCode} - Wall detected`);
+          throw new Error(`${reasonCode}: ${wallCheck.wallType} wall blocking posting`);
+        }
+        
+        console.log(`[THREAD_COMPOSER][INTERSTITIAL] ✅ No interstitial blocking detected`);
+      } catch (interstitialError: any) {
+        // If it's our blocking error, re-throw it
+        if (interstitialError.message?.includes('INTERSTITIAL_')) {
+          throw interstitialError;
+        }
+        // Otherwise, log and continue (non-blocking check)
+        console.warn(`[THREAD_COMPOSER][INTERSTITIAL] ⚠️ Interstitial check failed (non-blocking): ${interstitialError.message}`);
+      }
       
       try {
         const maxRetries = 2;

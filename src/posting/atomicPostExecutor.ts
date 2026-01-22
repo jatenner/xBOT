@@ -555,13 +555,22 @@ export async function executeAuthorizedPost(
   // ═══════════════════════════════════════════════════════════════════════════
   console.log(`[ATOMIC_POST] 💾 UPDATE: Marking DB row as posted...`);
   
+  // 🔒 TASK: Validate tweet_id before updating DB
+  const { assertValidTweetId } = await import('./tweetIdValidator');
+  const validation = assertValidTweetId(postResult.tweetId);
+  if (!validation.valid) {
+    console.error(`[ATOMIC_POST] ❌ DB UPDATE BLOCKED: Invalid tweet_id: ${validation.error}`);
+    console.error(`[ATOMIC_POST]   tweet_id=${postResult.tweetId} decision_id=${decision_id}`);
+    throw new Error(`DB update blocked: Invalid tweet_id: ${validation.error}`);
+  }
+
   // Update DB row to status='posted' with tweet_id
   // Note: tweet_url column does NOT exist in content_generation_metadata_comprehensive schema
   const { error: updateError } = await supabase
     .from('content_generation_metadata_comprehensive')
     .update({
       status: 'posted',
-      tweet_id: postResult.tweetId,
+      tweet_id: String(postResult.tweetId), // 🔒 TASK: Ensure string (no Number coercion)
       posted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
@@ -586,6 +595,92 @@ export async function executeAuthorizedPost(
     });
   } else {
     console.log(`[ATOMIC_POST] ✅ UPDATE SUCCESS: DB row updated with tweet_id`);
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🔧 TASK: Write POST_SUCCESS immediately after tweet_id capture (independent of page lifecycle)
+  // ═══════════════════════════════════════════════════════════════════════════
+  console.log(`[ATOMIC_POST] 📊 Writing POST_SUCCESS event (idempotent)...`);
+  
+  try {
+    // Get decision type from content_metadata
+    const { data: decisionData } = await supabase
+      .from('content_metadata')
+      .select('decision_type')
+      .eq('decision_id', decision_id)
+      .maybeSingle();
+    
+    const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+    const finalTweetUrl = postResult.tweetUrl || `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${postResult.tweetId}`;
+    
+    // 🔧 TASK: Idempotent POST_SUCCESS insert (check if exists first)
+    const { data: existingEvent } = await supabase
+      .from('system_events')
+      .select('id')
+      .eq('event_type', 'POST_SUCCESS')
+      .eq('event_data->>decision_id', decision_id)
+      .maybeSingle();
+    
+    if (existingEvent) {
+      console.log(`[ATOMIC_POST] ⏭️ POST_SUCCESS already exists for decision_id=${decision_id}, skipping insert`);
+    } else {
+      // 🔒 TASK: Validate tweet_id before writing POST_SUCCESS
+      const { assertValidTweetId } = await import('./tweetIdValidator');
+      const validation = assertValidTweetId(postResult.tweetId);
+      if (!validation.valid) {
+        console.error(`[ATOMIC_POST] ❌ POST_SUCCESS BLOCKED: Invalid tweet_id: ${validation.error}`);
+        console.error(`[ATOMIC_POST]   tweet_id=${postResult.tweetId} decision_id=${decision_id}`);
+        // Do NOT write POST_SUCCESS with invalid tweet_id
+        throw new Error(`POST_SUCCESS blocked: Invalid tweet_id: ${validation.error}`);
+      }
+
+      const { error: postSuccessError } = await supabase.from('system_events').insert({
+        event_type: 'POST_SUCCESS',
+        severity: 'info',
+        message: `Content posted successfully: decision_id=${decision_id} tweet_id=${postResult.tweetId}`,
+        event_data: {
+          decision_id: decision_id,
+          tweet_id: String(postResult.tweetId), // 🔒 TASK: Ensure string (no Number coercion)
+          tweet_url: finalTweetUrl,
+          decision_type: decisionData?.decision_type || decision_type || 'unknown',
+          app_version: appVersion,
+          posted_at: new Date().toISOString(),
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      if (postSuccessError) {
+        console.error(`[ATOMIC_POST] ⚠️ POST_SUCCESS insert failed: ${postSuccessError.message}`);
+        // Don't throw - tweet is posted, event logging is best-effort
+      } else {
+        console.log(`[ATOMIC_POST] ✅ POST_SUCCESS event written: decision_id=${decision_id} tweet_id=${postResult.tweetId}`);
+      }
+    }
+    
+    // 🎯 GROWTH_CONTROLLER: Record post in execution counters (idempotent)
+    if (process.env.GROWTH_CONTROLLER_ENABLED === 'true') {
+      try {
+        const { getActiveGrowthPlan, recordPost } = await import('../jobs/growthController');
+        const plan = await getActiveGrowthPlan();
+        if (plan) {
+          await recordPost(plan.plan_id, (decisionData?.decision_type as 'single' | 'thread' | 'reply') || decision_type || 'single');
+        }
+      } catch (controllerError: any) {
+        console.warn(`[ATOMIC_POST] ⚠️ Failed to record post in growth_execution: ${controllerError.message}`);
+      }
+    }
+    
+    // 📊 GROWTH_TELEMETRY: Enqueue performance snapshots (idempotent)
+    try {
+      const { enqueuePerformanceSnapshots } = await import('../jobs/performanceSnapshotJob');
+      await enqueuePerformanceSnapshots(decision_id, postResult.tweetId, new Date());
+    } catch (telemetryError: any) {
+      console.warn(`[ATOMIC_POST] ⚠️ Failed to enqueue performance snapshots: ${telemetryError.message}`);
+    }
+  } catch (postSuccessError: any) {
+    // 🔧 TASK: Wrap in try/catch so cleanup errors don't prevent DB writes
+    console.error(`[ATOMIC_POST] ⚠️ POST_SUCCESS hooks failed: ${postSuccessError.message}`);
+    // Don't throw - tweet is posted, hooks are best-effort
   }
   
   // ═══════════════════════════════════════════════════════════════════════════

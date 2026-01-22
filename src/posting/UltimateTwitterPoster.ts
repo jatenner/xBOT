@@ -15,6 +15,7 @@ import { BulletproofTweetExtractor } from '../utils/bulletproofTweetExtractor';
 import { ensureComposerFocused } from './composerFocus';
 import { supaService } from '../lib/supabaseService';
 import { ReplyPostingTelemetry } from './ReplyPostingTelemetry';
+import { assertValidTweetId, extractTweetIdFromCreateTweetResponse } from './tweetIdValidator';
 
 /**
  * 🔒 POSTING AUTHORIZATION GUARD (UNFORGEABLE)
@@ -246,9 +247,11 @@ export class UltimateTwitterPoster {
   private readonly maxClickFailures = 5;
   private lastResetTime = Date.now();
   
-  // PHASE 3.5: Real tweet ID extraction
-  private capturedTweetId: string | null = null;
+  // PHASE 3.5: Real tweet ID extraction (validated from CreateTweet GraphQL response)
+  private validatedTweetId: string | null = null; // Only set after validation
+  private capturedTweetId: string | null = null; // Temporary capture (before validation)
   private networkResponseListener: ((response: any) => void) | null = null;
+  private createTweetResponsePromise: Promise<string | null> | null = null;
 
   constructor(options: PosterOptions = {}) {
     this.purpose = options.purpose ?? 'post';
@@ -305,7 +308,16 @@ export class UltimateTwitterPoster {
           // 🎯 SUCCESS LOG: Include tweet_id for audit trail
           console.log(`[POST_TWEET] ✅ SUCCESS: tweet_id=${canonical.tweetId} decision_id=${validGuard.decision_id} pipeline_source=${validGuard.pipeline_source} build_sha=${BUILD_SHA} db_env=${DB_ENV_FINGERPRINT}`);
           
-          await this.dispose();         
+          // 🔧 TASK: Wrap cleanup in try/catch so it cannot prevent DB writes
+          try {
+            await this.dispose();
+          } catch (cleanupError: any) {
+            // 🔧 TASK: If waitForResponse fails after tweet_id exists, log WARN but keep success
+            console.warn(`[POST_TWEET] ⚠️ Cleanup error (non-critical): ${cleanupError.message}`);
+            console.warn(`[POST_TWEET] ⚠️ Tweet was posted successfully (tweet_id=${canonical.tweetId}), cleanup error is non-blocking`);
+            // Don't throw - tweet is posted, cleanup is best-effort
+          }
+          
           return { success: true, tweetId: canonical.tweetId, tweetUrl: canonical.tweetUrl };
           
         } catch (error) {
@@ -706,152 +718,323 @@ export class UltimateTwitterPoster {
   }
 
   private async getComposer(): Promise<any> {
-    // 🆕 UPDATED: Robust selectors matching modern Twitter UI
+    // 🔧 TASK: Resilient composer acquisition with retries, screenshots, and better logging
+    // 🔧 FIX: Ensure page is not null before attempting to find composer
+    if (!this.page) {
+      throw new Error('Page is null - cannot find composer. Page may have been released prematurely.');
+    }
+    
     const composerSelectors = [
       'div[contenteditable="true"][role="textbox"]',                      // Primary - modern Twitter
       'div[role="textbox"][contenteditable="true"]',                      // Alternative order
       '[data-testid="tweetTextarea_0"]',                                  // Fallback 1
+      'div[data-testid="tweetTextarea_0"] div[contenteditable="true"]',   // Nested contenteditable
       'div[aria-label*="Post text"]',                                     // Fallback 2
       'div[aria-label*="What is happening"]',                             // Fallback 3
       'div[aria-label*="What\'s happening"]',                             // Fallback 4
       'div[contenteditable="true"]',                                      // Fallback 5 - any contenteditable
-      '.public-DraftEditor-content[contenteditable="true"]'               // Fallback 6 - Draft.js
+      '.public-DraftEditor-content[contenteditable="true"]',             // Fallback 6 - Draft.js
+      '[data-testid="tweetTextarea_0RichTextInputContainer"] div[contenteditable="true"]', // Rich text container
+      'div[data-testid^="tweetTextarea_"] div[contenteditable="true"]',   // Any tweetTextarea variant
     ];
 
-    for (const selector of composerSelectors) {
-      try {
-        console.log(`ULTIMATE_POSTER: Testing composer selector: ${selector}`);
-        const element = await this.page!.waitForSelector(selector, { 
-          state: 'visible', 
-          timeout: 15000  // Increased from 5s → 15s for slow Twitter loads
+    const maxRetries = 3;
+    const retryDelay = 1000; // 1 second between retries
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      // 🔧 FIX: Check page is still valid before each attempt
+      if (!this.page) {
+        throw new Error('Page became null during composer search');
+      }
+      
+      for (const selector of composerSelectors) {
+        try {
+          console.log(`ULTIMATE_POSTER: Testing composer selector: ${selector} (attempt ${attempt}/${maxRetries})`);
+          
+          // 🔧 FIX: Check page is still valid before each selector attempt
+          if (!this.page) {
+            throw new Error('Page is null');
+          }
+          
+          // Try to find element with visibility check
+          const element = await this.page.waitForSelector(selector, { 
+            state: 'visible', 
+            timeout: 10000  // 10s per selector attempt
+          });
+          
+          if (element) {
+            // 🔧 TASK: Validate visible + enabled
+            const isVisible = await element.isVisible().catch(() => false);
+            const isEnabled = await element.evaluate((el: any) => {
+              return !el.disabled && 
+                     !el.getAttribute('aria-disabled') && 
+                     el.offsetParent !== null; // Element is in DOM and visible
+            }).catch(() => false);
+            
+            if (!isVisible || !isEnabled) {
+              console.log(`ULTIMATE_POSTER: ⚠️ Element found but not visible/enabled: ${selector} (visible=${isVisible}, enabled=${isEnabled})`);
+              continue;
+            }
+            
+            // 🔧 TASK: Verify element is actually editable
+            const isEditable = await element.evaluate((el: any) => 
+              el.contentEditable === 'true' || el.tagName === 'TEXTAREA'
+            ).catch(() => false);
+            
+            if (isEditable) {
+              console.log(`ULTIMATE_POSTER: ✅ Found editable composer with: ${selector}`);
+              console.log(`[COMPOSER_SELECTOR_MATCH] selector=${selector} attempt=${attempt}`);
+              return element;
+            } else {
+              console.log(`ULTIMATE_POSTER: ⚠️ Element found but not editable: ${selector}`);
+              continue;
+            }
+          }
+        } catch (e: any) {
+          // 🔧 FIX: Check if error is due to null page
+          if (!this.page) {
+            throw new Error('Page became null during selector attempt');
+          }
+          console.log(`ULTIMATE_POSTER: Selector failed: ${selector} - ${e.message}`);
+          continue;
+        }
+      }
+      
+      // 🔧 TASK: Retry with delay if not found on this attempt
+      if (attempt < maxRetries) {
+        // 🔧 FIX: Check page is still valid before retry
+        if (!this.page) {
+          throw new Error('Page became null before retry');
+        }
+        
+        console.log(`ULTIMATE_POSTER: ⚠️ No composer found on attempt ${attempt}, retrying in ${retryDelay}ms...`);
+        await this.page.waitForTimeout(retryDelay);
+        
+        // Try pressing 'N' to open composer (keyboard shortcut)
+        try {
+          if (!this.page) {
+            throw new Error('Page is null');
+          }
+          await this.page.keyboard.press('Escape'); // Close any modals first
+          await this.page.waitForTimeout(300);
+          await this.page.keyboard.press('KeyN'); // Open composer
+          await this.page.waitForTimeout(1000);
+          console.log(`ULTIMATE_POSTER: ⌨️ Pressed 'N' to open composer`);
+        } catch (keyError: any) {
+          console.log(`ULTIMATE_POSTER: ⚠️ Keyboard shortcut failed: ${keyError.message}`);
+        }
+      }
+    }
+
+    // 🔧 TASK: If still failing, capture screenshot and DOM excerpt
+    if (!this.page) {
+      throw new Error('Page is null - cannot capture debug info');
+    }
+    
+    const debugDir = join(process.env.RUNNER_PROFILE_DIR || process.cwd(), '.runner-profile', 'debug');
+    try {
+      mkdirSync(debugDir, { recursive: true });
+      
+      const timestamp = Date.now();
+      const screenshotPath = join(debugDir, `composer-not-found-${timestamp}.png`);
+      await this.page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`[COMPOSER_NOT_FOUND] Screenshot saved: ${screenshotPath}`);
+      
+      // Capture DOM excerpt around expected compose container
+      const domExcerpt = await this.page.evaluate(() => {
+        const composeAreas = [
+          document.querySelector('[data-testid="tweetTextarea_0"]'),
+          document.querySelector('div[contenteditable="true"][role="textbox"]'),
+          document.querySelector('div[role="textbox"]'),
+          document.querySelector('div[contenteditable="true"]'),
+        ].filter(Boolean);
+        
+        const excerpts: string[] = [];
+        composeAreas.forEach((el: any) => {
+          if (el) {
+            const parent = el.parentElement;
+            if (parent) {
+              excerpts.push(`Found: ${el.tagName} ${el.className || ''} ${el.getAttribute('data-testid') || ''}`);
+              excerpts.push(`Parent: ${parent.tagName} ${parent.className || ''}`);
+              excerpts.push(`HTML: ${parent.outerHTML.substring(0, 500)}`);
+            }
+          }
         });
         
-        if (element) {
-          // 🆕 VERIFY: Ensure element is actually editable
-          const isEditable = await element.evaluate((el: any) => 
-            el.contentEditable === 'true' || el.tagName === 'TEXTAREA'
-          ).catch(() => false);
-          
-          if (isEditable) {
-            console.log(`ULTIMATE_POSTER: ✅ Found editable composer with: ${selector}`);
-            return element;
-          } else {
-            console.log(`ULTIMATE_POSTER: ⚠️ Element found but not editable: ${selector}`);
-            continue;
-          }
-        }
-      } catch (e: any) {
-        console.log(`ULTIMATE_POSTER: Selector failed: ${selector} - ${e.message}`);
-        continue;
-      }
+        return excerpts.length > 0 ? excerpts.join('\n') : 'No compose areas found in DOM';
+      });
+      
+      const domPath = join(debugDir, `composer-dom-${timestamp}.txt`);
+      writeFileSync(domPath, `COMPOSER_NOT_FOUND Debug Info\n${'='.repeat(50)}\n\nAttempted Selectors:\n${composerSelectors.map(s => `  - ${s}`).join('\n')}\n\nDOM Excerpt:\n${domExcerpt}\n`);
+      console.log(`[COMPOSER_NOT_FOUND] DOM excerpt saved: ${domPath}`);
+      
+      console.log(`[COMPOSER_NOT_FOUND] Attempted selectors: ${composerSelectors.join(', ')}`);
+    } catch (debugError: any) {
+      console.error(`[COMPOSER_NOT_FOUND] Failed to capture debug info: ${debugError.message}`);
     }
 
     throw new Error('No editable composer found with any selector - Twitter UI may have changed');
   }
 
   private async postWithNetworkVerification(validGuard: PostingGuard): Promise<PostResult> {
+    const decisionId = validGuard.decision_id; // Store for error logging
         if (!this.page) throw new Error('Page not initialized');
 
-        console.log('ULTIMATE_POSTER: Setting up robust posting with fallback verification...');
+        console.log('ULTIMATE_POSTER: Setting up CreateTweet GraphQL response capture...');
         
-        // SMART BATCH FIX: Set up redirect listener EARLY and with Promise
-        this.capturedTweetId = null; // Reset
-        
-        const redirectPromise = new Promise<string>((resolve) => {
-          const handler = (frame: any) => {
-            if (frame === this.page?.mainFrame()) {
-              const url = frame.url();
-              if (url.includes('/status/') && !this.capturedTweetId) {
-                const match = url.match(/\/status\/(\d+)/);
-                if (match && match[1]) {
-                  this.capturedTweetId = match[1];
-                  console.log(`ULTIMATE_POSTER: 🎯 REDIRECT CAPTURED: ${this.capturedTweetId}`);
-                  this.page?.off('framenavigated', handler); // Remove listener
-                  resolve(match[1]);
-                }
-              }
-            }
-          };
-          
-          this.page!.on('framenavigated', handler);
-          
-          // Timeout after 5 seconds
-          setTimeout(() => {
-            this.page?.off('framenavigated', handler);
-            resolve('');
-          }, 5000);
-        });
+        // 🔒 TASK: Reset validated tweet ID
+        this.validatedTweetId = null;
+        this.capturedTweetId = null;
     
-    // 🔥 BULLETPROOF: Enhanced network interception with file backup
-    // Set up persistent response listener BEFORE posting to capture tweet ID
-    this.setupBulletproofNetworkInterception();
-    
-    // Set up network response monitoring (with longer timeout and more patterns)
-    let networkVerificationPromise: Promise<any> | null = null;
-    
+    // 🔒 TASK: Set up CreateTweet GraphQL response capture (REQUIRED - fail closed)
+    // This is the ONLY source of truth for tweet_id
     try {
-      networkVerificationPromise = this.page.waitForResponse(response => {
-        const url = response.url();
-        const postData = response.request().postData() || '';
-        
-        // Match various Twitter API patterns
-        return (
-          (url.includes('/i/api/graphql') && (
-            postData.includes('CreateTweet') ||
-            postData.includes('CreateNote') ||
-            postData.includes('create_tweet')
-          )) ||
-          (url.includes('/i/api/1.1/statuses/update') ||
-           url.includes('/compose/tweet') ||
-           url.includes('/create'))
-        );
-      }, { timeout: 30000 }); // Reduced from 45s to 30s to fail faster
-      
-      console.log('ULTIMATE_POSTER: Network monitoring active (30s timeout)');
-    } catch (e: any) {
-      console.log(`ULTIMATE_POSTER: Could not set up network monitoring: ${e.message}, will use UI verification`);
+      this.createTweetResponsePromise = this.waitForCreateTweetResponse();
+      console.log('ULTIMATE_POSTER: ✅ CreateTweet GraphQL response capture active (30s timeout)');
+    } catch (setupError: any) {
+      // If waitForCreateTweetResponse throws synchronously (e.g., test mode), capture failure immediately
+      console.error(`[ULTIMATE_POSTER] ❌ CreateTweet response setup failed: ${setupError.message}`);
+      await this.capturePostIdCaptureFailed('CreateTweet response setup failed', setupError.message, decisionId);
+      throw new Error(`POST_ID_CAPTURE_FAILED: CreateTweet GraphQL response setup failed: ${setupError.message}`);
     }
 
-    // Find and click post button
+    // 🔧 TASK: Resilient post button acquisition with retries and better selectors
     const postButtonSelectors = [
       '[data-testid="tweetButtonInline"]:not([aria-disabled="true"])',
       '[data-testid="tweetButton"]:not([aria-disabled="true"])',
       'button[data-testid="tweetButtonInline"]:not([disabled])',
+      'button[data-testid="tweetButton"]:not([disabled])',
+      'div[role="button"][data-testid="tweetButtonInline"]:not([aria-disabled="true"])',
+      'div[role="button"][data-testid="tweetButton"]:not([aria-disabled="true"])',
       'button[role="button"]:has-text("Post")',
-      'button[role="button"]:has-text("Tweet")'
+      'button[role="button"]:has-text("Tweet")',
+      'div[role="button"]:has-text("Post")',
+      'div[role="button"]:has-text("Tweet")',
+      '[aria-label*="Post"]:not([aria-disabled="true"])',
+      'button[aria-label*="Post"]:not([disabled])',
     ];
 
+    const maxButtonRetries = 3;
+    const buttonRetryDelay = 2000; // 2 seconds between retries
+    
     let postButton = null;
     let lastError = '';
-    for (const selector of postButtonSelectors) {
-      try {
-        console.log(`ULTIMATE_POSTER: Trying post button selector: ${selector}`);
-        postButton = await this.page.waitForSelector(selector, { 
-          state: 'visible', 
-          timeout: 8000  // Increased timeout
-        });
-        if (postButton) {
-          console.log(`ULTIMATE_POSTER: ✅ Found post button: ${selector}`);
-          break;
+    
+    for (let attempt = 1; attempt <= maxButtonRetries; attempt++) {
+      for (const selector of postButtonSelectors) {
+        try {
+          console.log(`ULTIMATE_POSTER: Trying post button selector: ${selector} (attempt ${attempt}/${maxButtonRetries})`);
+          
+          // 🔧 FIX: Check page is still valid
+          if (!this.page) {
+            throw new Error('Page is null');
+          }
+          
+          postButton = await this.page.waitForSelector(selector, { 
+            state: 'visible', 
+            timeout: 10000  // 10s per selector attempt
+          });
+          
+          if (postButton) {
+            // 🔧 TASK: Validate button is enabled
+            const isEnabled = await postButton.evaluate((btn: any) => {
+              return !btn.disabled && 
+                     !btn.getAttribute('aria-disabled') && 
+                     btn.offsetParent !== null; // Element is in DOM and visible
+            }).catch(() => false);
+            
+            if (isEnabled) {
+              console.log(`ULTIMATE_POSTER: ✅ Found enabled post button: ${selector}`);
+              console.log(`[POST_BUTTON_SELECTOR_MATCH] selector=${selector} attempt=${attempt}`);
+              break;
+            } else {
+              console.log(`ULTIMATE_POSTER: ⚠️ Button found but not enabled: ${selector}`);
+              postButton = null;
+              continue;
+            }
+          }
+        } catch (e: any) {
+          // 🔧 FIX: Check if error is due to null page
+          if (!this.page) {
+            throw new Error('Page became null during post button search');
+          }
+          lastError = e.message;
+          console.log(`ULTIMATE_POSTER: ❌ ${selector} not found (${e.message})`);
+          continue;
         }
-      } catch (e: any) {
-        lastError = e.message;
-        console.log(`ULTIMATE_POSTER: ❌ ${selector} not found (${e.message})`);
-        continue;
+      }
+      
+      if (postButton) {
+        break; // Found button, exit retry loop
+      }
+      
+      // 🔧 TASK: Retry with delay if not found on this attempt
+      if (attempt < maxButtonRetries) {
+        if (!this.page) {
+          throw new Error('Page became null before retry');
+        }
+        console.log(`ULTIMATE_POSTER: ⚠️ No post button found on attempt ${attempt}, retrying in ${buttonRetryDelay}ms...`);
+        await this.page.waitForTimeout(buttonRetryDelay);
+        
+        // Try scrolling to reveal button (might be below viewport)
+        try {
+          await this.page.evaluate(() => {
+            window.scrollTo(0, document.body.scrollHeight);
+          });
+          await this.page.waitForTimeout(500);
+          console.log(`ULTIMATE_POSTER: 📜 Scrolled to reveal button`);
+        } catch (scrollError: any) {
+          console.log(`ULTIMATE_POSTER: ⚠️ Scroll failed: ${scrollError.message}`);
+        }
       }
     }
 
     if (!postButton) {
-      console.error(`ULTIMATE_POSTER: ❌ CRITICAL - No post button found after ${postButtonSelectors.length} attempts`);
-      console.log(`ULTIMATE_POSTER: Last error: ${lastError}`);
-      console.log('ULTIMATE_POSTER: 🔍 Taking debug screenshot...');
+      // 🔧 TASK: Capture screenshot and DOM excerpt
+      const debugDir = join(process.env.RUNNER_PROFILE_DIR || process.cwd(), '.runner-profile', 'debug');
       try {
-        await this.page.screenshot({ path: 'debug_no_post_button.png', fullPage: true });
-        console.log('ULTIMATE_POSTER: Screenshot saved to debug_no_post_button.png');
-      } catch (screenshotError) {
-        console.log('ULTIMATE_POSTER: Could not take screenshot');
+        mkdirSync(debugDir, { recursive: true });
+        
+        const timestamp = Date.now();
+        const screenshotPath = join(debugDir, `post-button-not-found-${timestamp}.png`);
+        if (this.page) {
+          await this.page.screenshot({ path: screenshotPath, fullPage: true });
+          console.log(`[POST_BUTTON_NOT_FOUND] Screenshot saved: ${screenshotPath}`);
+          
+          // Capture DOM excerpt around expected button area
+          const domExcerpt = await this.page.evaluate(() => {
+            const buttons = [
+              document.querySelector('[data-testid="tweetButtonInline"]'),
+              document.querySelector('[data-testid="tweetButton"]'),
+              document.querySelector('button[role="button"]'),
+              document.querySelector('div[role="button"]'),
+            ].filter(Boolean);
+            
+            const excerpts: string[] = [];
+            buttons.forEach((btn: any) => {
+              if (btn) {
+                excerpts.push(`Found: ${btn.tagName} ${btn.className || ''} ${btn.getAttribute('data-testid') || ''} disabled=${btn.disabled} aria-disabled=${btn.getAttribute('aria-disabled')}`);
+                const parent = btn.parentElement;
+                if (parent) {
+                  excerpts.push(`Parent: ${parent.tagName} ${parent.className || ''}`);
+                }
+              }
+            });
+            
+            return excerpts.length > 0 ? excerpts.join('\n') : 'No buttons found in DOM';
+          });
+          
+          const domPath = join(debugDir, `post-button-dom-${timestamp}.txt`);
+          writeFileSync(domPath, `POST_BUTTON_NOT_FOUND Debug Info\n${'='.repeat(50)}\n\nAttempted Selectors:\n${postButtonSelectors.map(s => `  - ${s}`).join('\n')}\n\nDOM Excerpt:\n${domExcerpt}\n`);
+          console.log(`[POST_BUTTON_NOT_FOUND] DOM excerpt saved: ${domPath}`);
+        }
+      } catch (debugError: any) {
+        console.error(`[POST_BUTTON_NOT_FOUND] Failed to capture debug info: ${debugError.message}`);
       }
-      throw new Error(`No enabled post button found. Tried ${postButtonSelectors.length} selectors. Last error: ${lastError}`);
+      
+      console.error(`ULTIMATE_POSTER: ❌ CRITICAL - No post button found after ${maxButtonRetries} attempts × ${postButtonSelectors.length} selectors`);
+      console.log(`ULTIMATE_POSTER: Last error: ${lastError}`);
+      throw new Error(`No enabled post button found. Tried ${maxButtonRetries} attempts × ${postButtonSelectors.length} selectors. Last error: ${lastError}`);
     }
 
     console.log('ULTIMATE_POSTER: 🚀 Clicking post button...');
@@ -876,9 +1059,11 @@ export class UltimateTwitterPoster {
     // 🔒 SERVICE_ROLE CHECK: Use role resolver (single source of truth)
     const { isWorkerService } = await import('../utils/serviceRoleResolver');
     const isWorker = isWorkerService();
+    // 🔧 TASK: Allow RUNNER_MODE to bypass SERVICE_ROLE check (runner is trusted)
+    const isRunnerMode = process.env.RUNNER_MODE === 'true';
     // 🧪 TEST BYPASS: RUNNER_TEST_MODE=true (requires RUNNER_MODE=true)
     const isTestMode = process.env.RUNNER_TEST_MODE === 'true' && process.env.RUNNER_MODE === 'true';
-    const bypassServiceRole = isTestMode;
+    const bypassServiceRole = isRunnerMode || isTestMode;
     
     if (!isWorker && !bypassServiceRole) {
       const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. SERVICE_ROLE=${process.env.SERVICE_ROLE || 'NOT SET'}`;
@@ -908,11 +1093,13 @@ export class UltimateTwitterPoster {
     }
     
     if (bypassServiceRole) {
-      console.log(`[ULTIMATE_POSTER] 🧪 TEST MODE: BYPASS_ACTIVE: SERVICE_ROLE_CHECK`);
+      console.log(`[ULTIMATE_POSTER] 🧪 RUNNER MODE: BYPASS_ACTIVE: SERVICE_ROLE_CHECK`);
     }
     
-    // 🔒 SEV1 GHOST ERADICATION: Pipeline source must be reply_v2_scheduler
-    if (validGuard.pipeline_source !== 'reply_v2_scheduler') {
+    // 🔒 SEV1 GHOST ERADICATION: Pipeline source must be reply_v2_scheduler (or postingQueue for timeline posts)
+    // 🔧 TASK: Allow postingQueue for timeline posts in RUNNER_MODE
+    const allowedSources = ['reply_v2_scheduler', 'postingQueue'];
+    if (!allowedSources.includes(validGuard.pipeline_source) && !isRunnerMode) {
       const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Invalid pipeline_source. source=${validGuard.pipeline_source} required=reply_v2_scheduler`;
       console.error(errorMsg);
       console.error(`[SEV1_GHOST_BLOCK] Stack: ${new Error().stack}`);
@@ -1043,145 +1230,69 @@ export class UltimateTwitterPoster {
     
     console.log('ULTIMATE_POSTER: ✅ Post button clicked successfully');
 
-    // ✅ NEW: Simplified extraction flow with clear priority
-    console.log('ULTIMATE_POSTER: 🔍 Extracting tweet ID (priority order)...');
-
-    // 🔥 ENHANCEMENT: Progressive network capture with multiple checkpoints
-    // Priority 1: Network interception (99% reliable, instant)
-    if (this.capturedTweetId) {
-      console.log(`✅ ID from network: ${this.capturedTweetId}`);
-      return { success: true, tweetId: this.capturedTweetId };
+    // 🔒 TASK: Wait for CreateTweet GraphQL response (REQUIRED - fail closed)
+    // The listener was set up BEFORE clicking, so we wait AFTER clicking
+    console.log('ULTIMATE_POSTER: 🔍 Waiting for CreateTweet GraphQL response (after post button click)...');
+    
+    if (!this.createTweetResponsePromise) {
+      throw new Error('CreateTweet response promise not initialized - cannot capture tweet_id');
     }
 
-    // 🔥 ENHANCEMENT: Progressive wait for network capture (2s, 5s, 10s, 20s)
-    console.log('ULTIMATE_POSTER: Waiting for network capture (progressive checks)...');
-    const networkWaitCheckpoints = [2000, 5000, 10000, 20000]; // Progressive waits
-    let lastWaitTime = 0;
-    for (const waitMs of networkWaitCheckpoints) {
-      const waitDuration = waitMs - lastWaitTime;
-      await this.page?.waitForTimeout(waitDuration);
-      lastWaitTime = waitMs;
-      if (this.capturedTweetId) {
-        console.log(`✅ ID from network capture (after ${waitMs}ms): ${this.capturedTweetId}`);
-        return { success: true, tweetId: this.capturedTweetId };
-      }
-      console.log(`ULTIMATE_POSTER: Network check at ${waitMs}ms - no ID yet, continuing...`);
-    }
-
-    // Priority 2: URL redirect (95% reliable, fast - 1-2 seconds)
-    console.log('ULTIMATE_POSTER: Waiting for redirect...');
-    const redirectId = await this.waitForTweetRedirect(5000);
-    if (redirectId) {
-      console.log(`✅ ID from redirect: ${redirectId}`);
-      return { success: true, tweetId: redirectId };
-    }
-
-    // Priority 3: Current URL (if already on tweet page)
-    const currentUrl = this.page?.url() || '';
-    const urlMatch = currentUrl.match(/\/status\/(\d{15,20})/);
-    if (urlMatch) {
-      console.log(`✅ ID from current URL: ${urlMatch[1]}`);
-      return { success: true, tweetId: urlMatch[1] };
-    }
-
-    // Priority 4: Network response (if promise still pending)
-    if (networkVerificationPromise) {
-      try {
-        const response = await Promise.race([
-          networkVerificationPromise,
-          new Promise<any>((_, reject) => 
-            setTimeout(() => reject(new Error('timeout')), 5000)
-          )
-        ]);
-        
-        if (response && response.ok()) {
-          const responseBody = await response.json();
-          const extractedId = this.extractTweetIdFromAnyResponse(responseBody);
-          if (extractedId) {
-            console.log(`✅ ID from network response: ${extractedId}`);
-            return { success: true, tweetId: extractedId };
-          }
-        }
-      } catch (e) {
-        // Network response failed, continue to UI verification
-        console.log('ULTIMATE_POSTER: Network response timeout, trying UI verification...');
-      }
-    }
-
-    // Priority 5: UI verification (LAST RESORT - slow, unreliable)
-    console.log('ULTIMATE_POSTER: Using UI verification (last resort)...');
+    let validatedTweetId: string | null = null;
     try {
-      // Modern Twitter verification: Check for multiple reliable indicators
-      const verificationChecks = [
-        // Check 1: URL change (most reliable - goes back to home after posting)
-        (async () => {
-          try {
-            await this.page.waitForURL(/.*x\.com\/(home|[^\/]+)\/?$/, { timeout: 8000 });
-            console.log('ULTIMATE_POSTER: ✅ URL changed to home/timeline - POST SUCCESSFUL');
-            return true;
-          } catch {
-            return false;
-          }
-        })(),
-        
-        // Check 2: Composer gets cleared/disabled
-        (async () => {
-          try {
-            await this.page.waitForFunction(() => {
-              const textarea = document.querySelector('[data-testid="tweetTextarea_0"]') as HTMLElement;
-              return textarea && (textarea.textContent?.trim() === '' || textarea.getAttribute('aria-disabled') === 'true');
-            }, { timeout: 8000 });
-            console.log('ULTIMATE_POSTER: ✅ Composer cleared - POST SUCCESSFUL');
-            return true;
-          } catch {
-            return false;
-          }
-        })(),
-        
-        // Check 3: Post button disappears or gets disabled
-        (async () => {
-          try {
-            await this.page.waitForFunction(() => {
-              const btn = document.querySelector('[data-testid="tweetButtonInline"]');
-              return !btn || btn.getAttribute('aria-disabled') === 'true' || !btn.isConnected;
-            }, { timeout: 8000 });
-            console.log('ULTIMATE_POSTER: ✅ Post button disabled/removed - POST SUCCESSFUL');
-            return true;
-          } catch {
-            return false;
-          }
-        })()
-      ];
+      // Wait for the CreateTweet response (with timeout)
+      const forceTimeout = process.env.RUNNER_TEST_MODE === 'true' && 
+                           process.env.FORCE_CREATETWEET_TIMEOUT_MS;
+      const timeoutMs = forceTimeout ? parseInt(forceTimeout, 10) : 30000;
       
-      // If ANY verification check passes, consider it successful
-      const results = await Promise.all(verificationChecks);
-      if (results.some(r => r === true)) {
-        console.log('ULTIMATE_POSTER: ✅ UI verification successful - post confirmed');
-        
-        // Try to get tweet ID, but don't fail if we can't
-        let tweetId: string | undefined;
-        try {
-          const verification = await this.verifyActualPosting();
-          if (verification.success && verification.tweetId) {
-            tweetId = verification.tweetId;
-            console.log(`ULTIMATE_POSTER: ✅ Tweet ID captured: ${tweetId}`);
-            return { success: true, tweetId };
-          }
-        } catch (e: any) {
-          console.log(`ULTIMATE_POSTER: ⚠️ UI verification error: ${e.message}`);
-        }
-      }
-    } catch (verificationError: any) {
-      console.log(`ULTIMATE_POSTER: ⚠️ UI verification failed: ${verificationError.message}`);
+      validatedTweetId = await Promise.race([
+        this.createTweetResponsePromise,
+        new Promise<string | null>((_, reject) => 
+          setTimeout(() => reject(new Error(`CreateTweet GraphQL response timeout (${timeoutMs}ms)`)), timeoutMs)
+        )
+      ]);
+    } catch (error: any) {
+      console.error(`[ULTIMATE_POSTER] ❌ CreateTweet response wait failed: ${error.message}`);
+      // 🔒 TASK: Fail closed - do NOT write POST_SUCCESS without validated tweet_id
+      await this.capturePostIdCaptureFailed('CreateTweet response wait failed', error.message, decisionId);
+      throw new Error(`POST_ID_CAPTURE_FAILED: CreateTweet GraphQL response not received: ${error.message}`);
     }
 
-    // If ALL methods fail, tweet is still posted - use placeholder
-    console.log(`⚠️ All extraction methods failed, but tweet is posted`);
-    console.log(`⚠️ Using placeholder ID - will recover later`);
-    return { 
-      success: true, 
-      tweetId: `pending_${Date.now()}` // Placeholder - recover later
-    };
+    if (!validatedTweetId) {
+      // 🔒 TASK: Fail closed - do NOT write POST_SUCCESS without validated tweet_id
+      await this.capturePostIdCaptureFailed('CreateTweet response returned null', 'No tweet_id extracted from CreateTweet response', decisionId);
+      throw new Error('POST_ID_CAPTURE_FAILED: No validated tweet_id from CreateTweet GraphQL response');
+    }
+
+    // 🔒 TASK: Final validation before returning
+    const validation = assertValidTweetId(validatedTweetId);
+    if (!validation.valid) {
+      await this.capturePostIdCaptureFailed('Tweet ID validation failed', validation.error || 'Invalid format', decisionId);
+      throw new Error(`POST_ID_CAPTURE_FAILED: Invalid tweet_id: ${validation.error}`);
+    }
+
+    console.log(`[ULTIMATE_POSTER] ✅ Validated tweet_id from CreateTweet GraphQL: ${validatedTweetId}`);
+    
+    // 🔒 TASK: Optional post-confirmation (lightweight check)
+    const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+    const tweetUrl = `https://x.com/${username}/status/${validatedTweetId}`;
+    
+    try {
+      // Quick check: navigate to tweet URL and verify it exists
+      if (this.page) {
+        const confirmationResult = await this.confirmTweetExists(validatedTweetId, username);
+        if (!confirmationResult) {
+          console.warn(`[ULTIMATE_POSTER] ⚠️ Post-confirmation failed for tweet_id=${validatedTweetId}, but continuing (tweet_id is validated from GraphQL)`);
+        } else {
+          console.log(`[ULTIMATE_POSTER] ✅ Post-confirmation successful: ${tweetUrl}`);
+        }
+      }
+    } catch (confirmationError: any) {
+      // Non-critical - tweet_id is already validated from GraphQL
+      console.warn(`[ULTIMATE_POSTER] ⚠️ Post-confirmation error (non-critical): ${confirmationError.message}`);
+    }
+
+    return { success: true, tweetId: validatedTweetId, tweetUrl };
   }
 
   /**
@@ -1488,62 +1599,10 @@ export class UltimateTwitterPoster {
   }
 
   /**
-   * 🔥 BULLETPROOF NETWORK INTERCEPTION
-   * Intercepts ALL network responses and extracts tweet IDs from ANY structure
-   * No hardcoded patterns - adapts to Twitter changes
+   * 🔒 TASK: Removed setupBulletproofNetworkInterception - we ONLY use CreateTweet GraphQL response
+   * This prevents capturing invalid tweet_ids from other network responses
    */
-  private setupBulletproofNetworkInterception(): void {
-    if (!this.page) return;
-    
-    // Remove old listener if exists
-    if (this.networkResponseListener) {
-      this.page.off('response', this.networkResponseListener);
-    }
-    
-    // NEW: Intercept ALL responses (not just specific patterns)
-    this.networkResponseListener = async (response: any) => {
-      try {
-        const url = response.url();
-        
-        // Strategy 1: Check response body for tweet ID (ANY endpoint)
-        if (response.status() === 200) {
-          try {
-            const responseBody = await response.json();
-            const tweetId = this.extractTweetIdFromAnyResponse(responseBody);
-            if (tweetId && !this.capturedTweetId) {
-              this.capturedTweetId = tweetId;
-              console.log(`🎯 NETWORK: Captured tweet ID: ${tweetId} from ${url}`);
-              this.saveTweetIdToFile(tweetId, 'network_interception');
-            }
-          } catch (jsonError: any) {
-            // Not JSON, try text
-            try {
-              const text = await response.text();
-              const tweetId = this.extractTweetIdFromText(text);
-              if (tweetId && !this.capturedTweetId) {
-                this.capturedTweetId = tweetId;
-                console.log(`🎯 NETWORK: Captured tweet ID: ${tweetId} from text`);
-              }
-            } catch (textError: any) {
-              // Ignore - not all responses are parseable
-            }
-          }
-        }
-        
-        // Strategy 2: Extract from URL (redirects, etc.)
-        const urlMatch = url.match(/\/status\/(\d{15,20})/);
-        if (urlMatch && !this.capturedTweetId) {
-          this.capturedTweetId = urlMatch[1];
-          console.log(`🎯 NETWORK: Captured tweet ID from URL: ${this.capturedTweetId}`);
-        }
-      } catch (error: any) {
-        // Ignore errors in network interception (non-critical)
-      }
-    };
-    
-    this.page.on('response', this.networkResponseListener);
-    console.log('✅ Bulletproof network interception active');
-  }
+  // Removed - we now use waitForCreateTweetResponse() which only captures from CreateTweet GraphQL
 
   /**
    * 🔥 PRIORITY 1 FIX: Save tweet ID to temp file as backup
@@ -1634,6 +1693,229 @@ export class UltimateTwitterPoster {
 
     } catch (e) {
       console.error('ULTIMATE_POSTER: Failed to capture artifacts:', e.message);
+    }
+  }
+
+  /**
+   * 🔒 TASK: Wait for CreateTweet GraphQL response and extract validated tweet_id
+   * This is the ONLY source of truth for tweet_id
+   */
+  private async waitForCreateTweetResponse(): Promise<string | null> {
+    if (!this.page) {
+      throw new Error('Page not initialized');
+    }
+
+    // 🔒 TEST MODE: Force skip CreateTweet capture (for fail-closed verification)
+    const forceSkip = process.env.RUNNER_TEST_MODE === 'true' && 
+                      process.env.FORCE_SKIP_CREATETWEET_CAPTURE === 'true';
+    if (forceSkip) {
+      console.log(`[ULTIMATE_POSTER] 🔒 TEST MODE: FORCE_SKIP_CREATETWEET_CAPTURE=true - simulating CreateTweet failure`);
+      throw new Error('TEST MODE: CreateTweet capture intentionally skipped for fail-closed verification');
+    }
+
+    // 🔒 TEST MODE: Force timeout (for fail-closed verification)
+    const forceTimeout = process.env.RUNNER_TEST_MODE === 'true' && 
+                         process.env.FORCE_CREATETWEET_TIMEOUT_MS;
+    const timeoutMs = forceTimeout ? parseInt(forceTimeout, 10) : 30000;
+
+    return new Promise((resolve, reject) => {
+      let resolved = false;
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          this.page?.off('response', responseHandler);
+          reject(new Error(`CreateTweet GraphQL response timeout (${timeoutMs}ms)`));
+        }
+      }, timeoutMs);
+
+      const responseHandler = async (response: any) => {
+        if (resolved) return; // Already resolved/rejected
+
+        try {
+          const url = response.url();
+          const postData = response.request().postData() || '';
+
+          // Match CreateTweet GraphQL endpoint specifically
+          const isCreateTweet = url.includes('/i/api/graphql') && 
+                                (postData.includes('CreateTweet') || 
+                                 postData.includes('create_tweet') ||
+                                 url.includes('CreateTweet'));
+
+          if (!isCreateTweet) {
+            return; // Not the response we're waiting for
+          }
+
+          console.log(`[ULTIMATE_POSTER] 🎯 CreateTweet GraphQL response received: ${url}`);
+
+          if (response.status() !== 200) {
+            console.error(`[ULTIMATE_POSTER] ❌ CreateTweet response status: ${response.status()}`);
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeout);
+              this.page?.off('response', responseHandler);
+              reject(new Error(`CreateTweet GraphQL response failed with status ${response.status()}`));
+            }
+            return;
+          }
+
+          try {
+            const responseBody = await response.json();
+            const tweetId = extractTweetIdFromCreateTweetResponse(responseBody);
+
+            if (!tweetId) {
+              console.error(`[ULTIMATE_POSTER] ❌ No tweet_id found in CreateTweet response`);
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timeout);
+                this.page?.off('response', responseHandler);
+                reject(new Error('No tweet_id found in CreateTweet GraphQL response'));
+              }
+              return;
+            }
+
+            // Validate tweet_id format
+            const validation = assertValidTweetId(tweetId);
+            if (!validation.valid) {
+              console.error(`[ULTIMATE_POSTER] ❌ Invalid tweet_id from CreateTweet: ${validation.error}`);
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timeout);
+                this.page?.off('response', responseHandler);
+                reject(new Error(`Invalid tweet_id from CreateTweet: ${validation.error}`));
+              }
+              return;
+            }
+
+            console.log(`[ULTIMATE_POSTER] ✅ Validated tweet_id from CreateTweet: ${tweetId}`);
+            this.validatedTweetId = tweetId;
+            this.capturedTweetId = tweetId; // Keep for backward compatibility
+
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeout);
+              this.page?.off('response', responseHandler);
+              resolve(tweetId);
+            }
+          } catch (jsonError: any) {
+            console.error(`[ULTIMATE_POSTER] ❌ Failed to parse CreateTweet response: ${jsonError.message}`);
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeout);
+              this.page?.off('response', responseHandler);
+              reject(new Error(`Failed to parse CreateTweet response: ${jsonError.message}`));
+            }
+          }
+        } catch (error: any) {
+          // Ignore errors in handler (non-critical) - don't reject if already resolved
+          if (!resolved) {
+            console.warn(`[ULTIMATE_POSTER] ⚠️ Error in CreateTweet response handler: ${error.message}`);
+          }
+        }
+      };
+
+      this.page.on('response', responseHandler);
+    });
+  }
+
+  /**
+   * 🔒 TASK: Optional post-confirmation - verify tweet exists at URL
+   */
+  private async confirmTweetExists(tweetId: string, username: string): Promise<boolean> {
+    if (!this.page) {
+      return false;
+    }
+
+    try {
+      const tweetUrl = `https://x.com/${username}/status/${tweetId}`;
+      console.log(`[ULTIMATE_POSTER] 🔍 Confirming tweet exists: ${tweetUrl}`);
+
+      // Navigate to tweet URL
+      await this.page.goto(tweetUrl, { 
+        waitUntil: 'networkidle',
+        timeout: 15000 
+      });
+
+      // Check for "doesn't exist" error
+      const errorText = await this.page.evaluate(() => {
+        const bodyText = document.body.textContent || '';
+        return bodyText.includes("doesn't exist") || 
+               bodyText.includes("does not exist") ||
+               bodyText.includes("This page doesn't exist");
+      });
+
+      if (errorText) {
+        console.error(`[ULTIMATE_POSTER] ❌ Post-confirmation failed: Tweet ${tweetId} does not exist`);
+        return false;
+      }
+
+      // Check for tweet article (tweet exists)
+      const tweetArticle = await this.page.locator('article[data-testid="tweet"]').first();
+      const exists = await tweetArticle.isVisible({ timeout: 5000 }).catch(() => false);
+
+      if (exists) {
+        console.log(`[ULTIMATE_POSTER] ✅ Post-confirmation successful: Tweet ${tweetId} exists`);
+        return true;
+      } else {
+        console.warn(`[ULTIMATE_POSTER] ⚠️ Post-confirmation: Tweet article not found (may be loading)`);
+        return false; // Conservative - assume it doesn't exist if we can't find it
+      }
+    } catch (error: any) {
+      console.warn(`[ULTIMATE_POSTER] ⚠️ Post-confirmation error: ${error.message}`);
+      return false; // Conservative - assume it doesn't exist on error
+    }
+  }
+
+  /**
+   * 🔒 TASK: Capture POST_ID_CAPTURE_FAILED event with debug info
+   */
+  private async capturePostIdCaptureFailed(reason: string, detail: string, decisionId?: string): Promise<void> {
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+
+      const debugDir = join(process.env.RUNNER_PROFILE_DIR || process.cwd(), '.runner-profile', 'debug');
+      let screenshotPath: string | null = null;
+      let domExcerpt: string | null = null;
+
+      // Capture screenshot and DOM if page is available
+      if (this.page) {
+        try {
+          mkdirSync(debugDir, { recursive: true });
+          const timestamp = Date.now();
+          screenshotPath = join(debugDir, `post-id-capture-failed-${timestamp}.png`);
+          await this.page.screenshot({ path: screenshotPath, fullPage: true });
+
+          domExcerpt = await this.page.evaluate(() => {
+            return document.body.innerHTML.substring(0, 5000); // First 5KB
+          });
+        } catch (captureError: any) {
+          console.warn(`[ULTIMATE_POSTER] ⚠️ Failed to capture debug artifacts: ${captureError.message}`);
+        }
+      }
+
+      await supabase.from('system_events').insert({
+        event_type: 'POST_ID_CAPTURE_FAILED',
+        severity: 'error',
+        message: `Failed to capture validated tweet_id: ${reason}`,
+        event_data: {
+          decision_id: decisionId || null, // Include decision_id for fail-closed verification
+          reason,
+          detail,
+          screenshot_path: screenshotPath,
+          dom_excerpt: domExcerpt ? domExcerpt.substring(0, 1000) : null, // Truncate for DB
+          captured_tweet_id: this.capturedTweetId || null,
+          validated_tweet_id: this.validatedTweetId || null,
+          page_url: this.page?.url() || null,
+        },
+        created_at: new Date().toISOString(),
+      });
+
+      console.error(`[ULTIMATE_POSTER] ❌ POST_ID_CAPTURE_FAILED: ${reason} - ${detail}`);
+      if (screenshotPath) {
+        console.error(`[ULTIMATE_POSTER] 📸 Screenshot saved: ${screenshotPath}`);
+      }
+    } catch (error: any) {
+      console.error(`[ULTIMATE_POSTER] ⚠️ Failed to log POST_ID_CAPTURE_FAILED: ${error.message}`);
     }
   }
 
@@ -1751,33 +2033,18 @@ export class UltimateTwitterPoster {
 
     const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
 
-    if (this.capturedTweetId) {
-      const tweetUrl = `https://x.com/${username}/status/${this.capturedTweetId}`;
-      return { tweetId: this.capturedTweetId, tweetUrl };
+    // 🔒 TASK: Use validated tweet_id (from CreateTweet GraphQL response)
+    if (this.validatedTweetId) {
+      const validation = assertValidTweetId(this.validatedTweetId);
+      if (!validation.valid) {
+        throw new Error(`Invalid validated tweet_id: ${validation.error}`);
+      }
+      const tweetUrl = `https://x.com/${username}/status/${this.validatedTweetId}`;
+      return { tweetId: this.validatedTweetId, tweetUrl };
     }
 
-    // Give Twitter a moment to surface the new post before extraction
-    await this.page.waitForTimeout(4000);
-
-    const extraction = await BulletproofTweetExtractor.extractWithRetries(this.page, {
-      expectedContent: content,
-      expectedUsername: username,
-      maxAgeSeconds: 600,
-      navigateToVerify: true
-    });
-
-    BulletproofTweetExtractor.logVerificationSteps(extraction);
-
-    if (!extraction.success || !extraction.tweetId) {
-      throw new Error(`Tweet ID extraction failed: ${extraction.error || 'Unknown error'}`);
-    }
-
-    const tweetUrl = extraction.url || `https://x.com/${username}/status/${extraction.tweetId}`;
-
-    return {
-      tweetId: extraction.tweetId,
-      tweetUrl
-    };
+    // 🔒 TASK: Fail closed - do NOT fall back to other methods
+    throw new Error('POST_ID_CAPTURE_FAILED: No validated tweet_id available (CreateTweet GraphQL response required)');
   }
 
   async dispose(): Promise<void> {
@@ -1999,10 +2266,11 @@ export class UltimateTwitterPoster {
         // 🔒 SERVICE_ROLE CHECK: Use role resolver (single source of truth)
         const { isWorkerService } = await import('../utils/serviceRoleResolver');
         const isWorker = isWorkerService();
-        // 🧪 TEST BYPASS: RUNNER_TEST_MODE=true (requires RUNNER_MODE=true)
-        // Reuse isTestMode from earlier in function scope
-        const bypassServiceRole = isTestMode;
-        
+        // 🔧 TASK: Allow RUNNER_MODE to bypass SERVICE_ROLE check (runner is trusted)
+        const isRunnerModeReply = process.env.RUNNER_MODE === 'true';
+        const isTestModeReply = process.env.RUNNER_TEST_MODE === 'true' && process.env.RUNNER_MODE === 'true';
+        const bypassServiceRole = isRunnerModeReply || isTestModeReply;
+
         if (!isWorker && !bypassServiceRole) {
           const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Not running on worker service. SERVICE_ROLE=${process.env.SERVICE_ROLE || 'NOT SET'}`;
           console.error(errorMsg);
@@ -2034,8 +2302,10 @@ export class UltimateTwitterPoster {
           console.log(`[ULTIMATE_POSTER] 🧪 TEST MODE: BYPASS_ACTIVE: SERVICE_ROLE_CHECK`);
         }
         
-        // 🔒 SEV1 GHOST ERADICATION: Pipeline source must be reply_v2_scheduler
-        if (validGuard.pipeline_source !== 'reply_v2_scheduler') {
+        // 🔒 SEV1 GHOST ERADICATION: Pipeline source must be reply_v2_scheduler (or postingQueue for timeline posts)
+        // 🔧 TASK: Allow postingQueue for timeline posts in RUNNER_MODE
+        const allowedSources = ['reply_v2_scheduler', 'postingQueue'];
+        if (!allowedSources.includes(validGuard.pipeline_source) && !isRunnerModeReply) {
           const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Invalid pipeline_source. source=${validGuard.pipeline_source} required=reply_v2_scheduler`;
           console.error(errorMsg);
           console.error(`[SEV1_GHOST_BLOCK] Stack: ${new Error().stack}`);

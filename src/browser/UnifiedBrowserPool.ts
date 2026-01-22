@@ -52,6 +52,25 @@ const DISCONNECTED_ERROR_PATTERNS = [
   'browserContext.newPage: Target page, context or browser has been closed'
 ];
 
+/**
+ * Check if CDP mode is enabled (runner mode with CDP browser)
+ * Source of truth for CDP mode detection
+ */
+function isCdpMode(): boolean {
+  const runnerMode = process.env.RUNNER_MODE === 'true';
+  const runnerBrowser = (process.env.RUNNER_BROWSER || '').toLowerCase();
+  return runnerMode && runnerBrowser === 'cdp';
+}
+
+/**
+ * Get CDP endpoint URL
+ */
+function getCdpEndpoint(): string {
+  const cdpPort = process.env.RUNNER_CDP_PORT || process.env.CDP_PORT || '9222';
+  const cdpHost = process.env.RUNNER_CDP_HOST || '127.0.0.1';
+  return `http://${cdpHost}:${cdpPort}`;
+}
+
 interface ContextHandle {
   context: BrowserContext;
   inUse: boolean;
@@ -1111,11 +1130,24 @@ export class UnifiedBrowserPool {
   /**
    * Initialize the browser instance
    * 🎯 PART 3: Instrumented with timing logs
+   * 🔧 CDP MODE: Supports connecting to CDP Chrome when RUNNER_MODE=true and RUNNER_BROWSER=cdp
    */
   private async initializeBrowser(): Promise<void> {
     const initStartTime = Date.now();
-    console.log('[BROWSER_POOL] 🚀 Initializing browser...');
     
+    // 🔧 CDP MODE: Check if we should use CDP instead of launching
+    const cdpMode = isCdpMode();
+    const cdpEndpoint = getCdpEndpoint();
+    
+    // Log mode and configuration
+    console.log(`[BROWSER_POOL] 🚀 Initializing browser...`);
+    console.log(`[BROWSER_POOL] BROWSER_POOL_MODE=${cdpMode ? 'CDP' : 'PLAYWRIGHT_LAUNCH'}`);
+    console.log(`[BROWSER_POOL] RUNNER_MODE=${process.env.RUNNER_MODE || 'not set'}`);
+    console.log(`[BROWSER_POOL] RUNNER_BROWSER=${process.env.RUNNER_BROWSER || 'not set'}`);
+    if (cdpMode) {
+      console.log(`[BROWSER_POOL] CDP_ENDPOINT=${cdpEndpoint}`);
+    }
+
     // Check if session exists in env var (Railway persistent storage)
     this.sessionLoaded = !!process.env.TWITTER_SESSION_B64;
     if (this.sessionLoaded) {
@@ -1124,70 +1156,117 @@ export class UnifiedBrowserPool {
       console.warn('[BROWSER_POOL] ⚠️ TWITTER_SESSION_B64 not found - sessions will be unauthenticated');
     }
 
-    const chromiumLaunchStart = Date.now();
-    try {
-      // Check for Railway Playwright path
-      const playwrightBrowsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH || '/ms-playwright';
-      const chromiumPath = `${playwrightBrowsersPath}/chromium_headless_shell-*/chrome-headless-shell-*/headless_shell`;
-      
-      console.log(`[BROWSER_POOL][INIT_BROWSER] calling_chromium.launch`);
-      console.log(`[BROWSER_POOL][INIT_BROWSER] PLAYWRIGHT_BROWSERS_PATH=${playwrightBrowsersPath}`);
-      
-      const launchOptions: any = {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage', // Prevent /dev/shm exhaustion (Pro plan has 32GB, multi-process is safe)
-          // ✅ REMOVED --single-process and --no-zygote to fix pthread_create exhaustion
-          // Multi-process Chromium (standard config) has no per-process thread limit
-          '--disable-gpu',
-          '--disable-web-security',
-          '--memory-pressure-off',
-          '--max_old_space_size=256', // Limit V8 heap per process (Pro plan supports multiple processes)
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-extensions',
-          '--disable-plugins',
-          // Force new headless mode for better stability
-          '--headless=new'
-        ]
-      };
-      
-      // If PLAYWRIGHT_BROWSERS_PATH is set and path exists, try to use it
-      if (process.env.PLAYWRIGHT_BROWSERS_PATH && fs.existsSync(process.env.PLAYWRIGHT_BROWSERS_PATH)) {
-        // Try to find chromium executable in the path
+    // 🔧 CDP MODE: Connect to CDP Chrome instead of launching
+    if (cdpMode) {
+      const cdpConnectStart = Date.now();
+      try {
+        console.log(`[BROWSER_POOL][INIT_BROWSER] calling_chromium.connectOverCDP`);
+        console.log(`[BROWSER_POOL][INIT_BROWSER] CDP_ENDPOINT=${cdpEndpoint}`);
+        
+        // Verify CDP is reachable before connecting
         try {
-          const chromiumDirs = fs.readdirSync(process.env.PLAYWRIGHT_BROWSERS_PATH);
-          const chromiumDir = chromiumDirs.find(d => d.startsWith('chromium'));
-          if (chromiumDir) {
-            const chromiumPath = `${process.env.PLAYWRIGHT_BROWSERS_PATH}/${chromiumDir}`;
-            const shellDirs = fs.readdirSync(chromiumPath);
-            const shellDir = shellDirs.find(d => d.includes('headless') || d.includes('chrome'));
-            if (shellDir) {
-              const executablePath = `${chromiumPath}/${shellDir}/headless_shell`;
-              if (fs.existsSync(executablePath)) {
-                launchOptions.executablePath = executablePath;
-                console.log(`[BROWSER_POOL][INIT_BROWSER] Using executablePath=${executablePath}`);
+          const http = await import('http');
+          await new Promise<void>((resolve, reject) => {
+            const req = http.get(`${cdpEndpoint}/json`, { timeout: 5000 }, (res) => {
+              res.on('data', () => {});
+              res.on('end', () => resolve());
+            });
+            req.on('error', reject);
+            req.on('timeout', () => {
+              req.destroy();
+              reject(new Error('CDP endpoint unreachable (timeout)'));
+            });
+          });
+          console.log(`[BROWSER_POOL][INIT_BROWSER] CDP endpoint verified: ${cdpEndpoint}`);
+        } catch (verifyError: any) {
+          console.error(`[BROWSER_POOL][INIT_BROWSER] ❌ CDP endpoint unreachable: ${verifyError.message}`);
+          throw new Error(`CDP endpoint unreachable at ${cdpEndpoint}: ${verifyError.message}. Ensure Chrome CDP is running (pnpm run runner:chrome-cdp)`);
+        }
+        
+        this.browser = await chromium.connectOverCDP(cdpEndpoint);
+        const cdpConnectDuration = Date.now() - cdpConnectStart;
+        console.log(`[BROWSER_POOL][INIT_BROWSER] chromium.connectOverCDP_success duration_ms=${cdpConnectDuration}`);
+        console.log(`[BROWSER_POOL][INIT_BROWSER] Connected to CDP Chrome (contexts: ${this.browser.contexts().length})`);
+      } catch (error: any) {
+        const cdpConnectDuration = Date.now() - cdpConnectStart;
+        console.log(`[BROWSER_POOL][INIT_BROWSER] chromium.connectOverCDP_failed duration_ms=${cdpConnectDuration} error=${error.message}`);
+        
+        // 🔒 FAIL CLOSED: In runner mode, do NOT fall back to launch()
+        if (process.env.RUNNER_MODE === 'true') {
+          console.error(`[BROWSER_POOL] ❌ CDP connection failed in RUNNER_MODE - failing closed (no fallback to launch)`);
+          throw new Error(`CDP connection failed in runner mode: ${error.message}. Fix CDP connection or disable RUNNER_MODE.`);
+        }
+        
+        // For non-runner mode, we could fall back, but for now we throw
+        throw error;
+      }
+    } else {
+      // Playwright launch mode (Railway/container)
+      const chromiumLaunchStart = Date.now();
+      try {
+        // Check for Railway Playwright path
+        const playwrightBrowsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH || '/ms-playwright';
+        const chromiumPath = `${playwrightBrowsersPath}/chromium_headless_shell-*/chrome-headless-shell-*/headless_shell`;
+
+        console.log(`[BROWSER_POOL][INIT_BROWSER] calling_chromium.launch`);
+        console.log(`[BROWSER_POOL][INIT_BROWSER] PLAYWRIGHT_BROWSERS_PATH=${playwrightBrowsersPath}`);
+
+        const launchOptions: any = {
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage', // Prevent /dev/shm exhaustion (Pro plan has 32GB, multi-process is safe)
+            // ✅ REMOVED --single-process and --no-zygote to fix pthread_create exhaustion
+            // Multi-process Chromium (standard config) has no per-process thread limit
+            '--disable-gpu',
+            '--disable-web-security',
+            '--memory-pressure-off',
+            '--max_old_space_size=256', // Limit V8 heap per process (Pro plan supports multiple processes)
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-extensions',
+            '--disable-plugins',
+            // Force new headless mode for better stability
+            '--headless=new'
+          ]
+        };
+
+        // If PLAYWRIGHT_BROWSERS_PATH is set and path exists, try to use it
+        if (process.env.PLAYWRIGHT_BROWSERS_PATH && fs.existsSync(process.env.PLAYWRIGHT_BROWSERS_PATH)) {
+          // Try to find chromium executable in the path
+          try {
+            const chromiumDirs = fs.readdirSync(process.env.PLAYWRIGHT_BROWSERS_PATH);
+            const chromiumDir = chromiumDirs.find(d => d.startsWith('chromium'));
+            if (chromiumDir) {
+              const chromiumPath = `${process.env.PLAYWRIGHT_BROWSERS_PATH}/${chromiumDir}`;
+              const shellDirs = fs.readdirSync(chromiumPath);
+              const shellDir = shellDirs.find(d => d.includes('headless') || d.includes('chrome'));
+              if (shellDir) {
+                const executablePath = `${chromiumPath}/${shellDir}/headless_shell`;
+                if (fs.existsSync(executablePath)) {
+                  launchOptions.executablePath = executablePath;
+                  console.log(`[BROWSER_POOL][INIT_BROWSER] Using executablePath=${executablePath}`);
+                }
               }
             }
+          } catch (pathError: any) {
+            console.warn(`[BROWSER_POOL][INIT_BROWSER] Could not resolve executablePath: ${pathError.message}`);
           }
-        } catch (pathError: any) {
-          console.warn(`[BROWSER_POOL][INIT_BROWSER] Could not resolve executablePath: ${pathError.message}`);
         }
+
+        this.browser = await chromium.launch(launchOptions);
+        const chromiumLaunchDuration = Date.now() - chromiumLaunchStart;
+        console.log(`[BROWSER_POOL][INIT_BROWSER] chromium.launch_success duration_ms=${chromiumLaunchDuration}`);
+      } catch (error: any) {
+        const chromiumLaunchDuration = Date.now() - chromiumLaunchStart;
+        console.log(`[BROWSER_POOL][INIT_BROWSER] chromium.launch_failed duration_ms=${chromiumLaunchDuration} error=${error.message}`);
+        if (this.isResourceExhaustionError(error)) {
+          await this.handleResourceExhaustion(error);
+        }
+        throw error;
       }
-      
-      this.browser = await chromium.launch(launchOptions);
-      const chromiumLaunchDuration = Date.now() - chromiumLaunchStart;
-      console.log(`[BROWSER_POOL][INIT_BROWSER] chromium.launch_success duration_ms=${chromiumLaunchDuration}`);
-    } catch (error: any) {
-      const chromiumLaunchDuration = Date.now() - chromiumLaunchStart;
-      console.log(`[BROWSER_POOL][INIT_BROWSER] chromium.launch_failed duration_ms=${chromiumLaunchDuration} error=${error.message}`);
-      if (this.isResourceExhaustionError(error)) {
-        await this.handleResourceExhaustion(error);
-      }
-      throw error;
     }
 
     const totalInitDuration = Date.now() - initStartTime;
