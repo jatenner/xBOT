@@ -66,6 +66,7 @@
     "runner:controller-recompute-once": "tsx scripts/runner/shadow-controller-once.ts",
     "bake:check": "tsx scripts/daily-bake-check.ts",
     "bake:report": "tsx scripts/generate-72h-bake-report.ts",
+    "bake:final24h": "tsx scripts/monitor/run_bake_24h_final.ts",
     "go-live:status": "tsx scripts/go-live-monitor.ts",
     "go-live:monitor": "tsx scripts/monitor/go_live_monitor.ts loop",
     "go-live:monitor-once": "tsx scripts/monitor/go_live_monitor.ts once",

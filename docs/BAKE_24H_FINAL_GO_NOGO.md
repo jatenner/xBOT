@@ -28,7 +28,10 @@ FROM generate_series(
 **Actual:** (Run at 24h mark)  
 **Status:** ⏳ PENDING
 
-**Pass Criteria:** ≥ 20 plans present (allow for 4h grace period)
+**PASS Criteria:**
+- ✅ **≥ 20 plans present** (allow for 4h grace period)
+- ✅ **No gaps > 2 hours** (consecutive missing plans)
+- ✅ **Latest plan < 2 hours old** (shadow_controller active)
 
 ---
 
@@ -42,9 +45,12 @@ FROM generate_series(
 
 **Status:** ⏳ PENDING (Run at 24h mark)
 
-**Pass Criteria:**
-- All tweet_ids valid (18-20 digits)
-- ≥ 80% URLs load successfully
+**PASS Criteria:**
+- ✅ **All tweet_ids valid** (18-20 digits) - **HARD REQUIREMENT**
+- ✅ **All URLs verified** (100% must load) - **HARD REQUIREMENT**
+- ✅ **At least 1 valid POST_SUCCESS in 24h** OR **clearly documented platform resistance reason if 0**
+  - If 0 POST_SUCCESS: Must show evidence of platform resistance (CONSENT_WALL, CHALLENGE, POST_FAILED) with clear explanation
+  - If > 0 POST_SUCCESS: All must have valid tweet_ids and loadable URLs
 
 ---
 
@@ -120,7 +126,9 @@ WHERE (ge.posts_done > gp.target_posts OR ge.replies_done > gp.target_replies)
 
 **Status:** ⏳ PENDING (Run at 24h mark)
 
-**Pass Criteria:** **MUST BE 0** (hard requirement)
+**PASS Criteria:** 
+- ✅ **MUST BE 0** - **HARD REQUIREMENT** (no exceptions)
+- Any overrun = automatic FAIL
 
 ---
 
@@ -144,7 +152,10 @@ WHERE is_test_post = true
 
 **Status:** ⏳ PENDING (Run at 24h mark)
 
-**Pass Criteria:** **MUST BE 0** (hard requirement)
+**PASS Criteria:**
+- ✅ **POST_SUCCESS_TEST = 0** - **HARD REQUIREMENT**
+- ✅ **Test posts in content_metadata = 0** - **HARD REQUIREMENT**
+- Any test post = automatic FAIL
 
 ---
 
@@ -175,15 +186,20 @@ GROUP BY status;
 
 ## DECISION MATRIX
 
-| Check | Weight | Pass Criteria | Status |
+| Check | Weight | PASS Criteria | Status |
 |-------|--------|---------------|--------|
-| A) Plan Continuity | High | ≥ 20 plans | ⏳ PENDING |
-| B) Posting Outcomes | High | Valid IDs, URLs load | ⏳ PENDING |
-| C) Replies | Medium | Operational, structured | ⏳ PENDING |
-| D) Resistance | Medium | < thresholds | ⏳ PENDING |
-| E) Overruns | **CRITICAL** | **MUST BE 0** | ⏳ PENDING |
-| F) PROD vs TEST | **CRITICAL** | **MUST BE 0** | ⏳ PENDING |
-| G) Stuck States | Low | No old stuck states | ⏳ PENDING |
+| A) Plan Continuity | High | ≥ 20 plans, no gaps > 2h, latest < 2h old | ⏳ PENDING |
+| B) Posting Outcomes | High | All IDs valid, all URLs load, ≥1 success OR documented resistance | ⏳ PENDING |
+| C) Replies | Medium | Operational, structured DENY reasons | ⏳ PENDING |
+| D) Resistance | Medium | CONSENT_WALL < 20%, CHALLENGE < 5%, POST_FAILED < 10% | ⏳ PENDING |
+| E) Overruns | **CRITICAL** | **MUST BE 0** (hard requirement) | ⏳ PENDING |
+| F) PROD vs TEST | **CRITICAL** | **MUST BE 0** (hard requirement) | ⏳ PENDING |
+| G) Stuck States | Low | No posting > 1h old, no queued > 24h old | ⏳ PENDING |
+
+### Hard Requirements (Automatic FAIL if violated):
+- ❌ **E) Overruns > 0** = Automatic FAIL
+- ❌ **F) TEST posts > 0** = Automatic FAIL
+- ❌ **B) Invalid tweet_ids or URLs don't load** = Automatic FAIL
 
 ---
 
