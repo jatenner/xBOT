@@ -26,8 +26,10 @@ async function main() {
   console.log(`   is_test_post: true\n`);
 
   // Create test decision with is_test_post=true
+  // Use content_generation_metadata_comprehensive (the actual table)
+  // Supabase may expose content_metadata as a view, but we'll use the underlying table
   const { data: inserted, error: insertError } = await supabase
-    .from('content_metadata')
+    .from('content_generation_metadata_comprehensive')
     .insert({
       decision_id: decisionId,
       decision_type: 'single',

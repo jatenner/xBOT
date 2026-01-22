@@ -20,9 +20,11 @@ async function main() {
   const client = await pool.connect();
   
   try {
-    // 1. Check column exists
+    // 1. Check column exists (check both possible table names)
     console.log('1️⃣  Checking column exists...');
-    const columnCheck = await client.query(`
+    
+    // First check content_generation_metadata_comprehensive (the actual table)
+    let columnCheck = await client.query(`
       SELECT 
         column_name,
         data_type,
@@ -30,13 +32,28 @@ async function main() {
         is_nullable
       FROM information_schema.columns
       WHERE table_schema = 'public'
-        AND table_name = 'content_metadata'
+        AND table_name = 'content_generation_metadata_comprehensive'
         AND column_name = 'is_test_post';
     `);
+    
+    // If not found, check content_metadata (might be a view)
+    if (columnCheck.rows.length === 0) {
+      columnCheck = await client.query(`
+        SELECT 
+          column_name,
+          data_type,
+          column_default,
+          is_nullable
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'content_metadata'
+          AND column_name = 'is_test_post';
+      `);
+    }
 
     if (columnCheck.rows.length === 0) {
       console.error('❌ AUTO MIGRATION DID NOT APPLY');
-      console.error('   Column is_test_post does not exist in content_metadata');
+      console.error('   Column is_test_post does not exist in content_metadata or content_generation_metadata_comprehensive');
       console.error('\n🔍 DIAGNOSIS:');
       console.error('   - Migration file exists: supabase/migrations/20260122_add_is_test_post_column.sql');
       console.error('   - Possible causes:');
@@ -46,7 +63,7 @@ async function main() {
       console.error('\n💡 FIX:');
       console.error('   - Check Railway logs for migration errors');
       console.error('   - Verify Supabase migration runner is enabled');
-      console.error('   - Manually apply migration if needed');
+      console.error('   - Run: pnpm exec tsx scripts/apply-is-test-post-migration-direct.ts');
       process.exit(1);
     }
 
@@ -68,17 +85,29 @@ async function main() {
       process.exit(1);
     }
 
-    // 2. Check index exists
+    // 2. Check index exists (check both possible table names)
     console.log('2️⃣  Checking index exists...');
-    const indexCheck = await client.query(`
+    let indexCheck = await client.query(`
       SELECT 
         indexname,
         indexdef
       FROM pg_indexes
       WHERE schemaname = 'public'
-        AND tablename = 'content_metadata'
+        AND tablename = 'content_generation_metadata_comprehensive'
         AND indexname = 'idx_content_metadata_is_test_post';
     `);
+    
+    if (indexCheck.rows.length === 0) {
+      indexCheck = await client.query(`
+        SELECT 
+          indexname,
+          indexdef
+        FROM pg_indexes
+        WHERE schemaname = 'public'
+          AND tablename = 'content_metadata'
+          AND indexname = 'idx_content_metadata_is_test_post';
+      `);
+    }
 
     if (indexCheck.rows.length === 0) {
       console.error('❌ Index idx_content_metadata_is_test_post does not exist');
@@ -88,16 +117,29 @@ async function main() {
     console.log(`   ✅ Index exists: ${indexCheck.rows[0].indexname}`);
     console.log(`   ✅ Index definition: ${indexCheck.rows[0].indexdef}\n`);
 
-    // 3. Sample data check
+    // 3. Sample data check (try content_generation_metadata_comprehensive first)
     console.log('3️⃣  Checking sample data...');
-    const sampleCheck = await client.query(`
-      SELECT 
-        COUNT(*) as total,
-        COUNT(*) FILTER (WHERE is_test_post = true) as test_posts,
-        COUNT(*) FILTER (WHERE is_test_post = false) as prod_posts,
-        COUNT(*) FILTER (WHERE is_test_post IS NULL) as null_posts
-      FROM content_metadata;
-    `);
+    let sampleCheck;
+    try {
+      sampleCheck = await client.query(`
+        SELECT 
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE is_test_post = true) as test_posts,
+          COUNT(*) FILTER (WHERE is_test_post = false) as prod_posts,
+          COUNT(*) FILTER (WHERE is_test_post IS NULL) as null_posts
+        FROM content_generation_metadata_comprehensive;
+      `);
+    } catch (err: any) {
+      // Fallback to content_metadata if it exists
+      sampleCheck = await client.query(`
+        SELECT 
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE is_test_post = true) as test_posts,
+          COUNT(*) FILTER (WHERE is_test_post = false) as prod_posts,
+          COUNT(*) FILTER (WHERE is_test_post IS NULL) as null_posts
+        FROM content_metadata;
+      `);
+    }
 
     const sample = sampleCheck.rows[0];
     console.log(`   ✅ Total rows: ${sample.total}`);

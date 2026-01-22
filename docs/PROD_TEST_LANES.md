@@ -235,5 +235,20 @@ The system includes a **fail-closed migration health check** that verifies criti
 
 ---
 
+## 🔒 Migration Health Guard
+
+A fail-closed migration health check runs at the start of each posting queue cycle:
+
+- **Check:** Verifies `is_test_post` column exists in `content_metadata`
+- **Cache:** Results cached for 10 minutes (lightweight, doesn't run every loop)
+- **Fail-Closed:** If column is missing, posting queue stops processing decisions
+- **Logging:** Writes `MIGRATION_HEALTH_CHECK_FAILED` event to `system_events`
+
+**Implementation:** `src/jobs/postingQueue.ts` → `verifyMigrationHealth()`
+
+This ensures the system never silently runs with missing schema, preventing unsafe behavior.
+
+---
+
 **Last Updated:** 2026-01-22  
 **Status:** ✅ Active
