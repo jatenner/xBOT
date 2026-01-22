@@ -1159,6 +1159,53 @@ export function getCircuitBreakerStatus(): {
 // 🔒 TASK 4: Throughput knob via env var (safe, reversible)
 const POSTING_QUEUE_MAX_ITEMS = parseInt(process.env.POSTING_QUEUE_MAX_ITEMS || '2', 10); // Default: 2
 
+// 🔒 MIGRATION HEALTH GUARD: Cache for process lifetime
+let migrationHealthChecked = false;
+let migrationHealthValid = false;
+
+async function checkMigrationHealth(): Promise<boolean> {
+  // Cache result for process lifetime (lightweight check, but don't repeat unnecessarily)
+  if (migrationHealthChecked) {
+    return migrationHealthValid;
+  }
+
+  try {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    
+    // Check if is_test_post column exists
+    const { data, error } = await supabase
+      .from('content_metadata')
+      .select('is_test_post')
+      .limit(1);
+    
+    if (error) {
+      // If column doesn't exist, Supabase will return a column error
+      const errorMessage = error.message.toLowerCase();
+      if (errorMessage.includes('is_test_post') || errorMessage.includes('column') || errorMessage.includes('does not exist')) {
+        console.error('[POSTING_QUEUE] ❌ MIGRATION HEALTH CHECK FAILED: is_test_post column missing');
+        console.error('[POSTING_QUEUE] ❌ AUTO MIGRATION DID NOT APPLY - Posting disabled for safety');
+        console.error(`[POSTING_QUEUE] ❌ Error: ${error.message}`);
+        migrationHealthChecked = true;
+        migrationHealthValid = false;
+        return false;
+      }
+      // Other errors might be transient, allow through but log
+      console.warn(`[POSTING_QUEUE] ⚠️  Migration health check warning: ${error.message}`);
+    }
+    
+    // If we got here, column exists (or query succeeded)
+    migrationHealthChecked = true;
+    migrationHealthValid = true;
+    return true;
+  } catch (err: any) {
+    console.error('[POSTING_QUEUE] ❌ MIGRATION HEALTH CHECK ERROR:', err.message);
+    migrationHealthChecked = true;
+    migrationHealthValid = false;
+    return false;
+  }
+}
+
 export async function processPostingQueue(options?: { certMode?: boolean; maxItems?: number }): Promise<void> {
   // Log browser mode at start (actual CDP usage happens in UltimateTwitterPoster)
   const runnerMode = process.env.RUNNER_MODE === 'true';
@@ -1281,6 +1328,14 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
   let successCount = 0;
   
   try {
+    // 🔒 MIGRATION HEALTH GUARD: Fail closed if schema is missing
+    const migrationHealthy = await checkMigrationHealth();
+    if (!migrationHealthy) {
+      console.error('[POSTING_QUEUE] ❌ Posting disabled: Migration health check failed');
+      log({ op: 'posting_queue', status: 'migration_health_failed' });
+      return;
+    }
+    
     // 1. Check if posting is enabled
     if (flags.postingDisabled) {
       log({ op: 'posting_queue', status: 'disabled' });

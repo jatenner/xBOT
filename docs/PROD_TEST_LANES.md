@@ -156,6 +156,7 @@ WHERE is_test_post = true;
 3. **Audit Trail:** All blocked test posts are logged to `system_events`
 4. **No Cadence Impact:** Test lane guardrail does not affect production posting cadence
 5. **No Safety Gate Weakening:** All existing safety gates (freshness/anchor/off-limits) remain unchanged
+6. **Migration Health Guard:** PostingQueue verifies `is_test_post` column exists at startup. If missing, posting is disabled to prevent unsafe behavior. This check is cached for process lifetime.
 
 ---
 
