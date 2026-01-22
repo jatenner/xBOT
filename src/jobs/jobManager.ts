@@ -1747,7 +1747,8 @@ export class JobManager {
    */
   private async safeExecute(jobName: string, jobFn: () => Promise<void>): Promise<void> {
     // 🔥 VI Collection is critical - treat peer_scraper as critical for continuous collection
-    const isCritical = jobName === 'plan' || jobName === 'posting' || jobName === 'peer_scraper';
+    // 🔥 Growth Controller is critical - shadow_controller must run hourly to generate plans
+    const isCritical = jobName === 'plan' || jobName === 'posting' || jobName === 'peer_scraper' || jobName === 'shadow_controller';
     const maxRetries = isCritical ? 3 : 1;
     
     // 🧠 MEMORY CHECK: Ensure we have enough memory before starting job

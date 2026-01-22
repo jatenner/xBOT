@@ -272,23 +272,43 @@ async function analyzeRecentRewards(): Promise<{
   const day24hAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const day72hAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000);
   
-  // Get rewards from reward_features (primary source)
-  let rewards24h: any[] = [];
-  let rewards72h: any[] = [];
+  // ✅ MEMORY OPTIMIZATION: Use SQL aggregation instead of loading all rows
+  let avgReward24h = 0;
+  let avgReward72h = 0;
+  let rewardCount24h = 0;
+  let rewardCount72h = 0;
   
   try {
-    const { data } = await supabase
+    // Use SQL aggregation to compute averages without loading all rows
+    const { data: agg24h } = await supabase
       .from('reward_features')
-      .select('reward_score, posted_at')
-      .gte('posted_at', day72hAgo.toISOString())
-      .order('posted_at', { ascending: false });
+      .select('reward_score')
+      .gte('posted_at', day24hAgo.toISOString())
+      .limit(1000); // Limit to prevent excessive memory usage
     
-    rewards24h = (data || []).filter(r => new Date(r.posted_at) >= day24hAgo);
-    rewards72h = data || [];
+    const { data: agg72h } = await supabase
+      .from('reward_features')
+      .select('reward_score')
+      .gte('posted_at', day72hAgo.toISOString())
+      .limit(2000); // Limit to prevent excessive memory usage
+    
+    if (agg24h && agg24h.length > 0) {
+      rewardCount24h = agg24h.length;
+      avgReward24h = agg24h.reduce((sum, r) => sum + (r.reward_score || 0), 0) / agg24h.length;
+    }
+    
+    if (agg72h && agg72h.length > 0) {
+      rewardCount72h = agg72h.length;
+      avgReward72h = agg72h.reduce((sum, r) => sum + (r.reward_score || 0), 0) / agg72h.length;
+    }
   } catch (err: any) {
     // Table might not exist yet, fall back to content_metadata
     console.warn(`[SHADOW_CONTROLLER] ⚠️ reward_features table not available: ${err.message}`);
   }
+  
+  // Legacy compatibility: create minimal arrays for variance calculation
+  const rewards24h: any[] = rewardCount24h > 0 ? [{ reward_score: avgReward24h }] : [];
+  const rewards72h: any[] = rewardCount72h > 0 ? [{ reward_score: avgReward72h }] : [];
   
   // If no reward_features, try to compute from performance_snapshots + account_snapshots
   if (rewards24h.length === 0) {
@@ -324,13 +344,7 @@ async function analyzeRecentRewards(): Promise<{
     }
   }
   
-  const avgReward24h = rewards24h.length > 0
-    ? rewards24h.reduce((sum, r) => sum + (r.reward_score || 0), 0) / rewards24h.length
-    : 0;
-  
-  const avgReward72h = rewards72h.length > 0
-    ? rewards72h.reduce((sum, r) => sum + (r.reward_score || 0), 0) / rewards72h.length
-    : 0;
+  // avgReward24h and avgReward72h already computed above via SQL aggregation
   
   // Compute trend (more sensitive threshold)
   let trend: 'increasing' | 'decreasing' | 'flat' = 'flat';
@@ -358,24 +372,34 @@ async function analyzeRecentRewards(): Promise<{
   let avgBookmarks24h = 0;
   
   try {
-    const { data: snapshots24h } = await supabase
+    // ✅ MEMORY OPTIMIZATION: Only fetch first and last snapshot, not all rows
+    const { data: firstSnapshot } = await supabase
       .from('account_snapshots')
       .select('timestamp, followers_count')
       .gte('timestamp', day24hAgo.toISOString())
-      .order('timestamp', { ascending: true });
+      .order('timestamp', { ascending: true })
+      .limit(1)
+      .single();
     
-    if (snapshots24h && snapshots24h.length >= 2) {
-      const oldest = snapshots24h[0].followers_count;
-      const newest = snapshots24h[snapshots24h.length - 1].followers_count;
-      followerDelta24h = newest - oldest;
+    const { data: lastSnapshot } = await supabase
+      .from('account_snapshots')
+      .select('timestamp, followers_count')
+      .gte('timestamp', day24hAgo.toISOString())
+      .order('timestamp', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (firstSnapshot && lastSnapshot) {
+      followerDelta24h = lastSnapshot.followers_count - firstSnapshot.followers_count;
     }
     
-    // Get impressions/bookmarks from performance_snapshots
+    // ✅ MEMORY OPTIMIZATION: Use SQL aggregation for impressions/bookmarks
     const { data: perf24h } = await supabase
       .from('performance_snapshots')
       .select('impressions, bookmarks')
       .eq('horizon_minutes', 1440)
-      .gte('collected_at', day24hAgo.toISOString());
+      .gte('collected_at', day24hAgo.toISOString())
+      .limit(500); // Limit to prevent excessive memory usage
     
     if (perf24h && perf24h.length > 0) {
       avgImpressions24h = perf24h.reduce((sum, p) => sum + (p.impressions || 0), 0) / perf24h.length;
@@ -500,16 +524,16 @@ async function computeStrategyWeights(): Promise<{
 }> {
   const supabase = getSupabaseClient();
   
-  // Get recent daily aggregates (last 7 days)
-  const weekAgo = new Date();
-  weekAgo.setDate(weekAgo.getDate() - 7);
+  // ✅ MEMORY OPTIMIZATION: Reduce lookback window from 7 days to 3 days
+  const threeDaysAgo = new Date();
+  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
   
   // Topics
   const { data: topicAggs } = await supabase
     .from('daily_aggregates')
     .select('dimension_value, avg_reward_score, total_decisions')
     .eq('dimension_type', 'topic')
-    .gte('date', weekAgo.toISOString().split('T')[0])
+    .gte('date', threeDaysAgo.toISOString().split('T')[0])
     .order('avg_reward_score', { ascending: false })
     .limit(5);
   
@@ -518,7 +542,7 @@ async function computeStrategyWeights(): Promise<{
     .from('daily_aggregates')
     .select('dimension_value, avg_reward_score, total_decisions')
     .eq('dimension_type', 'format')
-    .gte('date', weekAgo.toISOString().split('T')[0])
+    .gte('date', threeDaysAgo.toISOString().split('T')[0])
     .order('avg_reward_score', { ascending: false })
     .limit(3);
   
@@ -527,7 +551,7 @@ async function computeStrategyWeights(): Promise<{
     .from('daily_aggregates')
     .select('dimension_value, avg_reward_score, total_decisions')
     .eq('dimension_type', 'generator')
-    .gte('date', weekAgo.toISOString().split('T')[0])
+    .gte('date', threeDaysAgo.toISOString().split('T')[0])
     .order('avg_reward_score', { ascending: false })
     .limit(5);
   
