@@ -205,6 +205,30 @@ ORDER BY status;
 
 ---
 
+## STEP 6 — 24H REPORT COMMAND
+
+### ✅ Report Script Verified
+
+**Command:**
+```bash
+pnpm exec tsx scripts/monitor/generate_24h_final_bake_report.ts
+```
+
+**Status:** ✅ Script exists and runs successfully
+
+**Output Location:** `docs/BAKE_24H_FINAL_REPORT.md`
+
+**Includes All Required Sections:**
+- ✅ A) Plan continuity (expected vs actual hourly windows)
+- ✅ B) Posting outcomes (POST_SUCCESS count by hour + URLs verified)
+- ✅ C) Replies (attempts / successes / DENY reasons)
+- ✅ D) Resistance (CONSENT_WALL / CHALLENGE / POST_FAILED by hour)
+- ✅ E) Overruns (must be 0)
+- ✅ F) PROD vs TEST (TEST must be 0)
+- ✅ G) Stuck states (content_metadata statuses + oldest ages)
+
+---
+
 ## SUMMARY
 
 | Component | Status | Proof |
@@ -226,7 +250,20 @@ ORDER BY status;
 **Expected End:** 2026-01-23T19:50:00Z  
 **Next Action:** Run final report at 24h mark
 
+**Commands to Run at 24h Mark:**
+```bash
+# 1. Generate final comprehensive report
+pnpm exec tsx scripts/monitor/generate_24h_final_bake_report.ts
+
+# 2. Verify truth pipeline
+pnpm exec tsx scripts/verify/truth_pipeline_happy_path.ts
+
+# 3. Review GO/NO-GO decision
+cat docs/BAKE_24H_FINAL_GO_NOGO.md
+```
+
 ---
 
 **Snapshot Generated:** 2026-01-22T19:50:00Z  
-**Status:** ✅ **BAKE IN PROGRESS** - All systems operational
+**Status:** ✅ **BAKE IN PROGRESS** - All systems operational  
+**Next Update:** At 24h mark (2026-01-23T19:50:00Z)
