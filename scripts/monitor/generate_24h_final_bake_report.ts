@@ -397,16 +397,60 @@ async function main() {
     reportLines.push('## F) PROD vs TEST: TEST Must be 0');
     reportLines.push('');
 
-    const { rows: prodTestBreakdown } = await client.query(`
+    // Get all POST_SUCCESS events and check is_test_post from content_metadata
+    const { rows: allPostSuccessEvents } = await client.query(`
       SELECT 
+        id,
         event_type,
-        COUNT(*) FILTER (WHERE event_data->>'decision_type' = 'reply') as reply_count,
-        COUNT(*) FILTER (WHERE event_data->>'decision_type' != 'reply' OR event_data->>'decision_type' IS NULL) as content_count
+        created_at,
+        event_data->>'decision_id' as decision_id,
+        event_data->>'tweet_id' as tweet_id
       FROM system_events
       WHERE event_type IN ('POST_SUCCESS', 'POST_SUCCESS_PROD', 'POST_SUCCESS_TEST', 'REPLY_SUCCESS')
         AND created_at >= $1
-      GROUP BY event_type;
+      ORDER BY created_at ASC;
     `, [reportStart.toISOString()]);
+
+    let postSuccessProd = 0;
+    let postSuccessTest = 0;
+    let replySuccess = 0;
+
+    // Check each event's decision_id in content_metadata for is_test_post
+    for (const event of allPostSuccessEvents) {
+      if (event.event_type === 'REPLY_SUCCESS') {
+        replySuccess++;
+        continue;
+      }
+
+      if (event.event_type === 'POST_SUCCESS_TEST') {
+        postSuccessTest++;
+        continue;
+      }
+
+      if (event.event_type === 'POST_SUCCESS_PROD') {
+        postSuccessProd++;
+        continue;
+      }
+
+      // For generic POST_SUCCESS, check content_metadata
+      if (event.decision_id) {
+        const { rows: contentCheck } = await client.query(`
+          SELECT is_test_post 
+          FROM content_metadata 
+          WHERE decision_id = $1
+          LIMIT 1;
+        `, [event.decision_id]);
+
+        if (contentCheck.length > 0 && contentCheck[0].is_test_post === true) {
+          postSuccessTest++;
+        } else {
+          postSuccessProd++;
+        }
+      } else {
+        // No decision_id, treat as PROD (fail-closed)
+        postSuccessProd++;
+      }
+    }
 
     // Check content_metadata for is_test_post
     const { rows: testPostCheck } = await client.query(`
@@ -421,23 +465,9 @@ async function main() {
     reportLines.push('### POST_SUCCESS Breakdown');
     reportLines.push('| Event Type | Count |');
     reportLines.push('|------------|-------|');
-    
-    let postSuccessProd = 0;
-    let postSuccessTest = 0;
-    let replySuccess = 0;
-
-    prodTestBreakdown.forEach((row: any) => {
-      const count = parseInt(row.content_count || row.reply_count || '0', 10);
-      if (row.event_type === 'POST_SUCCESS_PROD') postSuccessProd = count;
-      if (row.event_type === 'POST_SUCCESS_TEST') postSuccessTest = count;
-      if (row.event_type === 'REPLY_SUCCESS') replySuccess = count;
-      reportLines.push(`| ${row.event_type} | ${count} |`);
-    });
-
-    reportLines.push('');
-    reportLines.push(`**POST_SUCCESS_PROD:** ${postSuccessProd}`);
-    reportLines.push(`**POST_SUCCESS_TEST:** ${postSuccessTest}`);
-    reportLines.push(`**REPLY_SUCCESS:** ${replySuccess}`);
+    reportLines.push(`| POST_SUCCESS_PROD | ${postSuccessProd} |`);
+    reportLines.push(`| POST_SUCCESS_TEST | ${postSuccessTest} |`);
+    reportLines.push(`| REPLY_SUCCESS | ${replySuccess} |`);
     reportLines.push('');
 
     reportLines.push('### Content Metadata Test Post Check');
@@ -445,10 +475,15 @@ async function main() {
     reportLines.push(`**Prod Posts Posted:** ${testPostCheck[0]?.prod_posts || 0}`);
     reportLines.push('');
 
-    if (postSuccessTest === 0 && (testPostCheck[0]?.test_posts || 0) === 0) {
+    // Final check: both must be 0
+    const testPostsInEvents = postSuccessTest;
+    const testPostsInMetadata = parseInt(testPostCheck[0]?.test_posts || '0', 10);
+    const totalTestPosts = testPostsInEvents + testPostsInMetadata;
+
+    if (totalTestPosts === 0) {
       reportLines.push('✅ **PASS** - No test posts in POST_SUCCESS or content_metadata');
     } else {
-      reportLines.push('❌ **FAIL** - Test posts detected in POST_SUCCESS or content_metadata');
+      reportLines.push(`❌ **FAIL** - Test posts detected: ${testPostsInEvents} in events, ${testPostsInMetadata} in metadata`);
     }
     reportLines.push('');
 
