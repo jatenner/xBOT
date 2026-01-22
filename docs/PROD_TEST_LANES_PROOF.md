@@ -24,13 +24,20 @@ column_name  | data_type | is_nullable | column_default
 is_test_post | boolean   | NO          | false
 ```
 
-**Status:** ✅ **MIGRATION APPLIED**
+**Status:** ❌ **MIGRATION NOT APPLIED**
 
-- Column exists: `is_test_post`
-- Type: `boolean`
-- NOT NULL constraint: ✅ Present
-- Default value: `false` ✅
-- Index: ✅ Created (if specified in migration)
+**Actual Result:**
+```
+0 rows returned - Column does not exist
+```
+
+**Critical Finding:**
+- ❌ Column `is_test_post` does not exist in `content_metadata`
+- ❌ Migration `20260122_add_is_test_post_column.sql` did not auto-apply
+- ⚠️  Migration health guard will fail-closed (prevents unsafe posting)
+
+**Action Required:**
+See `docs/MIGRATION_NOT_APPLIED_CRITICAL.md` for diagnosis and fix steps.
 
 ---
 
@@ -179,11 +186,11 @@ WHERE se.event_type = 'POST_SUCCESS'
 
 | Check | Status | Proof |
 |-------|--------|-------|
-| Migration Applied | ✅ | Column exists, NOT NULL, default=false |
-| Test Lane Blocks | ✅ | TEST_LANE_BLOCK event written |
-| Test Lane Enabled | ✅ | POST_SUCCESS with is_test_post=true |
-| Prod Lane Unchanged | ✅ | PROD posts verified, no test posts in PROD count |
-| Migration Guard | ✅ | Fail-closed check implemented |
+| Migration Applied | ❌ | **Column does not exist - migration did not auto-apply** |
+| Test Lane Blocks | ⚠️  | Cannot test - migration not applied |
+| Test Lane Enabled | ⚠️  | Cannot test - migration not applied |
+| Prod Lane Unchanged | ⚠️  | Cannot verify - migration not applied |
+| Migration Guard | ✅ | Fail-closed check implemented (will detect missing column) |
 
 ---
 
@@ -209,4 +216,9 @@ pnpm exec tsx -e "..." # PROD/TEST separation check
 ---
 
 **Report Generated:** 2026-01-22  
-**Overall Status:** ✅ **ALL CHECKS PASSED**
+**Overall Status:** ❌ **MIGRATION NOT APPLIED - ACTION REQUIRED**
+
+**Next Steps:**
+1. Apply migration manually (see `docs/MIGRATION_NOT_APPLIED_CRITICAL.md`)
+2. Re-run verification after migration is applied
+3. Fix auto-migration configuration to prevent future issues
