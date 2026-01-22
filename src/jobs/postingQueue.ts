@@ -18,6 +18,72 @@ const FOLLOWER_BASELINE_TIMEOUT_MS = Number(process.env.FOLLOWER_BASELINE_TIMEOU
 const TWITTER_AUTH_PATH = path.join(process.cwd(), 'twitter-auth.json');
 const MAX_POSTING_RECOVERY_ATTEMPTS = Number(process.env.POSTING_MAX_RECOVERY_ATTEMPTS ?? 2);
 
+// 🔒 MIGRATION HEALTH GUARD: Cache for schema verification (10 minute TTL)
+let migrationHealthCheckCache: { passed: boolean; timestamp: number } | null = null;
+const MIGRATION_HEALTH_CHECK_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * 🔒 MIGRATION HEALTH GUARD: Verify critical schema columns exist
+ * Fail-closed if migration did not apply (prevents unsafe behavior)
+ */
+async function verifyMigrationHealth(): Promise<boolean> {
+  // Use cached result if still valid
+  const now = Date.now();
+  if (migrationHealthCheckCache && (now - migrationHealthCheckCache.timestamp) < MIGRATION_HEALTH_CHECK_TTL_MS) {
+    return migrationHealthCheckCache.passed;
+  }
+
+  try {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    
+    // Check if is_test_post column exists
+    const { data, error } = await supabase
+      .from('content_metadata')
+      .select('is_test_post')
+      .limit(1);
+    
+    if (error) {
+      // If column doesn't exist, Supabase will return a schema error
+      const errorMessage = error.message || '';
+      if (errorMessage.includes('is_test_post') || errorMessage.includes('column') || errorMessage.includes('does not exist')) {
+        console.error('[MIGRATION_HEALTH] ❌ CRITICAL: is_test_post column missing from content_metadata');
+        console.error('[MIGRATION_HEALTH] ❌ Migration 20260122_add_is_test_post_column.sql did not apply');
+        console.error('[MIGRATION_HEALTH] ❌ FAIL-CLOSED: Posting queue will not process decisions');
+        console.error('[MIGRATION_HEALTH] ❌ Fix: Apply migration manually or check migration runner configuration');
+        
+        // Log to system_events for visibility
+        await supabase.from('system_events').insert({
+          event_type: 'MIGRATION_HEALTH_CHECK_FAILED',
+          severity: 'error',
+          message: 'is_test_post column missing - migration did not apply',
+          event_data: {
+            missing_column: 'is_test_post',
+            migration_file: '20260122_add_is_test_post_column.sql',
+            action_required: 'Apply migration manually or fix migration runner',
+          }
+        }).catch(() => {}); // Ignore errors in error logging
+        
+        migrationHealthCheckCache = { passed: false, timestamp: now };
+        return false;
+      }
+      // Other errors might be transient, allow through but log
+      console.warn(`[MIGRATION_HEALTH] ⚠️  Schema check error (non-fatal): ${errorMessage}`);
+      migrationHealthCheckCache = { passed: true, timestamp: now }; // Assume OK for transient errors
+      return true;
+    }
+    
+    // Column exists (query succeeded)
+    migrationHealthCheckCache = { passed: true, timestamp: now };
+    return true;
+  } catch (err: any) {
+    console.error(`[MIGRATION_HEALTH] ❌ Schema check failed: ${err.message}`);
+    // Fail closed on unexpected errors
+    migrationHealthCheckCache = { passed: false, timestamp: now };
+    return false;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // 🔒 PRE-POST INVARIANT CHECK - Structural checks before posting a reply
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1159,54 +1225,14 @@ export function getCircuitBreakerStatus(): {
 // 🔒 TASK 4: Throughput knob via env var (safe, reversible)
 const POSTING_QUEUE_MAX_ITEMS = parseInt(process.env.POSTING_QUEUE_MAX_ITEMS || '2', 10); // Default: 2
 
-// 🔒 MIGRATION HEALTH GUARD: Cache for process lifetime
-let migrationHealthChecked = false;
-let migrationHealthValid = false;
-
-async function checkMigrationHealth(): Promise<boolean> {
-  // Cache result for process lifetime (lightweight check, but don't repeat unnecessarily)
-  if (migrationHealthChecked) {
-    return migrationHealthValid;
-  }
-
-  try {
-    const { getSupabaseClient } = await import('../db/index');
-    const supabase = getSupabaseClient();
-    
-    // Check if is_test_post column exists
-    const { data, error } = await supabase
-      .from('content_metadata')
-      .select('is_test_post')
-      .limit(1);
-    
-    if (error) {
-      // If column doesn't exist, Supabase will return a column error
-      const errorMessage = error.message.toLowerCase();
-      if (errorMessage.includes('is_test_post') || errorMessage.includes('column') || errorMessage.includes('does not exist')) {
-        console.error('[POSTING_QUEUE] ❌ MIGRATION HEALTH CHECK FAILED: is_test_post column missing');
-        console.error('[POSTING_QUEUE] ❌ AUTO MIGRATION DID NOT APPLY - Posting disabled for safety');
-        console.error(`[POSTING_QUEUE] ❌ Error: ${error.message}`);
-        migrationHealthChecked = true;
-        migrationHealthValid = false;
-        return false;
-      }
-      // Other errors might be transient, allow through but log
-      console.warn(`[POSTING_QUEUE] ⚠️  Migration health check warning: ${error.message}`);
-    }
-    
-    // If we got here, column exists (or query succeeded)
-    migrationHealthChecked = true;
-    migrationHealthValid = true;
-    return true;
-  } catch (err: any) {
-    console.error('[POSTING_QUEUE] ❌ MIGRATION HEALTH CHECK ERROR:', err.message);
-    migrationHealthChecked = true;
-    migrationHealthValid = false;
-    return false;
-  }
-}
-
 export async function processPostingQueue(options?: { certMode?: boolean; maxItems?: number }): Promise<void> {
+  // 🔒 MIGRATION HEALTH GUARD: Verify schema before processing
+  const migrationHealthy = await verifyMigrationHealth();
+  if (!migrationHealthy) {
+    console.error('[POSTING_QUEUE] ❌ FAIL-CLOSED: Migration health check failed');
+    console.error('[POSTING_QUEUE] ❌ Posting queue will not process decisions until migration is applied');
+    return;
+  }
   // Log browser mode at start (actual CDP usage happens in UltimateTwitterPoster)
   const runnerMode = process.env.RUNNER_MODE === 'true';
   const runnerBrowser = process.env.RUNNER_BROWSER || 'not set';
@@ -1328,14 +1354,6 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
   let successCount = 0;
   
   try {
-    // 🔒 MIGRATION HEALTH GUARD: Fail closed if schema is missing
-    const migrationHealthy = await checkMigrationHealth();
-    if (!migrationHealthy) {
-      console.error('[POSTING_QUEUE] ❌ Posting disabled: Migration health check failed');
-      log({ op: 'posting_queue', status: 'migration_health_failed' });
-      return;
-    }
-    
     // 1. Check if posting is enabled
     if (flags.postingDisabled) {
       log({ op: 'posting_queue', status: 'disabled' });

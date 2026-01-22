@@ -156,7 +156,6 @@ WHERE is_test_post = true;
 3. **Audit Trail:** All blocked test posts are logged to `system_events`
 4. **No Cadence Impact:** Test lane guardrail does not affect production posting cadence
 5. **No Safety Gate Weakening:** All existing safety gates (freshness/anchor/off-limits) remain unchanged
-6. **Migration Health Guard:** PostingQueue verifies `is_test_post` column exists at startup. If missing, posting is disabled to prevent unsafe behavior. This check is cached for process lifetime.
 
 ---
 
@@ -215,6 +214,24 @@ console.log(data);
 1. Is `ALLOW_TEST_POSTS=true` set in the environment?
 2. Is the environment variable available to the posting queue process?
 3. For Railway: Verify with `railway variables`
+
+---
+
+## Migration Health Guard
+
+The system includes a **fail-closed migration health check** that verifies critical schema columns exist before processing decisions. This prevents unsafe behavior if migrations fail to apply.
+
+**How it works:**
+- On `processPostingQueue()` startup, verifies `is_test_post` column exists
+- Caches result for 10 minutes (lightweight, not per-loop)
+- If column missing: logs error, writes `MIGRATION_HEALTH_CHECK_FAILED` event, and **fails closed** (no posting)
+- If column exists: proceeds normally
+
+**If migration health check fails:**
+1. Check Railway/Supabase migration logs
+2. Verify migration file exists: `supabase/migrations/20260122_add_is_test_post_column.sql`
+3. Apply migration manually if auto-apply failed
+4. Check `system_events` for `MIGRATION_HEALTH_CHECK_FAILED` events
 
 ---
 
