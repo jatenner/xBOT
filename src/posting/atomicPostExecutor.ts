@@ -613,31 +613,41 @@ export async function executeAuthorizedPost(
     const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
     const finalTweetUrl = postResult.tweetUrl || `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${postResult.tweetId}`;
     
-    // 🔧 TASK: Idempotent POST_SUCCESS insert (check if exists first)
+    // 🔒 REPLY TRUTH PIPELINE: Use REPLY_SUCCESS for replies, POST_SUCCESS for content
+    const isReply = (decisionData?.decision_type || decision_type) === 'reply';
+    const eventType = isReply ? 'REPLY_SUCCESS' : 'POST_SUCCESS';
+    
+    // 🔒 TASK: Validate tweet_id before writing success event
+    const { assertValidTweetId } = await import('./tweetIdValidator');
+    const validation = assertValidTweetId(postResult.tweetId);
+    if (!validation.valid) {
+      console.error(`[ATOMIC_POST] ❌ ${eventType} BLOCKED: Invalid tweet_id: ${validation.error}`);
+      console.error(`[ATOMIC_POST]   tweet_id=${postResult.tweetId} decision_id=${decision_id}`);
+      // Do NOT write success event with invalid tweet_id
+      throw new Error(`${eventType} blocked: Invalid tweet_id: ${validation.error}`);
+    }
+
+    // 🔒 REPLY TRUTH PIPELINE: Idempotent insert (check by decision_id AND tweet_id)
+    // This prevents duplicates on retries while allowing same decision_id with different tweet_ids
     const { data: existingEvent } = await supabase
       .from('system_events')
       .select('id')
-      .eq('event_type', 'POST_SUCCESS')
+      .eq('event_type', eventType)
       .eq('event_data->>decision_id', decision_id)
+      .eq('event_data->>tweet_id', String(postResult.tweetId))
       .maybeSingle();
     
     if (existingEvent) {
-      console.log(`[ATOMIC_POST] ⏭️ POST_SUCCESS already exists for decision_id=${decision_id}, skipping insert`);
+      console.log(`[ATOMIC_POST] ⏭️ ${eventType} already exists for decision_id=${decision_id} tweet_id=${postResult.tweetId}, skipping insert`);
     } else {
-      // 🔒 TASK: Validate tweet_id before writing POST_SUCCESS
-      const { assertValidTweetId } = await import('./tweetIdValidator');
-      const validation = assertValidTweetId(postResult.tweetId);
-      if (!validation.valid) {
-        console.error(`[ATOMIC_POST] ❌ POST_SUCCESS BLOCKED: Invalid tweet_id: ${validation.error}`);
-        console.error(`[ATOMIC_POST]   tweet_id=${postResult.tweetId} decision_id=${decision_id}`);
-        // Do NOT write POST_SUCCESS with invalid tweet_id
-        throw new Error(`POST_SUCCESS blocked: Invalid tweet_id: ${validation.error}`);
-      }
+      const eventMessage = isReply 
+        ? `Reply posted successfully: decision_id=${decision_id} tweet_id=${postResult.tweetId}`
+        : `Content posted successfully: decision_id=${decision_id} tweet_id=${postResult.tweetId}`;
 
       const { error: postSuccessError } = await supabase.from('system_events').insert({
-        event_type: 'POST_SUCCESS',
+        event_type: eventType,
         severity: 'info',
-        message: `Content posted successfully: decision_id=${decision_id} tweet_id=${postResult.tweetId}`,
+        message: eventMessage,
         event_data: {
           decision_id: decision_id,
           tweet_id: String(postResult.tweetId), // 🔒 TASK: Ensure string (no Number coercion)
@@ -645,15 +655,18 @@ export async function executeAuthorizedPost(
           decision_type: decisionData?.decision_type || decision_type || 'unknown',
           app_version: appVersion,
           posted_at: new Date().toISOString(),
+          // Reply-specific fields
+          ...(isReply && metadata.target_tweet_id ? { target_tweet_id: metadata.target_tweet_id } : {}),
+          ...(isReply && metadata.root_tweet_id ? { root_tweet_id: metadata.root_tweet_id } : {}),
         },
         created_at: new Date().toISOString(),
       });
       
       if (postSuccessError) {
-        console.error(`[ATOMIC_POST] ⚠️ POST_SUCCESS insert failed: ${postSuccessError.message}`);
+        console.error(`[ATOMIC_POST] ⚠️ ${eventType} insert failed: ${postSuccessError.message}`);
         // Don't throw - tweet is posted, event logging is best-effort
       } else {
-        console.log(`[ATOMIC_POST] ✅ POST_SUCCESS event written: decision_id=${decision_id} tweet_id=${postResult.tweetId}`);
+        console.log(`[ATOMIC_POST] ✅ ${eventType} event written: decision_id=${decision_id} tweet_id=${postResult.tweetId}`);
       }
     }
     
