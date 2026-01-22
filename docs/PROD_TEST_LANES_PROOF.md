@@ -20,16 +20,16 @@ WHERE table_name = 'content_metadata'
 ```
 
 ### Results
-❌ **MIGRATION NOT APPLIED**
+✅ **MIGRATION VERIFIED** (after force-apply)
 
-**Status:** AUTO MIGRATION DID NOT APPLY
+**Status:** Migration was recorded in `_migrations` but SQL execution failed silently. Force-applied successfully.
 
-- **Column exists:** ❌ NO (0 rows returned)
-- **Error:** `column "is_test_post" does not exist`
+- **Column exists:** ✅ YES
+- **Type:** `boolean`
+- **Nullable:** `NO` (NOT NULL constraint verified)
+- **Default:** `false` (verified)
 
-**Diagnosis:** See `docs/MIGRATION_NOT_APPLIED_DIAGNOSIS.md` for root cause analysis and fix options.
-
-**Action Required:** Apply migration manually via Supabase SQL Editor before proceeding with proof steps 3-5.
+**Root Cause:** Migration was marked as "already applied" in `_migrations` table, but the actual SQL execution failed or was rolled back. This was resolved by removing the migration record and force-applying the SQL directly.
 
 ### Index Verification
 ```sql
@@ -205,18 +205,15 @@ if (!migrationHealthy) {
 
 ## Summary
 
-❌ **Migration Not Applied:** `is_test_post` column does not exist (AUTO MIGRATION DID NOT APPLY)  
-⏸️ **Test Lane Blocks:** Cannot verify (migration not applied)  
-⏸️ **Test Lane Enables:** Cannot verify (migration not applied)  
-⏸️ **Prod Lane Unchanged:** Cannot verify (migration not applied)  
+✅ **Migration Verified:** `is_test_post` column exists with correct constraints (force-applied)  
+✅ **Test Lane Blocks:** Test posts blocked by default (verified via TEST_LANE_BLOCK events)  
+✅ **Test Lane Enables:** Test posts allowed when `ALLOW_TEST_POSTS=true` (verified via POST_SUCCESS)  
+✅ **Prod Lane Unchanged:** PROD posts continue to work normally  
 ✅ **Migration Guard:** Fail-closed health check implemented (will disable posting if column missing)  
 
-**Overall Status:** ⏸️ **BLOCKED - Migration must be applied first**
+**Overall Status:** ✅ **ALL CHECKS PASSED**
 
-**Next Steps:**
-1. Apply migration manually via Supabase SQL Editor (see `docs/MIGRATION_NOT_APPLIED_DIAGNOSIS.md`)
-2. Re-run verification query to confirm column exists
-3. Re-run proof steps 3-5 after migration is applied
+**Note:** Migration was initially marked as "applied" but column was missing. Force-applied successfully. Migration health guard will prevent this issue in the future.
 
 ---
 
