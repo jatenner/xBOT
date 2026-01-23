@@ -1,20 +1,20 @@
 # Executor 15-Minute Headless Proof
 
-**Date:** 2026-01-23T23:01:08.784Z  
-**Status:** ✅ PASS
+**Date:** 2026-01-23T23:16:57.993Z  
+**Status:** ❌ FAIL
 
 ## Metrics
 
 - **windows_opened:** 0 (expected: 0) ✅
 - **headless:** true (expected: true) ✅
-- **pages_max:** 0 (expected: <= 1) ✅
-- **browser_launches:** 0 (expected: <= 1) ✅
+- **pages_max:** 1 (expected: <= 1) ✅
+- **browser_launches:** 1 (expected: <= 1) ✅
 - **db_connected:** true (expected: true) ✅
 - **queues_readable:** true (expected: true) ✅
 - **posting_ready:** 1
-- **reply_ready:** 0
-- **stop_switch_seconds:** 0 (expected: <= 10) ✅
-- **ticks_count:** 0
+- **reply_ready:** 8
+- **stop_switch_seconds:** 999 (expected: <= 10) ❌
+- **ticks_count:** 4
 
 ## Configuration
 
@@ -24,4 +24,4 @@
 
 ## Result
 
-✅ **PASS** - All hard requirements met
+❌ **FAIL** - One or more hard requirements failed

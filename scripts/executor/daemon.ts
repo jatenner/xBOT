@@ -603,10 +603,18 @@ async function main(): Promise<void> {
       lastError,
     });
     
-    // Sleep with backoff
+    // Sleep with backoff (check STOP switch every second)
     const sleepSeconds = backoffSeconds > 0 ? backoffSeconds : TICK_INTERVAL_MS / 1000;
     console.log(`[EXECUTOR_DAEMON] 💤 Sleeping ${sleepSeconds}s until next tick...`);
-    await new Promise(resolve => setTimeout(resolve, sleepSeconds * 1000));
+    
+    // Sleep in 1-second chunks to check STOP switch frequently
+    for (let i = 0; i < sleepSeconds; i++) {
+      if (checkStopSwitch()) {
+        console.log('[EXECUTOR_DAEMON] 🛑 STOP switch detected during sleep - exiting immediately');
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
   }
   
   // Cleanup
