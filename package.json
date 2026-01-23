@@ -76,6 +76,7 @@
     "cooldown:monitor": "tsx scripts/monitor/cooldown_monitor.ts",
     "cooldown:end-check": "tsx scripts/monitor/cooldown_end_check.ts",
     "cooldown:update-doc": "tsx scripts/monitor/update_incident_doc.ts",
+    "diagnose:silence": "tsx scripts/monitor/diagnose_posting_silence.ts",
     "verify:enforcement": "tsx scripts/verify-enforcement.ts",
     "ops:status": "tsx scripts/ops/status.ts",
     "ops:logs": "tsx scripts/ops/logs.ts",
