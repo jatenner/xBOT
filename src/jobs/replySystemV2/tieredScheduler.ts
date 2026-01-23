@@ -175,14 +175,14 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   };
   
   // 🔒 CRITICAL: Log job start IMMEDIATELY (before any work)
-  const runnerMode = process.env.RUNNER_MODE === 'true' ? 'MAC_RUNNER' : 'RAILWAY';
+  const runnerModeLabel = process.env.RUNNER_MODE === 'true' ? 'MAC_RUNNER' : 'RAILWAY';
   const earlyExitReason = process.env.RUNNER_MODE !== 'true' ? 'RUNNER_MODE_NOT_SET' : null;
   
   try {
     await supabase.from('system_events').insert({
       event_type: 'reply_v2_scheduler_job_started',
       severity: 'info',
-      message: `Reply V2 scheduler job started: scheduler_run_id=${schedulerRunId} runner_mode=${runnerMode}`,
+      message: `Reply V2 scheduler job started: scheduler_run_id=${schedulerRunId} runner_mode=${runnerModeLabel}`,
       event_data: {
         scheduler_run_id: schedulerRunId,
         slot_time: slotTime.toISOString(),
