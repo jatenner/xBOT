@@ -1304,40 +1304,43 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
   log({ op: 'posting_queue_start' });
   
   // ═══════════════════════════════════════════════════════════════════════
-  // 🔍 SOURCE-OF-TRUTH CHECK: Verify content_metadata has all required fields
+  // 🔍 SOURCE-OF-TRUTH CHECK: Verify content_metadata has core required fields
   // ═══════════════════════════════════════════════════════════════════════
+  // NOTE: Reply-specific columns (target_tweet_content_snapshot, etc.) are only
+  // required for reply decisions and will be validated per-decision in checkReplySafetyGates
   try {
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
     
-    const requiredColumns = [
-      'target_tweet_id',
-      'target_tweet_content_snapshot',
-      'target_tweet_content_hash',
-      'semantic_similarity',
-      'root_tweet_id',
-      'target_username'
+    // Only check columns that exist for ALL decision types (not reply-specific)
+    const coreRequiredColumns = [
+      'decision_id',
+      'decision_type',
+      'content',
+      'status',
+      'scheduled_at'
     ];
     
     // Try to select these columns (will fail if missing)
     const { error: schemaError } = await supabase
       .from('content_metadata')
-      .select(requiredColumns.join(','))
+      .select(coreRequiredColumns.join(','))
       .limit(1);
     
     if (schemaError) {
-      console.error(`[POSTING_QUEUE] ❌ SOURCE-OF-TRUTH CHECK FAILED: content_metadata missing columns`);
-      console.error(`[POSTING_QUEUE]   Required: ${requiredColumns.join(', ')}`);
+      console.error(`[POSTING_QUEUE] ❌ SOURCE-OF-TRUTH CHECK FAILED: content_metadata missing core columns`);
+      console.error(`[POSTING_QUEUE]   Required: ${coreRequiredColumns.join(', ')}`);
       console.error(`[POSTING_QUEUE]   Error: ${schemaError.message}`);
       console.error(`[POSTING_QUEUE]   System unhealthy - skipping queue processing`);
       return; // Fail-closed: skip processing if schema is wrong
     }
     
-    console.log(`[POSTING_QUEUE] ✅ Source-of-truth check passed: all required columns accessible`);
+    console.log(`[POSTING_QUEUE] ✅ Source-of-truth check passed: core columns accessible`);
+    console.log(`[POSTING_QUEUE] ℹ️  Reply-specific columns will be validated per-decision for reply decisions`);
   } catch (schemaCheckError: any) {
     console.error(`[POSTING_QUEUE] ❌ Source-of-truth check threw error: ${schemaCheckError.message}`);
     console.error(`[POSTING_QUEUE]   System unhealthy - skipping queue processing`);
-    return; // Fail-closed
+    return; // Fail-closed: skip processing if schema check fails
   }
   // ═══════════════════════════════════════════════════════════════════════
   
