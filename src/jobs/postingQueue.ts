@@ -53,16 +53,19 @@ async function verifyMigrationHealth(): Promise<boolean> {
         console.error('[MIGRATION_HEALTH] ❌ Fix: Apply migration manually or check migration runner configuration');
         
         // Log to system_events for visibility
-        await supabase.from('system_events').insert({
-          event_type: 'MIGRATION_HEALTH_CHECK_FAILED',
-          severity: 'error',
-          message: 'is_test_post column missing - migration did not apply',
-          event_data: {
-            missing_column: 'is_test_post',
-            migration_file: '20260122_add_is_test_post_column.sql',
-            action_required: 'Apply migration manually or fix migration runner',
-          }
-        }).catch(() => {}); // Ignore errors in error logging
+        try {
+          await supabase.from('system_events').insert({
+            event_type: 'MIGRATION_HEALTH_CHECK_FAILED',
+            severity: 'error',
+            message: 'is_test_post column missing - migration did not apply',
+            event_data: {
+              missing_column: 'is_test_post',
+              migration_file: '20260122_add_is_test_post_column.sql',
+              action_required: 'Apply migration manually or fix migration runner',
+            },
+            created_at: new Date().toISOString(),
+          });
+        } catch { /* ignore */ }
         
         migrationHealthCheckCache = { passed: false, timestamp: now };
         return false;
@@ -1225,18 +1228,84 @@ export function getCircuitBreakerStatus(): {
 // 🔒 TASK 4: Throughput knob via env var (safe, reversible)
 const POSTING_QUEUE_MAX_ITEMS = parseInt(process.env.POSTING_QUEUE_MAX_ITEMS || '2', 10); // Default: 2
 
-export async function processPostingQueue(options?: { certMode?: boolean; maxItems?: number }): Promise<void> {
+/** Emit [POSTING_QUEUE_BLOCK] log + system_events POSTING_QUEUE_BLOCKED for each early-return path */
+async function emitPostingQueueBlock(
+  supabase: Awaited<ReturnType<typeof import('../db/index')['getSupabaseClient']>>,
+  reason: string,
+  eventData?: Record<string, unknown>
+): Promise<void> {
+  console.warn(`[POSTING_QUEUE_BLOCK] reason=${reason}`);
+  try {
+    await supabase.from('system_events').insert({
+      event_type: 'POSTING_QUEUE_BLOCKED',
+      severity: 'warning',
+      message: `Posting queue blocked: ${reason}`,
+      event_data: { reason, ...eventData },
+      created_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn(`[POSTING_QUEUE_BLOCK] Failed to write system_events: ${(e as Error).message}`);
+  }
+}
+
+/** Emit POSTING_QUEUE_TICK once per run (idempotent per minute) with ready_candidates, selected_candidates, attempts_started */
+async function emitPostingQueueTick(
+  supabase: Awaited<ReturnType<typeof import('../db/index')['getSupabaseClient']>>,
+  ready_candidates: number,
+  selected_candidates: number,
+  attempts_started: number
+): Promise<void> {
+  try {
+    await supabase.from('system_events').insert({
+      event_type: 'POSTING_QUEUE_TICK',
+      severity: 'info',
+      message: `Posting queue tick: ready=${ready_candidates} selected=${selected_candidates} attempts=${attempts_started}`,
+      event_data: { ready_candidates, selected_candidates, attempts_started },
+      created_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn(`[POSTING_QUEUE_TICK] Failed to write system_events: ${(e as Error).message}`);
+  }
+}
+
+export interface PostingQueueRunResult {
+  ready_candidates: number;
+  selected_candidates: number;
+  attempts_started: number;
+}
+
+export async function processPostingQueue(options?: { certMode?: boolean; maxItems?: number }): Promise<PostingQueueRunResult> {
+  const { getSupabaseClient } = await import('../db/index');
+  const supabase = getSupabaseClient();
+  const config = getConfig();
+  const flags = getModeFlags(config);
+  const { getServiceRoleInfo } = await import('../utils/serviceRoleResolver');
+  const roleInfo = getServiceRoleInfo();
+
+  // 🔒 Task 1: Explicit job_tick log at top (SERVICE_ROLE, RUNNER_MODE, etc.)
+  const serviceRole = roleInfo.role;
+  const runnerMode = process.env.RUNNER_MODE === 'true';
+  const growthControllerEnabled = process.env.GROWTH_CONTROLLER_ENABLED === 'true';
+  const allowTestPosts = process.env.ALLOW_TEST_POSTS === 'true';
+  const postingDisabledEnv = process.env.DISABLE_POSTING === 'true' || process.env.POSTING_DISABLED === 'true';
+  console.log(
+    `[POSTING_QUEUE] ✅ job_tick start SERVICE_ROLE=${serviceRole} RUNNER_MODE=${runnerMode} GROWTH_CONTROLLER_ENABLED=${growthControllerEnabled} ALLOW_TEST_POSTS=${allowTestPosts} postingDisabled=${!!flags.postingDisabled} postingDisabledEnv=${postingDisabledEnv}`
+  );
+
   // 🔒 MIGRATION HEALTH GUARD: Verify schema before processing
   const migrationHealthy = await verifyMigrationHealth();
   if (!migrationHealthy) {
     console.error('[POSTING_QUEUE] ❌ FAIL-CLOSED: Migration health check failed');
     console.error('[POSTING_QUEUE] ❌ Posting queue will not process decisions until migration is applied');
-    return;
+    await emitPostingQueueBlock(supabase, 'MIGRATION_HEALTH', { detail: 'is_test_post migration check failed' });
+    await emitPostingQueueTick(supabase, 0, 0, 0);
+    const { recordJobSkip } = await import('./jobHeartbeat');
+    await recordJobSkip('posting_queue', 'MIGRATION_HEALTH');
+    return { ready_candidates: 0, selected_candidates: 0, attempts_started: 0 };
   }
+
   // Log browser mode at start (actual CDP usage happens in UltimateTwitterPoster)
-  const runnerMode = process.env.RUNNER_MODE === 'true';
   const runnerBrowser = process.env.RUNNER_BROWSER || 'not set';
-  
   if (runnerMode && runnerBrowser === 'cdp') {
     console.log('[POSTING] CDP mode enabled (RUNNER_BROWSER=cdp) - will use CDP connection for posting');
   } else if (runnerMode) {
@@ -1245,18 +1314,11 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     console.log('[POSTING] Playwright mode (non-runner environment)');
   }
   const certMode = options?.certMode || process.env.POSTING_QUEUE_CERT_MODE === 'true';
-  // Use explicit maxItems if provided, otherwise use env var (unless certMode, then 1)
-  const maxItems = options?.maxItems !== undefined 
-    ? options.maxItems 
+  const maxItems = options?.maxItems !== undefined
+    ? options.maxItems
     : (certMode ? 1 : POSTING_QUEUE_MAX_ITEMS);
-  
-  const { getSupabaseClient } = await import('../db/index');
-  const supabase = getSupabaseClient();
   const gitSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
-  const { getServiceRoleInfo } = await import('../utils/serviceRoleResolver');
-  const roleInfo = getServiceRoleInfo();
-  const serviceRole = roleInfo.role;
-  
+
   // 🔒 TASK 2: Run deferral healer before processing queue
   try {
     const { healDeferrals } = await import('./deferralHealer');
@@ -1264,7 +1326,7 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
   } catch (healError: any) {
     console.warn(`[POSTING_QUEUE] ⚠️ Deferral healer failed (non-critical): ${healError.message}`);
   }
-  
+
   // 🔒 MANDATE 1: Instrumentation - Log queue start
   await supabase.from('system_events').insert({
     event_type: 'posting_queue_started',
@@ -1279,10 +1341,8 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     },
     created_at: new Date().toISOString(),
   });
-  
+
   console.log(`[POSTING_QUEUE] 🚀 Starting posting queue (cert_mode=${certMode}, max_items=${maxItems || 'unlimited'})`);
-  const config = getConfig();
-  const flags = getModeFlags(config);
   
   // 🔒 CONTROLLED TEST MODE: Limit to exactly ONE post if POSTING_QUEUE_MAX=1
   // 🚀 RAMP MODE: Skip controlled test mode limit when RAMP_MODE is enabled
@@ -1332,15 +1392,23 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
       console.error(`[POSTING_QUEUE]   Required: ${coreRequiredColumns.join(', ')}`);
       console.error(`[POSTING_QUEUE]   Error: ${schemaError.message}`);
       console.error(`[POSTING_QUEUE]   System unhealthy - skipping queue processing`);
-      return; // Fail-closed: skip processing if schema is wrong
+      await emitPostingQueueBlock(supabase, 'SOURCE_OF_TRUTH', { error: schemaError.message, columns: coreRequiredColumns });
+      await emitPostingQueueTick(supabase, 0, 0, 0);
+      const { recordJobSkip } = await import('./jobHeartbeat');
+      await recordJobSkip('posting_queue', 'SOURCE_OF_TRUTH');
+      return { ready_candidates: 0, selected_candidates: 0, attempts_started: 0 };
     }
-    
+
     console.log(`[POSTING_QUEUE] ✅ Source-of-truth check passed: core columns accessible`);
     console.log(`[POSTING_QUEUE] ℹ️  Reply-specific columns will be validated per-decision for reply decisions`);
   } catch (schemaCheckError: any) {
     console.error(`[POSTING_QUEUE] ❌ Source-of-truth check threw error: ${schemaCheckError.message}`);
     console.error(`[POSTING_QUEUE]   System unhealthy - skipping queue processing`);
-    return; // Fail-closed: skip processing if schema check fails
+    await emitPostingQueueBlock(supabase, 'SOURCE_OF_TRUTH', { error: schemaCheckError.message });
+    await emitPostingQueueTick(supabase, 0, 0, 0);
+    const { recordJobSkip } = await import('./jobHeartbeat');
+    await recordJobSkip('posting_queue', 'SOURCE_OF_TRUTH');
+    return { ready_candidates: 0, selected_candidates: 0, attempts_started: 0 };
   }
   // ═══════════════════════════════════════════════════════════════════════
   
@@ -1349,24 +1417,32 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
   if (circuitBreakerOpen) {
     console.warn('[POSTING_QUEUE] ⏸️ Skipping queue processing (circuit breaker open)');
     log({ op: 'posting_queue', status: 'circuit_breaker_open' });
-    return;
+    await emitPostingQueueBlock(supabase, 'CIRCUIT_BREAKER', { detail: 'circuit breaker open' });
+    await emitPostingQueueTick(supabase, 0, 0, 0);
+    const { recordJobSkip } = await import('./jobHeartbeat');
+    await recordJobSkip('posting_queue', 'CIRCUIT_BREAKER');
+    return { ready_candidates: 0, selected_candidates: 0, attempts_started: 0 };
   }
-  
+
   // Declare variables outside try block so they're accessible in catch
   let readyDecisions: any[] = [];
   let successCount = 0;
-  
+  let attemptsStarted = 0;
+  let decisionsToProcess: any[] = [];
+
   try {
     // 1. Check if posting is enabled
     if (flags.postingDisabled) {
       log({ op: 'posting_queue', status: 'disabled' });
-      return;
+      await emitPostingQueueBlock(supabase, 'POSTING_DISABLED', { detail: 'flags.postingDisabled (MODE=shadow)' });
+      await emitPostingQueueTick(supabase, 0, 0, 0);
+      const { recordJobSkip } = await import('./jobHeartbeat');
+      await recordJobSkip('posting_queue', 'POSTING_DISABLED');
+      return { ready_candidates: 0, selected_candidates: 0, attempts_started: 0 };
     }
     
     // 🔄 AUTO-RECOVER STUCK POSTS: Reset posts stuck in 'posting' status >15min (reduced from 30min for faster recovery)
     // 🔥 PRIORITY 4 FIX: Verify post before resetting (prevents duplicate posts)
-    const { getSupabaseClient } = await import('../db/index');
-    const supabase = getSupabaseClient();
     const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
     const { data: stuckPosts } = await supabase
       .from('content_metadata')
@@ -1461,7 +1537,11 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
         });
         console.error(`[POSTING_QUEUE] 🔒 BLOCKING ALL POSTING/REPLIES - Ghost protection activated`);
         log({ op: 'posting_queue', status: 'ghost_protection_activated', ghost_count: ghostIndicators.length });
-        return; // Fail-closed: refuse to post if ghost indicators detected
+        await emitPostingQueueBlock(supabase, 'GHOST_PROTECTION', { ghost_count: ghostIndicators.length });
+        await emitPostingQueueTick(supabase, 0, 0, 0);
+        const { recordJobSkip } = await import('./jobHeartbeat');
+        await recordJobSkip('posting_queue', 'GHOST_PROTECTION');
+        return { ready_candidates: 0, selected_candidates: 0, attempts_started: 0 };
       }
       
       console.log(`[POSTING_QUEUE] ✅ Ghost protection check passed: No NULL/dev/unknown build_sha in last hour`);
@@ -1508,16 +1588,24 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
             console.error(`[POSTING_QUEUE] ❌ Lease error code: ${leaseError.code}`);
             console.error(`[POSTING_QUEUE] 🔒 CONTROLLED WINDOW LEASE UNAVAILABLE or token invalid`);
             log({ op: 'posting_queue', status: 'controlled_window_lease_failed', error: leaseError.message });
-            return; // Fail-closed: refuse to post if lease acquisition fails
+            await emitPostingQueueBlock(supabase, 'CONTROLLED_WINDOW_LEASE', { detail: 'lease_failed', error: leaseError.message });
+            await emitPostingQueueTick(supabase, 0, 0, 0);
+            const { recordJobSkip } = await import('./jobHeartbeat');
+            await recordJobSkip('posting_queue', 'CONTROLLED_WINDOW_LEASE');
+            return { ready_candidates: 0, selected_candidates: 0, attempts_started: 0 };
           }
-          
+
           console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Lease acquisition result: ${JSON.stringify(leaseAcquired)}`);
-          
+
           // RPC function returns boolean directly
           if (!leaseAcquired || leaseAcquired === false) {
             console.log(`[POSTING_QUEUE] 🔒 CONTROLLED WINDOW LEASE UNAVAILABLE - refusing to post (result: ${leaseAcquired})`);
             log({ op: 'posting_queue', status: 'controlled_window_lease_unavailable', result: leaseAcquired });
-            return; // Lease already held by another run or expired
+            await emitPostingQueueBlock(supabase, 'CONTROLLED_WINDOW_LEASE', { detail: 'lease_unavailable', result: leaseAcquired });
+            await emitPostingQueueTick(supabase, 0, 0, 0);
+            const { recordJobSkip } = await import('./jobHeartbeat');
+            await recordJobSkip('posting_queue', 'CONTROLLED_WINDOW_LEASE');
+            return { ready_candidates: 0, selected_candidates: 0, attempts_started: 0 };
           }
           
           console.log(`[POSTING_QUEUE] ✅ CONTROLLED_WINDOW_GATE: Lease acquired successfully (TTL: ${leaseTtlSeconds}s)`);
@@ -1552,7 +1640,11 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
       if (beforeCount > 0 && afterCount === 0) {
         console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Controlled decision_id ${controlledDecisionId} not found in queue (${beforeCount} other items queued)`);
         log({ op: 'posting_queue', status: 'controlled_decision_not_found', queued_count: beforeCount });
-        return; // Do nothing if controlled decision not found
+        await emitPostingQueueBlock(supabase, 'CONTROLLED_DECISION_NOT_FOUND', { controlled_decision_id: controlledDecisionId, queued_count: beforeCount });
+        await emitPostingQueueTick(supabase, beforeCount, 0, 0);
+        const { recordJobSkip } = await import('./jobHeartbeat');
+        await recordJobSkip('posting_queue', 'CONTROLLED_DECISION_NOT_FOUND');
+        return { ready_candidates: beforeCount, selected_candidates: 0, attempts_started: 0 };
       }
       
       if (afterCount > 0) {
@@ -1563,9 +1655,13 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     
     if (readyDecisions.length === 0) {
       log({ op: 'posting_queue', ready_count: 0, grace_minutes: GRACE_MINUTES });
-      return;
+      await emitPostingQueueBlock(supabase, 'NO_READY_DECISIONS', { grace_minutes: GRACE_MINUTES });
+      await emitPostingQueueTick(supabase, 0, 0, 0);
+      const { recordJobSuccess } = await import('./jobHeartbeat');
+      await recordJobSuccess('posting_queue');
+      return { ready_candidates: 0, selected_candidates: 0, attempts_started: 0 };
     }
-    
+
     log({ op: 'posting_queue', ready_count: readyDecisions.length, grace_minutes: GRACE_MINUTES });
     
     // 4. Process each decision WITH RATE LIMIT CHECK BETWEEN EACH POST
@@ -1589,15 +1685,17 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     // 🛑 DRAIN MODE: Mark all queued items as skipped for audit
     if (process.env.DRAIN_QUEUE === 'true') {
       console.log(`[POSTING_QUEUE] 🛑 DRAIN_QUEUE=true: Marking ${readyDecisions.length} decisions as skipped`);
-      const { getSupabaseClient } = await import('../db/index');
-      const supabase = getSupabaseClient();
       for (const decision of readyDecisions) {
         await supabase.from('content_generation_metadata_comprehensive')
           .update({ status: 'blocked', skip_reason: 'queue_drain_mode' })
           .eq('decision_id', decision.id);
       }
       console.log(`[POSTING_QUEUE] ✅ Drained ${readyDecisions.length} decisions`);
-      return;
+      await emitPostingQueueBlock(supabase, 'DRAIN_QUEUE', { drained_count: readyDecisions.length });
+      await emitPostingQueueTick(supabase, readyDecisions.length, 0, 0);
+      const { recordJobSuccess } = await import('./jobHeartbeat');
+      await recordJobSuccess('posting_queue');
+      return { ready_candidates: readyDecisions.length, selected_candidates: 0, attempts_started: 0 };
     }
     
     // 🔒 CONTROLLED WINDOW GATE: If controlled decision is set, only process that one
@@ -1619,7 +1717,7 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     const maxPostsForThisRun = process.env.POSTING_QUEUE_MAX ? parseInt(process.env.POSTING_QUEUE_MAX, 10) : undefined;
     const shouldLimitToControlled = maxPostsForThisRun === 1 && !rampModeEnabled && (controlledDecisionId || controlledPostToken || explicitControlledMode);
     
-    let decisionsToProcess = readyDecisions;
+    decisionsToProcess = readyDecisions;
     if (shouldLimitToControlled) {
       decisionsToProcess = readyDecisions.slice(0, 1);
       const reason = controlledDecisionId ? 'CONTROLLED_DECISION_ID' : controlledPostToken ? 'CONTROLLED_POST_TOKEN' : 'CONTROLLED_TEST_MODE=true';
@@ -1644,23 +1742,29 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
         if (isContent) {
           // 🚨 CHECK: Skip content if content rate limit was reached at start
           if (!canPostContent) {
+            console.warn(`[POSTING_QUEUE_BLOCK] reason=RATE_LIMIT decision_id=${decision.id}`);
+            await emitPostingQueueBlock(supabase, 'RATE_LIMIT', { decision_id: decision.id, decision_type: decision.decision_type });
             console.log(`[POSTING_QUEUE] ⛔ SKIP CONTENT: Content rate limit reached, skipping ${decision.decision_type} ${decision.id}`);
-            continue; // Skip to next decision (might be a reply which is allowed)
+            continue;
           }
-          
+
           // 🛑 KILL SWITCHES: Check content type flags
           const isThread = decision.decision_type === 'thread';
           const isSingle = decision.decision_type === 'single';
-          
+
           if (isThread && process.env.THREADS_ENABLED === 'false') {
+            console.warn(`[POSTING_QUEUE_BLOCK] reason=THREADS_DISABLED decision_id=${decision.id}`);
+            await emitPostingQueueBlock(supabase, 'THREADS_DISABLED', { decision_id: decision.id });
             console.log(`[POSTING_QUEUE] 🛑 THREADS_DISABLED: Skipping thread ${decision.id}`);
             await supabase.from('content_generation_metadata_comprehensive')
               .update({ status: 'blocked', skip_reason: 'threads_disabled_killswitch' })
               .eq('decision_id', decision.id);
             continue;
           }
-          
+
           if (isSingle && process.env.SINGLE_POSTS_ENABLED === 'false') {
+            console.warn(`[POSTING_QUEUE_BLOCK] reason=SINGLES_DISABLED decision_id=${decision.id}`);
+            await emitPostingQueueBlock(supabase, 'SINGLES_DISABLED', { decision_id: decision.id });
             console.log(`[POSTING_QUEUE] 🛑 SINGLE_POSTS_DISABLED: Skipping single ${decision.id}`);
             await supabase.from('content_generation_metadata_comprehensive')
               .update({ status: 'blocked', skip_reason: 'singles_disabled_killswitch' })
@@ -1738,6 +1842,7 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
         }
         
         // Proceed with posting
+        attemptsStarted++;
         let success = false;
         try {
           success = await processDecision(decision);
@@ -1769,7 +1874,10 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
             if (controlledDecisionId && decision.id === controlledDecisionId) {
               console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Controlled decision_id=${controlledDecisionId} posted successfully - EXITING immediately`);
               log({ op: 'posting_queue', status: 'controlled_decision_posted', decision_id: controlledDecisionId });
-              return; // Exit immediately - do not process any other decisions
+              await emitPostingQueueTick(supabase, readyDecisions.length, decisionsToProcess.length, attemptsStarted);
+              const { recordJobSuccess } = await import('./jobHeartbeat');
+              await recordJobSuccess('posting_queue');
+              return { ready_candidates: readyDecisions.length, selected_candidates: decisionsToProcess.length, attempts_started: attemptsStarted };
             }
           }
         } catch (postError: any) {
@@ -1884,8 +1992,11 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
               retry_count: (decision.features as any)?.retry_count || 0
             }
           );
-          
-          return; // Don't continue - will retry on next cycle
+
+          await emitPostingQueueTick(supabase, readyDecisions.length, decisionsToProcess.length, attemptsStarted);
+          const { recordJobSuccess } = await import('./jobHeartbeat');
+          await recordJobSuccess('posting_queue');
+          return { ready_candidates: readyDecisions.length, selected_candidates: decisionsToProcess.length, attempts_started: attemptsStarted };
         }
         
         // 🔧 PERMANENT FIX #2: Check if post actually succeeded before marking as failed
@@ -2079,11 +2190,22 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     } catch (rampLogError: any) {
       console.warn(`[RAMP_MODE] ⚠️ Failed to log ramp summary: ${rampLogError.message}`);
     }
-    
+
+    // Task 3: POSTING_QUEUE_TICK heartbeat + job_heartbeats posting_queue
+    await emitPostingQueueTick(supabase, readyDecisions.length, decisionsToProcess.length, attemptsStarted);
+    const { recordJobSuccess } = await import('./jobHeartbeat');
+    await recordJobSuccess('posting_queue');
+    return { ready_candidates: readyDecisions.length, selected_candidates: decisionsToProcess.length, attempts_started: attemptsStarted };
   } catch (error: any) {
     const errorMsg = error?.message || error?.toString() || 'Unknown error';
     console.error('[POSTING_QUEUE] ❌ Queue processing failed:', errorMsg);
-    
+
+    try {
+      const { getSupabaseClient } = await import('../db/index');
+      const supabase = getSupabaseClient();
+      await emitPostingQueueTick(supabase, readyDecisions?.length ?? 0, decisionsToProcess?.length ?? 0, attemptsStarted ?? 0);
+    } catch (tickErr) { /* non-critical */ }
+
     // 🔧 ENHANCED ERROR TRACKING: Track queue processing failures
     await trackError(
       'posting_queue',
@@ -2117,11 +2239,17 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     
     // 🔧 FIX #2: Record failure for circuit breaker
     recordCircuitBreakerFailure();
-    
+
+    const { recordJobFailure } = await import('./jobHeartbeat');
+    await recordJobFailure('posting_queue', errorMsg);
+
     // ✅ GRACEFUL: Don't throw - allow system to continue
-    // Log error but don't crash the entire job scheduler
     console.warn('[POSTING_QUEUE] ⚠️ Error logged, will retry on next cycle');
-    // Don't throw - this allows job manager to continue scheduling
+    return {
+      ready_candidates: readyDecisions?.length ?? 0,
+      selected_candidates: (typeof decisionsToProcess !== 'undefined' ? decisionsToProcess?.length : 0) ?? 0,
+      attempts_started: attemptsStarted ?? 0,
+    };
   }
 }
 
@@ -2675,19 +2803,24 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       if (isTestPost && !allowTestPosts) {
         console.log(`[TEST_LANE_BLOCK] decision_id=${decisionId} reason=ALLOW_TEST_POSTS_not_enabled`);
         
-        // Log to system_events for audit trail
-        supabase.from('system_events').insert({
-          event_type: 'TEST_LANE_BLOCK',
-          severity: 'info',
-          message: `Test post blocked: decision_id=${decisionId}`,
-          event_data: {
-            decision_id: decisionId,
-            reason: 'ALLOW_TEST_POSTS_not_enabled',
-            is_test_post: true,
+        // Log to system_events for audit trail (fire-and-forget; callback is sync)
+        void (async () => {
+          try {
+            await supabase.from('system_events').insert({
+              event_type: 'TEST_LANE_BLOCK',
+              severity: 'info',
+              message: `Test post blocked: decision_id=${decisionId}`,
+              event_data: {
+                decision_id: decisionId,
+                reason: 'ALLOW_TEST_POSTS_not_enabled',
+                is_test_post: true,
+              },
+              created_at: new Date().toISOString(),
+            });
+          } catch (err: any) {
+            console.warn(`[POSTING_QUEUE] Failed to log TEST_LANE_BLOCK: ${err?.message}`);
           }
-        }).catch(err => {
-          console.warn(`[POSTING_QUEUE] Failed to log TEST_LANE_BLOCK: ${err.message}`);
-        });
+        })();
         
         return false;
       }
@@ -3006,10 +3139,22 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
     try {
       const { canPost } = await import('./growthController');
       const controllerCheck = await canPost(decision.decision_type);
-      
+
       if (!controllerCheck.allowed) {
+        console.warn(`[POSTING_QUEUE_BLOCK] reason=CONTROLLER_DENY decision_id=${decision.id}`);
+        try {
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          await supabase.from('system_events').insert({
+            event_type: 'POSTING_QUEUE_BLOCKED',
+            severity: 'warning',
+            message: `Posting queue blocked: CONTROLLER_DENY`,
+            event_data: { reason: 'CONTROLLER_DENY', decision_id: decision.id, detail: controllerCheck.reason },
+            created_at: new Date().toISOString(),
+          });
+        } catch (e) { /* non-critical */ }
         console.log(`[GROWTH_CONTROLLER] ⛔ BLOCKED: ${controllerCheck.reason} - skipping decision ${decision.id}`);
-        return false; // Don't process, don't count as failure
+        return false;
       }
       
       if (controllerCheck.plan) {
