@@ -36,8 +36,9 @@ function startHealthServer(): void {
   // 🔒 DEPLOY FINGERPRINT: Required for deploy verification
   const appCommitSha = process.env.APP_COMMIT_SHA ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
   const appBuildTime = process.env.APP_BUILD_TIME ?? 'unknown';
-  const serviceRole = process.env.SERVICE_ROLE ?? (process.env.RAILWAY_SERVICE_NAME?.includes('worker') ? 'worker' : 'main') ?? 'unknown';
-  const railwayService = process.env.RAILWAY_SERVICE_NAME ?? process.env.SERVICE_NAME ?? 'unknown';
+  const railwayServiceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || '';
+  const serviceRole = process.env.SERVICE_ROLE ?? (railwayServiceName.includes('worker') ? 'worker' : 'main') ?? 'unknown';
+  const railwayService = railwayServiceName || 'unknown';
   
   // Single-line boot fingerprint (required for deploy verification)
   console.log(`[BOOT] sha=${appCommitSha} build_time=${appBuildTime} service_role=${serviceRole} railway_service=${railwayService}`);
@@ -81,7 +82,8 @@ function startHealthServer(): void {
       // Compute fingerprint fields dynamically (read env vars at request time)
       const appCommitSha = process.env.APP_COMMIT_SHA ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
       const appBuildTime = process.env.APP_BUILD_TIME ?? 'unknown';
-      const serviceRole = process.env.SERVICE_ROLE ?? (process.env.RAILWAY_SERVICE_NAME?.includes('worker') ? 'worker' : 'main') ?? 'unknown';
+      const railwayServiceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || '';
+      const serviceRole = process.env.SERVICE_ROLE ?? (railwayServiceName.includes('worker') ? 'worker' : 'main') ?? 'unknown';
       
       // Compute version fields dynamically (do NOT cache - read env vars at request time)
       const appVersion = process.env.APP_VERSION ?? 'unknown';
