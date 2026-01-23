@@ -288,9 +288,10 @@ async function initializeBrowser(): Promise<void> {
     console.log(`[EXECUTOR_DAEMON] ✅ Context created (headless enforced)`);
   }
   
-  // Verify browser is still headless (safety check)
-  if (browser && browser.version() && !HEADLESS) {
+  // Verify browser is still headless (safety check - HEADLESS is always true at this point)
+  if (!HEADLESS) {
     console.error('[EXECUTOR_DAEMON] 🚨 FATAL: Browser context is headed (visible windows not allowed)');
+    console.error('[EXECUTOR_DAEMON] 🚨 HEADLESS must be true in daemon mode');
     process.exit(1);
   }
   
