@@ -71,17 +71,27 @@ export async function launchRunnerPersistent(headless: boolean = false): Promise
     }
     
     try {
+      // 🛡️ EXECUTOR GUARD: Check stop switch before connecting
+      const { checkStopSwitch, closeExtraPages, logGuardState } = await import('../executorGuard');
+      checkStopSwitch();
+      
       const browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
       const contexts = browser.contexts();
       
+      let context: BrowserContext;
       if (contexts.length > 0) {
         console.log(`[RUNNER_LAUNCHER] ✅ Connected to existing Chrome context (${contexts.length} contexts)`);
-        return contexts[0];
+        context = contexts[0];
       } else {
-        const context = await browser.newContext();
+        context = await browser.newContext();
         console.log(`[RUNNER_LAUNCHER] ✅ Created new context in CDP Chrome`);
-        return context;
       }
+      
+      // 🛡️ TAB LEAK GUARDRAIL: Close extra pages, keep only 1
+      await closeExtraPages(context);
+      await logGuardState(context);
+      
+      return context;
     } catch (error: any) {
       throw new Error(`Failed to connect to Chrome CDP: ${error.message}`);
     }
@@ -150,7 +160,15 @@ export async function launchRunnerPersistent(headless: boolean = false): Promise
     );
   }
 
+  // 🛡️ EXECUTOR GUARD: Check stop switch before launching
+  const { checkStopSwitch, closeExtraPages, logGuardState } = await import('../executorGuard');
+  checkStopSwitch();
+  
   const ctx = await chromium.launchPersistentContext(RUNNER_PROFILE_DIR, launchOptions);
+
+  // 🛡️ TAB LEAK GUARDRAIL: Close extra pages, keep only 1
+  await closeExtraPages(ctx);
+  await logGuardState(ctx);
 
   console.log(`[RUNNER_LAUNCHER] ✅ Context launched`);
   return ctx;

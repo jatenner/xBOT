@@ -425,15 +425,31 @@ export class UltimateTwitterPoster {
         console.log('[POSTING] Using CDP mode (connecting to system Chrome via CDP)');
         
         try {
+          // 🛡️ EXECUTOR GUARD: Check stop switch before connecting
+          const { checkStopSwitch, closeExtraPages, logGuardState } = await import('../infra/executorGuard');
+          checkStopSwitch();
+          
           const { launchRunnerPersistent } = await import('../infra/playwright/runnerLauncher');
           const context = await launchRunnerPersistent(false); // Get CDP context
+          
+          // 🛡️ TAB LEAK GUARDRAIL: Close extra pages before creating new one
+          await closeExtraPages(context);
           
           const contexts = context.browser()?.contexts() || [];
           console.log(`[POSTING] CDP connection: ${contexts.length} context(s) available`);
           
-          // Create new page in CDP context
-          this.page = await context.newPage();
-          console.log('[POSTING] ✅ Page created in CDP context');
+          // 🛡️ TAB LEAK GUARDRAIL: Reuse existing page if available, otherwise create ONE
+          const existingPages = context.pages ? context.pages() : [];
+          if (existingPages.length > 0) {
+            this.page = existingPages[0];
+            console.log('[POSTING] ✅ Reusing existing page (tab leak prevention)');
+          } else {
+            this.page = await context.newPage();
+            console.log('[POSTING] ✅ Page created in CDP context (single page)');
+          }
+          
+          // 🛡️ Log guard state
+          await logGuardState(context);
           
           // Set up error handling
           this.page.on('pageerror', (error) => {
