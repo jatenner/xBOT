@@ -1,374 +1,373 @@
-# xBOT Learning Engine V2 Runbook
+# xBOT Runbook
 
-**Version**: 2.0.0  
-**Last Updated**: 2025-08-11  
-**Environment**: Staging & Production
+**Last Updated:** 2026-01-23  
+**Purpose:** Operational procedures for deploying, verifying, and recovering xBOT
 
-## Quick Reference
+---
 
-### Health Check
+## Deployment
+
+### Deploy Both Services
+
 ```bash
-npm run health:check
+# Deploy and verify both xBOT and serene-cat
+pnpm run deploy:verify:both
+
+# Or manually:
+railway up --service xBOT --detach
+railway up --service serene-cat --detach
 ```
 
-### Staging Dry-Run
+### Verify SHA Match
+
 ```bash
-# Set environment
-export APP_ENV=staging
-export LIVE_POSTS=false
-export REDIS_PREFIX=stg:
+# Check local SHA
+git rev-parse HEAD
 
-# Generate candidates
-npm run candidates:refresh
+# Check Railway SHA (xBOT)
+railway run --service xBOT -- node -e "console.log(process.env.RAILWAY_GIT_COMMIT_SHA)"
 
-# Test scheduling
-npm run schedule:test
+# Check Railway SHA (serene-cat)
+railway run --service serene-cat -- node -e "console.log(process.env.RAILWAY_GIT_COMMIT_SHA)"
 
-# Test learning loop
-npm run learning:test
+# Check boot logs
+railway logs --service xBOT --lines 50 | grep "\[BOOT\]"
+railway logs --service serene-cat --lines 50 | grep "\[BOOT\]"
 ```
 
-### Promote to Production
+**Expected:** All SHAs match, boot logs show `execution_mode=control`
+
+---
+
+## Health Checks
+
+### Railway Services
+
 ```bash
-# 1. Apply migrations to production
-supabase link --project-ref "$PROD_PROJECT_REF"
-supabase db push
+# Check service status
+pnpm run ops:status
 
-# 2. Set production config (via Supabase dashboard or SQL)
-# learning_engine_v2: false (start in shadow mode)
-# post_fraction: 0 (no actual posting)
-# epsilon: 0.2 (exploration rate)
+# Check logs
+pnpm run ops:logs
 
-# 3. Deploy code to Railway
-git push origin main
-
-# 4. Monitor health
-npm run health:check
+# Or via Railway CLI
+railway status
+railway logs --service xBOT --lines 100
+railway logs --service serene-cat --lines 100
 ```
 
-## Configuration Flags
+### Health Endpoints
 
-### Core Flags (in bot_config table)
-
-| Flag | Default | Purpose | Values |
-|------|---------|---------|---------|
-| `learning_engine_v2` | `false` | Enable V2 learning system | `true/false` |
-| `post_fraction` | `0` | Fraction of candidates to actually post | `0.0-1.0` |
-| `epsilon` | `0.2` | Exploration rate for bandits | `0.0-1.0` |
-| `post_interval_min` | `60` | Minimum minutes between posts | `15-180` |
-| `max_hashtags` | `3` | Maximum hashtags per post | `1-5` |
-| `quiet_hours` | `[2,3,4,5]` | Hours to avoid posting (local time) | Array of hours |
-
-### Environment Variables
-
-| Variable | Required | Purpose | Example |
-|----------|----------|---------|---------|
-| `APP_ENV` | Yes | Environment identifier | `staging`, `production` |
-| `LIVE_POSTS` | Yes | Enable actual posting | `true`, `false` |
-| `REDIS_PREFIX` | Yes | Redis key namespace | `stg:`, `prod:` |
-| `REDIS_URL` | Yes | Redis connection string | `rediss://...` |
-| `SUPABASE_URL` | Yes | Supabase project URL | `https://...` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase service key | `eyJ...` |
-
-## Staging Operations
-
-### 1. Environment Setup
 ```bash
-# Copy template and configure
-cp .env.template .env
+# xBOT health
+curl https://xBOT-production.up.railway.app/healthz
 
-# Required variables for staging:
-APP_ENV=staging
-LIVE_POSTS=false
-REDIS_PREFIX=stg:
-STAGING_PROJECT_REF=your_staging_ref
-SUPABASE_URL=https://your-staging-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your_staging_service_key
-REDIS_URL=your_redis_url
+# serene-cat health
+curl https://serene-cat-production.up.railway.app/healthz
 ```
 
-### 2. Migration Testing
-```bash
-# Link to staging project
-supabase link --project-ref "$STAGING_PROJECT_REF"
-
-# Apply migrations
-supabase db push
-
-# Verify views created
-psql "$SUPABASE_URL" -c "SELECT COUNT(*) FROM information_schema.views WHERE table_name LIKE 'vw_%'"
+**Expected Response:**
+```json
+{
+  "ok": true,
+  "sha": "<git_sha>",
+  "service": "xBOT",
+  "execution_mode": "control",
+  "runner_mode": false,
+  "service_role": "main",
+  "jobs_enabled": false
+}
 ```
 
-### 3. Candidate Generation
-```bash
-# Generate fresh candidates
-npm run candidates:refresh
+### Database Health
 
-# Expected output:
-# - 20-40 candidates generated from gaming sources
-# - 0 duplicates (first run)
-# - Queue depth: 20-40
-# - Top topics: gaming_fps, gaming_battle_royale, etc.
-```
-
-### 4. Shadow Mode Testing
-```bash
-# Run single scheduling cycle
-npm run schedule:test
-
-# Expected behavior:
-# - Picks top candidate from queue
-# - Runs safety checks
-# - Logs "SHADOW MODE - Would post: ..."
-# - No actual posting (LIVE_POSTS=false)
-```
-
-### 5. Learning Loop Testing
-```bash
-# Test learning system (needs historical data)
-npm run learning:test
-
-# Expected output:
-# - Processes recent tweets (last 24h)
-# - Updates bandit priors
-# - Logs learning summary to audit_log
-```
-
-### 6. Health Monitoring
-```bash
-# Check all systems
-npm run health:check
-
-# Expected one-line output:
-# [timestamp] xBOT Health: HEALTHY | Redis:✅ | DB:✅ | Queue:25 | Bandits:12 | LastPost:none | Posts/h:0
-```
-
-## Production Deployment
-
-### Phase 1: Shadow Mode
-```bash
-# 1. Deploy code with V2 disabled
-# learning_engine_v2: false
-# post_fraction: 0
-
-# 2. Monitor existing V1 system continues
-npm run health:check
-
-# 3. Generate candidates in background
-npm run candidates:refresh
-```
-
-### Phase 2: Learning Mode
-```bash
-# 1. Enable learning without posting
-UPDATE bot_config 
-SET config_value = jsonb_set(config_value, '{learning_engine_v2}', 'true')
-WHERE environment = 'production' AND config_key = 'feature_flags';
-
-# 2. Monitor bandit updates
-npm run learning:test
-
-# 3. Check performance
-SELECT * FROM vw_learning_performance ORDER BY day DESC LIMIT 7;
-```
-
-### Phase 3: Gradual Rollout
-```bash
-# 1. Start with 10% posting
-UPDATE bot_config 
-SET config_value = jsonb_set(config_value, '{post_fraction}', '0.1')
-WHERE environment = 'production' AND config_key = 'learning_config';
-
-# 2. Monitor for 24-48 hours
-npm run health:check
-
-# 3. Increase gradually: 0.1 → 0.3 → 0.7 → 1.0
-```
-
-### Phase 4: Full V2 Operation
-```bash
-# 1. Set full posting fraction
-UPDATE bot_config 
-SET config_value = jsonb_set(config_value, '{post_fraction}', '1.0')
-WHERE environment = 'production' AND config_key = 'learning_config';
-
-# 2. Monitor engagement metrics
-SELECT * FROM vw_topics_perf_7d ORDER BY avg_engagement_rate DESC;
-```
-
-## Monitoring & Analytics
-
-### Key SQL Views
 ```sql
--- Recent posts with V2 scores
-SELECT * FROM vw_recent_posts ORDER BY posted_at DESC LIMIT 10;
+-- Check recent POST_SUCCESS
+SELECT * FROM system_events 
+WHERE event_type='POST_SUCCESS' 
+ORDER BY created_at DESC LIMIT 5;
 
--- Topic performance last 7 days
-SELECT * FROM vw_topics_perf_7d ORDER BY avg_engagement_rate DESC;
+-- Check posting queue activity (last 30 min)
+SELECT COUNT(*) AS ticks, MAX(created_at) AS last_tick
+FROM system_events
+WHERE event_type='POSTING_QUEUE_TICK'
+  AND created_at >= NOW() - INTERVAL '30 minutes';
 
--- Best posting hours
-SELECT * FROM vw_time_of_day_perf_7d ORDER BY avg_engagement_rate DESC;
-
--- Learning system performance
-SELECT * FROM vw_learning_performance ORDER BY day DESC LIMIT 7;
-
--- Bandit performance from audit logs
-SELECT * FROM vw_bandit_performance ORDER BY day DESC LIMIT 7;
+-- Check reply queue activity
+SELECT COUNT(*) AS ticks, MAX(created_at) AS last_tick
+FROM system_events
+WHERE event_type='REPLY_QUEUE_TICK'
+  AND created_at >= NOW() - INTERVAL '30 minutes';
 ```
 
-### Redis Monitoring
+---
+
+## Mac Executor Management
+
+### Start Executor
+
 ```bash
-# Check queue depths
-redis-cli --scan --pattern "stg:queue:*" | xargs redis-cli mget
+# Start LaunchAgent (auto-starts on boot)
+pnpm run executor:start
 
-# Check bandit states
-redis-cli --scan --pattern "stg:bandit:*" | head -10
+# Or manually
+launchctl load -w ~/Library/LaunchAgents/com.xbot.executor.plist
 
-# Check content hashes (deduplication)
-redis-cli --scan --pattern "stg:content_hash:*" | wc -l
+# Run one-shot (for testing)
+EXECUTION_MODE=executor RUNNER_MODE=true RUNNER_BROWSER=cdp RUNNER_PROFILE_DIR=./.runner-profile pnpm run runner:posting-queue-once
 ```
 
-### Performance Tuning
+### Stop Executor (Emergency)
 
-#### If Engagement Drops >30%
 ```bash
-# 1. Increase exploration
-UPDATE bot_config 
-SET config_value = jsonb_set(config_value, '{epsilon}', '0.3')
-WHERE environment = 'production' AND config_key = 'learning_config';
+# Method 1: STOP switch (works even in hot loops)
+touch ./.runner-profile/STOP_EXECUTOR
 
-# 2. Widen topic diversity for 24-48h
-# Add more gaming topics to allowlist
+# Method 2: Stop LaunchAgent
+pnpm run executor:stop
 
-# 3. Monitor bandit convergence
-SELECT * FROM vw_bandit_performance WHERE day > NOW() - INTERVAL '3 days';
+# Method 3: Kill process
+pkill -f executor-daemon
 ```
 
-#### If Queue Empties Frequently
+### Check Executor Status
+
 ```bash
-# 1. Increase candidate generation frequency
-# Run candidates:refresh more often
+# Check status
+pnpm run executor:status
 
-# 2. Expand content sources
-# Enable more topics in sources configuration
+# View logs
+pnpm run executor:logs
 
-# 3. Check source performance
-SELECT * FROM vw_content_sources_perf ORDER BY success_rate DESC;
+# Or manually
+tail -f ./.runner-profile/executor.log
 ```
 
-## Troubleshooting
+### Verify Executor Guardrails
 
-### Common Issues
-
-#### "Queue is empty"
 ```bash
-# Check candidate generation
-npm run candidates:refresh
+# Run stability verification (10 minutes)
+pnpm tsx scripts/runner/verify-executor-stability.ts
 
-# Check source configuration
-node -e "const {ContentSourceManager} = require('./dist/candidates/sources'); console.log(new ContentSourceManager().getSourceStats())"
+# Check page count in logs
+grep "EXECUTOR_GUARD" ./.runner-profile/executor.log | grep "pages="
+
+# Expected: All show pages=1 (or pages=0)
 ```
 
-#### "Redis not responding"
+---
+
+## CDP / Profile Recovery
+
+### Check CDP Connection
+
 ```bash
-# Check Redis connectivity
-redis-cli ping
+# Check if Chrome is running with CDP
+curl http://127.0.0.1:9222/json/version
 
-# Check Redis prefix
-echo $REDIS_PREFIX
-
-# Verify key patterns
-redis-cli --scan --pattern "${REDIS_PREFIX}*" | head -5
+# Expected: JSON response with Chrome version
 ```
 
-#### "Safety check failed"
+### Start Chrome with CDP
+
 ```bash
-# Check safety configuration
-node -e "const {ContentSafetyGuard} = require('./dist/safety/guard'); console.log(new ContentSafetyGuard().getConfig())"
+# Kill existing Chrome
+pkill -9 "Google Chrome"
 
-# Test specific content
-node -e "const {ContentSafetyGuard} = require('./dist/safety/guard'); const guard = new ContentSafetyGuard(); console.log(guard.validate({text: 'Your test content here'}))"
+# Start Chrome with CDP (macOS)
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/.chrome-cdp-profile" \
+  --no-first-run \
+  --no-default-browser-check
+
+# Verify CDP
+curl http://127.0.0.1:9222/json/version
 ```
 
-#### "Learning cycle errors"
+### Check Session
+
 ```bash
-# Check database connectivity
-npm run health:check
+# Check Twitter session
+pnpm run runner:session
 
-# Verify analytics data exists
-SELECT COUNT(*) FROM tweets WHERE analytics IS NOT NULL AND analytics != '{}';
-
-# Check bandit system
-node -e "const {GamingBanditManager} = require('./dist/learn/bandit'); new GamingBanditManager().getPerformanceReport().then(console.log)"
+# Expected: SESSION_OK with URL
 ```
 
-### Emergency Procedures
+### Login / Re-login
 
-#### Disable V2 System
-```sql
--- Immediate rollback to V1
-UPDATE bot_config 
-SET config_value = jsonb_set(config_value, '{learning_engine_v2}', 'false')
-WHERE environment = 'production' AND config_key = 'feature_flags';
-```
-
-#### Stop All Posting
-```sql
--- Emergency brake
-UPDATE bot_config 
-SET config_value = jsonb_set(config_value, '{post_fraction}', '0')
-WHERE environment = 'production' AND config_key = 'learning_config';
-```
-
-#### Clear Queue
 ```bash
-# Clear candidate queue
-redis-cli del "${REDIS_PREFIX}queue:candidates"
+# Login to Twitter
+pnpm run runner:login
 
-# Clear content hashes
-redis-cli --scan --pattern "${REDIS_PREFIX}content_hash:*" | xargs redis-cli del
+# Follow prompts to complete login
 ```
 
-## Required GitHub Secrets
+### Reset Profile
 
-For CI/CD pipelines to work, ensure these secrets are configured:
+```bash
+# Reset Chrome profile (nuclear option)
+pnpm run runner:reset-chrome
 
-### Repository Secrets
-- `STAGING_PROJECT_REF`: Supabase staging project reference
-- `PROD_PROJECT_REF`: Supabase production project reference
-- `STAGING_DB_PASSWORD`: Staging database password for psql
-- `PROD_DB_PASSWORD`: Production database password for psql
-- `SUPABASE_ACCESS_TOKEN`: Supabase CLI access token
+# Then re-login
+pnpm run runner:login
+```
 
-### Environment-Specific Secrets
+---
 
-#### Staging Environment
-- `STAGING_SUPABASE_URL`: Staging Supabase project URL
-- `STAGING_SUPABASE_KEY`: Staging service role key
+## Incident Response
 
-#### Production Environment (Protected)
-- `PROD_SUPABASE_URL`: Production Supabase project URL
-- `PROD_SUPABASE_KEY`: Production service role key
+### Posting Queue Not Running
 
-## Daily Operations Checklist
+**Symptoms:**
+- No `POSTING_QUEUE_TICK` events in last 10 min
+- Queue has `status='queued'` decisions but nothing processing
 
-### Morning (9 AM)
-- [ ] Check health status: `npm run health:check`
-- [ ] Review overnight performance: Query `vw_recent_posts`
-- [ ] Verify queue depth: Should be 20-50 candidates
-- [ ] Check bandit learning: Query `vw_bandit_performance`
+**Diagnosis:**
+```bash
+# Check Railway logs
+railway logs --service serene-cat --lines 100 | grep POSTING_QUEUE
 
-### Evening (6 PM)
-- [ ] Refresh candidates: `npm run candidates:refresh`
-- [ ] Review engagement metrics: Query `vw_topics_perf_7d`
-- [ ] Adjust epsilon if needed (weekly tuning)
-- [ ] Monitor for any alerts or warnings
+# Check if jobs enabled
+railway logs --service serene-cat --lines 50 | grep "jobs_enabled"
 
-### Weekly (Monday)
-- [ ] Review 7-day performance trends
-- [ ] Tune exploration rate based on performance
-- [ ] Update content source weights if needed
-- [ ] Plan any configuration adjustments
-- [ ] Review and clean old Redis keys
+# Check DB for ticks
+# SQL: SELECT COUNT(*) FROM system_events WHERE event_type='POSTING_QUEUE_TICK' AND created_at >= NOW() - INTERVAL '30 minutes';
+```
 
-This runbook ensures reliable operation of the xBOT Learning Engine V2 system with proper monitoring, troubleshooting, and operational procedures.
+**Recovery:**
+1. Check `SERVICE_ROLE` is `worker` on serene-cat
+2. Check `EXECUTION_MODE=control` (should be control, not executor)
+3. Restart service: `railway up --service serene-cat --detach`
+4. Verify ticks resume: `railway logs --service serene-cat --lines 50 | grep POSTING_QUEUE_TICK`
+
+### Executor Tab Explosion
+
+**Symptoms:**
+- Mac becomes unusable (input lag)
+- Chrome has infinite tabs
+- Executor logs show `pages=4` or higher
+
+**Recovery:**
+```bash
+# 1. IMMEDIATELY: Create STOP switch
+touch ./.runner-profile/STOP_EXECUTOR
+
+# 2. Wait 10 seconds for executor to exit
+
+# 3. Kill Chrome if still growing
+pkill -9 "Google Chrome"
+
+# 4. Verify executor stopped
+ps aux | grep executor-daemon
+
+# 5. Check logs for root cause
+tail -100 ./.runner-profile/executor.log | grep "EXECUTOR_GUARD"
+```
+
+**Prevention:**
+- Guardrails should prevent this (hard cap at 3 pages)
+- If it happens, check logs for why guardrails didn't trigger
+
+### No POST_SUCCESS Events
+
+**Symptoms:**
+- `POSTING_QUEUE_TICK` events exist but `attempts_started=0`
+- No `POST_SUCCESS` events in last 2+ hours
+
+**Diagnosis:**
+```bash
+# Check Railway is control-plane (should block attempts)
+railway logs --service serene-cat --lines 50 | grep "CONTROL-PLANE MODE"
+
+# Check Mac executor is running
+pnpm run executor:status
+
+# Check executor logs for errors
+pnpm run executor:logs | grep -i error
+```
+
+**Recovery:**
+1. Verify Railway is `EXECUTION_MODE=control` (should block attempts)
+2. Verify Mac executor is `EXECUTION_MODE=executor` + `RUNNER_MODE=true`
+3. Check executor can connect to CDP: `curl http://127.0.0.1:9222/json/version`
+4. Check session: `pnpm run runner:session`
+5. Run one-shot test: `pnpm run runner:posting-queue-once`
+
+### CDP Connection Lost
+
+**Symptoms:**
+- Executor logs show "CDP not reachable"
+- Cannot connect to Chrome
+
+**Recovery:**
+```bash
+# 1. Check if Chrome is running
+ps aux | grep "Google Chrome"
+
+# 2. If not running, start Chrome with CDP (see "Start Chrome with CDP" above)
+
+# 3. Verify CDP
+curl http://127.0.0.1:9222/json/version
+
+# 4. Restart executor
+pnpm run executor:restart
+```
+
+### Session Expired
+
+**Symptoms:**
+- Executor logs show "SESSION_EXPIRED"
+- Session check fails
+
+**Recovery:**
+```bash
+# 1. Check session
+pnpm run runner:session
+
+# 2. If expired, login
+pnpm run runner:login
+
+# 3. Verify session
+pnpm run runner:session
+
+# Expected: SESSION_OK
+```
+
+---
+
+## Verification Scripts
+
+**All proof/verification scripts:** See `docs/TESTS_AND_PROOFS.md`
+
+**Quick verification:**
+```bash
+# Update status snapshot
+pnpm run docs:snapshot
+
+# Check current state
+cat docs/STATUS.md
+```
+
+---
+
+## Environment Sync
+
+### Sync Env from Railway
+
+```bash
+# Auto-sync (recommended)
+pnpm run runner:autosync
+
+# Manual sync
+pnpm run runner:sync
+
+# Verify sync
+pnpm run runner:check
+```
+
+**Required for:** Mac executor needs same `DATABASE_URL` and other env vars as Railway
+
+---
+
+**See [ARCHITECTURE.md](./ARCHITECTURE.md) for system details.**

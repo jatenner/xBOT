@@ -91,7 +91,8 @@
     "executor:stop": "launchctl unload ~/Library/LaunchAgents/com.xbot.executor.plist",
     "executor:restart": "pnpm run executor:stop && pnpm run executor:start",
     "executor:logs": "tail -f ./.runner-profile/executor.log",
-    "logs:railway": "railway logs -f"
+    "logs:railway": "railway logs -f",
+    "docs:snapshot": "tsx scripts/ops/update_docs_snapshot.ts"
   },
   "dependencies": {
     "@sentry/node": "^10.32.1",

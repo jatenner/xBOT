@@ -1,248 +1,166 @@
-# 📚 xBOT Documentation Index
+# xBOT - Single Source of Truth
 
-**Last Updated:** November 5, 2025  
-**Purpose:** Central navigation for all project documentation
+**Mission:** Autonomous Twitter bot that plans, posts, replies, scrapes, and learns to optimize follower growth and content quality.
 
----
-
-## 🚨 START HERE
-
-**Having an issue?** → `TROUBLESHOOTING_QUICK_REFERENCE.md`
-
-**New to the project?** → Read these 3 files in order:
-1. `context.md` - What xBOT is and how it works
-2. `constraints.md` - Technical rules and best practices
-3. `tasks.md` - Current priorities
+**Status:** Operational - Control-plane (Railway) + Executor-plane (Mac Runner) split active  
+**Last Updated:** 2026-01-23  
+**Current SHA:** `2db22302785395a6c673809e15641143cdadc76c`
 
 ---
 
-## 📋 Quick Navigation
+## Quick Start
 
-### **🐛 Troubleshooting & Debugging**
-- **[TROUBLESHOOTING_QUICK_REFERENCE.md](./TROUBLESHOOTING_QUICK_REFERENCE.md)** ⭐ **START HERE**
-  - 1-page guide to diagnose common issues
-  - Dashboard shows 0 metrics? Check here
-  - Scraper timing out? Check here
-  - Database errors? Check here
+### Run Locally (Mac Executor)
 
-### **🗄️ Database Reference**
-- **[DATABASE_REFERENCE.md](./DATABASE_REFERENCE.md)** - Complete database schema
-  - All 4 core tables explained
-  - Column-by-column reference
-  - Data flow diagrams
-  - Code usage examples
+```bash
+# 1. Sync env from Railway
+pnpm run runner:autosync
 
-### **🕷️ Scraper Reference**
-- **[SCRAPER_DATA_FLOW_REFERENCE.md](./SCRAPER_DATA_FLOW_REFERENCE.md)** - All scrapers mapped
-  - 9 different scrapers explained
-  - Which table each scraper writes to
-  - Current status of each scraper
-  - Data flow from scraping → dashboard
+# 2. Check session
+pnpm run runner:session
 
-### **🎨 Visual Intelligence (VI) System**
-- **[VI_DATA_REFERENCE.md](./VI_DATA_REFERENCE.md)** - VI system complete reference
-  - 6 VI tables explained
-  - All metrics documented (views, likes, RTs, replies)
-  - Data flow from scraping → classification → intelligence
-  - Query examples
+# 3. Run posting queue once
+pnpm run runner:posting-queue-once
 
----
+# 4. Run reply queue once
+pnpm run runner:reply-queue-once
+```
 
-## 📖 Core Documentation
+### Deploy to Railway
 
-### **Project Overview**
-- **[context.md](./context.md)** - Project stack, flow, and non-negotiables
-  - Stack: Node/TypeScript, Supabase, Railway, Playwright, OpenAI
-  - Flow: topic → tone → angle → structure → persona → draft → publish → scrape → learn
-  - Non-negotiables: Medical safety, idempotency, JSON logs
+```bash
+# Deploy both services
+pnpm run deploy:verify:both
 
-### **Technical Constraints**
-- **[constraints.md](./constraints.md)** - Technical rules and best practices
-  - Env validation via Zod (no direct `process.env`)
-  - Playwright: Fresh context per retry, exponential backoff
-  - SQL: Reversible migrations, indexes on key columns
-  - Logs: JSON format with structured fields
+# Check status
+pnpm run ops:status
+```
 
-### **Task Priorities**
-- **[tasks.md](./tasks.md)** - Development roadmap
-  - Comprehensive scraper + job queue
-  - Idempotent scheduler
-  - Winner loop (remix high-performing content)
-  - Auto-pause on low engagement
-  - Similarity guard
+### Stop Executor (Emergency)
+
+```bash
+# Create STOP switch (works even in hot loops)
+touch ./.runner-profile/STOP_EXECUTOR
+
+# Or stop LaunchAgent
+pnpm run executor:stop
+```
 
 ---
 
-## 🔧 Infrastructure Documentation
+## Architecture Overview
 
-### **Deployment & Operations**
-- **[OPERATIONS.md](./OPERATIONS.md)** - Production operations guide
-- **[PROD_DEPLOY.md](./PROD_DEPLOY.md)** - Deployment procedures
-- **[runbook.md](./runbook.md)** - Incident response runbook
+**Control-Plane (Railway):**
+- **Services:** `xBOT` (main), `serene-cat` (worker)
+- **Mode:** `EXECUTION_MODE=control` (NO browser automation)
+- **Functions:** Plan generation, queue monitoring, DB writes, event emission
+- **Entrypoint:** `src/railwayEntrypoint.ts`
 
-### **System Health**
-- **[JOB_SCHEDULE_ANALYSIS.md](./JOB_SCHEDULE_ANALYSIS.md)** - Job scheduling analysis
-- **[RESOURCE_IMPACT_ANALYSIS.md](./RESOURCE_IMPACT_ANALYSIS.md)** - Resource usage analysis
+**Executor-Plane (Mac Runner):**
+- **Mode:** `EXECUTION_MODE=executor` + `RUNNER_MODE=true`
+- **Functions:** Browser automation (CDP/Playwright), actual posting/replies
+- **Guardrails:** STOP switch, page cap (max 3), runtime cap (60s/tick), single-instance lock
+- **Scripts:** `scripts/runner/posting-queue-once.ts`, `scripts/runner/reply-queue-once.ts`
 
-### **Browser Automation**
-- **[playwright-stability-guide.md](./playwright-stability-guide.md)** - Playwright best practices
-- **[browser-stability.md](./browser-stability.md)** - Browser stability patterns
-
-### **Budget & Cost**
-- **[budget.md](./budget.md)** - OpenAI API budget tracking
-- **[budget-guard.md](./budget-guard.md)** - Budget protection mechanisms
-
----
-
-## 🎯 System-Specific Guides
-
-### **Visual Intelligence (VI) System**
-- **[VI_DATA_REFERENCE.md](./VI_DATA_REFERENCE.md)** - Complete VI reference
-- **[VI_INTEGRATION_GUIDE.md](./VI_INTEGRATION_GUIDE.md)** - Integration guide
-- **[VI_INTEGRATION_SAFETY_CHECKLIST.md](./VI_INTEGRATION_SAFETY_CHECKLIST.md)** - Safety checklist
-- **[VISUAL_INTELLIGENCE_SYSTEM_COMPLETE.md](./VISUAL_INTELLIGENCE_SYSTEM_COMPLETE.md)** - Implementation summary
-- **[NEXT_STEPS_DEPLOY_VI.md](./NEXT_STEPS_DEPLOY_VI.md)** - Deployment steps
-
-### **Content & Posting**
-- **[POSTING_RELIABILITY_QUALITY.md](./POSTING_RELIABILITY_QUALITY.md)** - Posting system quality
-- **[SOCIAL_CONTENT_OPERATOR.md](./SOCIAL_CONTENT_OPERATOR.md)** - Content strategy
-
-### **Database**
-- **[db-schema.md](./db-schema.md)** - Alternative database schema doc
-- **[DATABASE_MIGRATION_CONSOLIDATION_PLAN.md](./DATABASE_MIGRATION_CONSOLIDATION_PLAN.md)** - Migration strategy
+**Data Flow:**
+```
+Railway (control) → Creates decisions → content_metadata (queued)
+Mac Runner (executor) → Processes queue → Posts to Twitter → Updates content_metadata (posted)
+Scraper → Updates actual_* metrics → Dashboard reads
+```
 
 ---
 
-## 📝 Historical Documentation
+## Key Environment Variables
 
-### **Recent Changes**
-- **[BOOTSTRAP_SUMMARY.md](./BOOTSTRAP_SUMMARY.md)** - Project context bootstrap (Nov 5)
-- **[CRITICAL_FIXES_DEPLOYED.md](./CRITICAL_FIXES_DEPLOYED.md)** - Critical fixes log
-- **[PHASE_1_REFACTOR_COMPLETE.md](./PHASE_1_REFACTOR_COMPLETE.md)** - Refactor summary
-- **[REFACTOR_PROGRESS_SUMMARY.md](./REFACTOR_PROGRESS_SUMMARY.md)** - Refactor progress
+### Railway (Control-Plane)
 
-### **Production Fixes**
-- **[production-fixes-summary.md](./production-fixes-summary.md)** - Production fixes
-- **[FINAL_REVIEW_BEFORE_DEPLOY.md](./FINAL_REVIEW_BEFORE_DEPLOY.md)** - Pre-deploy checklist
+- `EXECUTION_MODE=control` (required - fail-closed)
+- `SERVICE_ROLE=worker|main` (or inferred from `RAILWAY_SERVICE_NAME`)
+- `RAILWAY_SERVICE_NAME=xBOT|serene-cat`
+- `DATABASE_URL` (Supabase PostgreSQL)
+- `DISABLE_ALL_JOBS=true` (optional - disable jobs on non-worker)
 
-### **Refactoring Plans**
-- **[REFACTOR_PLAN_postingQueue.md](./REFACTOR_PLAN_postingQueue.md)** - Posting queue refactor
+### Mac Runner (Executor-Plane)
 
-### **Validation & Verification**
-- **[VALIDATION_CHECKLIST.md](./VALIDATION_CHECKLIST.md)** - Validation checklist
-- **[verification-report.md](./verification-report.md)** - Verification report
-
-### **Deployment**
-- **[ZERO_MANUAL_DEPLOYMENT.md](./ZERO_MANUAL_DEPLOYMENT.md)** - Automated deployment
+- `EXECUTION_MODE=executor` (required)
+- `RUNNER_MODE=true` (required)
+- `RUNNER_BROWSER=cdp` (CDP mode - reuse existing Chrome)
+- `RUNNER_PROFILE_DIR=./.runner-profile` (profile directory)
+- `CDP_PORT=9222` (Chrome DevTools Protocol port)
+- `DATABASE_URL` (same as Railway)
 
 ---
 
-## 🔑 Key Files in Codebase
+## Documentation Structure
 
-### **Configuration**
-- `src/config/env.ts` - Zod-validated environment variables
-- `src/lib/logger.ts` - Structured JSON logging
-
-### **Database**
-- `src/db/index.ts` - Supabase client
-- `db/migrations/000_init_core.sql` - Core schema
-- `supabase/migrations/20251105_visual_intelligence_system.sql` - VI schema
-
-### **Scrapers**
-- `src/jobs/metricsScraperJob.ts` - Main metrics scraper (YOUR posts)
-- `src/scrapers/bulletproofTwitterScraper.ts` - Core scraper utility
-- `src/intelligence/viAccountScraper.ts` - VI scraper
-
-### **Jobs**
-- `src/jobs/jobManager.ts` - Job scheduler
-- `src/jobs/planJob.ts` - Content generation
-- `src/jobs/postingQueue.ts` - Posting orchestration
-- `src/jobs/replyJob.ts` - Reply posting
-
-### **CI/CD**
-- `.github/workflows/ci.yml` - GitHub Actions workflow
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Detailed system architecture, data flow, event stream
+- **[RUNBOOK.md](./RUNBOOK.md)** - Operational procedures, deployment, health checks, incident response
+- **[STATUS.md](./STATUS.md)** - Current state: SHAs, services, last events, known blockers
+- **[TESTS_AND_PROOFS.md](./TESTS_AND_PROOFS.md)** - All proof scripts, what they verify, how to run
+- **[TODO.md](./TODO.md)** - Prioritized backlog, next 10 items, definitions of done
+- **[DECISION_LOG.md](./DECISION_LOG.md)** - Chronological design decisions and rationale
+- **[TOC.md](./TOC.md)** - Table of contents with recommended reading order
+- **[DATABASE_REFERENCE.md](./DATABASE_REFERENCE.md)** - Complete database schema reference
 
 ---
 
-## 🎓 For New Contributors
+## Docs Update Policy
 
-**Day 1: Understanding the System**
-1. Read `context.md` - Get the big picture
-2. Read `constraints.md` - Learn the rules
-3. Read `DATABASE_REFERENCE.md` - Understand data flow
+**Every code change MUST update:**
 
-**Day 2: Setting Up**
-1. Check `src/config/env.ts` - See required environment variables
-2. Review `.github/workflows/ci.yml` - Understand CI checks
-3. Read `OPERATIONS.md` - Learn deployment process
+1. **docs/STATUS.md** - If changing SHAs, services, env vars, or operational state
+2. **docs/DECISION_LOG.md** - If making architectural or design decisions
+3. **docs/ARCHITECTURE.md** - If adding new services, env vars, or data flows
+4. **docs/TESTS_AND_PROOFS.md** - If adding new proof/verification scripts
 
-**Day 3: Common Tasks**
-1. Adding a scraper? → Read `SCRAPER_DATA_FLOW_REFERENCE.md`
-2. Modifying database? → Read `DATABASE_REFERENCE.md`
-3. Debugging issues? → Use `TROUBLESHOOTING_QUICK_REFERENCE.md`
+**Update commands:**
 
----
+```bash
+# Update status snapshot (queries DB for current state)
+pnpm run docs:snapshot
 
-## 🚀 For AI Assistants Working on PRs
+# Manual updates (edit docs directly)
+# Then commit with: "docs: update STATUS.md with latest SHA"
+```
 
-**Before making changes:**
-1. ✅ Read `TROUBLESHOOTING_QUICK_REFERENCE.md` - Understand common issues
-2. ✅ Read `DATABASE_REFERENCE.md` - Know which tables exist
-3. ✅ Read `SCRAPER_DATA_FLOW_REFERENCE.md` - Understand scraper ecosystem
+**Verification:**
 
-**When adding features:**
-1. ✅ Update relevant docs (DATABASE_REFERENCE.md, SCRAPER_DATA_FLOW_REFERENCE.md)
-2. ✅ Follow `constraints.md` (Zod env, structured logging, reversible migrations)
-3. ✅ Add troubleshooting section to TROUBLESHOOTING_QUICK_REFERENCE.md
-
-**When fixing bugs:**
-1. ✅ Document the fix in SCRAPER_DATA_FLOW_REFERENCE.md (if scraper-related)
-2. ✅ Update status in relevant reference docs
-3. ✅ Add to "Recent Fixes" section
+- All env vars documented in `ARCHITECTURE.md` and `README.md`
+- All proof scripts listed in `TESTS_AND_PROOFS.md`
+- All design decisions logged in `DECISION_LOG.md`
+- Current state reflected in `STATUS.md`
 
 ---
 
-## ✅ Documentation Status (Nov 5, 2025)
+## Key Tables & Events
 
-**Complete & Up-to-Date:**
-- ✅ TROUBLESHOOTING_QUICK_REFERENCE.md (NEW - Nov 5)
-- ✅ SCRAPER_DATA_FLOW_REFERENCE.md (Updated Nov 5)
-- ✅ VI_DATA_REFERENCE.md (Created Nov 5)
-- ✅ DATABASE_REFERENCE.md (Updated Nov 5)
-- ✅ context.md (Created Nov 5)
-- ✅ constraints.md (Created Nov 5)
-- ✅ tasks.md (Created Nov 5)
+**Tables:**
+- `content_metadata` - Primary table (decisions, content, metrics)
+- `system_events` - Event stream (POST_SUCCESS, POST_FAILED, ticks, blocks)
+- `reply_candidate_queue` - Reply candidates
+- `reply_decisions` - Scheduled replies
+- `outcomes` - Engagement metrics for learning
 
-**May Need Updates:**
-- ⚠️ OPERATIONS.md (Last updated: Unknown)
-- ⚠️ db-schema.md (May be outdated - use DATABASE_REFERENCE.md instead)
-
-**Historical (For Reference Only):**
-- Most files in `docs/` starting with capital letters (DEPLOYMENT_*, IMPLEMENTATION_*, etc.)
-- These document specific features/fixes and may not reflect current state
+**Key Events:**
+- `POST_SUCCESS` - Successful post (includes tweet_id, decision_id)
+- `POST_FAILED` - Failed post (includes reason code)
+- `POSTING_QUEUE_TICK` - Posting queue execution (ready, selected, attempts_started)
+- `REPLY_QUEUE_TICK` - Reply queue execution
+- `POSTING_QUEUE_BLOCKED` - Blocked attempt (reason: NOT_EXECUTOR_MODE, etc.)
+- `REPLY_QUEUE_BLOCKED` - Blocked reply attempt
 
 ---
 
-## 🆘 Getting Help
+## Where to Look
 
-**System broken?**
-1. Check `TROUBLESHOOTING_QUICK_REFERENCE.md`
-2. Search for error message in relevant reference doc
-3. Check Railway logs: `railway logs | grep "ERROR"`
-
-**Data not flowing correctly?**
-1. Read `SCRAPER_DATA_FLOW_REFERENCE.md`
-2. Verify tables exist: `psql $DATABASE_URL -c "\dt"`
-3. Check scraper status in logs
-
-**Need to understand a table?**
-1. Read `DATABASE_REFERENCE.md`
-2. Search for table name
-3. See "Used By" section for code references
+**For deployment issues:** `docs/RUNBOOK.md` → "Deployment" section  
+**For architecture questions:** `docs/ARCHITECTURE.md`  
+**For current status:** `docs/STATUS.md`  
+**For proof/verification:** `docs/TESTS_AND_PROOFS.md`  
+**For database schema:** `docs/DATABASE_REFERENCE.md`  
+**For design rationale:** `docs/DECISION_LOG.md`  
 
 ---
 
-**Last Updated:** November 5, 2025  
-**Maintainers:** AI Assistant, User  
-**Status:** ✅ Bootstrap Complete - Ready for Future PRs
-
+**See [TOC.md](./TOC.md) for complete documentation index.**
