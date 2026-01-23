@@ -135,7 +135,10 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   const slotTime = new Date();
   
   // 🔒 REPLY_QUEUE instrumentation
-  console.log('[REPLY_QUEUE] ✅ job_tick start');
+  const executionMode = process.env.EXECUTION_MODE || 'control'; // Default to control (fail-closed)
+  const runnerMode = process.env.RUNNER_MODE === 'true';
+  const isExecutorMode = executionMode === 'executor' && runnerMode;
+  console.log(`[REPLY_QUEUE] ✅ job_tick start EXECUTION_MODE=${executionMode} RUNNER_MODE=${runnerMode} isExecutorMode=${isExecutorMode}`);
   let readyCandidates = 0;
   let selectedCandidates = 0;
   let attemptsStarted = 0;
@@ -1889,6 +1892,20 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       console.warn(`[SCHEDULER] Failed to log job success: ${(e as Error).message}`);
     }
     
+    // 🔒 EXECUTION_MODE GUARD: Only count attempts in executor mode
+    if (!isExecutorMode) {
+      console.log(`[REPLY_QUEUE] 🔒 CONTROL-PLANE MODE: Decision created but not counting as attempt (EXECUTION_MODE=${executionMode}, RUNNER_MODE=${runnerMode})`);
+      await emitReplyQueueBlock('NOT_EXECUTOR_MODE', {
+        decision_id: replyDecisionId,
+        execution_mode: executionMode,
+        runner_mode: runnerMode,
+        detail: 'Railway is control-plane only - executor mode required for browser automation'
+      });
+      attemptsStarted = 0; // Don't count as attempt in control mode
+    } else {
+      attemptsStarted = 1;
+    }
+    
     // Get ready candidates count
     const { count: queueCount } = await supabase
       .from('reply_candidate_queue')
@@ -1897,7 +1914,6 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       .gt('expires_at', new Date().toISOString());
     readyCandidates = queueCount || 0;
     selectedCandidates = 1;
-    attemptsStarted = 1;
     
     // Emit REPLY_QUEUE_TICK
     await emitReplyQueueTick();
@@ -2127,6 +2143,19 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       console.warn(`[SCHEDULER] Failed to log job error: ${(e as Error).message}`);
     }
     
+    // 🔒 EXECUTION_MODE GUARD: Only count attempts in executor mode
+    if (!isExecutorMode && candidate) {
+      console.log(`[REPLY_QUEUE] 🔒 CONTROL-PLANE MODE: Error occurred but not counting as attempt (EXECUTION_MODE=${executionMode}, RUNNER_MODE=${runnerMode})`);
+      await emitReplyQueueBlock('NOT_EXECUTOR_MODE', {
+        execution_mode: executionMode,
+        runner_mode: runnerMode,
+        detail: 'Railway is control-plane only - executor mode required for browser automation'
+      });
+      attemptsStarted = 0; // Don't count as attempt in control mode
+    } else {
+      attemptsStarted = candidate ? 1 : 0;
+    }
+    
     // Get ready candidates count
     const { count: queueCount } = await supabase
       .from('reply_candidate_queue')
@@ -2135,7 +2164,6 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       .gt('expires_at', new Date().toISOString());
     readyCandidates = queueCount || 0;
     selectedCandidates = candidate ? 1 : 0;
-    attemptsStarted = candidate ? 1 : 0;
     
     // Emit REPLY_QUEUE_TICK
     await emitReplyQueueTick();

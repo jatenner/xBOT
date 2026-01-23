@@ -1285,11 +1285,13 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
   // 🔒 Task 1: Explicit job_tick log at top (SERVICE_ROLE, RUNNER_MODE, etc.)
   const serviceRole = roleInfo.role;
   const runnerMode = process.env.RUNNER_MODE === 'true';
+  const executionMode = process.env.EXECUTION_MODE || 'control'; // Default to control (fail-closed)
+  const isExecutorMode = executionMode === 'executor' && runnerMode;
   const growthControllerEnabled = process.env.GROWTH_CONTROLLER_ENABLED === 'true';
   const allowTestPosts = process.env.ALLOW_TEST_POSTS === 'true';
   const postingDisabledEnv = process.env.DISABLE_POSTING === 'true' || process.env.POSTING_DISABLED === 'true';
   console.log(
-    `[POSTING_QUEUE] ✅ job_tick start SERVICE_ROLE=${serviceRole} RUNNER_MODE=${runnerMode} GROWTH_CONTROLLER_ENABLED=${growthControllerEnabled} ALLOW_TEST_POSTS=${allowTestPosts} postingDisabled=${!!flags.postingDisabled} postingDisabledEnv=${postingDisabledEnv}`
+    `[POSTING_QUEUE] ✅ job_tick start SERVICE_ROLE=${serviceRole} RUNNER_MODE=${runnerMode} EXECUTION_MODE=${executionMode} isExecutorMode=${isExecutorMode} GROWTH_CONTROLLER_ENABLED=${growthControllerEnabled} ALLOW_TEST_POSTS=${allowTestPosts} postingDisabled=${!!flags.postingDisabled} postingDisabledEnv=${postingDisabledEnv}`
   );
 
   // 🔒 MIGRATION HEALTH GUARD: Verify schema before processing
@@ -1841,7 +1843,19 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
           }
         }
         
-        // Proceed with posting
+        // 🔒 EXECUTION_MODE GUARD: Only start attempts in executor mode
+        if (!isExecutorMode) {
+          console.log(`[POSTING_QUEUE] 🔒 CONTROL-PLANE MODE: Skipping post attempt (EXECUTION_MODE=${executionMode}, RUNNER_MODE=${runnerMode})`);
+          await emitPostingQueueBlock(supabase, 'NOT_EXECUTOR_MODE', { 
+            decision_id: decision.id,
+            execution_mode: executionMode,
+            runner_mode: runnerMode,
+            detail: 'Railway is control-plane only - executor mode required for browser automation'
+          });
+          continue; // Skip this decision, don't increment attemptsStarted
+        }
+        
+        // Proceed with posting (only in executor mode)
         attemptsStarted++;
         let success = false;
         try {

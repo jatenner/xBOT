@@ -39,12 +39,14 @@ function startHealthServer(): void {
   const railwayServiceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || '';
   const serviceRole = process.env.SERVICE_ROLE || (railwayServiceName.includes('worker') ? 'worker' : 'main') || 'unknown';
   const railwayService = railwayServiceName || 'unknown';
+  const executionMode = process.env.EXECUTION_MODE || 'control'; // Default to control (fail-closed)
+  const runnerMode = process.env.RUNNER_MODE === 'true';
   
   // Determine jobs_enabled status (will be set later in background init)
   const jobsEnabled = 'pending'; // Will be updated after role resolution
   
   // Single-line boot fingerprint (required for deploy verification)
-  console.log(`[BOOT] sha=${appCommitSha} build_time=${appBuildTime} service_role=${serviceRole} railway_service=${railwayService} jobs_enabled=${jobsEnabled}`);
+  console.log(`[BOOT] sha=${appCommitSha} build_time=${appBuildTime} execution_mode=${executionMode} runner_mode=${runnerMode} service_role=${serviceRole} railway_service=${railwayService} jobs_enabled=${jobsEnabled}`);
   
   console.log(`[BOOT] git_sha=${gitSha}`);
   console.log(`[BOOT] railway_git_commit_sha=${process.env.RAILWAY_GIT_COMMIT_SHA ?? 'missing'}`);
