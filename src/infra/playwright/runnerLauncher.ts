@@ -72,9 +72,9 @@ export async function launchRunnerPersistent(headless: boolean = false): Promise
     
     try {
       // 🛡️ EXECUTOR GUARD: Check stop switch and Chrome process cap before connecting
-      const { checkStopSwitch, closeExtraPages, logGuardState, checkChromeProcessCap } = await import('../executorGuard');
+      const { checkStopSwitch, closeExtraPages, logGuardState } = await import('../executorGuard');
       checkStopSwitch();
-      checkChromeProcessCap();
+      // Note: checkChromeProcessCap removed - uses managed PID tracking instead
       
       const browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
       const contexts = browser.contexts();

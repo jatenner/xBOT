@@ -108,7 +108,7 @@ export function cleanupLock(): void {
 }
 
 /**
- * Get Chrome PIDs (Mac-specific)
+ * Get Chrome PIDs (Mac-specific) - ALL Chrome processes (for observability only)
  */
 function getChromePids(): number[] {
   try {
@@ -121,6 +121,23 @@ function getChromePids(): number[] {
       .filter(pid => !isNaN(pid));
   } catch {
     return [];
+  }
+}
+
+/**
+ * Get managed bot Chrome PID from cdp_chrome_pids.json
+ */
+function getManagedChromePid(): number | null {
+  try {
+    const managedPidsFile = path.join(RUNNER_PROFILE_DIR, 'cdp_chrome_pids.json');
+    if (!fs.existsSync(managedPidsFile)) {
+      return null;
+    }
+    const content = fs.readFileSync(managedPidsFile, 'utf-8');
+    const data = JSON.parse(content);
+    return data.chrome_pid || null;
+  } catch {
+    return null;
   }
 }
 
@@ -174,15 +191,28 @@ export async function closeExtraPages(context: any): Promise<void> {
 }
 
 /**
- * Check Chrome process count - HARD CAP: if > 1 Chrome instance, exit
+ * Check Chrome process count - Only check MANAGED bot Chrome PID
+ * SAFETY: Never kill user's Chrome - only check if bot Chrome is running correctly
  */
 export function checkChromeProcessCap(): void {
-  const chromePids = getChromePids();
-  if (chromePids.length > 1) {
-    console.error(`[EXECUTOR_GUARD] 🚨 MULTIPLE CHROME PROCESSES DETECTED: ${chromePids.length} instances`);
-    console.error(`[EXECUTOR_GUARD] 🚨 Chrome PIDs: ${chromePids.join(', ')}`);
-    console.error(`[EXECUTOR_GUARD] 🚨 Hard cap: 1 instance max - exiting immediately`);
-    process.exit(1); // Hard failure
+  // In SAFETY_NO_KILL mode (default on Mac), never check/kill Chrome processes
+  if (process.env.SAFETY_NO_KILL !== 'false') {
+    return; // Skip check - safe mode enabled
+  }
+  
+  // Only check managed bot Chrome PID (not all Chrome processes)
+  const managedPid = getManagedChromePid();
+  if (managedPid === null) {
+    return; // No managed Chrome yet - OK
+  }
+  
+  // Check if managed Chrome PID is still running
+  try {
+    execSync(`ps -p ${managedPid} > /dev/null 2>&1`, { encoding: 'utf-8' });
+    // Managed Chrome is running - OK
+  } catch {
+    // Managed Chrome died - log warning but don't exit (might be restarting)
+    console.warn(`[EXECUTOR_GUARD] ⚠️  Managed Chrome PID ${managedPid} not found (may have restarted)`);
   }
 }
 
@@ -336,7 +366,7 @@ export async function logGuardState(context?: any): Promise<void> {
 export function initializeGuard(): void {
   checkStopSwitch();
   checkSingleInstanceLock();
-  checkChromeProcessCap();
+  // Note: checkChromeProcessCap removed from init - uses managed PID tracking instead
   
   // Cleanup on exit
   process.on('exit', cleanupLock);
