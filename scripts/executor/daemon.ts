@@ -41,8 +41,8 @@ if (!process.env.RUNNER_PROFILE_DIR) {
 }
 
 const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR!;
-const STOP_SWITCH_PATH = path.join(RUNNER_PROFILE_DIR, '.runner-profile', 'STOP_EXECUTOR');
-const PIDFILE_PATH = path.join(RUNNER_PROFILE_DIR, '.runner-profile', 'executor.pid');
+const STOP_SWITCH_PATH = path.join(RUNNER_PROFILE_DIR, 'STOP_EXECUTOR');
+const PIDFILE_PATH = path.join(RUNNER_PROFILE_DIR, 'executor.pid');
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 const TICK_INTERVAL_MS = 60 * 1000; // 60 seconds
 const MAX_RUNTIME_PER_TICK_MS = 60 * 1000; // 60s max per tick
@@ -63,8 +63,7 @@ const backoffSchedule = [30, 60, 120, 300, 600]; // 30s → 1m → 2m → 5m →
  * Check STOP switch - exit gracefully within 10s
  */
 function checkStopSwitch(): boolean {
-  const stopFile = path.join(RUNNER_PROFILE_DIR, 'STOP_EXECUTOR');
-  if (process.env.STOP_EXECUTOR === 'true' || fs.existsSync(stopFile)) {
+  if (process.env.STOP_EXECUTOR === 'true' || fs.existsSync(STOP_SWITCH_PATH)) {
     console.log('[EXECUTOR_DAEMON] 🛑 STOP switch triggered - exiting gracefully...');
     return true;
   }
