@@ -218,13 +218,25 @@ pkill -9 "Google Chrome"
 
 ## Verification Command
 
-### Run for 10 Minutes and Verify:
+### Single Command to Verify Fix:
+
+```bash
+# Run verification script (10 minutes, auto-checks everything)
+pnpm tsx scripts/runner/verify-executor-stability.ts
+```
+
+### Manual Verification:
 
 ```bash
 # 1. Create STOP switch (safety net)
 touch ./.runner-profile/STOP_EXECUTOR
 
-# 2. Start executor
+# 2. Check for existing executors and stop them
+launchctl unload ~/Library/LaunchAgents/com.xbot.executor.plist 2>/dev/null || true
+pkill -f executor-daemon || true
+pkill -f "poll-and-post" || true
+
+# 3. Start executor with timeout (10 minutes)
 EXECUTION_MODE=executor \
 RUNNER_MODE=true \
 RUNNER_BROWSER=cdp \
@@ -232,20 +244,18 @@ RUNNER_PROFILE_DIR=./.runner-profile \
 timeout 600 \
 pnpm run runner:posting-queue-once 2>&1 | tee executor-test.log
 
-# 3. Check logs for page count
+# 4. Check logs for page count
 grep "EXECUTOR_GUARD" executor-test.log | grep "pages="
 
 # Expected: All lines show pages=1 (or pages=0)
 # Bad: Any line shows pages=2, pages=3, etc.
 
-# 4. Check Chrome manually
+# 5. Check Chrome manually
 # Open Chrome → Count tabs → Should stay stable
 
-# 5. Check CPU usage
-top -pid $(pgrep -f "executor-daemon" | head -1)
-
-# Expected: CPU < 50%
-# Bad: CPU > 90% (indicates runaway loop)
+# 6. Test STOP switch
+touch ./.runner-profile/STOP_EXECUTOR
+# Executor should exit within seconds
 ```
 
 ### Success Criteria:
@@ -255,6 +265,7 @@ top -pid $(pgrep -f "executor-daemon" | head -1)
 - ✅ CPU usage stays reasonable (< 50%)
 - ✅ Logs show `[EXECUTOR_GUARD]` entries every tick
 - ✅ STOP switch works (create file → executor exits within seconds)
+- ✅ No hard cap triggers (TAB_EXPLOSION, MULTIPLE_CHROME, RUNTIME_CAP)
 
 ---
 
