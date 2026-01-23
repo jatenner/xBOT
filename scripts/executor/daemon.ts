@@ -46,7 +46,7 @@ const PIDFILE_PATH = path.join(RUNNER_PROFILE_DIR, 'executor.pid');
 const MANAGED_PIDS_FILE = path.join(RUNNER_PROFILE_DIR, 'cdp_chrome_pids.json');
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 const TICK_INTERVAL_MS = 60 * 1000; // 60 seconds
-const MAX_RUNTIME_PER_TICK_MS = 60 * 1000; // 60s max per tick
+const MAX_RUNTIME_PER_TICK_MS = 5 * 60 * 1000; // 5 minutes max per tick (allows full reply queue processing)
 const SAFETY_NO_KILL = process.env.SAFETY_NO_KILL !== 'false'; // Default: true (safe mode)
 
 // Ensure profile dir exists
