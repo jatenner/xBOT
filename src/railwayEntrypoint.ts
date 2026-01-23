@@ -40,8 +40,11 @@ function startHealthServer(): void {
   const serviceRole = process.env.SERVICE_ROLE || (railwayServiceName.includes('worker') ? 'worker' : 'main') || 'unknown';
   const railwayService = railwayServiceName || 'unknown';
   
+  // Determine jobs_enabled status (will be set later in background init)
+  const jobsEnabled = 'pending'; // Will be updated after role resolution
+  
   // Single-line boot fingerprint (required for deploy verification)
-  console.log(`[BOOT] sha=${appCommitSha} build_time=${appBuildTime} service_role=${serviceRole} railway_service=${railwayService}`);
+  console.log(`[BOOT] sha=${appCommitSha} build_time=${appBuildTime} service_role=${serviceRole} railway_service=${railwayService} jobs_enabled=${jobsEnabled}`);
   
   console.log(`[BOOT] git_sha=${gitSha}`);
   console.log(`[BOOT] railway_git_commit_sha=${process.env.RAILWAY_GIT_COMMIT_SHA ?? 'missing'}`);
@@ -89,12 +92,19 @@ function startHealthServer(): void {
       const appVersion = process.env.APP_VERSION ?? 'unknown';
       const gitSha = process.env.APP_VERSION ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
       
+      // Determine jobs_enabled (read from env or infer from role)
+      const { resolveServiceRole } = await import('./utils/serviceRoleResolver');
+      const roleInfo = resolveServiceRole();
+      const disableAllJobs = process.env.DISABLE_ALL_JOBS === 'true';
+      const jobsEnabled = roleInfo.role === 'worker' && !disableAllJobs;
+      
       res.end(JSON.stringify({
         ok: true,
         sha: appCommitSha,
         build_time: appBuildTime,
         service_role: serviceRole,
         railway_service: railwayServiceName || 'unknown',
+        jobs_enabled: jobsEnabled,
         status: 'healthy',
         git_sha: gitSha,
         app_version: appVersion,
@@ -590,7 +600,11 @@ setImmediate(async () => {
     console.log(`[BOOT] RAILWAY_SERVICE_NAME: ${roleInfo.raw.RAILWAY_SERVICE_NAME || 'NOT SET'}`);
     console.log(`[BOOT] Service name: ${process.env.RAILWAY_SERVICE_NAME || 'unknown'}`);
     console.log(`[BOOT] DISABLE_ALL_JOBS: ${process.env.DISABLE_ALL_JOBS || 'NOT SET'}`);
-    console.log(`[BOOT] jobs_enabled=${isWorkerService} reason=${isWorkerService ? 'worker' : (disableAllJobs ? 'DISABLE_ALL_JOBS=true' : 'non-worker')}`);
+    const jobsEnabledReason = isWorkerService ? 'worker' : (disableAllJobs ? 'DISABLE_ALL_JOBS=true' : 'non-worker');
+    console.log(`[BOOT] jobs_enabled=${isWorkerService} reason=${jobsEnabledReason}`);
+    
+    // Update boot fingerprint log with final jobs_enabled status
+    console.log(`[BOOT] sha=${process.env.APP_COMMIT_SHA ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? 'unknown'} build_time=${process.env.APP_BUILD_TIME ?? 'unknown'} service_role=${roleInfo.role} railway_service=${process.env.RAILWAY_SERVICE_NAME || 'unknown'} jobs_enabled=${isWorkerService}`);
 
     if (isWorkerService) {
       // WORKER SERVICE: Start job manager

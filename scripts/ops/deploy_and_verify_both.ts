@@ -19,9 +19,9 @@ console.log('══════════════════════�
 console.log(`Local SHA: ${localSha}`);
 console.log(`Build time: ${buildTime}\n`);
 
-// Service names
-const WORKER_SERVICE = 'xBOT'; // Based on current Railway status
-const MAIN_SERVICE = 'serene-cat'; // From historical docs
+// Service names (current production setup)
+const WORKER_SERVICE = 'xBOT'; // xBOT is worker (SERVICE_ROLE=worker)
+const MAIN_SERVICE = 'serene-cat'; // serene-cat is main (jobs disabled)
 
 // Step 1: Set Railway env vars for both services
 console.log('1️⃣  Setting Railway environment variables...');
@@ -84,16 +84,17 @@ child.on('close', async (code) => {
             maxBuffer: 5 * 1024 * 1024 
           });
           
-          // Look for boot fingerprint
-          const match = logs.match(/\[BOOT\] sha=([^\s]+) build_time=([^\s]+) service_role=([^\s]+) railway_service=([^\s]+)/);
+          // Look for boot fingerprint (with jobs_enabled)
+          const match = logs.match(/\[BOOT\] sha=([^\s]+) build_time=([^\s]+) service_role=([^\s]+) railway_service=([^\s]+) jobs_enabled=([^\s]+)/);
           
           if (match) {
-            const [, sha, buildTime, serviceRole, railwayService] = match;
+            const [, sha, buildTime, serviceRole, railwayService, jobsEnabled] = match;
             console.log(`✅ Found boot fingerprint for ${serviceName}:`);
             console.log(`   sha=${sha}`);
             console.log(`   build_time=${buildTime}`);
             console.log(`   service_role=${serviceRole}`);
-            console.log(`   railway_service=${railwayService}\n`);
+            console.log(`   railway_service=${railwayService}`);
+            console.log(`   jobs_enabled=${jobsEnabled}\n`);
             
             if (sha === localSha) {
               console.log(`✅ VERIFIED: ${serviceName} SHA matches local SHA`);

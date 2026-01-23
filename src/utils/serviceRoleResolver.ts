@@ -44,9 +44,11 @@ export function resolveServiceRole(): ServiceRoleInfo {
   }
   
   // Priority 2: Infer from RAILWAY_SERVICE_NAME
+  // NOTE: Current production setup: xBOT=worker, serene-cat=main (opposite of old logic)
   if (railwayServiceName) {
     const serviceName = railwayServiceName.toLowerCase().trim();
-    if (serviceName === 'serene-cat' || serviceName.includes('worker')) {
+    // Current production: xBOT is worker, serene-cat is main
+    if (serviceName === 'xbot' || serviceName.includes('worker')) {
       return {
         role: 'worker',
         source: 'RAILWAY_SERVICE_NAME',
@@ -57,7 +59,7 @@ export function resolveServiceRole(): ServiceRoleInfo {
         },
       };
     }
-    if (serviceName === 'xbot' || serviceName === 'main') {
+    if (serviceName === 'serene-cat' || serviceName === 'main') {
       return {
         role: 'main',
         source: 'RAILWAY_SERVICE_NAME',

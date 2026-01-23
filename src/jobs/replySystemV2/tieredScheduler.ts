@@ -134,6 +134,43 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   const schedulerRunId = `scheduler_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const slotTime = new Date();
   
+  // 🔒 REPLY_QUEUE instrumentation
+  console.log('[REPLY_QUEUE] ✅ job_tick start');
+  let readyCandidates = 0;
+  let selectedCandidates = 0;
+  let attemptsStarted = 0;
+  
+  // Helper to emit REPLY_QUEUE_TICK
+  const emitReplyQueueTick = async () => {
+    try {
+      await supabase.from('system_events').insert({
+        event_type: 'REPLY_QUEUE_TICK',
+        severity: 'info',
+        message: `Reply queue tick: ready=${readyCandidates} selected=${selectedCandidates} attempts=${attemptsStarted}`,
+        event_data: { ready_candidates: readyCandidates, selected_candidates: selectedCandidates, attempts_started: attemptsStarted },
+        created_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn(`[REPLY_QUEUE_TICK] Failed to write system_events: ${(e as Error).message}`);
+    }
+  };
+  
+  // Helper to emit REPLY_QUEUE_BLOCKED
+  const emitReplyQueueBlock = async (reason: string, eventData?: Record<string, unknown>) => {
+    console.warn(`[REPLY_QUEUE_BLOCK] reason=${reason}`);
+    try {
+      await supabase.from('system_events').insert({
+        event_type: 'REPLY_QUEUE_BLOCKED',
+        severity: 'warning',
+        message: `Reply queue blocked: ${reason}`,
+        event_data: { reason, ...eventData },
+        created_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn(`[REPLY_QUEUE_BLOCK] Failed to write system_events: ${(e as Error).message}`);
+    }
+  };
+  
   // 🔒 CRITICAL: Log job start IMMEDIATELY (before any work)
   const runnerMode = process.env.RUNNER_MODE === 'true' ? 'MAC_RUNNER' : 'RAILWAY';
   const earlyExitReason = process.env.RUNNER_MODE !== 'true' ? 'RUNNER_MODE_NOT_SET' : null;
@@ -168,6 +205,26 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       event_data: { scheduler_run_id: schedulerRunId, reason: 'RUNNER_MODE_NOT_SET' },
       created_at: new Date().toISOString(),
     });
+    
+    // Get ready candidates count
+    const { count: queueCount } = await supabase
+      .from('reply_candidate_queue')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'queued')
+      .gt('expires_at', new Date().toISOString());
+    readyCandidates = queueCount || 0;
+    
+    // Emit block and tick
+    await emitReplyQueueBlock('RUNNER_MODE_NOT_SET');
+    await emitReplyQueueTick();
+    
+    // Update job heartbeat
+    try {
+      const { recordJobSkip } = await import('../jobHeartbeat');
+      await recordJobSkip('reply_queue', 'RUNNER_MODE_NOT_SET');
+    } catch (e) {
+      // Ignore heartbeat errors
+    }
     
     // Log outcome
     await logOutcome(supabase, schedulerRunId, {
@@ -304,6 +361,21 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       deny_reason_code: 'queue_empty',
       stage_timings: { total_ms: 0 },
     });
+    
+    // Update ready candidates count (already set above)
+    selectedCandidates = 0;
+    attemptsStarted = 0;
+    
+    // Emit REPLY_QUEUE_TICK
+    await emitReplyQueueTick();
+    
+    // Update job heartbeat
+    try {
+      const { recordJobSkip } = await import('../jobHeartbeat');
+      await recordJobSkip('reply_queue', 'queue_empty');
+    } catch (e) {
+      // Ignore heartbeat errors
+    }
     
     return {
       posted: false,
@@ -1817,6 +1889,27 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       console.warn(`[SCHEDULER] Failed to log job success: ${(e as Error).message}`);
     }
     
+    // Get ready candidates count
+    const { count: queueCount } = await supabase
+      .from('reply_candidate_queue')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'queued')
+      .gt('expires_at', new Date().toISOString());
+    readyCandidates = queueCount || 0;
+    selectedCandidates = 1;
+    attemptsStarted = 1;
+    
+    // Emit REPLY_QUEUE_TICK
+    await emitReplyQueueTick();
+    
+    // Update job heartbeat
+    try {
+      const { recordJobSuccess } = await import('../jobHeartbeat');
+      await recordJobSuccess('reply_queue');
+    } catch (e) {
+      // Ignore heartbeat errors
+    }
+    
     // Queue will be processed by postingQueue job
     return {
       posted: true,
@@ -2032,6 +2125,27 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       });
     } catch (e) {
       console.warn(`[SCHEDULER] Failed to log job error: ${(e as Error).message}`);
+    }
+    
+    // Get ready candidates count
+    const { count: queueCount } = await supabase
+      .from('reply_candidate_queue')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'queued')
+      .gt('expires_at', new Date().toISOString());
+    readyCandidates = queueCount || 0;
+    selectedCandidates = candidate ? 1 : 0;
+    attemptsStarted = candidate ? 1 : 0;
+    
+    // Emit REPLY_QUEUE_TICK
+    await emitReplyQueueTick();
+    
+    // Update job heartbeat
+    try {
+      const { recordJobFailure } = await import('../jobHeartbeat');
+      await recordJobFailure('reply_queue', error.message);
+    } catch (e) {
+      // Ignore heartbeat errors
     }
     
     return {
