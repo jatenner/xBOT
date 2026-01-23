@@ -109,12 +109,13 @@ xBOT is a split-architecture autonomous Twitter bot:
 
 ### Executor Guardrails
 
-**File:** `src/infra/executorGuard.ts`
+**File:** `src/infra/executorGuard.ts` (legacy) + `scripts/executor/daemon.ts` (new)
 
 **1. STOP Switch:**
-- File: `./.runner-profile/STOP_EXECUTOR`
+- File: `${RUNNER_PROFILE_DIR}/STOP_EXECUTOR`
 - Env: `STOP_EXECUTOR=true`
 - **Works even in hot loops** (checked every iteration)
+- **Must exit within 10 seconds**
 - Immediate exit (no cleanup delay)
 
 **2. Hard Page Cap:**
@@ -130,13 +131,31 @@ xBOT is a split-architecture autonomous Twitter bot:
 - `createRuntimeCap(60000)` sets timeout per tick
 
 **5. Single-Instance Lock:**
-- File: `./.runner-profile/executor.pid`
+- File: `${RUNNER_PROFILE_DIR}/executor.pid`
 - Only one executor can run at a time
 - Stale locks auto-cleaned (dead process detection)
 
-**6. Page Reuse:**
-- `UltimateTwitterPoster.ensureContext()` reuses existing page
-- `closeExtraPages()` called before each operation
+**6. Hard Page Cap:**
+- Pages must remain <= 1
+- If >1, close extras immediately
+- If cannot close, exit with error
+
+**7. Headless Enforcement:**
+- `HEADLESS=true` by default (hard requirement)
+- Hard fail if `HEADLESS=false` in daemon mode
+- Uses `chromium.launch({ headless: true })` with dedicated userDataDir
+- Never uses `connectOverCDP()` in daemon
+
+**8. Auth Wall Detection:**
+- Detects login/challenge walls
+- Emits `EXECUTOR_AUTH_REQUIRED` event
+- Writes `${RUNNER_PROFILE_DIR}/AUTH_REQUIRED` file
+- Exits cleanly (no infinite loops)
+
+**9. Backoff & Rate Limiting:**
+- Exponential backoff: min 60s, max 10m
+- Browser launches: max 1 per minute
+- No tight retry loops
 - `createPageWithGuard()` logs every page creation with stack trace
 
 **7. Max Failures:**
