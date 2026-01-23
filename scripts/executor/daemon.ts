@@ -234,18 +234,23 @@ async function launchBrowser(): Promise<void> {
   }
   
   // HARD REQUIREMENT: Always headless=true, userDataDir under RUNNER_PROFILE_DIR
-  browser = await chromium.launch({
+  // Use launchPersistentContext for userDataDir support (Playwright requirement)
+  context = await chromium.launchPersistentContext(BROWSER_USER_DATA_DIR, {
     headless: true, // HARD: Always headless (no visible windows)
-    channel: 'chrome',
+    channel: 'chrome', // Use system Chrome
     args: [
-      `--user-data-dir=${BROWSER_USER_DATA_DIR}`,
       '--no-first-run',
       '--no-default-browser-check',
       '--disable-blink-features=AutomationControlled',
       '--disable-dev-shm-usage',
       '--disable-gpu',
     ],
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    viewport: { width: 1280, height: 720 },
   });
+  
+  // Get browser from context
+  browser = context.browser();
   
   browserLaunchCount++;
   lastBrowserLaunchTime = Date.now();
@@ -257,19 +262,12 @@ async function launchBrowser(): Promise<void> {
  * Initialize browser + context + single page
  */
 async function initializeBrowser(): Promise<void> {
-  // Launch browser if needed
-  if (!browser || !browser.isConnected()) {
+  // Launch browser + context if needed (launchPersistentContext creates both)
+  if (!context || !browser || !browser.isConnected()) {
     await launchBrowser();
   }
   
-  // Create context if needed
-  if (!context) {
-    context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      viewport: { width: 1280, height: 720 },
-    });
-    console.log(`[EXECUTOR_DAEMON] ✅ Context created`);
-  }
+  // Context is created by launchPersistentContext, so we don't need to create it separately
   
   // Enforce page cap (close extras, keep only 1)
   const pages = context.pages();
