@@ -1,17 +1,17 @@
 #!/usr/bin/env tsx
 /**
- * 🚀 MAC EXECUTOR DAEMON - Safe 24/7 Headless Execution
+ * 🚀 MAC EXECUTOR DAEMON - True Headless 24/7 Execution
  * 
  * Single long-running daemon that:
- * - Runs HEADLESS=true by default (no visible windows)
- * - Launches its own Chromium with Playwright (not CDP)
+ * - Runs HEADLESS=true by default (NO visible windows)
+ * - Launches its own Chromium with Playwright (NOT CDP)
  * - Uses dedicated userDataDir under RUNNER_PROFILE_DIR
  * - Never opens visible windows
- * - Never spawns multiple daemons (PID lock)
- * - STOP switch exits gracefully within 10s
- * - Hard resource caps (pages, browser launches)
- * - Rate-limited browser launches (max 1 per minute)
- * - Detects login wall/challenge and exits cleanly
+ * - Detects auth walls and exits cleanly
+ * - Exponential backoff (min 60s, max 10m)
+ * - Single-instance lock
+ * - STOP switch (exits within 10s)
+ * - Hard page cap (pages <= 1)
  * 
  * Usage:
  *   EXECUTION_MODE=executor RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile pnpm run executor:daemon
@@ -22,6 +22,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { execSync } from 'child_process';
+import { resolveRunnerProfileDir, ensureRunnerProfileDir, RUNNER_PROFILE_PATHS } from '../../src/infra/runnerProfile';
+import { requireExecutorMode, getModeLabel, isExecutor } from '../../src/infra/executionMode';
 
 // Load .env.local first, then .env
 const envLocalPath = path.join(process.cwd(), '.env.local');
@@ -36,32 +38,30 @@ if (fs.existsSync(envLocalPath)) {
 // Set executor mode environment
 process.env.EXECUTION_MODE = 'executor';
 process.env.RUNNER_MODE = 'true';
-process.env.HEADLESS = process.env.HEADLESS !== 'false' ? 'true' : 'false'; // Default: true
-
-const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
-const STOP_SWITCH_PATH = path.join(RUNNER_PROFILE_DIR, 'STOP_EXECUTOR');
-const PIDFILE_PATH = path.join(RUNNER_PROFILE_DIR, 'executor.pid');
-const TICK_INTERVAL_MS = 60 * 1000; // 60 seconds
-const MAX_RUNTIME_PER_TICK_MS = 120 * 1000; // 120s max per tick (increased for headless)
-const SAFETY_NO_KILL = process.env.SAFETY_NO_KILL !== 'false'; // Default: true (safe mode)
 
 // HARD REQUIREMENT: Always headless (no visible windows)
-const HEADLESS = process.env.HEADLESS !== 'false'; // Default: true, can only be disabled explicitly
+const HEADLESS = process.env.HEADLESS !== 'false'; // Default: true
 if (!HEADLESS) {
   console.error('[EXECUTOR_DAEMON] 🚨 FATAL: HEADLESS=false is not allowed in daemon mode');
   console.error('[EXECUTOR_DAEMON] 🚨 Use executor:auth for headed login repair');
   process.exit(1);
 }
 
-// Dedicated headless browser profile
-const BROWSER_USER_DATA_DIR = path.join(RUNNER_PROFILE_DIR, 'chromium-headless-profile');
-const MAX_BROWSER_LAUNCHES_PER_MINUTE = 1;
-const BROWSER_LAUNCH_COOLDOWN_MS = 60 * 1000; // 1 minute
+// Resolve paths using single source of truth
+const RUNNER_PROFILE_DIR = ensureRunnerProfileDir();
+const BROWSER_USER_DATA_DIR = RUNNER_PROFILE_PATHS.chromeProfile();
+const STOP_SWITCH_PATH = RUNNER_PROFILE_PATHS.stopSwitch();
+const PIDFILE_PATH = RUNNER_PROFILE_PATHS.pidFile();
+const AUTH_REQUIRED_PATH = RUNNER_PROFILE_PATHS.authRequired();
+const CONFIG_PATH = RUNNER_PROFILE_PATHS.executorConfig();
 
-// Ensure profile dir exists
-if (!fs.existsSync(RUNNER_PROFILE_DIR)) {
-  fs.mkdirSync(RUNNER_PROFILE_DIR, { recursive: true });
-}
+const TICK_INTERVAL_MS = 60 * 1000; // 60 seconds
+const MAX_RUNTIME_PER_TICK_MS = 300 * 1000; // 300s max per tick
+const MAX_BROWSER_LAUNCHES_PER_MINUTE = 1;
+const BROWSER_LAUNCH_COOLDOWN_MS = 60 * 1000; // 1 minute minimum
+const BACKOFF_MIN_MS = 60 * 1000; // 60s minimum
+const BACKOFF_MAX_MS = 10 * 60 * 1000; // 10m maximum
+const backoffSchedule = [60, 120, 300, 600]; // 60s → 2m → 5m → 10m
 
 // Global state
 let browser: Browser | null = null;
@@ -71,8 +71,6 @@ let consecutiveFailures = 0;
 let backoffSeconds = 0;
 let lastBrowserLaunchTime = 0;
 let browserLaunchCount = 0;
-let windowsOpened = 0;
-const backoffSchedule = [30, 60, 120, 300, 600]; // 30s → 1m → 2m → 5m → 10m
 
 /**
  * Check STOP switch - exit gracefully within 10s
@@ -131,35 +129,21 @@ function cleanupLock(): void {
 }
 
 /**
- * Get managed Chrome PIDs from cdp_chrome_pids.json (for observability)
- */
-function getManagedChromePids(): number[] {
-  try {
-    const managedPidsFile = path.join(RUNNER_PROFILE_DIR, 'cdp_chrome_pids.json');
-    if (!fs.existsSync(managedPidsFile)) {
-      return [];
-    }
-    const content = fs.readFileSync(managedPidsFile, 'utf-8');
-    const data = JSON.parse(content);
-    return data.chrome_pid ? [data.chrome_pid] : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
  * Detect login wall / challenge
  */
 async function detectLoginWall(page: Page): Promise<boolean> {
   try {
+    const url = page.url();
+    if (url.includes('/i/flow/login') || url.includes('/account/access') || url.includes('/i/flow/challenge')) {
+      return true;
+    }
+    
     // Check for common login wall indicators
     const loginSelectors = [
       'text=/sign in/i',
       'text=/log in/i',
       '[data-testid="login"]',
       'a[href*="/i/flow/login"]',
-      'text=/unlock/i',
-      'text=/verify/i',
     ];
     
     for (const selector of loginSelectors) {
@@ -171,12 +155,6 @@ async function detectLoginWall(page: Page): Promise<boolean> {
       } catch {
         // Continue
       }
-    }
-    
-    // Check URL for login/challenge
-    const url = page.url();
-    if (url.includes('/i/flow/login') || url.includes('/account/access') || url.includes('/i/flow/challenge')) {
-      return true;
     }
     
     return false;
@@ -204,6 +182,16 @@ async function emitAuthRequiredAndExit(): Promise<void> {
     });
   } catch (e) {
     console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit EXECUTOR_AUTH_REQUIRED: ${(e as Error).message}`);
+  }
+  
+  // Write AUTH_REQUIRED file
+  try {
+    fs.writeFileSync(AUTH_REQUIRED_PATH, JSON.stringify({
+      detected_at: new Date().toISOString(),
+      reason: 'login_wall_or_challenge_detected',
+    }, null, 2), 'utf-8');
+  } catch (e) {
+    // Ignore
   }
   
   console.error('[EXECUTOR_DAEMON] 🔐 AUTH REQUIRED: Login wall or challenge detected');
@@ -239,17 +227,16 @@ async function launchBrowser(): Promise<void> {
   
   console.log(`[EXECUTOR_DAEMON] 🚀 Launching headless browser (launch #${browserLaunchCount + 1})...`);
   console.log(`   User data dir: ${BROWSER_USER_DATA_DIR}`);
-  console.log(`   Headless: ${HEADLESS}`);
   
   // Ensure user data dir exists
   if (!fs.existsSync(BROWSER_USER_DATA_DIR)) {
     fs.mkdirSync(BROWSER_USER_DATA_DIR, { recursive: true });
   }
   
-  // HARD REQUIREMENT: Always use userDataDir under RUNNER_PROFILE_DIR
+  // HARD REQUIREMENT: Always headless=true, userDataDir under RUNNER_PROFILE_DIR
   browser = await chromium.launch({
     headless: true, // HARD: Always headless (no visible windows)
-    channel: 'chrome', // Use system Chrome
+    channel: 'chrome',
     args: [
       `--user-data-dir=${BROWSER_USER_DATA_DIR}`,
       '--no-first-run',
@@ -263,7 +250,6 @@ async function launchBrowser(): Promise<void> {
   browserLaunchCount++;
   lastBrowserLaunchTime = Date.now();
   
-  // Note: Playwright Browser doesn't expose PID directly in headless mode
   console.log(`[EXECUTOR_DAEMON] ✅ Browser launched (launch #${browserLaunchCount})`);
 }
 
@@ -282,17 +268,7 @@ async function initializeBrowser(): Promise<void> {
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       viewport: { width: 1280, height: 720 },
     });
-    
-    // HARD REQUIREMENT: Verify context is headless (no visible windows)
-    // Note: Playwright doesn't expose headless state directly, but we enforce it at launch
-    console.log(`[EXECUTOR_DAEMON] ✅ Context created (headless enforced)`);
-  }
-  
-  // Verify browser is still headless (safety check - HEADLESS is always true at this point)
-  if (!HEADLESS) {
-    console.error('[EXECUTOR_DAEMON] 🚨 FATAL: Browser context is headed (visible windows not allowed)');
-    console.error('[EXECUTOR_DAEMON] 🚨 HEADLESS must be true in daemon mode');
-    process.exit(1);
+    console.log(`[EXECUTOR_DAEMON] ✅ Context created`);
   }
   
   // Enforce page cap (close extras, keep only 1)
@@ -309,18 +285,20 @@ async function initializeBrowser(): Promise<void> {
   }
   
   // Get or create single page
-  if (pages.length === 0) {
+  const finalPages = context.pages();
+  if (finalPages.length === 0) {
     page = await context.newPage();
     console.log(`[EXECUTOR_DAEMON] ✅ Created single page`);
   } else {
-    page = pages[0];
+    page = finalPages[0];
     console.log(`[EXECUTOR_DAEMON] ✅ Reusing existing page`);
   }
   
   // Verify page count is 1
-  const finalPages = context.pages();
-  if (finalPages.length !== 1) {
-    throw new Error(`Page count is ${finalPages.length}, expected 1`);
+  const verifyPages = context.pages();
+  if (verifyPages.length !== 1) {
+    console.error(`[EXECUTOR_DAEMON] 🚨 FATAL: Page count is ${verifyPages.length}, expected 1`);
+    process.exit(1);
   }
   
   // Check for login wall
@@ -360,6 +338,12 @@ async function enforcePageCap(): Promise<void> {
   const finalPages = context.pages();
   if (finalPages.length > 0) {
     page = finalPages[0];
+  }
+  
+  // Hard cap: if still > 1, exit
+  if (finalPages.length > 1) {
+    console.error(`[EXECUTOR_DAEMON] 🚨 FATAL: Page count is ${finalPages.length} after cleanup, expected 1`);
+    process.exit(1);
   }
 }
 
@@ -414,7 +398,6 @@ async function runReplyQueue(): Promise<{ attempts_started: number; ready: numbe
 async function emitTickEvent(metrics: {
   pages: number;
   browserLaunchCount: number;
-  windowsOpened: number;
   postingReady: number;
   postingAttempts: number;
   replyReady: number;
@@ -428,17 +411,18 @@ async function emitTickEvent(metrics: {
     await supabase.from('system_events').insert({
       event_type: 'EXECUTOR_DAEMON_TICK',
       severity: 'info',
-      message: `Executor daemon tick: pages=${metrics.pages} browser_launches=${metrics.browserLaunchCount} windows_opened=${metrics.windowsOpened} posting_ready=${metrics.postingReady} posting_attempts=${metrics.postingAttempts} reply_ready=${metrics.replyReady} reply_attempts=${metrics.replyAttempts}`,
+      message: `Executor daemon tick: pages=${metrics.pages} browser_launches=${metrics.browserLaunchCount} posting_ready=${metrics.postingReady} posting_attempts=${metrics.postingAttempts} reply_ready=${metrics.replyReady} reply_attempts=${metrics.replyAttempts}`,
       event_data: {
         pages: metrics.pages,
         browser_launch_count: metrics.browserLaunchCount,
-        windows_opened: metrics.windowsOpened,
         posting_ready: metrics.postingReady,
         posting_attempts: metrics.postingAttempts,
         reply_ready: metrics.replyReady,
         reply_attempts: metrics.replyAttempts,
         backoff_seconds: metrics.backoff,
         last_error: metrics.lastError || null,
+        profile_dir: RUNNER_PROFILE_DIR,
+        mode: getModeLabel(),
         timestamp: new Date().toISOString(),
       },
       created_at: new Date().toISOString(),
@@ -449,18 +433,63 @@ async function emitTickEvent(metrics: {
 }
 
 /**
+ * Write executor config file
+ */
+function writeExecutorConfig(): void {
+  const config = {
+    profile_dir: RUNNER_PROFILE_DIR,
+    user_data_dir: BROWSER_USER_DATA_DIR,
+    headless: true,
+    mode: getModeLabel(),
+    timestamp: new Date().toISOString(),
+  };
+  
+  // Validate paths
+  if (!path.isAbsolute(RUNNER_PROFILE_DIR)) {
+    console.error(`[EXECUTOR_DAEMON] 🚨 FATAL: profile_dir is not absolute: ${RUNNER_PROFILE_DIR}`);
+    process.exit(1);
+  }
+  
+  if (!path.isAbsolute(BROWSER_USER_DATA_DIR)) {
+    console.error(`[EXECUTOR_DAEMON] 🚨 FATAL: user_data_dir is not absolute: ${BROWSER_USER_DATA_DIR}`);
+    process.exit(1);
+  }
+  
+  if (!BROWSER_USER_DATA_DIR.startsWith(RUNNER_PROFILE_DIR)) {
+    console.error(`[EXECUTOR_DAEMON] 🚨 FATAL: user_data_dir must be under profile_dir`);
+    console.error(`[EXECUTOR_DAEMON] 🚨 profile_dir: ${RUNNER_PROFILE_DIR}`);
+    console.error(`[EXECUTOR_DAEMON] 🚨 user_data_dir: ${BROWSER_USER_DATA_DIR}`);
+    process.exit(1);
+  }
+  
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
+  console.log(`[EXECUTOR_CONFIG] profile_dir=${RUNNER_PROFILE_DIR} user_data_dir=${BROWSER_USER_DATA_DIR} headless=true mode=${getModeLabel()}`);
+}
+
+/**
  * Main daemon loop
  */
 async function main(): Promise<void> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('           🚀 MAC EXECUTOR DAEMON - Safe 24/7 Headless Execution');
+  console.log('           🚀 MAC EXECUTOR DAEMON - True Headless 24/7 Execution');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  
+  // Validate executor mode
+  try {
+    requireExecutorMode();
+  } catch (e: any) {
+    console.error(`[EXECUTOR_DAEMON] 🚨 FATAL: ${e.message}`);
+    process.exit(1);
+  }
+  
+  // Write config and validate paths
+  writeExecutorConfig();
   
   console.log(`📋 Configuration:`);
   console.log(`   EXECUTION_MODE: ${process.env.EXECUTION_MODE}`);
   console.log(`   RUNNER_MODE: ${process.env.RUNNER_MODE}`);
   console.log(`   RUNNER_PROFILE_DIR: ${RUNNER_PROFILE_DIR}`);
-  console.log(`   HEADLESS: ${HEADLESS} ✅ (HARD REQUIREMENT: always true, no visible windows)`);
+  console.log(`   HEADLESS: true ✅ (HARD REQUIREMENT: always true, no visible windows)`);
   console.log(`   Browser profile: ${BROWSER_USER_DATA_DIR}`);
   console.log(`   Tick interval: ${TICK_INTERVAL_MS / 1000}s`);
   console.log(`   Max browser launches/min: ${MAX_BROWSER_LAUNCHES_PER_MINUTE}`);
@@ -546,9 +575,9 @@ async function main(): Promise<void> {
       consecutiveFailures++;
       lastError = e.message;
       
-      // Calculate backoff
+      // Calculate backoff (min 60s, max 10m)
       const failureIndex = Math.min(consecutiveFailures - 1, backoffSchedule.length - 1);
-      backoffSeconds = backoffSchedule[failureIndex];
+      backoffSeconds = Math.max(BACKOFF_MIN_MS / 1000, Math.min(BACKOFF_MAX_MS / 1000, backoffSchedule[failureIndex]));
       
       console.error(`[EXECUTOR_DAEMON] ❌ Tick failed: ${e.message} (failures: ${consecutiveFailures}, backoff: ${backoffSeconds}s)`);
       
@@ -562,13 +591,12 @@ async function main(): Promise<void> {
     // Log tick
     const pages = context ? context.pages().length : 0;
     const ts = new Date().toISOString();
-    console.log(`[EXECUTOR_DAEMON] ts=${ts} pages=${pages} browser_launches=${browserLaunchCount} windows_opened=${windowsOpened} posting_ready=${postingReady} posting_attempts=${postingAttempts} reply_ready=${replyReady} reply_attempts=${replyAttempts} backoff=${backoffSeconds}s${lastError ? ` last_error=${lastError}` : ''}`);
+    console.log(`[EXECUTOR_DAEMON] ts=${ts} pages=${pages} browser_launches=${browserLaunchCount} posting_ready=${postingReady} posting_attempts=${postingAttempts} reply_ready=${replyReady} reply_attempts=${replyAttempts} backoff=${backoffSeconds}s${lastError ? ` last_error=${lastError}` : ''}`);
     
     // Emit tick event
     await emitTickEvent({
       pages,
       browserLaunchCount,
-      windowsOpened,
       postingReady,
       postingAttempts,
       replyReady,

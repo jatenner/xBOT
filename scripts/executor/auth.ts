@@ -13,9 +13,11 @@ import 'dotenv/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
+import { ensureRunnerProfileDir, RUNNER_PROFILE_PATHS } from '../../src/infra/runnerProfile';
 
-const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
-const BROWSER_USER_DATA_DIR = path.join(RUNNER_PROFILE_DIR, 'chromium-headless-profile');
+const RUNNER_PROFILE_DIR = ensureRunnerProfileDir();
+const BROWSER_USER_DATA_DIR = RUNNER_PROFILE_PATHS.chromeProfile();
+const AUTH_REQUIRED_PATH = RUNNER_PROFILE_PATHS.authRequired();
 
 async function main(): Promise<void> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -28,6 +30,11 @@ async function main(): Promise<void> {
   console.log(`   Mode: HEADED (visible browser)`);
   console.log('');
   
+  // Check if AUTH_REQUIRED file exists
+  if (fs.existsSync(AUTH_REQUIRED_PATH)) {
+    console.log('⚠️  AUTH_REQUIRED file detected - login repair needed');
+  }
+  
   // Ensure user data dir exists
   if (!fs.existsSync(BROWSER_USER_DATA_DIR)) {
     fs.mkdirSync(BROWSER_USER_DATA_DIR, { recursive: true });
@@ -38,6 +45,7 @@ async function main(): Promise<void> {
     headless: false, // HEADED for login repair
     channel: 'chrome',
     args: [
+      `--user-data-dir=${BROWSER_USER_DATA_DIR}`,
       '--no-first-run',
       '--no-default-browser-check',
     ],
@@ -78,6 +86,12 @@ async function main(): Promise<void> {
   await page.close();
   await context.close();
   await browser.close();
+  
+  // Remove AUTH_REQUIRED file if it exists
+  if (fs.existsSync(AUTH_REQUIRED_PATH)) {
+    fs.unlinkSync(AUTH_REQUIRED_PATH);
+    console.log('✅ Removed AUTH_REQUIRED file');
+  }
   
   console.log('✅ Auth session complete');
 }
