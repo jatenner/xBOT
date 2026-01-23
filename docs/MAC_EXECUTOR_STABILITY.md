@@ -132,6 +132,45 @@ kill <PID>
 pkill -9 "Google Chrome"
 ```
 
+**⚠️ WARNING:** This kills ALL Chrome processes, including your personal Chrome. Use only as last resort.
+
+---
+
+## 🛡️ SAFETY MODE: SAFETY_NO_KILL
+
+**Default:** `SAFETY_NO_KILL=true` (enabled on Mac)
+
+**Purpose:** Prevent executor from killing user's personal Chrome processes
+
+**Behavior:**
+- When `SAFETY_NO_KILL=true` (default):
+  - Executor NEVER kills Chrome processes by name
+  - Only manages pages in the CDP session it's connected to
+  - Logs Chrome process count for observability but never kills
+- When `SAFETY_NO_KILL=false` (NOT RECOMMENDED):
+  - Executor may attempt to kill Chrome processes (risky - could kill user Chrome)
+
+**Environment Variable:**
+```bash
+# Safe mode (default - recommended)
+SAFETY_NO_KILL=true pnpm run executor:daemon
+
+# Unsafe mode (NOT RECOMMENDED - may kill user Chrome)
+SAFETY_NO_KILL=false pnpm run executor:daemon
+```
+
+**Why This Exists:**
+- Executor cannot reliably distinguish between "CDP Chrome" and "user's personal Chrome"
+- Killing by process name (`pkill "Google Chrome"`) kills ALL Chrome instances
+- Safety mode ensures user's Chrome is never killed by automation
+
+**Logging:**
+```
+[CHROME_SCOPE] observed_chrome_pids=[12345,12346] count=2 safety_no_kill=true
+```
+
+This shows Chrome processes are observed but NOT killed (safe mode).
+
 ---
 
 ## ✅ Verification: Confirm No Tab Growth

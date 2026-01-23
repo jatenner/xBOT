@@ -46,6 +46,7 @@ const PIDFILE_PATH = path.join(RUNNER_PROFILE_DIR, 'executor.pid');
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 const TICK_INTERVAL_MS = 60 * 1000; // 60 seconds
 const MAX_RUNTIME_PER_TICK_MS = 60 * 1000; // 60s max per tick
+const SAFETY_NO_KILL = process.env.SAFETY_NO_KILL !== 'false'; // Default: true (safe mode)
 
 // Ensure profile dir exists
 if (!fs.existsSync(RUNNER_PROFILE_DIR)) {
@@ -116,7 +117,7 @@ function cleanupLock(): void {
 }
 
 /**
- * Get Chrome PIDs
+ * Get Chrome PIDs (for observability only - NEVER kill by name)
  */
 function getChromePids(): number[] {
   try {
@@ -128,21 +129,16 @@ function getChromePids(): number[] {
 }
 
 /**
- * Hard Chrome process cap - kill extras if > 1
+ * SAFETY: Never kill Chrome processes by name (could kill user's personal Chrome)
+ * Only manage pages in the CDP session we're connected to
  */
-function enforceChromeProcessCap(): void {
+function logChromeProcessCount(): void {
   const pids = getChromePids();
-  if (pids.length > 1) {
-    console.error(`[EXECUTOR_DAEMON] 🚨 MULTIPLE CHROME PROCESSES: ${pids.length} detected`);
-    console.error(`[EXECUTOR_DAEMON] 🚨 Killing extras (keeping PID ${pids[0]})`);
-    for (let i = 1; i < pids.length; i++) {
-      try {
-        execSync(`kill -9 ${pids[i]}`, { encoding: 'utf-8' });
-        console.log(`[EXECUTOR_DAEMON] ✅ Killed Chrome PID ${pids[i]}`);
-      } catch (e) {
-        // Ignore kill errors
-      }
-    }
+  console.log(`[CHROME_SCOPE] observed_chrome_pids=[${pids.join(',')}] count=${pids.length} safety_no_kill=${SAFETY_NO_KILL}`);
+  
+  if (!SAFETY_NO_KILL && pids.length > 1) {
+    console.warn(`[CHROME_SCOPE] ⚠️  Multiple Chrome processes detected but SAFETY_NO_KILL=true - not killing`);
+    console.warn(`[CHROME_SCOPE] ⚠️  Set SAFETY_NO_KILL=false to enable killing (NOT RECOMMENDED)`);
   }
 }
 
@@ -359,8 +355,10 @@ async function main(): Promise<void> {
     let lastError: string | undefined;
     
     try {
-      // Enforce hard caps
-      enforceChromeProcessCap();
+      // Log Chrome process count (observability only - never kill)
+      logChromeProcessCount();
+      
+      // Enforce page cap (only manage pages in our CDP session)
       await enforcePageCap();
       
       // Runtime cap
