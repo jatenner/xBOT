@@ -186,12 +186,12 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       event_data: {
         scheduler_run_id: schedulerRunId,
         slot_time: slotTime.toISOString(),
-        runner_mode: runnerMode,
+        runner_mode: runnerModeLabel,
         early_exit_reason: earlyExitReason,
       },
       created_at: new Date().toISOString(),
     });
-    console.log(`[SCHEDULER] ✅ Job start logged: ${schedulerRunId} (runner_mode=${runnerMode})`);
+    console.log(`[SCHEDULER] ✅ Job start logged: ${schedulerRunId} (runner_mode=${runnerModeLabel})`);
   } catch (logError: any) {
     console.error(`[SCHEDULER] ❌ Failed to log job start: ${logError.message}`);
     // Continue anyway - logging failure shouldn't block scheduler
@@ -246,7 +246,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   }
   
   console.log('[SCHEDULER] ⏰ Attempting scheduled reply...');
-  console.log(`[PIPELINE] scheduler_run_id=${schedulerRunId} stage=scheduler_start ok=true detail=attempting_reply runner_mode=${runnerMode}`);
+  console.log(`[PIPELINE] scheduler_run_id=${schedulerRunId} stage=scheduler_start ok=true detail=attempting_reply runner_mode=${runnerModeLabel}`);
   
   // 🔒 MANDATE 3: Cleanup expired leases BEFORE selecting new one
   const { cleanupExpiredLeases } = await import('./queueManager');
@@ -1898,7 +1898,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       await emitReplyQueueBlock('NOT_EXECUTOR_MODE', {
         decision_id: replyDecisionId,
         execution_mode: executionMode,
-        runner_mode: runnerMode,
+        runner_mode: runnerModeLabel,
         detail: 'Railway is control-plane only - executor mode required for browser automation'
       });
       attemptsStarted = 0; // Don't count as attempt in control mode
@@ -2148,7 +2148,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       console.log(`[REPLY_QUEUE] 🔒 CONTROL-PLANE MODE: Error occurred but not counting as attempt (EXECUTION_MODE=${executionMode}, RUNNER_MODE=${runnerMode})`);
       await emitReplyQueueBlock('NOT_EXECUTOR_MODE', {
         execution_mode: executionMode,
-        runner_mode: runnerMode,
+        runner_mode: runnerModeLabel,
         detail: 'Railway is control-plane only - executor mode required for browser automation'
       });
       attemptsStarted = 0; // Don't count as attempt in control mode
