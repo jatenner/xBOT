@@ -320,14 +320,36 @@ async function main() {
   console.log(`🚀 Starting continuous polling (every ${POLL_INTERVAL_MS / 1000}s)...\n`);
 
   while (true) {
-    const result = await pollAndPost(false, getSupabaseClient, processPostingQueue);
+    // 🛡️ EMERGENCY STOP: Check stop switch in every loop iteration
+    const { checkStopSwitch, createRuntimeCap, checkChromeProcessCap } = await import('../../src/infra/executorGuard');
+    checkStopSwitch();
+    checkChromeProcessCap();
     
-    if (result.success > 0 || result.failed > 0) {
-      console.log(`[RUNNER] 📊 Poll result: ${result.success} success, ${result.failed} failed`);
+    // 🛡️ HARD RUNTIME CAP: 60 seconds max per tick
+    const clearRuntimeCap = createRuntimeCap(60000);
+    
+    try {
+      const result = await pollAndPost(false, getSupabaseClient, processPostingQueue);
+      
+      if (result.success > 0 || result.failed > 0) {
+        console.log(`[RUNNER] 📊 Poll result: ${result.success} success, ${result.failed} failed`);
+      }
+      
+      clearRuntimeCap(); // Clear timeout on success
+      
+      // Wait before next poll (check stop switch during wait)
+      const waitStart = Date.now();
+      while (Date.now() - waitStart < POLL_INTERVAL_MS) {
+        checkStopSwitch(); // Check every second during wait
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } catch (err: any) {
+      clearRuntimeCap();
+      console.error(`[RUNNER] ❌ Poll error: ${err.message}`);
+      // Continue loop but check stop switch
+      checkStopSwitch();
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Short wait before retry
     }
-    
-    // Wait before next poll
-    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
   }
 }
 

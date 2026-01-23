@@ -438,14 +438,16 @@ export class UltimateTwitterPoster {
           const contexts = context.browser()?.contexts() || [];
           console.log(`[POSTING] CDP connection: ${contexts.length} context(s) available`);
           
-          // 🛡️ TAB LEAK GUARDRAIL: Reuse existing page if available, otherwise create ONE
+          // 🛡️ TAB LEAK GUARDRAIL: Reuse existing page if available, otherwise create ONE with guard
           const existingPages = context.pages ? context.pages() : [];
           if (existingPages.length > 0) {
             this.page = existingPages[0];
             console.log('[POSTING] ✅ Reusing existing page (tab leak prevention)');
           } else {
-            this.page = await context.newPage();
-            console.log('[POSTING] ✅ Page created in CDP context (single page)');
+            // Use guarded page creation with instrumentation
+            const { createPageWithGuard } = await import('../infra/executorGuard');
+            this.page = await createPageWithGuard(context, 'UltimateTwitterPoster.ts', 'ensureContext');
+            console.log('[POSTING] ✅ Page created in CDP context (single page, guarded)');
           }
           
           // 🛡️ Log guard state

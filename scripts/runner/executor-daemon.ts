@@ -153,12 +153,24 @@ async function main(): Promise<void> {
   
   let consecutiveFailures = 0;
   
+  // 🛡️ Initialize guard
+  const { initializeGuard, checkStopSwitch, createRuntimeCap, checkChromeProcessCap } = await import('../../src/infra/executorGuard');
+  initializeGuard();
+  
   while (true) {
+    // 🛡️ EMERGENCY STOP: Check stop switch in every loop iteration (works even in hot loops)
+    checkStopSwitch();
+    checkChromeProcessCap();
+    
     try {
       const tickStart = Date.now();
       log(`🔄 Executor tick start`);
       
-      // Check CDP first
+      // 🛡️ HARD RUNTIME CAP: 60 seconds max per tick
+      const clearRuntimeCap = createRuntimeCap(60000);
+      
+      try {
+        // Check CDP first
       const cdpReachable = await checkCDP();
       if (!cdpReachable) {
         log(`❌ CDP not reachable on port ${CDP_PORT} - backing off ${BACKOFF_MINUTES} minutes`);
@@ -206,13 +218,27 @@ async function main(): Promise<void> {
         consecutiveFailures++;
       }
       
-      const tickDuration = Date.now() - tickStart;
-      log(`✅ Executor tick complete (took ${(tickDuration / 1000).toFixed(1)}s)`);
-      
-      // Sleep with jitter
-      const sleepMs = getJitteredInterval();
-      log(`💤 Sleeping ${(sleepMs / 1000).toFixed(1)}s until next tick...`);
-      await sleep(sleepMs);
+        clearRuntimeCap(); // Clear timeout on success
+        
+        const tickDuration = Date.now() - tickStart;
+        log(`✅ Executor tick complete (took ${(tickDuration / 1000).toFixed(1)}s)`);
+        
+        // Sleep with jitter (check stop switch during sleep)
+        const sleepMs = getJitteredInterval();
+        log(`💤 Sleeping ${(sleepMs / 1000).toFixed(1)}s until next tick...`);
+        
+        // Check stop switch every second during sleep
+        const sleepStart = Date.now();
+        while (Date.now() - sleepStart < sleepMs) {
+          checkStopSwitch();
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } finally {
+        // Always clear runtime cap
+        try {
+          clearRuntimeCap();
+        } catch {}
+      }
       
     } catch (err: any) {
       log(`❌ Daemon loop error: ${err.message}`);
@@ -220,6 +246,16 @@ async function main(): Promise<void> {
         log(`   Stack: ${err.stack.split('\n').slice(0, 5).join('\n')}`);
       }
       consecutiveFailures++;
+      
+      // Check stop switch before backoff
+      checkStopSwitch();
+      
+      // If 5+ failures, exit completely (don't keep looping)
+      if (consecutiveFailures >= 5) {
+        log(`🚨 MAX FAILURES REACHED: ${consecutiveFailures} consecutive failures - exiting completely`);
+        process.exit(1);
+      }
+      
       await sleep(BACKOFF_MINUTES * 60 * 1000);
     }
   }

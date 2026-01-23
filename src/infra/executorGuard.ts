@@ -32,12 +32,14 @@ let guardState: ExecutorGuardState = {
 };
 
 /**
- * Check STOP switch - exit immediately if exists
+ * Check STOP switch - exit immediately if exists (works even in hot loops)
  */
 export function checkStopSwitch(): void {
-  if (fs.existsSync(STOP_SWITCH_PATH)) {
-    console.error('[EXECUTOR_GUARD] 🛑 STOP SWITCH TRIGGERED: ./.runner-profile/STOP_EXECUTOR exists');
-    console.error('[EXECUTOR_GUARD] 🛑 Exiting immediately before launching Chrome');
+  // Check file AND env var (env var works even if file system is slow)
+  if (process.env.STOP_EXECUTOR === 'true' || fs.existsSync(STOP_SWITCH_PATH)) {
+    console.error('[EXECUTOR_GUARD] 🛑 STOP SWITCH TRIGGERED');
+    console.error('[EXECUTOR_GUARD] 🛑 STOP_EXECUTOR=true OR ./.runner-profile/STOP_EXECUTOR exists');
+    console.error('[EXECUTOR_GUARD] 🛑 Exiting immediately (works even in hot loops)');
     process.exit(0);
   }
 }
@@ -137,11 +139,21 @@ export async function getPageCount(context: any): Promise<number> {
 
 /**
  * Close extra pages - keep only 1
+ * HARD CAP: If > 3 pages, exit immediately (do not retry)
  */
 export async function closeExtraPages(context: any): Promise<void> {
   try {
     if (!context) return;
     const pages = context.pages ? context.pages() : [];
+    
+    // 🚨 HARD CAP: If > 3 pages, exit immediately (tab explosion detected)
+    if (pages.length > 3) {
+      console.error(`[EXECUTOR_GUARD] 🚨 TAB EXPLOSION DETECTED: ${pages.length} pages (hard cap: 3)`);
+      console.error(`[EXECUTOR_GUARD] 🚨 Exiting immediately to prevent Mac freeze`);
+      console.error(`[EXECUTOR_GUARD] 🚨 Stack trace:`);
+      console.error(new Error().stack);
+      process.exit(1); // Exit 1 = hard failure
+    }
     
     if (pages.length > 1) {
       console.warn(`[EXECUTOR_GUARD] 🧹 Closing ${pages.length - 1} extra page(s) (keeping 1)`);
@@ -159,6 +171,81 @@ export async function closeExtraPages(context: any): Promise<void> {
   } catch (error: any) {
     console.warn(`[EXECUTOR_GUARD] ⚠️  Failed to close extra pages: ${error.message}`);
   }
+}
+
+/**
+ * Check Chrome process count - HARD CAP: if > 1 Chrome instance, exit
+ */
+export function checkChromeProcessCap(): void {
+  const chromePids = getChromePids();
+  if (chromePids.length > 1) {
+    console.error(`[EXECUTOR_GUARD] 🚨 MULTIPLE CHROME PROCESSES DETECTED: ${chromePids.length} instances`);
+    console.error(`[EXECUTOR_GUARD] 🚨 Chrome PIDs: ${chromePids.join(', ')}`);
+    console.error(`[EXECUTOR_GUARD] 🚨 Hard cap: 1 instance max - exiting immediately`);
+    process.exit(1); // Hard failure
+  }
+}
+
+/**
+ * Create page with instrumentation and guardrails
+ * Use this instead of context.newPage() everywhere
+ */
+export async function createPageWithGuard(context: any, callerFile?: string, callerFunction?: string): Promise<any> {
+  // Check stop switch first (works even in hot loops)
+  checkStopSwitch();
+  
+  // Check Chrome process cap
+  checkChromeProcessCap();
+  
+  // Get caller info from stack if not provided
+  if (!callerFile || !callerFunction) {
+    const stack = new Error().stack?.split('\n') || [];
+    const callerLine = stack[2] || 'unknown';
+    callerFile = callerLine.split('/').pop()?.split(':')[0] || 'unknown';
+    callerFunction = callerLine.match(/at (\w+)/)?.[1] || 'unknown';
+  }
+  
+  // Check page count before creating
+  const pageCountBefore = await getPageCount(context);
+  if (pageCountBefore >= 3) {
+    console.error(`[EXECUTOR_GUARD] 🚨 Cannot create page: already at hard cap (${pageCountBefore} pages)`);
+    console.error(`[EXECUTOR_GUARD] 🚨 Caller: ${callerFile}::${callerFunction}`);
+    throw new Error(`TAB_EXPLOSION_PREVENTED: Page count at hard cap (${pageCountBefore})`);
+  }
+  
+  // Log page creation with stack trace
+  const stack = new Error().stack?.split('\n').slice(0, 5).join('\n') || 'no stack';
+  console.log(`[EXECUTOR_GUARD] 📄 Creating page - caller: ${callerFile}::${callerFunction}`);
+  console.log(`[EXECUTOR_GUARD] 📄 Stack: ${stack}`);
+  
+  const page = await context.newPage();
+  
+  // Verify page count after creation
+  const pageCountAfter = await getPageCount(context);
+  console.log(`[EXECUTOR_GUARD] 📄 Page created - count: ${pageCountBefore} → ${pageCountAfter}`);
+  
+  // Hard cap check after creation
+  if (pageCountAfter > 3) {
+    console.error(`[EXECUTOR_GUARD] 🚨 TAB EXPLOSION AFTER CREATE: ${pageCountAfter} pages`);
+    await page.close().catch(() => {});
+    process.exit(1);
+  }
+  
+  return page;
+}
+
+/**
+ * Wrap context.newPage() to add guardrails automatically
+ * Call this once per context to get a guarded newPage function
+ */
+export function wrapContextWithGuard(context: any): any {
+  const originalNewPage = context.newPage.bind(context);
+  
+  context.newPage = async function(...args: any[]) {
+    return createPageWithGuard(context);
+  };
+  
+  return context;
 }
 
 /**
@@ -249,6 +336,7 @@ export async function logGuardState(context?: any): Promise<void> {
 export function initializeGuard(): void {
   checkStopSwitch();
   checkSingleInstanceLock();
+  checkChromeProcessCap();
   
   // Cleanup on exit
   process.on('exit', cleanupLock);
@@ -262,6 +350,27 @@ export function initializeGuard(): void {
   });
   
   console.log('[EXECUTOR_GUARD] ✅ Guard initialized');
+}
+
+/**
+ * HARD RUNTIME CAP: Abort tick after 60 seconds
+ */
+export function createRuntimeCap(timeoutMs: number = 60000): () => void {
+  const startTime = Date.now();
+  let aborted = false;
+  
+  const timeoutId = setTimeout(() => {
+    if (!aborted) {
+      console.error(`[EXECUTOR_GUARD] 🚨 RUNTIME CAP EXCEEDED: ${timeoutMs}ms (hard cap)`);
+      console.error(`[EXECUTOR_GUARD] 🚨 Aborting tick immediately`);
+      process.exit(1); // Hard exit
+    }
+  }, timeoutMs);
+  
+  return () => {
+    aborted = true;
+    clearTimeout(timeoutId);
+  };
 }
 
 /**

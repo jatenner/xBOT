@@ -71,9 +71,10 @@ export async function launchRunnerPersistent(headless: boolean = false): Promise
     }
     
     try {
-      // 🛡️ EXECUTOR GUARD: Check stop switch before connecting
-      const { checkStopSwitch, closeExtraPages, logGuardState } = await import('../executorGuard');
+      // 🛡️ EXECUTOR GUARD: Check stop switch and Chrome process cap before connecting
+      const { checkStopSwitch, closeExtraPages, logGuardState, checkChromeProcessCap } = await import('../executorGuard');
       checkStopSwitch();
+      checkChromeProcessCap();
       
       const browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
       const contexts = browser.contexts();
@@ -87,7 +88,7 @@ export async function launchRunnerPersistent(headless: boolean = false): Promise
         console.log(`[RUNNER_LAUNCHER] ✅ Created new context in CDP Chrome`);
       }
       
-      // 🛡️ TAB LEAK GUARDRAIL: Close extra pages, keep only 1
+      // 🛡️ TAB LEAK GUARDRAIL: Close extra pages, keep only 1 (HARD CAP: exits if > 3)
       await closeExtraPages(context);
       await logGuardState(context);
       

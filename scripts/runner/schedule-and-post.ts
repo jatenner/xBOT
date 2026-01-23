@@ -518,9 +518,21 @@ async function main() {
     
     // Loop mode
     if (isLoop) {
+      // 🛡️ EMERGENCY STOP: Check stop switch before looping
+      const { checkStopSwitch, checkChromeProcessCap } = await import('../../src/infra/executorGuard');
+      checkStopSwitch();
+      checkChromeProcessCap();
+      
       const delay = 60 * 1000; // 60 seconds
       console.log(`⏰ Waiting ${delay / 1000}s before next run...\n`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Check stop switch during wait (every second)
+      const waitStart = Date.now();
+      while (Date.now() - waitStart < delay) {
+        checkStopSwitch();
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
       return main(); // Recursive call
     }
   } catch (error: any) {

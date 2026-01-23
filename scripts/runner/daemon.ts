@@ -204,8 +204,20 @@ async function runDaemon() {
   // Record initial heartbeat
   await recordHeartbeat('OK', 'Daemon started');
   
+  // 🛡️ Initialize guard
+  const { initializeGuard, checkStopSwitch, createRuntimeCap, checkChromeProcessCap } = await import('../../src/infra/executorGuard');
+  initializeGuard();
+  
   while (true) {
+    // 🛡️ EMERGENCY STOP: Check stop switch in every loop iteration
+    checkStopSwitch();
+    checkChromeProcessCap();
+    
     try {
+      // 🛡️ HARD RUNTIME CAP: 60 seconds max per tick
+      const clearRuntimeCap = createRuntimeCap(60000);
+      
+      try {
       // 1. Check CDP is reachable
       const cdpRunning = await checkCDP();
       if (!cdpRunning) {
@@ -262,10 +274,25 @@ async function runDaemon() {
       // 6. Check watchdog
       await checkActivityWatchdog();
       
-      // 7. Sleep with backoff
-      const sleepSeconds = DAEMON_SLEEP_SECONDS * (1 + consecutiveFailures * 0.5);
-      console.log(`[DAEMON] 💤 Sleeping ${sleepSeconds.toFixed(1)}s...\n`);
-      await sleep(sleepSeconds);
+        clearRuntimeCap(); // Clear timeout on success
+        
+        // 7. Sleep with backoff (check stop switch during sleep)
+        const sleepSeconds = DAEMON_SLEEP_SECONDS * (1 + consecutiveFailures * 0.5);
+        console.log(`[DAEMON] 💤 Sleeping ${sleepSeconds.toFixed(1)}s...\n`);
+        
+        // Check stop switch every second during sleep
+        const sleepStart = Date.now();
+        const sleepMs = sleepSeconds * 1000;
+        while (Date.now() - sleepStart < sleepMs) {
+          checkStopSwitch();
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } finally {
+        // Always clear runtime cap
+        try {
+          clearRuntimeCap();
+        } catch {}
+      }
       
     } catch (err: any) {
       console.error(`[DAEMON] ❌ Unexpected error: ${err.message}`);
@@ -274,6 +301,16 @@ async function runDaemon() {
       }
       await recordHeartbeat('ERROR', `Unexpected error: ${err.message}`);
       consecutiveFailures++;
+      
+      // Check stop switch before backoff
+      checkStopSwitch();
+      
+      // If 5+ failures, exit completely (don't keep looping)
+      if (consecutiveFailures >= 5) {
+        console.error(`[DAEMON] 🚨 MAX FAILURES REACHED: ${consecutiveFailures} consecutive failures - exiting completely`);
+        process.exit(1);
+      }
+      
       await sleep(DAEMON_SLEEP_SECONDS * Math.min(consecutiveFailures, 5));
     }
   }
