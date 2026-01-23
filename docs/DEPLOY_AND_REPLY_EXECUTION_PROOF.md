@@ -211,9 +211,9 @@ ORDER BY event_type;
 ```
 
 **Status:** ✅ **POSTING_QUEUE_TICK** executing (16 events)  
-**Status:** ⏳ **REPLY_QUEUE_TICK** not yet appearing (new code deployed, waiting for next scheduler run)
+**Status:** ✅ **REPLY_QUEUE_TICK** executing (2 events, last: 16:58:06)
 
-**Note:** Reply scheduler runs every 15 minutes. Last run was at 16:42:31 (before new code). Next run expected ~16:57:31.
+**Evidence:** Reply queue is executing and emitting TICK events with counts.
 
 ---
 
@@ -257,12 +257,15 @@ LIMIT 10;
 
 **Result:**
 ```
-       reason       | ct |         last_seen          
---------------------+----+----------------------------
- NO_READY_DECISIONS |  4 | 2026-01-23 16:55:06.587+00
+       reason        | ct |         last_seen          
+---------------------+----+----------------------------
+ NO_READY_DECISIONS  |  4 | 2026-01-23 16:55:06.587+00
+ RUNNER_MODE_NOT_SET |  2 | 2026-01-23 16:58:06.018+00
 ```
 
-**Status:** ✅ Blocking events tracked (NO_READY_DECISIONS for posting queue)
+**Status:** ✅ Blocking events tracked
+- `NO_READY_DECISIONS`: Posting queue (4 events)
+- `RUNNER_MODE_NOT_SET`: Reply queue (2 events - expected on Railway, replies require browser)
 
 ---
 
@@ -287,8 +290,8 @@ ORDER BY job_name;
  posting_queue | 2026-01-23 16:55:06.827+00 |              | success         | 0.52
 ```
 
-**Status:** ✅ **posting_queue** heartbeat active (last success: 0.52 min ago)  
-**Status:** ⏳ **reply_queue** heartbeat not yet created (will appear after first REPLY_QUEUE_TICK)
+**Status:** ✅ **posting_queue** heartbeat active (last success: recent)  
+**Status:** ✅ **reply_queue** heartbeat created (last_run_status: skipped - expected due to RUNNER_MODE_NOT_SET)
 
 ---
 
@@ -309,12 +312,18 @@ LIMIT 10;
 
 **Result:**
 ```
-(0 rows)
+ ready | selected | attempts |         created_at         
+-------+----------+----------+----------------------------
+ 5     | 0        | 0        | 2026-01-23 16:58:06.1+00
+ 5     | 0        | 0        | 2026-01-23 16:58:05.399+00
 ```
 
-**Status:** ⏳ **REPLY_QUEUE_TICK** not yet appearing (new code deployed, waiting for next scheduler run ~16:57:31)
+**Status:** ✅ **REPLY_QUEUE_TICK** appearing (2 events, last: 16:58:06)
 
-**Note:** Reply scheduler runs every 15 minutes. The new code with REPLY_QUEUE_TICK instrumentation was deployed at 16:53:03. The next scheduler run will emit REPLY_QUEUE_TICK events.
+**Evidence:**
+- `ready_candidates`: 5 (queue has candidates)
+- `selected_candidates`: 0 (none selected - blocked by RUNNER_MODE_NOT_SET)
+- `attempts_started`: 0 (no attempts - expected on Railway without browser)
 
 ---
 
@@ -409,8 +418,8 @@ cd408377554b0dbbf25d75357e199cdc0f04b736
 - [x] Job heartbeat updated for `reply_queue`
 - [x] `reply-queue-once.ts` runner script created
 - [x] `pnpm run runner:reply-queue-once` script added
-- [ ] `REPLY_QUEUE_TICK` events appear in `system_events` (waiting for next scheduler run ~16:57:31)
-- [ ] `reply_queue` heartbeat appears in `job_heartbeats` (will appear after first REPLY_QUEUE_TICK)
+- [x] `REPLY_QUEUE_TICK` events appear in `system_events` (2 events, last: 16:58:06)
+- [x] `reply_queue` heartbeat appears in `job_heartbeats` (status: skipped - expected)
 
 ---
 
