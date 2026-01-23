@@ -77,10 +77,40 @@ let browserLaunchCount = 0;
  */
 function checkStopSwitch(): boolean {
   if (process.env.STOP_EXECUTOR === 'true' || fs.existsSync(STOP_SWITCH_PATH)) {
-    console.log('[EXECUTOR_DAEMON] 🛑 STOP switch triggered - exiting gracefully...');
     return true;
   }
   return false;
+}
+
+/**
+ * Handle STOP switch detection - immediate cleanup and exit
+ */
+async function handleStopSwitch(): Promise<never> {
+  console.log('[EXECUTOR] STOP detected');
+  
+  // Cleanup immediately
+  cleanupLock();
+  
+  // Close page
+  if (page) {
+    try {
+      await page.close();
+    } catch {
+      // Ignore
+    }
+  }
+  
+  // Close browser (closes context automatically)
+  if (browser) {
+    try {
+      await browser.close();
+    } catch {
+      // Ignore
+    }
+  }
+  
+  // Exit immediately
+  process.exit(0);
 }
 
 /**
@@ -513,10 +543,9 @@ async function main(): Promise<void> {
   
   // Main loop
   while (true) {
-    // Check STOP switch
+    // Check STOP switch - exit immediately if detected
     if (checkStopSwitch()) {
-      console.log('[EXECUTOR_DAEMON] 🛑 Exiting gracefully...');
-      break;
+      await handleStopSwitch();
     }
     
     const tickStart = Date.now();
@@ -539,8 +568,7 @@ async function main(): Promise<void> {
       try {
         // Check STOP switch before posting queue
         if (checkStopSwitch()) {
-          console.log('[EXECUTOR_DAEMON] 🛑 STOP switch detected - aborting tick');
-          break;
+          await handleStopSwitch();
         }
         
         // Run posting queue
@@ -548,16 +576,20 @@ async function main(): Promise<void> {
         postingReady = postingResult.ready;
         postingAttempts = postingResult.attempts_started;
         
-        // Check STOP switch before reply queue
+        // Check STOP switch after posting queue
         if (checkStopSwitch()) {
-          console.log('[EXECUTOR_DAEMON] 🛑 STOP switch detected - aborting tick');
-          break;
+          await handleStopSwitch();
         }
         
         // Run reply queue
         const replyResult = await runReplyQueue();
         replyReady = replyResult.ready;
         replyAttempts = replyResult.attempts_started;
+        
+        // Check STOP switch after reply queue
+        if (checkStopSwitch()) {
+          await handleStopSwitch();
+        }
         
         // Reset failures on success
         if (consecutiveFailures > 0) {
@@ -622,8 +654,7 @@ async function main(): Promise<void> {
     // Sleep in 1-second chunks to check STOP switch frequently
     for (let i = 0; i < sleepSeconds; i++) {
       if (checkStopSwitch()) {
-        console.log('[EXECUTOR_DAEMON] 🛑 STOP switch detected during sleep - exiting immediately');
-        break;
+        await handleStopSwitch();
       }
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
