@@ -82,6 +82,7 @@
     "ops:status": "tsx scripts/ops/status.ts",
     "ops:logs": "tsx scripts/ops/logs.ts",
     "deploy:railway": "railway up --detach",
+    "deploy:verify": "tsx scripts/ops/deploy_and_verify.ts",
     "logs:railway": "railway logs -f"
   },
   "dependencies": {

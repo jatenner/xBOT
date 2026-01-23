@@ -33,6 +33,15 @@ function startHealthServer(): void {
   // 🔒 PHASE 4.B: DEPLOYMENT INTEGRITY CHECK - Log at boot
   const appVersion = process.env.APP_VERSION ?? 'unknown';
   const gitSha = process.env.APP_VERSION ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
+  // 🔒 DEPLOY FINGERPRINT: Required for deploy verification
+  const appCommitSha = process.env.APP_COMMIT_SHA ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
+  const appBuildTime = process.env.APP_BUILD_TIME ?? 'unknown';
+  const serviceRole = process.env.SERVICE_ROLE ?? (process.env.RAILWAY_SERVICE_NAME?.includes('worker') ? 'worker' : 'main') ?? 'unknown';
+  const railwayService = process.env.RAILWAY_SERVICE_NAME ?? process.env.SERVICE_NAME ?? 'unknown';
+  
+  // Single-line boot fingerprint (required for deploy verification)
+  console.log(`[BOOT] sha=${appCommitSha} build_time=${appBuildTime} service_role=${serviceRole} railway_service=${railwayService}`);
+  
   console.log(`[BOOT] git_sha=${gitSha}`);
   console.log(`[BOOT] railway_git_commit_sha=${process.env.RAILWAY_GIT_COMMIT_SHA ?? 'missing'}`);
   console.log(`[BOOT] app_version=${appVersion}`);
@@ -69,12 +78,20 @@ function startHealthServer(): void {
         'Content-Type': 'application/json',
         'Cache-Control': 'no-cache'
       });
+      // Compute fingerprint fields dynamically (read env vars at request time)
+      const appCommitSha = process.env.APP_COMMIT_SHA ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
+      const appBuildTime = process.env.APP_BUILD_TIME ?? 'unknown';
+      const serviceRole = process.env.SERVICE_ROLE ?? (process.env.RAILWAY_SERVICE_NAME?.includes('worker') ? 'worker' : 'main') ?? 'unknown';
+      
       // Compute version fields dynamically (do NOT cache - read env vars at request time)
       const appVersion = process.env.APP_VERSION ?? 'unknown';
       const gitSha = process.env.APP_VERSION ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
       
       res.end(JSON.stringify({
         ok: true,
+        sha: appCommitSha,
+        build_time: appBuildTime,
+        service_role: serviceRole,
         status: 'healthy',
         git_sha: gitSha,
         app_version: appVersion,
