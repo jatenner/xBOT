@@ -104,30 +104,46 @@ WHERE event_type='REPLY_QUEUE_TICK'
 
 ## Mac Executor Management
 
-### Start Executor
+### Start Executor (Headless Daemon)
 
 ```bash
-# Start LaunchAgent (auto-starts on boot)
+# Start headless daemon (24/7, no visible windows)
+EXECUTION_MODE=executor RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile pnpm run executor:daemon
+
+# Or via LaunchAgent (auto-starts on boot)
 pnpm run executor:start
-
-# Or manually
-launchctl load -w ~/Library/LaunchAgents/com.xbot.executor.plist
-
-# Run one-shot (for testing)
-EXECUTION_MODE=executor RUNNER_MODE=true RUNNER_BROWSER=cdp RUNNER_PROFILE_DIR=./.runner-profile pnpm run runner:posting-queue-once
 ```
+
+**Key Points:**
+- Runs `HEADLESS=true` by default (no visible windows)
+- Uses dedicated profile: `${RUNNER_PROFILE_DIR}/executor-chrome-profile`
+- Never opens visible windows
+- Detects auth walls and exits cleanly
 
 ### Stop Executor (Emergency)
 
 ```bash
-# Method 1: STOP switch (works even in hot loops)
+# Method 1: STOP switch (graceful, exits within 10s)
 touch ./.runner-profile/STOP_EXECUTOR
 
 # Method 2: Stop LaunchAgent
 pnpm run executor:stop
 
 # Method 3: Kill process
-pkill -f executor-daemon
+pkill -f "executor/daemon"
+```
+
+### Repair Login (If Auth Required)
+
+```bash
+# Run headed browser for login/challenge repair
+RUNNER_PROFILE_DIR=./.runner-profile pnpm run executor:auth
+
+# After login, remove AUTH_REQUIRED file
+rm ./.runner-profile/AUTH_REQUIRED
+
+# Restart daemon
+pnpm run executor:daemon
 ```
 
 ### Check Executor Status
@@ -139,21 +155,30 @@ pnpm run executor:status
 # View logs
 pnpm run executor:logs
 
-# Or manually
-tail -f ./.runner-profile/executor.log
+# Check config
+cat ./.runner-profile/EXECUTOR_CONFIG.json
+
+# Verify headless mode
+grep "BOOT: headless=true" ./.runner-profile/executor.log
 ```
 
-### Verify Executor Guardrails
+### Verify Executor (15-Minute Proof)
 
 ```bash
-# Run stability verification (10 minutes)
-pnpm tsx scripts/runner/verify-executor-stability.ts
+# Run automated 15-minute proof test
+RUNNER_PROFILE_DIR=./.runner-profile pnpm run executor:prove:15m
 
-# Check page count in logs
-grep "EXECUTOR_GUARD" ./.runner-profile/executor.log | grep "pages="
-
-# Expected: All show pages=1 (or pages=0)
+# Expected output: PASS with metrics:
+#   windows_opened=0 ✅
+#   headless=true ✅
+#   pages_max<=1 ✅
+#   browser_launches<=1 ✅
+#   db_connected=true ✅
+#   queues_readable=true ✅
+#   stop_switch<=10s ✅
 ```
+
+**Report:** `docs/EXECUTOR_15MIN_HEADLESS_PROOF.md`
 
 ---
 
@@ -294,24 +319,42 @@ pnpm run executor:logs | grep -i error
 4. Check session: `pnpm run runner:session`
 5. Run one-shot test: `pnpm run runner:posting-queue-once`
 
-### CDP Connection Lost
+### Auth Wall Detected
 
 **Symptoms:**
-- Executor logs show "CDP not reachable"
-- Cannot connect to Chrome
+- Daemon exits with `EXECUTOR_AUTH_REQUIRED` event
+- `AUTH_REQUIRED` file exists in profile dir
+- Login/challenge wall detected
 
 **Recovery:**
 ```bash
-# 1. Check if Chrome is running
-ps aux | grep "Google Chrome"
+# 1. Run headed auth repair
+RUNNER_PROFILE_DIR=./.runner-profile pnpm run executor:auth
 
-# 2. If not running, start Chrome with CDP (see "Start Chrome with CDP" above)
+# 2. Complete login/challenge in browser window
+# 3. Press Enter to close browser
 
-# 3. Verify CDP
-curl http://127.0.0.1:9222/json/version
+# 4. Remove AUTH_REQUIRED file (auto-removed by auth command)
+# 5. Restart daemon
+pnpm run executor:daemon
+```
 
-# 4. Restart executor
-pnpm run executor:restart
+### Browser Launch Issues
+
+**Symptoms:**
+- Daemon fails to launch browser
+- Rate-limited browser launches
+
+**Recovery:**
+```bash
+# Check browser launch count in logs
+grep "browser_launches" ./.runner-profile/executor.log
+
+# Wait for cooldown (max 1 launch per minute)
+# Restart daemon if needed
+touch ./.runner-profile/STOP_EXECUTOR
+sleep 10
+pnpm run executor:daemon
 ```
 
 ### Session Expired
