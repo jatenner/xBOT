@@ -94,6 +94,7 @@ function startHealthServer(): void {
         sha: appCommitSha,
         build_time: appBuildTime,
         service_role: serviceRole,
+        railway_service: railwayServiceName || 'unknown',
         status: 'healthy',
         git_sha: gitSha,
         app_version: appVersion,
@@ -578,13 +579,18 @@ setImmediate(async () => {
     // Determine service type using role resolver (single source of truth)
     const { resolveServiceRole } = await import('./utils/serviceRoleResolver');
     const roleInfo = resolveServiceRole();
-    const isWorkerService = roleInfo.role === 'worker';
+    
+    // 🔒 HARD DISABLE: Check DISABLE_ALL_JOBS override
+    const disableAllJobs = process.env.DISABLE_ALL_JOBS === 'true';
+    const isWorkerService = roleInfo.role === 'worker' && !disableAllJobs;
 
     console.log(`[BOOT] Service type: ${isWorkerService ? 'WORKER' : 'MAIN'}`);
     console.log(`[BOOT] Resolved role: ${roleInfo.role} (source: ${roleInfo.source})`);
     console.log(`[BOOT] SERVICE_ROLE: ${roleInfo.raw.SERVICE_ROLE || 'NOT SET'}`);
     console.log(`[BOOT] RAILWAY_SERVICE_NAME: ${roleInfo.raw.RAILWAY_SERVICE_NAME || 'NOT SET'}`);
     console.log(`[BOOT] Service name: ${process.env.RAILWAY_SERVICE_NAME || 'unknown'}`);
+    console.log(`[BOOT] DISABLE_ALL_JOBS: ${process.env.DISABLE_ALL_JOBS || 'NOT SET'}`);
+    console.log(`[BOOT] jobs_enabled=${isWorkerService} reason=${isWorkerService ? 'worker' : (disableAllJobs ? 'DISABLE_ALL_JOBS=true' : 'non-worker')}`);
 
     if (isWorkerService) {
       // WORKER SERVICE: Start job manager

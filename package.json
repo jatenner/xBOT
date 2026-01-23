@@ -83,6 +83,8 @@
     "ops:logs": "tsx scripts/ops/logs.ts",
     "deploy:railway": "railway up --detach",
     "deploy:verify": "tsx scripts/ops/deploy_and_verify.ts",
+    "deploy:verify:both": "tsx scripts/ops/deploy_and_verify_both.ts",
+    "runner:reply-queue-once": "tsx scripts/runner/reply-queue-once.ts",
     "logs:railway": "railway logs -f"
   },
   "dependencies": {
