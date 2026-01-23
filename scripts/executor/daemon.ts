@@ -537,10 +537,22 @@ async function main(): Promise<void> {
       }, MAX_RUNTIME_PER_TICK_MS);
       
       try {
+        // Check STOP switch before posting queue
+        if (checkStopSwitch()) {
+          console.log('[EXECUTOR_DAEMON] 🛑 STOP switch detected - aborting tick');
+          break;
+        }
+        
         // Run posting queue
         const postingResult = await runPostingQueue();
         postingReady = postingResult.ready;
         postingAttempts = postingResult.attempts_started;
+        
+        // Check STOP switch before reply queue
+        if (checkStopSwitch()) {
+          console.log('[EXECUTOR_DAEMON] 🛑 STOP switch detected - aborting tick');
+          break;
+        }
         
         // Run reply queue
         const replyResult = await runReplyQueue();

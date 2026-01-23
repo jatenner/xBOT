@@ -1,6 +1,6 @@
 # Executor 15-Minute Headless Proof
 
-**Date:** 2026-01-23T23:16:57.993Z  
+**Date:** 2026-01-23T23:33:42.593Z  
 **Status:** ❌ FAIL
 
 ## Metrics
@@ -12,9 +12,9 @@
 - **db_connected:** true (expected: true) ✅
 - **queues_readable:** true (expected: true) ✅
 - **posting_ready:** 1
-- **reply_ready:** 8
+- **reply_ready:** 0
 - **stop_switch_seconds:** 999 (expected: <= 10) ❌
-- **ticks_count:** 4
+- **ticks_count:** 5
 
 ## Configuration
 
