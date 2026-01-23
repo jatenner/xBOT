@@ -457,37 +457,58 @@ cd408377554b0dbbf25d75357e199cdc0f04b736
 - ✅ **Worker (xBOT):** SHA `cd408377554b0dbbf25d75357e199cdc0f04b736` - **MATCH**
 - ❓ **Main (serene-cat):** No recent boot fingerprint found - **UNKNOWN**
 
-**Next Action:** Check Railway dashboard for serene-cat deployment status or deploy it explicitly if needed.
+**Note:** serene-cat logs show it's running jobs (reply_v2_fetch, etc.), suggesting it may also be a worker service, not main. Both services may share the same codebase and deploy together.
+
+**Next Action:** 
+- Check Railway dashboard for serene-cat service status
+- If serene-cat is intentionally a separate service, deploy it explicitly: `railway up --detach -s serene-cat`
+- If both services share codebase, single deploy should update both
 
 ---
 
 ### Are replies executing?
 
-**Answer:** ⏳ **WAITING FOR NEXT RUN**
+**Answer:** ⏳ **INSTRUMENTATION ADDED, WAITING FOR NEXT RUN**
 - ✅ Reply scheduler is running (4 runs in last 2 hours)
-- ✅ New code deployed with REPLY_QUEUE_TICK instrumentation
-- ⏳ REPLY_QUEUE_TICK events not yet appearing (waiting for next scheduler run ~16:57:31)
+- ✅ New code deployed with REPLY_QUEUE_TICK instrumentation (commit `cd408377`)
+- ✅ Worker service (xBOT) running new code (SHA matches)
+- ⏳ REPLY_QUEUE_TICK events not yet appearing (waiting for next scheduler run)
 - ⏳ reply_queue heartbeat not yet created (will appear after first REPLY_QUEUE_TICK)
 
 **Evidence:**
 - `reply_v2_scheduler_job_started`: 4 events (last: 16:42:31)
-- `reply_v2_scheduler_early_exit`: 4 events (reason: RUNNER_MODE_NOT_SET - expected on Railway)
-- `REPLY_QUEUE_TICK`: 0 events (new code deployed, waiting for next run)
+- `reply_v2_scheduler_early_exit`: 4 events (reason: RUNNER_MODE_NOT_SET - expected on Railway, replies require browser)
+- `REPLY_QUEUE_TICK`: 0 events (new code deployed at 16:53:03, next scheduler run expected ~16:57:31)
 
-**Next Action:** Wait ~5 minutes for next scheduler run, then re-run SQL queries to verify REPLY_QUEUE_TICK appears.
+**Code Status:**
+- ✅ `REPLY_QUEUE_TICK` instrumentation added to `attemptScheduledReply()`
+- ✅ `REPLY_QUEUE_BLOCKED` events added for early exits
+- ✅ Job heartbeat updates added for `reply_queue`
+- ✅ All return paths emit REPLY_QUEUE_TICK
+
+**Next Action:** 
+1. Wait for next scheduler run (~15 min intervals)
+2. Re-run SQL query to verify REPLY_QUEUE_TICK appears:
+   ```sql
+   SELECT * FROM system_events
+   WHERE event_type='REPLY_QUEUE_TICK'
+   ORDER BY created_at DESC
+   LIMIT 5;
+   ```
 
 ---
 
 ### If no, what is the single next root cause to fix?
 
-**Answer:** ⏳ **NONE - Waiting for next scheduler run**
+**Answer:** ⏳ **NONE - Code deployed correctly, waiting for execution**
 
-The reply system is running, but REPLY_QUEUE_TICK events will only appear after the next scheduler run (every 15 minutes). The new code was deployed at 16:53:03, and the last scheduler run was at 16:42:31, so the next run is expected around 16:57:31.
+The reply system instrumentation is complete and deployed. REPLY_QUEUE_TICK events will appear on the next scheduler run (every 15 minutes). The new code was deployed at 16:53:03, and scheduler runs every 15 minutes starting from initial delay.
 
 **If REPLY_QUEUE_TICK still doesn't appear after next run:**
-1. Check Railway logs for `[REPLY_QUEUE] ✅ job_tick start`
-2. Check for errors in `attemptScheduledReply()` function
-3. Verify `emitReplyQueueTick()` is being called in all return paths
+1. Check Railway logs for `[REPLY_QUEUE] ✅ job_tick start` (confirms function entry)
+2. Check Railway logs for `[REPLY_QUEUE_TICK]` or `[REPLY_QUEUE_BLOCK]` (confirms event emission)
+3. Verify `emitReplyQueueTick()` is being called (check for errors in logs)
+4. Check if `attemptScheduledReply()` is being called (should see `[SCHEDULER] ⏰ Attempting scheduled reply...`)
 
 ---
 
