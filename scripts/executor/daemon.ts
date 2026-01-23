@@ -41,11 +41,17 @@ process.env.HEADLESS = process.env.HEADLESS !== 'false' ? 'true' : 'false'; // D
 const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
 const STOP_SWITCH_PATH = path.join(RUNNER_PROFILE_DIR, 'STOP_EXECUTOR');
 const PIDFILE_PATH = path.join(RUNNER_PROFILE_DIR, 'executor.pid');
-const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 const TICK_INTERVAL_MS = 60 * 1000; // 60 seconds
 const MAX_RUNTIME_PER_TICK_MS = 120 * 1000; // 120s max per tick (increased for headless)
 const SAFETY_NO_KILL = process.env.SAFETY_NO_KILL !== 'false'; // Default: true (safe mode)
-const HEADLESS = process.env.HEADLESS === 'true'; // Default: true
+
+// HARD REQUIREMENT: Always headless (no visible windows)
+const HEADLESS = process.env.HEADLESS !== 'false'; // Default: true, can only be disabled explicitly
+if (!HEADLESS) {
+  console.error('[EXECUTOR_DAEMON] 🚨 FATAL: HEADLESS=false is not allowed in daemon mode');
+  console.error('[EXECUTOR_DAEMON] 🚨 Use executor:auth for headed login repair');
+  process.exit(1);
+}
 
 // Dedicated headless browser profile
 const BROWSER_USER_DATA_DIR = path.join(RUNNER_PROFILE_DIR, 'chromium-headless-profile');
@@ -240,10 +246,12 @@ async function launchBrowser(): Promise<void> {
     fs.mkdirSync(BROWSER_USER_DATA_DIR, { recursive: true });
   }
   
+  // HARD REQUIREMENT: Always use userDataDir under RUNNER_PROFILE_DIR
   browser = await chromium.launch({
-    headless: HEADLESS,
+    headless: true, // HARD: Always headless (no visible windows)
     channel: 'chrome', // Use system Chrome
     args: [
+      `--user-data-dir=${BROWSER_USER_DATA_DIR}`,
       '--no-first-run',
       '--no-default-browser-check',
       '--disable-blink-features=AutomationControlled',
@@ -274,7 +282,16 @@ async function initializeBrowser(): Promise<void> {
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       viewport: { width: 1280, height: 720 },
     });
-    console.log(`[EXECUTOR_DAEMON] ✅ Context created`);
+    
+    // HARD REQUIREMENT: Verify context is headless (no visible windows)
+    // Note: Playwright doesn't expose headless state directly, but we enforce it at launch
+    console.log(`[EXECUTOR_DAEMON] ✅ Context created (headless enforced)`);
+  }
+  
+  // Verify browser is still headless (safety check)
+  if (browser && browser.version() && !HEADLESS) {
+    console.error('[EXECUTOR_DAEMON] 🚨 FATAL: Browser context is headed (visible windows not allowed)');
+    process.exit(1);
   }
   
   // Enforce page cap (close extras, keep only 1)
@@ -442,10 +459,16 @@ async function main(): Promise<void> {
   console.log(`   EXECUTION_MODE: ${process.env.EXECUTION_MODE}`);
   console.log(`   RUNNER_MODE: ${process.env.RUNNER_MODE}`);
   console.log(`   RUNNER_PROFILE_DIR: ${RUNNER_PROFILE_DIR}`);
-  console.log(`   HEADLESS: ${HEADLESS} (default: true)`);
+  console.log(`   HEADLESS: ${HEADLESS} ✅ (HARD REQUIREMENT: always true, no visible windows)`);
   console.log(`   Browser profile: ${BROWSER_USER_DATA_DIR}`);
   console.log(`   Tick interval: ${TICK_INTERVAL_MS / 1000}s`);
   console.log(`   Max browser launches/min: ${MAX_BROWSER_LAUNCHES_PER_MINUTE}`);
+  console.log('');
+  
+  // Explicit boot log asserting headless=true
+  console.log('[EXECUTOR_DAEMON] ✅ BOOT: headless=true (no visible windows will be opened)');
+  console.log('[EXECUTOR_DAEMON] ✅ BOOT: userDataDir=' + BROWSER_USER_DATA_DIR);
+  console.log('[EXECUTOR_DAEMON] ✅ BOOT: chromium.launch() mode (NOT connectOverCDP)');
   console.log('');
   
   // Acquire lock

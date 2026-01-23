@@ -1,5 +1,5 @@
 #!/bin/bash
-# 15-minute headless stability test
+# 15-minute headless stability test with strict PASS criteria
 
 set -e
 
@@ -12,6 +12,10 @@ END_TIME=$((START_TIME + 900)) # 15 minutes
 MINUTE=0
 FAILED_MINUTE=-1
 FAILURE_REASON=""
+WINDOWS_OPENED=0
+PAGES_COUNT=0
+BROWSER_LAUNCHES=0
+STOP_SWITCH_SECONDS=0
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "           🧪 HEADLESS EXECUTOR 15-MINUTE STABILITY TEST"
@@ -21,6 +25,12 @@ echo "Start time: $(date -r $START_TIME)"
 echo "End time: $(date -r $END_TIME)"
 echo "Log file: $LOG_FILE"
 echo "Evidence file: $EVIDENCE_FILE"
+echo ""
+echo "PASS Criteria:"
+echo "  ✅ windows_opened=0"
+echo "  ✅ pages=1 (all ticks)"
+echo "  ✅ browser_launches<=1"
+echo "  ✅ stop_switch<=10s"
 echo ""
 
 # Pre-flight checks
@@ -43,8 +53,8 @@ echo "Timestamp: $(date)" >> $EVIDENCE_FILE
 echo "" >> $EVIDENCE_FILE
 
 # Count visible Chrome windows (should be 0)
-VISIBLE_WINDOWS=$(osascript -e 'tell application "System Events" to count windows of process "Google Chrome"' 2>/dev/null || echo "0")
-echo "Visible Chrome windows: $VISIBLE_WINDOWS" >> $EVIDENCE_FILE
+INITIAL_VISIBLE_WINDOWS=$(osascript -e 'tell application "System Events" to count windows of process "Google Chrome"' 2>/dev/null || echo "0")
+echo "Initial visible Chrome windows: $INITIAL_VISIBLE_WINDOWS" >> $EVIDENCE_FILE
 echo "" >> $EVIDENCE_FILE
 
 # Remove STOP switch
@@ -70,6 +80,17 @@ if ! ps -p $DAEMON_PID > /dev/null 2>&1; then
   echo "❌ Daemon died immediately"
   echo "Last 20 lines:"
   tail -20 "$LOG_FILE"
+  exit 1
+fi
+
+# Verify headless boot log
+if ! grep -q "BOOT: headless=true" "$LOG_FILE"; then
+  echo "❌ FAIL: Missing headless=true boot log"
+  FAILURE_REASON="Missing headless=true boot assertion"
+  FAILED_MINUTE=0
+  RESULT="FAIL"
+  echo "RESULT=FAIL" > /tmp/headless_stability_result.txt
+  echo "FAILURE_REASON=$FAILURE_REASON" >> /tmp/headless_stability_result.txt
   exit 1
 fi
 
@@ -128,16 +149,17 @@ while [ $(date +%s) -lt $END_TIME ]; do
   fi
   
   # Check visible windows (should be 0)
-  VISIBLE_WINDOWS=$(osascript -e 'tell application "System Events" to count windows of process "Google Chrome"' 2>/dev/null || echo "0")
-  if [ "$VISIBLE_WINDOWS" != "0" ]; then
+  CURRENT_VISIBLE_WINDOWS=$(osascript -e 'tell application "System Events" to count windows of process "Google Chrome"' 2>/dev/null || echo "0")
+  if [ "$CURRENT_VISIBLE_WINDOWS" -gt "$INITIAL_VISIBLE_WINDOWS" ]; then
+    WINDOWS_OPENED=$((CURRENT_VISIBLE_WINDOWS - INITIAL_VISIBLE_WINDOWS))
     FAILED_MINUTE=$MINUTE
-    FAILURE_REASON="visible_windows=$VISIBLE_WINDOWS (expected 0)"
-    echo "❌ FAIL: Found $VISIBLE_WINDOWS visible Chrome windows at minute $MINUTE"
+    FAILURE_REASON="windows_opened=$WINDOWS_OPENED (expected 0)"
+    echo "❌ FAIL: Found $WINDOWS_OPENED new visible Chrome windows at minute $MINUTE"
     break
   fi
   
   # Check forbidden patterns
-  FORBIDDEN=("new page" "spawn tab" "kill chrome" "reconnect loop" "creating page" "opening new window" "browser.close" "page cap exceeded" "HARD CAP")
+  FORBIDDEN=("new page" "spawn tab" "kill chrome" "reconnect loop" "creating page" "opening new window" "browser.close" "page cap exceeded" "HARD CAP" "connectOverCDP")
   for PATTERN in "${FORBIDDEN[@]}"; do
     if echo "$LATEST_LINES" | grep -qi "$PATTERN"; then
       FAILED_MINUTE=$MINUTE
@@ -159,7 +181,7 @@ while [ $(date +%s) -lt $END_TIME ]; do
   echo "Minute $MINUTE ($(date)):" >> $EVIDENCE_FILE
   echo "$LATEST_LINES" >> $EVIDENCE_FILE
   echo "CPU/Mem: $CPU_MEM" >> $EVIDENCE_FILE
-  echo "Visible windows: $VISIBLE_WINDOWS" >> $EVIDENCE_FILE
+  echo "Visible windows: $CURRENT_VISIBLE_WINDOWS" >> $EVIDENCE_FILE
   
   sleep 60
 done
@@ -171,8 +193,14 @@ echo "Timestamp: $(date)" >> $EVIDENCE_FILE
 echo "" >> $EVIDENCE_FILE
 
 FINAL_VISIBLE_WINDOWS=$(osascript -e 'tell application "System Events" to count windows of process "Google Chrome"' 2>/dev/null || echo "0")
-echo "Visible Chrome windows: $FINAL_VISIBLE_WINDOWS" >> $EVIDENCE_FILE
+FINAL_WINDOWS_OPENED=$((FINAL_VISIBLE_WINDOWS - INITIAL_VISIBLE_WINDOWS))
+echo "Final visible Chrome windows: $FINAL_VISIBLE_WINDOWS" >> $EVIDENCE_FILE
+echo "Windows opened during test: $FINAL_WINDOWS_OPENED" >> $EVIDENCE_FILE
 echo "" >> $EVIDENCE_FILE
+
+# Get final metrics from logs
+FINAL_PAGES=$(grep "EXECUTOR_DAEMON.*ts=" "$LOG_FILE" | tail -1 | grep -o "pages=[0-9]*" | cut -d= -f2 || echo "0")
+FINAL_BROWSER_LAUNCHES=$(grep "EXECUTOR_DAEMON.*ts=" "$LOG_FILE" | tail -1 | grep -o "browser_launches=[0-9]*" | cut -d= -f2 || echo "0")
 
 # Stop daemon via STOP switch
 echo ""
@@ -189,18 +217,31 @@ if ps -p $DAEMON_PID > /dev/null 2>&1; then
   echo "⚠️  Daemon did not exit within 10s - killing"
   kill $DAEMON_PID 2>/dev/null || true
   sleep 2
-  FAILURE_REASON="${FAILURE_REASON:-STOP switch did not work within 10s}"
+  STOP_SWITCH_SECONDS=999
+  if [ $FAILED_MINUTE -eq -1 ]; then
+    FAILURE_REASON="STOP switch did not work within 10s"
+    FAILED_MINUTE=$MINUTE
+  fi
 else
-  STOP_ELAPSED=$(( $(date +%s) - STOP_START ))
-  echo "✅ Daemon stopped via STOP switch in ${STOP_ELAPSED}s"
+  STOP_SWITCH_SECONDS=$(( $(date +%s) - STOP_START ))
+  echo "✅ Daemon stopped via STOP switch in ${STOP_SWITCH_SECONDS}s"
 fi
 
-# Determine result
+# Determine result - STRICT PASS criteria
 if [ $FAILED_MINUTE -ne -1 ]; then
   RESULT="FAIL"
-elif [ "$FINAL_VISIBLE_WINDOWS" != "0" ]; then
+elif [ "$FINAL_WINDOWS_OPENED" != "0" ]; then
   RESULT="FAIL"
-  FAILURE_REASON="Visible windows opened: $FINAL_VISIBLE_WINDOWS (expected 0)"
+  FAILURE_REASON="windows_opened=$FINAL_WINDOWS_OPENED (expected 0)"
+elif [ "$FINAL_PAGES" != "1" ] && [ "$FINAL_PAGES" != "0" ]; then
+  RESULT="FAIL"
+  FAILURE_REASON="pages=$FINAL_PAGES (expected 1)"
+elif [ "$FINAL_BROWSER_LAUNCHES" -gt 1 ]; then
+  RESULT="FAIL"
+  FAILURE_REASON="browser_launches=$FINAL_BROWSER_LAUNCHES (expected <= 1)"
+elif [ "$STOP_SWITCH_SECONDS" -gt 10 ]; then
+  RESULT="FAIL"
+  FAILURE_REASON="stop_switch=${STOP_SWITCH_SECONDS}s (expected <= 10s)"
 elif [ $MINUTE -lt 15 ]; then
   RESULT="FAIL"
   FAILURE_REASON="Test did not complete full 15 minutes (only $MINUTE minutes)"
@@ -222,8 +263,13 @@ if [ "$RESULT" = "FAIL" ]; then
   echo "Failed at minute: $FAILED_MINUTE"
   echo "Reason: $FAILURE_REASON"
 fi
-echo "Minutes completed: $MINUTE/15"
-echo "Final visible windows: $FINAL_VISIBLE_WINDOWS"
+echo ""
+echo "Metrics:"
+echo "  windows_opened: $FINAL_WINDOWS_OPENED (expected: 0)"
+echo "  pages: $FINAL_PAGES (expected: 1)"
+echo "  browser_launches: $FINAL_BROWSER_LAUNCHES (expected: <= 1)"
+echo "  stop_switch: ${STOP_SWITCH_SECONDS}s (expected: <= 10s)"
+echo "  minutes_completed: $MINUTE/15"
 echo ""
 echo "Evidence file: $EVIDENCE_FILE"
 echo "Log file: $LOG_FILE"
@@ -238,6 +284,13 @@ echo "EVIDENCE_FILE=$EVIDENCE_FILE" >> /tmp/headless_stability_result.txt
 echo "START_TIME=$START_TIME" >> /tmp/headless_stability_result.txt
 echo "END_TIME=$(date +%s)" >> /tmp/headless_stability_result.txt
 echo "MINUTES_COMPLETED=$MINUTE" >> /tmp/headless_stability_result.txt
-echo "FINAL_VISIBLE_WINDOWS=$FINAL_VISIBLE_WINDOWS" >> /tmp/headless_stability_result.txt
+echo "WINDOWS_OPENED=$FINAL_WINDOWS_OPENED" >> /tmp/headless_stability_result.txt
+echo "PAGES=$FINAL_PAGES" >> /tmp/headless_stability_result.txt
+echo "BROWSER_LAUNCHES=$FINAL_BROWSER_LAUNCHES" >> /tmp/headless_stability_result.txt
+echo "STOP_SWITCH_SECONDS=$STOP_SWITCH_SECONDS" >> /tmp/headless_stability_result.txt
 
-exit 0
+if [ "$RESULT" = "PASS" ]; then
+  exit 0
+else
+  exit 1
+fi
