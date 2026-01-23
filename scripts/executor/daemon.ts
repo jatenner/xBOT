@@ -1,15 +1,17 @@
 #!/usr/bin/env tsx
 /**
- * 🚀 MAC EXECUTOR DAEMON - True Headless Background Execution
+ * 🚀 MAC EXECUTOR DAEMON - Safe 24/7 Headless Execution
  * 
  * Single long-running daemon that:
- * - Launches OWN Chromium instance (headless=true by default)
- * - NEVER opens visible windows (headless mode enforced)
+ * - Runs HEADLESS=true by default (no visible windows)
+ * - Launches its own Chromium with Playwright (not CDP)
  * - Uses dedicated userDataDir under RUNNER_PROFILE_DIR
- * - Never uses connectOverCDP (except in executor:auth for login repair)
- * - Detects login wall/challenge and emits EXECUTOR_AUTH_REQUIRED + exits cleanly
- * - Rate-limits browser launches (max once per minute)
- * - Tracks browser launches and windows opened for monitoring
+ * - Never opens visible windows
+ * - Never spawns multiple daemons (PID lock)
+ * - STOP switch exits gracefully within 10s
+ * - Hard resource caps (pages, browser launches)
+ * - Rate-limited browser launches (max 1 per minute)
+ * - Detects login wall/challenge and exits cleanly
  * 
  * Usage:
  *   EXECUTION_MODE=executor RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile pnpm run executor:daemon
@@ -34,26 +36,26 @@ if (fs.existsSync(envLocalPath)) {
 // Set executor mode environment
 process.env.EXECUTION_MODE = 'executor';
 process.env.RUNNER_MODE = 'true';
-if (!process.env.RUNNER_PROFILE_DIR) {
-  process.env.RUNNER_PROFILE_DIR = path.join(process.cwd(), '.runner-profile');
-}
+process.env.HEADLESS = process.env.HEADLESS !== 'false' ? 'true' : 'false'; // Default: true
 
-const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR!;
+const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
 const STOP_SWITCH_PATH = path.join(RUNNER_PROFILE_DIR, 'STOP_EXECUTOR');
 const PIDFILE_PATH = path.join(RUNNER_PROFILE_DIR, 'executor.pid');
-const BROWSER_LAUNCH_LOG = path.join(RUNNER_PROFILE_DIR, 'browser_launches.json');
+const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 const TICK_INTERVAL_MS = 60 * 1000; // 60 seconds
-const MAX_RUNTIME_PER_TICK_MS = 5 * 60 * 1000; // 5 minutes max per tick
-const HEADLESS = process.env.HEADLESS !== 'false'; // Default: true (headless)
-const MIN_BROWSER_LAUNCH_INTERVAL_MS = 60 * 1000; // 1 minute minimum between launches
+const MAX_RUNTIME_PER_TICK_MS = 120 * 1000; // 120s max per tick (increased for headless)
+const SAFETY_NO_KILL = process.env.SAFETY_NO_KILL !== 'false'; // Default: true (safe mode)
+const HEADLESS = process.env.HEADLESS === 'true'; // Default: true
+
+// Dedicated headless browser profile
+const BROWSER_USER_DATA_DIR = path.join(RUNNER_PROFILE_DIR, 'chromium-headless-profile');
+const MAX_BROWSER_LAUNCHES_PER_MINUTE = 1;
+const BROWSER_LAUNCH_COOLDOWN_MS = 60 * 1000; // 1 minute
 
 // Ensure profile dir exists
 if (!fs.existsSync(RUNNER_PROFILE_DIR)) {
   fs.mkdirSync(RUNNER_PROFILE_DIR, { recursive: true });
 }
-
-// Dedicated userDataDir for bot Chrome (separate from user's Chrome)
-const USER_DATA_DIR = path.join(RUNNER_PROFILE_DIR, 'chrome-profile-bot');
 
 // Global state
 let browser: Browser | null = null;
@@ -61,9 +63,9 @@ let context: BrowserContext | null = null;
 let page: Page | null = null;
 let consecutiveFailures = 0;
 let backoffSeconds = 0;
-let browserLaunchCount = 0;
 let lastBrowserLaunchTime = 0;
-let windowsOpenedCount = 0;
+let browserLaunchCount = 0;
+let windowsOpened = 0;
 const backoffSchedule = [30, 60, 120, 300, 600]; // 30s → 1m → 2m → 5m → 10m
 
 /**
@@ -109,7 +111,7 @@ function acquireLock(): void {
 }
 
 /**
- * Cleanup lock file
+ * Clean up lock file
  */
 function cleanupLock(): void {
   try {
@@ -117,261 +119,228 @@ function cleanupLock(): void {
       fs.unlinkSync(PIDFILE_PATH);
       console.log('[EXECUTOR_DAEMON] 🔓 Lock released');
     }
-  } catch (error: any) {
-    console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to cleanup lock: ${error.message}`);
+  } catch (e) {
+    // Ignore
   }
 }
 
 /**
- * Log browser launch
+ * Get managed Chrome PIDs from cdp_chrome_pids.json (for observability)
  */
-function logBrowserLaunch(): void {
-  const launchLog = {
-    timestamp: new Date().toISOString(),
-    launch_count: browserLaunchCount,
-    headless: HEADLESS,
-    user_data_dir: USER_DATA_DIR,
-  };
-  
-  let launches: any[] = [];
-  if (fs.existsSync(BROWSER_LAUNCH_LOG)) {
-    try {
-      launches = JSON.parse(fs.readFileSync(BROWSER_LAUNCH_LOG, 'utf-8'));
-    } catch {}
-  }
-  
-  launches.push(launchLog);
-  // Keep only last 100 launches
-  if (launches.length > 100) {
-    launches = launches.slice(-100);
-  }
-  
-  fs.writeFileSync(BROWSER_LAUNCH_LOG, JSON.stringify(launches, null, 2), 'utf-8');
-}
-
-/**
- * Check rate limit for browser launches
- */
-function checkBrowserLaunchRateLimit(): void {
-  const now = Date.now();
-  const timeSinceLastLaunch = now - lastBrowserLaunchTime;
-  
-  if (lastBrowserLaunchTime > 0 && timeSinceLastLaunch < MIN_BROWSER_LAUNCH_INTERVAL_MS) {
-    const remainingSeconds = Math.ceil((MIN_BROWSER_LAUNCH_INTERVAL_MS - timeSinceLastLaunch) / 1000);
-    throw new Error(`Browser launch rate limit: must wait ${remainingSeconds}s (last launch was ${Math.floor(timeSinceLastLaunch / 1000)}s ago)`);
-  }
-}
-
-/**
- * Detect login wall or challenge page
- */
-async function detectAuthRequired(page: Page): Promise<{ required: boolean; reason: string }> {
+function getManagedChromePids(): number[] {
   try {
-    const currentUrl = page.url();
-    
-    // Check URL patterns
-    if (currentUrl.includes('/i/flow/login') || currentUrl.includes('/i/flow/consent') || currentUrl.includes('/i/flow/verify')) {
-      return {
-        required: true,
-        reason: currentUrl.includes('/i/flow/login') ? 'LOGIN_WALL' :
-                currentUrl.includes('/i/flow/consent') ? 'CONSENT_WALL' :
-                'CHALLENGE_WALL'
-      };
+    const managedPidsFile = path.join(RUNNER_PROFILE_DIR, 'cdp_chrome_pids.json');
+    if (!fs.existsSync(managedPidsFile)) {
+      return [];
     }
-    
-    // Check page content
-    const pageState = await page.evaluate(() => {
-      const bodyText = (document.body?.textContent || '').toLowerCase();
-      const htmlContent = document.body?.innerHTML || '';
-      
-      return {
-        hasLoginForm: !!document.querySelector('input[autocomplete="username"]'),
-        hasLoginButton: bodyText.includes('sign in') || bodyText.includes('log in'),
-        hasConsent: bodyText.includes('consent') || bodyText.includes('cookies') || htmlContent.toLowerCase().includes('consent'),
-        hasChallenge: bodyText.includes('verify') || bodyText.includes('challenge') || bodyText.includes('unusual activity'),
-        hasTimeline: !!document.querySelector('article[data-testid="tweet"]'),
-        hasLeftNav: !!document.querySelector('nav[role="navigation"]'),
-        hasCompose: !!document.querySelector('[data-testid="SideNav_NewTweet_Button"]'),
-        url: window.location.href,
-      };
-    });
-    
-    // If we have timeline indicators, we're logged in
-    if (pageState.hasTimeline || (pageState.hasLeftNav && pageState.hasCompose)) {
-      return { required: false, reason: 'LOGGED_IN' };
-    }
-    
-    // If we see login form/button without timeline, auth required
-    if (pageState.hasLoginForm || pageState.hasLoginButton) {
-      return { required: true, reason: 'LOGIN_WALL' };
-    }
-    
-    // If we see consent indicators, auth required
-    if (pageState.hasConsent) {
-      return { required: true, reason: 'CONSENT_WALL' };
-    }
-    
-    // If we see challenge indicators, auth required
-    if (pageState.hasChallenge) {
-      return { required: true, reason: 'CHALLENGE_WALL' };
-    }
-    
-    return { required: false, reason: 'UNKNOWN' };
-  } catch (error: any) {
-    console.warn(`[EXECUTOR_DAEMON] ⚠️  Auth detection failed: ${error.message}`);
-    return { required: false, reason: 'DETECTION_ERROR' };
+    const content = fs.readFileSync(managedPidsFile, 'utf-8');
+    const data = JSON.parse(content);
+    return data.chrome_pid ? [data.chrome_pid] : [];
+  } catch {
+    return [];
   }
 }
 
 /**
- * Emit EXECUTOR_AUTH_REQUIRED event
+ * Detect login wall / challenge
  */
-async function emitAuthRequired(reason: string): Promise<void> {
+async function detectLoginWall(page: Page): Promise<boolean> {
+  try {
+    // Check for common login wall indicators
+    const loginSelectors = [
+      'text=/sign in/i',
+      'text=/log in/i',
+      '[data-testid="login"]',
+      'a[href*="/i/flow/login"]',
+      'text=/unlock/i',
+      'text=/verify/i',
+    ];
+    
+    for (const selector of loginSelectors) {
+      try {
+        const element = await page.locator(selector).first();
+        if (await element.isVisible({ timeout: 1000 })) {
+          return true;
+        }
+      } catch {
+        // Continue
+      }
+    }
+    
+    // Check URL for login/challenge
+    const url = page.url();
+    if (url.includes('/i/flow/login') || url.includes('/account/access') || url.includes('/i/flow/challenge')) {
+      return true;
+    }
+    
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Emit EXECUTOR_AUTH_REQUIRED event and exit cleanly
+ */
+async function emitAuthRequiredAndExit(): Promise<void> {
   try {
     const { getSupabaseClient } = await import('../../src/db/index');
     const supabase = getSupabaseClient();
     await supabase.from('system_events').insert({
       event_type: 'EXECUTOR_AUTH_REQUIRED',
       severity: 'warning',
-      message: `Executor requires authentication: ${reason}. Run 'pnpm run executor:auth' to repair login.`,
+      message: 'Executor requires authentication - run executor:auth to repair login',
       event_data: {
-        reason,
+        reason: 'login_wall_or_challenge_detected',
         timestamp: new Date().toISOString(),
       },
       created_at: new Date().toISOString(),
     });
-    console.log(`[EXECUTOR_DAEMON] 📢 Emitted EXECUTOR_AUTH_REQUIRED: ${reason}`);
-  } catch (error: any) {
-    console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit auth required event: ${error.message}`);
+  } catch (e) {
+    console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit EXECUTOR_AUTH_REQUIRED: ${(e as Error).message}`);
   }
+  
+  console.error('[EXECUTOR_DAEMON] 🔐 AUTH REQUIRED: Login wall or challenge detected');
+  console.error('[EXECUTOR_DAEMON] 🔐 Run: pnpm run executor:auth to repair login');
+  console.error('[EXECUTOR_DAEMON] 🔐 Exiting cleanly...');
+  cleanupLock();
+  process.exit(0);
 }
 
 /**
- * Enforce page cap (keep only 1 page)
+ * Launch headless browser (rate-limited)
  */
-async function enforcePageCap(): Promise<void> {
-  if (!context) return;
+async function launchBrowser(): Promise<void> {
+  const now = Date.now();
+  const timeSinceLastLaunch = now - lastBrowserLaunchTime;
   
-  const pages = context.pages();
+  if (timeSinceLastLaunch < BROWSER_LAUNCH_COOLDOWN_MS && lastBrowserLaunchTime > 0) {
+    const remainingSeconds = Math.ceil((BROWSER_LAUNCH_COOLDOWN_MS - timeSinceLastLaunch) / 1000);
+    throw new Error(`Browser launch rate-limited: wait ${remainingSeconds}s (max ${MAX_BROWSER_LAUNCHES_PER_MINUTE} per minute)`);
+  }
   
-  // Hard cap: if > 1 page, close extras
-  if (pages.length > 1) {
-    console.warn(`[EXECUTOR_DAEMON] 🧹 Closing ${pages.length - 1} extra page(s) (keeping 1)`);
-    for (let i = 1; i < pages.length; i++) {
-      try {
-        await pages[i].close();
-      } catch (error: any) {
-        console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to close page ${i + 1}: ${error.message}`);
-      }
+  // Close existing browser if any
+  if (browser) {
+    try {
+      await browser.close();
+    } catch {
+      // Ignore
     }
+    browser = null;
+    context = null;
+    page = null;
   }
   
-  // Hard cap: if still > 1 page, exit
-  const finalPages = context.pages();
-  if (finalPages.length > 1) {
-    console.error(`[EXECUTOR_DAEMON] 🚨 HARD CAP EXCEEDED: ${finalPages.length} pages after cleanup - EXITING`);
-    process.exit(1);
+  console.log(`[EXECUTOR_DAEMON] 🚀 Launching headless browser (launch #${browserLaunchCount + 1})...`);
+  console.log(`   User data dir: ${BROWSER_USER_DATA_DIR}`);
+  console.log(`   Headless: ${HEADLESS}`);
+  
+  // Ensure user data dir exists
+  if (!fs.existsSync(BROWSER_USER_DATA_DIR)) {
+    fs.mkdirSync(BROWSER_USER_DATA_DIR, { recursive: true });
   }
   
-  // Update global page reference
-  if (finalPages.length === 1) {
-    page = finalPages[0];
-  }
-}
-
-/**
- * Initialize browser (headless Chromium launch)
- */
-async function initializeBrowser(): Promise<void> {
-  // Check rate limit
-  checkBrowserLaunchRateLimit();
-  
-  console.log(`[EXECUTOR_DAEMON] 🚀 Launching Chromium (headless=${HEADLESS})...`);
-  console.log(`[EXECUTOR_DAEMON]    userDataDir: ${USER_DATA_DIR}`);
-  
-  // Ensure userDataDir exists
-  if (!fs.existsSync(USER_DATA_DIR)) {
-    fs.mkdirSync(USER_DATA_DIR, { recursive: true });
-  }
-  
-  // Launch browser
   browser = await chromium.launch({
     headless: HEADLESS,
-    channel: 'chrome', // Use system Chrome if available
+    channel: 'chrome', // Use system Chrome
     args: [
-      '--disable-blink-features=AutomationControlled',
       '--no-first-run',
       '--no-default-browser-check',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
     ],
   });
   
   browserLaunchCount++;
   lastBrowserLaunchTime = Date.now();
-  logBrowserLaunch();
   
-  console.log(`[EXECUTOR_DAEMON] ✅ Browser launched (launch #${browserLaunchCount}, headless=${HEADLESS})`);
-  
-  // Create context
-  context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  });
-  
-  console.log(`[EXECUTOR_DAEMON] ✅ Context created`);
-  
-  // Create single page
-  page = await context.newPage();
-  windowsOpenedCount = context.pages().length;
-  
-  console.log(`[EXECUTOR_DAEMON] ✅ Page created (windows_opened=${windowsOpenedCount})`);
-  
-  // Verify page count is 1
-  const pages = context.pages();
-  if (pages.length !== 1) {
-    throw new Error(`Page count is ${pages.length}, expected 1`);
+  console.log(`[EXECUTOR_DAEMON] ✅ Browser launched (PID: ${browser.process()?.pid || 'unknown'})`);
+}
+
+/**
+ * Initialize browser + context + single page
+ */
+async function initializeBrowser(): Promise<void> {
+  // Launch browser if needed
+  if (!browser || !browser.isConnected()) {
+    await launchBrowser();
   }
   
-  // Navigate to home to check auth status
-  try {
-    await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 10000 });
-    await page.waitForTimeout(2000); // Wait for dynamic content
-    
-    const authCheck = await detectAuthRequired(page);
-    if (authCheck.required) {
-      console.error(`[EXECUTOR_DAEMON] ❌ Auth required: ${authCheck.reason}`);
-      await emitAuthRequired(authCheck.reason);
-      await cleanup();
-      console.log(`[EXECUTOR_DAEMON] 💡 Run 'pnpm run executor:auth' to repair login`);
-      process.exit(0); // Clean exit
+  // Create context if needed
+  if (!context) {
+    context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      viewport: { width: 1280, height: 720 },
+    });
+    console.log(`[EXECUTOR_DAEMON] ✅ Context created`);
+  }
+  
+  // Enforce page cap (close extras, keep only 1)
+  const pages = context.pages();
+  if (pages.length > 1) {
+    console.warn(`[EXECUTOR_DAEMON] 🧹 Closing ${pages.length - 1} extra page(s)`);
+    for (let i = 1; i < pages.length; i++) {
+      try {
+        await pages[i].close();
+      } catch {
+        // Ignore
+      }
     }
-    
-    console.log(`[EXECUTOR_DAEMON] ✅ Auth check passed: ${authCheck.reason}`);
-  } catch (error: any) {
-    console.warn(`[EXECUTOR_DAEMON] ⚠️  Auth check failed: ${error.message}`);
-    // Continue anyway - might be network issue
+  }
+  
+  // Get or create single page
+  if (pages.length === 0) {
+    page = await context.newPage();
+    console.log(`[EXECUTOR_DAEMON] ✅ Created single page`);
+  } else {
+    page = pages[0];
+    console.log(`[EXECUTOR_DAEMON] ✅ Reusing existing page`);
+  }
+  
+  // Verify page count is 1
+  const finalPages = context.pages();
+  if (finalPages.length !== 1) {
+    throw new Error(`Page count is ${finalPages.length}, expected 1`);
+  }
+  
+  // Check for login wall
+  try {
+    if (page.url() && (page.url().includes('x.com') || page.url().includes('twitter.com'))) {
+      const hasLoginWall = await detectLoginWall(page);
+      if (hasLoginWall) {
+        await emitAuthRequiredAndExit();
+      }
+    }
+  } catch (e) {
+    // Ignore detection errors
   }
   
   console.log(`[EXECUTOR_DAEMON] ✅ Browser initialized: 1 context, 1 page`);
 }
 
 /**
- * Cleanup browser resources
+ * Enforce page cap
  */
-async function cleanup(): Promise<void> {
-  try {
-    if (page) {
-      await page.close().catch(() => {});
-      console.log('[EXECUTOR_DAEMON] ✅ Closed page');
+async function enforcePageCap(): Promise<void> {
+  if (!context) return;
+  
+  const pages = context.pages();
+  if (pages.length > 1) {
+    console.warn(`[EXECUTOR_DAEMON] 🧹 Enforcing page cap: closing ${pages.length - 1} extra page(s)`);
+    for (let i = 1; i < pages.length; i++) {
+      try {
+        await pages[i].close();
+      } catch {
+        // Ignore
+      }
     }
-    if (context) {
-      await context.close().catch(() => {});
-      console.log('[EXECUTOR_DAEMON] ✅ Closed context');
-    }
-    if (browser) {
-      await browser.close().catch(() => {});
-      console.log('[EXECUTOR_DAEMON] ✅ Closed browser');
-    }
-  } catch (error: any) {
-    console.warn(`[EXECUTOR_DAEMON] ⚠️  Cleanup error: ${error.message}`);
+  }
+  
+  // Update page reference
+  const finalPages = context.pages();
+  if (finalPages.length > 0) {
+    page = finalPages[0];
   }
 }
 
@@ -425,7 +394,7 @@ async function runReplyQueue(): Promise<{ attempts_started: number; ready: numbe
  */
 async function emitTickEvent(metrics: {
   pages: number;
-  browserLaunches: number;
+  browserLaunchCount: number;
   windowsOpened: number;
   postingReady: number;
   postingAttempts: number;
@@ -440,10 +409,10 @@ async function emitTickEvent(metrics: {
     await supabase.from('system_events').insert({
       event_type: 'EXECUTOR_DAEMON_TICK',
       severity: 'info',
-      message: `Executor daemon tick: pages=${metrics.pages} browser_launches=${metrics.browserLaunches} windows_opened=${metrics.windowsOpened} posting_ready=${metrics.postingReady} posting_attempts=${metrics.postingAttempts} reply_ready=${metrics.replyReady} reply_attempts=${metrics.replyAttempts}`,
+      message: `Executor daemon tick: pages=${metrics.pages} browser_launches=${metrics.browserLaunchCount} windows_opened=${metrics.windowsOpened} posting_ready=${metrics.postingReady} posting_attempts=${metrics.postingAttempts} reply_ready=${metrics.replyReady} reply_attempts=${metrics.replyAttempts}`,
       event_data: {
         pages: metrics.pages,
-        browser_launches: metrics.browserLaunches,
+        browser_launch_count: metrics.browserLaunchCount,
         windows_opened: metrics.windowsOpened,
         posting_ready: metrics.postingReady,
         posting_attempts: metrics.postingAttempts,
@@ -465,7 +434,7 @@ async function emitTickEvent(metrics: {
  */
 async function main(): Promise<void> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('           🚀 MAC EXECUTOR DAEMON - True Headless Execution');
+  console.log('           🚀 MAC EXECUTOR DAEMON - Safe 24/7 Headless Execution');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
   console.log(`📋 Configuration:`);
@@ -473,7 +442,9 @@ async function main(): Promise<void> {
   console.log(`   RUNNER_MODE: ${process.env.RUNNER_MODE}`);
   console.log(`   RUNNER_PROFILE_DIR: ${RUNNER_PROFILE_DIR}`);
   console.log(`   HEADLESS: ${HEADLESS} (default: true)`);
+  console.log(`   Browser profile: ${BROWSER_USER_DATA_DIR}`);
   console.log(`   Tick interval: ${TICK_INTERVAL_MS / 1000}s`);
+  console.log(`   Max browser launches/min: ${MAX_BROWSER_LAUNCHES_PER_MINUTE}`);
   console.log('');
   
   // Acquire lock
@@ -487,21 +458,6 @@ async function main(): Promise<void> {
     cleanupLock();
     process.exit(1);
   }
-  
-  // Cleanup on exit
-  process.on('exit', () => {
-    cleanupLock();
-  });
-  process.on('SIGINT', async () => {
-    await cleanup();
-    cleanupLock();
-    process.exit(0);
-  });
-  process.on('SIGTERM', async () => {
-    await cleanup();
-    cleanupLock();
-    process.exit(0);
-  });
   
   // Main loop
   while (true) {
@@ -545,66 +501,112 @@ async function main(): Promise<void> {
           consecutiveFailures = 0;
           backoffSeconds = 0;
         }
-      } catch (error: any) {
-        lastError = error.message;
-        consecutiveFailures++;
-        const failureIndex = Math.min(consecutiveFailures - 1, backoffSchedule.length - 1);
-        backoffSeconds = backoffSchedule[failureIndex];
-        
-        console.error(`[EXECUTOR_DAEMON] ❌ Tick failed: ${error.message} (failures: ${consecutiveFailures}, backoff: ${backoffSeconds}s)`);
-        
-        // Check for auth required
-        if (error.message.includes('LOGIN_WALL') || error.message.includes('CONSENT_WALL') || error.message.includes('CHALLENGE_WALL')) {
-          await emitAuthRequired(error.message);
-          console.log(`[EXECUTOR_DAEMON] 💡 Run 'pnpm run executor:auth' to repair login`);
-          break; // Exit cleanly
-        }
-        
-        // Max failures reached
-        if (consecutiveFailures >= 5) {
-          console.error(`[EXECUTOR_DAEMON] 🚨 MAX FAILURES REACHED: ${consecutiveFailures} - exiting`);
-          break;
-        }
       } finally {
         clearTimeout(runtimeCap);
       }
       
-      // Log tick
-      const pages = context ? context.pages().length : 0;
-      const ts = new Date().toISOString();
-      console.log(`[EXECUTOR_DAEMON] ts=${ts} pages=${pages} browser_launches=${browserLaunchCount} windows_opened=${windowsOpenedCount} posting_ready=${postingReady} posting_attempts=${postingAttempts} reply_ready=${replyReady} reply_attempts=${replyAttempts} backoff=${backoffSeconds}s${lastError ? ` last_error=${lastError}` : ''}`);
+      // Check for login wall after operations
+      if (page) {
+        try {
+          const hasLoginWall = await detectLoginWall(page);
+          if (hasLoginWall) {
+            await emitAuthRequiredAndExit();
+          }
+        } catch {
+          // Ignore detection errors
+        }
+      }
       
-      // Emit event
-      await emitTickEvent({
-        pages,
-        browserLaunches: browserLaunchCount,
-        windowsOpened: windowsOpenedCount,
-        postingReady,
-        postingAttempts,
-        replyReady,
-        replyAttempts,
-        backoff: backoffSeconds,
-        lastError,
-      });
+    } catch (e: any) {
+      consecutiveFailures++;
+      lastError = e.message;
       
-    } catch (error: any) {
-      console.error(`[EXECUTOR_DAEMON] ❌ Fatal error: ${error.message}`);
-      break;
+      // Calculate backoff
+      const failureIndex = Math.min(consecutiveFailures - 1, backoffSchedule.length - 1);
+      backoffSeconds = backoffSchedule[failureIndex];
+      
+      console.error(`[EXECUTOR_DAEMON] ❌ Tick failed: ${e.message} (failures: ${consecutiveFailures}, backoff: ${backoffSeconds}s)`);
+      
+      // Max failures - exit
+      if (consecutiveFailures >= 5) {
+        console.error(`[EXECUTOR_DAEMON] 🚨 MAX FAILURES REACHED: ${consecutiveFailures} - exiting`);
+        break;
+      }
     }
     
-    // Sleep until next tick (with backoff if needed)
-    const sleepMs = backoffSeconds > 0 ? backoffSeconds * 1000 : TICK_INTERVAL_MS;
-    console.log(`[EXECUTOR_DAEMON] 💤 Sleeping ${sleepMs / 1000}s until next tick...`);
-    await new Promise(resolve => setTimeout(resolve, sleepMs));
+    // Log tick
+    const pages = context ? context.pages().length : 0;
+    const ts = new Date().toISOString();
+    console.log(`[EXECUTOR_DAEMON] ts=${ts} pages=${pages} browser_launches=${browserLaunchCount} windows_opened=${windowsOpened} posting_ready=${postingReady} posting_attempts=${postingAttempts} reply_ready=${replyReady} reply_attempts=${replyAttempts} backoff=${backoffSeconds}s${lastError ? ` last_error=${lastError}` : ''}`);
+    
+    // Emit tick event
+    await emitTickEvent({
+      pages,
+      browserLaunchCount,
+      windowsOpened,
+      postingReady,
+      postingAttempts,
+      replyReady,
+      replyAttempts,
+      backoff: backoffSeconds,
+      lastError,
+    });
+    
+    // Sleep with backoff
+    const sleepSeconds = backoffSeconds > 0 ? backoffSeconds : TICK_INTERVAL_MS / 1000;
+    console.log(`[EXECUTOR_DAEMON] 💤 Sleeping ${sleepSeconds}s until next tick...`);
+    await new Promise(resolve => setTimeout(resolve, sleepSeconds * 1000));
   }
   
   // Cleanup
-  await cleanup();
+  console.log('[EXECUTOR_DAEMON] 🧹 Cleaning up...');
   cleanupLock();
+  
+  if (page) {
+    try {
+      await page.close();
+      console.log('[EXECUTOR_DAEMON] ✅ Closed page');
+    } catch {
+      // Ignore
+    }
+  }
+  
+  if (context) {
+    try {
+      await context.close();
+      console.log('[EXECUTOR_DAEMON] ✅ Closed context');
+    } catch {
+      // Ignore
+    }
+  }
+  
+  if (browser) {
+    try {
+      await browser.close();
+      console.log('[EXECUTOR_DAEMON] ✅ Closed browser');
+    } catch {
+      // Ignore
+    }
+  }
+  
   console.log('[EXECUTOR_DAEMON] ✅ Exited gracefully');
 }
 
+// Handle signals
+process.on('SIGINT', () => {
+  console.log('\n[EXECUTOR_DAEMON] 🛑 SIGINT received - exiting...');
+  cleanupLock();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n[EXECUTOR_DAEMON] 🛑 SIGTERM received - exiting...');
+  cleanupLock();
+  process.exit(0);
+});
+
 main().catch((error) => {
-  console.error('❌ Daemon failed:', error);
+  console.error('[EXECUTOR_DAEMON] ❌ Fatal error:', error);
+  cleanupLock();
   process.exit(1);
 });
