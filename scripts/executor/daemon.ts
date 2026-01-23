@@ -255,7 +255,8 @@ async function launchBrowser(): Promise<void> {
   browserLaunchCount++;
   lastBrowserLaunchTime = Date.now();
   
-  console.log(`[EXECUTOR_DAEMON] ✅ Browser launched (PID: ${browser.process()?.pid || 'unknown'})`);
+  // Note: Playwright Browser doesn't expose PID directly in headless mode
+  console.log(`[EXECUTOR_DAEMON] ✅ Browser launched (launch #${browserLaunchCount})`);
 }
 
 /**
