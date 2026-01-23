@@ -43,6 +43,7 @@ if (!process.env.RUNNER_PROFILE_DIR) {
 const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR!;
 const STOP_SWITCH_PATH = path.join(RUNNER_PROFILE_DIR, 'STOP_EXECUTOR');
 const PIDFILE_PATH = path.join(RUNNER_PROFILE_DIR, 'executor.pid');
+const MANAGED_PIDS_FILE = path.join(RUNNER_PROFILE_DIR, 'cdp_chrome_pids.json');
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 const TICK_INTERVAL_MS = 60 * 1000; // 60 seconds
 const MAX_RUNTIME_PER_TICK_MS = 60 * 1000; // 60s max per tick
@@ -117,9 +118,25 @@ function cleanupLock(): void {
 }
 
 /**
- * Get Chrome PIDs (for observability only - NEVER kill by name)
+ * Get managed Chrome PIDs from file (only the bot Chrome we launched)
  */
-function getChromePids(): number[] {
+function getManagedChromePids(): number[] {
+  try {
+    if (!fs.existsSync(MANAGED_PIDS_FILE)) {
+      return [];
+    }
+    const content = fs.readFileSync(MANAGED_PIDS_FILE, 'utf-8');
+    const data = JSON.parse(content);
+    return data.chrome_pid ? [data.chrome_pid] : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get all Chrome PIDs (for observability only - NEVER kill by name)
+ */
+function getAllChromePids(): number[] {
   try {
     const output = execSync('ps aux | grep -i "Google Chrome" | grep -v grep | awk \'{print $2}\'', { encoding: 'utf-8' });
     return output.trim().split('\n').filter(Boolean).map(pid => parseInt(pid, 10)).filter(pid => !isNaN(pid));
@@ -131,14 +148,15 @@ function getChromePids(): number[] {
 /**
  * SAFETY: Never kill Chrome processes by name (could kill user's personal Chrome)
  * Only manage pages in the CDP session we're connected to
+ * Log managed PIDs (bot Chrome) vs all Chrome PIDs (for observability)
  */
-function logChromeProcessCount(): void {
-  const pids = getChromePids();
-  console.log(`[CHROME_SCOPE] observed_chrome_pids=[${pids.join(',')}] count=${pids.length} safety_no_kill=${SAFETY_NO_KILL}`);
+function logChromeScope(): void {
+  const managedPids = getManagedChromePids();
+  const allPids = getAllChromePids();
+  console.log(`[CHROME_SCOPE] managed_pids=[${managedPids.join(',')}] all_chrome_pids=[${allPids.join(',')}] safety_no_kill=${SAFETY_NO_KILL}`);
   
-  if (!SAFETY_NO_KILL && pids.length > 1) {
-    console.warn(`[CHROME_SCOPE] ⚠️  Multiple Chrome processes detected but SAFETY_NO_KILL=true - not killing`);
-    console.warn(`[CHROME_SCOPE] ⚠️  Set SAFETY_NO_KILL=false to enable killing (NOT RECOMMENDED)`);
+  if (!SAFETY_NO_KILL) {
+    console.warn(`[CHROME_SCOPE] ⚠️  SAFETY_NO_KILL=false (NOT RECOMMENDED - may kill user Chrome)`);
   }
 }
 
@@ -204,17 +222,20 @@ async function initializeCDP(): Promise<void> {
     console.log(`[EXECUTOR_DAEMON] ✅ Created new context`);
   }
   
-  // Enforce page cap
+  // FOCUS-SAFE: Never bring Chrome to front, never create new windows
+  // We only manage pages in the existing CDP session
+  
+  // Enforce page cap (close extras, keep only 1)
   await enforcePageCap();
   
-  // Get or create single page
+  // Get or REUSE single page (never create new if one exists)
   const pages = context.pages();
   if (pages.length === 0) {
     page = await context.newPage();
     console.log(`[EXECUTOR_DAEMON] ✅ Created single page`);
   } else {
     page = pages[0];
-    console.log(`[EXECUTOR_DAEMON] ✅ Reusing existing page`);
+    console.log(`[EXECUTOR_DAEMON] ✅ Reusing existing page (focus-safe)`);
   }
   
   // Verify page count is 1
@@ -223,7 +244,9 @@ async function initializeCDP(): Promise<void> {
     throw new Error(`Page count is ${finalPages.length}, expected 1`);
   }
   
-  console.log(`[EXECUTOR_DAEMON] ✅ CDP initialized: 1 context, 1 page`);
+  // Log managed PIDs
+  const managedPids = getManagedChromePids();
+  console.log(`[EXECUTOR_DAEMON] ✅ CDP initialized: 1 context, 1 page, managed_pids=[${managedPids.join(',')}]`);
 }
 
 /**
@@ -355,10 +378,10 @@ async function main(): Promise<void> {
     let lastError: string | undefined;
     
     try {
-      // Log Chrome process count (observability only - never kill)
-      logChromeProcessCount();
+      // Log Chrome scope (managed PIDs vs all PIDs - observability only)
+      logChromeScope();
       
-      // Enforce page cap (only manage pages in our CDP session)
+      // Enforce page cap (only manage pages in our CDP session - NEVER kill processes)
       await enforcePageCap();
       
       // Runtime cap
@@ -407,16 +430,17 @@ async function main(): Promise<void> {
     
     // Get current state for observability
     const pages = context ? context.pages().length : 0;
-    const chromePids = getChromePids();
+    const managedPids = getManagedChromePids();
+    const allChromePids = getAllChromePids();
     const ts = new Date().toISOString();
     
-    // Log structured line
-    console.log(`[EXECUTOR_DAEMON] ts=${ts} pages=${pages} pids=[${chromePids.join(',')}] posting_ready=${postingReady} posting_attempts=${postingAttempts} reply_ready=${replyReady} reply_attempts=${replyAttempts} backoff=${backoffSeconds}s${lastError ? ` last_error=${lastError}` : ''}`);
+    // Log structured line (show managed PIDs, not all Chrome PIDs)
+    console.log(`[EXECUTOR_DAEMON] ts=${ts} pages=${pages} managed_pids=[${managedPids.join(',')}] posting_ready=${postingReady} posting_attempts=${postingAttempts} reply_ready=${replyReady} reply_attempts=${replyAttempts} backoff=${backoffSeconds}s${lastError ? ` last_error=${lastError}` : ''}`);
     
-    // Emit tick event
+    // Emit tick event (use managed PIDs only)
     await emitTickEvent({
       pages,
-      chromePids,
+      chromePids: managedPids, // Only managed PIDs, not all Chrome
       postingReady,
       postingAttempts,
       replyReady,
@@ -451,15 +475,18 @@ async function main(): Promise<void> {
   console.log('[EXECUTOR_DAEMON] 🧹 Cleaning up...');
   cleanupLock();
   
+  // FOCUS-SAFE: Only close page, never close browser/context (user's Chrome stays open)
   if (page) {
     try {
       await page.close();
+      console.log('[EXECUTOR_DAEMON] ✅ Closed page');
     } catch (e) {
       // Ignore
     }
   }
   
-  console.log('[EXECUTOR_DAEMON] ✅ Exited gracefully');
+  // NEVER call browser.close() or context.close() - user's Chrome must stay open
+  console.log('[EXECUTOR_DAEMON] ✅ Exited gracefully (Chrome remains running)');
   process.exit(0);
 }
 

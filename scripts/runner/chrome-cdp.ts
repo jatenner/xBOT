@@ -15,7 +15,9 @@ import readline from 'readline';
 
 const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
-const CDP_PROFILE_DIR = path.join(RUNNER_PROFILE_DIR, '.chrome-cdp-profile');
+// BOT-ONLY profile: separate from user's default Chrome profile
+const CDP_PROFILE_DIR = path.join(RUNNER_PROFILE_DIR, 'chrome-profile-bot');
+const MANAGED_PIDS_FILE = path.join(RUNNER_PROFILE_DIR, 'cdp_chrome_pids.json');
 
 /**
  * Find system Chrome executable
@@ -94,6 +96,23 @@ async function launchChromeCDP(): Promise<ChildProcess> {
   });
   
   chromeProcess.unref(); // Allow Node to exit while Chrome keeps running
+  
+  // Store managed PID
+  const managedPids = {
+    chrome_pid: chromeProcess.pid,
+    launched_at: new Date().toISOString(),
+    profile_dir: CDP_PROFILE_DIR,
+    port: CDP_PORT,
+  };
+  
+  // Ensure profile dir exists
+  if (!fs.existsSync(RUNNER_PROFILE_DIR)) {
+    fs.mkdirSync(RUNNER_PROFILE_DIR, { recursive: true });
+  }
+  
+  fs.writeFileSync(MANAGED_PIDS_FILE, JSON.stringify(managedPids, null, 2), 'utf-8');
+  console.log(`[CDP_CHROME] pid=${chromeProcess.pid} profile=${CDP_PROFILE_DIR} port=${CDP_PORT}`);
+  console.log(`[CDP_CHROME] Managed PID stored in ${MANAGED_PIDS_FILE}`);
   
   // Wait for Chrome to start and CDP to become accessible
   let attempts = 0;
