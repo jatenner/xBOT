@@ -186,9 +186,12 @@ LIMIT 20;
 ### 6.1 Deploy
 
 ```bash
-git add -A && git commit -m "fix: posting queue no-execution instrumentation, heartbeats, runner script"
+git add package.json src/jobs/postingQueue.ts scripts/runner/posting-queue-once.ts docs/POSTING_QUEUE_NO_EXECUTION_FIX_REPORT.md
+git commit -m "fix: posting queue no-execution — job_tick, BLOCK instrumentation, TICK/heartbeat, runner script"
 railway up --detach
 ```
+
+**Done:** Commit `362510e9` created; `railway up --detach` run successfully. Build runs on Railway (check dashboard for build logs).
 
 ### 6.2 Verify worker vs main
 

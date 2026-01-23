@@ -231,6 +231,8 @@ export class BulletproofThreadComposer {
             
             // b) Reconnect to CDP (pool will handle this)
             console.log(`[THREAD_COMPOSER][BROWSER_DISCONNECTED] 🔄 Resetting browser pool to reconnect...`);
+            const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+            const pool = UnifiedBrowserPool.getInstance();
             await pool.resetPool();
             console.log(`[THREAD_COMPOSER][BROWSER_DISCONNECTED] ✅ Browser pool reset complete`);
             
@@ -673,7 +675,7 @@ export class BulletproofThreadComposer {
         console.log(`[THREAD_COMPOSER][INTERSTITIAL]   URL: ${currentUrl}`);
         console.log(`[THREAD_COMPOSER][INTERSTITIAL]   Wall detected: ${wallCheck.detected}`);
         console.log(`[THREAD_COMPOSER][INTERSTITIAL]   Wall type: ${wallCheck.wallType || 'none'}`);
-        console.log(`[THREAD_COMPOSER][INTERSTITIAL]   Logged in: ${wallCheck.logged_in || false}`);
+        console.log(`[THREAD_COMPOSER][INTERSTITIAL]   Wall cleared: ${wallCheck.cleared || false}`);
         
         // Check for explicit redirects to consent/login flows
         if (currentUrl.includes('/i/flow/consent') || currentUrl.includes('/i/flow/login') || currentUrl.includes('/i/flow/verify')) {

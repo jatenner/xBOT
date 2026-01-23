@@ -19,7 +19,8 @@
     "sourceMap": true,
     "incremental": true,
     "noEmitOnError": false,
-    "downlevelIteration": true
+    "downlevelIteration": true,
+    "skipDefaultLibCheck": true
   },
   "include": [
     "src/railwayEntrypoint.ts"
@@ -40,6 +41,7 @@
     "src/migrations/runtimeRunner.ts",
     "src/core/autonomousController.ts",
     "src/jobs/truthIntegrityJob.ts",
-    "src/observability/instrument.ts"
+    "src/observability/instrument.ts",
+    "src/posting/BulletproofThreadComposer.ts"
   ]
 }

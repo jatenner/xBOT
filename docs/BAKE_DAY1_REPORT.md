@@ -1,7 +1,7 @@
 # 📊 DAY 1 BAKE REPORT
 
-**Generated:** 2026-01-22T18:41:41.067Z
-**Period:** 2026-01-21T18:41:41.067Z to 2026-01-22T18:41:41.067Z
+**Generated:** 2026-01-22T19:48:17.478Z
+**Period:** 2026-01-21T19:48:17.478Z to 2026-01-22T19:48:17.478Z
 **Duration:** 24 hours
 
 ---
@@ -9,9 +9,12 @@
 ## Executive Summary
 
 - **Total POST_SUCCESS Events:** 2
+- **POST_SUCCESS_PROD:** 2
+- **POST_SUCCESS_TEST:** 0
 - **Valid Tweet IDs (included):** 2
 - **Legacy Invalid Tweet IDs (excluded):** 0
 - **URLs Verified:** 2
+- **TEST_LANE_BLOCK Events:** 0
 
 ---
 
@@ -44,8 +47,8 @@ Please verify these URLs load correctly in a browser:
 
 ## System Health Checks
 
-- **Latest Growth Plan:** 2026-01-22T18:00:00+00:00 (3 minutes ago) ✅
-- **shadow_controller Heartbeat:** success (3 minutes ago) ✅
+- **Latest Growth Plan:** 2026-01-22T19:00:00+00:00 (10 minutes ago) ✅
+- **shadow_controller Heartbeat:** success (10 minutes ago) ✅
 - **Growth Execution Overruns:** 0 ✅
 
 ---
@@ -58,5 +61,5 @@ Please verify these URLs load correctly in a browser:
 
 ---
 
-**Report Generated:** 2026-01-22T18:41:41.067Z
+**Report Generated:** 2026-01-22T19:48:17.478Z
 **Status:** ✅ PASS - 2 POST_SUCCESS events validated

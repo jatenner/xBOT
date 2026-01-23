@@ -20,8 +20,8 @@ console.log(`Build time: ${buildTime}\n`);
 // Step 1: Set Railway env vars
 console.log('1️⃣  Setting Railway environment variables...');
 try {
-  execSync(`railway variables set APP_COMMIT_SHA=${localSha}`, { stdio: 'inherit' });
-  execSync(`railway variables set APP_BUILD_TIME=${buildTime}`, { stdio: 'inherit' });
+  execSync(`railway variables --set "APP_COMMIT_SHA=${localSha}"`, { stdio: 'inherit' });
+  execSync(`railway variables --set "APP_BUILD_TIME=${buildTime}"`, { stdio: 'inherit' });
   console.log('✅ Environment variables set\n');
 } catch (error: any) {
   console.warn(`⚠️  Failed to set env vars: ${error.message}`);

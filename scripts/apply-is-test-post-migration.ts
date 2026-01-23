@@ -26,27 +26,51 @@ async function main() {
     console.log('📄 Migration file loaded');
     console.log(`📏 SQL size: ${migrationSQL.length} characters\n`);
 
-    // Check if column already exists
+    // Check if content_metadata is a view or table
+    const checkView = await client.query(`
+      SELECT table_type
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name = 'content_metadata';
+    `);
+    
+    const checkView2 = await client.query(`
+      SELECT table_name
+      FROM information_schema.views
+      WHERE table_schema = 'public'
+        AND table_name = 'content_metadata';
+    `);
+
+    const isView = checkView2.rows.length > 0;
+    const underlyingTable = isView ? 'content_generation_metadata_comprehensive' : 'content_metadata';
+    
+    console.log(`📋 content_metadata is a ${isView ? 'VIEW' : 'TABLE'}`);
+    console.log(`📋 Applying migration to underlying table: ${underlyingTable}\n`);
+
+    // Check if column already exists in underlying table
     const checkColumn = await client.query(`
       SELECT column_name
       FROM information_schema.columns
       WHERE table_schema = 'public'
-        AND table_name = 'content_metadata'
+        AND table_name = $1
         AND column_name = 'is_test_post';
-    `);
+    `, [underlyingTable]);
 
     if (checkColumn.rows.length > 0) {
-      console.log('✅ Column is_test_post already exists');
+      console.log(`✅ Column is_test_post already exists in ${underlyingTable}`);
       console.log('⏭️  Skipping migration (already applied)\n');
       process.exit(0);
     }
 
     console.log('🔄 Applying migration...\n');
     
+    // Modify migration SQL to use underlying table
+    const modifiedSQL = migrationSQL.replace(/content_metadata/g, underlyingTable);
+    
     // Execute migration
     await client.query('BEGIN');
     try {
-      await client.query(migrationSQL);
+      await client.query(modifiedSQL);
       await client.query('COMMIT');
       console.log('✅ Migration applied successfully!\n');
     } catch (error: any) {
@@ -63,9 +87,9 @@ async function main() {
         is_nullable
       FROM information_schema.columns
       WHERE table_schema = 'public'
-        AND table_name = 'content_metadata'
+        AND table_name = $1
         AND column_name = 'is_test_post';
-    `);
+    `, [underlyingTable]);
 
     if (verify.rows.length > 0) {
       const col = verify.rows[0];
@@ -81,9 +105,9 @@ async function main() {
       SELECT indexname
       FROM pg_indexes
       WHERE schemaname = 'public'
-        AND tablename = 'content_metadata'
+        AND tablename = $1
         AND indexname = 'idx_content_metadata_is_test_post';
-    `);
+    `, [underlyingTable]);
 
     if (indexCheck.rows.length > 0) {
       console.log('✅ Index created: idx_content_metadata_is_test_post\n');

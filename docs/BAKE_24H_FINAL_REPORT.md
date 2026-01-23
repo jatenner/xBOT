@@ -1,7 +1,7 @@
 # 📊 24H FINAL BAKE REPORT
 
-**Generated:** 2026-01-22T19:51:27.424Z
-**Period:** 2026-01-21T19:51:27.424Z to 2026-01-22T19:51:27.424Z
+**Generated:** 2026-01-22T19:56:32.973Z
+**Period:** 2026-01-21T19:56:32.973Z to 2026-01-22T19:56:32.973Z
 **Duration:** 24 hours
 **Mode:** PROD-ONLY (ALLOW_TEST_POSTS unset)
 
@@ -112,8 +112,8 @@
 
 | Status | Count | Oldest | Newest | Age (hours) |
 |--------|-------|--------|--------|-------------|
-| blocked | 150 | Sun Jan 04 2026 09:29:12 GMT-0500 (Eastern Standard Time) | Thu Jan 22 2026 14:37:29 GMT-0500 (Eastern Standard Time) | 437.37 |
-| failed | 78 | Thu Jan 15 2026 10:46:17 GMT-0500 (Eastern Standard Time) | Thu Jan 22 2026 14:25:08 GMT-0500 (Eastern Standard Time) | 172.09 |
+| blocked | 150 | Sun Jan 04 2026 09:29:12 GMT-0500 (Eastern Standard Time) | Thu Jan 22 2026 14:37:29 GMT-0500 (Eastern Standard Time) | 437.46 |
+| failed | 78 | Thu Jan 15 2026 10:46:17 GMT-0500 (Eastern Standard Time) | Thu Jan 22 2026 14:25:08 GMT-0500 (Eastern Standard Time) | 172.17 |
 
 ---
 

@@ -244,4 +244,35 @@ railway up --detach
 
 ---
 
-**Report Status:** ✅ **ROOT CAUSE IDENTIFIED - FIX READY**
+**Report Status:** ✅ **ROOT CAUSE IDENTIFIED - FIX APPLIED**
+
+---
+
+## Verification Results (Post-Fix)
+
+### Railway Logs Check (After Fix)
+```bash
+railway logs -n 100 | grep -E "(POSTING_QUEUE|SOURCE-OF-TRUTH)"
+```
+
+**Status:** ⏳ Waiting for deployment to complete (check in 2-3 minutes)
+
+### POST_ATTEMPT Events (After Fix)
+```bash
+psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM system_events WHERE event_type = 'POST_ATTEMPT' AND created_at >= NOW() - INTERVAL '5 minutes';"
+```
+
+**Status:** ⏳ Waiting for deployment to complete (check in 2-3 minutes)
+
+**Expected Results:**
+- Railway logs should show: `✅ Source-of-truth check passed: core columns accessible`
+- POST_ATTEMPT count should be > 0 within 10 minutes
+- POST_SUCCESS should appear within 30 minutes
+
+**Next Steps:**
+1. ✅ Fix applied and committed
+2. ✅ Deployed to Railway
+3. ⏳ Wait 2-3 minutes for deployment to complete
+4. ⏳ Check Railway logs for successful schema check
+5. ⏳ Monitor for POST_ATTEMPT events in next 10 minutes
+6. ⏳ Verify POST_SUCCESS events appear within 30 minutes
