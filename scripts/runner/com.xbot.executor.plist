@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.xbot.executor</string>
+  
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/jonahtenner/.npm-global/bin/pnpm</string>
+    <string>run</string>
+    <string>executor:daemon</string>
+  </array>
+  
+  <key>WorkingDirectory</key>
+  <string>/Users/jonahtenner/Desktop/xBOT</string>
+  
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>EXECUTION_MODE</key>
+    <string>executor</string>
+    <key>RUNNER_MODE</key>
+    <string>true</string>
+    <key>RUNNER_BROWSER</key>
+    <string>cdp</string>
+    <key>RUNNER_PROFILE_DIR</key>
+    <string>/Users/jonahtenner/Desktop/xBOT/.runner-profile</string>
+    <key>PATH</key>
+    <string>/Users/jonahtenner/.npm-global/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  
+  <key>RunAtLoad</key>
+  <true/>
+  
+  <key>KeepAlive</key>
+  <true/>
+  
+  <key>StandardOutPath</key>
+  <string>/Users/jonahtenner/Desktop/xBOT/.runner-profile/executor.log</string>
+  
+  <key>StandardErrorPath</key>
+  <string>/Users/jonahtenner/Desktop/xBOT/.runner-profile/executor.log</string>
+  
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>
