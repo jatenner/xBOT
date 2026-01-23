@@ -110,7 +110,11 @@ WHERE event_type='REPLY_QUEUE_TICK'
 # Start headless daemon (24/7, no visible windows)
 EXECUTION_MODE=executor RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile pnpm run executor:daemon
 
-# Or via LaunchAgent (auto-starts on boot)
+# Install as LaunchAgent service (auto-starts on boot, runs 24/7)
+pnpm run executor:install-service
+launchctl load -w ~/Library/LaunchAgents/com.xbot.executor.plist
+
+# Or use existing LaunchAgent commands
 pnpm run executor:start
 ```
 
@@ -119,6 +123,7 @@ pnpm run executor:start
 - Uses dedicated profile: `${RUNNER_PROFILE_DIR}/executor-chrome-profile`
 - Never opens visible windows
 - Detects auth walls and exits cleanly
+- Logs written to `${RUNNER_PROFILE_DIR}/logs/executor.log`
 
 ### Stop Executor (Emergency)
 
@@ -149,17 +154,33 @@ pnpm run executor:daemon
 ### Check Executor Status
 
 ```bash
-# Check status
-pnpm run executor:status
+# Check status (running/not running, PID, last tick, windows expectation)
+pnpm run ops:executor:status
 
 # View logs
 pnpm run executor:logs
+# Or manually:
+tail -f ./.runner-profile/logs/executor.log
 
 # Check config
 cat ./.runner-profile/EXECUTOR_CONFIG.json
 
 # Verify headless mode
-grep "BOOT: headless=true" ./.runner-profile/executor.log
+grep "BOOT: headless=true" ./.runner-profile/logs/executor.log
+```
+
+### Install/Uninstall Service
+
+```bash
+# Install LaunchAgent service (24/7 background execution)
+pnpm run executor:install-service
+launchctl load -w ~/Library/LaunchAgents/com.xbot.executor.plist
+
+# Uninstall LaunchAgent service
+pnpm run executor:uninstall-service
+# Or manually:
+launchctl unload ~/Library/LaunchAgents/com.xbot.executor.plist
+rm ~/Library/LaunchAgents/com.xbot.executor.plist
 ```
 
 ### Verify Executor (15-Minute Proof)
