@@ -26,6 +26,7 @@ interface ProofMetrics {
   headless: boolean;
   pages_max: number;
   browser_launches: number;
+  chrome_cdp_processes: number;
   db_connected: boolean;
   queues_readable: boolean;
   posting_ready: number;
@@ -38,6 +39,16 @@ async function countVisibleWindows(): Promise<number> {
   try {
     const result = execSync('osascript -e \'tell application "System Events" to count windows of process "Google Chrome"\'', { encoding: 'utf-8' });
     return parseInt(result.trim(), 10) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function countChromeCdpProcesses(): Promise<number> {
+  try {
+    const result = execSync('ps aux | grep "chrome-cdp.ts" | grep -v grep', { encoding: 'utf-8' });
+    const lines = result.trim().split('\n').filter(l => l.trim());
+    return lines.length;
   } catch {
     return 0;
   }
@@ -277,12 +288,14 @@ async function main(): Promise<void> {
   const ticksCount = await getExecutorTicks();
   const pagesMax = await getMaxPagesFromTicks();
   const browserLaunches = await getBrowserLaunchesFromTicks();
+  const chromeCdpProcesses = await countChromeCdpProcesses();
   
   const metrics: ProofMetrics = {
     windows_opened: windowsOpened,
     headless: config.headless === true,
     pages_max: pagesMax,
     browser_launches: browserLaunches,
+    chrome_cdp_processes: chromeCdpProcesses,
     db_connected: dbConnected,
     queues_readable: queues.readable,
     posting_ready: queues.posting_ready,
@@ -291,15 +304,16 @@ async function main(): Promise<void> {
     ticks_count: ticksCount,
   };
   
-  // Determine PASS/FAIL
+  // HARD ASSERTIONS: All invariants must pass
   const pass = 
-    metrics.windows_opened === 0 &&
-    metrics.headless === true &&
-    metrics.pages_max <= 1 &&
-    metrics.browser_launches <= 1 &&
+    metrics.windows_opened === 0 &&  // HARD: No visible windows
+    metrics.headless === true &&  // HARD: Always headless
+    metrics.pages_max <= 1 &&  // HARD: Max 1 page
+    metrics.browser_launches <= 1 &&  // HARD: Max 1 launch per minute
+    metrics.chrome_cdp_processes === 0 &&  // HARD: No CDP processes
     metrics.db_connected === true &&
     metrics.queues_readable === true &&
-    metrics.stop_switch_seconds <= 10;
+    metrics.stop_switch_seconds <= 10;  // HARD: Stop within 10s
   
   // Output summary
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -311,37 +325,57 @@ async function main(): Promise<void> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
   console.log('Metrics:');
-  console.log(`  windows_opened: ${metrics.windows_opened} (expected: 0) ${metrics.windows_opened === 0 ? '✅' : '❌'}`);
-  console.log(`  headless: ${metrics.headless} (expected: true) ${metrics.headless === true ? '✅' : '❌'}`);
-  console.log(`  pages_max: ${metrics.pages_max} (expected: <= 1) ${metrics.pages_max <= 1 ? '✅' : '❌'}`);
-  console.log(`  browser_launches: ${metrics.browser_launches} (expected: <= 1) ${metrics.browser_launches <= 1 ? '✅' : '❌'}`);
+  console.log(`  windows_opened: ${metrics.windows_opened} (expected: 0) ${metrics.windows_opened === 0 ? '✅' : '❌'} [HARD ASSERTION]`);
+  console.log(`  headless: ${metrics.headless} (expected: true) ${metrics.headless === true ? '✅' : '❌'} [HARD ASSERTION]`);
+  console.log(`  pages_max: ${metrics.pages_max} (expected: <= 1) ${metrics.pages_max <= 1 ? '✅' : '❌'} [HARD ASSERTION]`);
+  console.log(`  browser_launches: ${metrics.browser_launches} (expected: <= 1) ${metrics.browser_launches <= 1 ? '✅' : '❌'} [HARD ASSERTION]`);
+  console.log(`  chrome_cdp_processes: ${metrics.chrome_cdp_processes} (expected: 0) ${metrics.chrome_cdp_processes === 0 ? '✅' : '❌'} [HARD ASSERTION]`);
+  console.log(`  stop_switch_seconds: ${metrics.stop_switch_seconds} (expected: <= 10) ${metrics.stop_switch_seconds <= 10 ? '✅' : '❌'} [HARD ASSERTION]`);
   console.log(`  db_connected: ${metrics.db_connected} (expected: true) ${metrics.db_connected === true ? '✅' : '❌'}`);
   console.log(`  queues_readable: ${metrics.queues_readable} (expected: true) ${metrics.queues_readable === true ? '✅' : '❌'}`);
   console.log(`  posting_ready: ${metrics.posting_ready}`);
   console.log(`  reply_ready: ${metrics.reply_ready}`);
-  console.log(`  stop_switch_seconds: ${metrics.stop_switch_seconds} (expected: <= 10) ${metrics.stop_switch_seconds <= 10 ? '✅' : '❌'}`);
   console.log(`  ticks_count: ${metrics.ticks_count}`);
   console.log('');
   
   // Write report
   const reportPath = path.join(process.cwd(), 'docs', 'EXECUTOR_15MIN_HEADLESS_PROOF.md');
+  const os = require('os');
+  const machineInfo = {
+    hostname: os.hostname(),
+    platform: os.platform(),
+    arch: os.arch(),
+    nodeVersion: process.version,
+  };
+  
   const report = `# Executor 15-Minute Headless Proof
 
 **Date:** ${new Date().toISOString()}  
 **Status:** ${pass ? '✅ PASS' : '❌ FAIL'}
 
+## Machine Info
+
+- **Hostname:** ${machineInfo.hostname}
+- **Platform:** ${machineInfo.platform}
+- **Architecture:** ${machineInfo.arch}
+- **Node Version:** ${machineInfo.nodeVersion}
+- **Runner Profile Dir:** ${RUNNER_PROFILE_DIR}
+
 ## Metrics
 
-- **windows_opened:** ${metrics.windows_opened} (expected: 0) ${metrics.windows_opened === 0 ? '✅' : '❌'}
-- **headless:** ${metrics.headless} (expected: true) ${metrics.headless === true ? '✅' : '❌'}
-- **pages_max:** ${metrics.pages_max} (expected: <= 1) ${metrics.pages_max <= 1 ? '✅' : '❌'}
-- **browser_launches:** ${metrics.browser_launches} (expected: <= 1) ${metrics.browser_launches <= 1 ? '✅' : '❌'}
-- **db_connected:** ${metrics.db_connected} (expected: true) ${metrics.db_connected === true ? '✅' : '❌'}
-- **queues_readable:** ${metrics.queues_readable} (expected: true) ${metrics.queues_readable === true ? '✅' : '❌'}
-- **posting_ready:** ${metrics.posting_ready}
-- **reply_ready:** ${metrics.reply_ready}
-- **stop_switch_seconds:** ${metrics.stop_switch_seconds} (expected: <= 10) ${metrics.stop_switch_seconds <= 10 ? '✅' : '❌'}
-- **ticks_count:** ${metrics.ticks_count}
+| Metric | Value | Expected | Status | Assertion |
+|--------|-------|----------|--------|-----------|
+| windows_opened | ${metrics.windows_opened} | 0 | ${metrics.windows_opened === 0 ? '✅' : '❌'} | HARD |
+| headless | ${metrics.headless} | true | ${metrics.headless === true ? '✅' : '❌'} | HARD |
+| pages_max | ${metrics.pages_max} | <= 1 | ${metrics.pages_max <= 1 ? '✅' : '❌'} | HARD |
+| browser_launches | ${metrics.browser_launches} | <= 1 | ${metrics.browser_launches <= 1 ? '✅' : '❌'} | HARD |
+| chrome_cdp_processes | ${metrics.chrome_cdp_processes} | 0 | ${metrics.chrome_cdp_processes === 0 ? '✅' : '❌'} | HARD |
+| stop_switch_seconds | ${metrics.stop_switch_seconds} | <= 10 | ${metrics.stop_switch_seconds <= 10 ? '✅' : '❌'} | HARD |
+| db_connected | ${metrics.db_connected} | true | ${metrics.db_connected === true ? '✅' : '❌'} | - |
+| queues_readable | ${metrics.queues_readable} | true | ${metrics.queues_readable === true ? '✅' : '❌'} | - |
+| posting_ready | ${metrics.posting_ready} | - | - | - |
+| reply_ready | ${metrics.reply_ready} | - | - | - |
+| ticks_count | ${metrics.ticks_count} | - | - | - |
 
 ## Configuration
 
@@ -351,13 +385,32 @@ async function main(): Promise<void> {
 
 ## Result
 
-${pass ? '✅ **PASS** - All hard requirements met' : '❌ **FAIL** - One or more hard requirements failed'}
+${pass ? '✅ **PASS** - All hard requirements met' : '❌ **FAIL** - Hard assertions failed'}
 `;
   
   fs.writeFileSync(reportPath, report, 'utf-8');
   console.log(`📄 Report written: ${reportPath}`);
   
   if (!pass) {
+    console.error('\n❌ HARD ASSERTIONS FAILED:');
+    if (metrics.windows_opened !== 0) {
+      console.error(`   - windows_opened=${metrics.windows_opened} (expected: 0)`);
+    }
+    if (!metrics.headless) {
+      console.error(`   - headless=${metrics.headless} (expected: true)`);
+    }
+    if (metrics.pages_max > 1) {
+      console.error(`   - pages_max=${metrics.pages_max} (expected: <= 1)`);
+    }
+    if (metrics.browser_launches > 1) {
+      console.error(`   - browser_launches=${metrics.browser_launches} (expected: <= 1)`);
+    }
+    if (metrics.chrome_cdp_processes !== 0) {
+      console.error(`   - chrome_cdp_processes=${metrics.chrome_cdp_processes} (expected: 0)`);
+    }
+    if (metrics.stop_switch_seconds > 10) {
+      console.error(`   - stop_switch_seconds=${metrics.stop_switch_seconds} (expected: <= 10)`);
+    }
     process.exit(1);
   }
 }

@@ -57,6 +57,7 @@
 - `executor:stop` → `scripts/executor/stop.ts` ✅
 - `executor:prove:5m` → `scripts/executor/prove-5m.ts` ✅
 - `executor:prove:15m` → `scripts/executor/prove-15m.ts` ✅
+- `executor:prove:e2e-post` → `scripts/executor/prove-e2e-post.ts` ✅
 - `ops:executor:status` → `scripts/ops/executor-status.ts` ✅
 - `executor:daemon` → `scripts/executor/daemon.ts` ✅
 - `executor:auth` → `scripts/executor/auth.ts` ✅
@@ -474,6 +475,14 @@ if (RUNNER_BROWSER.toLowerCase() === 'cdp') {
 - Daemon does NOT call `chrome-cdp.ts` script
 - Daemon uses `chromium.launchPersistentContext()` directly (headless)
 - `chrome-cdp.ts` is only for manual CDP setup (not daemon)
+- Proof scripts validate `chrome_cdp_processes=0` [HARD ASSERTION]
+
+**Rule 5: install-service.sh Must Guard Against RUNNER_BROWSER=cdp**
+
+**Enforcement:**
+- `scripts/executor/install-service.sh` checks existing plist for `RUNNER_BROWSER=cdp`
+- If found, installation aborts unless `FORCE_INSTALL=true`
+- Prevents accidental CDP mode installation
 
 **Rule 4: LaunchAgent Must Set HEADLESS=true**
 
@@ -492,9 +501,10 @@ if (RUNNER_BROWSER.toLowerCase() === 'cdp') {
 5. ✅ Executor uses `chromium.launchPersistentContext()` (not `connectOverCDP()`)
 
 **After Starting Executor:**
-1. ✅ `executor:prove:5m` PASSES with `windows_opened=0`
+1. ✅ `executor:prove:5m` PASSES with all hard assertions (windows_opened=0, chrome_cdp_processes=0, etc.)
 2. ✅ `ops:executor:status` shows no chrome-cdp.ts processes
 3. ✅ Logs show "BOOT: headless=true" and "chromium.launch() mode (NOT connectOverCDP)"
+4. ✅ STOP switch exits within 10 seconds (validated by proof scripts)
 
 ---
 
@@ -545,13 +555,14 @@ pnpm run executor:prove:5m
 ```
 
 **Acceptance Criteria (HARD ASSERTIONS):**
-- `windows_opened=0` ✅ (no visible windows)
-- `browser_launches<=1` ✅ (only one browser launch)
-- `headless=true` ✅
-- `pages_max<=1` ✅
+- `windows_opened=0` ✅ (no visible windows) [HARD]
+- `headless=true` ✅ (always headless) [HARD]
+- `pages_max<=1` ✅ (max 1 page) [HARD]
+- `browser_launches<=1` ✅ (max 1 launch per minute) [HARD]
+- `chrome_cdp_processes=0` ✅ (no CDP processes) [HARD]
+- `stop_switch_seconds<=10` ✅ (STOP switch works) [HARD]
 - `db_connected=true` ✅
 - `queues_readable=true` ✅
-- `stop_switch_seconds<=10` ✅ (STOP switch works)
 
 **PASS/FAIL:** PASS only if ALL hard assertions pass. FAIL if any hard assertion fails.
 
@@ -570,19 +581,24 @@ pnpm run executor:prove:15m
 
 **Command:**
 ```bash
-# Check executor is processing queue
-tail -100 ./.runner-profile/logs/executor.log | grep "posting_attempts\|reply_attempts"
+# End-to-end posting proof (seeds decision, runs executor, verifies execution)
+pnpm run executor:prove:e2e-post
 
-# Check POST_SUCCESS events
+# Or manual checks:
+tail -100 ./.runner-profile/logs/executor.log | grep "posting_attempts\|reply_attempts"
 railway logs --service xBOT --lines 200 | grep POST_SUCCESS | tail -5
 ```
 
-**Acceptance Criteria:**
-- Executor logs show `posting_attempts > 0` when ready candidates exist
-- `POST_SUCCESS` events exist in system_events table
-- Tweet URLs are reachable (manual verification)
+**Acceptance Criteria (E2E Proof):**
+- `decision_queued=true` ✅ (decision inserted)
+- `decision_claimed=true` ✅ (executor claimed decision)
+- `attempt_recorded=true` ✅ (attempt recorded in outcomes)
+- `result_recorded=true` ✅ (result recorded)
+- `post_success_event=true` OR `post_failed_event=true` ✅ (event emitted)
 
-**PASS/FAIL:** PASS if attempts > 0 and POST_SUCCESS events exist.
+**PASS/FAIL:** PASS only if ALL checks pass. FAIL if any check fails.
+
+**Report Location:** `docs/EXECUTION_E2E_POST_PROOF.md` (created by proof script)
 
 ### Proof Level 4: Learning Proof
 

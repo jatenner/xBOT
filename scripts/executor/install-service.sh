@@ -26,6 +26,23 @@ echo "Runner profile: $RUNNER_PROFILE_DIR"
 echo "Log file: $LOG_FILE"
 echo ""
 
+# Check for existing plist and guard against RUNNER_BROWSER=cdp
+if [ -f "$PLIST_FILE" ]; then
+  if grep -q "RUNNER_BROWSER.*cdp" "$PLIST_FILE" 2>/dev/null; then
+    echo "⚠️  WARNING: Existing plist contains RUNNER_BROWSER=cdp"
+    echo "   CDP mode is FORBIDDEN for daemon (causes visible Chrome windows)"
+    echo ""
+    echo "To force install anyway, run:"
+    echo "   FORCE_INSTALL=true $0"
+    echo ""
+    if [ "$FORCE_INSTALL" != "true" ]; then
+      echo "❌ Installation aborted. Remove RUNNER_BROWSER=cdp from plist or use FORCE_INSTALL=true"
+      exit 1
+    fi
+    echo "⚠️  FORCE_INSTALL=true - proceeding despite RUNNER_BROWSER=cdp"
+  fi
+fi
+
 # Create plist file
 cat > "$PLIST_FILE" << EOF
 <?xml version="1.0" encoding="UTF-8"?>

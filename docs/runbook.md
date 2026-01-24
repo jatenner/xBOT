@@ -139,7 +139,7 @@ pnpm run executor:start
 pnpm run executor:stop
 
 # This command:
-# - Creates STOP switch
+# - Creates STOP switch (daemon exits within 10s)
 # - Kills daemon PID if present
 # - Kills chrome-cdp.ts runner processes
 # - Kills Playwright/Chromium child processes created by bot
@@ -153,6 +153,12 @@ touch ./.runner-profile/STOP_EXECUTOR
 pkill -f "executor/daemon"
 pkill -f "chrome-cdp.ts"
 ```
+
+**Root Cause Prevention:**
+- CDP mode (`RUNNER_BROWSER=cdp`) is FORBIDDEN for daemon (causes visible Chrome windows)
+- LaunchAgent plist must NOT contain `RUNNER_BROWSER=cdp`
+- Daemon fails-fast if `RUNNER_BROWSER=cdp` detected
+- `install-service.sh` guards against CDP mode installation
 
 **Verification:**
 ```bash
