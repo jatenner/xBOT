@@ -58,6 +58,7 @@
 - `executor:prove:5m` → `scripts/executor/prove-5m.ts` ✅
 - `executor:prove:15m` → `scripts/executor/prove-15m.ts` ✅
 - `executor:prove:e2e-post` → `scripts/executor/prove-e2e-post.ts` ✅
+- `executor:prove:e2e-reply` → `scripts/executor/prove-e2e-reply.ts` ✅
 - `ops:executor:status` → `scripts/ops/executor-status.ts` ✅
 - `executor:daemon` → `scripts/executor/daemon.ts` ✅
 - `executor:auth` → `scripts/executor/auth.ts` ✅
@@ -579,17 +580,13 @@ pnpm run executor:prove:15m
 
 ### Proof Level 3: Execution Proof (Posting/Replies)
 
-**Command:**
+**Posting E2E Proof:**
 ```bash
 # End-to-end posting proof (seeds decision, runs executor, verifies execution)
 pnpm run executor:prove:e2e-post
-
-# Or manual checks:
-tail -100 ./.runner-profile/logs/executor.log | grep "posting_attempts\|reply_attempts"
-railway logs --service xBOT --lines 200 | grep POST_SUCCESS | tail -5
 ```
 
-**Acceptance Criteria (E2E Proof):**
+**Acceptance Criteria (Posting E2E Proof):**
 - `decision_queued=true` ✅ (decision inserted)
 - `decision_claimed=true` ✅ (executor claimed decision)
 - `attempt_recorded=true` ✅ (attempt recorded in outcomes)
@@ -599,6 +596,38 @@ railway logs --service xBOT --lines 200 | grep POST_SUCCESS | tail -5
 **PASS/FAIL:** PASS only if ALL checks pass. FAIL if any check fails.
 
 **Report Location:** `docs/EXECUTION_E2E_POST_PROOF.md` (created by proof script)
+
+**Reply E2E Proof:**
+```bash
+# End-to-end reply proof (seeds ONE reply decision, runs executor, verifies execution)
+TARGET_TWEET_ID=1234567890 pnpm run executor:prove:e2e-reply
+```
+
+**Acceptance Criteria (Reply E2E Proof - HARD ASSERTIONS):**
+- `reply_decision_queued=true` ✅ (reply decision inserted)
+- `reply_decision_claimed=true` ✅ (executor claimed reply decision)
+- `reply_attempt_recorded=true` ✅ (attempt recorded in outcomes)
+- `reply_result_recorded=true` ✅ (result recorded)
+- `reply_success_event=true` OR `reply_failed_event=true` ✅ (event emitted)
+- `reply_count=1` ✅ (exactly ONE reply attempt) [HARD]
+- `windows_opened=0` ✅ (no visible windows) [HARD]
+- `chrome_cdp_processes=0` ✅ (no CDP processes) [HARD]
+- `pages_max<=1` ✅ (max 1 page) [HARD]
+
+**PASS/FAIL:** PASS only if ALL checks pass (including executor safety invariants). FAIL if any check fails.
+
+**Report Location:** `docs/EXECUTION_E2E_REPLY_PROOF.md` (created by proof script)
+
+**Important:** Replies are proven one-at-a-time before scale. The reply proof validates:
+1. Single reply decision execution (no spam/loops)
+2. Executor safety invariants remain true during reply execution
+3. Proper event emission (REPLY_SUCCESS or REPLY_FAILED)
+
+**Manual Checks (Alternative):**
+```bash
+tail -100 ./.runner-profile/logs/executor.log | grep "posting_attempts\|reply_attempts"
+railway logs --service xBOT --lines 200 | grep "POST_SUCCESS\|REPLY_SUCCESS" | tail -5
+```
 
 ### Proof Level 4: Learning Proof
 

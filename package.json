@@ -94,6 +94,7 @@
     "executor:prove:15m": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-15m.ts",
     "executor:prove:5m": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-5m.ts",
     "executor:prove:e2e-post": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-e2e-post.ts",
+    "executor:prove:e2e-reply": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-e2e-reply.ts",
     "executor:stop": "tsx scripts/executor/stop.ts",
     "executor:install-service": "bash scripts/executor/install-service.sh",
     "executor:uninstall-service": "bash scripts/executor/uninstall-service.sh",
