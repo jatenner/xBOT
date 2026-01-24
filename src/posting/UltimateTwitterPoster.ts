@@ -266,13 +266,19 @@ export class UltimateTwitterPoster {
     }
     const validGuard = (verification as { valid: true; guard: PostingGuard }).guard;
     
+    // Extract decision_id and proof_tag for logging
+    const decisionId = (validGuard as any)?.decision_id || 'unknown';
+    const proofTag = (validGuard as any)?.proof_tag || null;
+    const logPrefix = proofTag ? `[PROOF:${proofTag}]` : `[DECISION:${decisionId}]`;
+    
     // 📊 COMPREHENSIVE LOGGING: Build fingerprint for audit trail
     const BUILD_SHA = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || 'dev';
     const DB_URL = process.env.DATABASE_URL || '';
     const DB_ENV_FINGERPRINT = require('crypto').createHash('md5').update(DB_URL).digest('hex').substring(0, 8);
     
-    console.log(`[POST_TWEET] 🔐 Authorized via guard: decision_id=${validGuard.decision_id}`);
-    console.log(`[POST_TWEET] 📊 AUDIT_TRAIL: decision_id=${validGuard.decision_id} pipeline_source=${validGuard.pipeline_source} job_run_id=${validGuard.job_run_id} build_sha=${BUILD_SHA} db_env=${DB_ENV_FINGERPRINT}`);
+    console.log(`${logPrefix} [POST_TWEET] 🔐 Authorized via guard: decision_id=${validGuard.decision_id}`);
+    console.log(`${logPrefix} [POST_TWEET] 📊 AUDIT_TRAIL: decision_id=${validGuard.decision_id} pipeline_source=${validGuard.pipeline_source} job_run_id=${validGuard.job_run_id} build_sha=${BUILD_SHA} db_env=${DB_ENV_FINGERPRINT}`);
+    console.log(`${logPrefix} [TIMEOUT_OBSERVABILITY] step=postTweet_start decision_id=${decisionId} content_length=${content.length}`);
     
     let retryCount = 0;
     const maxRetries = 2; // Increased retries
@@ -519,16 +525,23 @@ export class UltimateTwitterPoster {
 
     // Stage 1: Navigation
     await logStage('navigation', async () => {
-      console.log('ULTIMATE_POSTER: Navigating to Twitter...');
+      const decisionId = (validGuard as any)?.decision_id || 'unknown';
+      const proofTag = (validGuard as any)?.proof_tag || null;
+      const logPrefix = proofTag ? `[PROOF:${proofTag}]` : `[DECISION:${decisionId}]`;
+      
+      console.log(`${logPrefix} ULTIMATE_POSTER: Navigating to Twitter...`);
+      console.log(`${logPrefix} [TIMEOUT_OBSERVABILITY] step=before_navigation decision_id=${decisionId}`);
       
       // Navigate with domcontentloaded instead of networkidle
       await this.page!.goto('https://x.com/home', { 
         waitUntil: 'domcontentloaded', 
         timeout: 45000 
       });
+      
+      console.log(`${logPrefix} [TIMEOUT_OBSERVABILITY] step=after_navigation decision_id=${decisionId} url=${this.page!.url()}`);
 
       // Wait for navigation to complete and UI to be ready
-      console.log('ULTIMATE_POSTER: Waiting for UI to be ready...');
+      console.log(`${logPrefix} ULTIMATE_POSTER: Waiting for UI to be ready...`);
       
       // 🔧 IMPROVED TIMEOUT: Try multiple selectors with longer timeout
       const navigationSelectors = [
@@ -571,12 +584,20 @@ export class UltimateTwitterPoster {
 
     // Stage 2: Typing
     await logStage('typing', async () => {
-      // Find and interact with composer
-      const composer = await this.getComposer();
+      const decisionId = (validGuard as any)?.decision_id || 'unknown';
+      const proofTag = (validGuard as any)?.proof_tag || null;
+      const logPrefix = proofTag ? `[PROOF:${proofTag}]` : `[DECISION:${decisionId}]`;
       
-      console.log('ULTIMATE_POSTER: Inserting content...');
+      // Find and interact with composer
+      console.log(`${logPrefix} [TIMEOUT_OBSERVABILITY] step=before_get_composer decision_id=${decisionId}`);
+      const composer = await this.getComposer();
+      console.log(`${logPrefix} [TIMEOUT_OBSERVABILITY] step=after_get_composer decision_id=${decisionId}`);
+      
+      console.log(`${logPrefix} ULTIMATE_POSTER: Inserting content...`);
+      console.log(`${logPrefix} [TIMEOUT_OBSERVABILITY] step=before_click_compose decision_id=${decisionId}`);
       await composer.click({ delay: 60 });
       await this.page!.waitForTimeout(500);
+      console.log(`${logPrefix} [TIMEOUT_OBSERVABILITY] step=after_click_compose decision_id=${decisionId}`);
       
       // 🆕 IMPROVED: Clear any existing content with better handling
       try {
@@ -616,15 +637,22 @@ export class UltimateTwitterPoster {
     // Stage 3: Submit
     let result: PostResult;
     const submitStartTime = Date.now();
-    console.log(`[ULTIMATE_POSTER] 🎯 Stage: submit - Starting`);
+    const decisionId = (validGuard as any)?.decision_id || 'unknown';
+    const proofTag = (validGuard as any)?.proof_tag || null;
+    const logPrefix = proofTag ? `[PROOF:${proofTag}]` : `[DECISION:${decisionId}]`;
+    
+    console.log(`${logPrefix} [ULTIMATE_POSTER] 🎯 Stage: submit - Starting`);
+    console.log(`${logPrefix} [TIMEOUT_OBSERVABILITY] step=before_submit decision_id=${decisionId}`);
     try {
       // Post with network verification
       result = await this.postWithNetworkVerification(validGuard);
       const submitDuration = Date.now() - submitStartTime;
-      console.log(`[ULTIMATE_POSTER] ✅ Stage: submit - Completed in ${submitDuration}ms`);
+      console.log(`${logPrefix} [ULTIMATE_POSTER] ✅ Stage: submit - Completed in ${submitDuration}ms`);
+      console.log(`${logPrefix} [TIMEOUT_OBSERVABILITY] step=after_submit decision_id=${decisionId} success=true`);
     } catch (submitError: any) {
       const submitDuration = Date.now() - submitStartTime;
-      console.error(`[ULTIMATE_POSTER] ❌ Stage: submit - Failed after ${submitDuration}ms: ${submitError.message}`);
+      console.error(`${logPrefix} [ULTIMATE_POSTER] ❌ Stage: submit - Failed after ${submitDuration}ms: ${submitError.message}`);
+      console.error(`${logPrefix} [TIMEOUT_OBSERVABILITY] step=after_submit decision_id=${decisionId} success=false error=${submitError.message}`);
       throw submitError;
     }
     

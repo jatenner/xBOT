@@ -5287,21 +5287,23 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         try {
           result = await withTimeout(
             async () => {
-              const atomicResult = await executeAuthorizedPost(
-                poster,
-                guard,
-                {
-                  decision_id: decision.id,
-                  decision_type: decision.decision_type === 'single' ? 'single' : decision.decision_type === 'thread' ? 'thread' : 'single',
-                  pipeline_source: 'postingQueue',
-                  build_sha,
-                  job_run_id,
-                  content: contentToPost,
-                },
-                {
-                  isReply: false,
-                }
-              );
+            const decisionFeatures = (decision.features || {}) as Record<string, any>;
+            const atomicResult = await executeAuthorizedPost(
+              poster,
+              guard,
+              {
+                decision_id: decision.id,
+                decision_type: decision.decision_type === 'single' ? 'single' : decision.decision_type === 'thread' ? 'thread' : 'single',
+                pipeline_source: 'postingQueue',
+                build_sha,
+                job_run_id,
+                content: contentToPost,
+                proof_tag: decisionFeatures.proof_tag || null, // Pass proof_tag for observability
+              },
+              {
+                isReply: false,
+              }
+            );
               
               // 🔥 GUARDRAIL: If post succeeded but DB update failed, emit CRITICAL log
               if (atomicResult.success && atomicResult.tweet_id) {
@@ -5959,6 +5961,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       const job_run_id = `reply_${Date.now()}`;
       const build_sha = getBuildSHA();
       
+      const decisionFeatures = (decision.features || {}) as Record<string, any>;
       const atomicResult = await executeAuthorizedPost(
         poster,
         guard,
@@ -5974,6 +5977,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
           target_tweet_content_snapshot: decision.target_tweet_content_snapshot,
           target_tweet_content_hash: decision.target_tweet_content_hash,
           semantic_similarity: decision.semantic_similarity,
+          proof_tag: decisionFeatures.proof_tag || null, // Pass proof_tag for observability
         },
         {
           isReply: true,

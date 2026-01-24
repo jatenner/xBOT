@@ -32,6 +32,154 @@ const MAX_WAIT_SECONDS = 300; // 5 minutes max wait
 const DRY_RUN = process.env.DRY_RUN !== 'false' && process.env.EXECUTE_REAL_ACTION !== 'true';
 const EXECUTE_REAL_ACTION = process.env.EXECUTE_REAL_ACTION === 'true';
 
+// Global state for signal handlers
+let proofState: {
+  decisionId?: string;
+  proofTag?: string;
+  result?: ControlToPostProofResult;
+  reportPath?: string;
+  snapshotWritten?: boolean;
+} = {};
+
+/**
+ * Write diagnostic snapshot on termination (SIGTERM/SIGINT/uncaughtException)
+ */
+async function writeTerminationSnapshot(signal?: string): Promise<void> {
+  if (proofState.snapshotWritten) {
+    return; // Idempotent guard
+  }
+  proofState.snapshotWritten = true;
+
+  if (!proofState.decisionId || !proofState.proofTag) {
+    return; // No decision to snapshot
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const reportPath = proofState.reportPath || path.join(process.cwd(), 'docs', 'CONTROL_TO_POST_PROOF.md');
+
+    // Get decision status
+    const { data: decisionMeta } = await supabase
+      .from('content_metadata')
+      .select('status, error_message, features, updated_at')
+      .eq('decision_id', proofState.decisionId)
+      .maybeSingle();
+
+    // Get outcomes
+    const { data: outcomeRow } = await supabase
+      .from('outcomes')
+      .select('*')
+      .eq('decision_id', proofState.decisionId)
+      .maybeSingle();
+
+    // Get POST_FAILED events
+    const { data: failedEvents } = await supabase
+      .from('system_events')
+      .select('event_data, created_at')
+      .eq('event_type', 'POST_FAILED')
+      .eq('event_data->>decision_id', proofState.decisionId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Get EXECUTOR_DECISION_SKIPPED events
+    const { data: skippedEvents } = await supabase
+      .from('system_events')
+      .select('event_data, created_at')
+      .eq('event_type', 'EXECUTOR_DECISION_SKIPPED')
+      .eq('event_data->>decision_id', proofState.decisionId)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    // Emit deterministic failure if decision exists but no attempt/outcome/events
+    if (decisionMeta && !outcomeRow && !failedEvents) {
+      try {
+        const { recordDeterministicFailure } = await import('../../src/utils/deterministicFailureRecorder');
+        await recordDeterministicFailure({
+          decision_id: proofState.decisionId,
+          decision_type: 'single',
+          pipeline_source: 'postingQueue',
+          proof_tag: proofState.proofTag,
+          error_name: 'ProofRunnerTerminated',
+          error_message: `Proof script terminated by ${signal || 'unknown signal'}`,
+          step: 'proof_runner_terminated',
+        });
+      } catch (recordError: any) {
+        console.error(`[TERMINATION] Failed to record deterministic failure: ${recordError.message}`);
+      }
+    }
+
+    // Write snapshot synchronously
+    const snapshot = `
+## Diagnostic Snapshot (Termination: ${signal || 'unknown'})
+
+**Written at:** ${new Date().toISOString()}
+**Termination Signal:** ${signal || 'unknown'}
+
+### Decision Status
+- **Decision ID:** ${proofState.decisionId}
+- **Proof Tag:** ${proofState.proofTag}
+- **Final Status:** ${decisionMeta?.status || 'unknown'}
+- **Error Message:** ${decisionMeta?.error_message || 'N/A'}
+- **Last Updated:** ${decisionMeta?.updated_at || 'N/A'}
+
+### Outcomes
+${outcomeRow ? `
+\`\`\`json
+${JSON.stringify(outcomeRow, null, 2)}
+\`\`\`
+` : 'No outcomes row found'}
+
+### Failure Events
+${failedEvents ? `
+\`\`\`json
+${JSON.stringify(typeof failedEvents.event_data === 'string' ? JSON.parse(failedEvents.event_data) : failedEvents.event_data, null, 2)}
+\`\`\`
+` : 'No POST_FAILED event found'}
+
+### Skipped Events
+${skippedEvents && skippedEvents.length > 0 ? `
+Found ${skippedEvents.length} EXECUTOR_DECISION_SKIPPED event(s):
+
+\`\`\`json
+${JSON.stringify(skippedEvents.map(e => typeof e.event_data === 'string' ? JSON.parse(e.event_data) : e.event_data), null, 2)}
+\`\`\`
+` : 'No skipped events found'}
+`;
+
+    // Append to report file synchronously
+    fs.appendFileSync(reportPath, snapshot, 'utf-8');
+    console.error(`[TERMINATION] Diagnostic snapshot written to ${reportPath}`);
+  } catch (error: any) {
+    console.error(`[TERMINATION] Failed to write snapshot: ${error.message}`);
+  }
+}
+
+// Register signal handlers
+process.on('SIGTERM', async () => {
+  console.error('\n[SIGTERM] Received SIGTERM, writing diagnostic snapshot...');
+  await writeTerminationSnapshot('SIGTERM');
+  process.exit(1);
+});
+
+process.on('SIGINT', async () => {
+  console.error('\n[SIGINT] Received SIGINT, writing diagnostic snapshot...');
+  await writeTerminationSnapshot('SIGINT');
+  process.exit(1);
+});
+
+process.on('uncaughtException', async (error) => {
+  console.error('\n[UNCAUGHT_EXCEPTION]', error);
+  await writeTerminationSnapshot('uncaughtException');
+  process.exit(1);
+});
+
+process.on('unhandledRejection', async (reason) => {
+  console.error('\n[UNHANDLED_REJECTION]', reason);
+  await writeTerminationSnapshot('unhandledRejection');
+  process.exit(1);
+});
+
 interface ControlToPostProofResult {
   decision_id: string;
   proof_tag: string;
@@ -338,6 +486,11 @@ async function main(): Promise<void> {
   console.log('\n📝 Step 1: Creating control-plane decision...');
   const decisionId = await createControlDecision(proofTag);
   
+  // Store state for signal handlers
+  proofState.decisionId = decisionId;
+  proofState.proofTag = proofTag;
+  proofState.reportPath = path.join(process.cwd(), 'docs', 'CONTROL_TO_POST_PROOF.md');
+  
   // DRY_RUN mode: exit after creating decision
   if (DRY_RUN) {
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -516,6 +669,9 @@ async function main(): Promise<void> {
   
   // Extract result URL
   result.result_url = await extractResultUrl(decisionId, eventData, outcomeResult);
+  
+  // Store result for signal handlers
+  proofState.result = result;
   
   // Step 4: Collect log excerpts and diagnostic snapshot
   if (fs.existsSync(logFile)) {

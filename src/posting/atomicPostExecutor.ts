@@ -29,6 +29,7 @@ interface PostAttemptMetadata {
   target_tweet_content_hash?: string;
   semantic_similarity?: number;
   target_username?: string; // 🔒 For self-reply guard
+  proof_tag?: string; // For proof script observability
 }
 
 interface ExecutePostResult {
@@ -475,9 +476,16 @@ export async function executeAuthorizedPost(
         permit_id,
       };
       
+      // Add decision_id and proof_tag to guard for logging
+      const guardWithLogging = {
+        ...guardWithPermit,
+        decision_id: decision_id,
+        proof_tag: (metadata as any).proof_tag || null,
+      };
+      
       const postingPromise = options.isReply && options.replyToTweetId
-      ? poster.postReply(metadata.content, options.replyToTweetId, guardWithPermit as any)
-      : poster.postTweet(metadata.content, guardWithPermit as any);
+      ? poster.postReply(metadata.content, options.replyToTweetId, guardWithLogging as any)
+      : poster.postTweet(metadata.content, guardWithLogging as any);
     
     // Race posting against timeout
     postResult = await Promise.race([postingPromise, timeoutPromise]);
