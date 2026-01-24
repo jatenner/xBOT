@@ -55,6 +55,14 @@ let proofState: {
     supabase_error: any | null;
     fallback_used: boolean;
   };
+  cachedTickCount?: number;
+  cachedLastTickAt?: string | null;
+  cachedLastTickEventId?: string | null;
+  cachedCandidateEvents?: any[];
+  cachedSelectedEvents?: any[];
+  cachedSkippedEvents?: any[];
+  cachedClaimEvents?: any[];
+  proofStartTime?: number;
 } = {};
 
 /**
@@ -88,6 +96,13 @@ ${statusCheck?.tweet_id ? `- **URL:** https://x.com/${process.env.TWITTER_USERNA
 - **Created At:** ${statusCheck?.created_at || 'N/A'}
 - **Fallback Used:** ${statusCheck?.fallback_used ? 'yes' : 'no'}
 ${statusCheck?.supabase_error ? `- **Supabase Error:** ${JSON.stringify(statusCheck.supabase_error)}` : ''}
+- **Tick Count (Last 15m):** ${proofState.cachedTickCount || 0}
+- **Last Tick At:** ${proofState.cachedLastTickAt || 'N/A'}
+- **Last Tick Event ID:** ${proofState.cachedLastTickEventId || 'N/A'}
+- **Candidate Events:** ${proofState.cachedCandidateEvents?.length || 0}
+- **Selected Events:** ${proofState.cachedSelectedEvents?.length || 0}
+- **Skipped Events:** ${proofState.cachedSkippedEvents?.length || 0}
+- **Claim Events:** ${proofState.cachedClaimEvents?.length || 0}
 - **Attempt ID:** ${proofState.cachedAttemptId || 'N/A'}
 - **Outcome ID:** ${proofState.cachedOutcomeId || 'N/A'}
 - **Event IDs:** ${proofState.cachedEventIds?.length ? proofState.cachedEventIds.join(', ') : 'N/A'}
@@ -214,6 +229,12 @@ interface ControlToPostProofResult {
     outcome_id?: string;
     event_ids?: string[];
     log_excerpts?: string[];
+    error_code?: string;
+    error_message?: string;
+    tick_count_last_15m?: number;
+    last_tick_at?: string | null;
+    selected_event_count?: number;
+    claim_event_count?: number;
   };
 }
 
@@ -725,6 +746,12 @@ async function main(): Promise<void> {
   // Step 3: Wait for execution
   console.log('⏳ Step 3: Waiting for executor to claim and execute...');
   const startTime = Date.now();
+  proofState.proofStartTime = startTime;
+  
+  // Log parent process info for debugging SIGTERM
+  console.log(`[PROOF] Parent process: ${process.ppid}`);
+  console.log(`[PROOF] Process ID: ${process.pid}`);
+  console.log(`[PROOF] Start time: ${new Date(startTime).toISOString()}\n`);
   const result: ControlToPostProofResult = {
     decision_id: decisionId,
     proof_tag: proofTag,
@@ -747,9 +774,110 @@ async function main(): Promise<void> {
   let eventData: any[] = [];
   let outcomeResult: any = null;
   
+  let loopIteration = 0;
+  let lastCandidateEventTime = 0;
+  let lastSelectedEventTime = 0;
+  let lastClaimEventTime = 0;
+  const supabase = getSupabaseClient();
+  
   while (Date.now() - startTime < MAX_WAIT_SECONDS * 1000) {
+    loopIteration++;
+    const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+    console.log(`[PROOF] Loop iteration ${loopIteration}, elapsed: ${elapsedSeconds}s`);
+    
+    // 🔧 A) Monitor executor ticks
+    const fifteenMinutesAgo = new Date(startTime - 15 * 60 * 1000).toISOString();
+    const { data: tickEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at')
+      .eq('event_type', 'EXECUTOR_DAEMON_TICK')
+      .gte('created_at', fifteenMinutesAgo)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    
+    const tickCount = tickEvents?.length || 0;
+    const lastTick = tickEvents?.[0];
+    proofState.cachedTickCount = tickCount;
+    proofState.cachedLastTickAt = lastTick?.created_at || null;
+    proofState.cachedLastTickEventId = lastTick?.id || null;
+    
+    // 🔧 A) Fast-fail if executor not ticking after 60s
+    if (elapsedSeconds >= 60 && tickCount === 0) {
+      console.error(`❌ EXECUTOR_NOT_TICKING: No executor ticks detected after ${elapsedSeconds}s`);
+      result.evidence.error_code = 'EXECUTOR_NOT_TICKING';
+      result.evidence.error_message = `No EXECUTOR_DAEMON_TICK events found after ${elapsedSeconds}s`;
+      break;
+    }
+    
+    // 🔧 B) Monitor proof decision selection events
+    const { data: candidateEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_PROOF_POST_CANDIDATE_FOUND')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const { data: selectedEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_PROOF_POST_SELECTED')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const { data: skippedEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_PROOF_POST_SKIPPED')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const { data: claimEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .in('event_type', ['EXECUTOR_DECISION_CLAIM_OK', 'EXECUTOR_DECISION_CLAIM_FAIL'])
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    proofState.cachedCandidateEvents = candidateEvents || [];
+    proofState.cachedSelectedEvents = selectedEvents || [];
+    proofState.cachedSkippedEvents = skippedEvents || [];
+    proofState.cachedClaimEvents = claimEvents || [];
+    
+    if (candidateEvents && candidateEvents.length > 0) {
+      lastCandidateEventTime = new Date(candidateEvents[0].created_at).getTime();
+    }
+    if (selectedEvents && selectedEvents.length > 0) {
+      lastSelectedEventTime = new Date(selectedEvents[0].created_at).getTime();
+    }
+    if (claimEvents && claimEvents.length > 0) {
+      lastClaimEventTime = new Date(claimEvents[0].created_at).getTime();
+    }
+    
     // Check decision status (with improved error handling and fallback)
     const statusCheck = await checkDecisionStatus(decisionId, proofTag);
+    
+    // 🔧 D) Fast-fail for queue stalls (after 180s)
+    if (elapsedSeconds >= 180 && statusCheck.status === 'queued' && tickCount > 0) {
+      if (!candidateEvents || candidateEvents.length === 0) {
+        console.error(`❌ QUEUE_STALL_NO_SELECT: Decision queued for ${elapsedSeconds}s, executor ticking (${tickCount} ticks), but no candidate events`);
+        result.evidence.error_code = 'QUEUE_STALL_NO_SELECT';
+        result.evidence.error_message = `Decision remained queued for ${elapsedSeconds}s with ${tickCount} executor ticks but no EXECUTOR_PROOF_POST_CANDIDATE_FOUND events`;
+        result.evidence.tick_count_last_15m = tickCount;
+        result.evidence.last_tick_at = proofState.cachedLastTickAt;
+        break;
+      } else if (selectedEvents && selectedEvents.length > 0 && (!claimEvents || claimEvents.length === 0)) {
+        console.error(`❌ QUEUE_STALL_NO_CLAIM: Decision selected but not claimed after ${elapsedSeconds}s`);
+        result.evidence.error_code = 'QUEUE_STALL_NO_CLAIM';
+        result.evidence.error_message = `Decision was selected (${selectedEvents.length} EXECUTOR_PROOF_POST_SELECTED events) but not claimed after ${elapsedSeconds}s`;
+        result.evidence.selected_event_count = selectedEvents.length;
+        result.evidence.claim_event_count = 0;
+        break;
+      }
+    }
     
     // Cache status check for signal handlers
     proofState.cachedStatusCheck = statusCheck;
@@ -883,11 +1011,18 @@ async function main(): Promise<void> {
   result.executor_safety.chrome_cdp_processes = await countChromeCdpProcesses();
   result.executor_safety.pages_max = await getMaxPagesFromTicks();
   
-  // Extract result URL (if not already cached)
+  // Extract result URL (if not already cached) - check content_metadata first
   if (!result.result_url) {
-    result.result_url = await extractResultUrl(decisionId, eventData, outcomeResult);
-    if (result.result_url) {
+    const finalStatusCheck = await checkDecisionStatus(decisionId, proofTag);
+    if (finalStatusCheck.tweet_id) {
+      result.result_url = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${finalStatusCheck.tweet_id}`;
       proofState.cachedResultUrl = result.result_url;
+      proofState.cachedStatusCheck = finalStatusCheck;
+    } else {
+      result.result_url = await extractResultUrl(decisionId, eventData, outcomeResult);
+      if (result.result_url) {
+        proofState.cachedResultUrl = result.result_url;
+      }
     }
   }
   
@@ -904,9 +1039,15 @@ async function main(): Promise<void> {
   
   // Extract result URL again after re-check
   if (!result.result_url) {
-    result.result_url = await extractResultUrl(decisionId, eventData, outcomeResult);
-    if (result.result_url) {
+    const finalStatusCheck = await checkDecisionStatus(decisionId, proofTag);
+    if (finalStatusCheck.tweet_id) {
+      result.result_url = `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${finalStatusCheck.tweet_id}`;
       proofState.cachedResultUrl = result.result_url;
+    } else {
+      result.result_url = await extractResultUrl(decisionId, eventData, outcomeResult);
+      if (result.result_url) {
+        proofState.cachedResultUrl = result.result_url;
+      }
     }
   }
   
@@ -1168,7 +1309,12 @@ ${JSON.stringify(result.evidence.diagnostic_snapshot.skipped_events, null, 2)}
 ## Result
 
 ${pass ? '✅ **PASS** - All execution checks and executor safety invariants passed' : '❌ **FAIL** - One or more checks failed'}
-${!pass && result.evidence.diagnostic_snapshot?.error_code ? `\n**Failure Code:** ${result.evidence.diagnostic_snapshot.error_code}` : ''}
+${!pass && result.evidence.error_code ? `\n**Failure Code:** ${result.evidence.error_code}` : ''}
+${!pass && result.evidence.error_message ? `\n**Failure Message:** ${result.evidence.error_message}` : ''}
+${result.evidence.tick_count_last_15m !== undefined ? `\n**Tick Count (Last 15m):** ${result.evidence.tick_count_last_15m}` : ''}
+${result.evidence.last_tick_at ? `\n**Last Tick At:** ${result.evidence.last_tick_at}` : ''}
+${result.evidence.selected_event_count !== undefined ? `\n**Selected Event Count:** ${result.evidence.selected_event_count}` : ''}
+${result.evidence.claim_event_count !== undefined ? `\n**Claim Event Count:** ${result.evidence.claim_event_count}` : ''}
 `;
   
   fs.writeFileSync(reportPath, report, 'utf-8');

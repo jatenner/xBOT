@@ -1704,6 +1704,35 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     // 3. Get ready decisions from queue
     readyDecisions = await getReadyDecisions(certMode, maxItems);
     
+    // 🔧 B) Emit proof candidate events for PROOF_MODE
+    const proofMode = process.env.PROOF_MODE === 'true';
+    if (proofMode) {
+      for (const decision of readyDecisions) {
+        const decisionFeatures = (decision.features || {}) as Record<string, any>;
+        const proofTag = decisionFeatures.proof_tag;
+        if (proofTag && String(proofTag).startsWith('control-post-')) {
+          try {
+            await supabase.from('system_events').insert({
+              event_type: 'EXECUTOR_PROOF_POST_CANDIDATE_FOUND',
+              severity: 'info',
+              message: `Proof post candidate found: ${decision.id}`,
+              event_data: {
+                decision_id: decision.id,
+                proof_tag: proofTag,
+                scheduled_at: decision.created_at,
+                status: decision.status,
+                pipeline_source: decisionFeatures.pipeline_source || null,
+              },
+              created_at: new Date().toISOString(),
+            });
+            console.log(`[POSTING_QUEUE] 🎯 Proof candidate found: ${decision.id} (proof_tag: ${proofTag})`);
+          } catch (eventError: any) {
+            console.error(`[POSTING_QUEUE] Failed to emit proof candidate event: ${eventError.message}`);
+          }
+        }
+      }
+    }
+    
     // 🎯 PROOF PRIORITIZATION: Sort decisions with proof_tag first
     readyDecisions.sort((a, b) => {
       const aFeatures = (a.features || {}) as Record<string, any>;
@@ -1716,25 +1745,29 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
       return 0; // Keep original order for same priority
     });
     
-    // Emit event when proof decision is selected
+    // Emit event when proof decision is selected (for POST decisions)
     for (const decision of readyDecisions) {
       const decisionFeatures = (decision.features || {}) as Record<string, any>;
-      const hasProofTag = !!decisionFeatures.proof_tag || decision.pipeline_source?.includes('control-');
-      if (hasProofTag) {
+      const proofTag = decisionFeatures.proof_tag;
+      const hasProofTag = !!proofTag || decision.pipeline_source?.includes('control-');
+      
+      if (hasProofTag && (decision.decision_type === 'single' || decision.decision_type === 'thread')) {
         try {
           await supabase.from('system_events').insert({
-            event_type: 'EXECUTOR_PROOF_DECISION_SELECTED',
+            event_type: 'EXECUTOR_PROOF_POST_SELECTED',
             severity: 'info',
-            message: `Proof decision selected: ${decision.id}`,
+            message: `Proof post selected: ${decision.id}`,
             event_data: {
               decision_id: decision.id,
-              proof_tag: decisionFeatures.proof_tag || null,
+              proof_tag: proofTag || null,
               decision_type: decision.decision_type,
-              pipeline_source: decision.pipeline_source,
+              scheduled_at: decision.created_at,
+              status: decision.status,
+              pipeline_source: decisionFeatures.pipeline_source || decision.pipeline_source || null,
             },
             created_at: new Date().toISOString(),
           });
-          console.log(`[POSTING_QUEUE] 🎯 Proof decision selected: ${decision.id} (proof_tag: ${decisionFeatures.proof_tag || 'none'})`);
+          console.log(`[POSTING_QUEUE] 🎯 Proof post selected: ${decision.id} (proof_tag: ${proofTag || 'none'})`);
         } catch (eventError: any) {
           console.error(`[POSTING_QUEUE] Failed to emit proof selection event: ${eventError.message}`);
         }
@@ -3590,9 +3623,30 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
         const errorReason = `INVALID_STATUS_${targetRow.status}`;
         const failedAt = new Date().toISOString();
         
-        // 🔒 CLAIM DIAGNOSTICS: Emit EXECUTOR_DECISION_SKIPPED event
+        // 🔒 CLAIM DIAGNOSTICS: Emit EXECUTOR_PROOF_POST_SKIPPED event for proof decisions
         const decisionFeatures = (decision.features || {}) as Record<string, any>;
+        const proofTag = decisionFeatures.proof_tag;
         const skipReason = `status_not_queued_${targetRow.status}`;
+        
+        if (proofTag && String(proofTag).startsWith('control-post-')) {
+          try {
+            await supabase.from('system_events').insert({
+              event_type: 'EXECUTOR_PROOF_POST_SKIPPED',
+              severity: 'warning',
+              message: `Proof post skipped: decision_id=${decision.id} reason=${skipReason}`,
+              event_data: {
+                decision_id: decision.id,
+                proof_tag: proofTag,
+                reason: skipReason,
+                current_status: targetRow.status,
+              },
+              created_at: new Date().toISOString(),
+            });
+          } catch (eventErr: any) {
+            console.error(`[POSTING_QUEUE] Failed to emit proof skip event: ${eventErr.message}`);
+          }
+        }
+        
         await supabase.from('system_events').insert({
           event_type: 'EXECUTOR_DECISION_SKIPPED',
           severity: 'warning',
@@ -3649,6 +3703,26 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       
       if (claimError) {
         console.error(`[POSTING_QUEUE] ❌ Failed to claim decision ${decision.id}: ${claimError.message}`);
+        
+        // 🔧 C) Emit claim fail event
+        const decisionFeatures = (decision.features || {}) as Record<string, any>;
+        try {
+          await supabase.from('system_events').insert({
+            event_type: 'EXECUTOR_DECISION_CLAIM_FAIL',
+            severity: 'error',
+            message: `Failed to claim decision: ${decision.id}`,
+            event_data: {
+              decision_id: decision.id,
+              proof_tag: decisionFeatures.proof_tag || null,
+              error: claimError.message,
+              reason: 'claim_query_error',
+            },
+            created_at: new Date().toISOString(),
+          });
+        } catch (eventErr: any) {
+          console.error(`[POSTING_QUEUE] Failed to emit claim fail event: ${eventErr.message}`);
+        }
+        
         throw new Error(`Failed to claim decision for posting: ${claimError.message}`);
       }
       
@@ -3656,8 +3730,28 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
         // Status changed between query and update (race condition)
         console.warn(`[POSTING_QUEUE] ⚠️ Failed to claim ${decision.id}: status changed during claim`);
         
-        // 🔒 CLAIM DIAGNOSTICS: Emit EXECUTOR_DECISION_SKIPPED event
+        // 🔒 CLAIM DIAGNOSTICS: Emit EXECUTOR_PROOF_POST_SKIPPED event for proof decisions
         const decisionFeatures = (decision.features || {}) as Record<string, any>;
+        const proofTag = decisionFeatures.proof_tag;
+        
+        if (proofTag && String(proofTag).startsWith('control-post-')) {
+          try {
+            await supabase.from('system_events').insert({
+              event_type: 'EXECUTOR_PROOF_POST_SKIPPED',
+              severity: 'warning',
+              message: `Proof post skipped: decision_id=${decision.id} reason=race_condition_during_claim`,
+              event_data: {
+                decision_id: decision.id,
+                proof_tag: proofTag,
+                reason: 'race_condition_during_claim',
+              },
+              created_at: new Date().toISOString(),
+            });
+          } catch (eventErr: any) {
+            console.error(`[POSTING_QUEUE] Failed to emit proof skip event: ${eventErr.message}`);
+          }
+        }
+        
         await supabase.from('system_events').insert({
           event_type: 'EXECUTOR_DECISION_SKIPPED',
           severity: 'warning',
@@ -3676,6 +3770,24 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       }
     
       console.log(`[POSTING_QUEUE] 🔒 Successfully claimed decision ${decision.id} for posting`);
+      
+      // 🔧 C) Emit claim success event
+      const decisionFeatures = (decision.features || {}) as Record<string, any>;
+      try {
+        await supabase.from('system_events').insert({
+          event_type: 'EXECUTOR_DECISION_CLAIM_OK',
+          severity: 'info',
+          message: `Successfully claimed decision: ${decision.id}`,
+          event_data: {
+            decision_id: decision.id,
+            proof_tag: decisionFeatures.proof_tag || null,
+            decision_type: decision.decision_type,
+          },
+          created_at: new Date().toISOString(),
+        });
+      } catch (eventErr: any) {
+        console.error(`[POSTING_QUEUE] Failed to emit claim success event: ${eventErr.message}`);
+      }
     
       // Double-check posted_decisions as well (defense in depth)
       const { data: alreadyExists } = await supabase
