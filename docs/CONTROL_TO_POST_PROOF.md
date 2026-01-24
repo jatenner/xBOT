@@ -1,6 +1,6 @@
 # Control → Executor → X Proof (Posting)
 
-**Date:** 2026-01-24T18:39:00.914Z  
+**Date:** 2026-01-24T18:58:30.000Z  
 **Status:** ❌ FAIL
 
 ## Machine Info
@@ -25,12 +25,12 @@
 | Exactly One Attempt | ❌ | 0 | HARD |
 | Windows Opened | ✅ | 0 | HARD |
 | Chrome CDP Processes | ✅ | 0 | HARD |
-| Pages Max | ✅ | 0 | HARD |
+| Pages Max | ✅ | 1 | HARD |
 
 ## Evidence
 
-- **Decision ID:** 0b19165a-7f7d-46a9-bf14-f4900e3ca5d1
-- **Proof Tag:** control-post-1769279744360
+- **Decision ID:** fb22879d-5cd3-464e-a84d-de9d530805aa
+- **Proof Tag:** control-post-1769280915112
 - **Pipeline Source:** control_posting_queue
 - **Decision Status:** queued
 - **Attempt ID:** N/A
@@ -42,26 +42,15 @@
 ## Log Excerpts
 
 ```
-[POSTING_QUEUE] 🔒 Successfully claimed decision 452cc1e9-9243-449e-bac0-156e5463a171 for posting
-[CONTENT_RATE_LIMIT] 🔒 PROOF_MODE: Bypassing rate limit check for proof decision (proof_tag=control-post-1769279707635)
-[POSTING_QUEUE][SEM_TIMEOUT] decision_id=452cc1e9-9243-449e-bac0-156e5463a171 type=single timeoutMs=300000 priority=-1 proof_tag=control-post-1769279707635
-[BROWSER_SEM] 🔓 posting acquired browser (priority -1)
-[POSTING_QUEUE] 🌐 Using reliable Playwright posting...
-[POSTING_QUEUE] ⏱️ Using adaptive timeout: 180000ms (attempt 1, retry_count=0)
-[POSTING_GUARD] ✅ Guard created: decision_id=452cc1e9-9243-449e-bac0-156e5463a171 source=postingQueue
-[ATOMIC_POST]   decision_id=452cc1e9-9243-449e-bac0-156e5463a171 type=single source=postingQueue build_sha=fdf00f1e32b67fa399f668d836c0a737e73bc62a
-[ATOMIC_POST] 📝 PREWRITE: Inserting DB row with status='posting_attempt'...
-[ATOMIC_POST] 🎫 Creating posting permit...
-[POSTING_GUARD] ✅ Verified: decision_id=452cc1e9-9243-449e-bac0-156e5463a171 source=postingQueue job=posting_1769279919549
-[PROOF:control-post-1769279707635] [POST_TWEET] 📊 AUDIT_TRAIL: decision_id=452cc1e9-9243-449e-bac0-156e5463a171 pipeline_source=postingQueue job_run_id=posting_1769279919549 build_sha=fdf00f1e32b67fa399f668d836c0a737e73bc62a db_env=7ef9c43a
-ULTIMATE_POSTER: Acquiring page from UnifiedBrowserPool (operation: tweet_posting)...
-[BROWSER_POOL] 📝 Request: tweet_posting (queue: 0, active: 0, priority: 0)
-[BROWSER_POOL][TIMEOUT] label=tweet_posting timeoutMs=300000
-[BROWSER_POOL]   → tweet_posting-1769279920031-2o6gc7519: Starting...
-[BROWSER_POOL]   ✅ tweet_posting-1769279920031-2o6gc7519: Completed (54ms)
-ULTIMATE_POSTER: ✅ CreateTweet GraphQL response capture active (30s timeout)
-{"ts":"2026-01-24T18:39:00.222Z","app":"xbot","op":"ultimate_poster_retry","retry_count":0,"recoverable":true,"is_429":false}
-{"ts":"2026-01-24T18:39:00.222Z","app":"xbot","op":"ultimate_poster_delay","delay_ms":2000,"is_429":false}
+/Users/jonahtenner/Desktop/xBOT/src/jobs/postingQueue.ts:3821:12: ERROR: The symbol "decisionFeatures" has already been declared (failures: 1, backoff: 60s)
+[EXECUTOR_DAEMON] ts=2026-01-24T18:55:17.049Z pages=1 browser_launches=1 posting_ready=0 posting_attempts=0 reply_ready=0 reply_attempts=0 backoff=60s last_error=Transform failed with 1 error:
+/Users/jonahtenner/Desktop/xBOT/src/jobs/postingQueue.ts:3821:12: ERROR: The symbol "decisionFeatures" has already been declared
+/Users/jonahtenner/Desktop/xBOT/src/jobs/postingQueue.ts:3821:12: ERROR: The symbol "decisionFeatures" has already been declared (failures: 2, backoff: 120s)
+[EXECUTOR_DAEMON] ts=2026-01-24T18:56:17.452Z pages=1 browser_launches=1 posting_ready=0 posting_attempts=0 reply_ready=0 reply_attempts=0 backoff=120s last_error=Transform failed with 1 error:
+/Users/jonahtenner/Desktop/xBOT/src/jobs/postingQueue.ts:3821:12: ERROR: The symbol "decisionFeatures" has already been declared
+/Users/jonahtenner/Desktop/xBOT/src/jobs/postingQueue.ts:3821:12: ERROR: The symbol "decisionFeatures" has already been declared (failures: 3, backoff: 300s)
+[EXECUTOR_DAEMON] ts=2026-01-24T18:58:17.868Z pages=1 browser_launches=1 posting_ready=0 posting_attempts=0 reply_ready=0 reply_attempts=0 backoff=300s last_error=Transform failed with 1 error:
+/Users/jonahtenner/Desktop/xBOT/src/jobs/postingQueue.ts:3821:12: ERROR: The symbol "decisionFeatures" has already been declared
 ```
 
 ## Diagnostic Snapshot (Failure Analysis)
@@ -78,9 +67,19 @@ No outcomes result found
 
 ### Daemon Lifecycle Events
 No daemon crash event found
+No daemon exit event found
 
-- **Exit Event ID:** 746e8e1c-3a8b-49da-9d22-517819aa7171
-- **Exit Reason:** signal
+### Claim Events
+
+- **Claim Attempt Count:** 0
+- **Claim Attempt Event IDs:** N/A
+- **Claim OK Count:** 0
+- **Claim OK Event IDs:** N/A
+- **Claim Fail Count:** 0
+- **Claim Fail Event IDs:** N/A
+
+- **Claim Stall Count:** 0
+- **Claim Stall Event IDs:** N/A
 
 
 ### Skipped Events
@@ -91,12 +90,12 @@ No skipped events found
 
 ❌ **FAIL** - One or more checks failed
 
-**Failure Code:** QUEUE_STALL_NO_CLAIM
+**Failure Code:** QUEUE_STALL_NO_SELECT
 
-**Failure Message:** Decision was selected (1 EXECUTOR_PROOF_POST_SELECTED events) but not claimed after 184s
+**Failure Message:** Decision remained queued for 182s with executor tick_start_seen=true but no EXECUTOR_PROOF_POST_CANDIDATE_FOUND events
+
+**Tick Start Seen:** true
+
+**Tick Start TS:** 2026-01-24T18:58:17.809+00:00
 
 
-
-**Selected Event Count:** 1
-
-**Claim Event Count:** 0

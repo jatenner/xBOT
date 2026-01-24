@@ -3690,9 +3690,9 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       }
       
       // 🔧 A) Emit CLAIM_ATTEMPT event immediately before attempting DB claim
-      const decisionFeatures = (decision.features || {}) as Record<string, any>;
-      const proofTag = decisionFeatures.proof_tag;
-      const pipelineSource = decisionFeatures.pipeline_source || (decision as any).pipeline_source || null;
+      const decisionFeaturesForClaim = (decision.features || {}) as Record<string, any>;
+      const proofTag = decisionFeaturesForClaim.proof_tag;
+      const pipelineSource = decisionFeaturesForClaim.pipeline_source || (decision as any).pipeline_source || null;
       
       try {
         await supabase.from('system_events').insert({
@@ -3818,7 +3818,6 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       console.log(`[POSTING_QUEUE] 🔒 Successfully claimed decision ${decision.id} for posting`);
       
       // 🔧 C) Emit claim success event
-      const decisionFeatures = (decision.features || {}) as Record<string, any>;
       try {
         await supabase.from('system_events').insert({
           event_type: 'EXECUTOR_DECISION_CLAIM_OK',
@@ -3826,7 +3825,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           message: `Successfully claimed decision: ${decision.id}`,
           event_data: {
             decision_id: decision.id,
-            proof_tag: decisionFeatures.proof_tag || null,
+            proof_tag: proofTag || null,
             decision_type: decision.decision_type,
           },
           created_at: new Date().toISOString(),
