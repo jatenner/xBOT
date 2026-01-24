@@ -1852,12 +1852,22 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
         
         if (isContent) {
-          // 🚨 CHECK: Skip content if content rate limit was reached at start
-          if (!canPostContent) {
+          // 🔒 PROOF_MODE: Bypass rate limit check for proof decisions
+          const decisionFeatures = (decision.features || {}) as Record<string, any>;
+          const proofTag = decisionFeatures.proof_tag;
+          const isProofDecision = proofTag && (String(proofTag).startsWith('control-post-') || String(proofTag).startsWith('control-reply-'));
+          const proofMode = process.env.PROOF_MODE === 'true';
+          
+          // 🚨 CHECK: Skip content if content rate limit was reached at start (unless PROOF_MODE)
+          if (!canPostContent && !(proofMode && isProofDecision)) {
             console.warn(`[POSTING_QUEUE_BLOCK] reason=RATE_LIMIT decision_id=${decision.id}`);
             await emitPostingQueueBlock(supabase, 'RATE_LIMIT', { decision_id: decision.id, decision_type: decision.decision_type });
             console.log(`[POSTING_QUEUE] ⛔ SKIP CONTENT: Content rate limit reached, skipping ${decision.decision_type} ${decision.id}`);
             continue;
+          }
+          
+          if (proofMode && isProofDecision) {
+            console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit check for proof decision (proof_tag=${proofTag})`);
           }
 
           // 🛑 KILL SWITCHES: Check content type flags
