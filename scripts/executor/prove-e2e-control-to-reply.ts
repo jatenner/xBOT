@@ -586,18 +586,94 @@ async function main(): Promise<void> {
   // Extract reply URL
   result.result_url = await extractReplyUrl(decisionId, eventData, outcomeResult);
   
-  // Step 4: Collect log excerpts
+  // Step 4: Collect log excerpts and diagnostic snapshot
   if (fs.existsSync(logFile)) {
     const logContent = fs.readFileSync(logFile, 'utf-8');
     const lines = logContent.trim().split('\n');
     const relevantLines = lines.filter(l => 
       l.includes(decisionId) || 
+      l.includes(proofTag) ||
       l.includes('REPLY_SUCCESS') || 
       l.includes('REPLY_FAILED') ||
+      l.includes('POST_SUCCESS') ||
+      l.includes('POST_FAILED') ||
+      l.includes('EXECUTOR_DECISION_SKIPPED') ||
+      l.includes('429') ||
+      l.includes('rate limit') ||
+      l.includes('timeout') ||
       l.includes('replying') ||
       l.includes('reply')
     );
     result.evidence.log_excerpts = relevantLines.slice(-20);
+  }
+  
+  // Capture diagnostic snapshot on failure
+  if (!result.success_or_failure_event_present || !result.attempt_recorded) {
+    const supabase = getSupabaseClient();
+    
+    // Get decision final status
+    const { data: decisionMeta } = await supabase
+      .from('content_metadata')
+      .select('status, error_message, features')
+      .eq('decision_id', decisionId)
+      .maybeSingle();
+    
+    result.evidence.diagnostic_snapshot = {
+      decision_final_status: decisionMeta?.status || 'unknown',
+      decision_error_message: decisionMeta?.error_message || null,
+      decision_features: decisionMeta?.features || null,
+    };
+    
+    // Get REPLY_FAILED event if present
+    const { data: failedEvents } = await supabase
+      .from('system_events')
+      .select('event_data')
+      .eq('event_type', 'REPLY_FAILED')
+      .eq('event_data->>decision_id', decisionId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    if (failedEvents) {
+      const eventDataParsed = typeof failedEvents.event_data === 'string' 
+        ? JSON.parse(failedEvents.event_data) 
+        : failedEvents.event_data;
+      result.evidence.diagnostic_snapshot.failed_event_data = eventDataParsed;
+      result.evidence.diagnostic_snapshot.error_code = eventDataParsed.error_code || 'UNKNOWN';
+      result.evidence.diagnostic_snapshot.error_message = eventDataParsed.error_message || null;
+      result.evidence.diagnostic_snapshot.http_status = eventDataParsed.http_status || null;
+      result.evidence.diagnostic_snapshot.is_rate_limit = eventDataParsed.is_rate_limit || false;
+      result.evidence.diagnostic_snapshot.is_timeout = eventDataParsed.is_timeout || false;
+    }
+    
+    // Get outcomes result if present
+    const { data: outcomeRow } = await supabase
+      .from('outcomes')
+      .select('result')
+      .eq('decision_id', decisionId)
+      .maybeSingle();
+    
+    if (outcomeRow?.result) {
+      const resultParsed = typeof outcomeRow.result === 'string' 
+        ? JSON.parse(outcomeRow.result) 
+        : outcomeRow.result;
+      result.evidence.diagnostic_snapshot.outcomes_result = resultParsed;
+    }
+    
+    // Get EXECUTOR_DECISION_SKIPPED events
+    const { data: skippedEvents } = await supabase
+      .from('system_events')
+      .select('event_data')
+      .eq('event_type', 'EXECUTOR_DECISION_SKIPPED')
+      .eq('event_data->>decision_id', decisionId)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    
+    if (skippedEvents && skippedEvents.length > 0) {
+      result.evidence.diagnostic_snapshot.skipped_events = skippedEvents.map(e => 
+        typeof e.event_data === 'string' ? JSON.parse(e.event_data) : e.event_data
+      );
+    }
   }
   
   // Step 5: Evaluate result
@@ -723,9 +799,45 @@ ${result.result_url ? `- **Result URL:** ${result.result_url}` : ''}
 ${result.evidence.log_excerpts?.join('\n') || 'No relevant log excerpts'}
 \`\`\`
 
+${result.evidence.diagnostic_snapshot ? `## Diagnostic Snapshot (Failure Analysis)
+
+### Decision Status
+- **Final Status:** ${result.evidence.diagnostic_snapshot.decision_final_status || 'unknown'}
+- **Error Message:** ${result.evidence.diagnostic_snapshot.decision_error_message || 'N/A'}
+
+### Failure Event Data
+${result.evidence.diagnostic_snapshot.failed_event_data ? `
+\`\`\`json
+${JSON.stringify(result.evidence.diagnostic_snapshot.failed_event_data, null, 2)}
+\`\`\`
+
+- **Error Code:** ${result.evidence.diagnostic_snapshot.error_code || 'UNKNOWN'}
+- **HTTP Status:** ${result.evidence.diagnostic_snapshot.http_status || 'N/A'}
+- **Is Rate Limit:** ${result.evidence.diagnostic_snapshot.is_rate_limit ? 'Yes' : 'No'}
+- **Is Timeout:** ${result.evidence.diagnostic_snapshot.is_timeout ? 'Yes' : 'No'}
+` : 'No REPLY_FAILED event found'}
+
+### Outcomes Result
+${result.evidence.diagnostic_snapshot.outcomes_result ? `
+\`\`\`json
+${JSON.stringify(result.evidence.diagnostic_snapshot.outcomes_result, null, 2)}
+\`\`\`
+` : 'No outcomes result found'}
+
+### Skipped Events
+${result.evidence.diagnostic_snapshot.skipped_events && result.evidence.diagnostic_snapshot.skipped_events.length > 0 ? `
+Found ${result.evidence.diagnostic_snapshot.skipped_events.length} EXECUTOR_DECISION_SKIPPED event(s):
+
+\`\`\`json
+${JSON.stringify(result.evidence.diagnostic_snapshot.skipped_events, null, 2)}
+\`\`\`
+` : 'No skipped events found'}
+` : ''}
+
 ## Result
 
 ${pass ? '✅ **PASS** - All execution checks and executor safety invariants passed' : '❌ **FAIL** - One or more checks failed'}
+${!pass && result.evidence.diagnostic_snapshot?.error_code ? `\n**Failure Code:** ${result.evidence.diagnostic_snapshot.error_code}` : ''}
 `;
   
   fs.writeFileSync(reportPath, report, 'utf-8');

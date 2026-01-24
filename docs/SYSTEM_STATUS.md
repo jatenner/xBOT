@@ -192,6 +192,43 @@ DRY_RUN=true TARGET_TWEET_ID=1234567890123456789 pnpm run executor:prove:e2e-rep
 
 ---
 
+## Common Failure Codes
+
+When Proof Level 4 fails, the proof reports include diagnostic snapshots with failure codes. Here's what each code means and where to find evidence:
+
+| Failure Code | Meaning | Evidence Location | Next Steps |
+|--------------|---------|------------------|------------|
+| `RATE_LIMITED_429` | HTTP 429 rate limit detected | `system_events` (POST_FAILED/REPLY_FAILED event_data.http_status=429) | Wait for cooldown period, check rate limit status |
+| `PLAYWRIGHT_TIMEOUT` | Playwright operation timed out (>180s) | `system_events` (POST_FAILED/REPLY_FAILED event_data.is_timeout=true) | Check network connectivity, auth status, browser health |
+| `AUTH_REQUIRED` | Authentication/login required | `system_events` (POST_FAILED/REPLY_FAILED event_data.error_code=AUTH_REQUIRED) | Run `pnpm run executor:auth` to refresh session |
+| `CLAIM_STARVATION` | Decision not claimed by executor | `system_events` (EXECUTOR_DECISION_SKIPPED events) | Check executor health, queue priority, rate limits |
+| `UNKNOWN` | Unclassified error | `system_events` (POST_FAILED/REPLY_FAILED event_data.error_code=UNKNOWN) | Check error_message field, log excerpts in proof report |
+
+### Evidence Locations
+
+**For each execution attempt, check:**
+
+1. **Outcomes Table** (`outcomes`):
+   - `decision_id` → Find attempt/result rows
+   - `result` JSONB → Contains error details if failed
+
+2. **System Events** (`system_events`):
+   - `POST_SUCCESS` / `POST_FAILED` / `REPLY_SUCCESS` / `REPLY_FAILED` → Execution result
+   - `EXECUTOR_DECISION_SKIPPED` → Why decision wasn't claimed
+   - Filter by `event_data->>decision_id` or `event_data->>proof_tag`
+
+3. **Content Metadata** (`content_metadata`):
+   - `status` → Final status (queued/posting/posted/failed)
+   - `error_message` → Error details if failed
+   - `features->>proof_tag` → Proof tag for filtering
+
+4. **Proof Reports** (`docs/CONTROL_TO_POST_PROOF.md`, `docs/CONTROL_TO_REPLY_PROOF.md`):
+   - Diagnostic snapshot section (on failure)
+   - Log excerpts (last 20 relevant lines)
+   - Failure event data (pretty-printed JSON)
+
+---
+
 ## Control→Executor→X Proof (Level 4)
 
 ### Posting Pipeline Proof

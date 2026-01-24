@@ -3418,6 +3418,26 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
         console.warn(`[POSTING_QUEUE] ⚠️ Cannot claim ${decision.id}: status=${targetRow.status} (expected 'queued')`);
         const errorReason = `INVALID_STATUS_${targetRow.status}`;
         const failedAt = new Date().toISOString();
+        
+        // 🔒 CLAIM DIAGNOSTICS: Emit EXECUTOR_DECISION_SKIPPED event
+        const decisionFeatures = (decision.features || {}) as Record<string, any>;
+        const skipReason = `status_not_queued_${targetRow.status}`;
+        await supabase.from('system_events').insert({
+          event_type: 'EXECUTOR_DECISION_SKIPPED',
+          severity: 'warning',
+          message: `Decision skipped: decision_id=${decision.id} reason=${skipReason}`,
+          event_data: {
+            decision_id: decision.id,
+            decision_type: decision.decision_type,
+            current_status: targetRow.status,
+            expected_status: 'queued',
+            skip_reason: skipReason,
+            proof_tag: decisionFeatures.proof_tag || null,
+            pipeline_source: decisionFeatures.pipeline_source || null,
+          },
+          created_at: new Date().toISOString(),
+        });
+        
         await supabase
           .from('reply_decisions')
           .update({
@@ -3464,6 +3484,23 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       if (!claimed) {
         // Status changed between query and update (race condition)
         console.warn(`[POSTING_QUEUE] ⚠️ Failed to claim ${decision.id}: status changed during claim`);
+        
+        // 🔒 CLAIM DIAGNOSTICS: Emit EXECUTOR_DECISION_SKIPPED event
+        const decisionFeatures = (decision.features || {}) as Record<string, any>;
+        await supabase.from('system_events').insert({
+          event_type: 'EXECUTOR_DECISION_SKIPPED',
+          severity: 'warning',
+          message: `Decision skipped: decision_id=${decision.id} reason=race_condition_during_claim`,
+          event_data: {
+            decision_id: decision.id,
+            decision_type: decision.decision_type,
+            skip_reason: 'race_condition_during_claim',
+            proof_tag: decisionFeatures.proof_tag || null,
+            pipeline_source: decisionFeatures.pipeline_source || null,
+          },
+          created_at: new Date().toISOString(),
+        });
+        
         return false; // Skip posting
       }
     
@@ -5243,80 +5280,124 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         const build_sha = getBuildSHA();
         
         // 🛡️ TIMEOUT PROTECTION: Adaptive timeout based on retry count
-        const result = await withTimeout(
-          async () => {
-            const atomicResult = await executeAuthorizedPost(
-              poster,
-              guard,
-              {
-                decision_id: decision.id,
-                decision_type: decision.decision_type === 'single' ? 'single' : decision.decision_type === 'thread' ? 'thread' : 'single',
-                pipeline_source: 'postingQueue',
-                build_sha,
-                job_run_id,
-                content: contentToPost,
-              },
-              {
-                isReply: false,
-              }
-            );
-            
-            // 🔥 GUARDRAIL: If post succeeded but DB update failed, emit CRITICAL log
-            if (atomicResult.success && atomicResult.tweet_id) {
-              // Check if DB update succeeded by verifying row exists with tweet_id
-              const { getSupabaseClient } = await import('../db/index');
-              const supabase = getSupabaseClient();
-              const { data: dbRow } = await supabase
-                .from('content_generation_metadata_comprehensive')
-                .select('tweet_id, status')
-                .eq('decision_id', decision.id)
-                .single();
+        let result: any;
+        let timeoutOccurred = false;
+        let lastError: any = null;
+        
+        try {
+          result = await withTimeout(
+            async () => {
+              const atomicResult = await executeAuthorizedPost(
+                poster,
+                guard,
+                {
+                  decision_id: decision.id,
+                  decision_type: decision.decision_type === 'single' ? 'single' : decision.decision_type === 'thread' ? 'thread' : 'single',
+                  pipeline_source: 'postingQueue',
+                  build_sha,
+                  job_run_id,
+                  content: contentToPost,
+                },
+                {
+                  isReply: false,
+                }
+              );
               
-              if (!dbRow || dbRow.status !== 'posted' || dbRow.tweet_id !== atomicResult.tweet_id) {
-                console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Tweet posted but DB update may have failed!`);
-                console.error(`[POSTING_QUEUE]   tweet_id=${atomicResult.tweet_id} decision_id=${decision.id}`);
-                console.error(`[POSTING_QUEUE]   DB row status=${dbRow?.status || 'missing'} DB tweet_id=${dbRow?.tweet_id || 'missing'}`);
+              // 🔥 GUARDRAIL: If post succeeded but DB update failed, emit CRITICAL log
+              if (atomicResult.success && atomicResult.tweet_id) {
+                // Check if DB update succeeded by verifying row exists with tweet_id
+                const { getSupabaseClient } = await import('../db/index');
+                const supabase = getSupabaseClient();
+                const { data: dbRow } = await supabase
+                  .from('content_generation_metadata_comprehensive')
+                  .select('tweet_id, status')
+                  .eq('decision_id', decision.id)
+                  .single();
                 
-                // Log to system_events
-                await supabase.from('system_events').insert({
-                  event_type: 'atomic_post_update_failed',
-                  severity: 'critical',
-                  message: `Tweet posted but DB update verification failed`,
-                  event_data: {
-                    decision_id: decision.id,
-                    tweet_id: atomicResult.tweet_id,
-                    db_status: dbRow?.status || 'missing',
-                    db_tweet_id: dbRow?.tweet_id || 'missing',
-                  },
-                  created_at: new Date().toISOString(),
-                });
+                if (!dbRow || dbRow.status !== 'posted' || dbRow.tweet_id !== atomicResult.tweet_id) {
+                  console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Tweet posted but DB update may have failed!`);
+                  console.error(`[POSTING_QUEUE]   tweet_id=${atomicResult.tweet_id} decision_id=${decision.id}`);
+                  console.error(`[POSTING_QUEUE]   DB row status=${dbRow?.status || 'missing'} DB tweet_id=${dbRow?.tweet_id || 'missing'}`);
+                  
+                  // Log to system_events
+                  await supabase.from('system_events').insert({
+                    event_type: 'atomic_post_update_failed',
+                    severity: 'critical',
+                    message: `Tweet posted but DB update verification failed`,
+                    event_data: {
+                      decision_id: decision.id,
+                      tweet_id: atomicResult.tweet_id,
+                      db_status: dbRow?.status || 'missing',
+                      db_tweet_id: dbRow?.tweet_id || 'missing',
+                    },
+                    created_at: new Date().toISOString(),
+                  });
+                }
+              }
+              
+              return {
+                success: atomicResult.success,
+                tweetId: atomicResult.tweet_id,
+                tweetUrl: atomicResult.tweet_url,
+                error: atomicResult.error,
+              };
+            },
+            { 
+              timeoutMs: SINGLE_POST_TIMEOUT_MS, 
+              operationName: 'single_post',
+              onTimeout: async () => {
+                timeoutOccurred = true;
+                console.error(`[POSTING_QUEUE] ⏱️ Single post timeout after ${SINGLE_POST_TIMEOUT_MS}ms (attempt ${retryCount + 1}) - cleaning up`);
+                try {
+                  await poster.dispose();
+                } catch (e) {
+                  console.error(`[POSTING_QUEUE] ⚠️ Error during timeout cleanup:`, e);
+                }
               }
             }
-            
-            return {
-              success: atomicResult.success,
-              tweetId: atomicResult.tweet_id,
-              tweetUrl: atomicResult.tweet_url,
-              error: atomicResult.error,
-            };
-          },
-          { 
-            timeoutMs: SINGLE_POST_TIMEOUT_MS, 
-            operationName: 'single_post',
-            onTimeout: async () => {
-              console.error(`[POSTING_QUEUE] ⏱️ Single post timeout after ${SINGLE_POST_TIMEOUT_MS}ms (attempt ${retryCount + 1}) - cleaning up`);
-              try {
-                await poster.dispose();
-              } catch (e) {
-                console.error(`[POSTING_QUEUE] ⚠️ Error during timeout cleanup:`, e);
-              }
-            }
-          }
-        );
+          );
+        } catch (error: any) {
+          lastError = error;
+          // Timeout or exception occurred - record deterministic failure
+          const { recordDeterministicFailure, is429Error, extractHttpStatus } = await import('../utils/deterministicFailureRecorder');
+          const decisionFeatures = (decision.features || {}) as Record<string, any>;
+          
+          await recordDeterministicFailure({
+            decision_id: decision.id,
+            decision_type: decision.decision_type === 'single' ? 'single' : 'thread',
+            pipeline_source: 'postingQueue',
+            proof_tag: decisionFeatures.proof_tag,
+            error_name: error.name || 'TimeoutError',
+            error_message: error.message || 'Posting timeout or exception',
+            step: 'single_post_execution',
+            http_status: extractHttpStatus(error),
+            is_timeout: timeoutOccurred || error.message?.toLowerCase().includes('timeout'),
+            is_rate_limit: is429Error(error),
+          });
+          
+          throw error; // Re-throw to trigger outer catch
+        }
+        
         await poster.dispose();
         
         if (!result.success || !result.tweetId) {
           console.error(`[POSTING_QUEUE] ❌ Atomic posting failed: ${result.error}`);
+          
+          // Record deterministic failure
+          const { recordDeterministicFailure, is429Error, extractHttpStatus } = await import('../utils/deterministicFailureRecorder');
+          const decisionFeatures = (decision.features || {}) as Record<string, any>;
+          
+          await recordDeterministicFailure({
+            decision_id: decision.id,
+            decision_type: decision.decision_type === 'single' ? 'single' : 'thread',
+            pipeline_source: 'postingQueue',
+            proof_tag: decisionFeatures.proof_tag,
+            error_name: 'AtomicPostFailed',
+            error_message: result.error || 'Atomic posting failed',
+            step: 'atomic_post_result_validation',
+            is_rate_limit: is429Error({ message: result.error }),
+          });
+          
           throw new Error(result.error || 'Atomic posting failed');
         }
         
@@ -5338,6 +5419,28 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
       }
     } catch (error: any) {
       console.error(`[POSTING_QUEUE] ❌ Playwright system error: ${error.message}`);
+      
+      // Record deterministic failure if not already recorded
+      try {
+        const { recordDeterministicFailure, is429Error, extractHttpStatus } = await import('../utils/deterministicFailureRecorder');
+        const decisionFeatures = (decision.features || {}) as Record<string, any>;
+        
+        await recordDeterministicFailure({
+          decision_id: decision.id,
+          decision_type: decision.decision_type === 'single' ? 'single' : 'thread',
+          pipeline_source: 'postingQueue',
+          proof_tag: decisionFeatures.proof_tag,
+          error_name: error.name || 'PlaywrightSystemError',
+          error_message: error.message || 'Playwright posting failed',
+          step: 'postContent_outer_catch',
+          http_status: extractHttpStatus(error),
+          is_timeout: error.message?.toLowerCase().includes('timeout'),
+          is_rate_limit: is429Error(error),
+        });
+      } catch (recordError: any) {
+        console.error(`[POSTING_QUEUE] ⚠️ Failed to record deterministic failure: ${recordError.message}`);
+      }
+      
       throw new Error(`Playwright posting failed: ${error.message}`);
     }
   }
@@ -6140,26 +6243,44 @@ async function postReply(decision: QueuedDecision): Promise<string> {
         .eq('decision_id', decision.id);
       console.error(`[PIPELINE] decision_id=${decision.id} stage=post ok=false detail=${errorReason}`);
       
-      // 🔒 POST_FAILED: Emit structured proof signal
-      const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
-      console.log(`[POST_FAILED] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} pipeline_error_reason=${errorReason} app_version=${appVersion}`);
-      
-      // Write POST_FAILED to system_events
-      await supabase.from('system_events').insert({
-        event_type: 'POST_FAILED',
-        severity: 'error',
-        message: `Reply posting failed: decision_id=${decision.id} error=${errorReason}`,
-        event_data: {
+      // 🔒 DETERMINISTIC FAILURE RECORDING: Use centralized recorder
+      try {
+        const { recordDeterministicFailure, is429Error, extractHttpStatus } = await import('../utils/deterministicFailureRecorder');
+        const decisionFeatures = (decision.features || {}) as Record<string, any>;
+        
+        await recordDeterministicFailure({
           decision_id: decision.id,
-          target_tweet_id: decision.target_tweet_id,
-          target_in_reply_to_tweet_id: ancestry?.targetInReplyToTweetId || null,
-          pipeline_error_reason: errorReason,
-          error_message: innerError.message,
-          app_version: appVersion,
-          failed_at: postingCompletedAt,
-        },
-        created_at: new Date().toISOString(),
-      });
+          decision_type: 'reply',
+          pipeline_source: 'postingQueue',
+          proof_tag: decisionFeatures.proof_tag,
+          error_name: innerError.name || 'ReplyPostingError',
+          error_message: innerError.message || 'Reply posting failed',
+          step: 'postReply_inner_catch',
+          http_status: extractHttpStatus(innerError),
+          is_timeout: innerError.message?.toLowerCase().includes('timeout'),
+          is_rate_limit: is429Error(innerError),
+        });
+      } catch (recordError: any) {
+        console.error(`[POSTING_QUEUE] ⚠️ Failed to record deterministic failure: ${recordError.message}`);
+        // Fallback to old method if recorder fails
+        const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+        await supabase.from('system_events').insert({
+          event_type: 'REPLY_FAILED',
+          severity: 'error',
+          message: `Reply posting failed: decision_id=${decision.id} error=${errorReason}`,
+          event_data: {
+            decision_id: decision.id,
+            target_tweet_id: decision.target_tweet_id,
+            target_in_reply_to_tweet_id: ancestry?.targetInReplyToTweetId || null,
+            pipeline_error_reason: errorReason,
+            error_message: innerError.message,
+            app_version: appVersion,
+            failed_at: postingCompletedAt,
+          },
+          created_at: new Date().toISOString(),
+        });
+      }
+      
       if (poster) {
         await poster.handleFailure(innerError.message || 'reply_posting_failure');
       }
@@ -6167,7 +6288,29 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     }
   } catch (error: any) {
     console.error(`[POSTING_QUEUE] ❌ Reply system error: ${error.message}`);
-      throw new Error(`Reply posting failed: ${error.message}`);
+    
+    // Record deterministic failure for outer catch
+    try {
+      const { recordDeterministicFailure, is429Error, extractHttpStatus } = await import('../utils/deterministicFailureRecorder');
+      const decisionFeatures = (decision.features || {}) as Record<string, any>;
+      
+      await recordDeterministicFailure({
+        decision_id: decision.id,
+        decision_type: 'reply',
+        pipeline_source: 'postingQueue',
+        proof_tag: decisionFeatures.proof_tag,
+        error_name: error.name || 'ReplySystemError',
+        error_message: error.message || 'Reply posting failed',
+        step: 'postReply_outer_catch',
+        http_status: extractHttpStatus(error),
+        is_timeout: error.message?.toLowerCase().includes('timeout'),
+        is_rate_limit: is429Error(error),
+      });
+    } catch (recordError: any) {
+      console.error(`[POSTING_QUEUE] ⚠️ Failed to record deterministic failure: ${recordError.message}`);
+    }
+    
+    throw new Error(`Reply posting failed: ${error.message}`);
     }
   }, { timeoutMs: 300000, label: 'reply_posting' }); // End withBrowserLock
   
