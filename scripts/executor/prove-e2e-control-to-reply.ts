@@ -48,6 +48,10 @@ let proofState: {
   cachedEventIds?: string[];
   cachedFailedEvent?: any;
   lastHeartbeat?: number;
+  fetchedTweetPreview?: string;
+  fetchedAuthorHandle?: string | null;
+  snapshotHash?: string;
+  similarityUsed?: number;
 } = {};
 
 /**
@@ -297,23 +301,181 @@ async function getMaxPagesFromTicks(): Promise<number> {
   }
 }
 
-async function createControlReplyDecision(targetTweetId: string, proofTag: string): Promise<string> {
+/**
+ * Fetch real tweet content and author from Twitter (for proof seeding)
+ */
+async function fetchRealTweetContext(targetTweetId: string): Promise<{
+  text: string;
+  authorHandle: string | null;
+  hash: string;
+} | null> {
+  try {
+    console.log(`[PROOF] 🌐 Fetching real tweet content for ${targetTweetId}...`);
+    
+    const { UnifiedBrowserPool } = await import('../../src/browser/UnifiedBrowserPool');
+    const pool = UnifiedBrowserPool.getInstance();
+    const page = await pool.acquirePage('proof_tweet_fetch');
+    
+    try {
+      const tweetUrl = `https://x.com/i/web/status/${targetTweetId}`;
+      await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(2000);
+      
+      // Extract tweet text
+      const tweetText = await page.evaluate(() => {
+        const article = document.querySelector('article[data-testid="tweet"]');
+        if (!article) return '';
+        
+        const tweetTextEl = article.querySelector('[data-testid="tweetText"]');
+        if (tweetTextEl) {
+          const spans = tweetTextEl.querySelectorAll('span');
+          const texts: string[] = [];
+          spans.forEach(span => {
+            const text = span.textContent?.trim();
+            if (text && text.length > 0) {
+              texts.push(text);
+            }
+          });
+          if (texts.length > 0) {
+            return texts.join(' ');
+          }
+          return tweetTextEl.textContent || '';
+        }
+        return '';
+      });
+      
+      // Extract author handle
+      const authorHandle = await page.evaluate(() => {
+        const authorLink = document.querySelector('[data-testid="User-Name"] a');
+        if (authorLink) {
+          const href = authorLink.getAttribute('href');
+          if (href) {
+            const match = href.match(/^\/([^\/]+)/);
+            return match ? match[1].replace('@', '') : null;
+          }
+        }
+        return null;
+      });
+      
+      if (!tweetText || tweetText.trim().length < 10) {
+        console.warn(`[PROOF] ⚠️ Could not extract tweet text (length=${tweetText?.length || 0})`);
+        return null;
+      }
+      
+      const trimmedText = tweetText.trim();
+      const hash = crypto.createHash('sha256').update(trimmedText).digest('hex').substring(0, 32);
+      
+      console.log(`[PROOF] ✅ Fetched tweet: ${trimmedText.length} chars, author: @${authorHandle || 'unknown'}`);
+      
+      return {
+        text: trimmedText,
+        authorHandle: authorHandle || null,
+        hash,
+      };
+    } finally {
+      await pool.releasePage(page);
+    }
+  } catch (error: any) {
+    const errorDetails = {
+      source_tag: 'PROOF_TWEET_FETCH',
+      message: error.message || String(error),
+      stack: error.stack || 'no stack trace',
+      name: error.name || 'UnknownError',
+      file: 'prove-e2e-control-to-reply.ts',
+      function: 'fetchRealTweetContext',
+    };
+    console.error(`[PROOF] ❌ Failed to fetch tweet content:`, JSON.stringify(errorDetails, null, 2));
+    
+    // Check if it's a rate limit error
+    const isRateLimit = error.message?.toLowerCase().includes('429') || 
+                       error.message?.toLowerCase().includes('rate limit') ||
+                       error.message?.toLowerCase().includes('too many requests');
+    
+    if (isRateLimit) {
+      // Emit REPLY_FAILED event for rate limit
+      try {
+        const supabase = getSupabaseClient();
+        const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+        await supabase.from('system_events').insert({
+          event_type: 'REPLY_FAILED',
+          severity: 'error',
+          message: `Proof tweet fetch failed: Rate limited`,
+          event_data: {
+            target_tweet_id: targetTweetId,
+            error_code: 'RATE_LIMITED',
+            error_message: error.message,
+            pipeline_error_reason: 'PROOF_TWEET_FETCH_RATE_LIMITED',
+            app_version: appVersion,
+            failed_at: new Date().toISOString(),
+          },
+          created_at: new Date().toISOString(),
+        });
+      } catch (eventError: any) {
+        console.error(`[PROOF] Failed to emit REPLY_FAILED: ${eventError.message}`);
+      }
+    }
+    
+    return null;
+  }
+}
+
+async function createControlReplyDecision(targetTweetId: string, proofTag: string): Promise<{
+  decisionId: string;
+  fetchedTweetPreview?: string;
+  fetchedAuthorHandle?: string | null;
+  snapshotHash?: string;
+  similarityUsed?: number;
+}> {
   const supabase = getSupabaseClient();
   const decisionId = uuidv4();
   const now = new Date().toISOString();
+  
+  // 🔧 FIX: Fetch real tweet content before seeding
+  let targetTweetSnapshot: string;
+  let targetTweetHash: string;
+  let fetchedTweetPreview: string | undefined;
+  let fetchedAuthorHandle: string | null | undefined;
+  let snapshotHash: string | undefined;
+  let similarityUsed: number | undefined;
+  
+  if (!DRY_RUN && EXECUTE_REAL_ACTION) {
+    const realTweetData = await fetchRealTweetContext(targetTweetId);
+    if (realTweetData) {
+      targetTweetSnapshot = realTweetData.text;
+      targetTweetHash = realTweetData.hash;
+      fetchedTweetPreview = realTweetData.text.substring(0, 120);
+      fetchedAuthorHandle = realTweetData.authorHandle;
+      snapshotHash = realTweetData.hash;
+      
+      // Compute semantic similarity with reply content
+      const replyContent = "Quick note: sleep quality and sunlight timing matter more than most people think.";
+      const { computeSemanticSimilarity } = await import('../../src/gates/semanticGate');
+      similarityUsed = computeSemanticSimilarity(targetTweetSnapshot, replyContent);
+      
+      console.log(`[PROOF] ✅ Using real tweet content (${targetTweetSnapshot.length} chars, similarity: ${similarityUsed.toFixed(3)})`);
+    } else {
+      throw new Error(`Failed to fetch real tweet content for ${targetTweetId}. Cannot proceed with proof.`);
+    }
+  } else {
+    // DRY_RUN: Use placeholder
+    targetTweetSnapshot = "This is a test tweet content snapshot for control→executor proof. It must be at least 20 characters long to pass FINAL_REPLY_GATE.";
+    targetTweetHash = crypto.createHash('sha256').update(targetTweetSnapshot).digest('hex').substring(0, 32);
+    similarityUsed = 0.75; // Placeholder
+  }
   
   // Create reply decision that mimics control-plane reply scheduler output
   // Use pipeline_source that matches control-plane (stored in features)
   const replyContent = "Quick note: sleep quality and sunlight timing matter more than most people think.";
   
-  // Required fields for reply decisions
-  const targetTweetSnapshot = "This is a test tweet content snapshot for control→executor proof. It must be at least 20 characters long to pass FINAL_REPLY_GATE.";
-  const targetTweetHash = crypto.createHash('sha256').update(targetTweetSnapshot).digest('hex').substring(0, 32);
-  
   console.log(`📝 Creating control-plane reply decision: ${decisionId}`);
   console.log(`   Target tweet ID: ${targetTweetId}`);
   console.log(`   Proof tag: ${proofTag}`);
   console.log(`   DRY_RUN: ${DRY_RUN}`);
+  if (fetchedTweetPreview) {
+    console.log(`   Fetched tweet preview: ${fetchedTweetPreview}...`);
+    console.log(`   Fetched author: @${fetchedAuthorHandle || 'unknown'}`);
+    console.log(`   Semantic similarity: ${similarityUsed?.toFixed(3)}`);
+  }
   
   const { error } = await supabase
     .from('content_metadata')
@@ -335,9 +497,12 @@ async function createControlReplyDecision(targetTweetId: string, proofTag: strin
         pipeline_source: 'control_reply_scheduler', // Stored in features JSONB
         // FINAL_REPLY_GATE required fields (mapping code extracts from features)
         root_tweet_id: targetTweetId, // For replies, root = target
-        target_tweet_content_snapshot: targetTweetSnapshot, // Must be >= 20 chars
+        target_tweet_content_snapshot: targetTweetSnapshot, // Real tweet content (>= 20 chars)
         target_tweet_content_hash: targetTweetHash, // Required for context lock
-        semantic_similarity: 0.75, // Must be >= 0.30
+        semantic_similarity: similarityUsed || 0.75, // Computed from real content (must be >= 0.30)
+        fetched_tweet_preview: fetchedTweetPreview, // For report
+        fetched_author_handle: fetchedAuthorHandle, // For report
+        snapshot_hash: snapshotHash, // For report
         created_at: now,
         retry_count: 0,
       },
@@ -350,7 +515,13 @@ async function createControlReplyDecision(targetTweetId: string, proofTag: strin
   }
   
   console.log(`✅ Control reply decision created: ${decisionId}`);
-  return decisionId;
+  return {
+    decisionId,
+    fetchedTweetPreview,
+    fetchedAuthorHandle,
+    snapshotHash,
+    similarityUsed,
+  };
 }
 
 async function checkReplyDecisionStatus(decisionId: string): Promise<{ status: string; claimed: boolean; pipeline_source?: string }> {
@@ -507,7 +678,12 @@ async function countAttempts(decisionId: string): Promise<number> {
 /**
  * Write initial report immediately after creating decision (for durability)
  */
-async function writeInitialReport(decisionId: string, proofTag: string, targetTweetId: string): Promise<void> {
+async function writeInitialReport(
+  decisionId: string, 
+  proofTag: string, 
+  targetTweetId: string,
+  decisionResult?: { fetchedTweetPreview?: string; fetchedAuthorHandle?: string | null; snapshotHash?: string; similarityUsed?: number }
+): Promise<void> {
   try {
     const reportPath = path.join(process.cwd(), 'docs', 'CONTROL_TO_REPLY_PROOF.md');
     const os = require('os');
@@ -518,6 +694,16 @@ async function writeInitialReport(decisionId: string, proofTag: string, targetTw
       nodeVersion: process.version,
     };
     
+    const fetchedDataSection = decisionResult?.fetchedTweetPreview ? `
+## Fetched Tweet Context
+
+- **Tweet Preview:** ${decisionResult.fetchedTweetPreview}...
+- **Author Handle:** @${decisionResult.fetchedAuthorHandle || 'unknown'}
+- **Snapshot Hash:** ${decisionResult.snapshotHash || 'N/A'}
+- **Semantic Similarity:** ${decisionResult.similarityUsed?.toFixed(3) || 'N/A'}
+
+` : '';
+
     const initialReport = `# Control → Executor → X Proof (Reply)
 
 **Date:** ${new Date().toISOString()}  
@@ -541,7 +727,7 @@ async function writeInitialReport(decisionId: string, proofTag: string, targetTw
 - **Attempt ID:** N/A (pending)
 - **Outcome ID:** N/A (pending)
 - **Event IDs:** N/A (pending)
-
+${fetchedDataSection}
 ## Results
 
 | Check | Status | Evidence | Assertion |
@@ -611,16 +797,21 @@ async function main(): Promise<void> {
   
   // Step 1: Create control-plane reply decision
   console.log('\n📝 Step 1: Creating control-plane reply decision...');
-  const decisionId = await createControlReplyDecision(targetTweetId, proofTag);
+  const decisionResult = await createControlReplyDecision(targetTweetId, proofTag);
+  const decisionId = decisionResult.decisionId;
   
   // Store state for signal handlers
   proofState.decisionId = decisionId;
   proofState.proofTag = proofTag;
   proofState.targetTweetId = targetTweetId;
   proofState.reportPath = path.join(process.cwd(), 'docs', 'CONTROL_TO_REPLY_PROOF.md');
+  proofState.fetchedTweetPreview = decisionResult.fetchedTweetPreview;
+  proofState.fetchedAuthorHandle = decisionResult.fetchedAuthorHandle;
+  proofState.snapshotHash = decisionResult.snapshotHash;
+  proofState.similarityUsed = decisionResult.similarityUsed;
   
   // 🔧 FIX: Write initial report immediately after creating decision
-  await writeInitialReport(decisionId, proofTag, targetTweetId);
+  await writeInitialReport(decisionId, proofTag, targetTweetId, decisionResult);
   
   // DRY_RUN mode: exit after creating decision
   if (DRY_RUN) {
@@ -1191,6 +1382,10 @@ async function main(): Promise<void> {
 - **Attempt ID:** ${result.evidence.attempt_id || 'N/A'}
 - **Outcome ID:** ${result.evidence.outcome_id || 'N/A'}
 - **Event IDs:** ${result.evidence.event_ids?.join(', ') || 'N/A'}
+${proofState.fetchedTweetPreview ? `- **Fetched Tweet Preview:** ${proofState.fetchedTweetPreview}...` : ''}
+${proofState.fetchedAuthorHandle ? `- **Fetched Author Handle:** @${proofState.fetchedAuthorHandle}` : ''}
+${proofState.snapshotHash ? `- **Snapshot Hash:** ${proofState.snapshotHash}` : ''}
+${proofState.similarityUsed !== undefined ? `- **Semantic Similarity Used:** ${proofState.similarityUsed.toFixed(3)}` : ''}
 ${result.evidence.tick_count_last_15m !== undefined ? `- **Tick Count (Last 15m):** ${result.evidence.tick_count_last_15m}` : ''}
 ${result.evidence.last_tick_at ? `- **Last Tick At:** ${result.evidence.last_tick_at}` : ''}
 ${result.evidence.proof_selected_event_present !== undefined ? `- **Proof Selected Event Present:** ${result.evidence.proof_selected_event_present}` : ''}

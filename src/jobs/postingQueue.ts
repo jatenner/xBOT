@@ -2605,6 +2605,13 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       .eq('decision_type', 'reply')
       .lte('scheduled_at', graceWindow.toISOString()); // Include replies scheduled in past OR near future
     
+    // 🔒 PROOF_MODE: Only process proof decisions (exclusive mode)
+    const proofMode = process.env.PROOF_MODE === 'true';
+    if (proofMode) {
+      replyQuery = replyQuery.like('features->>proof_tag', 'control-reply-%');
+      console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Filtering to proof_tag starting with 'control-reply-' only`);
+    }
+    
     // Filter out test posts unless explicitly allowed
     if (!allowTestPosts) {
       replyQuery = replyQuery.or('is_test_post.is.null,is_test_post.eq.false');
