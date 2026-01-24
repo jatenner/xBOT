@@ -568,7 +568,31 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   
+  // 🔧 A) Emit EXECUTOR_DAEMON_BOOT event immediately on daemon boot
+  try {
+    const { getSupabaseClient } = await import('../../src/db/index');
+    const supabase = getSupabaseClient();
+    await supabase.from('system_events').insert({
+      event_type: 'EXECUTOR_DAEMON_BOOT',
+      severity: 'info',
+      message: 'Executor daemon booted',
+      event_data: {
+        ts: new Date().toISOString(),
+        pid: process.pid,
+        proof_mode: process.env.PROOF_MODE === 'true',
+        execution_mode: process.env.EXECUTION_MODE || 'unknown',
+        runner_profile_dir: RUNNER_PROFILE_DIR,
+        node_version: process.version,
+      },
+      created_at: new Date().toISOString(),
+    });
+    console.log(`[EXECUTOR_DAEMON] ✅ Boot event emitted (PID: ${process.pid})`);
+  } catch (e: any) {
+    console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit boot event: ${e.message}`);
+  }
+  
   // Main loop
+  let tickCounter = 0;
   while (true) {
     // Check STOP switch - exit immediately if detected
     if (checkStopSwitch()) {
@@ -608,7 +632,29 @@ async function main(): Promise<void> {
       continue; // Skip this tick
     }
     
+    // 🔧 A) Emit EXECUTOR_DAEMON_TICK_START event immediately before entering tick loop
+    tickCounter++;
+    const tickId = require('crypto').randomUUID();
     const tickStart = Date.now();
+    try {
+      const { getSupabaseClient } = await import('../../src/db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'EXECUTOR_DAEMON_TICK_START',
+        severity: 'info',
+        message: `Executor daemon tick start: tick_id=${tickId}`,
+        event_data: {
+          ts: new Date().toISOString(),
+          tick_id: tickId,
+          tick_number: tickCounter,
+          proof_mode: process.env.PROOF_MODE === 'true',
+        },
+        created_at: new Date().toISOString(),
+      });
+    } catch (e: any) {
+      console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit tick start event: ${e.message}`);
+    }
+    
     let postingReady = 0;
     let postingAttempts = 0;
     let replyReady = 0;
@@ -702,7 +748,7 @@ async function main(): Promise<void> {
     const ts = new Date().toISOString();
     console.log(`[EXECUTOR_DAEMON] ts=${ts} pages=${pages} browser_launches=${browserLaunchCount} posting_ready=${postingReady} posting_attempts=${postingAttempts} reply_ready=${replyReady} reply_attempts=${replyAttempts} backoff=${backoffSeconds}s${lastError ? ` last_error=${lastError}` : ''}`);
     
-    // Emit tick event
+    // Emit tick event (keep existing EXECUTOR_DAEMON_TICK for backward compatibility)
     await emitTickEvent({
       pages,
       browserLaunchCount,
@@ -713,6 +759,35 @@ async function main(): Promise<void> {
       backoff: backoffSeconds,
       lastError,
     });
+    
+    // 🔧 A) Emit EXECUTOR_DAEMON_TICK_END event after tick completes
+    const tickEnd = Date.now();
+    const tickDurationMs = tickEnd - tickStart;
+    try {
+      const { getSupabaseClient } = await import('../../src/db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'EXECUTOR_DAEMON_TICK_END',
+        severity: 'info',
+        message: `Executor daemon tick end: tick_id=${tickId} duration=${tickDurationMs}ms`,
+        event_data: {
+          ts: new Date().toISOString(),
+          tick_id: tickId,
+          tick_number: tickCounter,
+          duration_ms: tickDurationMs,
+          posting_ready: postingReady,
+          posting_attempts: postingAttempts,
+          reply_ready: replyReady,
+          reply_attempts: replyAttempts,
+          pages: pages,
+          backoff_seconds: backoffSeconds,
+          last_error: lastError || null,
+        },
+        created_at: new Date().toISOString(),
+      });
+    } catch (e: any) {
+      console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit tick end event: ${e.message}`);
+    }
     
     // Sleep with backoff (check STOP switch every second)
     const sleepSeconds = backoffSeconds > 0 ? backoffSeconds : TICK_INTERVAL_MS / 1000;

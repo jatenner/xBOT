@@ -58,6 +58,16 @@ let proofState: {
   cachedTickCount?: number;
   cachedLastTickAt?: string | null;
   cachedLastTickEventId?: string | null;
+  cachedBootSeen?: boolean;
+  cachedBootEventId?: string | null;
+  cachedBootTs?: string | null;
+  cachedTickStartSeen?: boolean;
+  cachedTickStartEventId?: string | null;
+  cachedTickId?: string | null;
+  cachedTickStartTs?: string | null;
+  cachedTickEndSeen?: boolean;
+  cachedLastTickEndTs?: string | null;
+  cachedLastTickDurationMs?: number | null;
   cachedCandidateEvents?: any[];
   cachedSelectedEvents?: any[];
   cachedSkippedEvents?: any[];
@@ -96,9 +106,16 @@ ${statusCheck?.tweet_id ? `- **URL:** https://x.com/${process.env.TWITTER_USERNA
 - **Created At:** ${statusCheck?.created_at || 'N/A'}
 - **Fallback Used:** ${statusCheck?.fallback_used ? 'yes' : 'no'}
 ${statusCheck?.supabase_error ? `- **Supabase Error:** ${JSON.stringify(statusCheck.supabase_error)}` : ''}
-- **Tick Count (Last 15m):** ${proofState.cachedTickCount || 0}
-- **Last Tick At:** ${proofState.cachedLastTickAt || 'N/A'}
-- **Last Tick Event ID:** ${proofState.cachedLastTickEventId || 'N/A'}
+- **Boot Seen:** ${proofState.cachedBootSeen ? 'yes' : 'no'}
+- **Boot Event ID:** ${proofState.cachedBootEventId || 'N/A'}
+- **Boot TS:** ${proofState.cachedBootTs || 'N/A'}
+- **Tick Start Seen:** ${proofState.cachedTickStartSeen ? 'yes' : 'no'}
+- **Tick Start Event ID:** ${proofState.cachedTickStartEventId || 'N/A'}
+- **Tick ID:** ${proofState.cachedTickId || 'N/A'}
+- **Tick Start TS:** ${proofState.cachedTickStartTs || 'N/A'}
+- **Tick End Seen:** ${proofState.cachedTickEndSeen ? 'yes' : 'no'}
+- **Last Tick End TS:** ${proofState.cachedLastTickEndTs || 'N/A'}
+- **Last Tick Duration (ms):** ${proofState.cachedLastTickDurationMs !== null ? proofState.cachedLastTickDurationMs : 'N/A'}
 - **Candidate Events:** ${proofState.cachedCandidateEvents?.length || 0}
 - **Selected Events:** ${proofState.cachedSelectedEvents?.length || 0}
 - **Skipped Events:** ${proofState.cachedSkippedEvents?.length || 0}
@@ -231,8 +248,8 @@ interface ControlToPostProofResult {
     log_excerpts?: string[];
     error_code?: string;
     error_message?: string;
-    tick_count_last_15m?: number;
-    last_tick_at?: string | null;
+    tick_start_seen?: boolean;
+    tick_start_ts?: string | null;
     selected_event_count?: number;
     claim_event_count?: number;
   };
@@ -786,27 +803,73 @@ async function main(): Promise<void> {
     const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
     console.log(`[PROOF] Loop iteration ${loopIteration}, elapsed: ${elapsedSeconds}s`);
     
-    // 🔧 A) Monitor executor ticks
-    const fifteenMinutesAgo = new Date(startTime - 15 * 60 * 1000).toISOString();
-    const { data: tickEvents } = await supabase
+    // 🔧 B) Monitor executor boot and tick-start events (immediate liveness signals)
+    const { data: bootEvent } = await supabase
       .from('system_events')
-      .select('id, created_at')
-      .eq('event_type', 'EXECUTOR_DAEMON_TICK')
-      .gte('created_at', fifteenMinutesAgo)
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DAEMON_BOOT')
+      .gte('created_at', new Date(startTime - 5000).toISOString()) // Allow 5s before proof start
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    const { data: tickStartEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DAEMON_TICK_START')
+      .gte('created_at', new Date(startTime).toISOString())
       .order('created_at', { ascending: false })
       .limit(1);
     
-    const tickCount = tickEvents?.length || 0;
-    const lastTick = tickEvents?.[0];
-    proofState.cachedTickCount = tickCount;
-    proofState.cachedLastTickAt = lastTick?.created_at || null;
-    proofState.cachedLastTickEventId = lastTick?.id || null;
+    const { data: tickEndEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DAEMON_TICK_END')
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1);
     
-    // 🔧 A) Fast-fail if executor not ticking after 60s
-    if (elapsedSeconds >= 60 && tickCount === 0) {
-      console.error(`❌ EXECUTOR_NOT_TICKING: No executor ticks detected after ${elapsedSeconds}s`);
-      result.evidence.error_code = 'EXECUTOR_NOT_TICKING';
-      result.evidence.error_message = `No EXECUTOR_DAEMON_TICK events found after ${elapsedSeconds}s`;
+    // Cache boot state
+    proofState.cachedBootSeen = !!bootEvent;
+    proofState.cachedBootEventId = bootEvent?.id || null;
+    proofState.cachedBootTs = bootEvent?.created_at || null;
+    
+    // Cache tick-start state
+    const lastTickStart = tickStartEvents?.[0];
+    proofState.cachedTickStartSeen = !!lastTickStart;
+    proofState.cachedTickStartEventId = lastTickStart?.id || null;
+    if (lastTickStart?.event_data) {
+      const tickData = typeof lastTickStart.event_data === 'string' 
+        ? JSON.parse(lastTickStart.event_data) 
+        : lastTickStart.event_data;
+      proofState.cachedTickId = tickData.tick_id || null;
+    }
+    proofState.cachedTickStartTs = lastTickStart?.created_at || null;
+    
+    // Cache tick-end state
+    const lastTickEnd = tickEndEvents?.[0];
+    proofState.cachedTickEndSeen = !!lastTickEnd;
+    proofState.cachedLastTickEndTs = lastTickEnd?.created_at || null;
+    if (lastTickEnd?.event_data) {
+      const tickData = typeof lastTickEnd.event_data === 'string' 
+        ? JSON.parse(lastTickEnd.event_data) 
+        : lastTickEnd.event_data;
+      proofState.cachedLastTickDurationMs = tickData.duration_ms || null;
+    }
+    
+    // 🔧 B) Fast-fail if executor not booted after 30s
+    if (elapsedSeconds >= 30 && !proofState.cachedBootSeen) {
+      console.error(`❌ EXECUTOR_NOT_BOOTED: No EXECUTOR_DAEMON_BOOT event detected after ${elapsedSeconds}s`);
+      result.evidence.error_code = 'EXECUTOR_NOT_BOOTED';
+      result.evidence.error_message = `No EXECUTOR_DAEMON_BOOT event found after ${elapsedSeconds}s`;
+      break;
+    }
+    
+    // 🔧 B) Fast-fail if executor not starting ticks after 60s
+    if (elapsedSeconds >= 60 && !proofState.cachedTickStartSeen) {
+      console.error(`❌ EXECUTOR_NOT_STARTING_TICK: No EXECUTOR_DAEMON_TICK_START events detected after ${elapsedSeconds}s`);
+      result.evidence.error_code = 'EXECUTOR_NOT_STARTING_TICK';
+      result.evidence.error_message = `No EXECUTOR_DAEMON_TICK_START events found after ${elapsedSeconds}s (boot_seen=${proofState.cachedBootSeen})`;
       break;
     }
     
@@ -861,14 +924,14 @@ async function main(): Promise<void> {
     // Check decision status (with improved error handling and fallback)
     const statusCheck = await checkDecisionStatus(decisionId, proofTag);
     
-    // 🔧 D) Fast-fail for queue stalls (after 180s)
-    if (elapsedSeconds >= 180 && statusCheck.status === 'queued' && tickCount > 0) {
+    // 🔧 D) Fast-fail for queue stalls (after 180s) - base on tick_start_seen
+    if (elapsedSeconds >= 180 && statusCheck.status === 'queued' && proofState.cachedTickStartSeen) {
       if (!candidateEvents || candidateEvents.length === 0) {
-        console.error(`❌ QUEUE_STALL_NO_SELECT: Decision queued for ${elapsedSeconds}s, executor ticking (${tickCount} ticks), but no candidate events`);
+        console.error(`❌ QUEUE_STALL_NO_SELECT: Decision queued for ${elapsedSeconds}s, executor started ticking, but no candidate events`);
         result.evidence.error_code = 'QUEUE_STALL_NO_SELECT';
-        result.evidence.error_message = `Decision remained queued for ${elapsedSeconds}s with ${tickCount} executor ticks but no EXECUTOR_PROOF_POST_CANDIDATE_FOUND events`;
-        result.evidence.tick_count_last_15m = tickCount;
-        result.evidence.last_tick_at = proofState.cachedLastTickAt;
+        result.evidence.error_message = `Decision remained queued for ${elapsedSeconds}s with executor tick_start_seen=true but no EXECUTOR_PROOF_POST_CANDIDATE_FOUND events`;
+        result.evidence.tick_start_seen = proofState.cachedTickStartSeen;
+        result.evidence.tick_start_ts = proofState.cachedTickStartTs;
         break;
       } else if (selectedEvents && selectedEvents.length > 0 && (!claimEvents || claimEvents.length === 0)) {
         console.error(`❌ QUEUE_STALL_NO_CLAIM: Decision selected but not claimed after ${elapsedSeconds}s`);
@@ -1312,8 +1375,8 @@ ${JSON.stringify(result.evidence.diagnostic_snapshot.skipped_events, null, 2)}
 ${pass ? '✅ **PASS** - All execution checks and executor safety invariants passed' : '❌ **FAIL** - One or more checks failed'}
 ${!pass && result.evidence.error_code ? `\n**Failure Code:** ${result.evidence.error_code}` : ''}
 ${!pass && result.evidence.error_message ? `\n**Failure Message:** ${result.evidence.error_message}` : ''}
-${result.evidence.tick_count_last_15m !== undefined ? `\n**Tick Count (Last 15m):** ${result.evidence.tick_count_last_15m}` : ''}
-${result.evidence.last_tick_at ? `\n**Last Tick At:** ${result.evidence.last_tick_at}` : ''}
+${result.evidence.tick_start_seen !== undefined ? `\n**Tick Start Seen:** ${result.evidence.tick_start_seen}` : ''}
+${result.evidence.tick_start_ts ? `\n**Tick Start TS:** ${result.evidence.tick_start_ts}` : ''}
 ${result.evidence.selected_event_count !== undefined ? `\n**Selected Event Count:** ${result.evidence.selected_event_count}` : ''}
 ${result.evidence.claim_event_count !== undefined ? `\n**Claim Event Count:** ${result.evidence.claim_event_count}` : ''}
 `;
