@@ -826,38 +826,69 @@ async function main(): Promise<void> {
     }
   }
   
-  // Cleanup
-  console.log('[EXECUTOR_DAEMON] 🧹 Cleaning up...');
-  cleanupLock();
-  
-  if (page) {
-    try {
-      await page.close();
-      console.log('[EXECUTOR_DAEMON] ✅ Closed page');
-    } catch {
-      // Ignore
+  } catch (error: any) {
+    // 🔧 A) Emit EXECUTOR_DAEMON_CRASH on exception
+    exitCode = 1;
+    exitReason = 'crash';
+    const errorStack = error?.stack || '';
+    const stackLines = errorStack.split('\n');
+    const sourceFile = stackLines.length > 1 ? stackLines[1]?.trim() : null;
+    
+    await emitLifecycleEvent('EXECUTOR_DAEMON_CRASH', {
+      ts: new Date().toISOString(),
+      pid: daemonPid,
+      phase: 'main_loop',
+      error_name: error?.name || 'Error',
+      error_message: error?.message || String(error),
+      stack: errorStack.substring(0, 2000), // Limit stack size
+      source_file: sourceFile || null,
+    });
+    
+    console.error(`[EXECUTOR_DAEMON] ❌ Fatal error: ${error?.message || error}`);
+    throw error; // Re-throw to be caught by outer handler
+  } finally {
+    // 🔧 A) Emit EXECUTOR_DAEMON_EXIT in finally
+    await emitLifecycleEvent('EXECUTOR_DAEMON_EXIT', {
+      ts: new Date().toISOString(),
+      pid: daemonPid,
+      exit_code: exitCode,
+      reason: exitReason,
+      signal: exitSignal || null,
+    });
+    
+    // Cleanup
+    console.log('[EXECUTOR_DAEMON] 🧹 Cleaning up...');
+    
+    if (page) {
+      try {
+        await page.close();
+        console.log('[EXECUTOR_DAEMON] ✅ Closed page');
+      } catch {
+        // Ignore
+      }
     }
-  }
-  
-  if (context) {
-    try {
-      await context.close();
-      console.log('[EXECUTOR_DAEMON] ✅ Closed context');
-    } catch {
-      // Ignore
+    
+    if (context) {
+      try {
+        await context.close();
+        console.log('[EXECUTOR_DAEMON] ✅ Closed context');
+      } catch {
+        // Ignore
+      }
     }
-  }
-  
-  if (browser) {
-    try {
-      await browser.close();
-      console.log('[EXECUTOR_DAEMON] ✅ Closed browser');
-    } catch {
-      // Ignore
+    
+    if (browser) {
+      try {
+        await browser.close();
+        console.log('[EXECUTOR_DAEMON] ✅ Closed browser');
+      } catch {
+        // Ignore
+      }
     }
+    
+    cleanupLock();
+    console.log('[EXECUTOR_DAEMON] ✅ Exited gracefully');
   }
-  
-  console.log('[EXECUTOR_DAEMON] ✅ Exited gracefully');
 }
 
 // Handle signals
