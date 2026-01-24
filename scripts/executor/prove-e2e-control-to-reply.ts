@@ -789,7 +789,9 @@ async function main(): Promise<void> {
     } catch {
       // Stale lock
     }
-    fs.unlinkSync(PIDFILE_PATH);
+    if (fs.existsSync(PIDFILE_PATH)) {
+      fs.unlinkSync(PIDFILE_PATH);
+    }
   }
   
   if (fs.existsSync(STOP_SWITCH_PATH)) {
