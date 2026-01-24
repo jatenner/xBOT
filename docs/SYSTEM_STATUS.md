@@ -39,6 +39,7 @@
 - Result URL captured and verified
 - **How to Prove:** `EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post`
 - **Evidence Artifact:** `docs/CONTROL_TO_POST_PROOF.md`
+- **Status:** ❌ FAILED (2026-01-24) - Posting attempt timed out after 180s. Decision created and claimed, but no attempt recorded in outcomes and no POST_SUCCESS/POST_FAILED event emitted. Root cause: Playwright posting operation timed out. Next steps: Investigate timeout causes (rate limiting, auth issues, network).
 
 ⚠️ **Control → Decision Queued → Executor Executes → Result URL Captured (Replying)**
 - Control-plane reply queue scheduler creates decisions
@@ -46,6 +47,7 @@
 - Result URL captured and verified
 - **How to Prove:** `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-control-reply`
 - **Evidence Artifact:** `docs/CONTROL_TO_REPLY_PROOF.md`
+- **Status:** ❌ FAILED (2026-01-24) - Decision created but never claimed within 5-minute timeout. Decision status remained "queued". Root cause: Executor did not process the decision within timeout period. Next steps: Investigate why executor didn't claim decision (queue priority, rate limiting, executor health).
 
 ⚠️ **Learning System Updates**
 - Metrics collected from outcomes
@@ -79,8 +81,8 @@
 | Executor Stability (15m) | PROVEN | `pnpm run executor:prove:15m` | `docs/EXECUTOR_15MIN_HEADLESS_PROOF.md` |
 | E2E Posting Execution | PROVEN | `pnpm run executor:prove:e2e-post` | `docs/EXECUTION_E2E_POST_PROOF.md` |
 | E2E Reply Execution | PROVEN | `TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-reply` | `docs/EXECUTION_E2E_REPLY_PROOF.md` |
-| Control→Executor→X (Posting) | UNPROVEN | `EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post` | `docs/CONTROL_TO_POST_PROOF.md` |
-| Control→Executor→X (Replying) | UNPROVEN | `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-control-reply` | `docs/CONTROL_TO_REPLY_PROOF.md` |
+| Control→Executor→X (Posting) | ❌ FAILED | `EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post` | `docs/CONTROL_TO_POST_PROOF.md` (2026-01-24: timeout) |
+| Control→Executor→X (Replying) | ❌ FAILED | `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-control-reply` | `docs/CONTROL_TO_REPLY_PROOF.md` (2026-01-24: not claimed) |
 | Learning System Updates | UNPROVEN | SQL queries on `outcomes` and `learning_posts` | Manual verification |
 
 ---

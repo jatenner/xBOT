@@ -681,6 +681,8 @@ EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post
 
 **Report Location:** `docs/CONTROL_TO_POST_PROOF.md` (created by proof script)
 
+**⚠️ Status (2026-01-24):** ❌ FAILED - Real execution attempt failed. Decision created and claimed, but posting attempt timed out after 180s. No attempt recorded in outcomes, no POST_SUCCESS/POST_FAILED event emitted. Root cause: Playwright posting operation timed out. See `docs/CONTROL_TO_POST_PROOF.md` for full details.
+
 **Reply Pipeline Proof:**
 ```bash
 # DRY_RUN (safe, no replying)
@@ -710,6 +712,8 @@ EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=1234567890123456789 pnpm run executor:p
 - `result_url_captured=true` (if successful) ✅
 
 **Report Location:** `docs/CONTROL_TO_REPLY_PROOF.md` (created by proof script)
+
+**⚠️ Status (2026-01-24):** ❌ FAILED - Real execution attempt failed. Decision created but never claimed within 5-minute timeout. Decision status remained "queued". Root cause: Executor did not process the decision within timeout period. See `docs/CONTROL_TO_REPLY_PROOF.md` for full details.
 
 **Safety Gating:**
 - **Default:** DRY_RUN mode (seeds decision, validates flow, but does NOT post/reply)
