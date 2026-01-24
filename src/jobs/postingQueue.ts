@@ -5624,7 +5624,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     console.log(`[POSTING_QUEUE] 🧪 TEST MODE: BYPASS_ACTIVE: ANCESTRY_CHECK`);
     allowCheck = { allow: true, reason: 'TEST_BYPASS_ANCESTRY' };
   } else {
-    allowCheck = await shouldAllowReply(ancestry);
+    allowCheck = await shouldAllowReply(ancestry, { decision_id: decision.id });
   }
   
   // Update POST_ATTEMPT with gate result

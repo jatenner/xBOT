@@ -520,7 +520,36 @@ export async function recordReplyDecision(record: ReplyDecisionRecord): Promise<
  * All other cases (UNCERTAIN, ERROR, depth>=1, method=unknown) result in DENY
  * 🎯 ANALYTICS: Returns deny_reason_code for structured analytics
  */
-export async function shouldAllowReply(ancestry: ReplyAncestry, context?: { consent_wall?: boolean; isReply?: boolean; author_handle?: string; tweet_id?: string }): Promise<{ allow: boolean; reason: string; deny_reason_code?: string; deny_reason_detail?: string }> {
+export async function shouldAllowReply(ancestry: ReplyAncestry, context?: { consent_wall?: boolean; isReply?: boolean; author_handle?: string; tweet_id?: string; decision_id?: string }): Promise<{ allow: boolean; reason: string; deny_reason_code?: string; deny_reason_detail?: string }> {
+  // 🔒 PROOF_MODE BYPASS: Allow proof decisions when ancestry was skipped in PROOF_MODE
+  // Proof decisions already passed FINAL_REPLY_GATE which verified root tweet status
+  if (ancestry.method === 'proof_mode_skipped' && ancestry.status === 'UNCERTAIN') {
+    const { getSupabaseClient } = await import('../../db/index');
+    const supabase = getSupabaseClient();
+    const decisionId = context?.decision_id;
+    
+    if (decisionId) {
+      // Check if this is a proof decision
+      const { data: decisionMeta } = await supabase
+        .from('content_metadata')
+        .select('features')
+        .eq('decision_id', decisionId)
+        .maybeSingle();
+      
+      const decisionFeatures = (decisionMeta?.features || {}) as Record<string, any>;
+      const proofTag = decisionFeatures.proof_tag;
+      const isProofDecision = proofTag && String(proofTag).startsWith('control-reply-');
+      
+      if (isProofDecision) {
+        console.log(`[REPLY_DECISION] ✅ PROOF_MODE BYPASS: Allowing proof decision (proof_tag=${proofTag}, ancestry skipped)`);
+        return {
+          allow: true,
+          reason: `PROOF_MODE_BYPASS: Ancestry skipped in PROOF_MODE, root verified by FINAL_REPLY_GATE`,
+        };
+      }
+    }
+  }
+  
   // 🔒 FAIL-CLOSED: Must have OK status
   if (ancestry.status !== 'OK') {
     const statusReason = ancestry.status === 'UNCERTAIN' 
