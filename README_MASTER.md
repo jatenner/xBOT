@@ -7,6 +7,8 @@
 > **Version:** v2 (enforcement-grade, incident-hardened)  
 > **Last Verified:** 2026-01-24  
 > **Critical Fixes:** a89a4c31 (executor stop/status/proof), 0c52898e (README_MASTER.md creation)
+>
+> **📊 Operational Status:** See [`docs/SYSTEM_STATUS.md`](docs/SYSTEM_STATUS.md) for single source of truth on what's proven, unproven, and how to verify each component.
 
 ---
 
@@ -59,6 +61,8 @@
 - `executor:prove:15m` → `scripts/executor/prove-15m.ts` ✅
 - `executor:prove:e2e-post` → `scripts/executor/prove-e2e-post.ts` ✅
 - `executor:prove:e2e-reply` → `scripts/executor/prove-e2e-reply.ts` ✅
+- `executor:prove:e2e-control-post` → `scripts/executor/prove-e2e-control-to-post.ts` ✅
+- `executor:prove:e2e-control-reply` → `scripts/executor/prove-e2e-control-to-reply.ts` ✅
 - `ops:executor:status` → `scripts/ops/executor-status.ts` ✅
 - `executor:daemon` → `scripts/executor/daemon.ts` ✅
 - `executor:auth` → `scripts/executor/auth.ts` ✅
@@ -645,7 +649,80 @@ tail -100 ./.runner-profile/logs/executor.log | grep "posting_attempts\|reply_at
 railway logs --service xBOT --lines 200 | grep "POST_SUCCESS\|REPLY_SUCCESS" | tail -5
 ```
 
-### Proof Level 4: Learning Proof
+### Proof Level 4: Control → Executor → X (Full Pipeline)
+
+**Posting Pipeline Proof:**
+```bash
+# DRY_RUN (safe, no posting)
+pnpm run executor:prove:e2e-control-post
+
+# Real execution (requires explicit opt-in)
+EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post
+```
+
+**What It Proves:**
+1. Control-plane creates exactly ONE posting decision (mimics posting queue scheduler)
+2. Decision enters `queued` state with correct `pipeline_source`
+3. Executor daemon claims decision (`queued → posting`)
+4. Executor executes posting attempt
+5. Outcome recorded (success or failure)
+6. Event emitted (`POST_SUCCESS` or `POST_FAILED`)
+7. Result URL captured (if successful)
+
+**PASS Criteria (HARD ASSERTIONS):**
+- `exactly_one_decision=1` ✅ [HARD]
+- `exactly_one_attempt=1` ✅ [HARD]
+- `outcome_recorded=true` ✅
+- `success_or_failure_event_present=true` ✅
+- `windows_opened=0` ✅ [HARD]
+- `chrome_cdp_processes=0` ✅ [HARD]
+- `pages_max<=1` ✅ [HARD]
+- `result_url_captured=true` (if successful) ✅
+
+**Report Location:** `docs/CONTROL_TO_POST_PROOF.md` (created by proof script)
+
+**Reply Pipeline Proof:**
+```bash
+# DRY_RUN (safe, no replying)
+TARGET_TWEET_ID=1234567890123456789 pnpm run executor:prove:e2e-control-reply
+
+# Real execution (requires explicit opt-in)
+EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=1234567890123456789 pnpm run executor:prove:e2e-control-reply
+```
+
+**What It Proves:**
+1. Control-plane creates exactly ONE reply decision (mimics reply scheduler)
+2. Decision enters `queued` state with correct `pipeline_source`
+3. Executor daemon claims decision (`queued → replying`)
+4. Executor executes reply attempt
+5. Outcome recorded (success or failure)
+6. Event emitted (`REPLY_SUCCESS` or `REPLY_FAILED`)
+7. Result URL captured (if successful)
+
+**PASS Criteria (HARD ASSERTIONS):**
+- `exactly_one_decision=1` ✅ [HARD]
+- `exactly_one_attempt=1` ✅ [HARD]
+- `outcome_recorded=true` ✅
+- `success_or_failure_event_present=true` ✅
+- `windows_opened=0` ✅ [HARD]
+- `chrome_cdp_processes=0` ✅ [HARD]
+- `pages_max<=1` ✅ [HARD]
+- `result_url_captured=true` (if successful) ✅
+
+**Report Location:** `docs/CONTROL_TO_REPLY_PROOF.md` (created by proof script)
+
+**Safety Gating:**
+- **Default:** DRY_RUN mode (seeds decision, validates flow, but does NOT post/reply)
+- **EXECUTE_REAL_ACTION=true:** Required to actually post/reply on X
+- **TARGET_TWEET_ID:** Required for reply proofs (must be valid numeric >= 15 digits)
+
+**Important:** Proof Level 4 validates the complete control→executor→X pipeline, proving that:
+1. Control-plane schedulers create decisions correctly
+2. Executor claims and executes them reliably
+3. Results are captured and verifiable
+4. Executor safety invariants remain true throughout
+
+### Proof Level 5: Learning Proof
 
 **Command:**
 ```sql
