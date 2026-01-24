@@ -651,6 +651,10 @@ railway logs --service xBOT --lines 200 | grep "POST_SUCCESS\|REPLY_SUCCESS" | t
 
 ### Proof Level 4: Control → Executor → X (Full Pipeline)
 
+**Status:**
+- **REPLY:** ✅ PROVEN (2026-01-24) - Reply URL: `https://x.com/Signal_Synapse/status/2015096733693366778` (Decision ID: `ed2ab9e6-72e9-4dda-b7b3-28c6c35014f7`, Proof Tag: `control-reply-1769271406334`, Event ID: `21b78fda-2a0f-453b-b210-b4403d547553`)
+- **POSTING:** ❌ NOT PROVEN (still needs successful proof run with posted tweet URL)
+
 **Posting Pipeline Proof:**
 ```bash
 # DRY_RUN (safe, no posting)
