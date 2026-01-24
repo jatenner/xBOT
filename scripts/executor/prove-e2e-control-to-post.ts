@@ -355,7 +355,7 @@ async function checkDecisionStatus(decisionId: string): Promise<{ status: string
     .from('content_metadata')
     .select('status, features, tweet_id, url')
     .eq('decision_id', decisionId)
-    .single();
+    .maybeSingle();
   
   if (error || !data) {
     return { status: 'unknown', claimed: false };
