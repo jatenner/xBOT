@@ -1,6 +1,6 @@
 # Control → Executor → X Proof (Reply)
 
-**Date:** 2026-01-24T04:49:35.512Z  
+**Date:** 2026-01-24T04:58:53.586Z  
 **Status:** ❌ FAIL
 
 ## Machine Info
@@ -29,9 +29,9 @@
 
 ## Evidence
 
-- **Decision ID:** 379c6ee6-5cc7-4c73-89a8-ee8c93a55db4
+- **Decision ID:** 0830afa1-a500-4da5-8ee8-d2c005c2b08e
 - **Target Tweet ID:** 2014718451563004351
-- **Proof Tag:** control-reply-1769229860371
+- **Proof Tag:** control-reply-1769230418197
 - **Pipeline Source:** control_reply_scheduler
 - **Decision Status:** queued
 - **Attempt ID:** N/A
@@ -39,29 +39,32 @@
 - **Event IDs:** N/A
 
 
+
+
+
 ## Log Excerpts
 
 ```
-[POSTING_QUEUE] ❌ Atomic posting failed: Posting timeout after 240s
-{"ts":"2026-01-24T04:48:26.526Z","app":"xbot","op":"ultimate_poster_retry","retry_count":1,"recoverable":true,"is_429":false}
-{"ts":"2026-01-24T04:48:26.526Z","app":"xbot","op":"ultimate_poster_delay","delay_ms":4000,"is_429":false}
-[FAILURE_RECORDER] ✅ Recorded POST_FAILED for decision_id=29e6f6f1-cdc5-4b19-8d45-cb448eb8eb46 error_code=AtomicPostFailed
-[POSTING_QUEUE] ❌ Playwright system error: Posting timeout after 240s
-[FAILURE_RECORDER] ✅ Recorded POST_FAILED for decision_id=29e6f6f1-cdc5-4b19-8d45-cb448eb8eb46 error_code=PLAYWRIGHT_TIMEOUT
-[BROWSER_SEM] ❌ Operation failed for posting: Playwright posting failed: Posting timeout after 240s
-[POSTING_QUEUE][POSTCONTENT_THROW] decision_id=29e6f6f1-cdc5-4b19-8d45-cb448eb8eb46 decision_type=single error_name=Error error_message=Playwright posting failed: Posting timeout after 240s
-[POSTING_QUEUE][POSTCONTENT_THROW] decision_id=29e6f6f1-cdc5-4b19-8d45-cb448eb8eb46 stack=Error: Playwright posting failed: Posting timeout after 240s
-    at withBrowserLock.timeoutMs.timeoutMs (/Users/jonahtenner/Desktop/xBOT/src/jobs/postingQueue.ts:5446:13)
-[POSTING_QUEUE] ❌ POSTING FAILED: Playwright posting failed: Posting timeout after 240s
-[BROWSER_POOL][TIMEOUT] label=tweet_verification timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=tweet_posting timeoutMs=300000
-[BROWSER_POOL][TIMEOUT] label=tweet_verification timeoutMs=180000
-ULTIMATE_POSTER: Page error: ApiError: https://x.com/i/api/graphql/178EtFdhcGqmoyzKL4muaA/Viewer HTTP-429 codes:[1003]
-[POSTING_QUEUE] 📝 Error: Playwright posting failed: Posting timeout after 240s
-[POSTING_QUEUE][SEM_TIMEOUT] decision_id=df340249-8b73-4e5f-b51a-b968788cf55c type=single timeoutMs=300000
-[POSTING_QUEUE] ⏱️ Using adaptive timeout: 300000ms (attempt 3, retry_count=2)
-[BROWSER_POOL][TIMEOUT] label=tweet_posting timeoutMs=300000
-ULTIMATE_POSTER: Page error: ApiError: https://x.com/i/api/graphql/178EtFdhcGqmoyzKL4muaA/Viewer HTTP-429 codes:[1003]
+[REPLY_SELECT] ✅ 2014923463748710463 confirmed as ROOT tweet (checks: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=false)
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[REPLY_SELECT] ✅ Resolved 2014918534929830280 → root 2014907089517478231 (checks: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true)
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[REPLY_SELECT] ✅ Resolved 2014918534929830280 → root 2014907089517478231 (checks: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true)
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[REPLY_SELECT]   Checks performed: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[REPLY_SELECT] ✅ 2014916840720650482 confirmed as ROOT tweet (checks: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=false)
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=curated_feed timeoutMs=180000
+[BROWSER_POOL] ⏱️ QUEUE TIMEOUT: resolve_root_tweet waited 60s (timeout: 60s)
+[BROWSER_POOL] ❌ CRITICAL: Browser pool timeout - system may need restart
+[ANCESTRY_TRACE] stage=acquire_context decision_id=ancestry-1769230606476-rfzct1dly duration_ms=60003 success=false error=acquire_context_timeout: Queue timeout after 60s - pool overloaded (priority: 5, timeout: 60s, queue_len=0, active=1/5)
+[REPLY_SELECT] ❌ Error resolving root for consent_wall_DrRanganChatterjee_1769230606256: ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT: Queue timeout after 60s - pool overloaded (priority: 5, timeout: 60s, queue_len=0, active=1/5)
+[CURATED_FEED] ⏱️ Timeout or error: Curated feed timeout after 90s (90112ms)
 ```
 
 ## Diagnostic Snapshot (Failure Analysis)

@@ -150,6 +150,21 @@ ${JSON.stringify(skippedEvents.map(e => typeof e.event_data === 'string' ? JSON.
 \`\`\`
 ` : 'No skipped events found'}
 
+### Executor Activity Diagnostics
+${result.evidence.diagnostic_snapshot?.tick_count_last_15m !== undefined ? `
+- **Tick Count (Last 15m):** ${result.evidence.diagnostic_snapshot.tick_count_last_15m}
+- **Last Tick At:** ${result.evidence.diagnostic_snapshot.last_tick_at || 'never'}
+- **Proof Selected Event Present:** ${result.evidence.diagnostic_snapshot.proof_selected_event_present ? 'yes' : 'no'}
+${result.evidence.diagnostic_snapshot.proof_selected_event_id ? `- **Proof Selected Event ID:** ${result.evidence.diagnostic_snapshot.proof_selected_event_id}` : ''}
+` : ''}
+
+### Rate Limit State
+${result.evidence.diagnostic_snapshot?.rate_limit_active !== undefined ? `
+- **Rate Limit Active:** ${result.evidence.diagnostic_snapshot.rate_limit_active ? 'yes' : 'no'}
+${result.evidence.diagnostic_snapshot.rate_limit_until ? `- **Rate Limit Until:** ${result.evidence.diagnostic_snapshot.rate_limit_until}` : ''}
+${result.evidence.diagnostic_snapshot.rate_limit_endpoint ? `- **Rate Limit Endpoint:** ${result.evidence.diagnostic_snapshot.rate_limit_endpoint}` : ''}
+` : ''}
+
 ### Rate Limit Events
 ${result.evidence.diagnostic_snapshot?.rate_limit_events && result.evidence.diagnostic_snapshot.rate_limit_events.length > 0 ? `
 Found ${result.evidence.diagnostic_snapshot.rate_limit_events.length} rate limit event(s):
@@ -274,6 +289,11 @@ interface ControlToReplyProofResult {
     rate_limit_seconds_remaining?: number;
     rate_limit_endpoint?: string | null;
     rate_limit_event?: any;
+    tick_count_last_15m?: number;
+    last_tick_at?: string | null;
+    proof_selected_event_present?: boolean;
+    proof_selected_event_id?: string | null;
+    rate_limit_active?: boolean;
   };
 }
 
@@ -759,7 +779,7 @@ async function main(): Promise<void> {
   result.executor_safety.chrome_cdp_processes = await countChromeCdpProcesses();
   result.executor_safety.pages_max = await getMaxPagesFromTicks();
   
-  // 🔒 RATE LIMIT DETERMINISTIC FAILURE: If decision still queued and rate limit active, emit failure
+  // 🔒 DETERMINISTIC FAILURE: If decision still queued, ALWAYS emit failure (not just on rate limit)
   const supabase = getSupabaseClient();
   const { data: finalDecisionMeta } = await supabase
     .from('content_metadata')
@@ -769,7 +789,39 @@ async function main(): Promise<void> {
   
   const stillQueued = finalDecisionMeta?.status === 'queued';
   if (stillQueued) {
-    // Check for rate limit state
+    console.log(`[PROOF] ⚠️ Decision still queued after ${MAX_WAIT_SECONDS}s - emitting deterministic QUEUE_STALL failure`);
+    
+    // Collect diagnostic evidence
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    
+    // Count executor ticks
+    const { count: tickCount } = await supabase
+      .from('system_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('event_type', 'EXECUTOR_DAEMON_TICK')
+      .gte('created_at', fifteenMinutesAgo);
+    
+    // Get last tick
+    const { data: lastTick } = await supabase
+      .from('system_events')
+      .select('created_at')
+      .eq('event_type', 'EXECUTOR_DAEMON_TICK')
+      .gte('created_at', fifteenMinutesAgo)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    // Check for proof selection event
+    const { data: proofSelection } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_PROOF_DECISION_SELECTED')
+      .eq('event_data->>decision_id', decisionId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    // Check rate limit state
     const { isRateLimitActive, getRateLimitState, getRateLimitSecondsRemaining } = await import('../../src/utils/rateLimitCircuitBreaker');
     const rateLimitActive = isRateLimitActive();
     const rateLimitState = getRateLimitState();
@@ -785,38 +837,43 @@ async function main(): Promise<void> {
       .limit(1)
       .maybeSingle();
     
-    if (rateLimitActive || rateLimitEvents) {
-      console.log(`[PROOF] ⚠️ Decision still queued and rate limit detected - emitting deterministic failure`);
-      
-      // Emit deterministic failure
-      const { recordDeterministicFailure } = await import('../../src/utils/deterministicFailureRecorder');
-      await recordDeterministicFailure({
-        decision_id: decisionId,
-        decision_type: 'reply',
-        pipeline_source: 'postingQueue',
-        proof_tag: proofTag,
-        error_name: 'RateLimited',
-        error_message: `Decision not claimed within ${MAX_WAIT_SECONDS}s due to rate limiting`,
-        step: 'proof_timeout_rate_limited',
-        http_status: 429,
-        is_rate_limit: true,
-      });
-      
-      // Update decision status to failed
-      await supabase
-        .from('content_metadata')
-        .update({
-          status: 'failed',
-          error_message: `Rate limited: not claimed within ${MAX_WAIT_SECONDS}s`,
-        })
-        .eq('decision_id', decisionId);
-      
-      // Store rate limit info in evidence
-      result.evidence.rate_limit_until = rateLimitState.rate_limit_until;
-      result.evidence.rate_limit_seconds_remaining = secondsRemaining;
-      result.evidence.rate_limit_endpoint = rateLimitState.last_rate_limit_endpoint;
-      result.evidence.rate_limit_event = rateLimitEvents ? (typeof rateLimitEvents.event_data === 'string' ? JSON.parse(rateLimitEvents.event_data) : rateLimitEvents.event_data) : null;
-    }
+    // ALWAYS emit deterministic failure for queued timeout
+    const { recordDeterministicFailure } = await import('../../src/utils/deterministicFailureRecorder');
+    const errorCode = rateLimitActive || rateLimitEvents ? 'RATE_LIMITED' : 'QUEUE_STALL';
+    
+    await recordDeterministicFailure({
+      decision_id: decisionId,
+      decision_type: 'reply',
+      pipeline_source: 'postingQueue',
+      proof_tag: proofTag,
+      error_name: errorCode === 'RATE_LIMITED' ? 'RateLimited' : 'QueueStall',
+      error_message: `Decision not claimed within ${MAX_WAIT_SECONDS}s. Tick count: ${tickCount || 0}, Last tick: ${lastTick?.created_at || 'never'}, Proof selected: ${proofSelection ? 'yes' : 'no'}`,
+      step: 'proof_timeout_queued',
+      http_status: errorCode === 'RATE_LIMITED' ? 429 : null,
+      is_rate_limit: errorCode === 'RATE_LIMITED',
+    });
+    
+    // Update decision status to failed
+    await supabase
+      .from('content_metadata')
+      .update({
+        status: 'failed',
+        error_message: `Queue stall: not claimed within ${MAX_WAIT_SECONDS}s (ticks: ${tickCount || 0})`,
+      })
+      .eq('decision_id', decisionId);
+    
+    // Store diagnostic info in evidence
+    result.evidence.tick_count_last_15m = tickCount || 0;
+    result.evidence.last_tick_at = lastTick?.created_at || null;
+    result.evidence.proof_selected_event_present = !!proofSelection;
+    result.evidence.proof_selected_event_id = proofSelection?.id || null;
+    result.evidence.rate_limit_active = rateLimitActive;
+    result.evidence.rate_limit_until = rateLimitState.rate_limit_until;
+    result.evidence.rate_limit_seconds_remaining = secondsRemaining;
+    result.evidence.rate_limit_endpoint = rateLimitState.last_rate_limit_endpoint;
+    result.evidence.rate_limit_event = rateLimitEvents ? (typeof rateLimitEvents.event_data === 'string' ? JSON.parse(rateLimitEvents.event_data) : rateLimitEvents.event_data) : null;
+    
+    console.log(`[PROOF] ✅ Emitted ${errorCode} failure: tick_count=${tickCount || 0} last_tick=${lastTick?.created_at || 'never'} proof_selected=${!!proofSelection}`);
   }
   
   // Extract reply URL
@@ -857,10 +914,47 @@ async function main(): Promise<void> {
       .eq('decision_id', decisionId)
       .maybeSingle();
     
+    // Collect tick diagnostics
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const { count: tickCount } = await supabase
+      .from('system_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('event_type', 'EXECUTOR_DAEMON_TICK')
+      .gte('created_at', fifteenMinutesAgo);
+    
+    const { data: lastTick } = await supabase
+      .from('system_events')
+      .select('created_at')
+      .eq('event_type', 'EXECUTOR_DAEMON_TICK')
+      .gte('created_at', fifteenMinutesAgo)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    const { data: proofSelection } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_PROOF_DECISION_SELECTED')
+      .eq('event_data->>decision_id', decisionId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    const { isRateLimitActive, getRateLimitState } = await import('../../src/utils/rateLimitCircuitBreaker');
+    const rateLimitActive = isRateLimitActive();
+    const rateLimitState = getRateLimitState();
+    
     result.evidence.diagnostic_snapshot = {
       decision_final_status: decisionMeta?.status || 'unknown',
       decision_error_message: decisionMeta?.error_message || null,
       decision_features: decisionMeta?.features || null,
+      tick_count_last_15m: tickCount || 0,
+      last_tick_at: lastTick?.created_at || null,
+      proof_selected_event_present: !!proofSelection,
+      proof_selected_event_id: proofSelection?.id || null,
+      rate_limit_active: rateLimitActive,
+      rate_limit_until: rateLimitState.rate_limit_until,
+      rate_limit_endpoint: rateLimitState.last_rate_limit_endpoint,
     };
     
     // Get REPLY_FAILED event if present
@@ -1049,6 +1143,11 @@ async function main(): Promise<void> {
 - **Attempt ID:** ${result.evidence.attempt_id || 'N/A'}
 - **Outcome ID:** ${result.evidence.outcome_id || 'N/A'}
 - **Event IDs:** ${result.evidence.event_ids?.join(', ') || 'N/A'}
+${result.evidence.tick_count_last_15m !== undefined ? `- **Tick Count (Last 15m):** ${result.evidence.tick_count_last_15m}` : ''}
+${result.evidence.last_tick_at ? `- **Last Tick At:** ${result.evidence.last_tick_at}` : ''}
+${result.evidence.proof_selected_event_present !== undefined ? `- **Proof Selected Event Present:** ${result.evidence.proof_selected_event_present}` : ''}
+${result.evidence.proof_selected_event_id ? `- **Proof Selected Event ID:** ${result.evidence.proof_selected_event_id}` : ''}
+${result.evidence.rate_limit_active !== undefined ? `- **Rate Limit Active:** ${result.evidence.rate_limit_active}` : ''}
 ${result.evidence.rate_limit_until ? `- **Rate Limit Until:** ${result.evidence.rate_limit_until}` : ''}
 ${result.evidence.rate_limit_seconds_remaining !== undefined ? `- **Rate Limit Seconds Remaining:** ${result.evidence.rate_limit_seconds_remaining}` : ''}
 ${result.evidence.rate_limit_endpoint ? `- **Rate Limit Endpoint:** ${result.evidence.rate_limit_endpoint}` : ''}
