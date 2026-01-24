@@ -3624,8 +3624,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
         const failedAt = new Date().toISOString();
         
         // 🔒 CLAIM DIAGNOSTICS: Emit EXECUTOR_PROOF_POST_SKIPPED event for proof decisions
-        const decisionFeatures = (decision.features || {}) as Record<string, any>;
-        const proofTag = decisionFeatures.proof_tag;
+        // (decisionFeatures, proofTag, pipelineSource already declared at function start)
         const skipReason = `status_not_queued_${targetRow.status}`;
         
         if (proofTag && String(proofTag).startsWith('control-post-')) {
@@ -3657,8 +3656,8 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             current_status: targetRow.status,
             expected_status: 'queued',
             skip_reason: skipReason,
-            proof_tag: decisionFeatures.proof_tag || null,
-            pipeline_source: decisionFeatures.pipeline_source || null,
+            proof_tag: proofTag || null,
+            pipeline_source: pipelineSource,
           },
           created_at: new Date().toISOString(),
         });
