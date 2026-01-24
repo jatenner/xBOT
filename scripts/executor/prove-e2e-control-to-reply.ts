@@ -372,10 +372,10 @@ async function createControlReplyDecision(targetTweetId: string, proofTag: strin
       bandit_arm: 'test',
       topic_cluster: 'test',
       generation_source: 'real',
-      pipeline_source: 'control_reply_scheduler', // Top-level column (required for query filtering)
       features: {
         control_to_reply_proof: true,
         proof_tag: proofTag,
+        pipeline_source: 'control_reply_scheduler', // Stored in features JSONB
         // Store FINAL_REPLY_GATE fields in features
         target_tweet_content_snapshot: targetTweetSnapshot, // Must be >= 20 chars
         target_tweet_content_hash: targetTweetHash, // Required for context lock
