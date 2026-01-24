@@ -3561,54 +3561,61 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       }
     
       // 🔍 CONTENT HASH CHECK: Check for duplicate content in BOTH tables AND backup file
-      // 🔥 PRIORITY 1 FIX: Check backup file FIRST (prevents duplicates even if database save failed)
-      const { checkBackupForDuplicate } = await import('../utils/tweetIdBackup');
-      const backupTweetId = checkBackupForDuplicate(decision.content);
-      if (backupTweetId) {
-        console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED (backup file): Content already posted as tweet_id ${backupTweetId}`);
-        // Revert status back to queued since we didn't actually post
-        await supabase
-          .from('content_metadata')
-          .update({ status: 'queued' })
-          .eq('decision_id', decision.id);
-        return false; // Skip posting
-      }
-    
-      // Check 1: content_metadata for already-posted content with tweet_id
-      const { data: duplicateInMetadata } = await supabase
-        .from('content_metadata')
-        .select('decision_id, tweet_id, status, posted_at')
-        .eq('content', decision.content)
-        .not('tweet_id', 'is', null) // Must have tweet_id (actually posted)
-        .neq('decision_id', decision.id) // Exclude current decision
-        .limit(1);
+      // ⚠️ NOTE: This check only applies to content posts (single/thread), NOT replies
+      // Replies are deduplicated by target_tweet_id in postReply() function
+      if (decision.decision_type !== 'reply') {
+        // 🔥 PRIORITY 1 FIX: Check backup file FIRST (prevents duplicates even if database save failed)
+        const { checkBackupForDuplicate } = await import('../utils/tweetIdBackup');
+        const backupTweetId = checkBackupForDuplicate(decision.content);
+        if (backupTweetId) {
+          console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED (backup file): Content already posted as tweet_id ${backupTweetId}`);
+          // Revert status back to queued since we didn't actually post
+          await supabase
+            .from('content_metadata')
+            .update({ status: 'queued' })
+            .eq('decision_id', decision.id);
+          return false; // Skip posting
+        }
       
-      if (duplicateInMetadata && duplicateInMetadata.length > 0) {
-        const dup = duplicateInMetadata[0];
-        console.log(`[POSTING_QUEUE] 🚫 DUPLICATE CONTENT PREVENTED: Same content already posted in content_metadata as ${dup.tweet_id} (decision: ${dup.decision_id.substring(0, 8)}...)`);
-        // Revert status back to queued since we didn't actually post
-        await supabase
+        // Check 1: content_metadata for already-posted content with tweet_id
+        const { data: duplicateInMetadata } = await supabase
           .from('content_metadata')
-          .update({ status: 'queued' })
-          .eq('decision_id', decision.id);
-        return false; // Skip posting
-      }
+          .select('decision_id, tweet_id, status, posted_at')
+          .eq('content', decision.content)
+          .not('tweet_id', 'is', null) // Must have tweet_id (actually posted)
+          .neq('decision_id', decision.id) // Exclude current decision
+          .limit(1);
+        
+        if (duplicateInMetadata && duplicateInMetadata.length > 0) {
+          const dup = duplicateInMetadata[0];
+          console.log(`[POSTING_QUEUE] 🚫 DUPLICATE CONTENT PREVENTED: Same content already posted in content_metadata as ${dup.tweet_id} (decision: ${dup.decision_id.substring(0, 8)}...)`);
+          // Revert status back to queued since we didn't actually post
+          await supabase
+            .from('content_metadata')
+            .update({ status: 'queued' })
+            .eq('decision_id', decision.id);
+          return false; // Skip posting
+        }
       
-      // Check 2: posted_decisions table (backup check)
-      const { data: duplicateContent } = await supabase
-        .from('posted_decisions')
-        .select('tweet_id, content, decision_id')
-        .eq('content', decision.content)
-        .limit(1);
-    
-      if (duplicateContent && duplicateContent.length > 0) {
-        console.log(`[POSTING_QUEUE] 🚫 DUPLICATE CONTENT PREVENTED: Same content already posted in posted_decisions as ${duplicateContent[0].tweet_id}`);
-        // Revert status back to queued since we didn't actually post
-        await supabase
-          .from('content_metadata')
-          .update({ status: 'queued' })
-          .eq('decision_id', decision.id);
-        return false; // Skip posting
+        // Check 2: posted_decisions table (backup check)
+        const { data: duplicateContent } = await supabase
+          .from('posted_decisions')
+          .select('tweet_id, content, decision_id')
+          .eq('content', decision.content)
+          .limit(1);
+      
+        if (duplicateContent && duplicateContent.length > 0) {
+          console.log(`[POSTING_QUEUE] 🚫 DUPLICATE CONTENT PREVENTED: Same content already posted in posted_decisions as ${duplicateContent[0].tweet_id}`);
+          // Revert status back to queued since we didn't actually post
+          await supabase
+            .from('content_metadata')
+            .update({ status: 'queued' })
+            .eq('decision_id', decision.id);
+          return false; // Skip posting
+        }
+      } else {
+        // For replies, duplicate detection is handled in postReply() based on target_tweet_id
+        console.log(`[POSTING_QUEUE] ℹ️  Reply decision - skipping content-based duplicate check (will check target_tweet_id in postReply)`);
       }
     
       // 📊 INTELLIGENCE LAYER: Capture follower count BEFORE posting
