@@ -1,6 +1,6 @@
 # Control → Executor → X Proof (Posting)
 
-**Date:** 2026-01-24T17:17:16.816Z  
+**Date:** 2026-01-24T17:22:37.440Z  
 **Status:** ⏳ IN PROGRESS
 
 ## Machine Info
@@ -13,8 +13,8 @@
 
 ## Evidence
 
-- **Decision ID:** b3d53551-9c42-42b6-bed4-ffdf69ff587c
-- **Proof Tag:** control-post-1769275036409
+- **Decision ID:** 5ea7b1b2-5255-459b-b35b-1396068cc2c6
+- **Proof Tag:** control-post-1769275357094
 - **Pipeline Source:** control_posting_queue
 - **Decision Status:** queued (initial)
 - **Attempt ID:** N/A (pending)
@@ -39,7 +39,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:17:17.649Z
+**Heartbeat:** 2026-01-24T17:22:38.340Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -51,7 +51,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:17:29.386Z
+**Heartbeat:** 2026-01-24T17:22:49.987Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -63,7 +63,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:17:40.927Z
+**Heartbeat:** 2026-01-24T17:23:01.635Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -75,7 +75,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:17:52.459Z
+**Heartbeat:** 2026-01-24T17:23:13.356Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -87,7 +87,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:18:03.980Z
+**Heartbeat:** 2026-01-24T17:23:24.930Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -99,7 +99,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:18:15.611Z
+**Heartbeat:** 2026-01-24T17:23:36.506Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -111,7 +111,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:18:27.265Z
+**Heartbeat:** 2026-01-24T17:23:48.111Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -123,7 +123,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:18:38.870Z
+**Heartbeat:** 2026-01-24T17:23:59.730Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -135,7 +135,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:18:50.488Z
+**Heartbeat:** 2026-01-24T17:24:11.455Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -147,7 +147,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:19:02.149Z
+**Heartbeat:** 2026-01-24T17:24:23.127Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -159,7 +159,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:19:13.791Z
+**Heartbeat:** 2026-01-24T17:24:34.668Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -171,7 +171,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:19:25.354Z
+**Heartbeat:** 2026-01-24T17:24:46.267Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -183,7 +183,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:19:36.989Z
+**Heartbeat:** 2026-01-24T17:24:57.815Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -195,7 +195,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:19:48.607Z
+**Heartbeat:** 2026-01-24T17:25:09.311Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -207,7 +207,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:20:00.334Z
+**Heartbeat:** 2026-01-24T17:25:21.274Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -219,7 +219,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:20:12.036Z
+**Heartbeat:** 2026-01-24T17:25:32.871Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -231,7 +231,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:20:23.626Z
+**Heartbeat:** 2026-01-24T17:25:44.427Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -243,7 +243,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:20:35.158Z
+**Heartbeat:** 2026-01-24T17:25:56.076Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -255,7 +255,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:20:46.776Z
+**Heartbeat:** 2026-01-24T17:26:07.657Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -267,7 +267,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:20:58.298Z
+**Heartbeat:** 2026-01-24T17:26:19.494Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -279,7 +279,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:21:09.849Z
+**Heartbeat:** 2026-01-24T17:26:31.151Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -291,7 +291,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:21:21.439Z
+**Heartbeat:** 2026-01-24T17:26:42.758Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -303,7 +303,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:21:33.064Z
+**Heartbeat:** 2026-01-24T17:26:54.339Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -315,7 +315,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:21:44.668Z
+**Heartbeat:** 2026-01-24T17:27:05.971Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -327,7 +327,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:21:56.267Z
+**Heartbeat:** 2026-01-24T17:27:17.601Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -339,7 +339,7 @@
 
 ---
 
-**Heartbeat:** 2026-01-24T17:22:07.980Z
+**Heartbeat:** 2026-01-24T17:27:29.288Z
 - **Decision Status:** unknown
 - **Claimed:** no
 - **Attempt ID:** N/A
@@ -353,12 +353,12 @@
 
 ## Diagnostic Snapshot (Termination: SIGTERM)
 
-**Written at:** 2026-01-24T17:22:15.664Z
+**Written at:** 2026-01-24T17:27:36.756Z
 **Termination Signal:** SIGTERM
 
 ### Decision Status (from cache)
-- **Decision ID:** b3d53551-9c42-42b6-bed4-ffdf69ff587c
-- **Proof Tag:** control-post-1769275036409
+- **Decision ID:** 5ea7b1b2-5255-459b-b35b-1396068cc2c6
+- **Proof Tag:** control-post-1769275357094
 - **Final Status:** unknown
 - **Claimed:** no
 

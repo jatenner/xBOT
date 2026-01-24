@@ -3373,7 +3373,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
   // 🔥 PRIORITY 5 FIX: Pre-post logging BEFORE posting
   await logPostAttempt(decision, 'attempting');
 
-  const decisionFeatures = (decision.features || {}) as Record<string, any>;
+  // Note: decisionFeatures already declared above for PROOF_MODE check
   if (decisionFeatures.force_session_reset) {
     await forceTwitterSessionReset(`decision:${decision.id}`);
     try {
