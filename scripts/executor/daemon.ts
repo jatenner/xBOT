@@ -728,6 +728,75 @@ async function main(): Promise<void> {
           handleStopSwitch();
         }
         
+        // 🔧 C) Claim watchdog: Check for proof decisions selected but not claimed within 30s
+        if (proofMode) {
+          try {
+            const { getSupabaseClient } = await import('../../src/db/index');
+            const supabase = getSupabaseClient();
+            const thirtySecondsAgo = new Date(Date.now() - 30 * 1000).toISOString();
+            
+            // Find proof decisions that were selected but not claimed
+            const { data: selectedProofDecisions } = await supabase
+              .from('system_events')
+              .select('event_data, created_at')
+              .eq('event_type', 'EXECUTOR_PROOF_POST_SELECTED')
+              .gte('created_at', thirtySecondsAgo)
+              .order('created_at', { ascending: false });
+            
+            if (selectedProofDecisions && selectedProofDecisions.length > 0) {
+              for (const selectedEvent of selectedProofDecisions) {
+                const eventData = typeof selectedEvent.event_data === 'string' 
+                  ? JSON.parse(selectedEvent.event_data) 
+                  : selectedEvent.event_data;
+                const decisionId = eventData.decision_id;
+                
+                if (!decisionId) continue;
+                
+                // Check if this decision was claimed
+                const { data: claimEvents } = await supabase
+                  .from('system_events')
+                  .select('id')
+                  .in('event_type', ['EXECUTOR_DECISION_CLAIM_OK', 'EXECUTOR_DECISION_CLAIM_FAIL'])
+                  .eq('event_data->>decision_id', decisionId)
+                  .gte('created_at', selectedEvent.created_at)
+                  .limit(1);
+                
+                // Check if decision is still queued (not claimed)
+                const { data: decisionRow } = await supabase
+                  .from('content_metadata')
+                  .select('status')
+                  .eq('decision_id', decisionId)
+                  .maybeSingle();
+                
+                if ((!claimEvents || claimEvents.length === 0) && decisionRow?.status === 'queued') {
+                  // Selected but not claimed - emit stall event
+                  const selectedTime = new Date(selectedEvent.created_at).getTime();
+                  const elapsedMs = Date.now() - selectedTime;
+                  
+                  if (elapsedMs >= 30000) { // 30s threshold
+                    await supabase.from('system_events').insert({
+                      event_type: 'EXECUTOR_PROOF_POST_CLAIM_STALL',
+                      severity: 'warning',
+                      message: `Proof post claim stall: decision_id=${decisionId} selected ${Math.floor(elapsedMs / 1000)}s ago`,
+                      event_data: {
+                        decision_id: decisionId,
+                        proof_tag: eventData.proof_tag || null,
+                        ts: new Date().toISOString(),
+                        elapsed_ms: elapsedMs,
+                        selected_at: selectedEvent.created_at,
+                      },
+                      created_at: new Date().toISOString(),
+                    });
+                    console.warn(`[EXECUTOR_DAEMON] ⚠️ Claim stall detected: ${decisionId} selected ${Math.floor(elapsedMs / 1000)}s ago`);
+                  }
+                }
+              }
+            }
+          } catch (watchdogErr: any) {
+            console.warn(`[EXECUTOR_DAEMON] ⚠️ Claim watchdog error: ${watchdogErr.message}`);
+          }
+        }
+        
         // Reset failures on success
         if (consecutiveFailures > 0) {
           console.log(`[EXECUTOR_DAEMON] ✅ Recovered after ${consecutiveFailures} failures`);

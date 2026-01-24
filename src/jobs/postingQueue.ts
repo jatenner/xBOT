@@ -3689,6 +3689,31 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
         return false; // Skip posting
       }
       
+      // 🔧 A) Emit CLAIM_ATTEMPT event immediately before attempting DB claim
+      const decisionFeatures = (decision.features || {}) as Record<string, any>;
+      const proofTag = decisionFeatures.proof_tag;
+      const pipelineSource = decisionFeatures.pipeline_source || (decision as any).pipeline_source || null;
+      
+      try {
+        await supabase.from('system_events').insert({
+          event_type: 'EXECUTOR_DECISION_CLAIM_ATTEMPT',
+          severity: 'info',
+          message: `Attempting to claim decision: ${decision.id}`,
+          event_data: {
+            decision_id: decision.id,
+            proof_tag: proofTag || null,
+            pipeline_source: pipelineSource,
+            ts: new Date().toISOString(),
+            expected_status: 'queued',
+            target_row_id: targetRow.id,
+          },
+          created_at: new Date().toISOString(),
+        });
+        console.log(`[POSTING_QUEUE] 🔧 Claim attempt event emitted for ${decision.id}`);
+      } catch (eventErr: any) {
+        console.warn(`[POSTING_QUEUE] Failed to emit claim attempt event: ${eventErr.message}`);
+      }
+      
       // Claim the row by updating status to 'posting'
       const { data: claimed, error: claimError } = await supabase
         .from('content_metadata')
@@ -3704,8 +3729,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       if (claimError) {
         console.error(`[POSTING_QUEUE] ❌ Failed to claim decision ${decision.id}: ${claimError.message}`);
         
-        // 🔧 C) Emit claim fail event
-        const decisionFeatures = (decision.features || {}) as Record<string, any>;
+        // 🔧 A) Emit CLAIM_FAIL event with error details
         try {
           await supabase.from('system_events').insert({
             event_type: 'EXECUTOR_DECISION_CLAIM_FAIL',
@@ -3713,9 +3737,13 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             message: `Failed to claim decision: ${decision.id}`,
             event_data: {
               decision_id: decision.id,
-              proof_tag: decisionFeatures.proof_tag || null,
+              proof_tag: proofTag || null,
+              pipeline_source: pipelineSource,
               error: claimError.message,
+              error_code: claimError.code || null,
               reason: 'claim_query_error',
+              expected_status: 'queued',
+              target_row_id: targetRow.id,
             },
             created_at: new Date().toISOString(),
           });
@@ -3727,13 +3755,31 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       }
       
       if (!claimed) {
-        // Status changed between query and update (race condition)
-        console.warn(`[POSTING_QUEUE] ⚠️ Failed to claim ${decision.id}: status changed during claim`);
+        // Status changed between query and update (race condition) - 0 rows updated
+        console.warn(`[POSTING_QUEUE] ⚠️ Failed to claim ${decision.id}: status changed during claim (0 rows updated)`);
+        
+        // 🔧 A) Emit CLAIM_FAIL event with no_rows_updated reason
+        try {
+          await supabase.from('system_events').insert({
+            event_type: 'EXECUTOR_DECISION_CLAIM_FAIL',
+            severity: 'error',
+            message: `Failed to claim decision: ${decision.id} - no rows updated`,
+            event_data: {
+              decision_id: decision.id,
+              proof_tag: proofTag || null,
+              pipeline_source: pipelineSource,
+              reason: 'no_rows_updated',
+              expected_status: 'queued',
+              target_row_id: targetRow.id,
+              current_status: targetRow.status, // Include actual status
+            },
+            created_at: new Date().toISOString(),
+          });
+        } catch (eventErr: any) {
+          console.error(`[POSTING_QUEUE] Failed to emit claim fail event: ${eventErr.message}`);
+        }
         
         // 🔒 CLAIM DIAGNOSTICS: Emit EXECUTOR_PROOF_POST_SKIPPED event for proof decisions
-        const decisionFeatures = (decision.features || {}) as Record<string, any>;
-        const proofTag = decisionFeatures.proof_tag;
-        
         if (proofTag && String(proofTag).startsWith('control-post-')) {
           try {
             await supabase.from('system_events').insert({
@@ -3760,8 +3806,8 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             decision_id: decision.id,
             decision_type: decision.decision_type,
             skip_reason: 'race_condition_during_claim',
-            proof_tag: decisionFeatures.proof_tag || null,
-            pipeline_source: decisionFeatures.pipeline_source || null,
+            proof_tag: proofTag || null,
+            pipeline_source: pipelineSource,
           },
           created_at: new Date().toISOString(),
         });

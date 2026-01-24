@@ -81,6 +81,10 @@ let proofState: {
   cachedSelectedEvents?: any[];
   cachedSkippedEvents?: any[];
   cachedClaimEvents?: any[];
+  cachedClaimAttemptEvents?: any[];
+  cachedClaimOkEvents?: any[];
+  cachedClaimFailEvents?: any[];
+  cachedClaimStallEvents?: any[];
   proofStartTime?: number;
 } = {};
 
@@ -137,7 +141,10 @@ ${statusCheck?.supabase_error ? `- **Supabase Error:** ${JSON.stringify(statusCh
 - **Candidate Events:** ${proofState.cachedCandidateEvents?.length || 0}
 - **Selected Events:** ${proofState.cachedSelectedEvents?.length || 0}
 - **Skipped Events:** ${proofState.cachedSkippedEvents?.length || 0}
-- **Claim Events:** ${proofState.cachedClaimEvents?.length || 0}
+- **Claim Attempt Events:** ${proofState.cachedClaimAttemptEvents?.length || 0}
+- **Claim OK Events:** ${proofState.cachedClaimOkEvents?.length || 0}
+- **Claim Fail Events:** ${proofState.cachedClaimFailEvents?.length || 0}
+- **Claim Stall Events:** ${proofState.cachedClaimStallEvents?.length || 0}
 - **Attempt ID:** ${proofState.cachedAttemptId || 'N/A'}
 - **Outcome ID:** ${proofState.cachedOutcomeId || 'N/A'}
 - **Event IDs:** ${proofState.cachedEventIds?.length ? proofState.cachedEventIds.join(', ') : 'N/A'}
@@ -975,18 +982,48 @@ async function main(): Promise<void> {
       .gte('created_at', new Date(startTime).toISOString())
       .order('created_at', { ascending: false });
     
-    const { data: claimEvents } = await supabase
+    const { data: claimAttemptEvents } = await supabase
       .from('system_events')
       .select('id, created_at, event_data')
-      .in('event_type', ['EXECUTOR_DECISION_CLAIM_OK', 'EXECUTOR_DECISION_CLAIM_FAIL'])
+      .eq('event_type', 'EXECUTOR_DECISION_CLAIM_ATTEMPT')
       .eq('event_data->>decision_id', decisionId)
       .gte('created_at', new Date(startTime).toISOString())
       .order('created_at', { ascending: false });
+    
+    const { data: claimOkEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DECISION_CLAIM_OK')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const { data: claimFailEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DECISION_CLAIM_FAIL')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const { data: claimStallEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_PROOF_POST_CLAIM_STALL')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const claimEvents = [...(claimOkEvents || []), ...(claimFailEvents || [])];
     
     proofState.cachedCandidateEvents = candidateEvents || [];
     proofState.cachedSelectedEvents = selectedEvents || [];
     proofState.cachedSkippedEvents = skippedEvents || [];
     proofState.cachedClaimEvents = claimEvents || [];
+    proofState.cachedClaimAttemptEvents = claimAttemptEvents || [];
+    proofState.cachedClaimOkEvents = claimOkEvents || [];
+    proofState.cachedClaimFailEvents = claimFailEvents || [];
+    proofState.cachedClaimStallEvents = claimStallEvents || [];
     
     if (candidateEvents && candidateEvents.length > 0) {
       lastCandidateEventTime = new Date(candidateEvents[0].created_at).getTime();
@@ -1353,6 +1390,52 @@ async function main(): Promise<void> {
         typeof e.event_data === 'string' ? JSON.parse(e.event_data) : e.event_data
       );
     }
+    
+    // 🔧 D) Query claim events for diagnostics
+    const { data: diagnosticClaimAttempts } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DECISION_CLAIM_ATTEMPT')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const { data: diagnosticClaimOk } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DECISION_CLAIM_OK')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const { data: diagnosticClaimFail } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DECISION_CLAIM_FAIL')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const { data: diagnosticClaimStall } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_PROOF_POST_CLAIM_STALL')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    result.evidence.diagnostic_snapshot.claim_attempt_count = diagnosticClaimAttempts?.length || 0;
+    result.evidence.diagnostic_snapshot.claim_attempt_event_ids = diagnosticClaimAttempts?.map(e => e.id) || [];
+    result.evidence.diagnostic_snapshot.claim_ok_count = diagnosticClaimOk?.length || 0;
+    result.evidence.diagnostic_snapshot.claim_ok_event_ids = diagnosticClaimOk?.map(e => e.id) || [];
+    result.evidence.diagnostic_snapshot.claim_fail_count = diagnosticClaimFail?.length || 0;
+    result.evidence.diagnostic_snapshot.claim_fail_event_ids = diagnosticClaimFail?.map(e => e.id) || [];
+    result.evidence.diagnostic_snapshot.claim_fail_details = diagnosticClaimFail?.map(e => {
+      const data = typeof e.event_data === 'string' ? JSON.parse(e.event_data) : e.event_data;
+      return { event_id: e.id, reason: data.reason, error: data.error, expected_status: data.expected_status, current_status: data.current_status };
+    }) || [];
+    result.evidence.diagnostic_snapshot.claim_stall_count = diagnosticClaimStall?.length || 0;
+    result.evidence.diagnostic_snapshot.claim_stall_event_ids = diagnosticClaimStall?.map(e => e.id) || [];
   }
   
   // Step 5: Evaluate result
@@ -1517,6 +1600,24 @@ ${result.evidence.diagnostic_snapshot.daemon_exit_event_id ? `
 - **Exit Event ID:** ${result.evidence.diagnostic_snapshot.daemon_exit_event_id}
 - **Exit Reason:** ${result.evidence.diagnostic_snapshot.daemon_exit_reason || 'N/A'}
 ` : 'No daemon exit event found'}
+
+### Claim Events
+${result.evidence.diagnostic_snapshot.claim_attempt_count !== undefined ? `
+- **Claim Attempt Count:** ${result.evidence.diagnostic_snapshot.claim_attempt_count}
+- **Claim Attempt Event IDs:** ${result.evidence.diagnostic_snapshot.claim_attempt_event_ids?.join(', ') || 'N/A'}
+- **Claim OK Count:** ${result.evidence.diagnostic_snapshot.claim_ok_count}
+- **Claim OK Event IDs:** ${result.evidence.diagnostic_snapshot.claim_ok_event_ids?.join(', ') || 'N/A'}
+- **Claim Fail Count:** ${result.evidence.diagnostic_snapshot.claim_fail_count}
+- **Claim Fail Event IDs:** ${result.evidence.diagnostic_snapshot.claim_fail_event_ids?.join(', ') || 'N/A'}
+${result.evidence.diagnostic_snapshot.claim_fail_details && result.evidence.diagnostic_snapshot.claim_fail_details.length > 0 ? `
+**Claim Fail Details:**
+\`\`\`json
+${JSON.stringify(result.evidence.diagnostic_snapshot.claim_fail_details, null, 2)}
+\`\`\`
+` : ''}
+- **Claim Stall Count:** ${result.evidence.diagnostic_snapshot.claim_stall_count}
+- **Claim Stall Event IDs:** ${result.evidence.diagnostic_snapshot.claim_stall_event_ids?.join(', ') || 'N/A'}
+` : 'No claim events found'}
 
 ### Skipped Events
 ${result.evidence.diagnostic_snapshot.skipped_events && result.evidence.diagnostic_snapshot.skipped_events.length > 0 ? `
