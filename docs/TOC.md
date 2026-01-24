@@ -6,7 +6,8 @@
 
 ## Recommended Reading Order
 
-### 1. Start Here
+### 1. Start Here (Primary)
+- **[README_MASTER.md](../README_MASTER.md)** - Complete single source of truth: architecture, pipelines, operational commands, troubleshooting
 - **[README.md](./README.md)** - 1-page overview, quick start, key concepts
 
 ### 2. Understand the System
@@ -29,6 +30,7 @@
 ## Complete Documentation Index
 
 ### Core Documentation
+- [README_MASTER.md](../README_MASTER.md) - **Single source of truth** (canonical master document)
 - [README.md](./README.md) - Overview and quick start
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
 - [RUNBOOK.md](./RUNBOOK.md) - Operational procedures

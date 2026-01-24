@@ -137,6 +137,47 @@ GROUP BY reason;
 
 ---
 
+
+## 2026-01-24 - Snapshot
+
+### Git SHA
+
+- **Local HEAD:** `a89a4c3181a12ac9e3111ec7e8587445de3ed2d4`
+- **xBOT Service:** UNKNOWN (verify via `railway logs --service xBOT | grep BOOT`)
+- **serene-cat Service:** UNKNOWN (verify via `railway logs --service serene-cat | grep BOOT`)
+
+### Last Plan Age
+
+0h 3m ago (2026-01-24T00:20:21.639+00:00)
+
+### Last POST_SUCCESS
+
+2026-01-23T15:15:00.912+00:00 (tweet_id: 2014718451563004351)
+
+### Last POST_FAILED
+
+2026-01-22T19:33:19.941+00:00 (reason: unknown)
+
+### Reply Queue Status
+
+**Ticks (last 30 min):** 33 ticks, last: 2026-01-24T00:23:45.127+00:00  
+**Blocks (last 30 min):** 8 blocks (RUNNER_MODE_NOT_SET: 8)
+
+### Posting Queue Status
+
+**Ticks (last 30 min):** UNKNOWN  
+**Blocks (last 30 min):** 26 blocks (NOT_EXECUTOR_MODE: 26)
+
+### Known Blockers
+
+- None documented yet
+
+### Documentation Updates
+
+- **README_MASTER.md added** (2026-01-24): Created canonical single source of truth document at repo root. Complete end-to-end description of xBOT system including architecture, pipelines, operational commands, and troubleshooting. Updated `docs/TOC.md` and `docs/README.md` to reference it as primary reading entry.
+
+---
+
 ## How to Update
 
 Run `pnpm run docs:snapshot` to append a new dated section with current state.

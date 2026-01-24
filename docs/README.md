@@ -94,6 +94,10 @@ Scraper → Updates actual_* metrics → Dashboard reads
 
 ## Documentation Structure
 
+### Canonical Master Document
+- **[README_MASTER.md](../README_MASTER.md)** - **Single source of truth**: Complete end-to-end description of xBOT system, architecture, pipelines, operational commands, and troubleshooting. **If you read only one document, read this one.**
+
+### Detailed Documentation
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Detailed system architecture, data flow, event stream
 - **[RUNBOOK.md](./RUNBOOK.md)** - Operational procedures, deployment, health checks, incident response
 - **[STATUS.md](./STATUS.md)** - Current state: SHAs, services, last events, known blockers
