@@ -1,85 +1,375 @@
 # Control → Executor → X Proof (Posting)
 
-**Date:** 2026-01-24T04:43:10.071Z  
-**Status:** ❌ FAIL
+**Date:** 2026-01-24T16:47:46.520Z  
+**Status:** ⏳ IN PROGRESS
 
 ## Machine Info
 
-- **Hostname:** Mac-305.lan
+- **Hostname:** Mac-312.lan
 - **Platform:** darwin
 - **Architecture:** arm64
 - **Node Version:** v22.14.0
 - **Runner Profile Dir:** /Users/jonahtenner/Desktop/xBOT/.runner-profile
+
+## Evidence
+
+- **Decision ID:** 2097d86d-6825-4ad7-917d-fddafd74d700
+- **Proof Tag:** control-post-1769273266080
+- **Pipeline Source:** control_posting_queue
+- **Decision Status:** queued (initial)
+- **Attempt ID:** N/A (pending)
+- **Outcome ID:** N/A (pending)
+- **Event IDs:** N/A (pending)
+- **DRY_RUN:** false
 
 ## Results
 
 | Check | Status | Evidence | Assertion |
 |-------|--------|----------|-----------|
 | Control Decision Created | ✅ | control_posting_queue | - |
-| Decision Queued | ✅ | posted | - |
-| Decision Claimed | ✅ | posted | - |
-| Attempt Recorded | ❌ | N/A | - |
-| Result Recorded | ❌ | N/A | - |
-| Success/Failure Event | ✅ | 773da599-ec60-4b30-a962-cf6928644041 | - |
-| Exactly One Decision | ✅ | 1 | HARD |
-| Exactly One Attempt | ❌ | 0 | HARD |
-| Windows Opened | ✅ | 0 | HARD |
-| Chrome CDP Processes | ✅ | 0 | HARD |
-| Pages Max | ✅ | 0 | HARD |
+| Decision Queued | ✅ | queued | - |
+| Decision Claimed | ⏳ | pending | - |
+| Attempt Recorded | ⏳ | pending | - |
+| Result Recorded | ⏳ | pending | - |
+| Success/Failure Event | ⏳ | pending | - |
 
-## Evidence
+---
 
-- **Decision ID:** e808fa1d-ad9a-47d0-a697-d54fbdf2d53f
-- **Proof Tag:** control-post-1769229474295
-- **Pipeline Source:** control_posting_queue
-- **Decision Status:** posted
+*Report will be updated as proof progresses...*
+
+---
+
+**Heartbeat:** 2026-01-24T16:47:47.341Z
+- **Decision Status:** queued
+- **Claimed:** no
 - **Attempt ID:** N/A
 - **Outcome ID:** N/A
-- **Event IDs:** 773da599-ec60-4b30-a962-cf6928644041
-- **Result URL:** https://x.com/Signal_Synapse/status/2014920952824422910
-
-## Log Excerpts
-
-```
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
-[BROWSER_POOL][TIMEOUT] label=curated_feed timeoutMs=180000
-[BROWSER_POOL] ⏱️ QUEUE TIMEOUT: resolve_root_tweet waited 60s (timeout: 60s)
-[BROWSER_POOL] ❌ CRITICAL: Browser pool timeout - system may need restart
-[ANCESTRY_TRACE] stage=acquire_context decision_id=ancestry-1769229676183-afop8hqu8 duration_ms=60002 success=false error=acquire_context_timeout: Queue timeout after 60s - pool overloaded (priority: 5, timeout: 60s, queue_len=0, active=1/5)
-[REPLY_SELECT] ❌ Error resolving root for consent_wall_DrJustinSonnenburg_1769229675976: ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT: Queue timeout after 60s - pool overloaded (priority: 5, timeout: 60s, queue_len=0, active=1/5)
-[CURATED_FEED] ⏱️ Timeout or error: Curated feed timeout after 90s (90106ms)
-```
-
-## Diagnostic Snapshot (Failure Analysis)
-
-### Decision Status
-- **Final Status:** posted
-- **Error Message:** N/A
-
-### Failure Event Data
-No POST_FAILED event found
-
-### Outcomes Result
-No outcomes result found
-
-### Skipped Events
-No skipped events found
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
 
 
-## Result
+---
 
-❌ **FAIL** - One or more checks failed
+**Heartbeat:** 2026-01-24T16:47:59.046Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
 
+
+---
+
+**Heartbeat:** 2026-01-24T16:48:10.689Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:48:22.264Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:48:33.859Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:48:45.631Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:48:57.554Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:49:09.226Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:49:20.902Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:49:32.573Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:49:44.155Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:49:55.719Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:50:07.266Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:50:18.857Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:50:30.598Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:50:42.232Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:50:53.854Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:51:05.408Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:51:17.079Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:51:28.743Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:51:40.379Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:51:52.017Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:52:03.619Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:52:15.409Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:52:27.051Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T16:52:38.590Z
+- **Decision Status:** queued
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+## Diagnostic Snapshot (Termination: SIGTERM)
+
+**Written at:** 2026-01-24T16:52:45.689Z
+**Termination Signal:** SIGTERM
+
+### Decision Status (from cache)
+- **Decision ID:** 2097d86d-6825-4ad7-917d-fddafd74d700
+- **Proof Tag:** control-post-1769273266080
+- **Final Status:** queued
+- **Claimed:** no
+
+### Outcomes (from cache)
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+
+### Events (from cache)
+- **Event IDs:** N/A
+- **Failed Event Present:** no
+
+- **Result URL:** N/A
+
+**Note:** This snapshot uses cached state from the last polling cycle. For complete details, check the database directly.

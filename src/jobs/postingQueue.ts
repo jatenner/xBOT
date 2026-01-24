@@ -2600,6 +2600,13 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       .in('decision_type', ['single', 'thread'])
       .lte('scheduled_at', graceWindow.toISOString()); // Include posts scheduled in past OR near future
     
+    // 🔒 PROOF_MODE: Only process proof decisions (exclusive mode)
+    const proofMode = process.env.PROOF_MODE === 'true';
+    if (proofMode) {
+      contentQuery = contentQuery.like('features->>proof_tag', 'control-post-%');
+      console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Filtering to proof_tag starting with 'control-post-' only`);
+    }
+    
     // Filter out test posts unless explicitly allowed
     if (!allowTestPosts) {
       contentQuery = contentQuery.or('is_test_post.is.null,is_test_post.eq.false');
@@ -2625,8 +2632,7 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       .eq('decision_type', 'reply')
       .lte('scheduled_at', graceWindow.toISOString()); // Include replies scheduled in past OR near future
     
-    // 🔒 PROOF_MODE: Only process proof decisions (exclusive mode)
-    const proofMode = process.env.PROOF_MODE === 'true';
+    // 🔒 PROOF_MODE: Only process proof decisions (exclusive mode) - already set above for contentQuery
     if (proofMode) {
       replyQuery = replyQuery.like('features->>proof_tag', 'control-reply-%');
       console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Filtering to proof_tag starting with 'control-reply-' only`);
@@ -3099,11 +3105,11 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     console.log(`[POSTING_QUEUE] 🚦 Rate limits: Content ${contentPosted}/${maxContentPerHour} (singles+threads), Replies ${repliesPosted}/${maxRepliesPerHour}`);
     
     // Apply rate limits per type (but bypass for proof decisions in PROOF_MODE)
-    const proofMode = process.env.PROOF_MODE === 'true';
+    // Note: proofMode is already declared at the top of getReadyDecisions function
     const decisionsWithLimits = throttledRows.filter(row => {
       const features = (row.features || {}) as Record<string, any>;
       const proofTag = features.proof_tag;
-      const isProofDecision = proofTag && String(proofTag).startsWith('control-post-');
+      const isProofDecision = proofTag && (String(proofTag).startsWith('control-post-') || String(proofTag).startsWith('control-reply-'));
       
       // 🔒 PROOF_MODE: Bypass rate limits for proof decisions
       if (proofMode && isProofDecision) {
