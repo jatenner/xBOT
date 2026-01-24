@@ -365,10 +365,6 @@ async function createControlReplyDecision(targetTweetId: string, proofTag: strin
       decision_type: 'reply',
       content: replyContent,
       target_tweet_id: targetTweetId,
-      root_tweet_id: targetTweetId, // Top-level column required for FINAL_REPLY_GATE (for replies, root = target)
-      target_tweet_content_snapshot: targetTweetSnapshot, // Top-level column required for FINAL_REPLY_GATE (must be >= 20 chars)
-      target_tweet_content_hash: targetTweetHash, // Top-level column required for FINAL_REPLY_GATE
-      semantic_similarity: 0.75, // Top-level column required for FINAL_REPLY_GATE (must be >= 0.30)
       status: 'queued',
       scheduled_at: now,
       quality_score: 0.8,
@@ -380,6 +376,11 @@ async function createControlReplyDecision(targetTweetId: string, proofTag: strin
         control_to_reply_proof: true,
         proof_tag: proofTag,
         pipeline_source: 'control_reply_scheduler', // Stored in features JSONB
+        // FINAL_REPLY_GATE required fields (mapping code extracts from features)
+        root_tweet_id: targetTweetId, // For replies, root = target
+        target_tweet_content_snapshot: targetTweetSnapshot, // Must be >= 20 chars
+        target_tweet_content_hash: targetTweetHash, // Required for context lock
+        semantic_similarity: 0.75, // Must be >= 0.30
         created_at: now,
         retry_count: 0,
       },
