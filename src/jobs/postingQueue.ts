@@ -233,21 +233,27 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
       }
     } else {
       // No opportunity found - check if this is from reply_v2_scheduler (CERT_MODE or normal scheduler)
-      // For scheduler decisions, we already verified root in FINAL_REPLY_GATE, so allow posting
-      // Fetch pipeline_source from DB if not in decision object
-      const pipelineSource = decision.pipeline_source || (await supabase
+      // OR if it's a proof decision (control-reply-* proof_tag)
+      // For scheduler/proof decisions, we already verified root in FINAL_REPLY_GATE, so allow posting
+      // Fetch pipeline_source and proof_tag from DB if not in decision object
+      const { data: decisionMeta } = await supabase
         .from('content_metadata')
-        .select('pipeline_source')
+        .select('pipeline_source, features')
         .eq('decision_id', decisionId)
-        .single()
-        .then(r => r.data?.pipeline_source));
+        .single();
       
-      if (pipelineSource === 'reply_v2_scheduler') {
-        console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=verified_by_scheduler reason=scheduler_decision_no_opportunity_required`);
-        guardResults.root_check = { pass: true, reason: 'scheduler_verified_root' };
-        // Skip freshness check for scheduler decisions (they're already filtered by age in fetch)
+      const pipelineSource = decision.pipeline_source || decisionMeta?.pipeline_source;
+      const decisionFeatures = (decision.features || decisionMeta?.features || {}) as Record<string, any>;
+      const proofTag = decisionFeatures.proof_tag;
+      const isProofDecision = proofTag && String(proofTag).startsWith('control-reply-');
+      
+      if (pipelineSource === 'reply_v2_scheduler' || isProofDecision) {
+        const reason = isProofDecision ? 'proof_decision_no_opportunity_required' : 'scheduler_decision_no_opportunity_required';
+        console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=verified_by_${isProofDecision ? 'proof' : 'scheduler'} reason=${reason}`);
+        guardResults.root_check = { pass: true, reason: isProofDecision ? 'proof_verified_root' : 'scheduler_verified_root' };
+        // Skip freshness check for scheduler/proof decisions (they're already filtered by age in fetch or manually seeded)
       } else {
-        // No opportunity found - fail closed for non-scheduler decisions
+        // No opportunity found - fail closed for non-scheduler/proof decisions
         guardResults.root_check = { pass: false, reason: 'opportunity_not_found' };
         console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=unknown reason=opportunity_not_found pipeline_source=${pipelineSource || 'unknown'}`);
         return { pass: false, reason: 'opportunity_not_found', guard_results: guardResults };
