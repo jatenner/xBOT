@@ -3319,6 +3319,11 @@ async function verifyTweetPosted(content: string, decisionType: string): Promise
 }
 
 async function processDecision(decision: QueuedDecision): Promise<boolean> {
+  // Extract decision features once at the start of processDecision (for use throughout function)
+  const decisionFeatures = (decision.features || {}) as Record<string, any>;
+  const proofTag = decisionFeatures.proof_tag;
+  const pipelineSource = decisionFeatures.pipeline_source || (decision as any).pipeline_source || null;
+  
   // 🔒 TRUTH GUARD: Check if posting is blocked due to truth integrity failures
   try {
     const { isTruthIntegrityBlocked } = await import('../utils/truthGuard');
@@ -3369,8 +3374,6 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
   
   // 🚨 RATE LIMIT CHECK: Enforce max posts/replies per hour (fallback if controller disabled)
   // 🔒 PROOF_MODE: Bypass rate limit check for proof decisions
-  const decisionFeatures = (decision.features || {}) as Record<string, any>;
-  const proofTag = decisionFeatures.proof_tag;
   const isProofDecision = proofTag && (String(proofTag).startsWith('control-post-') || String(proofTag).startsWith('control-reply-'));
   const proofMode = process.env.PROOF_MODE === 'true';
   
@@ -3506,7 +3509,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       const isProofDecision = proofTag && String(proofTag).startsWith('control-post-');
       const proofMode = process.env.PROOF_MODE === 'true';
       
-      if (!(proofMode && isProofDecision)) {
+      if (!(proofMode && isProofDecisionForPost)) {
         const canPost = await checkPostingRateLimits();
         if (!canPost) {
           console.log(`[POSTING_QUEUE] ⛔ HARD STOP: Rate limit reached, skipping ${decision.id}`);
