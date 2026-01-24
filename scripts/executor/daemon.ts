@@ -557,6 +557,17 @@ async function main(): Promise<void> {
       handleStopSwitch();
     }
     
+    // 🔒 GLOBAL RATE LIMIT CIRCUIT BREAKER: Check before processing any decisions
+    const { isRateLimitActive, getRateLimitSecondsRemaining, emitBackoffActiveEvent } = await import('../../src/utils/rateLimitCircuitBreaker');
+    if (isRateLimitActive()) {
+      const secondsRemaining = getRateLimitSecondsRemaining();
+      console.log(`[EXECUTOR_DAEMON] ⛔ RATE LIMIT ACTIVE: Backing off for ${secondsRemaining}s (circuit breaker)`);
+      await emitBackoffActiveEvent();
+      // Sleep for 30s and continue loop (don't claim anything)
+      await new Promise(resolve => setTimeout(resolve, 30000));
+      continue; // Skip this tick
+    }
+    
     const tickStart = Date.now();
     let postingReady = 0;
     let postingAttempts = 0;

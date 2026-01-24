@@ -280,6 +280,25 @@ export class UltimateTwitterPoster {
     console.log(`${logPrefix} [POST_TWEET] 📊 AUDIT_TRAIL: decision_id=${validGuard.decision_id} pipeline_source=${validGuard.pipeline_source} job_run_id=${validGuard.job_run_id} build_sha=${BUILD_SHA} db_env=${DB_ENV_FINGERPRINT}`);
     console.log(`${logPrefix} [TIMEOUT_OBSERVABILITY] step=postTweet_start decision_id=${decisionId} content_length=${content.length}`);
     
+    // Helper function to extract endpoint from error
+    const extractEndpointFromError = (error: any): string => {
+      const errorMessage = error?.message || error?.toString() || '';
+      // Try to extract endpoint from ApiError messages
+      const match = errorMessage.match(/https?:\/\/[^\s]+/);
+      if (match) {
+        try {
+          const url = new URL(match[0]);
+          return url.pathname || 'unknown';
+        } catch {
+          return 'unknown';
+        }
+      }
+      // Check for common endpoints in error messages
+      if (errorMessage.includes('Viewer')) return '/i/api/graphql/Viewer';
+      if (errorMessage.includes('graphql')) return '/i/api/graphql';
+      return 'unknown';
+    };
+    
     let retryCount = 0;
     const maxRetries = 2; // Increased retries
     const startTime = Date.now();
@@ -331,6 +350,14 @@ export class UltimateTwitterPoster {
           
           const isRecoverable = this.isRecoverableError(error.message);
           const is429 = this.is429Error(error);
+          
+          // 🔒 GLOBAL CIRCUIT BREAKER: Record 429 hits to prevent executor thrashing
+          if (is429) {
+            const endpoint = extractEndpointFromError(error);
+            const guardDecisionId = (validGuard as any)?.decision_id;
+            const { recordRateLimitHit } = await import('../utils/rateLimitCircuitBreaker');
+            await recordRateLimitHit(endpoint, 429, 'HTTP-429', guardDecisionId);
+          }
           
           if (retryCount < maxRetries && isRecoverable) {
             log({ op: 'ultimate_poster_retry', retry_count: retryCount, recoverable: true, is_429: is429 });

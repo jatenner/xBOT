@@ -149,6 +149,22 @@ Found ${skippedEvents.length} EXECUTOR_DECISION_SKIPPED event(s):
 ${JSON.stringify(skippedEvents.map(e => typeof e.event_data === 'string' ? JSON.parse(e.event_data) : e.event_data), null, 2)}
 \`\`\`
 ` : 'No skipped events found'}
+
+### Rate Limit Events
+${result.evidence.diagnostic_snapshot?.rate_limit_events && result.evidence.diagnostic_snapshot.rate_limit_events.length > 0 ? `
+Found ${result.evidence.diagnostic_snapshot.rate_limit_events.length} rate limit event(s):
+
+\`\`\`json
+${JSON.stringify(result.evidence.diagnostic_snapshot.rate_limit_events, null, 2)}
+\`\`\`
+` : 'No rate limit events found'}
+
+### Proof Selection Event
+${result.evidence.diagnostic_snapshot?.proof_selection_event ? `
+\`\`\`json
+${JSON.stringify(result.evidence.diagnostic_snapshot.proof_selection_event, null, 2)}
+\`\`\`
+` : 'No proof selection event found'}
 `;
 
     // Append to report file synchronously
@@ -254,6 +270,10 @@ interface ControlToReplyProofResult {
     outcome_id?: string;
     event_ids?: string[];
     log_excerpts?: string[];
+    rate_limit_until?: string | null;
+    rate_limit_seconds_remaining?: number;
+    rate_limit_endpoint?: string | null;
+    rate_limit_event?: any;
   };
 }
 
@@ -739,6 +759,66 @@ async function main(): Promise<void> {
   result.executor_safety.chrome_cdp_processes = await countChromeCdpProcesses();
   result.executor_safety.pages_max = await getMaxPagesFromTicks();
   
+  // 🔒 RATE LIMIT DETERMINISTIC FAILURE: If decision still queued and rate limit active, emit failure
+  const supabase = getSupabaseClient();
+  const { data: finalDecisionMeta } = await supabase
+    .from('content_metadata')
+    .select('status, error_message, features')
+    .eq('decision_id', decisionId)
+    .maybeSingle();
+  
+  const stillQueued = finalDecisionMeta?.status === 'queued';
+  if (stillQueued) {
+    // Check for rate limit state
+    const { isRateLimitActive, getRateLimitState, getRateLimitSecondsRemaining } = await import('../../src/utils/rateLimitCircuitBreaker');
+    const rateLimitActive = isRateLimitActive();
+    const rateLimitState = getRateLimitState();
+    const secondsRemaining = getRateLimitSecondsRemaining();
+    
+    // Check for recent 429 events
+    const { data: rateLimitEvents } = await supabase
+      .from('system_events')
+      .select('event_data, created_at')
+      .eq('event_type', 'EXECUTOR_RATE_LIMITED')
+      .gte('created_at', new Date(Date.now() - MAX_WAIT_SECONDS * 1000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    if (rateLimitActive || rateLimitEvents) {
+      console.log(`[PROOF] ⚠️ Decision still queued and rate limit detected - emitting deterministic failure`);
+      
+      // Emit deterministic failure
+      const { recordDeterministicFailure } = await import('../../src/utils/deterministicFailureRecorder');
+      await recordDeterministicFailure({
+        decision_id: decisionId,
+        decision_type: 'reply',
+        pipeline_source: 'postingQueue',
+        proof_tag: proofTag,
+        error_name: 'RateLimited',
+        error_message: `Decision not claimed within ${MAX_WAIT_SECONDS}s due to rate limiting`,
+        step: 'proof_timeout_rate_limited',
+        http_status: 429,
+        is_rate_limit: true,
+      });
+      
+      // Update decision status to failed
+      await supabase
+        .from('content_metadata')
+        .update({
+          status: 'failed',
+          error_message: `Rate limited: not claimed within ${MAX_WAIT_SECONDS}s`,
+        })
+        .eq('decision_id', decisionId);
+      
+      // Store rate limit info in evidence
+      result.evidence.rate_limit_until = rateLimitState.rate_limit_until;
+      result.evidence.rate_limit_seconds_remaining = secondsRemaining;
+      result.evidence.rate_limit_endpoint = rateLimitState.last_rate_limit_endpoint;
+      result.evidence.rate_limit_event = rateLimitEvents ? (typeof rateLimitEvents.event_data === 'string' ? JSON.parse(rateLimitEvents.event_data) : rateLimitEvents.event_data) : null;
+    }
+  }
+  
   // Extract reply URL
   result.result_url = await extractReplyUrl(decisionId, eventData, outcomeResult);
   
@@ -786,8 +866,27 @@ async function main(): Promise<void> {
     // Get REPLY_FAILED event if present
     const { data: failedEvents } = await supabase
       .from('system_events')
-      .select('event_data')
+      .select('id, event_data, created_at')
       .eq('event_type', 'REPLY_FAILED')
+      .eq('event_data->>decision_id', decisionId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    // Get rate limit events
+    const { data: rateLimitEvents } = await supabase
+      .from('system_events')
+      .select('id, event_data, created_at')
+      .in('event_type', ['EXECUTOR_RATE_LIMITED', 'EXECUTOR_RATE_LIMIT_BACKOFF_ACTIVE'])
+      .gte('created_at', new Date(Date.now() - MAX_WAIT_SECONDS * 1000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(5);
+    
+    // Get proof decision selection events
+    const { data: proofSelectionEvents } = await supabase
+      .from('system_events')
+      .select('id, event_data, created_at')
+      .eq('event_type', 'EXECUTOR_PROOF_DECISION_SELECTED')
       .eq('event_data->>decision_id', decisionId)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -950,6 +1049,9 @@ async function main(): Promise<void> {
 - **Attempt ID:** ${result.evidence.attempt_id || 'N/A'}
 - **Outcome ID:** ${result.evidence.outcome_id || 'N/A'}
 - **Event IDs:** ${result.evidence.event_ids?.join(', ') || 'N/A'}
+${result.evidence.rate_limit_until ? `- **Rate Limit Until:** ${result.evidence.rate_limit_until}` : ''}
+${result.evidence.rate_limit_seconds_remaining !== undefined ? `- **Rate Limit Seconds Remaining:** ${result.evidence.rate_limit_seconds_remaining}` : ''}
+${result.evidence.rate_limit_endpoint ? `- **Rate Limit Endpoint:** ${result.evidence.rate_limit_endpoint}` : ''}
 ${result.result_url ? `- **Result URL:** ${result.result_url}` : ''}
 
 ## Log Excerpts

@@ -1631,6 +1631,43 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     // 3. Get ready decisions from queue
     readyDecisions = await getReadyDecisions(certMode, maxItems);
     
+    // 🎯 PROOF PRIORITIZATION: Sort decisions with proof_tag first
+    readyDecisions.sort((a, b) => {
+      const aFeatures = (a.features || {}) as Record<string, any>;
+      const bFeatures = (b.features || {}) as Record<string, any>;
+      const aHasProofTag = !!aFeatures.proof_tag || a.pipeline_source?.includes('control-');
+      const bHasProofTag = !!bFeatures.proof_tag || b.pipeline_source?.includes('control-');
+      
+      if (aHasProofTag && !bHasProofTag) return -1;
+      if (!aHasProofTag && bHasProofTag) return 1;
+      return 0; // Keep original order for same priority
+    });
+    
+    // Emit event when proof decision is selected
+    for (const decision of readyDecisions) {
+      const decisionFeatures = (decision.features || {}) as Record<string, any>;
+      const hasProofTag = !!decisionFeatures.proof_tag || decision.pipeline_source?.includes('control-');
+      if (hasProofTag) {
+        try {
+          await supabase.from('system_events').insert({
+            event_type: 'EXECUTOR_PROOF_DECISION_SELECTED',
+            severity: 'info',
+            message: `Proof decision selected: ${decision.id}`,
+            event_data: {
+              decision_id: decision.id,
+              proof_tag: decisionFeatures.proof_tag || null,
+              decision_type: decision.decision_type,
+              pipeline_source: decision.pipeline_source,
+            },
+            created_at: new Date().toISOString(),
+          });
+          console.log(`[POSTING_QUEUE] 🎯 Proof decision selected: ${decision.id} (proof_tag: ${decisionFeatures.proof_tag || 'none'})`);
+        } catch (eventError: any) {
+          console.error(`[POSTING_QUEUE] Failed to emit proof selection event: ${eventError.message}`);
+        }
+      }
+    }
+    
     // 🔒 CONTROLLED WINDOW GATE: Filter to only the controlled decision_id
     // Skip if it's a known test decision ID that should be cleared
     const isKnownTestIdFilter = controlledDecisionId === '03a91e05-9487-47bc-a47a-8280660c1b6e' || controlledDecisionId?.startsWith('03a91e05-9487-47bc-a47a-');
