@@ -160,9 +160,6 @@ async function main() {
   } catch (error: any) {
     console.error(`❌ Failed to launch Chrome CDP: ${error.message}`);
     process.exit(1);
-  } catch (error: any) {
-    console.error(`❌ Failed to launch Chrome CDP: ${error.message}`);
-    process.exit(1);
   }
   
   // Don't close Chrome - keep it running

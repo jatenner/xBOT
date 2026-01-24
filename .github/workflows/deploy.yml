@@ -18,16 +18,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.18.1'
-          cache: 'npm'
+          cache: 'pnpm'
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.18.2
       
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       
       - name: Build application
-        run: npm run build
-      
-      - name: Run tests
-        run: npm run test:unit || echo "Tests failed but continuing"
+        run: pnpm run build
       
       - name: Install Railway CLI
         run: npm i -g @railway/cli

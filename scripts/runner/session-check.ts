@@ -36,6 +36,10 @@ export async function checkSession(): Promise<{
     hasConsentWall: boolean;
     hasChallenge: boolean;
     hasTimeline: boolean;
+    hasLeftNav?: boolean;
+    hasComposeButton?: boolean;
+    hasUserAvatar?: boolean;
+    sessionOK?: boolean;
   };
 }> {
   // Use runner launcher for Mac Runner (system Chrome via CDP or direct)
