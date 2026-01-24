@@ -542,6 +542,7 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
         };
         console.log(`[ANCHOR_CHECK] pass=true matched=${matchedAnchors.length}/${snapshotAnchors.length} anchors=${matchedAnchors.slice(0, 3).join(',')} number_overlap=${numberOverlap.length}`);
       }
+      }
     } else {
       // No snapshot to check against - fail closed
       guardResults.anchor_check = { pass: false, reason: 'missing_snapshot_for_anchor' };
