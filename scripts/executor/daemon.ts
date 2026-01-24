@@ -85,31 +85,30 @@ function checkStopSwitch(): boolean {
 /**
  * Handle STOP switch detection - immediate cleanup and exit
  */
-async function handleStopSwitch(): Promise<never> {
+function handleStopSwitch(): never {
   console.log('[EXECUTOR] STOP detected');
   
-  // Cleanup immediately
+  // Cleanup lock immediately (synchronous)
   cleanupLock();
   
-  // Close page
-  if (page) {
-    try {
-      await page.close();
-    } catch {
-      // Ignore
-    }
+  // Start async cleanup in background (fire and forget)
+  // Don't wait for it - exit immediately
+  if (page || browser) {
+    (async () => {
+      try {
+        if (page) {
+          await page.close().catch(() => {});
+        }
+        if (browser) {
+          await browser.close().catch(() => {});
+        }
+      } catch {
+        // Ignore all cleanup errors
+      }
+    })();
   }
   
-  // Close browser (closes context automatically)
-  if (browser) {
-    try {
-      await browser.close();
-    } catch {
-      // Ignore
-    }
-  }
-  
-  // Exit immediately
+  // Exit immediately without waiting for async cleanup
   process.exit(0);
 }
 
@@ -545,7 +544,7 @@ async function main(): Promise<void> {
   while (true) {
     // Check STOP switch - exit immediately if detected
     if (checkStopSwitch()) {
-      await handleStopSwitch();
+      handleStopSwitch();
     }
     
     const tickStart = Date.now();
@@ -568,7 +567,7 @@ async function main(): Promise<void> {
       try {
         // Check STOP switch before posting queue
         if (checkStopSwitch()) {
-          await handleStopSwitch();
+          handleStopSwitch();
         }
         
         // Run posting queue
@@ -578,7 +577,7 @@ async function main(): Promise<void> {
         
         // Check STOP switch after posting queue
         if (checkStopSwitch()) {
-          await handleStopSwitch();
+          handleStopSwitch();
         }
         
         // Run reply queue
@@ -588,7 +587,7 @@ async function main(): Promise<void> {
         
         // Check STOP switch after reply queue
         if (checkStopSwitch()) {
-          await handleStopSwitch();
+          handleStopSwitch();
         }
         
         // Reset failures on success
@@ -654,7 +653,7 @@ async function main(): Promise<void> {
     // Sleep in 1-second chunks to check STOP switch frequently
     for (let i = 0; i < sleepSeconds; i++) {
       if (checkStopSwitch()) {
-        await handleStopSwitch();
+        handleStopSwitch();
       }
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
