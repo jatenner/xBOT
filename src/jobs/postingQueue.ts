@@ -717,21 +717,53 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
         await page.goto(`https://x.com/i/web/status/${targetTweetId}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
         await page.waitForTimeout(2000);
         
-        targetAuthor = await page.evaluate(() => {
-          const authorElement = document.querySelector('[data-testid="User-Name"] a');
-          return authorElement?.textContent?.replace('@', '').toLowerCase().trim() || null;
-        });
+        // 🔧 FIX: Wrap evaluate in try-catch to handle any JS errors gracefully
+        try {
+          targetAuthor = await page.evaluate(() => {
+            try {
+              const authorElement = document.querySelector('[data-testid="User-Name"] a');
+              return authorElement?.textContent?.replace('@', '').toLowerCase().trim() || null;
+            } catch (e) {
+              // Return null if evaluation fails
+              return null;
+            }
+          });
+        } catch (evalError: any) {
+          console.error(`[FINAL_REPLY_GATE] ⚠️ Page evaluation error: ${evalError.message}`);
+          targetAuthor = null;
+        }
         
         console.log(`[FINAL_REPLY_GATE] 🔍 Fetched author from Twitter: @${targetAuthor || 'unknown'}`);
       } finally {
         await pool.releasePage(page);
       }
     } catch (fetchError: any) {
-      console.error(`[FINAL_REPLY_GATE] ⚠️ Could not fetch author for self-reply check: ${fetchError.message}`);
+      const errorMessage = fetchError.message || String(fetchError);
+      console.error(`[FINAL_REPLY_GATE] ⚠️ Could not fetch author for self-reply check: ${errorMessage}`);
+      
+      // 🔧 FIX: Emit deterministic REPLY_FAILED event instead of silently blocking
+      const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+      await supabase.from('system_events').insert({
+        event_type: 'REPLY_FAILED',
+        severity: 'error',
+        message: `Reply blocked: Author fetch failed for self-reply check`,
+        event_data: {
+          decision_id: decisionId,
+          target_tweet_id: targetTweetId,
+          error_code: 'AUTHOR_FETCH_FAILED',
+          error_message: errorMessage,
+          pipeline_error_reason: 'SAFETY_GATE_self_reply_check_failed',
+          app_version: appVersion,
+          failed_at: new Date().toISOString(),
+        },
+        created_at: new Date().toISOString(),
+      });
+      
       // Fail-closed: if we can't verify, block
       await supabase.from('content_generation_metadata_comprehensive')
         .update({ status: 'blocked', skip_reason: 'self_reply_check_failed' })
         .eq('decision_id', decisionId);
+      
       return true; // SKIP
     }
   }
@@ -3898,7 +3930,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           // ═══════════════════════════════════════════════════════════════════════
           const shouldSkip = await checkReplySafetyGates(decision, supabase);
           if (shouldSkip) {
-            // 🔒 POST_FAILED: Safety gates blocked the decision
+            // 🔒 REPLY_FAILED: Safety gates blocked the decision (replies should emit REPLY_FAILED, not POST_FAILED)
             const { data: blockedRow } = await supabase
               .from('content_generation_metadata_comprehensive')
               .select('skip_reason, error_message')
@@ -3909,9 +3941,9 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             const errorReason = `SAFETY_GATE_${skipReason}`;
             const failedAt = new Date().toISOString();
             
-            console.log(`[POST_FAILED] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} pipeline_error_reason=${errorReason}`);
+            console.log(`[REPLY_FAILED] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} pipeline_error_reason=${errorReason}`);
             await supabase.from('system_events').insert({
-              event_type: 'POST_FAILED',
+              event_type: 'REPLY_FAILED',
               severity: 'warning',
               message: `Reply posting blocked by safety gate: decision_id=${decision.id} reason=${skipReason}`,
               event_data: {

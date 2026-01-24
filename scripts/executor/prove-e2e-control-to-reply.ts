@@ -75,11 +75,11 @@ async function writeTerminationSnapshot(signal?: string): Promise<void> {
       .eq('decision_id', proofState.decisionId)
       .maybeSingle();
 
-    // Get REPLY_FAILED events
+    // Get REPLY_FAILED or POST_FAILED events (check both for backward compatibility)
     const { data: failedEvents } = await supabase
       .from('system_events')
-      .select('event_data, created_at')
-      .eq('event_type', 'REPLY_FAILED')
+      .select('event_type, event_data, created_at')
+      .in('event_type', ['REPLY_FAILED', 'POST_FAILED'])
       .eq('event_data->>decision_id', proofState.decisionId)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -107,6 +107,20 @@ async function writeTerminationSnapshot(signal?: string): Promise<void> {
           error_message: `Proof script terminated by ${signal || 'unknown signal'}`,
           step: 'proof_runner_terminated',
         });
+        
+        // 🔧 FIX: Re-check events after emitting deterministic failure
+        const { data: recheckEvents } = await supabase
+          .from('system_events')
+          .select('event_type, event_data, created_at')
+          .in('event_type', ['REPLY_FAILED', 'POST_FAILED', 'REPLY_SUCCESS'])
+          .eq('event_data->>decision_id', proofState.decisionId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (recheckEvents) {
+          failedEvents = recheckEvents;
+        }
       } catch (recordError: any) {
         console.error(`[TERMINATION] Failed to record deterministic failure: ${recordError.message}`);
       }
@@ -150,36 +164,12 @@ ${JSON.stringify(skippedEvents.map(e => typeof e.event_data === 'string' ? JSON.
 \`\`\`
 ` : 'No skipped events found'}
 
-### Executor Activity Diagnostics
-${result.evidence.diagnostic_snapshot?.tick_count_last_15m !== undefined ? `
-- **Tick Count (Last 15m):** ${result.evidence.diagnostic_snapshot.tick_count_last_15m}
-- **Last Tick At:** ${result.evidence.diagnostic_snapshot.last_tick_at || 'never'}
-- **Proof Selected Event Present:** ${result.evidence.diagnostic_snapshot.proof_selected_event_present ? 'yes' : 'no'}
-${result.evidence.diagnostic_snapshot.proof_selected_event_id ? `- **Proof Selected Event ID:** ${result.evidence.diagnostic_snapshot.proof_selected_event_id}` : ''}
+### Failure Event Details
+${failedEvents ? `
+- **Event Type:** ${failedEvents.event_type}
+- **Created At:** ${failedEvents.created_at}
+- **Error Code:** ${typeof failedEvents.event_data === 'string' ? JSON.parse(failedEvents.event_data).error_code || JSON.parse(failedEvents.event_data).pipeline_error_reason || 'N/A' : (failedEvents.event_data?.error_code || failedEvents.event_data?.pipeline_error_reason || 'N/A')}
 ` : ''}
-
-### Rate Limit State
-${result.evidence.diagnostic_snapshot?.rate_limit_active !== undefined ? `
-- **Rate Limit Active:** ${result.evidence.diagnostic_snapshot.rate_limit_active ? 'yes' : 'no'}
-${result.evidence.diagnostic_snapshot.rate_limit_until ? `- **Rate Limit Until:** ${result.evidence.diagnostic_snapshot.rate_limit_until}` : ''}
-${result.evidence.diagnostic_snapshot.rate_limit_endpoint ? `- **Rate Limit Endpoint:** ${result.evidence.diagnostic_snapshot.rate_limit_endpoint}` : ''}
-` : ''}
-
-### Rate Limit Events
-${result.evidence.diagnostic_snapshot?.rate_limit_events && result.evidence.diagnostic_snapshot.rate_limit_events.length > 0 ? `
-Found ${result.evidence.diagnostic_snapshot.rate_limit_events.length} rate limit event(s):
-
-\`\`\`json
-${JSON.stringify(result.evidence.diagnostic_snapshot.rate_limit_events, null, 2)}
-\`\`\`
-` : 'No rate limit events found'}
-
-### Proof Selection Event
-${result.evidence.diagnostic_snapshot?.proof_selection_event ? `
-\`\`\`json
-${JSON.stringify(result.evidence.diagnostic_snapshot.proof_selection_event, null, 2)}
-\`\`\`
-` : 'No proof selection event found'}
 `;
 
     // Append to report file synchronously
@@ -446,10 +436,11 @@ async function findReplyEvents(decisionId: string): Promise<{ success: boolean; 
   const supabase = getSupabaseClient();
   const startTime = new Date(Date.now() - MAX_WAIT_SECONDS * 1000);
   
+  // 🔧 FIX: Check both REPLY_FAILED and POST_FAILED (for backward compatibility)
   const { data } = await supabase
     .from('system_events')
     .select('id, event_type, event_data')
-    .in('event_type', ['REPLY_SUCCESS', 'REPLY_FAILED'])
+    .in('event_type', ['REPLY_SUCCESS', 'REPLY_FAILED', 'POST_FAILED'])
     .gte('created_at', startTime.toISOString())
     .order('created_at', { ascending: false });
   
@@ -465,7 +456,7 @@ async function findReplyEvents(decisionId: string): Promise<{ success: boolean; 
       eventData.push(eventDataParsed);
       if (event.event_type === 'REPLY_SUCCESS') {
         success = true;
-      } else if (event.event_type === 'REPLY_FAILED') {
+      } else if (event.event_type === 'REPLY_FAILED' || event.event_type === 'POST_FAILED') {
         failed = true;
       }
     }
@@ -546,6 +537,67 @@ async function countAttempts(decisionId: string): Promise<number> {
   return count || 0;
 }
 
+/**
+ * Write initial report immediately after creating decision (for durability)
+ */
+async function writeInitialReport(decisionId: string, proofTag: string, targetTweetId: string): Promise<void> {
+  try {
+    const reportPath = path.join(process.cwd(), 'docs', 'CONTROL_TO_REPLY_PROOF.md');
+    const os = require('os');
+    const machineInfo = {
+      hostname: os.hostname(),
+      platform: os.platform(),
+      arch: os.arch(),
+      nodeVersion: process.version,
+    };
+    
+    const initialReport = `# Control → Executor → X Proof (Reply)
+
+**Date:** ${new Date().toISOString()}  
+**Status:** ⏳ IN PROGRESS
+
+## Machine Info
+
+- **Hostname:** ${machineInfo.hostname}
+- **Platform:** ${machineInfo.platform}
+- **Architecture:** ${machineInfo.arch}
+- **Node Version:** ${machineInfo.nodeVersion}
+- **Runner Profile Dir:** ${RUNNER_PROFILE_DIR}
+
+## Evidence
+
+- **Decision ID:** ${decisionId}
+- **Target Tweet ID:** ${targetTweetId}
+- **Proof Tag:** ${proofTag}
+- **Pipeline Source:** control_reply_scheduler
+- **Decision Status:** queued (initial)
+- **Attempt ID:** N/A (pending)
+- **Outcome ID:** N/A (pending)
+- **Event IDs:** N/A (pending)
+
+## Results
+
+| Check | Status | Evidence | Assertion |
+|-------|--------|----------|-----------|
+| Control Decision Created | ✅ | control_reply_scheduler | - |
+| Decision Queued | ✅ | queued | - |
+| Decision Claimed | ⏳ | pending | - |
+| Attempt Recorded | ⏳ | pending | - |
+| Result Recorded | ⏳ | pending | - |
+| Success/Failure Event | ⏳ | pending | - |
+
+---
+
+*Report will be updated as proof progresses...*
+`;
+
+    fs.writeFileSync(reportPath, initialReport, 'utf-8');
+    console.log(`📝 Initial report written to ${reportPath}`);
+  } catch (error: any) {
+    console.warn(`⚠️  Failed to write initial report: ${error.message}`);
+  }
+}
+
 async function main(): Promise<void> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           🧪 PROOF LEVEL 4: CONTROL → EXECUTOR → X (REPLY)');
@@ -599,6 +651,9 @@ async function main(): Promise<void> {
   proofState.proofTag = proofTag;
   proofState.targetTweetId = targetTweetId;
   proofState.reportPath = path.join(process.cwd(), 'docs', 'CONTROL_TO_REPLY_PROOF.md');
+  
+  // 🔧 FIX: Write initial report immediately after creating decision
+  await writeInitialReport(decisionId, proofTag, targetTweetId);
   
   // DRY_RUN mode: exit after creating decision
   if (DRY_RUN) {
