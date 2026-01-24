@@ -84,7 +84,7 @@ function writeHeartbeatSnapshot(): void {
 - **Decision Status:** ${statusCheck?.status || 'unknown'}
 - **Claimed:** ${proofState.cachedDecisionStatus?.claimed ? 'yes' : 'no'}
 - **Tweet ID:** ${statusCheck?.tweet_id || 'N/A'}
-- **URL:** ${statusCheck?.url || 'N/A'}
+${statusCheck?.tweet_id ? `- **URL:** https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${statusCheck.tweet_id}` : '- **URL:** N/A'}
 - **Created At:** ${statusCheck?.created_at || 'N/A'}
 - **Fallback Used:** ${statusCheck?.fallback_used ? 'yes' : 'no'}
 ${statusCheck?.supabase_error ? `- **Supabase Error:** ${JSON.stringify(statusCheck.supabase_error)}` : ''}
@@ -135,7 +135,7 @@ function writeTerminationSnapshotSync(signal?: string): void {
 - **Final Status:** ${proofState.cachedStatusCheck?.status || 'unknown'}
 - **Claimed:** ${proofState.cachedStatusCheck?.claimed ? 'yes' : 'no'}
 - **Tweet ID:** ${proofState.cachedStatusCheck?.tweet_id || 'N/A'}
-- **URL:** ${proofState.cachedStatusCheck?.url || 'N/A'}
+${proofState.cachedStatusCheck?.tweet_id ? `- **URL:** https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${proofState.cachedStatusCheck.tweet_id}` : '- **URL:** N/A'}
 - **Created At:** ${proofState.cachedStatusCheck?.created_at || 'N/A'}
 - **Fallback Used:** ${proofState.cachedStatusCheck?.fallback_used ? 'yes' : 'no'}
 ${proofState.cachedStatusCheck?.supabase_error ? `- **Supabase Error:** ${JSON.stringify(proofState.cachedStatusCheck.supabase_error)}` : ''}
@@ -377,7 +377,7 @@ async function createControlDecision(proofTag: string): Promise<string> {
   
   const { data: verifyData, error: verifyError } = await supabase
     .from('content_metadata')
-    .select('decision_id, status, tweet_id, url, created_at')
+    .select('decision_id, status, tweet_id, created_at')
     .eq('decision_id', decisionId)
     .maybeSingle();
   
@@ -399,7 +399,6 @@ interface DecisionStatusResult {
   claimed: boolean;
   pipeline_source?: string | null;
   tweet_id: string | null;
-  url: string | null;
   created_at: string | null;
   supabase_error: any | null;
   fallback_used: boolean;
@@ -411,7 +410,7 @@ async function checkDecisionStatus(decisionId: string, proofTag: string): Promis
   // Primary query: search by decision_id
   const { data, error } = await supabase
     .from('content_metadata')
-    .select('status, features, tweet_id, url, created_at')
+    .select('status, features, tweet_id, created_at')
     .eq('decision_id', decisionId)
     .maybeSingle();
   
@@ -427,7 +426,6 @@ async function checkDecisionStatus(decisionId: string, proofTag: string): Promis
       claimed,
       pipeline_source,
       tweet_id: data.tweet_id ? String(data.tweet_id) : null,
-      url: data.url ? String(data.url) : null,
       created_at: data.created_at ? String(data.created_at) : null,
       supabase_error: null,
       fallback_used: false,
@@ -438,7 +436,7 @@ async function checkDecisionStatus(decisionId: string, proofTag: string): Promis
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const { data: fallbackData, error: fallbackError } = await supabase
     .from('content_metadata')
-    .select('decision_id, status, features, tweet_id, url, created_at')
+    .select('decision_id, status, features, tweet_id, created_at')
     .eq('features->>proof_tag', proofTag)
     .eq('features->>pipeline_source', 'control_posting_queue')
     .gte('created_at', tenMinutesAgo)
@@ -458,7 +456,6 @@ async function checkDecisionStatus(decisionId: string, proofTag: string): Promis
       claimed,
       pipeline_source,
       tweet_id: fallbackData.tweet_id ? String(fallbackData.tweet_id) : null,
-      url: fallbackData.url ? String(fallbackData.url) : null,
       created_at: fallbackData.created_at ? String(fallbackData.created_at) : null,
       supabase_error: error || null, // Include original error for debugging
       fallback_used: true,
@@ -472,7 +469,6 @@ async function checkDecisionStatus(decisionId: string, proofTag: string): Promis
     claimed: false,
     pipeline_source: null,
     tweet_id: null,
-    url: null,
     created_at: null,
     supabase_error: error || fallbackError || null,
     fallback_used: fallbackError ? false : true, // Only true if fallback was attempted
@@ -764,7 +760,6 @@ async function main(): Promise<void> {
       claimed: statusCheck.claimed,
       pipeline_source: statusCheck.pipeline_source || undefined,
       tweet_id: statusCheck.tweet_id || undefined,
-      url: statusCheck.url || undefined,
     };
     
     if (statusCheck.found) {
@@ -783,18 +778,13 @@ async function main(): Promise<void> {
         result.control_decision_created = true;
       }
       
-      // 🔧 IMPROVED SUCCESS DETECTION: If status=posted with tweet_id/url, mark as success
-      if (statusCheck.status === 'posted' && (statusCheck.tweet_id || statusCheck.url)) {
+      // 🔧 IMPROVED SUCCESS DETECTION: If status=posted with tweet_id, mark as success
+      if (statusCheck.status === 'posted' && statusCheck.tweet_id) {
         result.success_or_failure_event_present = true; // Mark as having evidence
-        if (statusCheck.url) {
-          result.result_url = statusCheck.url;
-          proofState.cachedResultUrl = statusCheck.url;
-        } else if (statusCheck.tweet_id) {
-          const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
-          result.result_url = `https://x.com/${username}/status/${statusCheck.tweet_id}`;
-          proofState.cachedResultUrl = result.result_url;
-        }
-        console.log(`✅ Post execution complete (status=posted with tweet_id/url)!`);
+        const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+        result.result_url = `https://x.com/${username}/status/${statusCheck.tweet_id}`;
+        proofState.cachedResultUrl = result.result_url;
+        console.log(`✅ Post execution complete (status=posted with tweet_id=${statusCheck.tweet_id})!`);
         break;
       }
     }
@@ -822,8 +812,8 @@ async function main(): Promise<void> {
       result.evidence.event_ids = events.eventIds;
     }
     
-    // Extract result URL (prioritize status=posted with tweet_id/url)
-    let resultUrl = status.url || (status.tweet_id ? `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${status.tweet_id}` : undefined);
+    // Extract result URL (prioritize status=posted with tweet_id)
+    let resultUrl = status.tweet_id ? `https://x.com/${process.env.TWITTER_USERNAME || 'SignalAndSynapse'}/status/${status.tweet_id}` : undefined;
     if (!resultUrl) {
       resultUrl = await extractResultUrl(decisionId, eventData, outcomeResult);
     }
