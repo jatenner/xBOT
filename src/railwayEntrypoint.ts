@@ -49,7 +49,8 @@ function startHealthServer(): void {
   console.log(`[BOOT] sha=${appCommitSha} build_time=${appBuildTime} execution_mode=${executionMode} runner_mode=${runnerMode} service_role=${serviceRole} railway_service=${railwayService} jobs_enabled=${jobsEnabled}`);
   
   console.log(`[BOOT] git_sha=${gitSha}`);
-  console.log(`[BOOT] railway_git_commit_sha=${process.env.RAILWAY_GIT_COMMIT_SHA ?? 'missing'}`);
+  console.log(`[BOOT] RAILWAY_GIT_COMMIT_SHA=${process.env.RAILWAY_GIT_COMMIT_SHA ?? 'missing'}`);
+  console.log(`[BOOT] VERIFY_SHA: RAILWAY_GIT_COMMIT_SHA=${process.env.RAILWAY_GIT_COMMIT_SHA ?? 'NOT_SET'}`);
   console.log(`[BOOT] app_version=${appVersion}`);
   console.log(`[BOOT] boot_id=${bootId}`);
   console.log(`[BOOT] boot_time=${bootTime}`);
