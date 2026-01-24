@@ -65,19 +65,27 @@ function startHealthServer(): void {
 
   healthServer = createServer(async (req, res) => {
     // Minimal /healthz endpoint for SHA verification (no secrets, fast)
-    if (req.url === '/healthz') {
+    if (req.url?.startsWith('/healthz')) {
       // Prioritize RAILWAY_GIT_COMMIT_SHA (set by Railway GitHub Integration) over APP_COMMIT_SHA (build-time)
-      const sha = process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.APP_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
+      const railwaySha = process.env.RAILWAY_GIT_COMMIT_SHA || null;
+      const appSha = process.env.APP_COMMIT_SHA || null;
+      const gitSha = process.env.GIT_SHA || null;
+      const sha = railwaySha ?? appSha ?? gitSha ?? 'unknown';
       const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
       const executionMode = process.env.EXECUTION_MODE || 'control';
       const runnerMode = process.env.RUNNER_MODE === 'true';
       
       res.writeHead(200, { 
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache'
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
       });
       res.end(JSON.stringify({
         sha,
+        railway_sha: railwaySha,
+        app_sha: appSha,
+        git_sha: gitSha,
         serviceName,
         executionMode,
         runnerMode
