@@ -1923,9 +1923,14 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
           log({ op: 'rate_limit_check', posts_this_hour: totalPostsThisHour, this_post_count: thisPostCount, limit: maxPostsPerHour });
           console.log(`[POSTING_QUEUE] 📊 Posts this hour: ${totalPostsThisHour}/${maxPostsPerHour} (this ${decision.decision_type} would add ${thisPostCount} post)`);
           
-          if (wouldExceed) {
+          // 🔒 PROOF_MODE: Bypass rate limit check for proof decisions (variables already declared above)
+          if (wouldExceed && !(proofMode && isProofDecision)) {
             console.log(`[POSTING_QUEUE] ⛔ SKIP: Would exceed post limit (${totalPostsThisHour + thisPostCount} > ${maxPostsPerHour})`);
             continue; // Skip this decision
+          }
+          
+          if (proofMode && isProofDecision && wouldExceed) {
+            console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing post limit check for proof decision (proof_tag=${proofTag})`);
           }
           
           // ✅ THREADS COUNT AS 1 POST: No special spacing needed
