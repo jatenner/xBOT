@@ -27,7 +27,7 @@ import { v4 as uuidv4 } from 'uuid';
 const RUNNER_PROFILE_DIR = resolveRunnerProfileDir();
 const STOP_SWITCH_PATH = RUNNER_PROFILE_PATHS.stopSwitch();
 const PIDFILE_PATH = RUNNER_PROFILE_PATHS.pidFile();
-const MAX_WAIT_SECONDS = 600; // 10 minutes max wait (increased to reduce false SIGTERM/timeouts)
+const MAX_WAIT_SECONDS = parseInt(process.env.PROOF_MAX_WAIT_SECONDS || '600', 10); // Default 10 minutes, override via env
 
 const DRY_RUN = process.env.DRY_RUN !== 'false' && process.env.EXECUTE_REAL_ACTION !== 'true';
 const EXECUTE_REAL_ACTION = process.env.EXECUTE_REAL_ACTION === 'true';
@@ -46,6 +46,15 @@ let proofState: {
   cachedFailedEvent?: any;
   cachedResultUrl?: string;
   lastHeartbeat?: number;
+  cachedStatusCheck?: {
+    found: boolean;
+    status: string | null;
+    tweet_id: string | null;
+    url: string | null;
+    created_at: string | null;
+    supabase_error: any | null;
+    fallback_used: boolean;
+  };
 } = {};
 
 /**
@@ -66,12 +75,19 @@ function writeHeartbeatSnapshot(): void {
     }
     proofState.lastHeartbeat = now;
 
+    const statusCheck = proofState.cachedStatusCheck;
     const snapshot = `
 ---
 
 **Heartbeat:** ${new Date().toISOString()}
-- **Decision Status:** ${proofState.cachedDecisionStatus?.status || 'unknown'}
+- **Decision Found:** ${statusCheck?.found ? 'yes' : 'no'}
+- **Decision Status:** ${statusCheck?.status || 'unknown'}
 - **Claimed:** ${proofState.cachedDecisionStatus?.claimed ? 'yes' : 'no'}
+- **Tweet ID:** ${statusCheck?.tweet_id || 'N/A'}
+- **URL:** ${statusCheck?.url || 'N/A'}
+- **Created At:** ${statusCheck?.created_at || 'N/A'}
+- **Fallback Used:** ${statusCheck?.fallback_used ? 'yes' : 'no'}
+${statusCheck?.supabase_error ? `- **Supabase Error:** ${JSON.stringify(statusCheck.supabase_error)}` : ''}
 - **Attempt ID:** ${proofState.cachedAttemptId || 'N/A'}
 - **Outcome ID:** ${proofState.cachedOutcomeId || 'N/A'}
 - **Event IDs:** ${proofState.cachedEventIds?.length ? proofState.cachedEventIds.join(', ') : 'N/A'}
@@ -115,8 +131,14 @@ function writeTerminationSnapshotSync(signal?: string): void {
 ### Decision Status (from cache)
 - **Decision ID:** ${proofState.decisionId}
 - **Proof Tag:** ${proofState.proofTag}
-- **Final Status:** ${proofState.cachedDecisionStatus?.status || 'unknown'}
-- **Claimed:** ${proofState.cachedDecisionStatus?.claimed ? 'yes' : 'no'}
+- **Found:** ${proofState.cachedStatusCheck?.found ? 'yes' : 'no'}
+- **Final Status:** ${proofState.cachedStatusCheck?.status || 'unknown'}
+- **Claimed:** ${proofState.cachedStatusCheck?.claimed ? 'yes' : 'no'}
+- **Tweet ID:** ${proofState.cachedStatusCheck?.tweet_id || 'N/A'}
+- **URL:** ${proofState.cachedStatusCheck?.url || 'N/A'}
+- **Created At:** ${proofState.cachedStatusCheck?.created_at || 'N/A'}
+- **Fallback Used:** ${proofState.cachedStatusCheck?.fallback_used ? 'yes' : 'no'}
+${proofState.cachedStatusCheck?.supabase_error ? `- **Supabase Error:** ${JSON.stringify(proofState.cachedStatusCheck.supabase_error)}` : ''}
 
 ### Outcomes (from cache)
 - **Attempt ID:** ${proofState.cachedAttemptId || 'N/A'}
@@ -346,31 +368,114 @@ async function createControlDecision(proofTag: string): Promise<string> {
   }
   
   console.log(`✅ Control decision created: ${decisionId}`);
-  return decisionId;
-}
-
-async function checkDecisionStatus(decisionId: string): Promise<{ status: string; claimed: boolean; pipeline_source?: string; tweet_id?: string; url?: string }> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  
+  // 🔧 DB VERIFICATION: Immediately verify the decision exists in the database
+  const supabaseUrl = process.env.SUPABASE_URL || 'N/A';
+  const supabaseProject = supabaseUrl.includes('supabase.co') 
+    ? supabaseUrl.split('//')[1]?.split('.')[0] || 'unknown'
+    : 'local';
+  
+  const { data: verifyData, error: verifyError } = await supabase
     .from('content_metadata')
-    .select('status, features, tweet_id, url')
+    .select('decision_id, status, tweet_id, url, created_at')
     .eq('decision_id', decisionId)
     .maybeSingle();
   
-  if (error || !data) {
-    return { status: 'unknown', claimed: false };
+  if (verifyError) {
+    throw new Error(`Failed to verify decision in DB: ${verifyError.message} (Supabase project: ${supabaseProject}, query: decision_id=${decisionId})`);
   }
   
-  const claimed = data.status === 'posting' || data.status === 'posted' || data.status === 'failed';
-  const features = typeof data.features === 'string' ? JSON.parse(data.features) : data.features;
-  const pipeline_source = features?.pipeline_source || null;
+  if (!verifyData) {
+    throw new Error(`Decision ${decisionId} not found in database after insert (Supabase project: ${supabaseProject}, query: decision_id=${decisionId})`);
+  }
   
-  return { 
-    status: data.status, 
-    claimed, 
-    pipeline_source,
-    tweet_id: data.tweet_id ? String(data.tweet_id) : undefined,
-    url: data.url ? String(data.url) : undefined
+  console.log(`✅ Decision verified in DB: status=${verifyData.status}, created_at=${verifyData.created_at}`);
+  return decisionId;
+}
+
+interface DecisionStatusResult {
+  found: boolean;
+  status: string | null;
+  claimed: boolean;
+  pipeline_source?: string | null;
+  tweet_id: string | null;
+  url: string | null;
+  created_at: string | null;
+  supabase_error: any | null;
+  fallback_used: boolean;
+}
+
+async function checkDecisionStatus(decisionId: string, proofTag: string): Promise<DecisionStatusResult> {
+  const supabase = getSupabaseClient();
+  
+  // Primary query: search by decision_id
+  const { data, error } = await supabase
+    .from('content_metadata')
+    .select('status, features, tweet_id, url, created_at')
+    .eq('decision_id', decisionId)
+    .maybeSingle();
+  
+  if (!error && data) {
+    // Found by decision_id - return success
+    const claimed = data.status === 'posting' || data.status === 'posted' || data.status === 'failed';
+    const features = typeof data.features === 'string' ? JSON.parse(data.features) : data.features;
+    const pipeline_source = features?.pipeline_source || null;
+    
+    return {
+      found: true,
+      status: data.status,
+      claimed,
+      pipeline_source,
+      tweet_id: data.tweet_id ? String(data.tweet_id) : null,
+      url: data.url ? String(data.url) : null,
+      created_at: data.created_at ? String(data.created_at) : null,
+      supabase_error: null,
+      fallback_used: false,
+    };
+  }
+  
+  // Fallback: search by proof_tag in features JSONB
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const { data: fallbackData, error: fallbackError } = await supabase
+    .from('content_metadata')
+    .select('decision_id, status, features, tweet_id, url, created_at')
+    .eq('features->>proof_tag', proofTag)
+    .eq('features->>pipeline_source', 'control_posting_queue')
+    .gte('created_at', tenMinutesAgo)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  
+  if (!fallbackError && fallbackData) {
+    // Found by fallback search
+    const claimed = fallbackData.status === 'posting' || fallbackData.status === 'posted' || fallbackData.status === 'failed';
+    const features = typeof fallbackData.features === 'string' ? JSON.parse(fallbackData.features) : fallbackData.features;
+    const pipeline_source = features?.pipeline_source || null;
+    
+    return {
+      found: true,
+      status: fallbackData.status,
+      claimed,
+      pipeline_source,
+      tweet_id: fallbackData.tweet_id ? String(fallbackData.tweet_id) : null,
+      url: fallbackData.url ? String(fallbackData.url) : null,
+      created_at: fallbackData.created_at ? String(fallbackData.created_at) : null,
+      supabase_error: error || null, // Include original error for debugging
+      fallback_used: true,
+    };
+  }
+  
+  // Not found by either method
+  return {
+    found: false,
+    status: null,
+    claimed: false,
+    pipeline_source: null,
+    tweet_id: null,
+    url: null,
+    created_at: null,
+    supabase_error: error || fallbackError || null,
+    fallback_used: fallbackError ? false : true, // Only true if fallback was attempted
   };
 }
 
@@ -506,7 +611,8 @@ async function main(): Promise<void> {
   
   // Generate PROOF_TAG
   const proofTag = `control-post-${Date.now()}`;
-  console.log(`📋 Proof Tag: ${proofTag}\n`);
+  console.log(`📋 Proof Tag: ${proofTag}`);
+  console.log(`📋 Max Wait: ${MAX_WAIT_SECONDS}s\n`);
   
   // Pre-flight: stop any existing daemon
   console.log('📋 Pre-flight checks...');
@@ -646,21 +752,51 @@ async function main(): Promise<void> {
   let outcomeResult: any = null;
   
   while (Date.now() - startTime < MAX_WAIT_SECONDS * 1000) {
-    // Check decision status
-    const status = await checkDecisionStatus(decisionId);
-    if (status.status === 'queued') {
-      result.decision_queued = true;
-      result.evidence.decision_status = status.status;
-      result.evidence.pipeline_source = status.pipeline_source || undefined;
-    }
-    if (status.claimed) {
-      result.decision_claimed = true;
-      result.evidence.decision_status = status.status;
-    }
+    // Check decision status (with improved error handling and fallback)
+    const statusCheck = await checkDecisionStatus(decisionId, proofTag);
     
-    // Check control decision created
-    if (status.status) {
-      result.control_decision_created = true;
+    // Cache status check for signal handlers
+    proofState.cachedStatusCheck = statusCheck;
+    
+    // Map to legacy format for compatibility
+    const status = {
+      status: statusCheck.status || 'unknown',
+      claimed: statusCheck.claimed,
+      pipeline_source: statusCheck.pipeline_source || undefined,
+      tweet_id: statusCheck.tweet_id || undefined,
+      url: statusCheck.url || undefined,
+    };
+    
+    if (statusCheck.found) {
+      if (statusCheck.status === 'queued') {
+        result.decision_queued = true;
+        result.evidence.decision_status = statusCheck.status;
+        result.evidence.pipeline_source = statusCheck.pipeline_source || undefined;
+      }
+      if (statusCheck.claimed) {
+        result.decision_claimed = true;
+        result.evidence.decision_status = statusCheck.status;
+      }
+      
+      // Check control decision created
+      if (statusCheck.status) {
+        result.control_decision_created = true;
+      }
+      
+      // 🔧 IMPROVED SUCCESS DETECTION: If status=posted with tweet_id/url, mark as success
+      if (statusCheck.status === 'posted' && (statusCheck.tweet_id || statusCheck.url)) {
+        result.success_or_failure_event_present = true; // Mark as having evidence
+        if (statusCheck.url) {
+          result.result_url = statusCheck.url;
+          proofState.cachedResultUrl = statusCheck.url;
+        } else if (statusCheck.tweet_id) {
+          const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+          result.result_url = `https://x.com/${username}/status/${statusCheck.tweet_id}`;
+          proofState.cachedResultUrl = result.result_url;
+        }
+        console.log(`✅ Post execution complete (status=posted with tweet_id/url)!`);
+        break;
+      }
     }
     
     // Check for attempt
@@ -697,7 +833,11 @@ async function main(): Promise<void> {
     }
     
     // 🔧 FIX: Cache state for signal handlers
-    proofState.cachedDecisionStatus = status;
+    proofState.cachedDecisionStatus = {
+      status: statusCheck.status || 'unknown',
+      claimed: statusCheck.claimed,
+      pipeline_source: statusCheck.pipeline_source || undefined,
+    };
     proofState.cachedAttemptId = attemptId;
     proofState.cachedOutcomeId = outcome.id;
     proofState.cachedEventIds = events.eventIds;
@@ -722,7 +862,7 @@ async function main(): Promise<void> {
       break;
     }
     
-    // 🔧 FIX: Early exit if POST_SUCCESS or POST_FAILED detected
+    // 🔧 FIX: Early exit if POST_SUCCESS or POST_FAILED detected OR status=posted with tweet_id/url
     if (events.success || events.failed) {
       if (events.success) {
         console.log('✅ Post execution complete (POST_SUCCESS detected)!');
@@ -732,20 +872,9 @@ async function main(): Promise<void> {
       break;
     }
     
-    // Also check if decision is posted (status=posted with tweet_id/url) OR has POST_SUCCESS/POST_FAILED event
-    if (status.status === 'posted' && (status.tweet_id || status.url)) {
-      // Re-check events to ensure we have POST_SUCCESS
-      const recheckEvents = await findPostEvents(decisionId);
-      if (recheckEvents.success || recheckEvents.failed) {
-        console.log(`✅ Post execution complete (status=posted with tweet_id/url, event=${recheckEvents.success ? 'POST_SUCCESS' : 'POST_FAILED'})!`);
-        break;
-      } else if (status.tweet_id || status.url) {
-        // Even without event, if we have tweet_id/url, consider it success
-        console.log(`✅ Post execution complete (status=posted with tweet_id/url)!`);
-        result.success_or_failure_event_present = true; // Mark as having evidence
-        break;
-      }
-    }
+    // Success detection for status=posted is already handled above
+    
+    // Success detection is now handled above in the status check
     
     await new Promise(resolve => setTimeout(resolve, 5000)); // Check every 5 seconds
   }
