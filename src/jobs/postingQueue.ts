@@ -3070,29 +3070,34 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       }
     }
     
-    const decisions: QueuedDecision[] = decisionsWithLimits.map(row => ({
-      id: String(row.decision_id ?? ''),  // 🔥 FIX: Map to decision_id (UUID), not id (integer)!
-      content: String(row.content ?? ''),
-      decision_type: String(row.decision_type ?? 'single') as 'single' | 'thread' | 'reply',
-      target_tweet_id: row.target_tweet_id ? String(row.target_tweet_id) : undefined,
-      target_username: row.target_username ? String(row.target_username) : undefined,
-      root_tweet_id: row.root_tweet_id ? String(row.root_tweet_id) : undefined, // 🔧 FIX: Pass through for FINAL_REPLY_GATE
-      target_tweet_content_snapshot: row.target_tweet_content_snapshot ? String(row.target_tweet_content_snapshot) : undefined, // 🔧 FIX
-      target_tweet_content_hash: row.target_tweet_content_hash ? String(row.target_tweet_content_hash) : undefined, // 🔧 FIX
-      semantic_similarity: row.semantic_similarity != null ? Number(row.semantic_similarity) : undefined, // 🔧 FIX
-      bandit_arm: String(row.bandit_arm ?? ''),
-      thread_parts: row.thread_parts as string[] | undefined,
-      timing_arm: row.timing_arm ? String(row.timing_arm) : undefined,
-      predicted_er: Number(row.predicted_er ?? 0),
-      quality_score: row.quality_score ? Number(row.quality_score) : undefined,
-      topic_cluster: String(row.topic_cluster ?? ''),
-      status: String(row.status ?? 'ready_for_posting'),
-      created_at: String(row.created_at ?? new Date().toISOString()),
-      // CRITICAL: Pass through features for thread_tweets
-      features: row.features as any,
-      // ✅ Pass through visual_format for formatting
-      visual_format: row.visual_format ? String(row.visual_format) : undefined
-    }));
+    const decisions: QueuedDecision[] = decisionsWithLimits.map(row => {
+      // Extract fields from features JSONB if not present as top-level columns
+      const features = (row.features || {}) as Record<string, any>;
+      
+      return {
+        id: String(row.decision_id ?? ''),  // 🔥 FIX: Map to decision_id (UUID), not id (integer)!
+        content: String(row.content ?? ''),
+        decision_type: String(row.decision_type ?? 'single') as 'single' | 'thread' | 'reply',
+        target_tweet_id: row.target_tweet_id ? String(row.target_tweet_id) : undefined,
+        target_username: row.target_username ? String(row.target_username) : undefined,
+        root_tweet_id: row.root_tweet_id ? String(row.root_tweet_id) : (features.root_tweet_id ? String(features.root_tweet_id) : undefined), // 🔧 FIX: Extract from features if not top-level
+        target_tweet_content_snapshot: row.target_tweet_content_snapshot ? String(row.target_tweet_content_snapshot) : (features.target_tweet_content_snapshot ? String(features.target_tweet_content_snapshot) : undefined), // 🔧 FIX: Extract from features if not top-level
+        target_tweet_content_hash: row.target_tweet_content_hash ? String(row.target_tweet_content_hash) : (features.target_tweet_content_hash ? String(features.target_tweet_content_hash) : undefined), // 🔧 FIX: Extract from features if not top-level
+        semantic_similarity: row.semantic_similarity != null ? Number(row.semantic_similarity) : (features.semantic_similarity != null ? Number(features.semantic_similarity) : undefined), // 🔧 FIX: Extract from features if not top-level
+        bandit_arm: String(row.bandit_arm ?? ''),
+        thread_parts: row.thread_parts as string[] | undefined,
+        timing_arm: row.timing_arm ? String(row.timing_arm) : undefined,
+        predicted_er: Number(row.predicted_er ?? 0),
+        quality_score: row.quality_score ? Number(row.quality_score) : undefined,
+        topic_cluster: String(row.topic_cluster ?? ''),
+        status: String(row.status ?? 'ready_for_posting'),
+        created_at: String(row.created_at ?? new Date().toISOString()),
+        // CRITICAL: Pass through features for thread_tweets
+        features: row.features as any,
+        // ✅ Pass through visual_format for formatting
+        visual_format: row.visual_format ? String(row.visual_format) : undefined
+      };
+    });
     
     return decisions;
     
