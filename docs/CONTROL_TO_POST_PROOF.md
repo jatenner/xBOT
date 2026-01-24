@@ -1,7 +1,7 @@
 # Control → Executor → X Proof (Posting)
 
-**Date:** 2026-01-24T17:15:07.590Z  
-**Status:** ❌ FAIL
+**Date:** 2026-01-24T17:17:16.816Z  
+**Status:** ⏳ IN PROGRESS
 
 ## Machine Info
 
@@ -11,75 +11,365 @@
 - **Node Version:** v22.14.0
 - **Runner Profile Dir:** /Users/jonahtenner/Desktop/xBOT/.runner-profile
 
+## Evidence
+
+- **Decision ID:** b3d53551-9c42-42b6-bed4-ffdf69ff587c
+- **Proof Tag:** control-post-1769275036409
+- **Pipeline Source:** control_posting_queue
+- **Decision Status:** queued (initial)
+- **Attempt ID:** N/A (pending)
+- **Outcome ID:** N/A (pending)
+- **Event IDs:** N/A (pending)
+- **DRY_RUN:** false
+
 ## Results
 
 | Check | Status | Evidence | Assertion |
 |-------|--------|----------|-----------|
 | Control Decision Created | ✅ | control_posting_queue | - |
 | Decision Queued | ✅ | queued | - |
-| Decision Claimed | ❌ | queued | - |
-| Attempt Recorded | ❌ | N/A | - |
-| Result Recorded | ❌ | N/A | - |
-| Success/Failure Event | ❌ | N/A | - |
-| Exactly One Decision | ✅ | 1 | HARD |
-| Exactly One Attempt | ❌ | 0 | HARD |
-| Windows Opened | ❌ | 1 | HARD |
-| Chrome CDP Processes | ✅ | 0 | HARD |
-| Pages Max | ✅ | 1 | HARD |
+| Decision Claimed | ⏳ | pending | - |
+| Attempt Recorded | ⏳ | pending | - |
+| Result Recorded | ⏳ | pending | - |
+| Success/Failure Event | ⏳ | pending | - |
 
-## Evidence
+---
 
-- **Decision ID:** ff2b4897-8b80-484b-94c0-5cd0e2b1cb83
-- **Proof Tag:** control-post-1769274292283
-- **Pipeline Source:** control_posting_queue
-- **Decision Status:** queued
+*Report will be updated as proof progresses...*
+
+---
+
+**Heartbeat:** 2026-01-24T17:17:17.649Z
+- **Decision Status:** unknown
+- **Claimed:** no
 - **Attempt ID:** N/A
 - **Outcome ID:** N/A
 - **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
 
 
-## Log Excerpts
+---
 
-```
-[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit check for proof decision (proof_tag=control-post-1769274292283)
-[EXECUTOR_DAEMON] ts=2026-01-24T17:13:17.913Z pages=1 browser_launches=1 posting_ready=4 posting_attempts=0 reply_ready=0 reply_attempts=0 backoff=0s
-[POSTING_QUEUE] ✅ job_tick start SERVICE_ROLE=worker RUNNER_MODE=true EXECUTION_MODE=executor isExecutorMode=true GROWTH_CONTROLLER_ENABLED=false ALLOW_TEST_POSTS=false postingDisabled=false postingDisabledEnv=false
-[POSTING_QUEUE] 🚀 Starting posting queue (cert_mode=false, max_items=2)
-{"ts":"2026-01-24T17:14:18.358Z","app":"xbot","op":"posting_queue_start"}
-{"ts":"2026-01-24T17:14:18.723Z","app":"xbot","op":"posting_queue","content_rate_limited":true,"note":"replies_may_still_proceed"}
-[POSTING_QUEUE] ⏸️ Post 95e2edd4-7012-4b16-8424-a7910c3035ed blocked by rate limits (32min old)
-[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit for proof decision (proof_tag=control-post-1769272910608)
-[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit for proof decision (proof_tag=control-post-1769273266080)
-[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit for proof decision (proof_tag=control-post-1769273930327)
-[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit for proof decision (proof_tag=control-post-1769274292283)
-[POSTING_QUEUE] ✅ After rate limits: 4 decisions can post (0 content, 3 replies available)
-[POSTING_QUEUE] 🔍 DIAGNOSTIC [4/4]: decision_id=ff2b4897-8b80-484b-94c0-5cd0e2b1cb83 type=single gate=PASS reason=
-[POSTING_QUEUE] 🎯 Proof decision selected: ff2b4897-8b80-484b-94c0-5cd0e2b1cb83 (proof_tag: control-post-1769274292283)
-{"ts":"2026-01-24T17:14:19.721Z","app":"xbot","op":"posting_queue","ready_count":4,"grace_minutes":5}
-[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit check for proof decision (proof_tag=control-post-1769272910608)
-[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit check for proof decision (proof_tag=control-post-1769273266080)
-[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit check for proof decision (proof_tag=control-post-1769273930327)
-[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit check for proof decision (proof_tag=control-post-1769274292283)
-[EXECUTOR_DAEMON] ts=2026-01-24T17:14:20.439Z pages=1 browser_launches=1 posting_ready=4 posting_attempts=0 reply_ready=0 reply_attempts=0 backoff=0s
-```
-
-## Diagnostic Snapshot (Failure Analysis)
-
-### Decision Status
-- **Final Status:** queued
-- **Error Message:** N/A
-
-### Failure Event Data
-No POST_FAILED event found
-
-### Outcomes Result
-No outcomes result found
-
-### Skipped Events
-No skipped events found
+**Heartbeat:** 2026-01-24T17:17:29.386Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
 
 
-## Result
+---
 
-❌ **FAIL** - One or more checks failed
+**Heartbeat:** 2026-01-24T17:17:40.927Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
 
+
+---
+
+**Heartbeat:** 2026-01-24T17:17:52.459Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:18:03.980Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:18:15.611Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:18:27.265Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:18:38.870Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:18:50.488Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:19:02.149Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:19:13.791Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:19:25.354Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:19:36.989Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:19:48.607Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:20:00.334Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:20:12.036Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:20:23.626Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:20:35.158Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:20:46.776Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:20:58.298Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:21:09.849Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:21:21.439Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:21:33.064Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:21:44.668Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:21:56.267Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+**Heartbeat:** 2026-01-24T17:22:07.980Z
+- **Decision Status:** unknown
+- **Claimed:** no
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+## Diagnostic Snapshot (Termination: SIGTERM)
+
+**Written at:** 2026-01-24T17:22:15.664Z
+**Termination Signal:** SIGTERM
+
+### Decision Status (from cache)
+- **Decision ID:** b3d53551-9c42-42b6-bed4-ffdf69ff587c
+- **Proof Tag:** control-post-1769275036409
+- **Final Status:** unknown
+- **Claimed:** no
+
+### Outcomes (from cache)
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+
+### Events (from cache)
+- **Event IDs:** N/A
+- **Failed Event Present:** no
+
+- **Result URL:** N/A
+
+**Note:** This snapshot uses cached state from the last polling cycle. For complete details, check the database directly.

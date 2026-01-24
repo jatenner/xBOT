@@ -3335,7 +3335,13 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
   }
   
   // 🚨 RATE LIMIT CHECK: Enforce max posts/replies per hour (fallback if controller disabled)
-  if (!growthControllerEnabled) {
+  // 🔒 PROOF_MODE: Bypass rate limit check for proof decisions
+  const decisionFeatures = (decision.features || {}) as Record<string, any>;
+  const proofTag = decisionFeatures.proof_tag;
+  const isProofDecision = proofTag && (String(proofTag).startsWith('control-post-') || String(proofTag).startsWith('control-reply-'));
+  const proofMode = process.env.PROOF_MODE === 'true';
+  
+  if (!growthControllerEnabled && !(proofMode && isProofDecision)) {
     try {
       const { checkRateLimits } = await import('../utils/rateLimiter');
       const rateLimitCheck = await checkRateLimits();
@@ -3354,6 +3360,8 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
     } catch (rateLimitError: any) {
       console.warn(`[RATE_LIMIT] ⚠️ Rate limit check failed: ${rateLimitError.message}, allowing posting (fail open)`);
     }
+  } else if (proofMode && isProofDecision) {
+    console.log(`[RATE_LIMIT] 🔒 PROOF_MODE: Bypassing rate limit check for proof decision (proof_tag=${proofTag})`);
   }
   
   const isThread = decision.decision_type === 'thread';
