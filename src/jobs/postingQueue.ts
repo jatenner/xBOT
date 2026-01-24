@@ -4885,7 +4885,8 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
   
   // 🎯 PROOF PRIORITY: Use PROOF priority if proof_tag is present
   const decisionFeatures = (decision.features || {}) as Record<string, any>;
-  const hasProofTag = !!decisionFeatures.proof_tag || decision.pipeline_source?.includes('control-');
+  const pipelineSource = decisionFeatures.pipeline_source || (decision as any).pipeline_source;
+  const hasProofTag = !!decisionFeatures.proof_tag || pipelineSource?.includes('control-');
   const browserPriority = hasProofTag ? BrowserPriority.PROOF : BrowserPriority.POSTING;
   
   // ✅ PER-OPERATION TIMEOUT: Set timeout based on decision type

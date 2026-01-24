@@ -82,11 +82,13 @@ interface ContextHandle {
 
 interface QueuedOperation {
   id: string;
+  operationName?: string; // Optional for backward compatibility
   priority: number;
   operation: (context: BrowserContext) => Promise<any>;
   resolve: (value: any) => void;
   reject: (error: Error) => void;
   cancelTimeout?: () => void;
+  timestamp?: number; // Optional for backward compatibility
 }
 
 export class UnifiedBrowserPool {
@@ -602,7 +604,7 @@ export class UnifiedBrowserPool {
                     source_tag: 'BROWSER_POOL_RESOLVE',
                     message: 'resolve is not a function or is undefined',
                     operation_id: op.id,
-                    operation_name: op.operationName,
+                    operation_name: op.operationName || op.id,
                     has_resolve: !!op.resolve,
                     resolve_type: typeof op.resolve,
                     file: 'UnifiedBrowserPool.ts',
