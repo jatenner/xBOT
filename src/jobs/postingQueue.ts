@@ -4811,6 +4811,11 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
   // 🔒 BROWSER SEMAPHORE: Acquire exclusive browser access (highest priority)
   const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
   
+  // 🎯 PROOF PRIORITY: Use PROOF priority if proof_tag is present
+  const decisionFeatures = (decision.features || {}) as Record<string, any>;
+  const hasProofTag = !!decisionFeatures.proof_tag || decision.pipeline_source?.includes('control-');
+  const browserPriority = hasProofTag ? BrowserPriority.PROOF : BrowserPriority.POSTING;
+  
   // ✅ PER-OPERATION TIMEOUT: Set timeout based on decision type
   const timeoutMs = decision.decision_type === 'thread' 
     ? 360000  // 6 minutes for threads
@@ -4824,9 +4829,9 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
     ? 'tweet_posting'
     : 'posting';
   
-  console.log(`[POSTING_QUEUE][SEM_TIMEOUT] decision_id=${decision.id} type=${decision.decision_type} timeoutMs=${timeoutMs}`);
+  console.log(`[POSTING_QUEUE][SEM_TIMEOUT] decision_id=${decision.id} type=${decision.decision_type} timeoutMs=${timeoutMs} priority=${browserPriority} proof_tag=${hasProofTag ? decisionFeatures.proof_tag : 'none'}`);
   
-  return await withBrowserLock('posting', BrowserPriority.POSTING, async () => {
+  return await withBrowserLock('posting', browserPriority, async () => {
     // 🔒 RAILWAY GATE: Playwright posting only runs on Mac Runner (RUNNER_MODE=true)
     // Railway IPs trigger consent/challenge walls - all browser activity must run on residential IP
     if (process.env.RUNNER_MODE !== 'true') {
@@ -5514,6 +5519,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   
   // 🔍 FORENSIC PIPELINE: Final ancestry check before posting
   // 🧪 TEST BYPASS: RUNNER_TEST_MODE=true (requires RUNNER_MODE=true)
+  // 🔒 PROOF_MODE: Ancestry resolution still allowed for proof decisions (they have target_tweet_id)
   const isTestMode = process.env.RUNNER_TEST_MODE === 'true' && process.env.RUNNER_MODE === 'true';
   const bypassAncestry = isTestMode;
   
@@ -5804,6 +5810,11 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   // 🔒 BROWSER SEMAPHORE: Acquire exclusive browser access (HIGHEST priority)
   const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
   
+  // 🎯 PROOF PRIORITY: Use PROOF priority if proof_tag is present
+  const decisionFeatures = (decision.features || {}) as Record<string, any>;
+  const hasProofTag = !!decisionFeatures.proof_tag || (decision as any).pipeline_source?.includes('control-');
+  const browserPriority = hasProofTag ? BrowserPriority.PROOF : BrowserPriority.REPLIES;
+  
   // 🚨 CRITICAL: Wrap in timeout to prevent browser semaphore starvation
   const REPLY_TIMEOUT_MS = 210000; // 3.5 minutes (allows profile/conversation fallback)
   const TIMEOUT_WARNING_MS = 120000; // Warn if we cross 2 minutes
@@ -5816,6 +5827,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     }, REPLY_TIMEOUT_MS);
   });
   
+  console.log(`[POSTING_QUEUE][REPLY] decision_id=${decision.id} priority=${browserPriority} proof_tag=${hasProofTag ? decisionFeatures.proof_tag : 'none'}`);
+  
   // 🔒 RAILWAY GATE: Playwright posting only runs on Mac Runner (RUNNER_MODE=true)
   if (process.env.RUNNER_MODE !== 'true') {
     const errorMsg = `[POSTING_QUEUE] ❌ Playwright reply posting disabled on Railway (RUNNER_MODE not set). Railway IPs trigger X consent/challenge walls. All browser activity must run on Mac Runner with RUNNER_MODE=true.`;
@@ -5823,7 +5836,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     throw new Error('Playwright reply posting disabled on Railway - use Mac Runner');
   }
   
-  const postingPromise = withBrowserLock('reply_posting', BrowserPriority.REPLIES, async () => {
+  const postingPromise = withBrowserLock('reply_posting', browserPriority, async () => {
     if (!decision.target_tweet_id) {
     throw new Error('Reply decision missing target_tweet_id');
   }

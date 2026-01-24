@@ -445,6 +445,23 @@ async function emitTickEvent(metrics: {
   try {
     const { getSupabaseClient } = await import('../../src/db/index');
     const supabase = getSupabaseClient();
+    
+    // Get browser pool metrics
+    let browserPoolMetrics: any = {};
+    try {
+      const { UnifiedBrowserPool } = await import('../../src/browser/UnifiedBrowserPool');
+      const pool = UnifiedBrowserPool.getInstance();
+      const poolAny = pool as any;
+      browserPoolMetrics = {
+        browser_pool_queue_len: poolAny.queue?.length || 0,
+        browser_pool_active: poolAny.getActiveCount?.() || 0,
+        browser_pool_max_contexts: poolAny.MAX_CONTEXTS || 0,
+        proof_queue_len: (poolAny.queue || []).filter((op: any) => op.priority === -1).length || 0,
+      };
+    } catch (poolError: any) {
+      console.warn(`[EXECUTOR_DAEMON] Failed to get browser pool metrics: ${poolError.message}`);
+    }
+    
     await supabase.from('system_events').insert({
       event_type: 'EXECUTOR_DAEMON_TICK',
       severity: 'info',
@@ -461,6 +478,7 @@ async function emitTickEvent(metrics: {
         profile_dir: RUNNER_PROFILE_DIR,
         mode: getModeLabel(),
         timestamp: new Date().toISOString(),
+        ...browserPoolMetrics,
       },
       created_at: new Date().toISOString(),
     });
@@ -557,6 +575,28 @@ async function main(): Promise<void> {
       handleStopSwitch();
     }
     
+    // 🔒 PROOF_MODE: Emit event and skip background work
+    const proofMode = process.env.PROOF_MODE === 'true';
+    if (proofMode) {
+      try {
+        const { getSupabaseClient } = await import('../../src/db/index');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'EXECUTOR_PROOF_MODE_ENABLED',
+          severity: 'info',
+          message: 'PROOF_MODE enabled - background work paused',
+          event_data: {
+            proof_mode: true,
+            timestamp: new Date().toISOString(),
+          },
+          created_at: new Date().toISOString(),
+        });
+        console.log(`[EXECUTOR_DAEMON] 🔒 PROOF_MODE: Background work paused`);
+      } catch (e: any) {
+        console.warn(`[EXECUTOR_DAEMON] Failed to emit PROOF_MODE event: ${e.message}`);
+      }
+    }
+    
     // 🔒 GLOBAL RATE LIMIT CIRCUIT BREAKER: Check before processing any decisions
     const { isRateLimitActive, getRateLimitSecondsRemaining, emitBackoffActiveEvent } = await import('../../src/utils/rateLimitCircuitBreaker');
     if (isRateLimitActive()) {
@@ -601,10 +641,17 @@ async function main(): Promise<void> {
           handleStopSwitch();
         }
         
-        // Run reply queue
-        const replyResult = await runReplyQueue();
-        replyReady = replyResult.ready;
-        replyAttempts = replyResult.attempts_started;
+        // 🔒 PROOF_MODE: Skip reply queue background work (feeds/discovery), only process proof decisions
+        if (proofMode) {
+          console.log(`[EXECUTOR_DAEMON] 🔒 PROOF_MODE: Skipping reply queue background work`);
+          replyReady = 0;
+          replyAttempts = 0;
+        } else {
+          // Run reply queue
+          const replyResult = await runReplyQueue();
+          replyReady = replyResult.ready;
+          replyAttempts = replyResult.attempts_started;
+        }
         
         // Check STOP switch after reply queue
         if (checkStopSwitch()) {

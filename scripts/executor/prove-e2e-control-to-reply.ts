@@ -874,6 +874,22 @@ async function main(): Promise<void> {
     result.evidence.rate_limit_event = rateLimitEvents ? (typeof rateLimitEvents.event_data === 'string' ? JSON.parse(rateLimitEvents.event_data) : rateLimitEvents.event_data) : null;
     
     console.log(`[PROOF] ✅ Emitted ${errorCode} failure: tick_count=${tickCount || 0} last_tick=${lastTick?.created_at || 'never'} proof_selected=${!!proofSelection}`);
+    
+    // 🔧 FIX: Re-check events after emitting failure so "Success/Failure Event" is never N/A
+    const { data: recheckEvents } = await supabase
+      .from('system_events')
+      .select('id, event_type, event_data')
+      .in('event_type', ['REPLY_SUCCESS', 'REPLY_FAILED'])
+      .eq('event_data->>decision_id', decisionId)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    
+    if (recheckEvents && recheckEvents.length > 0) {
+      result.success_or_failure_event_present = true;
+      result.evidence.event_ids = recheckEvents.map(e => e.id);
+      eventData = recheckEvents.map(e => typeof e.event_data === 'string' ? JSON.parse(e.event_data) : e.event_data);
+      console.log(`[PROOF] ✅ Re-checked events: found ${recheckEvents.length} event(s) with ids: ${result.evidence.event_ids.join(', ')}`);
+    }
   }
   
   // Extract reply URL

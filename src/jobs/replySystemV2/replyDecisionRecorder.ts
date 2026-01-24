@@ -86,6 +86,38 @@ export async function resolveTweetAncestry(targetTweetId: string): Promise<Reply
     return metadataAncestry;
   }
   
+  // 🔒 PROOF_MODE: Skip ancestry resolution for discovery (but allow for proof decisions)
+  // In PROOF_MODE, only resolve ancestry if this is for a proof decision (target_tweet_id in content_metadata with proof_tag)
+  if (process.env.PROOF_MODE === 'true') {
+    const { getSupabaseClient } = await import('../../db');
+    const supabase = getSupabaseClient();
+    const { data: proofDecision } = await supabase
+      .from('content_metadata')
+      .select('features')
+      .eq('target_tweet_id', targetTweetId)
+      .eq('decision_type', 'reply')
+      .maybeSingle();
+    
+    const proofFeatures = (proofDecision?.features || {}) as Record<string, any>;
+    const isProofDecision = !!proofFeatures.proof_tag;
+    
+    if (!isProofDecision) {
+      console.log(`[ANCESTRY] 🔒 PROOF_MODE: Skipping ancestry resolution for discovery tweet ${targetTweetId}`);
+      return {
+        targetTweetId,
+        targetInReplyToTweetId: null,
+        rootTweetId: null,
+        ancestryDepth: null,
+        isRoot: false,
+        status: 'UNCERTAIN',
+        confidence: 'LOW',
+        method: 'proof_mode_skipped',
+        error: 'Ancestry resolution skipped in PROOF_MODE (discovery work paused)',
+        cache_hit: false,
+      };
+    }
+  }
+  
   // Step 3: Check if system is overloaded (skip ancestry if overloaded)
   const { UnifiedBrowserPool } = await import('../../browser/UnifiedBrowserPool');
   const pool = UnifiedBrowserPool.getInstance();

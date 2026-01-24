@@ -170,6 +170,7 @@ export async function withBrowserLock<T>(
  * Priority levels for common jobs
  */
 export const BrowserPriority = {
+  PROOF: -1,         // 🔥 HIGHEST - proof decisions get absolute priority
   REPLIES: 0,        // 🔥 ABSOLUTE HIGHEST - reply posting never waits (4/hour guarantee)
   POSTING: 0,        // 🔥 OPTIMIZATION: Equal priority to replies - content posting is critical
   METRICS: 2,        // High - critical for dashboard/learning data

@@ -33,6 +33,19 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   const startTime = Date.now();
   const FETCH_TIMEOUT_MS = 4 * 60 * 1000; // 4 minutes hard timeout (per mandate)
   
+  // 🔒 PROOF_MODE: Skip all feed fetching during proofs
+  if (process.env.PROOF_MODE === 'true') {
+    console.log(`[ORCHESTRATOR] 🔒 PROOF_MODE: Skipping feed fetching (feed_run_id=${feedRunId})`);
+    return {
+      fetched: 0,
+      evaluated: 0,
+      passed_filters: 0,
+      feed_run_id: feedRunId,
+      partial_sources: [],
+      failed_sources: [],
+    };
+  }
+  
   console.log(`[ORCHESTRATOR] 🎼 Fetching and evaluating candidates: feed_run_id=${feedRunId}`);
   
   // 🎯 COOLDOWN: Check if feeds should be paused

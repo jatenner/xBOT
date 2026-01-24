@@ -56,6 +56,24 @@ export async function replySystemV2Job(): Promise<void> {
   };
   
   try {
+    // 🔒 PROOF_MODE: Skip feed fetching and discovery work
+    if (process.env.PROOF_MODE === 'true') {
+      console.log(`[REPLY_V2] 🔒 PROOF_MODE: Skipping feed fetching and discovery`);
+      // Still refresh queue and attempt scheduled reply (for proof decisions)
+      const queueResult = await refreshCandidateQueue();
+      readyCandidates = queueResult.queued;
+      
+      const schedulerResult = await attemptScheduledReply();
+      if (schedulerResult.posted) {
+        selectedCandidates = 1;
+        attemptsStarted = 1;
+      }
+      
+      // Skip performance metrics update in PROOF_MODE
+      await emitReplyQueueTick();
+      return;
+    }
+    
     // Step 1: Fetch and evaluate candidates
     await runFullCycle();
     

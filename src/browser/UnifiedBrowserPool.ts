@@ -282,15 +282,49 @@ export class UnifiedBrowserPool {
       return Promise.reject(new Error(`Queue depth limit exceeded (${this.queue.length}/${MAX_QUEUE_DEPTH})`));
     }
     
-    // 🚨 POSTING PRIORITY GUARD: Drop background operations when queue is deep and posting is waiting
+    // 🚨 POSTING PRIORITY GUARD: Drop background operations when queue is deep and posting/proof is waiting
     const POSTING_PRIORITY_THRESHOLD = 3; // Drop background ops if queue depth exceeds this
     const isBackgroundOperation = priority > 1; // Priority > 1 means background (metrics, vi_scrape, etc.)
-    const hasPostingWaiting = this.queue.some(op => op.priority <= 1); // Check if any posting/reply ops are waiting
+    const hasPostingWaiting = this.queue.some(op => op.priority <= 1); // Check if any posting/reply/proof ops are waiting
+    const hasProofWaiting = this.queue.some(op => op.priority === -1); // Check if any proof ops are waiting
     
-    if (isBackgroundOperation && this.queue.length >= POSTING_PRIORITY_THRESHOLD && hasPostingWaiting) {
-      console.log(`[BROWSER_POOL][GUARD] posting_priority queueDepth=${this.queue.length} dropped label=${operationName}`);
+    if (isBackgroundOperation && this.queue.length >= POSTING_PRIORITY_THRESHOLD && (hasPostingWaiting || hasProofWaiting)) {
+      console.log(`[BROWSER_POOL][GUARD] posting_priority queueDepth=${this.queue.length} dropped label=${operationName} hasProof=${hasProofWaiting}`);
       this.metrics.totalOperations++; // Count as attempted but dropped
-      return Promise.reject(new Error(`Background operation dropped due to posting priority (queue depth: ${this.queue.length})`));
+      return Promise.reject(new Error(`Background operation dropped due to posting/proof priority (queue depth: ${this.queue.length})`));
+    }
+    
+    // 🎯 PROOF PRIORITY: Ensure proof operations jump the queue
+    if (priority === -1 && this.queue.length > 0) {
+      // Proof operations get highest priority - move to front of queue
+      const proofOp = {
+        operationId,
+        operationName,
+        operation,
+        priority,
+        resolve,
+        reject: () => {},
+        timestamp: Date.now(),
+      };
+      this.queue.unshift(proofOp); // Add to front
+      console.log(`[BROWSER_POOL] 🎯 Proof operation queued at front (priority=${priority}, queue_len=${this.queue.length})`);
+    } else {
+      // Normal queueing
+      this.queue.push({
+        operationId,
+        operationName,
+        operation,
+        priority,
+        resolve,
+        reject: () => {},
+        timestamp: Date.now(),
+      });
+      
+      // Sort by priority (lower = higher priority), then FIFO
+      this.queue.sort((a, b) => {
+        if (a.priority !== b.priority) return a.priority - b.priority;
+        return a.timestamp - b.timestamp;
+      });
     }
 
     // Update metrics
