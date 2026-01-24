@@ -3504,10 +3504,8 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
   
     // SMART BATCH FIX: Hard stop - double-check rate limit before EVERY post (but bypass for proof decisions)
     if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
-      const decisionFeatures = (decision.features || {}) as Record<string, any>;
-      const proofTag = decisionFeatures.proof_tag;
-      const isProofDecision = proofTag && String(proofTag).startsWith('control-post-');
-      const proofMode = process.env.PROOF_MODE === 'true';
+      // (decisionFeatures, proofTag, proofMode already declared at function start)
+      const isProofDecisionForPost = proofTag && String(proofTag).startsWith('control-post-');
       
       if (!(proofMode && isProofDecisionForPost)) {
         const canPost = await checkPostingRateLimits();
