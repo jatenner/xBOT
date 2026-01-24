@@ -178,6 +178,43 @@ GROUP BY reason;
 
 ---
 
+
+## 2026-01-24 - Snapshot
+
+### Git SHA
+
+- **Local HEAD:** `0c52898e37a7c84f6f5c8658928883dd3cd24877`
+- **xBOT Service:** UNKNOWN (verify via `railway logs --service xBOT | grep BOOT`)
+- **serene-cat Service:** UNKNOWN (verify via `railway logs --service serene-cat | grep BOOT`)
+
+### Last Plan Age
+
+0h 33m ago (2026-01-23T23:56:21.81971+00:00)
+
+### Last POST_SUCCESS
+
+2026-01-23T15:15:00.912+00:00 (tweet_id: 2014718451563004351)
+
+### Last POST_FAILED
+
+2026-01-22T19:33:19.941+00:00 (reason: unknown)
+
+### Reply Queue Status
+
+**Ticks (last 30 min):** 32 ticks, last: 2026-01-24T00:28:44.978+00:00  
+**Blocks (last 30 min):** 8 blocks (RUNNER_MODE_NOT_SET: 8)
+
+### Posting Queue Status
+
+**Ticks (last 30 min):** UNKNOWN  
+**Blocks (last 30 min):** 26 blocks (NOT_EXECUTOR_MODE: 26)
+
+### Known Blockers
+
+- None documented yet
+
+---
+
 ## How to Update
 
 Run `pnpm run docs:snapshot` to append a new dated section with current state.
