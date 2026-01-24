@@ -1,11 +1,11 @@
 # Control → Executor → X Proof (Reply)
 
-**Date:** 2026-01-24T03:26:08.366Z  
+**Date:** 2026-01-24T04:49:35.512Z  
 **Status:** ❌ FAIL
 
 ## Machine Info
 
-- **Hostname:** Mac.lan
+- **Hostname:** Mac-305.lan
 - **Platform:** darwin
 - **Architecture:** arm64
 - **Node Version:** v22.14.0
@@ -23,15 +23,15 @@
 | Success/Failure Event | ❌ | N/A | - |
 | Exactly One Decision | ✅ | 1 | HARD |
 | Exactly One Attempt | ❌ | 0 | HARD |
-| Windows Opened | ❌ | 1 | HARD |
+| Windows Opened | ✅ | 0 | HARD |
 | Chrome CDP Processes | ✅ | 0 | HARD |
 | Pages Max | ✅ | 0 | HARD |
 
 ## Evidence
 
-- **Decision ID:** 9febb05d-ff40-4b2f-835f-3941c9c5d937
+- **Decision ID:** 379c6ee6-5cc7-4c73-89a8-ee8c93a55db4
 - **Target Tweet ID:** 2014718451563004351
-- **Proof Tag:** control-reply-1769224851859
+- **Proof Tag:** control-reply-1769229860371
 - **Pipeline Source:** control_reply_scheduler
 - **Decision Status:** queued
 - **Attempt ID:** N/A
@@ -42,28 +42,45 @@
 ## Log Excerpts
 
 ```
-[POSTING_QUEUE] 📝 Processing reply: 18d7f556-f45e-4b9f-89fe-1e96ca1eb7e2
-[POSTING_QUEUE] 📝 Processing reply: 4fd86317-f3c1-43fc-a20d-553b2f9e74fc
-[POSTING_QUEUE] 📝 Processing reply: 60519174-7540-4399-b3b0-e99eaa130659
-[POSTING_QUEUE] 📝 Processing reply: 9febb05d-ff40-4b2f-835f-3941c9c5d937
-[POSTING_QUEUE] 🔒 Successfully claimed decision 9febb05d-ff40-4b2f-835f-3941c9c5d937 for posting
-[RAMP_MODE] ramp_enabled=true ramp_level=3 posts_last_hour=2 replies_last_hour=0 blocked_self_reply=0 blocked_reply_to_reply=0 blocked_freshness=0 blocked_generic=0 NOT_IN_DB_count=0
-[REPLY_V2] 🎼 Starting reply system v2 job...
-[REPLY_SELECT] ✅ Resolved 2014901576557642108 → root 2014898944317288827 (checks: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true)
-[REPLY_SELECT] ✅ Resolved 2014901576557642108 → root 2014898944317288827 (checks: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true)
-[REPLY_SELECT]   Checks performed: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true
-[REPLY_SELECT] ✅ Resolved 2014901574871679155 → root 2014895159666716925 (checks: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true)
-[REPLY_SELECT] ✅ Resolved 2014901574871679155 → root 2014895159666716925 (checks: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true)
-[REPLY_SELECT]   Checks performed: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true
-[SCORER] ✅ Judge decision for 1968667323453108354: reject (relevance=0.00, replyability=0.00)
-[REPLY_SELECT] ✅ Resolved 2014901560015544770 → root 2014896570320425041 (checks: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true)
-[REPLY_SELECT] ✅ Resolved 2014901560015544770 → root 2014896570320425041 (checks: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true)
-[REPLY_SELECT]   Checks performed: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true
-[SCORER] ✅ Judge decision for 2014901558933119457: reject (relevance=0.00, replyability=0.00)
-[SCORER] ✅ Judge decision for 2014901558866280824: reject (relevance=0.00, replyability=0.00)
-[SCORER] ✅ Judge decision for 2014901557712638285: reject (relevance=0.00, replyability=0.00)
+[POSTING_QUEUE] ❌ Atomic posting failed: Posting timeout after 240s
+{"ts":"2026-01-24T04:48:26.526Z","app":"xbot","op":"ultimate_poster_retry","retry_count":1,"recoverable":true,"is_429":false}
+{"ts":"2026-01-24T04:48:26.526Z","app":"xbot","op":"ultimate_poster_delay","delay_ms":4000,"is_429":false}
+[FAILURE_RECORDER] ✅ Recorded POST_FAILED for decision_id=29e6f6f1-cdc5-4b19-8d45-cb448eb8eb46 error_code=AtomicPostFailed
+[POSTING_QUEUE] ❌ Playwright system error: Posting timeout after 240s
+[FAILURE_RECORDER] ✅ Recorded POST_FAILED for decision_id=29e6f6f1-cdc5-4b19-8d45-cb448eb8eb46 error_code=PLAYWRIGHT_TIMEOUT
+[BROWSER_SEM] ❌ Operation failed for posting: Playwright posting failed: Posting timeout after 240s
+[POSTING_QUEUE][POSTCONTENT_THROW] decision_id=29e6f6f1-cdc5-4b19-8d45-cb448eb8eb46 decision_type=single error_name=Error error_message=Playwright posting failed: Posting timeout after 240s
+[POSTING_QUEUE][POSTCONTENT_THROW] decision_id=29e6f6f1-cdc5-4b19-8d45-cb448eb8eb46 stack=Error: Playwright posting failed: Posting timeout after 240s
+    at withBrowserLock.timeoutMs.timeoutMs (/Users/jonahtenner/Desktop/xBOT/src/jobs/postingQueue.ts:5446:13)
+[POSTING_QUEUE] ❌ POSTING FAILED: Playwright posting failed: Posting timeout after 240s
+[BROWSER_POOL][TIMEOUT] label=tweet_verification timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=tweet_posting timeoutMs=300000
+[BROWSER_POOL][TIMEOUT] label=tweet_verification timeoutMs=180000
+ULTIMATE_POSTER: Page error: ApiError: https://x.com/i/api/graphql/178EtFdhcGqmoyzKL4muaA/Viewer HTTP-429 codes:[1003]
+[POSTING_QUEUE] 📝 Error: Playwright posting failed: Posting timeout after 240s
+[POSTING_QUEUE][SEM_TIMEOUT] decision_id=df340249-8b73-4e5f-b51a-b968788cf55c type=single timeoutMs=300000
+[POSTING_QUEUE] ⏱️ Using adaptive timeout: 300000ms (attempt 3, retry_count=2)
+[BROWSER_POOL][TIMEOUT] label=tweet_posting timeoutMs=300000
+ULTIMATE_POSTER: Page error: ApiError: https://x.com/i/api/graphql/178EtFdhcGqmoyzKL4muaA/Viewer HTTP-429 codes:[1003]
 ```
+
+## Diagnostic Snapshot (Failure Analysis)
+
+### Decision Status
+- **Final Status:** queued
+- **Error Message:** N/A
+
+### Failure Event Data
+No REPLY_FAILED event found
+
+### Outcomes Result
+No outcomes result found
+
+### Skipped Events
+No skipped events found
+
 
 ## Result
 
 ❌ **FAIL** - One or more checks failed
+

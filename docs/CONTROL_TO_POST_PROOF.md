@@ -1,11 +1,11 @@
 # Control → Executor → X Proof (Posting)
 
-**Date:** 2026-01-24T03:19:44.252Z  
+**Date:** 2026-01-24T04:43:10.071Z  
 **Status:** ❌ FAIL
 
 ## Machine Info
 
-- **Hostname:** Mac.lan
+- **Hostname:** Mac-305.lan
 - **Platform:** darwin
 - **Architecture:** arm64
 - **Node Version:** v22.14.0
@@ -16,11 +16,11 @@
 | Check | Status | Evidence | Assertion |
 |-------|--------|----------|-----------|
 | Control Decision Created | ✅ | control_posting_queue | - |
-| Decision Queued | ✅ | failed | - |
-| Decision Claimed | ✅ | failed | - |
+| Decision Queued | ✅ | posted | - |
+| Decision Claimed | ✅ | posted | - |
 | Attempt Recorded | ❌ | N/A | - |
 | Result Recorded | ❌ | N/A | - |
-| Success/Failure Event | ❌ | N/A | - |
+| Success/Failure Event | ✅ | 773da599-ec60-4b30-a962-cf6928644041 | - |
 | Exactly One Decision | ✅ | 1 | HARD |
 | Exactly One Attempt | ❌ | 0 | HARD |
 | Windows Opened | ✅ | 0 | HARD |
@@ -29,40 +29,57 @@
 
 ## Evidence
 
-- **Decision ID:** 4c7f539a-4de8-4deb-84c4-d91921a2a485
-- **Proof Tag:** control-post-1769224473086
+- **Decision ID:** e808fa1d-ad9a-47d0-a697-d54fbdf2d53f
+- **Proof Tag:** control-post-1769229474295
 - **Pipeline Source:** control_posting_queue
-- **Decision Status:** failed
+- **Decision Status:** posted
 - **Attempt ID:** N/A
 - **Outcome ID:** N/A
-- **Event IDs:** N/A
-
+- **Event IDs:** 773da599-ec60-4b30-a962-cf6928644041
+- **Result URL:** https://x.com/Signal_Synapse/status/2014920952824422910
 
 ## Log Excerpts
 
 ```
-[BROWSER_SEM] ❌ Operation failed for posting: Playwright posting failed: single_post timed out after 180000ms
-[BROWSER_SEM] 🔐 posting released browser (queue: 0)
-[POSTING_QUEUE][FLOW] ❌ STEP 1/4 FAILED: Twitter posting failed
-[POSTING_QUEUE][POSTCONTENT_THROW] decision_id=4c7f539a-4de8-4deb-84c4-d91921a2a485 decision_type=single error_name=Error error_message=Playwright posting failed: single_post timed out after 180000ms
-[POSTING_QUEUE][POSTCONTENT_THROW] decision_id=4c7f539a-4de8-4deb-84c4-d91921a2a485 stack=Error: Playwright posting failed: single_post timed out after 180000ms
-    at withBrowserLock.timeoutMs.timeoutMs (/Users/jonahtenner/Desktop/xBOT/src/jobs/postingQueue.ts:5341:13)
-    at async postContent (/Users/jonahtenner/Desktop/xBOT/src/jobs/postingQueue.ts:4755:10)
-    at async <anonymous> (/Users/jonahtenner/Desktop/xBOT/src/jobs/postingQueue.ts:3637:22)
-    at async processDecision (/Users/jonahtenner/Desktop/xBOT/src/jobs/postingQueue.ts:3636:22)
-    at async processPostingQueue (/Users/jonahtenner/Desktop/xBOT/src/jobs/postingQueue.ts:1862:21)
-[POSTING_QUEUE] ❌ POSTING FAILED: Playwright posting failed: single_post timed out after 180000ms
-[POSTING_QUEUE] 📝 Error: Playwright posting failed: single_post timed out after 180000ms
-[POSTING_QUEUE] 📝 🔍 DEBUG: About to update posting metrics
-[POSTING_QUEUE] 🔒 Successfully claimed decision 18d7f556-f45e-4b9f-89fe-1e96ca1eb7e2 for posting
-[POSTING_QUEUE] 📝 🔍 DEBUG: About to update posting metrics
-[POSTING_QUEUE] 🔒 Successfully claimed decision 4fd86317-f3c1-43fc-a20d-553b2f9e74fc for posting
-[POSTING_QUEUE] 📝 🔍 DEBUG: About to update posting metrics
-[POSTING_QUEUE] 🔒 Successfully claimed decision 60519174-7540-4399-b3b0-e99eaa130659 for posting
-ULTIMATE_POSTER: Acquiring page from UnifiedBrowserPool (operation: tweet_posting)...
-[BROWSER_POOL] 📝 Request: tweet_posting (queue: 0, active: 1, priority: 0)
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=curated_feed timeoutMs=180000
+[BROWSER_POOL] ⏱️ QUEUE TIMEOUT: resolve_root_tweet waited 60s (timeout: 60s)
+[BROWSER_POOL] ❌ CRITICAL: Browser pool timeout - system may need restart
+[ANCESTRY_TRACE] stage=acquire_context decision_id=ancestry-1769229676183-afop8hqu8 duration_ms=60002 success=false error=acquire_context_timeout: Queue timeout after 60s - pool overloaded (priority: 5, timeout: 60s, queue_len=0, active=1/5)
+[REPLY_SELECT] ❌ Error resolving root for consent_wall_DrJustinSonnenburg_1769229675976: ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT: Queue timeout after 60s - pool overloaded (priority: 5, timeout: 60s, queue_len=0, active=1/5)
+[CURATED_FEED] ⏱️ Timeout or error: Curated feed timeout after 90s (90106ms)
 ```
+
+## Diagnostic Snapshot (Failure Analysis)
+
+### Decision Status
+- **Final Status:** posted
+- **Error Message:** N/A
+
+### Failure Event Data
+No POST_FAILED event found
+
+### Outcomes Result
+No outcomes result found
+
+### Skipped Events
+No skipped events found
+
 
 ## Result
 
 ❌ **FAIL** - One or more checks failed
+
