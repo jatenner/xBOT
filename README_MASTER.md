@@ -1018,24 +1018,25 @@ Used only when auth expires or X challenges.
 
 > Note: adjust path/env based on repo location. Default assumes repo root.
 
-### Deploy Both Services (Required)
+### Official Deploy Mechanism: Railway GitHub Integration + Wait for CI
 
-**CRITICAL:** GitHub deploy may SKIP services due to CI check suite failures, causing Railway drift. **Never rely on GitHub deploy alone.**
+Railway automatically deploys from `main` branch when GitHub Actions checks pass. Both services (`xBOT` and `serene-cat`) have "Wait for CI" enabled, ensuring deployments only occur when CI is green.
 
-**Canonical deploy command (always use this):**
+**How it works:**
+1. Push to `main` branch
+2. GitHub Actions runs required checks (`deploy-gate.yml`, `growth-gate.yml`)
+3. When checks pass, Railway GitHub Integration automatically deploys both services
+4. Both services run the same SHA (ensured by Railway's GitHub integration)
+
+**Manual/Emergency Deploy (CLI):**
+CLI deployment via `pnpm run deploy:railway:both` is for emergency manual deployments only. Railway GitHub Integration is the canonical deployment mechanism.
+
 ```bash
-# Deploy both services explicitly (required)
-pnpm run deploy:railway:both
-
-# Or manually:
-railway up --service xBOT --detach
-railway up --service serene-cat --detach
+# Emergency manual deploy (only if Railway GitHub Integration fails)
+pnpm run deploy:railway:xbot    # Deploy xBOT only
+pnpm run deploy:railway:serene  # Deploy serene-cat only
+pnpm run deploy:railway:both    # Deploy both services
 ```
-
-**Why this is required:**
-- GitHub Actions may skip deployment if CI checks fail
-- Railway services can drift (different SHAs) if not deployed explicitly
-- System requires both services to run the same SHA for consistency
 
 **SHA verification (after deploy):**
 ```bash
