@@ -2200,7 +2200,7 @@ export class UltimateTwitterPoster {
           console.log(`[ULTIMATE_POSTER] 🧪 TEST MODE: BYPASS_ACTIVE: ANCESTRY_CHECK`);
           allowCheck = { allow: true, reason: 'TEST_BYPASS_ANCESTRY' };
         } else {
-          allowCheck = await shouldAllowReply(ancestry);
+          allowCheck = await shouldAllowReply(ancestry, { decision_id: validGuard.decision_id });
         }
         
         if (!allowCheck.allow) {
