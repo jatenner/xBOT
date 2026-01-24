@@ -47,6 +47,16 @@ if (!HEADLESS) {
   process.exit(1);
 }
 
+// HARD REQUIREMENT: NEVER use CDP mode (CDP requires visible Chrome windows)
+const RUNNER_BROWSER = process.env.RUNNER_BROWSER || '';
+if (RUNNER_BROWSER.toLowerCase() === 'cdp') {
+  console.error('[EXECUTOR_DAEMON] 🚨 FATAL: RUNNER_BROWSER=cdp is not allowed in daemon mode');
+  console.error('[EXECUTOR_DAEMON] 🚨 CDP mode requires visible Chrome windows (chrome-cdp.ts)');
+  console.error('[EXECUTOR_DAEMON] 🚨 Daemon MUST use direct Playwright launch (headless=true)');
+  console.error('[EXECUTOR_DAEMON] 🚨 Remove RUNNER_BROWSER=cdp from LaunchAgent plist');
+  process.exit(1);
+}
+
 // Resolve paths using single source of truth
 const RUNNER_PROFILE_DIR = ensureRunnerProfileDir();
 const BROWSER_USER_DATA_DIR = RUNNER_PROFILE_PATHS.chromeProfile();

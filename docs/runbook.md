@@ -183,23 +183,28 @@ launchctl unload ~/Library/LaunchAgents/com.xbot.executor.plist
 rm ~/Library/LaunchAgents/com.xbot.executor.plist
 ```
 
-### Verify Executor (15-Minute Proof)
+### Verify Executor (Proof Tests)
 
 ```bash
-# Run automated 15-minute proof test
+# Quick 5-minute proof test (hard assertions: windows_opened=0 AND browser_launches<=1)
+RUNNER_PROFILE_DIR=./.runner-profile pnpm run executor:prove:5m
+
+# Full 15-minute proof test
 RUNNER_PROFILE_DIR=./.runner-profile pnpm run executor:prove:15m
 
 # Expected output: PASS with metrics:
-#   windows_opened=0 ✅
+#   windows_opened=0 ✅ [HARD ASSERTION]
+#   browser_launches<=1 ✅ [HARD ASSERTION]
 #   headless=true ✅
 #   pages_max<=1 ✅
-#   browser_launches<=1 ✅
 #   db_connected=true ✅
 #   queues_readable=true ✅
 #   stop_switch<=10s ✅
 ```
 
-**Report:** `docs/EXECUTOR_15MIN_HEADLESS_PROOF.md`
+**Reports:** 
+- `docs/EXECUTOR_5MIN_HEADLESS_PROOF.md` (5-minute test)
+- `docs/EXECUTOR_15MIN_HEADLESS_PROOF.md` (15-minute test)
 
 ---
 
@@ -287,6 +292,44 @@ railway logs --service serene-cat --lines 50 | grep "jobs_enabled"
 3. Restart service: `railway up --service serene-cat --detach`
 4. Verify ticks resume: `railway logs --service serene-cat --lines 50 | grep POSTING_QUEUE_TICK`
 
+### Browser Windows Pop Up Repeatedly (EMERGENCY)
+
+**Symptoms:**
+- Mac is opening many X/Chrome windows repeatedly
+- System becomes unusable
+- Multiple Chrome windows appear
+
+**Recovery (IMMEDIATE):**
+```bash
+# 1. EMERGENCY STOP: Run comprehensive stop command
+pnpm run executor:stop
+
+# This will:
+# - Create STOP switch
+# - Kill daemon PID
+# - Kill chrome-cdp.ts processes
+# - Kill bot-owned Chromium processes
+# - Unload LaunchAgent
+
+# 2. Verify everything stopped
+pnpm run ops:executor:status
+
+# 3. If windows still appearing, force kill Chrome
+pkill -9 "Google Chrome"
+
+# 4. Check root cause
+# - Check LaunchAgent plist: cat ~/Library/LaunchAgents/com.xbot.executor.plist
+# - Verify RUNNER_BROWSER is NOT set to "cdp"
+# - Verify HEADLESS=true is set
+# - Check logs: tail -100 ./.runner-profile/logs/executor.log
+```
+
+**Root Cause Prevention:**
+- LaunchAgent plist must NOT have `RUNNER_BROWSER=cdp` (causes visible windows)
+- LaunchAgent plist MUST have `HEADLESS=true`
+- Daemon will fail-fast if `RUNNER_BROWSER=cdp` is detected
+- Use `pnpm run executor:install-service` to regenerate correct plist
+
 ### Executor Tab Explosion
 
 **Symptoms:**
@@ -296,19 +339,17 @@ railway logs --service serene-cat --lines 50 | grep "jobs_enabled"
 
 **Recovery:**
 ```bash
-# 1. IMMEDIATELY: Create STOP switch
-touch ./.runner-profile/STOP_EXECUTOR
+# 1. IMMEDIATELY: Run emergency stop
+pnpm run executor:stop
 
-# 2. Wait 10 seconds for executor to exit
-
-# 3. Kill Chrome if still growing
+# 2. Kill Chrome if still growing
 pkill -9 "Google Chrome"
 
-# 4. Verify executor stopped
-ps aux | grep executor-daemon
+# 3. Verify executor stopped
+pnpm run ops:executor:status
 
-# 5. Check logs for root cause
-tail -100 ./.runner-profile/executor.log | grep "EXECUTOR_GUARD"
+# 4. Check logs for root cause
+tail -100 ./.runner-profile/logs/executor.log | grep "EXECUTOR_GUARD"
 ```
 
 **Prevention:**

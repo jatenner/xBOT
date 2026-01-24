@@ -52,6 +52,8 @@ cat > "$PLIST_FILE" << EOF
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
     <key>WorkingDirectory</key>
     <string>$PROJECT_DIR</string>
     <key>StandardOutPath</key>

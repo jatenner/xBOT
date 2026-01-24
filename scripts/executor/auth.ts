@@ -12,12 +12,14 @@
 import 'dotenv/config';
 import * as fs from 'fs';
 import * as path from 'path';
+import { execSync } from 'child_process';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { ensureRunnerProfileDir, RUNNER_PROFILE_PATHS } from '../../src/infra/runnerProfile';
 
 const RUNNER_PROFILE_DIR = ensureRunnerProfileDir();
 const BROWSER_USER_DATA_DIR = RUNNER_PROFILE_PATHS.chromeProfile();
 const AUTH_REQUIRED_PATH = RUNNER_PROFILE_PATHS.authRequired();
+const PIDFILE_PATH = RUNNER_PROFILE_PATHS.pidFile();
 
 async function main(): Promise<void> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -29,6 +31,24 @@ async function main(): Promise<void> {
   console.log(`   Browser profile: ${BROWSER_USER_DATA_DIR}`);
   console.log(`   Mode: HEADED (visible browser)`);
   console.log('');
+  
+  // Warn if daemon is running
+  if (fs.existsSync(PIDFILE_PATH)) {
+    try {
+      const pidfileContent = fs.readFileSync(PIDFILE_PATH, 'utf-8').trim();
+      const pid = parseInt(pidfileContent.split(':')[0], 10);
+      try {
+        execSync(`ps -p ${pid} > /dev/null 2>&1`, { encoding: 'utf-8' });
+        console.log('⚠️  WARNING: Executor daemon is running (PID: ' + pid + ')');
+        console.log('⚠️  Consider stopping daemon first: pnpm run executor:stop');
+        console.log('');
+      } catch {
+        // Stale lock - ignore
+      }
+    } catch {
+      // Ignore
+    }
+  }
   
   // Check if AUTH_REQUIRED file exists
   if (fs.existsSync(AUTH_REQUIRED_PATH)) {

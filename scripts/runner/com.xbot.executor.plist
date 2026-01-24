@@ -21,8 +21,8 @@
     <string>executor</string>
     <key>RUNNER_MODE</key>
     <string>true</string>
-    <key>RUNNER_BROWSER</key>
-    <string>cdp</string>
+    <key>HEADLESS</key>
+    <string>true</string>
     <key>RUNNER_PROFILE_DIR</key>
     <string>/Users/jonahtenner/Desktop/xBOT/.runner-profile</string>
     <key>PATH</key>
