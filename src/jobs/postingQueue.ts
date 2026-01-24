@@ -711,35 +711,56 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
     try {
       const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
       const pool = UnifiedBrowserPool.getInstance();
+      
+      console.log(`[FINAL_REPLY_GATE][SELF_REPLY_CHECK] Acquiring page for self-reply check (target=${targetTweetId})`);
       const page = await pool.acquirePage('self_reply_check');
       
       try {
+        console.log(`[FINAL_REPLY_GATE][SELF_REPLY_CHECK] Navigating to tweet page...`);
         await page.goto(`https://x.com/i/web/status/${targetTweetId}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
         await page.waitForTimeout(2000);
         
         // 🔧 FIX: Wrap evaluate in try-catch to handle any JS errors gracefully
+        console.log(`[FINAL_REPLY_GATE][SELF_REPLY_CHECK] Evaluating page for author element...`);
         try {
           targetAuthor = await page.evaluate(() => {
             try {
               const authorElement = document.querySelector('[data-testid="User-Name"] a');
               return authorElement?.textContent?.replace('@', '').toLowerCase().trim() || null;
-            } catch (e) {
-              // Return null if evaluation fails
+            } catch (e: any) {
+              // Return null if evaluation fails (this runs in browser context)
               return null;
             }
           });
         } catch (evalError: any) {
-          console.error(`[FINAL_REPLY_GATE] ⚠️ Page evaluation error: ${evalError.message}`);
+          const errorDetails = {
+            source_tag: 'PAGE_EVALUATE',
+            message: evalError.message || String(evalError),
+            stack: evalError.stack || 'no stack trace',
+            name: evalError.name || 'UnknownError',
+            file: 'postingQueue.ts',
+            function: 'checkReplySafetyGates',
+          };
+          console.error(`[FINAL_REPLY_GATE][SELF_REPLY_CHECK] ⚠️ Page evaluation error:`, JSON.stringify(errorDetails, null, 2));
           targetAuthor = null;
         }
         
         console.log(`[FINAL_REPLY_GATE] 🔍 Fetched author from Twitter: @${targetAuthor || 'unknown'}`);
       } finally {
+        console.log(`[FINAL_REPLY_GATE][SELF_REPLY_CHECK] Releasing page...`);
         await pool.releasePage(page);
       }
     } catch (fetchError: any) {
+      const errorDetails = {
+        source_tag: 'BROWSER_POOL_ACQUIRE_OR_NAVIGATE',
+        message: fetchError.message || String(fetchError),
+        stack: fetchError.stack || 'no stack trace',
+        name: fetchError.name || 'UnknownError',
+        file: 'postingQueue.ts',
+        function: 'checkReplySafetyGates',
+      };
       const errorMessage = fetchError.message || String(fetchError);
-      console.error(`[FINAL_REPLY_GATE] ⚠️ Could not fetch author for self-reply check: ${errorMessage}`);
+      console.error(`[FINAL_REPLY_GATE][SELF_REPLY_CHECK] ⚠️ Could not fetch author for self-reply check:`, JSON.stringify(errorDetails, null, 2));
       
       // 🔧 FIX: Emit deterministic REPLY_FAILED event instead of silently blocking
       const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';

@@ -294,39 +294,6 @@ export class UnifiedBrowserPool {
       return Promise.reject(new Error(`Background operation dropped due to posting/proof priority (queue depth: ${this.queue.length})`));
     }
     
-    // 🎯 PROOF PRIORITY: Ensure proof operations jump the queue
-    if (priority === -1 && this.queue.length > 0) {
-      // Proof operations get highest priority - move to front of queue
-      const proofOp = {
-        operationId,
-        operationName,
-        operation,
-        priority,
-        resolve,
-        reject: () => {},
-        timestamp: Date.now(),
-      };
-      this.queue.unshift(proofOp); // Add to front
-      console.log(`[BROWSER_POOL] 🎯 Proof operation queued at front (priority=${priority}, queue_len=${this.queue.length})`);
-    } else {
-      // Normal queueing
-      this.queue.push({
-        operationId,
-        operationName,
-        operation,
-        priority,
-        resolve,
-        reject: () => {},
-        timestamp: Date.now(),
-      });
-      
-      // Sort by priority (lower = higher priority), then FIFO
-      this.queue.sort((a, b) => {
-        if (a.priority !== b.priority) return a.priority - b.priority;
-        return a.timestamp - b.timestamp;
-      });
-    }
-
     // Update metrics
     this.metrics.totalOperations++;
     this.metrics.queuedOperations++;
@@ -334,6 +301,7 @@ export class UnifiedBrowserPool {
       this.metrics.peakQueue = this.queue.length;
     }
 
+    // 🔧 FIX: Create Promise FIRST, then use resolve/reject in queue operations
     return new Promise<T>((resolve, reject) => {
       const queuedAt = Date.now();
       
@@ -393,18 +361,33 @@ export class UnifiedBrowserPool {
         return operation(ctx);
       };
       
-      this.queue.push({
+      // 🔧 FIX: Create queue operation with resolve/reject from Promise
+      const queueOp = {
         id: operationId,
+        operationName,
         priority,
         operation: wrappedOperation as any,
         resolve: resolve as any,
         reject,
-        cancelTimeout: () => clearTimeout(queueTimeoutTimer)
-      });
+        cancelTimeout: () => clearTimeout(queueTimeoutTimer),
+        timestamp: Date.now(),
+      };
       
-      // ✅ FAIR SCHEDULING: Sort by priority, but ensure low-priority ops eventually get processed
-      // Strategy: Process high-priority first, but always include at least 1 low-priority op per batch
-      this.queue.sort((a, b) => a.priority - b.priority);
+      // 🎯 PROOF PRIORITY: Ensure proof operations jump the queue
+      if (priority === -1 && this.queue.length > 0) {
+        // Proof operations get highest priority - move to front of queue
+        this.queue.unshift(queueOp);
+        console.log(`[BROWSER_POOL] 🎯 Proof operation queued at front (priority=${priority}, queue_len=${this.queue.length})`);
+      } else {
+        // Normal queueing
+        this.queue.push(queueOp);
+        
+        // Sort by priority (lower = higher priority), then FIFO
+        this.queue.sort((a, b) => {
+          if (a.priority !== b.priority) return a.priority - b.priority;
+          return a.timestamp - b.timestamp;
+        });
+      }
       
       // Start processing if not already running
       if (!this.isProcessingQueue) {
@@ -552,13 +535,37 @@ export class UnifiedBrowserPool {
                 console.log(`[BROWSER_POOL][DEBUG] disconnected_match=${isDisconnected} op=${op.id} label=${operationLabel}`);
                 
                 if (isDisconnected) {
+                  const errorDetails = {
+                    source_tag: 'BROWSER_POOL_RECOVER',
+                    message: operationError.message || String(operationError),
+                    stack: operationError.stack || 'no stack trace',
+                    name: operationError.name || 'UnknownError',
+                    file: 'UnifiedBrowserPool.ts',
+                    function: 'processQueue',
+                    operation_id: op.id,
+                    operation_label: operationLabel,
+                  };
                   console.log(`[BROWSER_POOL][RECOVER] reason=browser_disconnected action=reset op=${op.id} label=${operationLabel} retry=1`);
+                  console.log(`[BROWSER_POOL][RECOVER] Error details:`, JSON.stringify(errorDetails, null, 2));
                   
                   // Mark original context as closed (resetPool will close it)
                   contextClosed = true;
                   
                   // Reset pool and retry operation once
-                  await this.resetPool();
+                  try {
+                    await this.resetPool();
+                  } catch (resetError: any) {
+                    const resetErrorDetails = {
+                      source_tag: 'BROWSER_POOL_RESET',
+                      message: resetError.message || String(resetError),
+                      stack: resetError.stack || 'no stack trace',
+                      name: resetError.name || 'UnknownError',
+                      file: 'UnifiedBrowserPool.ts',
+                      function: 'resetPool',
+                    };
+                    console.error(`[BROWSER_POOL][RECOVER] ⚠️ Pool reset error:`, JSON.stringify(resetErrorDetails, null, 2));
+                    throw resetError; // Rethrow to trigger outer catch
+                  }
                   await this.ensureLiveContext(op.id);
                   
                   // Re-acquire context for retry
@@ -586,7 +593,41 @@ export class UnifiedBrowserPool {
               const duration = Date.now() - startTime;
               console.log(`[BROWSER_POOL]   ✅ ${op.id}: Completed (${duration}ms)`);
               
-              op.resolve(result);
+              // 🔧 FIX: Add error handling for resolve call
+              try {
+                if (op.resolve && typeof op.resolve === 'function') {
+                  op.resolve(result);
+                } else {
+                  const errorDetails = {
+                    source_tag: 'BROWSER_POOL_RESOLVE',
+                    message: 'resolve is not a function or is undefined',
+                    operation_id: op.id,
+                    operation_name: op.operationName,
+                    has_resolve: !!op.resolve,
+                    resolve_type: typeof op.resolve,
+                    file: 'UnifiedBrowserPool.ts',
+                    function: 'processQueue',
+                  };
+                  console.error(`[BROWSER_POOL] ⚠️ Cannot resolve operation:`, JSON.stringify(errorDetails, null, 2));
+                  if (op.reject && typeof op.reject === 'function') {
+                    op.reject(new Error('Operation completed but resolve callback is invalid'));
+                  }
+                }
+              } catch (resolveError: any) {
+                const resolveErrorDetails = {
+                  source_tag: 'BROWSER_POOL_RESOLVE_CALL',
+                  message: resolveError.message || String(resolveError),
+                  stack: resolveError.stack || 'no stack trace',
+                  name: resolveError.name || 'UnknownError',
+                  file: 'UnifiedBrowserPool.ts',
+                  function: 'processQueue',
+                  operation_id: op.id,
+                };
+                console.error(`[BROWSER_POOL] ⚠️ Error calling resolve:`, JSON.stringify(resolveErrorDetails, null, 2));
+                if (op.reject && typeof op.reject === 'function') {
+                  op.reject(resolveError);
+                }
+              }
               this.metrics.successfulOperations++;
               
               // 🔥 MEMORY OPTIMIZATION: Track operations for browser restart cycle

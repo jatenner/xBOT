@@ -42,12 +42,59 @@ let proofState: {
   result?: ControlToReplyProofResult;
   reportPath?: string;
   snapshotWritten?: boolean;
+  cachedDecisionStatus?: { status: string; claimed: boolean; pipeline_source?: string };
+  cachedAttemptId?: string | null;
+  cachedOutcomeId?: string | null;
+  cachedEventIds?: string[];
+  cachedFailedEvent?: any;
+  lastHeartbeat?: number;
 } = {};
 
 /**
  * Write diagnostic snapshot on termination (SIGTERM/SIGINT/uncaughtException)
  */
-async function writeTerminationSnapshot(signal?: string): Promise<void> {
+/**
+ * Write heartbeat snapshot (synchronous, uses cached state)
+ */
+function writeHeartbeatSnapshot(): void {
+  if (!proofState.decisionId || !proofState.proofTag) {
+    return;
+  }
+
+  try {
+    const reportPath = proofState.reportPath || path.join(process.cwd(), 'docs', 'CONTROL_TO_REPLY_PROOF.md');
+    const now = Date.now();
+    
+    // Throttle heartbeats to every 10s
+    if (proofState.lastHeartbeat && (now - proofState.lastHeartbeat) < 10000) {
+      return;
+    }
+    proofState.lastHeartbeat = now;
+
+    const snapshot = `
+---
+
+**Heartbeat:** ${new Date().toISOString()}
+- **Decision Status:** ${proofState.cachedDecisionStatus?.status || 'unknown'}
+- **Claimed:** ${proofState.cachedDecisionStatus?.claimed ? 'yes' : 'no'}
+- **Attempt ID:** ${proofState.cachedAttemptId || 'N/A'}
+- **Outcome ID:** ${proofState.cachedOutcomeId || 'N/A'}
+- **Event IDs:** ${proofState.cachedEventIds?.length ? proofState.cachedEventIds.join(', ') : 'N/A'}
+- **Failed Event:** ${proofState.cachedFailedEvent ? 'yes' : 'no'}
+
+`;
+
+    // Append synchronously
+    fs.appendFileSync(reportPath, snapshot, 'utf-8');
+  } catch (error: any) {
+    // Silent fail - don't block main loop
+  }
+}
+
+/**
+ * Write termination snapshot (synchronous, uses cached state only)
+ */
+function writeTerminationSnapshotSync(signal?: string): void {
   if (proofState.snapshotWritten) {
     return; // Idempotent guard
   }
@@ -58,121 +105,41 @@ async function writeTerminationSnapshot(signal?: string): Promise<void> {
   }
 
   try {
-    const supabase = getSupabaseClient();
     const reportPath = proofState.reportPath || path.join(process.cwd(), 'docs', 'CONTROL_TO_REPLY_PROOF.md');
 
-    // Get decision status
-    const { data: decisionMeta } = await supabase
-      .from('content_metadata')
-      .select('status, error_message, features, updated_at')
-      .eq('decision_id', proofState.decisionId)
-      .maybeSingle();
-
-    // Get outcomes
-    const { data: outcomeRow } = await supabase
-      .from('outcomes')
-      .select('*')
-      .eq('decision_id', proofState.decisionId)
-      .maybeSingle();
-
-    // Get REPLY_FAILED or POST_FAILED events (check both for backward compatibility)
-    const { data: failedEvents } = await supabase
-      .from('system_events')
-      .select('event_type, event_data, created_at')
-      .in('event_type', ['REPLY_FAILED', 'POST_FAILED'])
-      .eq('event_data->>decision_id', proofState.decisionId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    // Get EXECUTOR_DECISION_SKIPPED events
-    const { data: skippedEvents } = await supabase
-      .from('system_events')
-      .select('event_data, created_at')
-      .eq('event_type', 'EXECUTOR_DECISION_SKIPPED')
-      .eq('event_data->>decision_id', proofState.decisionId)
-      .order('created_at', { ascending: false })
-      .limit(5);
-
-    // Emit deterministic failure if decision exists but no attempt/outcome/events
-    if (decisionMeta && !outcomeRow && !failedEvents) {
-      try {
-        const { recordDeterministicFailure } = await import('../../src/utils/deterministicFailureRecorder');
-        await recordDeterministicFailure({
-          decision_id: proofState.decisionId,
-          decision_type: 'reply',
-          pipeline_source: 'postingQueue',
-          proof_tag: proofState.proofTag,
-          error_name: 'ProofRunnerTerminated',
-          error_message: `Proof script terminated by ${signal || 'unknown signal'}`,
-          step: 'proof_runner_terminated',
-        });
-        
-        // 🔧 FIX: Re-check events after emitting deterministic failure
-        const { data: recheckEvents } = await supabase
-          .from('system_events')
-          .select('event_type, event_data, created_at')
-          .in('event_type', ['REPLY_FAILED', 'POST_FAILED', 'REPLY_SUCCESS'])
-          .eq('event_data->>decision_id', proofState.decisionId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        
-        if (recheckEvents) {
-          failedEvents = recheckEvents;
-        }
-      } catch (recordError: any) {
-        console.error(`[TERMINATION] Failed to record deterministic failure: ${recordError.message}`);
-      }
-    }
-
-    // Write snapshot synchronously
+    // Use cached state only (no async queries)
     const snapshot = `
+---
+
 ## Diagnostic Snapshot (Termination: ${signal || 'unknown'})
 
 **Written at:** ${new Date().toISOString()}
 **Termination Signal:** ${signal || 'unknown'}
 
-### Decision Status
+### Decision Status (from cache)
 - **Decision ID:** ${proofState.decisionId}
 - **Target Tweet ID:** ${proofState.targetTweetId || 'N/A'}
 - **Proof Tag:** ${proofState.proofTag}
-- **Final Status:** ${decisionMeta?.status || 'unknown'}
-- **Error Message:** ${decisionMeta?.error_message || 'N/A'}
-- **Last Updated:** ${decisionMeta?.updated_at || 'N/A'}
+- **Final Status:** ${proofState.cachedDecisionStatus?.status || 'unknown'}
+- **Claimed:** ${proofState.cachedDecisionStatus?.claimed ? 'yes' : 'no'}
 
-### Outcomes
-${outcomeRow ? `
+### Outcomes (from cache)
+- **Attempt ID:** ${proofState.cachedAttemptId || 'N/A'}
+- **Outcome ID:** ${proofState.cachedOutcomeId || 'N/A'}
+
+### Events (from cache)
+- **Event IDs:** ${proofState.cachedEventIds?.length ? proofState.cachedEventIds.join(', ') : 'N/A'}
+- **Failed Event Present:** ${proofState.cachedFailedEvent ? 'yes' : 'no'}
+${proofState.cachedFailedEvent ? `
 \`\`\`json
-${JSON.stringify(outcomeRow, null, 2)}
+${JSON.stringify(typeof proofState.cachedFailedEvent === 'string' ? JSON.parse(proofState.cachedFailedEvent) : proofState.cachedFailedEvent, null, 2)}
 \`\`\`
-` : 'No outcomes row found'}
-
-### Failure Events
-${failedEvents ? `
-\`\`\`json
-${JSON.stringify(typeof failedEvents.event_data === 'string' ? JSON.parse(failedEvents.event_data) : failedEvents.event_data, null, 2)}
-\`\`\`
-` : 'No REPLY_FAILED event found'}
-
-### Skipped Events
-${skippedEvents && skippedEvents.length > 0 ? `
-Found ${skippedEvents.length} EXECUTOR_DECISION_SKIPPED event(s):
-
-\`\`\`json
-${JSON.stringify(skippedEvents.map(e => typeof e.event_data === 'string' ? JSON.parse(e.event_data) : e.event_data), null, 2)}
-\`\`\`
-` : 'No skipped events found'}
-
-### Failure Event Details
-${failedEvents ? `
-- **Event Type:** ${failedEvents.event_type}
-- **Created At:** ${failedEvents.created_at}
-- **Error Code:** ${typeof failedEvents.event_data === 'string' ? JSON.parse(failedEvents.event_data).error_code || JSON.parse(failedEvents.event_data).pipeline_error_reason || 'N/A' : (failedEvents.event_data?.error_code || failedEvents.event_data?.pipeline_error_reason || 'N/A')}
 ` : ''}
+
+**Note:** This snapshot uses cached state from the last polling cycle. For complete details, check the database directly.
 `;
 
-    // Append to report file synchronously
+    // Append synchronously
     fs.appendFileSync(reportPath, snapshot, 'utf-8');
     console.error(`[TERMINATION] Diagnostic snapshot written to ${reportPath}`);
   } catch (error: any) {
@@ -180,28 +147,28 @@ ${failedEvents ? `
   }
 }
 
-// Register signal handlers
-process.on('SIGTERM', async () => {
+// Register signal handlers (synchronous only)
+process.on('SIGTERM', () => {
   console.error('\n[SIGTERM] Received SIGTERM, writing diagnostic snapshot...');
-  await writeTerminationSnapshot('SIGTERM');
+  writeTerminationSnapshotSync('SIGTERM');
   process.exit(1);
 });
 
-process.on('SIGINT', async () => {
+process.on('SIGINT', () => {
   console.error('\n[SIGINT] Received SIGINT, writing diagnostic snapshot...');
-  await writeTerminationSnapshot('SIGINT');
+  writeTerminationSnapshotSync('SIGINT');
   process.exit(1);
 });
 
-process.on('uncaughtException', async (error) => {
+process.on('uncaughtException', (error) => {
   console.error('\n[UNCAUGHT_EXCEPTION]', error);
-  await writeTerminationSnapshot('uncaughtException');
+  writeTerminationSnapshotSync('uncaughtException');
   process.exit(1);
 });
 
-process.on('unhandledRejection', async (reason) => {
+process.on('unhandledRejection', (reason) => {
   console.error('\n[UNHANDLED_REJECTION]', reason);
-  await writeTerminationSnapshot('unhandledRejection');
+  writeTerminationSnapshotSync('unhandledRejection');
   process.exit(1);
 });
 
@@ -795,6 +762,13 @@ async function main(): Promise<void> {
       result.evidence.event_ids = events.eventIds;
     }
     
+    // 🔧 FIX: Cache state for signal handlers
+    proofState.cachedDecisionStatus = status;
+    proofState.cachedAttemptId = attemptId;
+    proofState.cachedOutcomeId = outcome.id;
+    proofState.cachedEventIds = events.eventIds;
+    proofState.cachedFailedEvent = events.failed ? eventData.find((e: any) => e.decision_id === decisionId) : null;
+    
     // Check counts
     result.exactly_one_decision = await countDecisionsWithProofTag(proofTag);
     result.exactly_one_attempt = await countAttempts(decisionId);
@@ -804,6 +778,9 @@ async function main(): Promise<void> {
     result.executor_safety.windows_opened = Math.max(0, currentWindows - initialWindows);
     result.executor_safety.chrome_cdp_processes = await countChromeCdpProcesses();
     result.executor_safety.pages_max = await getMaxPagesFromTicks();
+    
+    // 🔧 FIX: Write heartbeat snapshot every 10s
+    writeHeartbeatSnapshot();
     
     // Check if daemon died
     if (daemonProcess.killed || daemonProcess.exitCode !== null) {
