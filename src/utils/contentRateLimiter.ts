@@ -23,8 +23,11 @@ export interface ContentRateLimitResult {
  * 
  * Holds lock for entire duration of operation to prevent concurrent posts.
  * Lock is automatically released after operation completes or throws.
+ * 
+ * @param operation - The posting operation to execute
+ * @param decision - Optional decision object for PROOF_MODE bypass check
  */
-export async function withContentLock<T>(operation: () => Promise<T>): Promise<T> {
+export async function withContentLock<T>(operation: () => Promise<T>, decision?: { features?: any; id?: string }): Promise<T> {
   const supabase = getSupabaseClient();
   let lockAcquired = false;
   
@@ -59,28 +62,35 @@ export async function withContentLock<T>(operation: () => Promise<T>): Promise<T
     }
     
     // STEP 2: Check rate limit (rolling 60-minute window)
-    // Count ALL tweets posted (singles + threads) - they share the same quota
-    const sixtyMinutesAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    // 🔒 PROOF_MODE: Bypass rate limit check for proof decisions
+    const proofMode = process.env.PROOF_MODE === 'true';
+    const decisionFeatures = decision?.features || {};
+    const proofTag = typeof decisionFeatures === 'string' ? JSON.parse(decisionFeatures).proof_tag : decisionFeatures.proof_tag;
+    const isProofDecision = proofTag && (String(proofTag).startsWith('control-post-') || String(proofTag).startsWith('control-reply-'));
     
-    const { count, error: countError } = await supabase
-      .from('content_metadata')
-      .select('*', { count: 'exact', head: true })
-      .in('decision_type', ['single', 'thread'])
-      .eq('status', 'posted')
-      .not('tweet_id', 'is', null)
-      .gte('posted_at', sixtyMinutesAgo);
-    
-    if (countError) {
-      console.error(`[CONTENT_LOCK] ❌ Rate check error: ${countError.message}`);
-      throw new Error(`Rate check error: ${countError.message}`);
-    }
-    
-    const postsInWindow = count || 0;
-    
-    // Get MAX_POSTS_PER_HOUR from env or use default
-    const maxPostsPerHour = Number(process.env.MAX_POSTS_PER_HOUR) || MAX_POSTS_PER_HOUR;
-    
-    if (postsInWindow >= maxPostsPerHour) {
+    if (!(proofMode && isProofDecision)) {
+      // Count ALL tweets posted (singles + threads) - they share the same quota
+      const sixtyMinutesAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      
+      const { count, error: countError } = await supabase
+        .from('content_metadata')
+        .select('*', { count: 'exact', head: true })
+        .in('decision_type', ['single', 'thread'])
+        .eq('status', 'posted')
+        .not('tweet_id', 'is', null)
+        .gte('posted_at', sixtyMinutesAgo);
+      
+      if (countError) {
+        console.error(`[CONTENT_LOCK] ❌ Rate check error: ${countError.message}`);
+        throw new Error(`Rate check error: ${countError.message}`);
+      }
+      
+      const postsInWindow = count || 0;
+      
+      // Get MAX_POSTS_PER_HOUR from env or use default
+      const maxPostsPerHour = Number(process.env.MAX_POSTS_PER_HOUR) || MAX_POSTS_PER_HOUR;
+      
+      if (postsInWindow >= maxPostsPerHour) {
       // Find when oldest post will expire
       const { data: oldestPost } = await supabase
         .from('content_metadata')
@@ -100,11 +110,14 @@ export async function withContentLock<T>(operation: () => Promise<T>): Promise<T
         nextAvailableIn = Math.max(0, (unlocksAt.getTime() - Date.now()) / (1000 * 60));
       }
       
-      console.log(`[CONTENT_RATE_LIMIT] blocked=true count_last_60m=${postsInWindow} cap=${maxPostsPerHour} next_in=${Math.ceil(nextAvailableIn)}m`);
-      throw new Error(`Rate limit exceeded: ${postsInWindow}/${maxPostsPerHour} in last 60m`);
+        console.log(`[CONTENT_RATE_LIMIT] blocked=true count_last_60m=${postsInWindow} cap=${maxPostsPerHour} next_in=${Math.ceil(nextAvailableIn)}m`);
+        throw new Error(`Rate limit exceeded: ${postsInWindow}/${maxPostsPerHour} in last 60m`);
+      }
+      
+      console.log(`[CONTENT_RATE_LIMIT] allowed=true count_last_60m=${postsInWindow} cap=${maxPostsPerHour}`);
+    } else {
+      console.log(`[CONTENT_RATE_LIMIT] 🔒 PROOF_MODE: Bypassing rate limit check for proof decision (proof_tag=${proofTag})`);
     }
-    
-    console.log(`[CONTENT_RATE_LIMIT] allowed=true count_last_60m=${postsInWindow} cap=${maxPostsPerHour}`);
     
     // STEP 3: Execute operation while holding lock
     return await operation();

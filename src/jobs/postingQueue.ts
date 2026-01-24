@@ -3850,7 +3850,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             const { withContentLock } = await import('../utils/contentRateLimiter');
             result = await withContentLock(async () => {
               return await postContent(decision);
-            });
+            }, decision); // Pass decision for PROOF_MODE bypass check
             console.log(`[POSTING_QUEUE][FLOW] ✅ STEP 1/4 COMPLETE: Posted to Twitter`);
             console.log(`${logPrefix} 🔍 DEBUG: postContent returned successfully`);
             console.log(`${logPrefix} 🔍 DEBUG: result.tweetId=${result?.tweetId || 'MISSING'}, result.tweetUrl=${result?.tweetUrl || 'MISSING'}, result.tweetIds.length=${result?.tweetIds?.length || 0}`);
