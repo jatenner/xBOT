@@ -3098,8 +3098,19 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     
     console.log(`[POSTING_QUEUE] 🚦 Rate limits: Content ${contentPosted}/${maxContentPerHour} (singles+threads), Replies ${repliesPosted}/${maxRepliesPerHour}`);
     
-    // Apply rate limits per type
+    // Apply rate limits per type (but bypass for proof decisions in PROOF_MODE)
+    const proofMode = process.env.PROOF_MODE === 'true';
     const decisionsWithLimits = throttledRows.filter(row => {
+      const features = (row.features || {}) as Record<string, any>;
+      const proofTag = features.proof_tag;
+      const isProofDecision = proofTag && String(proofTag).startsWith('control-post-');
+      
+      // 🔒 PROOF_MODE: Bypass rate limits for proof decisions
+      if (proofMode && isProofDecision) {
+        console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit for proof decision (proof_tag=${proofTag})`);
+        return true;
+      }
+      
       const type = String(row.decision_type ?? 'single');
       if (type === 'reply') {
         return repliesPosted < maxRepliesPerHour;
@@ -3426,12 +3437,21 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       }
   }
   
-    // SMART BATCH FIX: Hard stop - double-check rate limit before EVERY post
+    // SMART BATCH FIX: Hard stop - double-check rate limit before EVERY post (but bypass for proof decisions)
     if (decision.decision_type === 'single' || decision.decision_type === 'thread') {
-      const canPost = await checkPostingRateLimits();
-      if (!canPost) {
-        console.log(`[POSTING_QUEUE] ⛔ HARD STOP: Rate limit reached, skipping ${decision.id}`);
-        return false; // Don't process this decision
+      const decisionFeatures = (decision.features || {}) as Record<string, any>;
+      const proofTag = decisionFeatures.proof_tag;
+      const isProofDecision = proofTag && String(proofTag).startsWith('control-post-');
+      const proofMode = process.env.PROOF_MODE === 'true';
+      
+      if (!(proofMode && isProofDecision)) {
+        const canPost = await checkPostingRateLimits();
+        if (!canPost) {
+          console.log(`[POSTING_QUEUE] ⛔ HARD STOP: Rate limit reached, skipping ${decision.id}`);
+          return false; // Don't process this decision
+        }
+      } else {
+        console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit check for proof decision (proof_tag=${proofTag})`);
       }
   }
   
