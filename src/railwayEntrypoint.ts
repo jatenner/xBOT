@@ -63,8 +63,28 @@ function startHealthServer(): void {
   console.log(`[HEALTH] RAILWAY_GIT_COMMIT_SHA: ${process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT SET'}`);
 
   healthServer = createServer(async (req, res) => {
+    // Minimal /healthz endpoint for SHA verification (no secrets, fast)
+    if (req.url === '/healthz') {
+      const sha = process.env.APP_COMMIT_SHA ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
+      const serviceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'unknown';
+      const executionMode = process.env.EXECUTION_MODE || 'control';
+      const runnerMode = process.env.RUNNER_MODE === 'true';
+      
+      res.writeHead(200, { 
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      });
+      res.end(JSON.stringify({
+        sha,
+        serviceName,
+        executionMode,
+        runnerMode
+      }));
+      return;
+    }
+    
     // Respond to healthcheck endpoints
-    if (req.url === '/status' || req.url === '/health' || req.url === '/healthz') {
+    if (req.url === '/status' || req.url === '/health') {
       // Get session path info
       let sessionPathInfo: any = {
         resolvedPath: 'unknown',

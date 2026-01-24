@@ -504,13 +504,18 @@ if (RUNNER_BROWSER.toLowerCase() === 'cdp') {
 
 **Command:**
 ```bash
+# Preferred: Use /healthz endpoint
+curl -s https://xbot-production-844b.up.railway.app/healthz | jq '{sha, serviceName, executionMode, runnerMode}'
+curl -s https://serene-cat-production.up.railway.app/healthz | jq '{sha, serviceName, executionMode, runnerMode}'
+
+# Fallback: BOOT logs
 railway logs --service xBOT --lines 10 | grep BOOT
 railway logs --service serene-cat --lines 10 | grep BOOT
 ```
 
 **Acceptance Criteria:**
-- Both services show `BOOT sha=<SHA>` with matching SHA
-- Both services show `EXECUTION_MODE=control`
+- Both services show matching `sha` (via `/healthz` or `BOOT sha=<SHA>` in logs)
+- Both services show `executionMode=control` (via `/healthz`) or `EXECUTION_MODE=control` (in BOOT logs)
 
 **PASS/FAIL:** PASS if SHAs match and both are control mode.
 
@@ -716,20 +721,25 @@ Railway services (`xBOT` and `serene-cat`) can drift if not deployed explicitly.
 
 ### Verification Command
 
+**Preferred method (via /healthz endpoint):**
 ```bash
 # Get local SHA
 git rev-parse HEAD
 
-# Get Railway service SHAs
-railway logs --service xBOT --lines 10 | grep BOOT | head -1
-railway logs --service serene-cat --lines 10 | grep BOOT | head -1
+# Get Railway service SHAs via /healthz (fastest, most reliable)
+curl -s https://xbot-production-844b.up.railway.app/healthz | jq -r '.sha'
+curl -s https://serene-cat-production.up.railway.app/healthz | jq -r '.sha'
 
-# Or via Railway CLI
+# Or via Railway CLI (if /healthz not exposed)
 railway run --service xBOT -- node -e "console.log(process.env.RAILWAY_GIT_COMMIT_SHA)"
 railway run --service serene-cat -- node -e "console.log(process.env.RAILWAY_GIT_COMMIT_SHA)"
+
+# Fallback: BOOT logs (if /healthz unavailable)
+railway logs --service xBOT --lines 10 | grep BOOT | head -1
+railway logs --service serene-cat --lines 10 | grep BOOT | head -1
 ```
 
-**Expected:** All three SHAs match.
+**Expected:** All three SHAs match. The `/healthz` endpoint returns `{ sha, serviceName, executionMode, runnerMode }` and is preferred for SHA verification when exposed.
 
 ### Resolution: Deploy Both Services Explicitly
 
@@ -756,9 +766,10 @@ railway logs --service serene-cat --lines 10 | grep BOOT
 - **Never rely on GitHub deploy alone** (may skip due to CI failures)
 
 **Verify after every deploy:**
-- Run `pnpm run verify:sha:both` to check SHAs match
+- **Preferred:** Use `/healthz` endpoint: `curl -s <service-url>/healthz | jq '.sha'` (fastest, most reliable)
+- Or run `pnpm run verify:sha:both` to check SHAs match (uses BOOT logs)
 - Or manually: `railway logs --service xBOT --lines 10 | grep BOOT` and `railway logs --service serene-cat --lines 10 | grep BOOT`
-- Check both show `EXECUTION_MODE=control`
+- Check both show `EXECUTION_MODE=control` (visible in `/healthz` response as `executionMode`)
 
 ---
 
@@ -1028,15 +1039,19 @@ railway up --service serene-cat --detach
 
 **SHA verification (after deploy):**
 ```bash
-# Verify both services show matching SHA
+# Preferred: Use /healthz endpoint (fastest, most reliable)
+curl -s https://xbot-production-844b.up.railway.app/healthz | jq '{sha, serviceName, executionMode, runnerMode}'
+curl -s https://serene-cat-production.up.railway.app/healthz | jq '{sha, serviceName, executionMode, runnerMode}'
+
+# Or use convenience script (uses BOOT logs)
 pnpm run verify:sha:both
 
-# Or manually:
+# Or manually via BOOT logs:
 railway logs --service xBOT --lines 10 | grep BOOT
 railway logs --service serene-cat --lines 10 | grep BOOT
 ```
 
-**Expected:** Both services show matching SHA and `EXECUTION_MODE=control`.
+**Expected:** Both services show matching SHA and `executionMode=control` (visible in `/healthz` response).
 
 **Individual service deploy (if needed):**
 ```bash
