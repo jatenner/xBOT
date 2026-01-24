@@ -27,7 +27,7 @@ import { v4 as uuidv4 } from 'uuid';
 const RUNNER_PROFILE_DIR = resolveRunnerProfileDir();
 const STOP_SWITCH_PATH = RUNNER_PROFILE_PATHS.stopSwitch();
 const PIDFILE_PATH = RUNNER_PROFILE_PATHS.pidFile();
-const MAX_WAIT_SECONDS = 300; // 5 minutes max wait
+const MAX_WAIT_SECONDS = 600; // 10 minutes max wait (increased to reduce false SIGTERM/timeouts)
 
 const DRY_RUN = process.env.DRY_RUN !== 'false' && process.env.EXECUTE_REAL_ACTION !== 'true';
 const EXECUTE_REAL_ACTION = process.env.EXECUTE_REAL_ACTION === 'true';
@@ -39,12 +39,58 @@ let proofState: {
   result?: ControlToPostProofResult;
   reportPath?: string;
   snapshotWritten?: boolean;
+  cachedDecisionStatus?: { status: string; claimed: boolean; pipeline_source?: string };
+  cachedAttemptId?: string | null;
+  cachedOutcomeId?: string | null;
+  cachedEventIds?: string[];
+  cachedFailedEvent?: any;
+  cachedResultUrl?: string;
+  lastHeartbeat?: number;
 } = {};
 
 /**
- * Write diagnostic snapshot on termination (SIGTERM/SIGINT/uncaughtException)
+ * Write heartbeat snapshot every 10s (synchronous, throttled)
  */
-async function writeTerminationSnapshot(signal?: string): Promise<void> {
+function writeHeartbeatSnapshot(): void {
+  if (!proofState.decisionId || !proofState.proofTag) {
+    return;
+  }
+
+  try {
+    const reportPath = proofState.reportPath || path.join(process.cwd(), 'docs', 'CONTROL_TO_POST_PROOF.md');
+    const now = Date.now();
+    
+    // Throttle heartbeats to every 10s
+    if (proofState.lastHeartbeat && (now - proofState.lastHeartbeat) < 10000) {
+      return;
+    }
+    proofState.lastHeartbeat = now;
+
+    const snapshot = `
+---
+
+**Heartbeat:** ${new Date().toISOString()}
+- **Decision Status:** ${proofState.cachedDecisionStatus?.status || 'unknown'}
+- **Claimed:** ${proofState.cachedDecisionStatus?.claimed ? 'yes' : 'no'}
+- **Attempt ID:** ${proofState.cachedAttemptId || 'N/A'}
+- **Outcome ID:** ${proofState.cachedOutcomeId || 'N/A'}
+- **Event IDs:** ${proofState.cachedEventIds?.length ? proofState.cachedEventIds.join(', ') : 'N/A'}
+- **Failed Event:** ${proofState.cachedFailedEvent ? 'yes' : 'no'}
+- **Result URL:** ${proofState.cachedResultUrl || 'N/A'}
+
+`;
+
+    // Append synchronously
+    fs.appendFileSync(reportPath, snapshot, 'utf-8');
+  } catch (error: any) {
+    // Ignore heartbeat errors
+  }
+}
+
+/**
+ * Write termination snapshot synchronously (no async DB queries)
+ */
+function writeTerminationSnapshotSync(signal?: string): void {
   if (proofState.snapshotWritten) {
     return; // Idempotent guard
   }
@@ -55,99 +101,41 @@ async function writeTerminationSnapshot(signal?: string): Promise<void> {
   }
 
   try {
-    const supabase = getSupabaseClient();
     const reportPath = proofState.reportPath || path.join(process.cwd(), 'docs', 'CONTROL_TO_POST_PROOF.md');
 
-    // Get decision status
-    const { data: decisionMeta } = await supabase
-      .from('content_metadata')
-      .select('status, error_message, features, updated_at')
-      .eq('decision_id', proofState.decisionId)
-      .maybeSingle();
-
-    // Get outcomes
-    const { data: outcomeRow } = await supabase
-      .from('outcomes')
-      .select('*')
-      .eq('decision_id', proofState.decisionId)
-      .maybeSingle();
-
-    // Get POST_FAILED events
-    const { data: failedEvents } = await supabase
-      .from('system_events')
-      .select('event_data, created_at')
-      .eq('event_type', 'POST_FAILED')
-      .eq('event_data->>decision_id', proofState.decisionId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    // Get EXECUTOR_DECISION_SKIPPED events
-    const { data: skippedEvents } = await supabase
-      .from('system_events')
-      .select('event_data, created_at')
-      .eq('event_type', 'EXECUTOR_DECISION_SKIPPED')
-      .eq('event_data->>decision_id', proofState.decisionId)
-      .order('created_at', { ascending: false })
-      .limit(5);
-
-    // Emit deterministic failure if decision exists but no attempt/outcome/events
-    if (decisionMeta && !outcomeRow && !failedEvents) {
-      try {
-        const { recordDeterministicFailure } = await import('../../src/utils/deterministicFailureRecorder');
-        await recordDeterministicFailure({
-          decision_id: proofState.decisionId,
-          decision_type: 'single',
-          pipeline_source: 'postingQueue',
-          proof_tag: proofState.proofTag,
-          error_name: 'ProofRunnerTerminated',
-          error_message: `Proof script terminated by ${signal || 'unknown signal'}`,
-          step: 'proof_runner_terminated',
-        });
-      } catch (recordError: any) {
-        console.error(`[TERMINATION] Failed to record deterministic failure: ${recordError.message}`);
-      }
-    }
-
-    // Write snapshot synchronously
+    // Use cached state only (no async queries)
     const snapshot = `
+---
+
 ## Diagnostic Snapshot (Termination: ${signal || 'unknown'})
 
 **Written at:** ${new Date().toISOString()}
 **Termination Signal:** ${signal || 'unknown'}
 
-### Decision Status
+### Decision Status (from cache)
 - **Decision ID:** ${proofState.decisionId}
 - **Proof Tag:** ${proofState.proofTag}
-- **Final Status:** ${decisionMeta?.status || 'unknown'}
-- **Error Message:** ${decisionMeta?.error_message || 'N/A'}
-- **Last Updated:** ${decisionMeta?.updated_at || 'N/A'}
+- **Final Status:** ${proofState.cachedDecisionStatus?.status || 'unknown'}
+- **Claimed:** ${proofState.cachedDecisionStatus?.claimed ? 'yes' : 'no'}
 
-### Outcomes
-${outcomeRow ? `
+### Outcomes (from cache)
+- **Attempt ID:** ${proofState.cachedAttemptId || 'N/A'}
+- **Outcome ID:** ${proofState.cachedOutcomeId || 'N/A'}
+
+### Events (from cache)
+- **Event IDs:** ${proofState.cachedEventIds?.length ? proofState.cachedEventIds.join(', ') : 'N/A'}
+- **Failed Event Present:** ${proofState.cachedFailedEvent ? 'yes' : 'no'}
+${proofState.cachedFailedEvent ? `
 \`\`\`json
-${JSON.stringify(outcomeRow, null, 2)}
+${JSON.stringify(typeof proofState.cachedFailedEvent === 'string' ? JSON.parse(proofState.cachedFailedEvent) : proofState.cachedFailedEvent, null, 2)}
 \`\`\`
-` : 'No outcomes row found'}
+` : ''}
+- **Result URL:** ${proofState.cachedResultUrl || 'N/A'}
 
-### Failure Events
-${failedEvents ? `
-\`\`\`json
-${JSON.stringify(typeof failedEvents.event_data === 'string' ? JSON.parse(failedEvents.event_data) : failedEvents.event_data, null, 2)}
-\`\`\`
-` : 'No POST_FAILED event found'}
-
-### Skipped Events
-${skippedEvents && skippedEvents.length > 0 ? `
-Found ${skippedEvents.length} EXECUTOR_DECISION_SKIPPED event(s):
-
-\`\`\`json
-${JSON.stringify(skippedEvents.map(e => typeof e.event_data === 'string' ? JSON.parse(e.event_data) : e.event_data), null, 2)}
-\`\`\`
-` : 'No skipped events found'}
+**Note:** This snapshot uses cached state from the last polling cycle. For complete details, check the database directly.
 `;
 
-    // Append to report file synchronously
+    // Append synchronously
     fs.appendFileSync(reportPath, snapshot, 'utf-8');
     console.error(`[TERMINATION] Diagnostic snapshot written to ${reportPath}`);
   } catch (error: any) {
@@ -155,28 +143,28 @@ ${JSON.stringify(skippedEvents.map(e => typeof e.event_data === 'string' ? JSON.
   }
 }
 
-// Register signal handlers
-process.on('SIGTERM', async () => {
+// Register signal handlers (synchronous only)
+process.on('SIGTERM', () => {
   console.error('\n[SIGTERM] Received SIGTERM, writing diagnostic snapshot...');
-  await writeTerminationSnapshot('SIGTERM');
+  writeTerminationSnapshotSync('SIGTERM');
   process.exit(1);
 });
 
-process.on('SIGINT', async () => {
+process.on('SIGINT', () => {
   console.error('\n[SIGINT] Received SIGINT, writing diagnostic snapshot...');
-  await writeTerminationSnapshot('SIGINT');
+  writeTerminationSnapshotSync('SIGINT');
   process.exit(1);
 });
 
-process.on('uncaughtException', async (error) => {
+process.on('uncaughtException', (error) => {
   console.error('\n[UNCAUGHT_EXCEPTION]', error);
-  await writeTerminationSnapshot('uncaughtException');
+  writeTerminationSnapshotSync('uncaughtException');
   process.exit(1);
 });
 
-process.on('unhandledRejection', async (reason) => {
+process.on('unhandledRejection', (reason) => {
   console.error('\n[UNHANDLED_REJECTION]', reason);
-  await writeTerminationSnapshot('unhandledRejection');
+  writeTerminationSnapshotSync('unhandledRejection');
   process.exit(1);
 });
 
@@ -247,6 +235,67 @@ async function getMaxPagesFromTicks(): Promise<number> {
     return maxPages;
   } catch {
     return 0;
+  }
+}
+
+/**
+ * Write initial report immediately after creating decision (for durability)
+ */
+async function writeInitialReport(decisionId: string, proofTag: string): Promise<void> {
+  try {
+    const reportPath = path.join(process.cwd(), 'docs', 'CONTROL_TO_POST_PROOF.md');
+    const os = require('os');
+    const machineInfo = {
+      hostname: os.hostname(),
+      platform: os.platform(),
+      arch: os.arch(),
+      nodeVersion: process.version,
+    };
+    
+    const initialReport = `# Control → Executor → X Proof (Posting)
+
+**Date:** ${new Date().toISOString()}  
+**Status:** ⏳ IN PROGRESS
+
+## Machine Info
+
+- **Hostname:** ${machineInfo.hostname}
+- **Platform:** ${machineInfo.platform}
+- **Architecture:** ${machineInfo.arch}
+- **Node Version:** ${machineInfo.nodeVersion}
+- **Runner Profile Dir:** ${RUNNER_PROFILE_DIR}
+
+## Evidence
+
+- **Decision ID:** ${decisionId}
+- **Proof Tag:** ${proofTag}
+- **Pipeline Source:** control_posting_queue
+- **Decision Status:** queued (initial)
+- **Attempt ID:** N/A (pending)
+- **Outcome ID:** N/A (pending)
+- **Event IDs:** N/A (pending)
+- **DRY_RUN:** ${DRY_RUN}
+
+## Results
+
+| Check | Status | Evidence | Assertion |
+|-------|--------|----------|-----------|
+| Control Decision Created | ✅ | control_posting_queue | - |
+| Decision Queued | ✅ | queued | - |
+| Decision Claimed | ⏳ | pending | - |
+| Attempt Recorded | ⏳ | pending | - |
+| Result Recorded | ⏳ | pending | - |
+| Success/Failure Event | ⏳ | pending | - |
+
+---
+
+*Report will be updated as proof progresses...*
+`;
+
+    fs.writeFileSync(reportPath, initialReport, 'utf-8');
+    console.log(`📝 Initial report written to ${reportPath}`);
+  } catch (error: any) {
+    console.warn(`⚠️  Failed to write initial report: ${error.message}`);
   }
 }
 
@@ -491,6 +540,9 @@ async function main(): Promise<void> {
   proofState.proofTag = proofTag;
   proofState.reportPath = path.join(process.cwd(), 'docs', 'CONTROL_TO_POST_PROOF.md');
   
+  // 🔧 FIX: Write initial report immediately after creating decision
+  await writeInitialReport(decisionId, proofTag);
+  
   // DRY_RUN mode: exit after creating decision
   if (DRY_RUN) {
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -628,6 +680,20 @@ async function main(): Promise<void> {
       result.evidence.event_ids = events.eventIds;
     }
     
+    // Extract result URL
+    const resultUrl = await extractResultUrl(decisionId, eventData, outcomeResult);
+    if (resultUrl) {
+      result.result_url = resultUrl;
+      proofState.cachedResultUrl = resultUrl;
+    }
+    
+    // 🔧 FIX: Cache state for signal handlers
+    proofState.cachedDecisionStatus = status;
+    proofState.cachedAttemptId = attemptId;
+    proofState.cachedOutcomeId = outcome.id;
+    proofState.cachedEventIds = events.eventIds;
+    proofState.cachedFailedEvent = events.failed ? eventData.find((e: any) => e.decision_id === decisionId) : null;
+    
     // Check counts
     result.exactly_one_decision = await countDecisionsWithProofTag(proofTag);
     result.exactly_one_attempt = await countAttempts(decisionId);
@@ -638,16 +704,33 @@ async function main(): Promise<void> {
     result.executor_safety.chrome_cdp_processes = await countChromeCdpProcesses();
     result.executor_safety.pages_max = await getMaxPagesFromTicks();
     
+    // 🔧 FIX: Write heartbeat snapshot every 10s
+    writeHeartbeatSnapshot();
+    
     // Check if daemon died
     if (daemonProcess.killed || daemonProcess.exitCode !== null) {
       console.log('⚠️  Daemon exited during test');
       break;
     }
     
-    // If we have both attempt and result, we're done
-    if (result.attempt_recorded && result.result_recorded && result.success_or_failure_event_present) {
-      console.log('✅ Execution complete!');
+    // 🔧 FIX: Early exit if POST_SUCCESS or POST_FAILED detected
+    if (events.success || events.failed) {
+      if (events.success) {
+        console.log('✅ Post execution complete (POST_SUCCESS detected)!');
+      } else {
+        console.log('⚠️  Post execution failed (POST_FAILED detected)');
+      }
       break;
+    }
+    
+    // Also check if decision is posted (status=posted with tweet_id)
+    if (status.status === 'posted') {
+      // Re-check events to ensure we have POST_SUCCESS
+      const recheckEvents = await findPostEvents(decisionId);
+      if (recheckEvents.success || recheckEvents.failed) {
+        console.log(`✅ Post execution complete (status=posted, event=${recheckEvents.success ? 'POST_SUCCESS' : 'POST_FAILED'})!`);
+        break;
+      }
     }
     
     await new Promise(resolve => setTimeout(resolve, 5000)); // Check every 5 seconds
@@ -667,8 +750,32 @@ async function main(): Promise<void> {
   result.executor_safety.chrome_cdp_processes = await countChromeCdpProcesses();
   result.executor_safety.pages_max = await getMaxPagesFromTicks();
   
-  // Extract result URL
-  result.result_url = await extractResultUrl(decisionId, eventData, outcomeResult);
+  // Extract result URL (if not already cached)
+  if (!result.result_url) {
+    result.result_url = await extractResultUrl(decisionId, eventData, outcomeResult);
+    if (result.result_url) {
+      proofState.cachedResultUrl = result.result_url;
+    }
+  }
+  
+  // 🔧 FIX: Re-check events after timeout to ensure we capture POST_SUCCESS/POST_FAILED
+  if (!result.success_or_failure_event_present) {
+    const recheckEvents = await findPostEvents(decisionId);
+    if (recheckEvents.success || recheckEvents.failed) {
+      result.success_or_failure_event_present = true;
+      result.evidence.event_ids = recheckEvents.eventIds;
+      eventData = recheckEvents.eventData;
+      console.log(`[PROOF] ✅ Re-checked events: found ${recheckEvents.eventIds.length} event(s) with ids: ${result.evidence.event_ids.join(', ')}`);
+    }
+  }
+  
+  // Extract result URL again after re-check
+  if (!result.result_url) {
+    result.result_url = await extractResultUrl(decisionId, eventData, outcomeResult);
+    if (result.result_url) {
+      proofState.cachedResultUrl = result.result_url;
+    }
+  }
   
   // Store result for signal handlers
   proofState.result = result;
