@@ -1,7 +1,7 @@
 # Control → Executor → X Proof (Posting)
 
-**Date:** 2026-01-24T17:48:38.705Z  
-**Status:** ⏳ IN PROGRESS
+**Date:** 2026-01-24T18:02:47.222Z  
+**Status:** ❌ FAIL
 
 ## Machine Info
 
@@ -11,527 +11,83 @@
 - **Node Version:** v22.14.0
 - **Runner Profile Dir:** /Users/jonahtenner/Desktop/xBOT/.runner-profile
 
-## Evidence
-
-- **Decision ID:** 01f1bf12-f0d5-4327-98d0-f44af6884948
-- **Proof Tag:** control-post-1769276918227
-- **Pipeline Source:** control_posting_queue
-- **Decision Status:** queued (initial)
-- **Attempt ID:** N/A (pending)
-- **Outcome ID:** N/A (pending)
-- **Event IDs:** N/A (pending)
-- **DRY_RUN:** false
-
 ## Results
 
 | Check | Status | Evidence | Assertion |
 |-------|--------|----------|-----------|
 | Control Decision Created | ✅ | control_posting_queue | - |
 | Decision Queued | ✅ | queued | - |
-| Decision Claimed | ⏳ | pending | - |
-| Attempt Recorded | ⏳ | pending | - |
-| Result Recorded | ⏳ | pending | - |
-| Success/Failure Event | ⏳ | pending | - |
+| Decision Claimed | ❌ | queued | - |
+| Attempt Recorded | ❌ | N/A | - |
+| Result Recorded | ❌ | N/A | - |
+| Success/Failure Event | ❌ | N/A | - |
+| Exactly One Decision | ✅ | 1 | HARD |
+| Exactly One Attempt | ❌ | 0 | HARD |
+| Windows Opened | ✅ | 0 | HARD |
+| Chrome CDP Processes | ✅ | 0 | HARD |
+| Pages Max | ✅ | 0 | HARD |
 
----
+## Evidence
 
-*Report will be updated as proof progresses...*
-
----
-
-**Heartbeat:** 2026-01-24T17:48:39.495Z
-- **Decision Found:** yes
+- **Decision ID:** a33ba31c-a8d6-4a9f-a8cd-1e08eb4d80f0
+- **Proof Tag:** control-post-1769277694463
+- **Pipeline Source:** control_posting_queue
 - **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
 - **Attempt ID:** N/A
 - **Outcome ID:** N/A
 - **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
 
 
----
 
-**Heartbeat:** 2026-01-24T17:48:51.055Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:49:02.638Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:49:14.231Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:49:25.783Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:49:37.488Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:49:49.226Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:50:01.115Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:50:12.638Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:50:24.248Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:50:35.882Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:50:47.491Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:50:58.996Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:51:10.496Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:51:22.148Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:51:33.756Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:51:45.386Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:51:57.026Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:52:08.595Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:52:20.171Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:52:31.746Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:52:43.472Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:52:55.057Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:53:06.625Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:53:18.241Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-**Heartbeat:** 2026-01-24T17:53:29.811Z
-- **Decision Found:** yes
-- **Decision Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
-
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
-- **Event IDs:** N/A
-- **Failed Event:** no
-- **Result URL:** N/A
-
-
----
-
-## Diagnostic Snapshot (Termination: SIGTERM)
-
-**Written at:** 2026-01-24T17:53:37.896Z
-**Termination Signal:** SIGTERM
-
-### Decision Status (from cache)
-- **Decision ID:** 01f1bf12-f0d5-4327-98d0-f44af6884948
-- **Proof Tag:** control-post-1769276918227
-- **Found:** yes
+## Log Excerpts
+
+```
+🚩 FEATURE_FLAGS: mode=live posting=ON
+[POSTING_QUEUE] 🔒 Successfully claimed decision 01f1bf12-f0d5-4327-98d0-f44af6884948 for posting
+[CONTENT_RATE_LIMIT] 🔒 PROOF_MODE: Bypassing rate limit check for proof decision (proof_tag=control-post-1769276918227)
+[POSTING_QUEUE][SEM_TIMEOUT] decision_id=01f1bf12-f0d5-4327-98d0-f44af6884948 type=single timeoutMs=300000 priority=-1 proof_tag=control-post-1769276918227
+[BROWSER_SEM] 🔓 posting acquired browser (priority -1)
+[POSTING_QUEUE] 🌐 Using reliable Playwright posting...
+[POSTING_QUEUE] ⏱️ Using adaptive timeout: 180000ms (attempt 1, retry_count=0)
+[POSTING_GUARD] ✅ Guard created: decision_id=01f1bf12-f0d5-4327-98d0-f44af6884948 source=postingQueue
+[ATOMIC_POST]   decision_id=01f1bf12-f0d5-4327-98d0-f44af6884948 type=single source=postingQueue build_sha=fdf00f1e32b67fa399f668d836c0a737e73bc62a
+[ATOMIC_POST] 📝 PREWRITE: Inserting DB row with status='posting_attempt'...
+[ATOMIC_POST] 🎫 Creating posting permit...
+[POSTING_GUARD] ✅ Verified: decision_id=01f1bf12-f0d5-4327-98d0-f44af6884948 source=postingQueue job=posting_1769277699021
+[PROOF:control-post-1769276918227] [POST_TWEET] 📊 AUDIT_TRAIL: decision_id=01f1bf12-f0d5-4327-98d0-f44af6884948 pipeline_source=postingQueue job_run_id=posting_1769277699021 build_sha=fdf00f1e32b67fa399f668d836c0a737e73bc62a db_env=7ef9c43a
+ULTIMATE_POSTER: Acquiring page from UnifiedBrowserPool (operation: tweet_posting)...
+[BROWSER_POOL] 📝 Request: tweet_posting (queue: 0, active: 0, priority: 0)
+[BROWSER_POOL][RECOVER] reason=browser_disconnected action=reset label=tweet_posting
+[BROWSER_POOL][TIMEOUT] label=tweet_posting timeoutMs=300000
+[BROWSER_POOL]   → tweet_posting-1769277699467-lc0rkeyrs: Starting...
+[BROWSER_POOL]   ✅ tweet_posting-1769277699467-lc0rkeyrs: Completed (38ms)
+ULTIMATE_POSTER: ✅ CreateTweet GraphQL response capture active (30s timeout)
+```
+
+## Diagnostic Snapshot (Failure Analysis)
+
+### Decision Status
 - **Final Status:** queued
-- **Claimed:** no
-- **Tweet ID:** N/A
-- **URL:** N/A
-- **Created At:** 2026-01-24T17:48:38.402+00:00
-- **Fallback Used:** no
+- **Error Message:** N/A
+
+### Failure Event Data
+No POST_FAILED event found
+
+### Outcomes Result
+No outcomes result found
+
+### Skipped Events
+No skipped events found
 
 
-### Outcomes (from cache)
-- **Attempt ID:** N/A
-- **Outcome ID:** N/A
+## Result
 
-### Events (from cache)
-- **Event IDs:** N/A
-- **Failed Event Present:** no
+❌ **FAIL** - One or more checks failed
 
-- **Result URL:** N/A
+**Failure Code:** EXECUTOR_NOT_TICKING
 
-**Note:** This snapshot uses cached state from the last polling cycle. For complete details, check the database directly.
+**Failure Message:** No EXECUTOR_DAEMON_TICK events found after 61s
+
+
+
+

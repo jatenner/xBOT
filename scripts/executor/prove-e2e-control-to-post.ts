@@ -730,6 +730,7 @@ async function main(): Promise<void> {
       RUNNER_MODE: 'true',
       HEADLESS: 'true',
       RUNNER_PROFILE_DIR: RUNNER_PROFILE_DIR,
+      PROOF_MODE: process.env.PROOF_MODE || 'true', // Ensure PROOF_MODE is passed
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
