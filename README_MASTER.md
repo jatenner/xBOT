@@ -166,8 +166,8 @@ tail -50 ./.runner-profile/logs/executor.log | grep "posting_ready\|posting_atte
 - `CDP_PORT` (Railway doesn't connect to CDP)
 
 **Default Behavior:**
-- If `EXECUTION_MODE` is missing or not `control`, Railway services MUST fail-fast at boot.
-- If `RUNNER_MODE=true` is detected on Railway, system MUST block all execution attempts and emit `*_BLOCKED` events with reason `NOT_EXECUTOR_MODE`.
+- If `EXECUTION_MODE` is missing, Railway services default to `control` (fail-closed). **Policy (Doc) — not yet enforced in code:** Should fail-fast if `EXECUTION_MODE` is set to invalid value.
+- If `RUNNER_MODE=true` is detected on Railway, system blocks all execution attempts and emits `*_BLOCKED` events with reason `NOT_EXECUTOR_MODE` (enforced in `src/jobs/postingQueue.ts` and `src/jobs/replySystemV2/main.ts`).
 
 ### Executor-Plane (Mac) - Required Variables
 
@@ -550,7 +550,7 @@ pnpm run executor:prove:5m
 
 **PASS/FAIL:** PASS only if ALL hard assertions pass. FAIL if any hard assertion fails.
 
-**Report Location:** `docs/EXECUTOR_5MIN_HEADLESS_PROOF.md`
+**Report Location:** `docs/EXECUTOR_5MIN_HEADLESS_PROOF.md` (created by proof script)
 
 **Extended Proof (15 minutes):**
 ```bash
@@ -559,7 +559,7 @@ pnpm run executor:prove:15m
 
 **Same acceptance criteria as 5-minute proof, but validates stability over longer duration.**
 
-**Report Location:** `docs/EXECUTOR_15MIN_HEADLESS_PROOF.md`
+**Report Location:** `docs/EXECUTOR_15MIN_HEADLESS_PROOF.md` (created by proof script)
 
 ### Proof Level 3: Execution Proof (Posting/Replies)
 
@@ -751,11 +751,13 @@ railway logs --service serene-cat --lines 10 | grep BOOT
 ### Prevention
 
 **Always deploy both services:**
-- Use `pnpm run deploy:verify:both` (deploys and verifies both)
-- Or explicitly: `railway up --service xBOT --detach && railway up --service serene-cat --detach`
+- Use `pnpm run deploy:railway:both` (canonical command, deploys both services)
+- Or manually: `railway up --service xBOT --detach && railway up --service serene-cat --detach`
+- **Never rely on GitHub deploy alone** (may skip due to CI failures)
 
 **Verify after every deploy:**
-- Check SHAs match: `railway logs --service xBOT | grep BOOT` and `railway logs --service serene-cat | grep BOOT`
+- Run `pnpm run verify:sha:both` to check SHAs match
+- Or manually: `railway logs --service xBOT --lines 10 | grep BOOT` and `railway logs --service serene-cat --lines 10 | grep BOOT`
 - Check both show `EXECUTION_MODE=control`
 
 ---
@@ -1005,17 +1007,42 @@ Used only when auth expires or X challenges.
 
 > Note: adjust path/env based on repo location. Default assumes repo root.
 
-### Railway deploy (both services)
-Use your preferred approach (CLI):
-- `railway up --detach` for the currently selected service
-- or explicitly:
-  - `railway up --service xBOT --detach`
-  - `railway up --service serene-cat --detach`
+### Deploy Both Services (Required)
 
-### Verify service SHA (logs)
-Examples:
-- `railway logs --service xBOT | grep BOOT`
-- `railway logs --service serene-cat | grep BOOT`
+**CRITICAL:** GitHub deploy may SKIP services due to CI check suite failures, causing Railway drift. **Never rely on GitHub deploy alone.**
+
+**Canonical deploy command (always use this):**
+```bash
+# Deploy both services explicitly (required)
+pnpm run deploy:railway:both
+
+# Or manually:
+railway up --service xBOT --detach
+railway up --service serene-cat --detach
+```
+
+**Why this is required:**
+- GitHub Actions may skip deployment if CI checks fail
+- Railway services can drift (different SHAs) if not deployed explicitly
+- System requires both services to run the same SHA for consistency
+
+**SHA verification (after deploy):**
+```bash
+# Verify both services show matching SHA
+pnpm run verify:sha:both
+
+# Or manually:
+railway logs --service xBOT --lines 10 | grep BOOT
+railway logs --service serene-cat --lines 10 | grep BOOT
+```
+
+**Expected:** Both services show matching SHA and `EXECUTION_MODE=control`.
+
+**Individual service deploy (if needed):**
+```bash
+pnpm run deploy:railway:xbot    # Deploy xBOT only
+pnpm run deploy:railway:serene  # Deploy serene-cat only
+```
 
 ### Control-plane expected signals
 In control mode:

@@ -7,35 +7,42 @@
 
 ## Deployment
 
-### Deploy Both Services
+### Deploy Both Services (Required)
 
+**CRITICAL:** GitHub deploy may SKIP services due to CI check suite failures, causing Railway drift. **Never rely on GitHub deploy alone.**
+
+**Canonical deploy command (always use this):**
 ```bash
-# Deploy and verify both xBOT and serene-cat
-pnpm run deploy:verify:both
+# Deploy both services explicitly (required)
+pnpm run deploy:railway:both
 
 # Or manually:
 railway up --service xBOT --detach
 railway up --service serene-cat --detach
 ```
 
-### Verify SHA Match
+**Why this is required:**
+- GitHub Actions may skip deployment if CI checks fail
+- Railway services can drift (different SHAs) if not deployed explicitly
+- System requires both services to run the same SHA for consistency
 
+**SHA verification (after deploy):**
 ```bash
-# Check local SHA
-git rev-parse HEAD
+# Verify both services show matching SHA
+pnpm run verify:sha:both
 
-# Check Railway SHA (xBOT)
-railway run --service xBOT -- node -e "console.log(process.env.RAILWAY_GIT_COMMIT_SHA)"
-
-# Check Railway SHA (serene-cat)
-railway run --service serene-cat -- node -e "console.log(process.env.RAILWAY_GIT_COMMIT_SHA)"
-
-# Check boot logs
-railway logs --service xBOT --lines 50 | grep "\[BOOT\]"
-railway logs --service serene-cat --lines 50 | grep "\[BOOT\]"
+# Or manually:
+railway logs --service xBOT --lines 10 | grep BOOT
+railway logs --service serene-cat --lines 10 | grep BOOT
 ```
 
-**Expected:** All SHAs match, boot logs show `execution_mode=control`
+**Expected:** Both services show matching SHA and `EXECUTION_MODE=control`.
+
+**Individual service deploy (if needed):**
+```bash
+pnpm run deploy:railway:xbot    # Deploy xBOT only
+pnpm run deploy:railway:serene  # Deploy serene-cat only
+```
 
 ---
 
@@ -128,14 +135,34 @@ pnpm run executor:start
 ### Stop Executor (Emergency)
 
 ```bash
+# EMERGENCY: If windows pop up repeatedly, run this immediately:
+pnpm run executor:stop
+
+# This command:
+# - Creates STOP switch
+# - Kills daemon PID if present
+# - Kills chrome-cdp.ts runner processes
+# - Kills Playwright/Chromium child processes created by bot
+# - Unloads LaunchAgent if installed
+
+# Alternative methods:
 # Method 1: STOP switch (graceful, exits within 10s)
 touch ./.runner-profile/STOP_EXECUTOR
 
-# Method 2: Stop LaunchAgent
-pnpm run executor:stop
-
-# Method 3: Kill process
+# Method 2: Kill process directly
 pkill -f "executor/daemon"
+pkill -f "chrome-cdp.ts"
+```
+
+**Verification:**
+```bash
+# Verify everything stopped
+pnpm run ops:executor:status
+
+# Expected:
+# - Daemon: Not running ✅
+# - chrome-cdp.ts processes: None running ✅
+# - Bot-owned Chromium: None running ✅
 ```
 
 ### Repair Login (If Auth Required)
@@ -327,8 +354,9 @@ pkill -9 "Google Chrome"
 **Root Cause Prevention:**
 - LaunchAgent plist must NOT have `RUNNER_BROWSER=cdp` (causes visible windows)
 - LaunchAgent plist MUST have `HEADLESS=true`
-- Daemon will fail-fast if `RUNNER_BROWSER=cdp` is detected
-- Use `pnpm run executor:install-service` to regenerate correct plist
+- Daemon will fail-fast if `RUNNER_BROWSER=cdp` is detected (enforced in `scripts/executor/daemon.ts`)
+- Daemon will fail-fast if `HEADLESS=false` is detected (enforced in `scripts/executor/daemon.ts`)
+- Use `pnpm run executor:install-service` to regenerate correct plist (enforced by `scripts/executor/install-service.sh`)
 
 ### Executor Tab Explosion
 
