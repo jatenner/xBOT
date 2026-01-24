@@ -3690,9 +3690,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       }
       
       // 🔧 A) Emit CLAIM_ATTEMPT event immediately before attempting DB claim
-      const decisionFeaturesForClaim = (decision.features || {}) as Record<string, any>;
-      const proofTag = decisionFeaturesForClaim.proof_tag;
-      const pipelineSource = decisionFeaturesForClaim.pipeline_source || (decision as any).pipeline_source || null;
+      // (decisionFeatures, proofTag, pipelineSource already declared at function start)
       
       try {
         await supabase.from('system_events').insert({
