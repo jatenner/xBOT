@@ -600,8 +600,21 @@ pnpm run executor:prove:e2e-post
 **Reply E2E Proof:**
 ```bash
 # End-to-end reply proof (seeds ONE reply decision, runs executor, verifies execution)
-TARGET_TWEET_ID=1234567890 pnpm run executor:prove:e2e-reply
+# TARGET_TWEET_ID is REQUIRED (must be valid numeric tweet ID >= 15 digits)
+TARGET_TWEET_ID=1234567890123456789 pnpm run executor:prove:e2e-reply
+
+# DRY_RUN mode: seed decision only, no execution (safe for testing)
+DRY_RUN=true TARGET_TWEET_ID=1234567890123456789 pnpm run executor:prove:e2e-reply
 ```
+
+**How to extract tweet ID from URL:**
+- URL: `https://x.com/username/status/1234567890123456789`
+- Extract: `1234567890123456789` (the number after `/status/`)
+
+**Requirements:**
+- `TARGET_TWEET_ID`: Required environment variable, must be numeric string with >= 15 digits
+- Script fails fast if `TARGET_TWEET_ID` is missing or invalid
+- `DRY_RUN=true`: Optional, seeds decision but does not start daemon or attempt reply
 
 **Acceptance Criteria (Reply E2E Proof - HARD ASSERTIONS):**
 - `reply_decision_queued=true` ✅ (reply decision inserted)
@@ -617,11 +630,14 @@ TARGET_TWEET_ID=1234567890 pnpm run executor:prove:e2e-reply
 **PASS/FAIL:** PASS only if ALL checks pass (including executor safety invariants). FAIL if any check fails.
 
 **Report Location:** `docs/EXECUTION_E2E_REPLY_PROOF.md` (created by proof script)
+- Includes: `decision_id`, `target_tweet_id`, `proof_tag`, `reply_url` (if available)
+- DRY_RUN reports are clearly marked
 
 **Important:** Replies are proven one-at-a-time before scale. The reply proof validates:
 1. Single reply decision execution (no spam/loops)
 2. Executor safety invariants remain true during reply execution
 3. Proper event emission (REPLY_SUCCESS or REPLY_FAILED)
+4. Reply URL extraction from event_data or outcomes.result (best effort)
 
 **Manual Checks (Alternative):**
 ```bash

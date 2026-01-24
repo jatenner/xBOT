@@ -5,8 +5,12 @@
  * Seeds ONE reply decision, runs executor daemon, and proves execution.
  * 
  * Usage:
- *   RUNNER_PROFILE_DIR=./.runner-profile pnpm run executor:prove:e2e-reply
- *   TARGET_TWEET_ID=1234567890 pnpm run executor:prove:e2e-reply  # Optional: specify target tweet
+ *   TARGET_TWEET_ID=1234567890123456789 RUNNER_PROFILE_DIR=./.runner-profile pnpm run executor:prove:e2e-reply
+ *   DRY_RUN=true TARGET_TWEET_ID=1234567890123456789 pnpm run executor:prove:e2e-reply  # Seed only, no execution
+ * 
+ * Requirements:
+ *   - TARGET_TWEET_ID: Required, must be valid numeric tweet ID (>= 15 digits)
+ *   - Extract tweet ID from URL: https://x.com/username/status/1234567890123456789
  */
 
 import 'dotenv/config';
@@ -23,19 +27,64 @@ const STOP_SWITCH_PATH = RUNNER_PROFILE_PATHS.stopSwitch();
 const PIDFILE_PATH = RUNNER_PROFILE_PATHS.pidFile();
 const MAX_WAIT_SECONDS = 300; // 5 minutes max wait
 
-// Static target tweet ID for proof (can be overridden via env)
-// Using a placeholder - user should set TARGET_TWEET_ID env var or update this
-const DEFAULT_TARGET_TWEET_ID = process.env.TARGET_TWEET_ID || '1234567890123456789'; // Placeholder - must be real tweet ID
+const DRY_RUN = process.env.DRY_RUN === 'true';
+
+// Validate TARGET_TWEET_ID - FAIL FAST if missing or invalid
+function validateTargetTweetId(): string {
+  const targetTweetId = process.env.TARGET_TWEET_ID;
+  
+  if (!targetTweetId) {
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('           ❌ FATAL: TARGET_TWEET_ID is required');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    console.error('Usage:');
+    console.error('  TARGET_TWEET_ID=1234567890123456789 pnpm run executor:prove:e2e-reply');
+    console.error('  DRY_RUN=true TARGET_TWEET_ID=1234567890123456789 pnpm run executor:prove:e2e-reply\n');
+    console.error('How to extract tweet ID from URL:');
+    console.error('  URL: https://x.com/username/status/1234567890123456789');
+    console.error('  Extract: 1234567890123456789 (the number after /status/)\n');
+    process.exit(1);
+  }
+  
+  // Validate: must be numeric and >= 15 digits (Twitter tweet IDs are 18-20 digits)
+  if (!/^\d+$/.test(targetTweetId)) {
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('           ❌ FATAL: TARGET_TWEET_ID must be numeric');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    console.error(`Provided: ${targetTweetId}`);
+    console.error('Expected: Numeric string with >= 15 digits\n');
+    console.error('How to extract tweet ID from URL:');
+    console.error('  URL: https://x.com/username/status/1234567890123456789');
+    console.error('  Extract: 1234567890123456789 (the number after /status/)\n');
+    process.exit(1);
+  }
+  
+  if (targetTweetId.length < 15) {
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('           ❌ FATAL: TARGET_TWEET_ID must be >= 15 digits');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    console.error(`Provided: ${targetTweetId} (${targetTweetId.length} digits)`);
+    console.error('Expected: >= 15 digits\n');
+    console.error('How to extract tweet ID from URL:');
+    console.error('  URL: https://x.com/username/status/1234567890123456789');
+    console.error('  Extract: 1234567890123456789 (the number after /status/)\n');
+    process.exit(1);
+  }
+  
+  return targetTweetId;
+}
 
 interface E2EReplyProofResult {
   decision_id: string;
   target_tweet_id: string;
+  proof_tag: string;
   reply_decision_queued: boolean;
   reply_decision_claimed: boolean;
   reply_attempt_recorded: boolean;
   reply_result_recorded: boolean;
   reply_success_event: boolean;
   reply_failed_event: boolean;
+  reply_url?: string;
   executor_safety: {
     windows_opened: number;
     chrome_cdp_processes: number;
@@ -94,7 +143,7 @@ async function getMaxPagesFromTicks(): Promise<number> {
   }
 }
 
-async function seedReplyDecision(targetTweetId: string): Promise<string> {
+async function seedReplyDecision(targetTweetId: string, proofTag: string): Promise<string> {
   const supabase = getSupabaseClient();
   const decisionId = uuidv4();
   const now = new Date().toISOString();
@@ -108,6 +157,7 @@ async function seedReplyDecision(targetTweetId: string): Promise<string> {
   
   console.log(`📝 Seeding test reply decision: ${decisionId}`);
   console.log(`   Target tweet ID: ${targetTweetId}`);
+  console.log(`   Proof tag: ${proofTag}`);
   
   const { error } = await supabase
     .from('content_metadata')
@@ -116,20 +166,23 @@ async function seedReplyDecision(targetTweetId: string): Promise<string> {
       decision_type: 'reply',
       content: replyContent,
       target_tweet_id: targetTweetId,
-      root_tweet_id: targetTweetId, // For replies, root = target
       status: 'queued',
       scheduled_at: now,
-      pipeline_source: 'reply_proof',
-      // Required fields for FINAL_REPLY_GATE
-      target_tweet_content_snapshot: targetTweetSnapshot, // Must be >= 20 chars
-      target_tweet_content_hash: targetTweetHash, // Required for context lock
-      semantic_similarity: 0.75, // Must be >= 0.30
+      // Required fields for FINAL_REPLY_GATE (stored in features if columns don't exist)
       quality_score: 0.8,
       predicted_er: 0.5,
       bandit_arm: 'test',
       topic_cluster: 'test',
+      generation_source: 'real',
       features: {
         e2e_reply_proof: true,
+        proof_tag: proofTag,
+        pipeline_source: 'reply_proof',
+        // Store FINAL_REPLY_GATE fields in features
+        target_tweet_content_snapshot: targetTweetSnapshot, // Must be >= 20 chars
+        target_tweet_content_hash: targetTweetHash, // Required for context lock
+        semantic_similarity: 0.75, // Must be >= 0.30
+        root_tweet_id: targetTweetId, // For replies, root = target
         created_at: now,
         retry_count: 0,
       },
@@ -175,7 +228,7 @@ async function findReplyAttempt(decisionId: string): Promise<string | null> {
   return data?.id || null;
 }
 
-async function findReplyOutcome(decisionId: string): Promise<string | null> {
+async function findReplyOutcome(decisionId: string): Promise<{ id: string | null; result: any }> {
   const supabase = getSupabaseClient();
   const { data } = await supabase
     .from('outcomes')
@@ -185,10 +238,10 @@ async function findReplyOutcome(decisionId: string): Promise<string | null> {
     .limit(1)
     .maybeSingle();
   
-  return data?.id || null;
+  return { id: data?.id || null, result: data?.result || null };
 }
 
-async function findReplyEvents(decisionId: string): Promise<{ success: boolean; failed: boolean; eventIds: string[] }> {
+async function findReplyEvents(decisionId: string): Promise<{ success: boolean; failed: boolean; eventIds: string[]; eventData: any[] }> {
   const supabase = getSupabaseClient();
   const startTime = new Date(Date.now() - MAX_WAIT_SECONDS * 1000);
   
@@ -202,11 +255,13 @@ async function findReplyEvents(decisionId: string): Promise<{ success: boolean; 
   let success = false;
   let failed = false;
   const eventIds: string[] = [];
+  const eventData: any[] = [];
   
   for (const event of data || []) {
-    const eventData = typeof event.event_data === 'string' ? JSON.parse(event.event_data) : event.event_data;
-    if (eventData.decision_id === decisionId) {
+    const eventDataParsed = typeof event.event_data === 'string' ? JSON.parse(event.event_data) : event.event_data;
+    if (eventDataParsed.decision_id === decisionId) {
       eventIds.push(event.id);
+      eventData.push(eventDataParsed);
       if (event.event_type === 'REPLY_SUCCESS') {
         success = true;
       } else if (event.event_type === 'REPLY_FAILED') {
@@ -215,7 +270,42 @@ async function findReplyEvents(decisionId: string): Promise<{ success: boolean; 
     }
   }
   
-  return { success, failed, eventIds };
+  return { success, failed, eventIds, eventData };
+}
+
+async function extractReplyUrl(decisionId: string, eventData: any[], outcomeResult: any): Promise<string | undefined> {
+  // Try to extract from REPLY_SUCCESS event_data first
+  for (const event of eventData) {
+    if (event.tweet_url) {
+      return event.tweet_url;
+    }
+    if (event.tweet_id) {
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+      return `https://x.com/${username}/status/${event.tweet_id}`;
+    }
+    if (event.reply_tweet_id) {
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+      return `https://x.com/${username}/status/${event.reply_tweet_id}`;
+    }
+  }
+  
+  // Try to extract from outcomes.result
+  if (outcomeResult) {
+    const resultParsed = typeof outcomeResult === 'string' ? JSON.parse(outcomeResult) : outcomeResult;
+    if (resultParsed.tweet_url) {
+      return resultParsed.tweet_url;
+    }
+    if (resultParsed.tweet_id) {
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+      return `https://x.com/${username}/status/${resultParsed.tweet_id}`;
+    }
+    if (resultParsed.reply_tweet_id) {
+      const username = process.env.TWITTER_USERNAME || 'SignalAndSynapse';
+      return `https://x.com/${username}/status/${resultParsed.reply_tweet_id}`;
+    }
+  }
+  
+  return undefined;
 }
 
 async function countReplyAttempts(decisionId: string): Promise<number> {
@@ -231,15 +321,17 @@ async function countReplyAttempts(decisionId: string): Promise<number> {
 async function main(): Promise<void> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           🧪 EXECUTOR END-TO-END REPLY PROOF');
+  if (DRY_RUN) {
+    console.log('                    [DRY_RUN MODE - NO EXECUTION]');
+  }
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
-  const targetTweetId = process.env.TARGET_TWEET_ID || DEFAULT_TARGET_TWEET_ID;
+  // Validate TARGET_TWEET_ID - FAIL FAST
+  const targetTweetId = validateTargetTweetId();
   
-  if (targetTweetId === DEFAULT_TARGET_TWEET_ID) {
-    console.log('⚠️  WARNING: Using placeholder target tweet ID');
-    console.log('   Set TARGET_TWEET_ID env var to use a real tweet ID');
-    console.log('   Example: TARGET_TWEET_ID=1234567890 pnpm run executor:prove:e2e-reply\n');
-  }
+  // Generate PROOF_TAG (timestamp-based for readability)
+  const proofTag = `proof-${Date.now()}`;
+  console.log(`📋 Proof Tag: ${proofTag}\n`);
   
   // Pre-flight: stop any existing daemon
   console.log('📋 Pre-flight checks...');
@@ -272,7 +364,58 @@ async function main(): Promise<void> {
   
   // Step 1: Seed reply decision
   console.log('\n📝 Step 1: Seeding test reply decision...');
-  const decisionId = await seedReplyDecision(targetTweetId);
+  const decisionId = await seedReplyDecision(targetTweetId, proofTag);
+  
+  // DRY_RUN mode: exit after seeding
+  if (DRY_RUN) {
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('           ✅ DRY_RUN COMPLETE');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    console.log('Decision seeded (no execution):');
+    console.log(`  decision_id: ${decisionId}`);
+    console.log(`  target_tweet_id: ${targetTweetId}`);
+    console.log(`  proof_tag: ${proofTag}`);
+    console.log('');
+    
+    // Write DRY_RUN report
+    const reportPath = path.join(process.cwd(), 'docs', 'EXECUTION_E2E_REPLY_PROOF.md');
+    const os = require('os');
+    const machineInfo = {
+      hostname: os.hostname(),
+      platform: os.platform(),
+      arch: os.arch(),
+      nodeVersion: process.version,
+    };
+    
+    const report = `# Executor End-to-End Reply Proof [DRY_RUN]
+
+**Date:** ${new Date().toISOString()}  
+**Status:** ✅ DRY_RUN COMPLETE (no execution)
+
+## Machine Info
+
+- **Hostname:** ${machineInfo.hostname}
+- **Platform:** ${machineInfo.platform}
+- **Architecture:** ${machineInfo.arch}
+- **Node Version:** ${machineInfo.nodeVersion}
+- **Runner Profile Dir:** ${RUNNER_PROFILE_DIR}
+
+## Seeded Decision
+
+- **Decision ID:** ${decisionId}
+- **Target Tweet ID:** ${targetTweetId}
+- **Proof Tag:** ${proofTag}
+- **Status:** queued (not executed)
+
+## Result
+
+✅ **DRY_RUN COMPLETE** - Decision seeded successfully, no execution performed
+`;
+    
+    fs.writeFileSync(reportPath, report, 'utf-8');
+    console.log(`📄 Report written: ${reportPath}`);
+    process.exit(0);
+  }
   
   // Step 2: Start daemon
   console.log('\n🚀 Step 2: Starting executor daemon...');
@@ -302,6 +445,7 @@ async function main(): Promise<void> {
   const result: E2EReplyProofResult = {
     decision_id: decisionId,
     target_tweet_id: targetTweetId,
+    proof_tag: proofTag,
     reply_decision_queued: false,
     reply_decision_claimed: false,
     reply_attempt_recorded: false,
@@ -315,6 +459,9 @@ async function main(): Promise<void> {
     },
     evidence: {},
   };
+  
+  let eventData: any[] = [];
+  let outcomeResult: any = null;
   
   while (Date.now() - startTime < MAX_WAIT_SECONDS * 1000) {
     // Check decision status
@@ -336,14 +483,16 @@ async function main(): Promise<void> {
     }
     
     // Check for outcome
-    const outcomeId = await findReplyOutcome(decisionId);
-    if (outcomeId) {
+    const outcome = await findReplyOutcome(decisionId);
+    if (outcome.id) {
       result.reply_result_recorded = true;
-      result.evidence.outcome_id = outcomeId;
+      result.evidence.outcome_id = outcome.id;
+      outcomeResult = outcome.result;
     }
     
     // Check for events
     const events = await findReplyEvents(decisionId);
+    eventData = events.eventData;
     if (events.success) {
       result.reply_success_event = true;
       result.evidence.event_ids = events.eventIds;
@@ -391,6 +540,9 @@ async function main(): Promise<void> {
   result.executor_safety.windows_opened = Math.max(0, finalWindows - initialWindows);
   result.executor_safety.chrome_cdp_processes = await countChromeCdpProcesses();
   result.executor_safety.pages_max = await getMaxPagesFromTicks();
+  
+  // Extract reply URL
+  result.reply_url = await extractReplyUrl(decisionId, eventData, outcomeResult);
   
   // Step 4: Collect log excerpts
   if (fs.existsSync(logFile)) {
@@ -440,6 +592,9 @@ async function main(): Promise<void> {
   console.log(`  reply_success_event: ${result.reply_success_event} ${result.reply_success_event ? '✅' : '❌'}`);
   console.log(`  reply_failed_event: ${result.reply_failed_event} ${result.reply_failed_event ? '✅' : '❌'}`);
   console.log(`  reply_count: ${result.evidence.reply_count} (expected: 1) ${result.evidence.reply_count === 1 ? '✅' : '❌'} [HARD ASSERTION]`);
+  if (result.reply_url) {
+    console.log(`  reply_url: ${result.reply_url}`);
+  }
   console.log('');
   
   console.log('Executor Safety Invariants:');
@@ -505,11 +660,13 @@ async function main(): Promise<void> {
 
 - **Decision ID:** ${result.decision_id}
 - **Target Tweet ID:** ${result.target_tweet_id}
+- **Proof Tag:** ${result.proof_tag}
 - **Decision Status:** ${result.evidence.decision_status || 'N/A'}
 - **Attempt ID:** ${result.evidence.attempt_id || 'N/A'}
 - **Outcome ID:** ${result.evidence.outcome_id || 'N/A'}
 - **Event IDs:** ${result.evidence.event_ids?.join(', ') || 'N/A'}
 - **Reply Count:** ${result.evidence.reply_count || 0}
+${result.reply_url ? `- **Reply URL:** ${result.reply_url}` : ''}
 
 ## Log Excerpts
 
