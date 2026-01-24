@@ -522,20 +522,58 @@ function writeExecutorConfig(): void {
 }
 
 /**
+ * Emit lifecycle event (fire-and-forget, non-blocking)
+ */
+async function emitLifecycleEvent(eventType: string, eventData: any): Promise<void> {
+  try {
+    const { getSupabaseClient } = await import('../../src/db/index');
+    const supabase = getSupabaseClient();
+    await supabase.from('system_events').insert({
+      event_type: eventType,
+      severity: eventType.includes('CRASH') ? 'error' : 'info',
+      message: `${eventType}: ${eventData.reason || eventData.phase || 'unknown'}`,
+      event_data: eventData,
+      created_at: new Date().toISOString(),
+    });
+  } catch (e: any) {
+    console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit ${eventType}: ${e.message}`);
+  }
+}
+
+/**
  * Main daemon loop
  */
 async function main(): Promise<void> {
+  const daemonPid = process.pid;
+  let exitCode = 0;
+  let exitReason: 'normal' | 'crash' | 'signal' = 'normal';
+  let exitSignal: string | null = null;
+  
+  // 🔧 A) Emit EXECUTOR_DAEMON_BOOT immediately at process start (before any async init)
+  await emitLifecycleEvent('EXECUTOR_DAEMON_BOOT', {
+    ts: new Date().toISOString(),
+    pid: daemonPid,
+    proof_mode: process.env.PROOF_MODE === 'true',
+    execution_mode: process.env.EXECUTION_MODE || 'unknown',
+    runner_profile_dir: RUNNER_PROFILE_DIR,
+    node_version: process.version,
+    phase: 'process_start',
+  });
+  
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           🚀 MAC EXECUTOR DAEMON - True Headless 24/7 Execution');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
-  // Validate executor mode
   try {
-    requireExecutorMode();
-  } catch (e: any) {
-    console.error(`[EXECUTOR_DAEMON] 🚨 FATAL: ${e.message}`);
-    process.exit(1);
-  }
+    // Validate executor mode
+    try {
+      requireExecutorMode();
+    } catch (e: any) {
+      console.error(`[EXECUTOR_DAEMON] 🚨 FATAL: ${e.message}`);
+      exitCode = 1;
+      exitReason = 'crash';
+      throw e;
+    }
   
   // Write config and validate paths
   writeExecutorConfig();
@@ -559,37 +597,23 @@ async function main(): Promise<void> {
   // Acquire lock
   acquireLock();
   
-  // Initialize browser
-  try {
-    await initializeBrowser();
-  } catch (e: any) {
-    console.error(`[EXECUTOR_DAEMON] ❌ Failed to initialize browser: ${e.message}`);
-    cleanupLock();
-    process.exit(1);
-  }
-  
-  // 🔧 A) Emit EXECUTOR_DAEMON_BOOT event immediately on daemon boot
-  try {
-    const { getSupabaseClient } = await import('../../src/db/index');
-    const supabase = getSupabaseClient();
-    await supabase.from('system_events').insert({
-      event_type: 'EXECUTOR_DAEMON_BOOT',
-      severity: 'info',
-      message: 'Executor daemon booted',
-      event_data: {
-        ts: new Date().toISOString(),
-        pid: process.pid,
-        proof_mode: process.env.PROOF_MODE === 'true',
-        execution_mode: process.env.EXECUTION_MODE || 'unknown',
-        runner_profile_dir: RUNNER_PROFILE_DIR,
-        node_version: process.version,
-      },
-      created_at: new Date().toISOString(),
+    // Initialize browser
+    try {
+      await initializeBrowser();
+    } catch (e: any) {
+      console.error(`[EXECUTOR_DAEMON] ❌ Failed to initialize browser: ${e.message}`);
+      exitCode = 1;
+      exitReason = 'crash';
+      throw e;
+    }
+    
+    // 🔧 A) Emit EXECUTOR_DAEMON_READY after browser init succeeds
+    await emitLifecycleEvent('EXECUTOR_DAEMON_READY', {
+      ts: new Date().toISOString(),
+      pid: daemonPid,
+      phase: 'browser_ready',
     });
-    console.log(`[EXECUTOR_DAEMON] ✅ Boot event emitted (PID: ${process.pid})`);
-  } catch (e: any) {
-    console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit boot event: ${e.message}`);
-  }
+    console.log(`[EXECUTOR_DAEMON] ✅ Ready event emitted (PID: ${daemonPid})`);
   
   // Main loop
   let tickCounter = 0;
@@ -837,20 +861,42 @@ async function main(): Promise<void> {
 }
 
 // Handle signals
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('\n[EXECUTOR_DAEMON] 🛑 SIGINT received - exiting...');
+  await emitLifecycleEvent('EXECUTOR_DAEMON_EXIT', {
+    ts: new Date().toISOString(),
+    pid: process.pid,
+    exit_code: 0,
+    reason: 'signal',
+    signal: 'SIGINT',
+  });
   cleanupLock();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('\n[EXECUTOR_DAEMON] 🛑 SIGTERM received - exiting...');
+  await emitLifecycleEvent('EXECUTOR_DAEMON_EXIT', {
+    ts: new Date().toISOString(),
+    pid: process.pid,
+    exit_code: 0,
+    reason: 'signal',
+    signal: 'SIGTERM',
+  });
   cleanupLock();
   process.exit(0);
 });
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error('[EXECUTOR_DAEMON] ❌ Fatal error:', error);
+  await emitLifecycleEvent('EXECUTOR_DAEMON_CRASH', {
+    ts: new Date().toISOString(),
+    pid: process.pid,
+    phase: 'main_catch',
+    error_name: error?.name || 'Error',
+    error_message: error?.message || String(error),
+    stack: error?.stack?.substring(0, 2000) || null,
+  });
   cleanupLock();
   process.exit(1);
 });

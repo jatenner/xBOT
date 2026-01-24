@@ -61,6 +61,9 @@ let proofState: {
   cachedBootSeen?: boolean;
   cachedBootEventId?: string | null;
   cachedBootTs?: string | null;
+  cachedReadySeen?: boolean;
+  cachedReadyEventId?: string | null;
+  cachedReadyTs?: string | null;
   cachedTickStartSeen?: boolean;
   cachedTickStartEventId?: string | null;
   cachedTickId?: string | null;
@@ -68,6 +71,12 @@ let proofState: {
   cachedTickEndSeen?: boolean;
   cachedLastTickEndTs?: string | null;
   cachedLastTickDurationMs?: number | null;
+  cachedDaemonExitSeen?: boolean;
+  cachedDaemonExitEventId?: string | null;
+  cachedDaemonExitReason?: string | null;
+  cachedDaemonCrashSeen?: boolean;
+  cachedDaemonCrashEventId?: string | null;
+  cachedDaemonCrashError?: string | null;
   cachedCandidateEvents?: any[];
   cachedSelectedEvents?: any[];
   cachedSkippedEvents?: any[];
@@ -109,6 +118,9 @@ ${statusCheck?.supabase_error ? `- **Supabase Error:** ${JSON.stringify(statusCh
 - **Boot Seen:** ${proofState.cachedBootSeen ? 'yes' : 'no'}
 - **Boot Event ID:** ${proofState.cachedBootEventId || 'N/A'}
 - **Boot TS:** ${proofState.cachedBootTs || 'N/A'}
+- **Ready Seen:** ${proofState.cachedReadySeen ? 'yes' : 'no'}
+- **Ready Event ID:** ${proofState.cachedReadyEventId || 'N/A'}
+- **Ready TS:** ${proofState.cachedReadyTs || 'N/A'}
 - **Tick Start Seen:** ${proofState.cachedTickStartSeen ? 'yes' : 'no'}
 - **Tick Start Event ID:** ${proofState.cachedTickStartEventId || 'N/A'}
 - **Tick ID:** ${proofState.cachedTickId || 'N/A'}
@@ -116,6 +128,12 @@ ${statusCheck?.supabase_error ? `- **Supabase Error:** ${JSON.stringify(statusCh
 - **Tick End Seen:** ${proofState.cachedTickEndSeen ? 'yes' : 'no'}
 - **Last Tick End TS:** ${proofState.cachedLastTickEndTs || 'N/A'}
 - **Last Tick Duration (ms):** ${proofState.cachedLastTickDurationMs !== null ? proofState.cachedLastTickDurationMs : 'N/A'}
+- **Daemon Exit Seen:** ${proofState.cachedDaemonExitSeen ? 'yes' : 'no'}
+- **Daemon Exit Event ID:** ${proofState.cachedDaemonExitEventId || 'N/A'}
+- **Daemon Exit Reason:** ${proofState.cachedDaemonExitReason || 'N/A'}
+- **Daemon Crash Seen:** ${proofState.cachedDaemonCrashSeen ? 'yes' : 'no'}
+- **Daemon Crash Event ID:** ${proofState.cachedDaemonCrashEventId || 'N/A'}
+- **Daemon Crash Error:** ${proofState.cachedDaemonCrashError || 'N/A'}
 - **Candidate Events:** ${proofState.cachedCandidateEvents?.length || 0}
 - **Selected Events:** ${proofState.cachedSelectedEvents?.length || 0}
 - **Skipped Events:** ${proofState.cachedSkippedEvents?.length || 0}
@@ -803,12 +821,21 @@ async function main(): Promise<void> {
     const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
     console.log(`[PROOF] Loop iteration ${loopIteration}, elapsed: ${elapsedSeconds}s`);
     
-    // 🔧 B) Monitor executor boot and tick-start events (immediate liveness signals)
+    // 🔧 B) Monitor executor lifecycle events (boot, ready, tick-start, crash, exit)
     const { data: bootEvent } = await supabase
       .from('system_events')
       .select('id, created_at, event_data')
       .eq('event_type', 'EXECUTOR_DAEMON_BOOT')
       .gte('created_at', new Date(startTime - 5000).toISOString()) // Allow 5s before proof start
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    const { data: readyEvent } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DAEMON_READY')
+      .gte('created_at', new Date(startTime).toISOString())
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -829,10 +856,33 @@ async function main(): Promise<void> {
       .order('created_at', { ascending: false })
       .limit(1);
     
+    const { data: crashEvent } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DAEMON_CRASH')
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    const { data: exitEvent } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DAEMON_EXIT')
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
     // Cache boot state
     proofState.cachedBootSeen = !!bootEvent;
     proofState.cachedBootEventId = bootEvent?.id || null;
     proofState.cachedBootTs = bootEvent?.created_at || null;
+    
+    // Cache ready state
+    proofState.cachedReadySeen = !!readyEvent;
+    proofState.cachedReadyEventId = readyEvent?.id || null;
+    proofState.cachedReadyTs = readyEvent?.created_at || null;
     
     // Cache tick-start state
     const lastTickStart = tickStartEvents?.[0];
@@ -857,19 +907,46 @@ async function main(): Promise<void> {
       proofState.cachedLastTickDurationMs = tickData.duration_ms || null;
     }
     
-    // 🔧 B) Fast-fail if executor not booted after 30s
-    if (elapsedSeconds >= 30 && !proofState.cachedBootSeen) {
+    // Cache crash/exit state
+    proofState.cachedDaemonCrashSeen = !!crashEvent;
+    proofState.cachedDaemonCrashEventId = crashEvent?.id || null;
+    if (crashEvent?.event_data) {
+      const crashData = typeof crashEvent.event_data === 'string' 
+        ? JSON.parse(crashEvent.event_data) 
+        : crashEvent.event_data;
+      proofState.cachedDaemonCrashError = `${crashData.error_name || 'Error'}: ${crashData.error_message || 'unknown'}`;
+    }
+    
+    proofState.cachedDaemonExitSeen = !!exitEvent;
+    proofState.cachedDaemonExitEventId = exitEvent?.id || null;
+    if (exitEvent?.event_data) {
+      const exitData = typeof exitEvent.event_data === 'string' 
+        ? JSON.parse(exitEvent.event_data) 
+        : exitEvent.event_data;
+      proofState.cachedDaemonExitReason = exitData.reason || null;
+    }
+    
+    // 🔧 B) Fast-fail if executor not booted after 20s
+    if (elapsedSeconds >= 20 && !proofState.cachedBootSeen) {
       console.error(`❌ EXECUTOR_NOT_BOOTED: No EXECUTOR_DAEMON_BOOT event detected after ${elapsedSeconds}s`);
       result.evidence.error_code = 'EXECUTOR_NOT_BOOTED';
       result.evidence.error_message = `No EXECUTOR_DAEMON_BOOT event found after ${elapsedSeconds}s`;
       break;
     }
     
-    // 🔧 B) Fast-fail if executor not starting ticks after 60s
-    if (elapsedSeconds >= 60 && !proofState.cachedTickStartSeen) {
+    // 🔧 B) Fast-fail if executor not ready after 90s
+    if (elapsedSeconds >= 90 && !proofState.cachedReadySeen) {
+      console.error(`❌ EXECUTOR_NOT_READY: No EXECUTOR_DAEMON_READY event detected after ${elapsedSeconds}s`);
+      result.evidence.error_code = 'EXECUTOR_NOT_READY';
+      result.evidence.error_message = `No EXECUTOR_DAEMON_READY event found after ${elapsedSeconds}s (boot_seen=${proofState.cachedBootSeen})`;
+      break;
+    }
+    
+    // 🔧 B) Fast-fail if executor not starting ticks after 120s
+    if (elapsedSeconds >= 120 && !proofState.cachedTickStartSeen) {
       console.error(`❌ EXECUTOR_NOT_STARTING_TICK: No EXECUTOR_DAEMON_TICK_START events detected after ${elapsedSeconds}s`);
       result.evidence.error_code = 'EXECUTOR_NOT_STARTING_TICK';
-      result.evidence.error_message = `No EXECUTOR_DAEMON_TICK_START events found after ${elapsedSeconds}s (boot_seen=${proofState.cachedBootSeen})`;
+      result.evidence.error_message = `No EXECUTOR_DAEMON_TICK_START events found after ${elapsedSeconds}s (boot_seen=${proofState.cachedBootSeen}, ready_seen=${proofState.cachedReadySeen})`;
       break;
     }
     
@@ -1038,9 +1115,47 @@ async function main(): Promise<void> {
     // 🔧 FIX: Write heartbeat snapshot every 10s
     writeHeartbeatSnapshot();
     
-    // Check if daemon died
+    // Check if daemon died - if so, query crash/exit events immediately
     if (daemonProcess.killed || daemonProcess.exitCode !== null) {
-      console.log('⚠️  Daemon exited during test');
+      console.log(`⚠️  Daemon exited during test (exitCode: ${daemonProcess.exitCode})`);
+      
+      // 🔧 B) Query crash/exit events immediately when daemon exits
+      const { data: finalCrashEvent } = await supabase
+        .from('system_events')
+        .select('id, created_at, event_data')
+        .eq('event_type', 'EXECUTOR_DAEMON_CRASH')
+        .gte('created_at', new Date(startTime).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      const { data: finalExitEvent } = await supabase
+        .from('system_events')
+        .select('id, created_at, event_data')
+        .eq('event_type', 'EXECUTOR_DAEMON_EXIT')
+        .gte('created_at', new Date(startTime).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (finalCrashEvent) {
+        proofState.cachedDaemonCrashSeen = true;
+        proofState.cachedDaemonCrashEventId = finalCrashEvent.id;
+        const crashData = typeof finalCrashEvent.event_data === 'string' 
+          ? JSON.parse(finalCrashEvent.event_data) 
+          : finalCrashEvent.event_data;
+        proofState.cachedDaemonCrashError = `${crashData.error_name || 'Error'}: ${crashData.error_message || 'unknown'}`;
+      }
+      
+      if (finalExitEvent) {
+        proofState.cachedDaemonExitSeen = true;
+        proofState.cachedDaemonExitEventId = finalExitEvent.id;
+        const exitData = typeof finalExitEvent.event_data === 'string' 
+          ? JSON.parse(finalExitEvent.event_data) 
+          : finalExitEvent.event_data;
+        proofState.cachedDaemonExitReason = exitData.reason || null;
+      }
+      
       break;
     }
     
@@ -1149,10 +1264,43 @@ async function main(): Promise<void> {
       .eq('decision_id', decisionId)
       .maybeSingle();
     
+    // 🔧 B) Query crash/exit events for diagnostic snapshot
+    const { data: diagnosticCrashEvent } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DAEMON_CRASH')
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    const { data: diagnosticExitEvent } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DAEMON_EXIT')
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
     result.evidence.diagnostic_snapshot = {
       decision_final_status: decisionMeta?.status || 'unknown',
       decision_error_message: decisionMeta?.error_message || null,
       decision_features: decisionMeta?.features || null,
+      daemon_crash_event_id: diagnosticCrashEvent?.id || null,
+      daemon_crash_error: diagnosticCrashEvent?.event_data ? (() => {
+        const crashData = typeof diagnosticCrashEvent.event_data === 'string' 
+          ? JSON.parse(diagnosticCrashEvent.event_data) 
+          : diagnosticCrashEvent.event_data;
+        return `${crashData.error_name || 'Error'}: ${crashData.error_message || 'unknown'}`;
+      })() : null,
+      daemon_exit_event_id: diagnosticExitEvent?.id || null,
+      daemon_exit_reason: diagnosticExitEvent?.event_data ? (() => {
+        const exitData = typeof diagnosticExitEvent.event_data === 'string' 
+          ? JSON.parse(diagnosticExitEvent.event_data) 
+          : diagnosticExitEvent.event_data;
+        return exitData.reason || null;
+      })() : null,
     };
     
     // Get POST_FAILED event if present
@@ -1359,6 +1507,16 @@ ${result.evidence.diagnostic_snapshot.outcomes_result ? `
 ${JSON.stringify(result.evidence.diagnostic_snapshot.outcomes_result, null, 2)}
 \`\`\`
 ` : 'No outcomes result found'}
+
+### Daemon Lifecycle Events
+${result.evidence.diagnostic_snapshot.daemon_crash_event_id ? `
+- **Crash Event ID:** ${result.evidence.diagnostic_snapshot.daemon_crash_event_id}
+- **Crash Error:** ${result.evidence.diagnostic_snapshot.daemon_crash_error || 'N/A'}
+` : 'No daemon crash event found'}
+${result.evidence.diagnostic_snapshot.daemon_exit_event_id ? `
+- **Exit Event ID:** ${result.evidence.diagnostic_snapshot.daemon_exit_event_id}
+- **Exit Reason:** ${result.evidence.diagnostic_snapshot.daemon_exit_reason || 'N/A'}
+` : 'No daemon exit event found'}
 
 ### Skipped Events
 ${result.evidence.diagnostic_snapshot.skipped_events && result.evidence.diagnostic_snapshot.skipped_events.length > 0 ? `
