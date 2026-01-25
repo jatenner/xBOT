@@ -138,37 +138,75 @@ function verifyProofReport(claim: ProvenClaim): void {
     }
     reportContent = fs.readFileSync(actualReportPath, 'utf-8');
   } else {
-    // Docs reference pointer file - check if pointer file references immutable report
+    // Docs reference pointer file or INDEX - check if it references immutable report
     if (!fs.existsSync(reportPath)) {
       errors.push(
-        `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but pointer file missing: ${reportPath}`
+        `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but pointer/index file missing: ${reportPath}`
       );
       return;
     }
     
     const pointerContent = fs.readFileSync(reportPath, 'utf-8');
     
-    // Extract immutable report path from pointer file
-    const immutablePathMatch = pointerContent.match(/Canonical Report:.*\[`([^`]+)`\]/);
-    if (immutablePathMatch) {
-      const relativeImmutablePath = immutablePathMatch[1];
-      actualReportPath = path.join(process.cwd(), relativeImmutablePath);
-      if (!fs.existsSync(actualReportPath)) {
+    // For HEALTH proofs, INDEX.md format is different - extract from doc line or INDEX
+    if (type === 'HEALTH' && reportPath.includes('INDEX.md')) {
+      // Extract proof tag from doc line (look for health-<timestamp> pattern)
+      let proofTag: string | null = null;
+      const proofTagMatch = line.match(/health-(\d+)/);
+      if (proofTagMatch) {
+        proofTag = proofTagMatch[0];
+      } else {
+        // Try extracting from INDEX.md - look for latest PASS row
+        const indexLines = pointerContent.split('\n');
+        for (let i = indexLines.length - 1; i >= 0; i--) {
+          const rowMatch = indexLines[i].match(/`(health-\d+)`/);
+          if (rowMatch && indexLines[i].includes('✅ PASS')) {
+            proofTag = rowMatch[1];
+            break;
+          }
+        }
+      }
+      
+      if (proofTag) {
+        const relativeImmutablePath = `docs/proofs/health/${proofTag}.md`;
+        actualReportPath = path.join(process.cwd(), relativeImmutablePath);
+        if (!fs.existsSync(actualReportPath)) {
+          errors.push(
+            `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but immutable report missing: ${actualReportPath}\n` +
+            `   Proof tag from docs: ${proofTag}`
+          );
+          return;
+        }
+        reportContent = fs.readFileSync(actualReportPath, 'utf-8');
+      } else {
         errors.push(
-          `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but immutable report referenced in pointer file missing: ${actualReportPath}\n` +
-          `   Pointer file: ${reportPath}`
+          `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but could not extract proof tag from doc line or INDEX.md`
         );
         return;
       }
-      reportContent = fs.readFileSync(actualReportPath, 'utf-8');
     } else {
-      // Pointer file doesn't reference immutable report - check pointer file itself
-      // But PROVEN requires real execution, so pointer-only is not sufficient
-      errors.push(
-        `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but pointer file does not reference immutable report: ${reportPath}\n` +
-        `   PROVEN status requires real execution with immutable report. Pointer file should contain "Canonical Report: [\`docs/proofs/...\`]()"`
-      );
-      return;
+      // For POST/REPLY, extract immutable report path from pointer file
+      const immutablePathMatch = pointerContent.match(/Canonical Report:.*\[`([^`]+)`\]/);
+      if (immutablePathMatch) {
+        const relativeImmutablePath = immutablePathMatch[1];
+        actualReportPath = path.join(process.cwd(), relativeImmutablePath);
+        if (!fs.existsSync(actualReportPath)) {
+          errors.push(
+            `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but immutable report referenced in pointer file missing: ${actualReportPath}\n` +
+            `   Pointer file: ${reportPath}`
+          );
+          return;
+        }
+        reportContent = fs.readFileSync(actualReportPath, 'utf-8');
+      } else {
+        // Pointer file doesn't reference immutable report - check pointer file itself
+        // But PROVEN requires real execution, so pointer-only is not sufficient
+        errors.push(
+          `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but pointer file does not reference immutable report: ${reportPath}\n` +
+          `   PROVEN status requires real execution with immutable report. Pointer file should contain "Canonical Report: [\`docs/proofs/...\`]()"`
+        );
+        return;
+      }
     }
   }
   
