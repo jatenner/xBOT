@@ -29,17 +29,26 @@
 - Executor safety invariants remain true during reply execution
 - Evidence: `docs/EXECUTION_E2E_REPLY_PROOF.md`
 
+✅ **Proof Level 4: Control → Executor → X (POSTING)**
+- Control-plane posting queue scheduler creates decision → executor claims → posting executed → result URL captured
+- Decision ID: `ce631dee-6503-4752-8fc7-ff52a6caced0`
+- Proof Tag: `control-post-1769281173411`
+- Tweet URL: `https://x.com/Signal_Synapse/status/2015138300814639129`
+- Claim OK Event ID: `b3630213-3cde-4221-9bfc-d6d565aad906`
+- Report: `docs/CONTROL_TO_POST_PROOF.md`
+- **Note:** Claim instrumentation (CLAIM_ATTEMPT/OK/FAIL events + CLAIM_STALL watchdog) is now part of proof evidence.
+
 ---
 
 ## What's Implemented but Unproven
 
-⚠️ **Control → Decision Queued → Executor Executes → Result URL Captured (Posting)**
+✅ **Control → Decision Queued → Executor Executes → Result URL Captured (Posting)**
 - Control-plane posting queue scheduler creates decisions
 - Executor claims and executes them
 - Result URL captured and verified
 - **How to Prove:** `EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post`
 - **Evidence Artifact:** `docs/CONTROL_TO_POST_PROOF.md`
-- **Status:** ❌ FAILED (2026-01-24 04:43:10) - Post succeeded (status=posted, result_url=https://x.com/Signal_Synapse/status/2014920952824422910, POST_SUCCESS event present), but proof script failed because it checks `outcomes` table for attempts, which are created later by metrics scrapers, not during posting. The proof script should accept POST_SUCCESS event as proof of attempt. Decision ID: `e808fa1d-ad9a-47d0-a697-d54fbdf2d53f`, Proof Tag: `control-post-1769229474295`. Next steps: Fix proof script to check `posting_attempts` table or accept POST_SUCCESS/REPLY_SUCCESS events as proof of attempt.
+- **Status:** ✅ PROVEN (2026-01-24 19:03:35) - Post succeeded with verified evidence. Decision ID: `ce631dee-6503-4752-8fc7-ff52a6caced0`, Proof Tag: `control-post-1769281173411`, Tweet URL: `https://x.com/Signal_Synapse/status/2015138300814639129`, Claim OK Event ID: `b3630213-3cde-4221-9bfc-d6d565aad906`. Claim instrumentation (CLAIM_ATTEMPT/OK/FAIL events + CLAIM_STALL watchdog) is now part of proof evidence.
 
 ✅ **Control → Decision Queued → Executor Executes → Result URL Captured (Replying)**
 - Control-plane reply queue scheduler creates decisions
@@ -81,7 +90,7 @@
 | Executor Stability (15m) | PROVEN | `pnpm run executor:prove:15m` | `docs/EXECUTOR_15MIN_HEADLESS_PROOF.md` |
 | E2E Posting Execution | PROVEN | `pnpm run executor:prove:e2e-post` | `docs/EXECUTION_E2E_POST_PROOF.md` |
 | E2E Reply Execution | PROVEN | `TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-reply` | `docs/EXECUTION_E2E_REPLY_PROOF.md` |
-| Control→Executor→X (Posting) | ❌ FAILED | `EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post` | `docs/CONTROL_TO_POST_PROOF.md` (2026-01-24 04:43:10: post succeeded but proof script checks wrong table) |
+| Control→Executor→X (Posting) | ✅ PROVEN | `EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post` | `docs/CONTROL_TO_POST_PROOF.md` (2026-01-24 19:03:35: tweet_url=https://x.com/Signal_Synapse/status/2015138300814639129, decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0, claim_ok_event_id=b3630213-3cde-4221-9bfc-d6d565aad906) |
 | Control→Executor→X (Replying) | ✅ PROVEN | `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-control-reply` | `docs/CONTROL_TO_REPLY_PROOF.md` (2026-01-24 16:18:00: reply_url=https://x.com/Signal_Synapse/status/2015096733693366778) |
 | Learning System Updates | UNPROVEN | SQL queries on `outcomes` and `learning_posts` | Manual verification |
 
