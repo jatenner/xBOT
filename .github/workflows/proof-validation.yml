@@ -1,0 +1,28 @@
+name: Proof Validation
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/executor/prove-*.ts'
+      - 'src/jobs/postingQueue.ts'
+      - 'scripts/executor/daemon.ts'
+      - 'docs/SYSTEM_STATUS.md'
+      - 'docs/CONTROL_TO_*_PROOF.md'
+      - 'scripts/ci/validate-proof-scripts.ts'
+
+jobs:
+  validate-proofs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10.18.2
+      - run: pnpm install --frozen-lockfile
+      - name: Validate proof scripts and system events
+        run: |
+          pnpm exec tsx scripts/ci/validate-proof-scripts.ts

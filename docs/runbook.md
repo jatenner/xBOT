@@ -509,4 +509,108 @@ pnpm run runner:check
 
 ---
 
+## PROOF_MODE Contract
+
+**Purpose:** `PROOF_MODE=true` enables isolated proof execution for Level 4 proofs (Control → Executor → X), ensuring deterministic, reproducible test runs without interference from background work.
+
+**When Active:** Set `PROOF_MODE=true` when running Level 4 proof scripts (`executor:prove:e2e-control-post`, `executor:prove:e2e-control-reply`).
+
+### What PROOF_MODE Disables/Pauses
+
+**Executor Daemon (`scripts/executor/daemon.ts`):**
+- **Reply queue background work:** Skips feeds/discovery/keyword work that consumes browser pool
+- **Non-proof decision processing:** Only processes decisions with `proof_tag` starting with `control-post-` or `control-reply-`
+
+**Posting Queue (`src/jobs/postingQueue.ts`):**
+- **Background decision selection:** When `PROOF_MODE=true`, only selects decisions matching proof tags
+- **Rate limit checks:** Bypassed for proof decisions (allows proof to run even if rate limits are active)
+- **Post limit checks:** Bypassed for proof decisions (allows proof to run even if hourly limits reached)
+
+**Safety Rationale:** Proof decisions are:
+- Single, deterministic decisions seeded by proof scripts
+- Required to complete for proof verification
+- Not subject to production rate limiting (proofs must be reproducible)
+- Isolated from production traffic (proof tags prevent interference)
+
+### What PROOF_MODE Filters
+
+**Decision Selection:**
+- **Posting:** Only processes decisions where `features.proof_tag` starts with `control-post-`
+- **Replying:** Only processes decisions where `features.proof_tag` starts with `control-reply-`
+- **All other decisions:** Skipped (prevents background work from interfering with proof)
+
+**Event Emission:**
+- `EXECUTOR_PROOF_POST_CANDIDATE_FOUND` - Emitted for each proof decision found
+- `EXECUTOR_PROOF_POST_SELECTED` - Emitted when proof decision is selected for processing
+- `EXECUTOR_PROOF_POST_SKIPPED` - Emitted if proof decision is skipped (with reason)
+- `EXECUTOR_PROOF_POST_CLAIM_STALL` - Emitted if proof decision selected but not claimed within 30s
+
+### What PROOF_MODE Prioritizes
+
+**Browser Pool Priority:**
+- Proof decisions receive `BrowserPriority.PROOF` (highest priority)
+- Ensures proof decisions are not starved by other browser operations
+- Proof decisions bypass browser semaphore queue delays
+
+**Selection Priority:**
+- Proof decisions are selected ahead of normal backlog
+- Proof tag filtering ensures only proof decisions are considered
+- Claim attempts happen immediately (no rate limit delays)
+
+### What PROOF_MODE Bypasses
+
+**Rate Limits:**
+- Content posting rate limits (hourly post limits)
+- Reply rate limits (hourly reply limits)
+- **Rationale:** Proofs must be deterministic and reproducible. Rate limits are production safeguards, not proof constraints.
+
+**Post Limits:**
+- Hourly post count limits
+- Daily post count limits
+- **Rationale:** Proofs execute single decisions. Production limits prevent spam; proofs validate functionality.
+
+**Circuit Breakers:**
+- Posting circuit breaker checks
+- **Rationale:** Proofs must run even if production circuit breaker is open (due to unrelated failures).
+
+**Safety Gates:**
+- Some safety gates are bypassed for proof decisions (e.g., ROOT_CHECK, ANCHOR_CHECK for replies)
+- **Rationale:** Proof decisions use seeded/controlled data. Production gates prevent mistakes; proofs validate execution path.
+
+### Required Evidence for PROVEN Status
+
+**Proof Report (`docs/CONTROL_TO_POST_PROOF.md` or `docs/CONTROL_TO_REPLY_PROOF.md`):**
+- Must exist and show `Status: ✅ PASS`
+- Must include `result_url` with `https://x.com/` URL (verifies actual execution)
+- Must include `decision_id`, `proof_tag`, and key event IDs
+
+**System Events (in `system_events` table):**
+- `EXECUTOR_DAEMON_BOOT` - Daemon started
+- `EXECUTOR_DAEMON_READY` - Browser initialized
+- `EXECUTOR_DAEMON_TICK_START` - Daemon processing loop started
+- `EXECUTOR_PROOF_POST_SELECTED` (or `EXECUTOR_PROOF_REPLY_SELECTED`) - Decision selected
+- `EXECUTOR_DECISION_CLAIM_ATTEMPT` - Claim attempt started
+- `EXECUTOR_DECISION_CLAIM_OK` - Decision successfully claimed
+- `POST_SUCCESS` or `REPLY_SUCCESS` - Execution succeeded (with `tweet_id` or `reply_tweet_id`)
+
+**Verification:**
+```bash
+# Check proof report exists and shows PASS
+cat docs/CONTROL_TO_POST_PROOF.md | grep "Status: ✅ PASS"
+
+# Verify tweet URL exists in report
+grep "https://x.com/" docs/CONTROL_TO_POST_PROOF.md
+
+# Check system events for proof decision
+# (Replace DECISION_ID with actual decision_id from proof report)
+psql $DATABASE_URL -c "SELECT event_type, created_at FROM system_events WHERE event_data->>'decision_id' = 'DECISION_ID' ORDER BY created_at;"
+```
+
+**Documentation Update:**
+- Once proof PASSes with verified URL, update `docs/SYSTEM_STATUS.md` to mark Level 4 as PROVEN
+- Include decision_id, proof_tag, tweet_url, and claim event IDs in evidence
+- Link to proof report file
+
+---
+
 **See [ARCHITECTURE.md](./ARCHITECTURE.md) for system details.**
