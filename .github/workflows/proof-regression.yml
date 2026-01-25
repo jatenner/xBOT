@@ -54,6 +54,11 @@ jobs:
           echo "🧪 Running Level 4 REPLY proof in DRY_RUN mode..."
           TARGET_TWEET_ID=2014718451563004351 pnpm run executor:prove:e2e-control-reply || exit 1
       
+      - name: Verify documentation truth
+        run: |
+          echo "🔍 Verifying documentation claims match proof reports..."
+          pnpm run verify:docs:truth || exit 1
+      
       - name: Upload proof artifacts
         if: always()
         uses: actions/upload-artifact@v4
