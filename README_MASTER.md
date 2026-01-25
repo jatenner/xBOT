@@ -1358,14 +1358,104 @@ This section describes potential future work. None of this is implemented, prove
 
 ### Phase 5A — Reliability & Production Hardening (Planned)
 
-**Conceptual areas (non-binding, descriptive only):**
+**Status:** ⚠️ **PLANNED / NOT IMPLEMENTED**
 
-- **Rate-limit adaptive scheduling:** Dynamic scheduling based on detected rate limits and Twitter API responses
-- **Backoff & retry strategy observability:** Enhanced visibility into retry decisions, backoff durations, and failure recovery paths
-- **Health dashboards & alerting:** Real-time monitoring of executor health, decision processing rates, and system events
-- **Long-running executor stability:** Extended stability proofs (beyond 15 minutes), memory leak detection, and graceful degradation
+This phase focuses on operational stability, predictability, and observability for production deployment. No implementation exists. No PROVEN claims will be added until real execution + proof artifacts exist.
+
+#### 5A.1 Goals
+
+**Why Phase 5A exists:**
+
+- **Operational stability:** Ensure executor runs reliably for extended periods without degradation or crashes
+- **Predictability:** Make system behavior deterministic and observable under various failure modes (rate limits, network issues, auth challenges)
+- **Observability:** Provide clear signals for diagnosing issues, understanding system state, and making operational decisions
+- **Production readiness:** Bridge the gap between proof-of-concept (Phase 4) and production-grade reliability
+
+#### 5A.2 In-Scope Items (Planned)
+
+**What would be built in Phase 5A (examples, non-binding):**
+
+1. **Rate limit awareness & adaptive scheduling:**
+   - Detect rate limit responses (HTTP 429) from X platform
+   - Track rate limit windows and remaining capacity
+   - Adjust decision scheduling to respect rate limits proactively
+   - Emit observable events when rate limits are encountered or cleared
+
+2. **Backoff strategy observability:**
+   - Log and emit events for all retry decisions (when, why, duration)
+   - Track backoff durations and escalation patterns
+   - Make failure recovery paths visible in system_events and logs
+   - Provide metrics on retry success rates
+
+3. **Executor health metrics:**
+   - Browser pool saturation signals (available vs. in-use browsers)
+   - Decision processing rates (decisions claimed/sec, attempts/sec)
+   - Error rates by category (rate limit, timeout, auth failure, etc.)
+   - Resource usage metrics (memory, CPU, browser instances)
+
+4. **Browser pool saturation signals:**
+   - Emit events when browser pool is exhausted
+   - Track wait times for browser availability
+   - Provide visibility into browser pool bottlenecks
+
+5. **Long-running executor stability:**
+   - Extended stability proofs (beyond 15 minutes) to detect memory leaks
+   - Graceful degradation when resources are constrained
+   - Automatic recovery from transient failures
 
 **Note:** These are planning concepts only. No implementation exists.
+
+#### 5A.3 Out-of-Scope (Explicit)
+
+**What is NOT part of Phase 5A:**
+
+- **Learning logic:** Content strategy, engagement analysis, or outcome-driven learning loops (Phase 5B)
+- **Multi-executor coordination:** Scaling across multiple executor instances (Phase 5C)
+- **Content generation changes:** Modifications to AI content generation or posting strategies
+- **New posting/reply features:** Adding new types of actions or capabilities
+- **Database schema changes:** Major schema modifications (minor additions for observability may be in-scope)
+
+#### 5A.4 Success Criteria (No Code Yet)
+
+**Acceptance criteria for Phase 5A completion:**
+
+1. **Signals must exist:**
+   - Rate limit detection events (`RATE_LIMIT_DETECTED`, `RATE_LIMIT_CLEARED`) with window information
+   - Browser pool saturation events (`BROWSER_POOL_EXHAUSTED`, `BROWSER_POOL_AVAILABLE`)
+   - Health metrics available via queryable endpoints or system_events aggregation
+   - Backoff/retry decisions logged with reason and duration
+
+2. **Failures must be observable:**
+   - All failure modes (rate limit, timeout, auth failure, browser crash) emit structured events
+   - Failure recovery paths are traceable through system_events
+   - Root cause analysis possible via event correlation
+
+3. **Guarantees must hold:**
+   - Executor does not exceed platform rate limits (proactive, not reactive)
+   - Browser pool exhaustion does not cause deadlock (backpressure or graceful degradation)
+   - Extended stability proofs (e.g., 1-hour) pass without memory leaks or degradation
+   - Health metrics are queryable in real-time (within 30 seconds of state change)
+
+**Note:** These criteria are planning targets. Actual implementation may differ based on technical constraints.
+
+#### 5A.5 Future Proof Strategy
+
+**How Phase 5A would be proven:**
+
+- **Extend existing proofs:** Phase 4 proofs (Level 4 POST/REPLY) would be extended to verify:
+  - Rate limit detection and adaptive scheduling behavior
+  - Browser pool saturation handling
+  - Health metrics accuracy
+- **New proof level (if needed):** A "Level 5" proof might be required for:
+  - Extended stability (1-hour+ runs)
+  - Rate limit recovery scenarios
+  - Browser pool exhaustion recovery
+- **Proof artifacts:** All proofs would follow the same immutable artifact pattern as Phase 4:
+  - Append-only proof reports in `docs/proofs/`
+  - INDEX.md tracking
+  - CI enforcement via `verify:docs:truth`
+
+**Note:** Proof strategy is conceptual. Actual proof design would be determined during implementation.
 
 ### Phase 5B — Learning & Intelligence (Planned)
 
