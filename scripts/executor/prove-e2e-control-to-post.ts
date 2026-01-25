@@ -51,6 +51,47 @@ function getPointerReportPath(): string {
 }
 
 /**
+ * Get INDEX file path
+ */
+function getIndexPath(): string {
+  const proofsDir = path.join(process.cwd(), 'docs', 'proofs', 'control-post');
+  if (!fs.existsSync(proofsDir)) {
+    fs.mkdirSync(proofsDir, { recursive: true });
+  }
+  return path.join(proofsDir, 'INDEX.md');
+}
+
+/**
+ * Append proof entry to INDEX.md (append-only)
+ */
+function appendToIndex(proofTag: string, decisionId: string, status: string, resultUrl?: string): void {
+  try {
+    const indexPath = getIndexPath();
+    const timestamp = new Date().toISOString();
+    const proofFileName = `${proofTag}.md`;
+    const relativePath = `./${proofFileName}`;
+    
+    // Create INDEX.md header if it doesn't exist
+    if (!fs.existsSync(indexPath)) {
+      const header = `# Control → Executor → X Proof (Posting) - Index
+
+This file is append-only. Each proof run adds a new row.
+
+| Timestamp | Proof Tag | Decision ID | Tweet URL | Status | Proof File |
+|-----------|-----------|-------------|-----------|--------|------------|
+`;
+      fs.writeFileSync(indexPath, header, 'utf-8');
+    }
+    
+    // Append new row
+    const row = `| ${timestamp} | \`${proofTag}\` | \`${decisionId}\` | ${resultUrl || 'N/A'} | ${status} | [\`${proofFileName}\`](${relativePath}) |\n`;
+    fs.appendFileSync(indexPath, row, 'utf-8');
+  } catch (error: any) {
+    console.warn(`⚠️  Failed to append to INDEX: ${error.message}`);
+  }
+}
+
+/**
  * Write pointer file that references immutable report
  */
 function writePointerFile(proofTag: string, immutablePath: string, status: string, resultUrl?: string): void {
@@ -70,7 +111,7 @@ ${resultUrl ? `**Result URL:** ${resultUrl}` : ''}
 ---
 
 **Note:** This is a pointer file. The canonical proof report is stored at the immutable path above.
-For historical proofs, see \`docs/proofs/control-post/\`.
+For historical proofs, see \`docs/proofs/control-post/INDEX.md\`.
 `;
   
   fs.writeFileSync(pointerPath, pointerContent, 'utf-8');
