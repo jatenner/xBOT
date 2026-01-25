@@ -98,6 +98,7 @@
     "executor:prove:e2e-reply": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-e2e-reply.ts",
     "executor:prove:e2e-control-post": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-e2e-control-to-post.ts",
     "executor:prove:e2e-control-reply": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-e2e-control-to-reply.ts",
+    "executor:prove:health-liveness": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-health-liveness.ts",
     "proof:regression": "pnpm run executor:prove:e2e-control-post && TARGET_TWEET_ID=${TARGET_TWEET_ID:-2014718451563004351} pnpm run executor:prove:e2e-control-reply",
     "tweet:id": "tsx scripts/utils/extract-tweet-id.ts",
     "executor:stop": "tsx scripts/executor/stop.ts",

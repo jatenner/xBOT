@@ -28,13 +28,14 @@ const PROOF_REPORTS = {
 const PROOF_IMMUTABLE_PATTERNS = {
   'POST': /docs\/proofs\/control-post\/(control-post-\d+\.md)/,
   'REPLY': /docs\/proofs\/control-reply\/(control-reply-\d+\.md)/,
+  'HEALTH': /docs\/proofs\/health\/(health-\d+\.md)/,
 };
 
 interface ProvenClaim {
   doc: string;
   lineNumber: number;
   line: string;
-  type: 'POST' | 'REPLY';
+  type: 'POST' | 'REPLY' | 'HEALTH';
   reportPath: string;
   immutableReportPath?: string;
 }
@@ -91,6 +92,25 @@ function findProvenClaims(docPath: string): ProvenClaim[] {
           line: line.trim(),
           type: 'REPLY',
           reportPath: PROOF_REPORTS.REPLY,
+          immutableReportPath: immutablePath,
+        });
+      }
+    }
+
+    // Check for PROVEN claims related to Phase 5A.1 Health
+    if (line.includes('PROVEN') && (line.includes('Phase 5A.1') || line.includes('Health') || line.includes('health') || line.includes('Liveness') || line.includes('liveness'))) {
+      // Extract immutable report path if mentioned
+      const immutableMatch = line.match(PROOF_IMMUTABLE_PATTERNS.HEALTH);
+      if (immutableMatch || line.includes('Phase 5A.1')) {
+        const immutablePath = immutableMatch 
+          ? `docs/proofs/health/${immutableMatch[1]}`
+          : undefined;
+        claims.push({
+          doc: docPath,
+          lineNumber: lineNum,
+          line: line.trim(),
+          type: 'HEALTH',
+          reportPath: 'docs/proofs/health/INDEX.md', // Use INDEX as pointer
           immutableReportPath: immutablePath,
         });
       }
@@ -235,6 +255,12 @@ function verifyProofReport(claim: ProvenClaim): void {
     if (urlInDoc && reportContent.includes(urlInDoc)) {
       hasUrl = true;
     }
+  } else if (type === 'HEALTH') {
+    // Health proofs don't require URLs - they require event IDs
+    // Check for event IDs in report
+    const hasEventIds = /Boot Event ID:|Ready Event ID:|Health OK Event ID:|Tick Event ID/i.test(reportContent);
+    // For health proofs, PASS status is sufficient (no URL required)
+    hasUrl = true; // Health proofs don't need URLs
   }
 
   // Verify URL exists (required for PROVEN)

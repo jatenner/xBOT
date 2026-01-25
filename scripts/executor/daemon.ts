@@ -81,6 +81,9 @@ let consecutiveFailures = 0;
 let backoffSeconds = 0;
 let lastBrowserLaunchTime = 0;
 let browserLaunchCount = 0;
+let tickCounter = 0; // Phase 5A.1: Track tick count for health events
+let lastHealthOkTime = 0; // Phase 5A.1: Track last HEALTH_OK emission
+const HEALTH_OK_INTERVAL_MS = 60 * 1000; // Phase 5A.1: Emit HEALTH_OK every 60 seconds
 
 /**
  * Check STOP switch - exit gracefully within 10s
@@ -560,6 +563,16 @@ async function main(): Promise<void> {
     phase: 'process_start',
   });
   
+  // Phase 5A.1: Emit EXECUTOR_HEALTH_BOOT
+  await emitLifecycleEvent('EXECUTOR_HEALTH_BOOT', {
+    ts: new Date().toISOString(),
+    pid: daemonPid,
+    proof_mode: process.env.PROOF_MODE === 'true',
+    execution_mode: process.env.EXECUTION_MODE || 'unknown',
+    runner_profile_dir: RUNNER_PROFILE_DIR,
+    node_version: process.version,
+  });
+  
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           🚀 MAC EXECUTOR DAEMON - True Headless 24/7 Execution');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
@@ -613,10 +626,18 @@ async function main(): Promise<void> {
       pid: daemonPid,
       phase: 'browser_ready',
     });
+    
+    // Phase 5A.1: Emit EXECUTOR_HEALTH_READY
+    await emitLifecycleEvent('EXECUTOR_HEALTH_READY', {
+      ts: new Date().toISOString(),
+      pid: daemonPid,
+      phase: 'browser_ready',
+    });
+    
     console.log(`[EXECUTOR_DAEMON] ✅ Ready event emitted (PID: ${daemonPid})`);
   
   // Main loop
-  let tickCounter = 0;
+  // tickCounter is already declared globally (Phase 5A.1)
   while (true) {
     // Check STOP switch - exit immediately if detected
     if (checkStopSwitch()) {
@@ -671,6 +692,20 @@ async function main(): Promise<void> {
           ts: new Date().toISOString(),
           tick_id: tickId,
           tick_number: tickCounter,
+          proof_mode: process.env.PROOF_MODE === 'true',
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      // Phase 5A.1: Emit EXECUTOR_HEALTH_TICK
+      await supabase.from('system_events').insert({
+        event_type: 'EXECUTOR_HEALTH_TICK',
+        severity: 'info',
+        message: `Executor health tick: tick_id=${tickId} tick_count=${tickCounter}`,
+        event_data: {
+          ts: new Date().toISOString(),
+          tick_id: tickId,
+          tick_count: tickCounter,
           proof_mode: process.env.PROOF_MODE === 'true',
         },
         created_at: new Date().toISOString(),
@@ -852,6 +887,55 @@ async function main(): Promise<void> {
       backoff: backoffSeconds,
       lastError,
     });
+    
+    // Phase 5A.1: Emit EXECUTOR_HEALTH_OK periodically (every HEALTH_OK_INTERVAL_MS)
+    const now = Date.now();
+    if (now - lastHealthOkTime >= HEALTH_OK_INTERVAL_MS) {
+      lastHealthOkTime = now;
+      try {
+        const { getSupabaseClient } = await import('../../src/db/index');
+        const supabase = getSupabaseClient();
+        
+        // Get browser pool metrics if available
+        let browserPoolMetrics: any = {};
+        try {
+          const { UnifiedBrowserPool } = await import('../../src/browser/UnifiedBrowserPool');
+          const pool = UnifiedBrowserPool.getInstance();
+          const poolAny = pool as any;
+          browserPoolMetrics = {
+            browser_pool_queue_len: poolAny.queue?.length || 0,
+            browser_pool_active: poolAny.getActiveCount?.() || 0,
+            browser_pool_max_contexts: poolAny.MAX_CONTEXTS || 0,
+          };
+        } catch (poolError: any) {
+          // Ignore pool errors
+        }
+        
+        await supabase.from('system_events').insert({
+          event_type: 'EXECUTOR_HEALTH_OK',
+          severity: 'info',
+          message: `Executor health OK: tick_count=${tickCounter} pages=${pages} browser_launches=${browserLaunchCount}`,
+          event_data: {
+            ts: new Date().toISOString(),
+            tick_id: tickId,
+            tick_count: tickCounter,
+            pages: pages,
+            browser_launches: browserLaunchCount,
+            posting_ready: postingReady,
+            posting_attempts: postingAttempts,
+            reply_ready: replyReady,
+            reply_attempts: replyAttempts,
+            backoff_seconds: backoffSeconds,
+            last_error: lastError || null,
+            proof_mode: process.env.PROOF_MODE === 'true',
+            ...browserPoolMetrics,
+          },
+          created_at: new Date().toISOString(),
+        });
+      } catch (e: any) {
+        console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit health OK event: ${e.message}`);
+      }
+    }
     
     // 🔧 A) Emit EXECUTOR_DAEMON_TICK_END event after tick completes
     const tickEnd = Date.now();

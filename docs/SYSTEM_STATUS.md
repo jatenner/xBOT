@@ -49,6 +49,16 @@
 - Target Tweet ID: `2014718451563004351`
 - Event ID: `21b78fda-2a0f-453b-b210-b4403d547553`
 
+✅ **Phase 5A.1: Executor Health & Liveness** — PROVEN
+
+**Proof Tag:** `health-1769357503409`  
+**Evidence:** [`docs/proofs/health/health-1769357503409.md`](docs/proofs/health/health-1769357503409.md)
+
+- Boot Event ID: `da9edc7a-2014-465b-aa48-81049c9e0c55`
+- Ready Event ID: `36bafabc-eed4-496c-9b18-557ce7a9add5`
+- Tick Event Count: 2
+- Health OK Event ID: `944369ef-6023-48f5-a4bb-2122615633ab`
+
 ---
 
 ## Phase 4 Completion Summary
@@ -377,11 +387,21 @@ EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=1234567890123456789 pnpm run executor:p
 
 This section describes potential future work. None of this is implemented, proven, or committed. These are conceptual placeholders for planning purposes only.
 
-### Phase 5A — Reliability & Production Hardening (Planned)
+### Phase 5A — Reliability & Production Hardening
 
-**Status:** ⚠️ **PLANNED / NOT IMPLEMENTED**
+**Status:** 🚧 **IN PROGRESS**
 
-This phase focuses on operational stability, predictability, and observability for production deployment. No implementation exists. No PROVEN claims will be added until real execution + proof artifacts exist.
+This phase focuses on operational stability, predictability, and observability for production deployment.
+
+#### Phase 5A.1: Executor Health & Liveness — ✅ PROVEN
+
+**Status:** ✅ **PROVEN**
+
+Executor health and liveness signals are working correctly. Health events (BOOT, READY, TICK, HEALTH_OK) are emitted deterministically and observable via system_events.
+
+**Evidence:** [`docs/proofs/health/health-1769357503409.md`](docs/proofs/health/health-1769357503409.md)
+
+**Remaining Phase 5A Items (Planned):**
 
 #### 5A.1 Goals
 

@@ -1356,11 +1356,21 @@ Required evidence:
 
 This section describes potential future work. None of this is implemented, proven, or committed. These are conceptual placeholders for planning purposes only.
 
-### Phase 5A — Reliability & Production Hardening (Planned)
+### Phase 5A — Reliability & Production Hardening
 
-**Status:** ⚠️ **PLANNED / NOT IMPLEMENTED**
+**Status:** 🚧 **IN PROGRESS**
 
-This phase focuses on operational stability, predictability, and observability for production deployment. No implementation exists. No PROVEN claims will be added until real execution + proof artifacts exist.
+This phase focuses on operational stability, predictability, and observability for production deployment.
+
+#### Phase 5A.1: Executor Health & Liveness — ✅ PROVEN
+
+**Status:** ✅ **PROVEN**
+
+Executor health and liveness signals are working correctly. Health events (BOOT, READY, TICK, HEALTH_OK) are emitted deterministically and observable via system_events.
+
+**Evidence:** [`docs/proofs/health/health-1769357503409.md`](docs/proofs/health/health-1769357503409.md)
+
+**Remaining Phase 5A Items (Planned):**
 
 #### 5A.1 Goals
 
