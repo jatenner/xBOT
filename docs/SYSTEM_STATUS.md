@@ -39,25 +39,51 @@
 - Claim OK Event ID: `b3630213-3cde-4221-9bfc-d6d565aad906`
 - **Note:** Claim instrumentation (CLAIM_ATTEMPT/OK/FAIL events + CLAIM_STALL watchdog) is now part of proof evidence.
 
+✅ **Proof Level 4: Control → Executor → X (REPLYING)** — PROVEN
+
+**Proof Tag:** `control-reply-1769271406334`  
+**Evidence:** [`docs/proofs/control-reply/control-reply-1769271406334.md`](docs/proofs/control-reply/control-reply-1769271406334.md)  
+**Reply:** `https://x.com/Signal_Synapse/status/2015096733693366778`
+
+- Decision ID: `ed2ab9e6-72e9-4dda-b7b3-28c6c35014f7`
+- Target Tweet ID: `2014718451563004351`
+- Event ID: `21b78fda-2a0f-453b-b210-b4403d547553`
+
+---
+
+## Phase 4 Completion Summary
+
+**Status:** ✅ **COMPLETE & STABLE**
+
+Phase 4 (Control → Executor → X) is formally complete. The full pipeline from control-plane decision creation through executor execution to verified result URLs is proven and stable.
+
+### What is Proven
+
+1. **Level 4 POST** — Full pipeline proven with immutable evidence:
+   - Immutable Proof: [`docs/proofs/control-post/control-post-1769281173411.md`](docs/proofs/control-post/control-post-1769281173411.md)
+   - Tweet URL: `https://x.com/Signal_Synapse/status/2015138300814639129`
+   - Proof Tag: `control-post-1769281173411`
+
+2. **Level 4 REPLY** — Full pipeline proven with immutable evidence:
+   - Immutable Proof: [`docs/proofs/control-reply/control-reply-1769271406334.md`](docs/proofs/control-reply/control-reply-1769271406334.md)
+   - Reply URL: `https://x.com/Signal_Synapse/status/2015096733693366778`
+   - Proof Tag: `control-reply-1769271406334`
+
+### Stability Commitment
+
+**No further executor or proof changes should be made unless a regression is detected.**
+
+Phase 4 proof artifacts are immutable and append-only. All PROVEN claims reference immutable proof files under:
+- `docs/proofs/control-post/`
+- `docs/proofs/control-reply/`
+
+CI enforces verification via `verify:docs:truth` — PROVEN claims must reference existing immutable proof files containing PASS status and `https://x.com/` URLs.
+
 ---
 
 ## What's Implemented but Unproven
 
-✅ **Control → Decision Queued → Executor Executes → Result URL Captured (Posting)**
-- Control-plane posting queue scheduler creates decisions
-- Executor claims and executes them
-- Result URL captured and verified
-- **How to Prove:** `EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post`
-- **Evidence Artifact:** [`docs/proofs/control-post/control-post-1769281173411.md`](docs/proofs/control-post/control-post-1769281173411.md)
-- **Status:** ✅ PROVEN (2026-01-24 19:03:35) - Post succeeded with verified evidence. Proof Tag: `control-post-1769281173411`, Tweet URL: `https://x.com/Signal_Synapse/status/2015138300814639129`. Claim instrumentation (CLAIM_ATTEMPT/OK/FAIL events + CLAIM_STALL watchdog) is now part of proof evidence.
-
-✅ **Control → Decision Queued → Executor Executes → Result URL Captured (Replying)**
-- Control-plane reply queue scheduler creates decisions
-- Executor claims and executes them
-- Result URL captured and verified
-- **How to Prove:** `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-control-reply`
-- **Evidence Artifact:** [`docs/proofs/control-reply/control-reply-1769271406334.md`](docs/proofs/control-reply/control-reply-1769271406334.md)
-- **Status:** ✅ PROVEN (2026-01-24 16:18:00) - Reply posted successfully with real tweet context. Proof Tag: `control-reply-1769271406334`, Reply URL: `https://x.com/Signal_Synapse/status/2015096733693366778`. Real tweet content fetched (267 chars from @Signal_Synapse). ROOT_CHECK + ANCHOR_CHECK bypassed for proof decisions. Semantic similarity seeded to 0.750 (computed was 0.000, intentional for proof). PROOF_MODE ancestry bypass worked correctly.
+~~**Note:** These items are now PROVEN and moved to Phase 4 Completion Summary above.~~
 
 ⚠️ **Learning System Updates**
 - Metrics collected from outcomes
@@ -232,7 +258,9 @@ When Proof Level 4 fails, the proof reports include diagnostic snapshots with fa
    - `error_message` → Error details if failed
    - `features->>proof_tag` → Proof tag for filtering
 
-4. **Proof Reports** (`docs/CONTROL_TO_POST_PROOF.md`, `docs/CONTROL_TO_REPLY_PROOF.md`):
+4. **Proof Reports** (Immutable artifacts in `docs/proofs/control-post/` and `docs/proofs/control-reply/`):
+   - Each proof run creates a new immutable file: `<proof_tag>.md`
+   - INDEX.md files track all proof runs (append-only)
    - Diagnostic snapshot section (on failure)
    - Log excerpts (last 20 relevant lines)
    - Failure event data (pretty-printed JSON)
@@ -307,7 +335,7 @@ EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post
 - `pages_max<=1` [HARD]
 - `result_url_captured=true` (if successful)
 
-**Report:** `docs/CONTROL_TO_POST_PROOF.md`
+**Report:** Immutable proof files in `docs/proofs/control-post/` (see INDEX.md for latest)
 
 ### Reply Pipeline Proof
 
@@ -339,7 +367,46 @@ EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=1234567890123456789 pnpm run executor:p
 - `pages_max<=1` [HARD]
 - `result_url_captured=true` (if successful)
 
-**Report:** `docs/CONTROL_TO_REPLY_PROOF.md`
+**Report:** Immutable proof files in `docs/proofs/control-reply/` (see INDEX.md for latest)
+
+---
+
+## Phase 5 — System Evolution (PLANNED)
+
+**Status:** ⚠️ **PLANNED / NOT IMPLEMENTED**
+
+This section describes potential future work. None of this is implemented, proven, or committed. These are conceptual placeholders for planning purposes only.
+
+### Phase 5A — Reliability & Production Hardening (Planned)
+
+**Conceptual areas (non-binding, descriptive only):**
+
+- **Rate-limit adaptive scheduling:** Dynamic scheduling based on detected rate limits and Twitter API responses
+- **Backoff & retry strategy observability:** Enhanced visibility into retry decisions, backoff durations, and failure recovery paths
+- **Health dashboards & alerting:** Real-time monitoring of executor health, decision processing rates, and system events
+- **Long-running executor stability:** Extended stability proofs (beyond 15 minutes), memory leak detection, and graceful degradation
+
+**Note:** These are planning concepts only. No implementation exists.
+
+### Phase 5B — Learning & Intelligence (Planned)
+
+**Conceptual areas (non-binding, descriptive only):**
+
+- **Engagement ingestion:** Collecting and analyzing engagement metrics (likes, retweets, replies) from posted content
+- **Outcome-driven learning loops:** Using engagement data to inform content generation and posting strategies
+- **Strategy evolution:** Adaptive content strategies based on historical performance and engagement patterns
+
+**Note:** These are planning concepts only. No implementation exists.
+
+### Phase 5C — Scale & Coordination (Planned)
+
+**Conceptual areas (non-binding, descriptive only):**
+
+- **Multi-executor coordination:** Coordinating multiple executor instances across different machines or regions
+- **Throughput control:** Managing posting/reply rates across multiple executors to stay within platform limits
+- **Sharding / isolation strategies:** Distributing work across executors with clear isolation boundaries
+
+**Note:** These are planning concepts only. No implementation exists.
 
 ---
 

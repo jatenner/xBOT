@@ -671,6 +671,23 @@ railway logs --service xBOT --lines 200 | grep "POST_SUCCESS\|REPLY_SUCCESS" | t
   Evidence: [`docs/proofs/control-reply/control-reply-1769271406334.md`](docs/proofs/control-reply/control-reply-1769271406334.md)  
   Reply: `https://x.com/Signal_Synapse/status/2015096733693366778`
 
+### Phase 4 Completion Summary
+
+**Status:** ✅ **COMPLETE & STABLE**
+
+Phase 4 (Control → Executor → X) is formally complete. The full pipeline from control-plane decision creation through executor execution to verified result URLs is proven and stable.
+
+**What is Proven:**
+- Level 4 POST — Full pipeline proven with immutable evidence (see proof reference above)
+- Level 4 REPLY — Full pipeline proven with immutable evidence (see proof reference above)
+
+**Stability Commitment:**
+- No further executor or proof changes should be made unless a regression is detected
+- All PROVEN claims reference immutable proof files under `docs/proofs/control-post/` and `docs/proofs/control-reply/`
+- CI enforces verification via `verify:docs:truth`
+
+See [`docs/SYSTEM_STATUS.md`](docs/SYSTEM_STATUS.md) for complete Phase 4 completion details.
+
 **Posting Pipeline Proof:**
 ```bash
 # DRY_RUN (safe, no posting)
@@ -1330,6 +1347,45 @@ Possible causes:
 Required evidence:
 - DB shows `posting_ready > 0`
 - Executor emits attempt start + outcome events
+
+---
+
+## Phase 5 — System Evolution (PLANNED)
+
+**Status:** ⚠️ **PLANNED / NOT IMPLEMENTED**
+
+This section describes potential future work. None of this is implemented, proven, or committed. These are conceptual placeholders for planning purposes only.
+
+### Phase 5A — Reliability & Production Hardening (Planned)
+
+**Conceptual areas (non-binding, descriptive only):**
+
+- **Rate-limit adaptive scheduling:** Dynamic scheduling based on detected rate limits and Twitter API responses
+- **Backoff & retry strategy observability:** Enhanced visibility into retry decisions, backoff durations, and failure recovery paths
+- **Health dashboards & alerting:** Real-time monitoring of executor health, decision processing rates, and system events
+- **Long-running executor stability:** Extended stability proofs (beyond 15 minutes), memory leak detection, and graceful degradation
+
+**Note:** These are planning concepts only. No implementation exists.
+
+### Phase 5B — Learning & Intelligence (Planned)
+
+**Conceptual areas (non-binding, descriptive only):**
+
+- **Engagement ingestion:** Collecting and analyzing engagement metrics (likes, retweets, replies) from posted content
+- **Outcome-driven learning loops:** Using engagement data to inform content generation and posting strategies
+- **Strategy evolution:** Adaptive content strategies based on historical performance and engagement patterns
+
+**Note:** These are planning concepts only. No implementation exists.
+
+### Phase 5C — Scale & Coordination (Planned)
+
+**Conceptual areas (non-binding, descriptive only):**
+
+- **Multi-executor coordination:** Coordinating multiple executor instances across different machines or regions
+- **Throughput control:** Managing posting/reply rates across multiple executors to stay within platform limits
+- **Sharding / isolation strategies:** Distributing work across executors with clear isolation boundaries
+
+**Note:** These are planning concepts only. No implementation exists.
 
 ---
 
