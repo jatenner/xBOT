@@ -35,7 +35,8 @@
 - Proof Tag: `control-post-1769281173411`
 - Tweet URL: `https://x.com/Signal_Synapse/status/2015138300814639129`
 - Claim OK Event ID: `b3630213-3cde-4221-9bfc-d6d565aad906`
-- Report: `docs/CONTROL_TO_POST_PROOF.md`
+- Immutable Report: `docs/proofs/control-post/control-post-1769281173411.md`
+- Pointer File: `docs/CONTROL_TO_POST_PROOF.md`
 - **Note:** Claim instrumentation (CLAIM_ATTEMPT/OK/FAIL events + CLAIM_STALL watchdog) is now part of proof evidence.
 
 ---
@@ -48,7 +49,7 @@
 - Result URL captured and verified
 - **How to Prove:** `EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post`
 - **Evidence Artifact:** `docs/CONTROL_TO_POST_PROOF.md`
-- **Status:** ✅ PROVEN (2026-01-24 19:03:35) - Post succeeded with verified evidence. Decision ID: `ce631dee-6503-4752-8fc7-ff52a6caced0`, Proof Tag: `control-post-1769281173411`, Tweet URL: `https://x.com/Signal_Synapse/status/2015138300814639129`, Claim OK Event ID: `b3630213-3cde-4221-9bfc-d6d565aad906`. Claim instrumentation (CLAIM_ATTEMPT/OK/FAIL events + CLAIM_STALL watchdog) is now part of proof evidence.
+- **Status:** ✅ PROVEN (2026-01-24 19:03:35) - Post succeeded with verified evidence. Decision ID: `ce631dee-6503-4752-8fc7-ff52a6caced0`, Proof Tag: `control-post-1769281173411`, Tweet URL: `https://x.com/Signal_Synapse/status/2015138300814639129`, Claim OK Event ID: `b3630213-3cde-4221-9bfc-d6d565aad906`. Immutable Report: `docs/proofs/control-post/control-post-1769281173411.md`. Claim instrumentation (CLAIM_ATTEMPT/OK/FAIL events + CLAIM_STALL watchdog) is now part of proof evidence.
 
 ✅ **Control → Decision Queued → Executor Executes → Result URL Captured (Replying)**
 - Control-plane reply queue scheduler creates decisions
@@ -56,7 +57,7 @@
 - Result URL captured and verified
 - **How to Prove:** `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-control-reply`
 - **Evidence Artifact:** `docs/CONTROL_TO_REPLY_PROOF.md`
-- **Status:** ✅ PROVEN (2026-01-24 16:18:00) - Reply posted successfully with real tweet context. Decision ID: `ed2ab9e6-72e9-4dda-b7b3-28c6c35014f7`, Proof Tag: `control-reply-1769271406334`, Target Tweet ID: `2014718451563004351`, Reply Tweet ID: `2015096733693366778`, Reply URL: `https://x.com/Signal_Synapse/status/2015096733693366778`, Event ID: `21b78fda-2a0f-453b-b210-b4403d547553`. Real tweet content fetched (267 chars from @Signal_Synapse). ROOT_CHECK + ANCHOR_CHECK bypassed for proof decisions. Semantic similarity seeded to 0.750 (computed was 0.000, intentional for proof). PROOF_MODE ancestry bypass worked correctly.
+- **Status:** ✅ PROVEN (2026-01-24 16:18:00) - Reply posted successfully with real tweet context. Decision ID: `ed2ab9e6-72e9-4dda-b7b3-28c6c35014f7`, Proof Tag: `control-reply-1769271406334`, Target Tweet ID: `2014718451563004351`, Reply Tweet ID: `2015096733693366778`, Reply URL: `https://x.com/Signal_Synapse/status/2015096733693366778`, Event ID: `21b78fda-2a0f-453b-b210-b4403d547553`. Immutable Report: `docs/proofs/control-reply/control-reply-1769271406334.md`. Real tweet content fetched (267 chars from @Signal_Synapse). ROOT_CHECK + ANCHOR_CHECK bypassed for proof decisions. Semantic similarity seeded to 0.750 (computed was 0.000, intentional for proof). PROOF_MODE ancestry bypass worked correctly.
 
 ⚠️ **Learning System Updates**
 - Metrics collected from outcomes
@@ -90,8 +91,8 @@
 | Executor Stability (15m) | PROVEN | `pnpm run executor:prove:15m` | `docs/EXECUTOR_15MIN_HEADLESS_PROOF.md` |
 | E2E Posting Execution | PROVEN | `pnpm run executor:prove:e2e-post` | `docs/EXECUTION_E2E_POST_PROOF.md` |
 | E2E Reply Execution | PROVEN | `TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-reply` | `docs/EXECUTION_E2E_REPLY_PROOF.md` |
-| Control→Executor→X (Posting) | ✅ PROVEN | `EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post` | `docs/CONTROL_TO_POST_PROOF.md` (2026-01-24 19:03:35: tweet_url=https://x.com/Signal_Synapse/status/2015138300814639129, decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0, claim_ok_event_id=b3630213-3cde-4221-9bfc-d6d565aad906) |
-| Control→Executor→X (Replying) | ✅ PROVEN | `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-control-reply` | `docs/CONTROL_TO_REPLY_PROOF.md` (2026-01-24 16:18:00: reply_url=https://x.com/Signal_Synapse/status/2015096733693366778) |
+| Control→Executor→X (Posting) | ✅ PROVEN | `EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post` | `docs/proofs/control-post/control-post-1769281173411.md` (2026-01-24 19:03:35: tweet_url=https://x.com/Signal_Synapse/status/2015138300814639129, decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0, claim_ok_event_id=b3630213-3cde-4221-9bfc-d6d565aad906) |
+| Control→Executor→X (Replying) | ✅ PROVEN | `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-control-reply` | `docs/proofs/control-reply/control-reply-1769271406334.md` (2026-01-24 16:18:00: reply_url=https://x.com/Signal_Synapse/status/2015096733693366778) |
 | Learning System Updates | UNPROVEN | SQL queries on `outcomes` and `learning_posts` | Manual verification |
 
 ---
@@ -266,9 +267,10 @@ TARGET_TWEET_ID=2014718451563004351 pnpm run executor:prove:e2e-control-reply
 
 **Documentation Rules:**
 - Docs (`SYSTEM_STATUS.md`, `README_MASTER.md`) must only be marked PROVEN when:
-  - Proof report exists (`docs/CONTROL_TO_POST_PROOF.md` or `docs/CONTROL_TO_REPLY_PROOF.md`)
+  - Immutable proof report exists (`docs/proofs/control-post/<proof_tag>.md` or `docs/proofs/control-reply/<proof_tag>.md`)
   - Proof report shows `Status: ✅ PASS`
   - Proof report includes `https://x.com/` URL (verifies actual execution)
+  - Pointer files (`docs/CONTROL_TO_POST_PROOF.md`, `docs/CONTROL_TO_REPLY_PROOF.md`) reference the immutable report
   - Evidence includes decision_id, proof_tag, and key system_events IDs
 
 ---

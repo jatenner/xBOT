@@ -34,6 +34,50 @@ const MAX_WAIT_SECONDS = 300; // 5 minutes max wait
 const DRY_RUN = process.env.DRY_RUN !== 'false' && process.env.EXECUTE_REAL_ACTION !== 'true';
 const EXECUTE_REAL_ACTION = process.env.EXECUTE_REAL_ACTION === 'true';
 
+/**
+ * Get immutable report path for real execution proofs
+ */
+function getImmutableReportPath(proofTag: string): string {
+  const proofsDir = path.join(process.cwd(), 'docs', 'proofs', 'control-reply');
+  if (!fs.existsSync(proofsDir)) {
+    fs.mkdirSync(proofsDir, { recursive: true });
+  }
+  return path.join(proofsDir, `${proofTag}.md`);
+}
+
+/**
+ * Get pointer file path (always stable)
+ */
+function getPointerReportPath(): string {
+  return path.join(process.cwd(), 'docs', 'CONTROL_TO_REPLY_PROOF.md');
+}
+
+/**
+ * Write pointer file that references immutable report
+ */
+function writePointerFile(proofTag: string, immutablePath: string, status: string, resultUrl?: string): void {
+  const pointerPath = getPointerReportPath();
+  const pointerContent = `# Control → Executor → X Proof (Reply) [Latest]
+
+**Last Updated:** ${new Date().toISOString()}
+**Status:** ${status}
+${resultUrl ? `**Result URL:** ${resultUrl}` : ''}
+
+## Latest Proof
+
+- **Proof Tag:** ${proofTag}
+- **Canonical Report:** [\`${immutablePath}\`](${immutablePath})
+- **Timestamp:** ${new Date().toISOString()}
+
+---
+
+**Note:** This is a pointer file. The canonical proof report is stored at the immutable path above.
+For historical proofs, see \`docs/proofs/control-reply/\`.
+`;
+  
+  fs.writeFileSync(pointerPath, pointerContent, 'utf-8');
+}
+
 // Global state for signal handlers
 let proofState: {
   decisionId?: string;
@@ -41,6 +85,7 @@ let proofState: {
   targetTweetId?: string;
   result?: ControlToReplyProofResult;
   reportPath?: string;
+  immutableReportPath?: string;
   snapshotWritten?: boolean;
   cachedDecisionStatus?: { status: string; claimed: boolean; pipeline_source?: string };
   cachedAttemptId?: string | null;
@@ -66,7 +111,7 @@ function writeHeartbeatSnapshot(): void {
   }
 
   try {
-    const reportPath = proofState.reportPath || path.join(process.cwd(), 'docs', 'CONTROL_TO_REPLY_PROOF.md');
+    const reportPath = proofState.reportPath || getPointerReportPath();
     const now = Date.now();
     
     // Throttle heartbeats to every 10s
@@ -109,7 +154,7 @@ function writeTerminationSnapshotSync(signal?: string): void {
   }
 
   try {
-    const reportPath = proofState.reportPath || path.join(process.cwd(), 'docs', 'CONTROL_TO_REPLY_PROOF.md');
+    const reportPath = proofState.reportPath || getPointerReportPath();
 
     // Use cached state only (no async queries)
     const snapshot = `
@@ -690,7 +735,15 @@ async function writeInitialReport(
   decisionResult?: { fetchedTweetPreview?: string; fetchedAuthorHandle?: string | null; snapshotHash?: string; similarityUsed?: number }
 ): Promise<void> {
   try {
-    const reportPath = path.join(process.cwd(), 'docs', 'CONTROL_TO_REPLY_PROOF.md');
+    // Use immutable path for real execution, pointer path for DRY_RUN
+    const reportPath = EXECUTE_REAL_ACTION 
+      ? getImmutableReportPath(proofTag)
+      : getPointerReportPath();
+    
+    // Store immutable path in proofState for later use
+    if (EXECUTE_REAL_ACTION) {
+      proofState.immutableReportPath = reportPath;
+    }
     const os = require('os');
     const machineInfo = {
       hostname: os.hostname(),
@@ -811,7 +864,10 @@ async function main(): Promise<void> {
   proofState.decisionId = decisionId;
   proofState.proofTag = proofTag;
   proofState.targetTweetId = targetTweetId;
-  proofState.reportPath = path.join(process.cwd(), 'docs', 'CONTROL_TO_REPLY_PROOF.md');
+  // Use immutable path for real execution, pointer path for DRY_RUN
+  proofState.reportPath = EXECUTE_REAL_ACTION 
+    ? getImmutableReportPath(proofTag)
+    : getPointerReportPath();
   proofState.fetchedTweetPreview = decisionResult.fetchedTweetPreview;
   proofState.fetchedAuthorHandle = decisionResult.fetchedAuthorHandle;
   proofState.snapshotHash = decisionResult.snapshotHash;
@@ -831,8 +887,8 @@ async function main(): Promise<void> {
     console.log(`  proof_tag: ${proofTag}`);
     console.log('');
     
-    // Write DRY_RUN report
-    const reportPath = path.join(process.cwd(), 'docs', 'CONTROL_TO_REPLY_PROOF.md');
+    // Write DRY_RUN report (pointer file only)
+    const reportPath = getPointerReportPath();
     const os = require('os');
     const machineInfo = {
       hostname: os.hostname(),
@@ -1340,8 +1396,10 @@ async function main(): Promise<void> {
     console.log('');
   }
   
-  // Write report
-  const reportPath = path.join(process.cwd(), 'docs', 'CONTROL_TO_REPLY_PROOF.md');
+  // Write report (immutable for real execution, pointer for DRY_RUN)
+  const reportPath = EXECUTE_REAL_ACTION 
+    ? (proofState.immutableReportPath || getImmutableReportPath(result.proof_tag))
+    : getPointerReportPath();
   const os = require('os');
   const machineInfo = {
     hostname: os.hostname(),
@@ -1450,8 +1508,20 @@ ${pass ? '✅ **PASS** - All execution checks and executor safety invariants pas
 ${!pass && result.evidence.diagnostic_snapshot?.error_code ? `\n**Failure Code:** ${result.evidence.diagnostic_snapshot.error_code}` : ''}
 `;
   
-  fs.writeFileSync(reportPath, report, 'utf-8');
-  console.log(`📄 Report written: ${reportPath}`);
+  // Write immutable report (append-only for real execution)
+  if (EXECUTE_REAL_ACTION) {
+    fs.writeFileSync(reportPath, report, 'utf-8');
+    console.log(`📄 Immutable report written: ${reportPath}`);
+    
+    // Write pointer file that references immutable report
+    const relativeImmutablePath = path.relative(path.join(process.cwd(), 'docs'), reportPath);
+    writePointerFile(result.proof_tag, relativeImmutablePath, pass ? '✅ PASS' : '❌ FAIL', result.result_url);
+    console.log(`📄 Pointer file updated: ${getPointerReportPath()}`);
+  } else {
+    // DRY_RUN: write to pointer file only
+    fs.writeFileSync(reportPath, report, 'utf-8');
+    console.log(`📄 Report written: ${reportPath}`);
+  }
   
   if (!pass) {
     console.error('\n❌ HARD ASSERTIONS FAILED:');

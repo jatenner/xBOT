@@ -25,12 +25,18 @@ const PROOF_REPORTS = {
   'REPLY': 'docs/CONTROL_TO_REPLY_PROOF.md',
 };
 
+const PROOF_IMMUTABLE_PATTERNS = {
+  'POST': /docs\/proofs\/control-post\/(control-post-\d+\.md)/,
+  'REPLY': /docs\/proofs\/control-reply\/(control-reply-\d+\.md)/,
+};
+
 interface ProvenClaim {
   doc: string;
   lineNumber: number;
   line: string;
   type: 'POST' | 'REPLY';
   reportPath: string;
+  immutableReportPath?: string;
 }
 
 let errors: string[] = [];
@@ -52,30 +58,40 @@ function findProvenClaims(docPath: string): ProvenClaim[] {
 
     // Check for PROVEN claims related to Level 4 POST
     if (line.includes('PROVEN') && (line.includes('POST') || line.includes('Posting') || line.includes('post'))) {
-      // Extract report path if mentioned
+      // Extract immutable report path if mentioned
+      const immutableMatch = line.match(PROOF_IMMUTABLE_PATTERNS.POST);
       const reportMatch = line.match(/docs\/CONTROL_TO_POST_PROOF\.md|CONTROL_TO_POST_PROOF\.md/);
-      if (reportMatch || line.includes('Level 4') || line.includes('Control→Executor→X')) {
+      if (immutableMatch || reportMatch || line.includes('Level 4') || line.includes('Control→Executor→X')) {
+        const immutablePath = immutableMatch 
+          ? `docs/proofs/control-post/${immutableMatch[1]}`
+          : undefined;
         claims.push({
           doc: docPath,
           lineNumber: lineNum,
           line: line.trim(),
           type: 'POST',
           reportPath: PROOF_REPORTS.POST,
+          immutableReportPath: immutablePath,
         });
       }
     }
 
     // Check for PROVEN claims related to Level 4 REPLY
     if (line.includes('PROVEN') && (line.includes('REPLY') || line.includes('Replying') || line.includes('reply'))) {
-      // Extract report path if mentioned
+      // Extract immutable report path if mentioned
+      const immutableMatch = line.match(PROOF_IMMUTABLE_PATTERNS.REPLY);
       const reportMatch = line.match(/docs\/CONTROL_TO_REPLY_PROOF\.md|CONTROL_TO_REPLY_PROOF\.md/);
-      if (reportMatch || line.includes('Level 4') || line.includes('Control→Executor→X')) {
+      if (immutableMatch || reportMatch || line.includes('Level 4') || line.includes('Control→Executor→X')) {
+        const immutablePath = immutableMatch 
+          ? `docs/proofs/control-reply/${immutableMatch[1]}`
+          : undefined;
         claims.push({
           doc: docPath,
           lineNumber: lineNum,
           line: line.trim(),
           type: 'REPLY',
           reportPath: PROOF_REPORTS.REPLY,
+          immutableReportPath: immutablePath,
         });
       }
     }
@@ -85,17 +101,56 @@ function findProvenClaims(docPath: string): ProvenClaim[] {
 }
 
 function verifyProofReport(claim: ProvenClaim): void {
-  const { reportPath, type, doc, lineNumber, line } = claim;
+  const { reportPath, type, doc, lineNumber, line, immutableReportPath } = claim;
 
-  // Check if report exists
-  if (!fs.existsSync(reportPath)) {
-    errors.push(
-      `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but proof report missing: ${reportPath}`
-    );
-    return;
+  // Determine which report to verify
+  let actualReportPath: string;
+  let reportContent: string;
+  
+  if (immutableReportPath) {
+    // Docs reference immutable report directly - verify that
+    actualReportPath = immutableReportPath;
+    if (!fs.existsSync(actualReportPath)) {
+      errors.push(
+        `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but immutable proof report missing: ${actualReportPath}`
+      );
+      return;
+    }
+    reportContent = fs.readFileSync(actualReportPath, 'utf-8');
+  } else {
+    // Docs reference pointer file - check if pointer file references immutable report
+    if (!fs.existsSync(reportPath)) {
+      errors.push(
+        `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but pointer file missing: ${reportPath}`
+      );
+      return;
+    }
+    
+    const pointerContent = fs.readFileSync(reportPath, 'utf-8');
+    
+    // Extract immutable report path from pointer file
+    const immutablePathMatch = pointerContent.match(/Canonical Report:.*\[`([^`]+)`\]/);
+    if (immutablePathMatch) {
+      const relativeImmutablePath = immutablePathMatch[1];
+      actualReportPath = path.join(process.cwd(), relativeImmutablePath);
+      if (!fs.existsSync(actualReportPath)) {
+        errors.push(
+          `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but immutable report referenced in pointer file missing: ${actualReportPath}\n` +
+          `   Pointer file: ${reportPath}`
+        );
+        return;
+      }
+      reportContent = fs.readFileSync(actualReportPath, 'utf-8');
+    } else {
+      // Pointer file doesn't reference immutable report - check pointer file itself
+      // But PROVEN requires real execution, so pointer-only is not sufficient
+      errors.push(
+        `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but pointer file does not reference immutable report: ${reportPath}\n` +
+        `   PROVEN status requires real execution with immutable report. Pointer file should contain "Canonical Report: [\`docs/proofs/...\`]()"`
+      );
+      return;
+    }
   }
-
-  const reportContent = fs.readFileSync(reportPath, 'utf-8');
   
   // Extract URL from doc line if present (for cross-reference)
   // Look for URLs in various formats: url=..., Reply URL:..., tweet_url=..., etc.
@@ -131,52 +186,16 @@ function verifyProofReport(claim: ProvenClaim): void {
                            (reportContent.includes('**Result**') && reportContent.includes('✅'));
 
   // If doc mentions a specific URL and it exists in report, accept as evidence of successful run
-  // (reports can be overwritten by new runs, but URL proves successful execution happened)
   const hasUrlFromDocs = urlInDoc && reportContent.includes(urlInDoc);
   
-  // Check git history for successful report if URL not found in current report
-  let urlFoundInHistory = false;
-  if (urlInDoc && !hasUrlFromDocs) {
-    try {
-      // Check if URL exists in git history of this file
-      const gitCmd = `git log --all --format=%H -- ${reportPath} | head -20`;
-      const commits = execSync(gitCmd, { encoding: 'utf-8', stdio: 'pipe' }).trim().split('\n').filter(Boolean);
-      
-      for (const commit of commits) {
-        try {
-          const historicalContent = execSync(`git show ${commit}:${reportPath}`, { encoding: 'utf-8', stdio: 'pipe' });
-          if (historicalContent.includes(urlInDoc)) {
-            urlFoundInHistory = true;
-            console.log(`✅ Found URL from docs in git history (commit ${commit.substring(0, 8)}): ${urlInDoc}`);
-            break;
-          }
-        } catch (e) {
-          // File might not exist in this commit, continue
-        }
-      }
-    } catch (e) {
-      // Git check failed, continue with normal validation
-    }
-  }
-  
-  // If URL from docs exists (in current report or git history), accept as evidence
-  if (hasUrlFromDocs || urlFoundInHistory) {
-    // URL exists - this proves a successful run happened, even if current status is different
-    if (!hasUrlFromDocs) {
-      warnings.push(
-        `⚠️  ${doc}:${lineNumber} claims PROVEN for ${type} and URL found in git history, but not in current report: ${reportPath}\n` +
-        `   This indicates the report was overwritten by a new run. Consider archiving successful reports.`
-      );
-    }
-  } else if (!hasPass && !hasSuccessResult) {
+  // Verify PASS status (required for PROVEN)
+  if (!hasPass && !hasSuccessResult) {
     const statusLine = reportContent.match(/\*\*Status:\*\*.*/)?.[0] || 
                        reportContent.match(/Status:.*/)?.[0] || 
                        'Not found';
     errors.push(
-      `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but proof report does not show PASS: ${reportPath}\n` +
-      `   Report status: ${statusLine}\n` +
-      `   Expected URL from docs: ${urlInDoc || 'N/A'}\n` +
-      `   Note: If this report was overwritten by a new run, ensure the successful report URL exists in the report or git history.`
+      `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but immutable proof report does not show PASS: ${actualReportPath}\n` +
+      `   Report status: ${statusLine}`
     );
   }
 
@@ -218,33 +237,25 @@ function verifyProofReport(claim: ProvenClaim): void {
     }
   }
 
-  // If URL found in git history, accept as valid
-  if (!hasUrl && !urlFoundInHistory) {
+  // Verify URL exists (required for PROVEN)
+  if (!hasUrl && !hasUrlFromDocs) {
     const expectedUrl = urlInDoc ? `URL mentioned in docs: ${urlInDoc}` : `${type === 'POST' ? 'Tweet URL:' : 'Reply URL:'} containing https://x.com/`;
     errors.push(
-      `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but proof report missing ${type === 'POST' ? 'Tweet' : 'Reply'} URL: ${reportPath}\n` +
+      `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but immutable proof report missing ${type === 'POST' ? 'Tweet' : 'Reply'} URL: ${actualReportPath}\n` +
       `   Expected: ${expectedUrl}`
-    );
-  } else if (!hasUrl && urlFoundInHistory) {
-    // URL found in git history but not in current report - warn but don't fail
-    warnings.push(
-      `⚠️  ${doc}:${lineNumber} claims PROVEN for ${type} and URL found in git history, but not in current report: ${reportPath}\n` +
-      `   This indicates the report was overwritten by a new run. Consider archiving successful reports.`
     );
   }
 
   // If both checks pass, log success
-  // Accept if: (PASS status OR URL from docs exists in report/history) AND (URL in report OR URL from docs exists)
-  const statusValid = hasPass || hasSuccessResult || hasUrlFromDocs || urlFoundInHistory;
-  const urlValid = hasUrl || hasUrlFromDocs || urlFoundInHistory;
+  // Accept if: (PASS status) AND (URL in report OR URL from docs exists)
+  const statusValid = hasPass || hasSuccessResult;
+  const urlValid = hasUrl || hasUrlFromDocs;
   
   if (statusValid && urlValid) {
-    const source = urlFoundInHistory ? ' (URL found in git history)' : '';
-    console.log(`✅ Verified: ${doc}:${lineNumber} - ${type} PROVEN claim matches report ${reportPath}${source}`);
-  } else if ((hasUrlFromDocs || urlFoundInHistory) && !hasUrl) {
+    console.log(`✅ Verified: ${doc}:${lineNumber} - ${type} PROVEN claim matches immutable report ${actualReportPath}`);
+  } else if (hasUrlFromDocs && !hasUrl) {
     // URL from docs exists but not found by patterns - still accept (might be in different format)
-    const source = urlFoundInHistory ? ' (URL found in git history)' : ' (URL from docs found)';
-    console.log(`✅ Verified: ${doc}:${lineNumber} - ${type} PROVEN claim matches report ${reportPath}${source}`);
+    console.log(`✅ Verified: ${doc}:${lineNumber} - ${type} PROVEN claim matches immutable report ${actualReportPath} (URL from docs found)`);
   }
 }
 

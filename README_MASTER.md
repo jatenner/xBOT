@@ -663,8 +663,8 @@ railway logs --service xBOT --lines 200 | grep "POST_SUCCESS\|REPLY_SUCCESS" | t
 ### Proof Level 4: Control → Executor → X (Full Pipeline)
 
 **Status:**
-- **POSTING:** ✅ PROVEN (2026-01-24) - Tweet URL: `https://x.com/Signal_Synapse/status/2015138300814639129` (Decision ID: `ce631dee-6503-4752-8fc7-ff52a6caced0`, Proof Tag: `control-post-1769281173411`, Claim OK Event ID: `b3630213-3cde-4221-9bfc-d6d565aad906`). See [`docs/SYSTEM_STATUS.md`](docs/SYSTEM_STATUS.md) and [`docs/CONTROL_TO_POST_PROOF.md`](docs/CONTROL_TO_POST_PROOF.md) for full evidence.
-- **REPLY:** ✅ PROVEN (2026-01-24) - Reply URL: `https://x.com/Signal_Synapse/status/2015096733693366778` (Decision ID: `ed2ab9e6-72e9-4dda-b7b3-28c6c35014f7`, Proof Tag: `control-reply-1769271406334`, Event ID: `21b78fda-2a0f-453b-b210-b4403d547553`)
+- **POSTING:** ✅ PROVEN (2026-01-24) - Tweet URL: `https://x.com/Signal_Synapse/status/2015138300814639129` (Decision ID: `ce631dee-6503-4752-8fc7-ff52a6caced0`, Proof Tag: `control-post-1769281173411`, Claim OK Event ID: `b3630213-3cde-4221-9bfc-d6d565aad906`). Immutable Report: [`docs/proofs/control-post/control-post-1769281173411.md`](docs/proofs/control-post/control-post-1769281173411.md). See [`docs/SYSTEM_STATUS.md`](docs/SYSTEM_STATUS.md) for full evidence.
+- **REPLY:** ✅ PROVEN (2026-01-24) - Reply URL: `https://x.com/Signal_Synapse/status/2015096733693366778` (Decision ID: `ed2ab9e6-72e9-4dda-b7b3-28c6c35014f7`, Proof Tag: `control-reply-1769271406334`, Event ID: `21b78fda-2a0f-453b-b210-b4403d547553`). Immutable Report: [`docs/proofs/control-reply/control-reply-1769271406334.md`](docs/proofs/control-reply/control-reply-1769271406334.md)
 
 **Posting Pipeline Proof:**
 ```bash
