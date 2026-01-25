@@ -1,6 +1,6 @@
 # Control → Executor → X Proof (Posting)
 
-**Date:** 2026-01-25T21:51:38.700Z  
+**Date:** 2026-01-25T22:28:14.126Z  
 **Status:** ✅ PASS
 
 ## Machine Info
@@ -29,39 +29,39 @@
 
 ## Evidence
 
-- **Decision ID:** f4f071e9-c682-41de-949e-b47f16ab45f1
-- **Proof Tag:** control-post-1769377793922
+- **Decision ID:** 7d02f035-0c15-42c9-b942-fb443ba48e5d
+- **Proof Tag:** control-post-1769379926800
 - **Pipeline Source:** control_posting_queue
 - **Decision Status:** posted
 - **Attempt ID:** N/A
 - **Outcome ID:** N/A
 - **Event IDs:** N/A
-- **Result URL:** https://x.com/Signal_Synapse/status/2015542970867384753
-- **Tweet ID:** 2015542970867384753
+- **Result URL:** https://x.com/Signal_Synapse/status/2015552193932173614
+- **Tweet ID:** 2015552193932173614
 
 ## Log Excerpts
 
 ```
-[TWEET_ID_BACKUP] 💾 Saved tweet_id 2015542970867384753 to backup file (decision: f4f071e9...)
-[POSTING_QUEUE] 💾 Tweet ID saved to backup file: 2015542970867384753
-[POSTING_QUEUE] 🎉 TWEET POSTED SUCCESSFULLY: 2015542970867384753
-[POSTING_QUEUE] 🔗 Tweet URL: https://x.com/Signal_Synapse/status/2015542970867384753
-[POSTING_QUEUE] 🔍 Verifying content matches tweet_id 2015542970867384753...
+[POST_TWEET] ✅ SUCCESS: tweet_id=2015552193932173614 decision_id=7d02f035-0c15-42c9-b942-fb443ba48e5d pipeline_source=postingQueue build_sha=fdf00f1e32b67fa399f668d836c0a737e73bc62a db_env=7ef9c43a
+[ATOMIC_POST] 📊 Writing POST_SUCCESS event (idempotent)...
+[ATOMIC_POST] ✅ POST_SUCCESS event written: decision_id=7d02f035-0c15-42c9-b942-fb443ba48e5d tweet_id=2015552193932173614
+[PERFORMANCE_SNAPSHOT] 📋 Enqueueing snapshots for decision_id=7d02f035-0c15-42c9-b942-fb443ba48e5d tweet_id=2015552193932173614
+[BROWSER_SEM] 🔐 posting released browser (queue: 0)
+[LIFECYCLE] decision_id=7d02f035-0c15-42c9-b942-fb443ba48e5d step=POST_CLICKED tweet_id=2015552193932173614
+[POSTING_QUEUE][FLOW]    Calling writePostReceipt() with decision_id=7d02f035-0c15-42c9-b942-fb443ba48e5d, post_type=single, tweet_ids_count=1
+[CRITICAL] ⚠️⚠️⚠️ ABOUT TO WRITE RECEIPT - decision_id=7d02f035-0c15-42c9-b942-fb443ba48e5d tweet_id=2015552193932173614
+[RECEIPT]    decision_id=7d02f035-0c15-42c9-b942-fb443ba48e5d
+[RECEIPT] ✅ Proof-of-posting DURABLE (can reconcile even if next step fails)
+[LIFECYCLE] decision_id=7d02f035-0c15-42c9-b942-fb443ba48e5d step=RECEIPT_SAVED receipt_id=ff04f0b7-f358-495f-97b2-dd6217111271
+[LIFECYCLE] decision_id=7d02f035-0c15-42c9-b942-fb443ba48e5d step=BACKUP_SAVED tweet_ids_count=1
 [BROWSER_POOL][TIMEOUT] label=content_verification timeoutMs=180000
-[POSTING_QUEUE] 💾 Database save attempt 1/5 for tweet 2015542970867384753...
-[CRITICAL] ⚠️⚠️⚠️ ABOUT TO CALL markDecisionPosted - decision_id=f4f071e9-c682-41de-949e-b47f16ab45f1 tweet_id=2015542970867384753
-[POSTING_QUEUE][FLOW]    - decision_id: f4f071e9-c682-41de-949e-b47f16ab45f1
-[POSTING_QUEUE][FLOW]    - tweet_id: 2015542970867384753
-[POSTING_QUEUE][FLOW]    - tweet_url: https://x.com/Signal_Synapse/status/2015542970867384753
-[POSTING_QUEUE] ✅ Database updated (attempt 1/3): tweet_id 2015542970867384753 saved for decision f4f071e9-c682-41de-949e-b47f16ab45f1
-[POSTING_QUEUE] ⏭️ POST_SUCCESS already exists for decision_id=f4f071e9-c682-41de-949e-b47f16ab45f1 (written by atomicPostExecutor), skipping duplicate
-[POSTING_QUEUE] 📝 Decision f4f071e9-c682-41de-949e-b47f16ab45f1 marked as posted with tweet ID: 2015542970867384753
-[CRITICAL] 📊 DB SAVE RESULT: ok=true, savedTweetIds=["2015542970867384753"]
-[POSTING_QUEUE][FLOW]    Result: ok=true, savedTweetIds=["2015542970867384753"], classification=single
-[POSTING_QUEUE][FLOW]    Result: ok=true, savedTweetIds=["2015542970867384753"], classification=single
-[LIFECYCLE] decision_id=f4f071e9-c682-41de-949e-b47f16ab45f1 step=SUCCESS type=single tweet_id=2015542970867384753 tweet_ids_count=1
-[POSTING_QUEUE][SUCCESS] decision_id=f4f071e9-c682-41de-949e-b47f16ab45f1 type=single tweet_id=2015542970867384753 url=https://x.com/Signal_Synapse/status/2015542970867384753
-[EXECUTOR_DAEMON] ts=2026-01-25T21:51:24.526Z pages=1 browser_launches=1 posting_ready=1 posting_attempts=1 reply_ready=0 reply_attempts=0 backoff=0s
+[CRITICAL] ⚠️⚠️⚠️ ABOUT TO CALL markDecisionPosted - decision_id=7d02f035-0c15-42c9-b942-fb443ba48e5d tweet_id=2015552193932173614
+[POSTING_QUEUE][FLOW]    - decision_id: 7d02f035-0c15-42c9-b942-fb443ba48e5d
+[POSTING_QUEUE] ✅ Database updated (attempt 1/3): tweet_id 2015552193932173614 saved for decision 7d02f035-0c15-42c9-b942-fb443ba48e5d
+[POSTING_QUEUE] ⏭️ POST_SUCCESS already exists for decision_id=7d02f035-0c15-42c9-b942-fb443ba48e5d (written by atomicPostExecutor), skipping duplicate
+[POSTING_QUEUE] 📝 Decision 7d02f035-0c15-42c9-b942-fb443ba48e5d marked as posted with tweet ID: 2015552193932173614
+[LIFECYCLE] decision_id=7d02f035-0c15-42c9-b942-fb443ba48e5d step=SUCCESS type=single tweet_id=2015552193932173614 tweet_ids_count=1
+[POSTING_QUEUE][SUCCESS] decision_id=7d02f035-0c15-42c9-b942-fb443ba48e5d type=single tweet_id=2015552193932173614 url=https://x.com/Signal_Synapse/status/2015552193932173614
 ```
 
 ## Diagnostic Snapshot (Failure Analysis)
@@ -83,9 +83,9 @@ No daemon exit event found
 ### Claim Events
 
 - **Claim Attempt Count:** 1
-- **Claim Attempt Event IDs:** 218b5791-cb39-4e03-968d-12d409c596ba
+- **Claim Attempt Event IDs:** 95eeb942-3dbf-4378-b4f8-9f6d9f551d68
 - **Claim OK Count:** 1
-- **Claim OK Event IDs:** e3238623-448e-4470-a270-081906b105ab
+- **Claim OK Event IDs:** 30a61ee9-8b22-4e92-9c21-f722fe19f475
 - **Claim Fail Count:** 0
 - **Claim Fail Event IDs:** N/A
 
