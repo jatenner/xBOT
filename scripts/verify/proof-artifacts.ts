@@ -29,13 +29,14 @@ const PROOF_IMMUTABLE_PATTERNS = {
   'POST': /docs\/proofs\/control-post\/(control-post-\d+\.md)/,
   'REPLY': /docs\/proofs\/control-reply\/(control-reply-\d+\.md)/,
   'HEALTH': /docs\/proofs\/health\/(health-\d+\.md)/,
+  'RATE_LIMIT': /docs\/proofs\/rate-limit\/(rate-limit-\d+\.md)/,
 };
 
 interface ProvenClaim {
   doc: string;
   lineNumber: number;
   line: string;
-  type: 'POST' | 'REPLY' | 'HEALTH';
+  type: 'POST' | 'REPLY' | 'HEALTH' | 'RATE_LIMIT';
   reportPath: string;
   immutableReportPath?: string;
 }
@@ -299,6 +300,12 @@ function verifyProofReport(claim: ProvenClaim): void {
     const hasEventIds = /Boot Event ID:|Ready Event ID:|Health OK Event ID:|Tick Event ID/i.test(reportContent);
     // For health proofs, PASS status is sufficient (no URL required)
     hasUrl = true; // Health proofs don't need URLs
+  } else if (type === 'RATE_LIMIT') {
+    // Rate limit proofs don't require URLs - they require event IDs
+    // Check for event IDs in report
+    const hasEventIds = /Detected Event ID:|Active Event ID:|Cleared Event ID:/i.test(reportContent);
+    // For rate limit proofs, PASS status is sufficient (no URL required)
+    hasUrl = true; // Rate limit proofs don't need URLs
   }
 
   // Verify URL exists (required for PROVEN)

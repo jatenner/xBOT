@@ -667,14 +667,31 @@ async function main(): Promise<void> {
     }
     
     // 🔒 GLOBAL RATE LIMIT CIRCUIT BREAKER: Check before processing any decisions
-    const { isRateLimitActive, getRateLimitSecondsRemaining, emitBackoffActiveEvent } = await import('../../src/utils/rateLimitCircuitBreaker');
+    const { isRateLimitActive, getRateLimitSecondsRemaining, emitBackoffActiveEvent, clearRateLimitState } = await import('../../src/utils/rateLimitCircuitBreaker');
+    
+    // Phase 5A.2: Auto-clear expired rate limits
     if (isRateLimitActive()) {
       const secondsRemaining = getRateLimitSecondsRemaining();
-      console.log(`[EXECUTOR_DAEMON] ⛔ RATE LIMIT ACTIVE: Backing off for ${secondsRemaining}s (circuit breaker)`);
-      await emitBackoffActiveEvent();
-      // Sleep for 30s and continue loop (don't claim anything)
-      await new Promise(resolve => setTimeout(resolve, 30000));
-      continue; // Skip this tick
+      if (secondsRemaining <= 0) {
+        // Rate limit expired - clear it
+        await clearRateLimitState();
+        console.log(`[EXECUTOR_DAEMON] ✅ Rate limit expired - cleared`);
+      } else {
+        // Rate limit still active
+        console.log(`[EXECUTOR_DAEMON] ⛔ RATE LIMIT ACTIVE: Backing off for ${secondsRemaining}s (circuit breaker)`);
+        await emitBackoffActiveEvent(); // Phase 5A.2: Emits EXECUTOR_RATE_LIMIT_ACTIVE
+        
+        // Phase 5A.2: In PROOF_MODE=false, skip claiming decisions (backoff)
+        // In PROOF_MODE=true, proof decisions can bypass (handled in postingQueue)
+        if (!proofMode) {
+          // Sleep for 30s and continue loop (don't claim anything)
+          await new Promise(resolve => setTimeout(resolve, 30000));
+          continue; // Skip this tick
+        } else {
+          // PROOF_MODE: Allow proof decisions to proceed (they will emit BYPASS events in postingQueue)
+          console.log(`[EXECUTOR_DAEMON] 🔒 PROOF_MODE: Rate limit active but allowing proof decisions to proceed`);
+        }
+      }
     }
     
     // 🔧 A) Emit EXECUTOR_DAEMON_TICK_START event immediately before entering tick loop

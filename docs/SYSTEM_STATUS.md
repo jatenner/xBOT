@@ -401,6 +401,21 @@ Executor health and liveness signals are working correctly. Health events (BOOT,
 
 **Evidence:** [`docs/proofs/health/health-1769357503409.md`](docs/proofs/health/health-1769357503409.md)
 
+- Boot Event ID: `da9edc7a-2014-465b-aa48-81049c9e0c55`
+- Ready Event ID: `36bafabc-eed4-496c-9b18-557ce7a9add5`
+- Tick Event Count: 2
+- Health OK Event ID: `944369ef-6023-48f5-a4bb-2122615633ab`
+
+#### Phase 5A.2: Rate Limit Awareness + Circuit Breaker Observability — 🚧 IN PROGRESS
+
+**Status:** 🚧 **IN PROGRESS** (Implementation complete, proof pending)
+
+Rate limit detection, active heartbeats, bypass events, and clearing are implemented. Structured events (`EXECUTOR_RATE_LIMIT_DETECTED`, `EXECUTOR_RATE_LIMIT_ACTIVE`, `EXECUTOR_RATE_LIMIT_CLEARED`, `EXECUTOR_RATE_LIMIT_BYPASS`) are emitted deterministically.
+
+**Proof Script:** `pnpm run executor:prove:rate-limit-circuit` (requires `SIMULATE_RATE_LIMIT_SECONDS` env var)
+
+**Note:** Proof must run to completion (simulated rate limit duration + buffer) to capture all events. Will be marked PROVEN after successful proof run with immutable artifact.
+
 **Remaining Phase 5A Items (Planned):**
 
 #### 5A.1 Goals

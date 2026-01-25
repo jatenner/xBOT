@@ -356,7 +356,8 @@ export class UltimateTwitterPoster {
             const endpoint = extractEndpointFromError(error);
             const guardDecisionId = (validGuard as any)?.decision_id;
             const { recordRateLimitHit } = await import('../utils/rateLimitCircuitBreaker');
-            await recordRateLimitHit(endpoint, 429, 'HTTP-429', guardDecisionId);
+            // Phase 5A.2: Record with source_tag
+            await recordRateLimitHit(endpoint, 429, 'HTTP-429', guardDecisionId, undefined, 'HTTP-429-DETECTED');
           }
           
           if (retryCount < maxRetries && isRecoverable) {

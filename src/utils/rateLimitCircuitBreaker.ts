@@ -15,6 +15,8 @@ interface RateLimitState {
   last_rate_limit_http_status: number | null;
   last_rate_limit_endpoint: string | null;
   last_rate_limit_reason: string | null;
+  source_tag?: string | null; // Phase 5A.2: Source of rate limit (e.g., 'HTTP-429', 'SIMULATED', 'INFERRED')
+  detected_at?: string | null; // Phase 5A.2: When rate limit was detected
 }
 
 const RATE_LIMIT_STATE_FILE = path.join(resolveRunnerProfileDir(), 'rate-limit-state.json');
@@ -92,7 +94,8 @@ export async function recordRateLimitHit(
   httpStatus: number = 429,
   reason?: string,
   decisionId?: string,
-  backoffSeconds: number = DEFAULT_BACKOFF_SECONDS
+  backoffSeconds: number = DEFAULT_BACKOFF_SECONDS,
+  sourceTag?: string
 ): Promise<void> {
   const now = new Date();
   const until = new Date(now.getTime() + backoffSeconds * 1000);
@@ -102,33 +105,40 @@ export async function recordRateLimitHit(
     last_rate_limit_http_status: httpStatus,
     last_rate_limit_endpoint: endpoint,
     last_rate_limit_reason: reason || 'HTTP-429',
+    source_tag: sourceTag || 'HTTP-429',
+    detected_at: now.toISOString(),
   });
   
-  // Emit system event
+  // Phase 5A.2: Emit EXECUTOR_RATE_LIMIT_DETECTED event
   try {
     const supabase = getSupabaseClient();
     await supabase.from('system_events').insert({
-      event_type: 'EXECUTOR_RATE_LIMITED',
+      event_type: 'EXECUTOR_RATE_LIMIT_DETECTED',
       severity: 'warning',
-      message: `Rate limit hit: ${endpoint} (HTTP ${httpStatus})`,
+      message: `Rate limit detected: ${endpoint} (HTTP ${httpStatus})`,
       event_data: {
-        until: until.toISOString(),
+        ts: now.toISOString(),
+        source_tag: sourceTag || 'HTTP-429',
         http_status: httpStatus,
         endpoint,
         reason: reason || 'HTTP-429',
-        decision_id: decisionId,
+        decision_id: decisionId || null,
         backoff_seconds: backoffSeconds,
+        seconds_remaining: backoffSeconds,
+        rate_limit_until: until.toISOString(),
+        proof_mode: process.env.PROOF_MODE === 'true',
       },
       created_at: now.toISOString(),
     });
-    console.log(`[RATE_LIMIT_CB] ✅ Recorded rate limit hit: ${endpoint} until ${until.toISOString()}`);
+    console.log(`[RATE_LIMIT_CB] ✅ Rate limit detected: ${endpoint} until ${until.toISOString()}`);
   } catch (error: any) {
-    console.error(`[RATE_LIMIT_CB] Failed to emit event: ${error.message}`);
+    console.error(`[RATE_LIMIT_CB] Failed to emit DETECTED event: ${error.message}`);
   }
 }
 
 /**
  * Emit backoff active event (called at start of executor tick)
+ * Phase 5A.2: Now emits EXECUTOR_RATE_LIMIT_ACTIVE
  */
 export async function emitBackoffActiveEvent(): Promise<void> {
   if (!isRateLimitActive()) {
@@ -140,31 +150,117 @@ export async function emitBackoffActiveEvent(): Promise<void> {
   
   try {
     const supabase = getSupabaseClient();
+    // Phase 5A.2: Emit EXECUTOR_RATE_LIMIT_ACTIVE (periodic heartbeat)
     await supabase.from('system_events').insert({
-      event_type: 'EXECUTOR_RATE_LIMIT_BACKOFF_ACTIVE',
+      event_type: 'EXECUTOR_RATE_LIMIT_ACTIVE',
       severity: 'info',
-      message: `Rate limit backoff active: ${secondsRemaining}s remaining`,
+      message: `Rate limit active: ${secondsRemaining}s remaining`,
       event_data: {
-        until: state.rate_limit_until,
-        seconds_remaining: secondsRemaining,
-        endpoint: state.last_rate_limit_endpoint,
+        ts: new Date().toISOString(),
+        source_tag: state.source_tag || state.last_rate_limit_reason || 'UNKNOWN',
         http_status: state.last_rate_limit_http_status,
+        endpoint: state.last_rate_limit_endpoint,
+        seconds_remaining: secondsRemaining,
+        rate_limit_until: state.rate_limit_until,
+        detected_at: state.detected_at || null,
+        proof_mode: process.env.PROOF_MODE === 'true',
       },
       created_at: new Date().toISOString(),
     });
   } catch (error: any) {
-    console.error(`[RATE_LIMIT_CB] Failed to emit backoff event: ${error.message}`);
+    console.error(`[RATE_LIMIT_CB] Failed to emit ACTIVE event: ${error.message}`);
   }
 }
 
 /**
  * Clear rate limit state (when backoff expires or manually cleared)
+ * Phase 5A.2: Emits EXECUTOR_RATE_LIMIT_CLEARED event
  */
-export function clearRateLimitState(): void {
+export async function clearRateLimitState(): Promise<void> {
+  const state = getRateLimitState();
+  const wasActive = isRateLimitActive();
+  
   setRateLimitState({
     rate_limit_until: null,
     last_rate_limit_http_status: null,
     last_rate_limit_endpoint: null,
     last_rate_limit_reason: null,
+    source_tag: null,
+    detected_at: null,
   });
+  
+  // Phase 5A.2: Emit EXECUTOR_RATE_LIMIT_CLEARED if it was active
+  if (wasActive) {
+    try {
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'EXECUTOR_RATE_LIMIT_CLEARED',
+        severity: 'info',
+        message: 'Rate limit cleared',
+        event_data: {
+          ts: new Date().toISOString(),
+          source_tag: state.source_tag || state.last_rate_limit_reason || 'UNKNOWN',
+          http_status: state.last_rate_limit_http_status,
+          endpoint: state.last_rate_limit_endpoint,
+          detected_at: state.detected_at || null,
+          proof_mode: process.env.PROOF_MODE === 'true',
+        },
+        created_at: new Date().toISOString(),
+      });
+      console.log(`[RATE_LIMIT_CB] ✅ Rate limit cleared`);
+    } catch (error: any) {
+      console.error(`[RATE_LIMIT_CB] Failed to emit CLEARED event: ${error.message}`);
+    }
+  }
+}
+
+/**
+ * Phase 5A.2: Simulate rate limit (for proof scripts)
+ */
+export async function simulateRateLimit(seconds: number, sourceTag: string = 'SIMULATED'): Promise<void> {
+  const now = new Date();
+  const until = new Date(now.getTime() + seconds * 1000);
+  
+  setRateLimitState({
+    rate_limit_until: until.toISOString(),
+    last_rate_limit_http_status: 429,
+    last_rate_limit_endpoint: 'simulated',
+    last_rate_limit_reason: 'Simulated rate limit for proof',
+    source_tag: sourceTag,
+    detected_at: now.toISOString(),
+  });
+  
+  // Emit DETECTED event
+  await recordRateLimitHit('simulated', 429, 'Simulated rate limit for proof', undefined, seconds, sourceTag);
+}
+
+/**
+ * Phase 5A.2: Emit BYPASS event when proof decision proceeds despite rate limit
+ */
+export async function emitRateLimitBypass(decisionId: string, proofTag?: string): Promise<void> {
+  const state = getRateLimitState();
+  const secondsRemaining = getRateLimitSecondsRemaining();
+  
+  try {
+    const supabase = getSupabaseClient();
+    await supabase.from('system_events').insert({
+      event_type: 'EXECUTOR_RATE_LIMIT_BYPASS',
+      severity: 'info',
+      message: `Rate limit bypassed for proof decision: ${decisionId}`,
+      event_data: {
+        ts: new Date().toISOString(),
+        decision_id: decisionId,
+        proof_tag: proofTag || null,
+        source_tag: state.source_tag || state.last_rate_limit_reason || 'UNKNOWN',
+        http_status: state.last_rate_limit_http_status,
+        seconds_remaining: secondsRemaining,
+        rate_limit_until: state.rate_limit_until,
+        proof_mode: true,
+      },
+      created_at: new Date().toISOString(),
+    });
+    console.log(`[RATE_LIMIT_CB] ⚠️ Rate limit bypassed for proof decision: ${decisionId}`);
+  } catch (error: any) {
+    console.error(`[RATE_LIMIT_CB] Failed to emit BYPASS event: ${error.message}`);
+  }
 }

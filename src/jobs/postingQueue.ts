@@ -1901,6 +1901,16 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
           
           if (proofMode && isProofDecision) {
             console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit check for proof decision (proof_tag=${proofTag})`);
+            
+            // Phase 5A.2: Emit BYPASS event when proof decision proceeds despite rate limit
+            try {
+              const { isRateLimitActive, emitRateLimitBypass } = await import('../utils/rateLimitCircuitBreaker');
+              if (isRateLimitActive()) {
+                await emitRateLimitBypass(decision.id, proofTag);
+              }
+            } catch (bypassError: any) {
+              console.warn(`[POSTING_QUEUE] ⚠️ Failed to emit BYPASS event: ${bypassError.message}`);
+            }
           }
 
           // 🛑 KILL SWITCHES: Check content type flags
@@ -3154,6 +3164,15 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     
     // Apply rate limits per type (but bypass for proof decisions in PROOF_MODE)
     // Note: proofMode is already declared at the top of getReadyDecisions function
+    // Phase 5A.2: Check rate limit circuit breaker state (async check)
+    let rateLimitBypassNeeded = false;
+    try {
+      const { isRateLimitActive } = await import('../utils/rateLimitCircuitBreaker');
+      rateLimitBypassNeeded = isRateLimitActive();
+    } catch (e: any) {
+      // Ignore errors
+    }
+    
     const decisionsWithLimits = throttledRows.filter(row => {
       const features = (row.features || {}) as Record<string, any>;
       const proofTag = features.proof_tag;
@@ -3162,6 +3181,18 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       // 🔒 PROOF_MODE: Bypass rate limits for proof decisions
       if (proofMode && isProofDecision) {
         console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Bypassing rate limit for proof decision (proof_tag=${proofTag})`);
+        
+        // Phase 5A.2: Emit BYPASS event when proof decision proceeds despite rate limit (fire-and-forget)
+        if (rateLimitBypassNeeded) {
+          import('../utils/rateLimitCircuitBreaker').then(({ emitRateLimitBypass }) => {
+            emitRateLimitBypass(String(row.decision_id), proofTag).catch((bypassError: any) => {
+              console.warn(`[POSTING_QUEUE] ⚠️ Failed to emit BYPASS event: ${bypassError.message}`);
+            });
+          }).catch(() => {
+            // Ignore import errors
+          });
+        }
+        
         return true;
       }
       
@@ -3398,6 +3429,17 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
     }
   } else if (proofMode && isProofDecision) {
     console.log(`[RATE_LIMIT] 🔒 PROOF_MODE: Bypassing rate limit check for proof decision (proof_tag=${proofTag})`);
+    
+    // Phase 5A.2: Emit BYPASS event when proof decision proceeds despite rate limit
+    try {
+      const { isRateLimitActive } = await import('../utils/rateLimitCircuitBreaker');
+      if (isRateLimitActive()) {
+        const { emitRateLimitBypass } = await import('../utils/rateLimitCircuitBreaker');
+        await emitRateLimitBypass(decision.id, proofTag);
+      }
+    } catch (bypassError: any) {
+      console.warn(`[RATE_LIMIT] ⚠️ Failed to emit BYPASS event: ${bypassError.message}`);
+    }
   }
   
   const isThread = decision.decision_type === 'thread';
