@@ -172,25 +172,23 @@ export async function emitBackoffActiveEvent(): Promise<void> {
   }
 }
 
+// Track if CLEARED event was already emitted for current rate limit window (idempotency)
+let clearedEventEmittedFor: string | null = null;
+
 /**
  * Clear rate limit state (when backoff expires or manually cleared)
- * Phase 5A.2: Emits EXECUTOR_RATE_LIMIT_CLEARED event
+ * Phase 5A.2: Emits EXECUTOR_RATE_LIMIT_CLEARED event (idempotent)
  */
 export async function clearRateLimitState(): Promise<void> {
   const state = getRateLimitState();
-  const wasActive = isRateLimitActive();
+  const currentWindow = state.rate_limit_until || 'none';
   
-  setRateLimitState({
-    rate_limit_until: null,
-    last_rate_limit_http_status: null,
-    last_rate_limit_endpoint: null,
-    last_rate_limit_reason: null,
-    source_tag: null,
-    detected_at: null,
-  });
+  // Phase 5A.2: Check if rate limit was active (had a valid until timestamp)
+  // We check BEFORE clearing state, because expired rate limits still have state
+  const hadActiveRateLimit = state.rate_limit_until !== null;
   
-  // Phase 5A.2: Emit EXECUTOR_RATE_LIMIT_CLEARED if it was active
-  if (wasActive) {
+  // Phase 5A.2: Emit EXECUTOR_RATE_LIMIT_CLEARED if it had an active rate limit and not already emitted for this window
+  if (hadActiveRateLimit && clearedEventEmittedFor !== currentWindow) {
     try {
       const supabase = getSupabaseClient();
       await supabase.from('system_events').insert({
@@ -207,11 +205,25 @@ export async function clearRateLimitState(): Promise<void> {
         },
         created_at: new Date().toISOString(),
       });
+      clearedEventEmittedFor = currentWindow; // Mark as emitted for this window
       console.log(`[RATE_LIMIT_CB] ✅ Rate limit cleared`);
     } catch (error: any) {
       console.error(`[RATE_LIMIT_CB] Failed to emit CLEARED event: ${error.message}`);
     }
   }
+  
+  // Clear state
+  setRateLimitState({
+    rate_limit_until: null,
+    last_rate_limit_http_status: null,
+    last_rate_limit_endpoint: null,
+    last_rate_limit_reason: null,
+    source_tag: null,
+    detected_at: null,
+  });
+  
+  // Reset cleared event tracking when state is fully cleared
+  clearedEventEmittedFor = null;
 }
 
 /**

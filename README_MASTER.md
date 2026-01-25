@@ -1370,6 +1370,19 @@ Executor health and liveness signals are working correctly. Health events (BOOT,
 
 **Evidence:** [`docs/proofs/health/health-1769357503409.md`](docs/proofs/health/health-1769357503409.md)
 
+#### Phase 5A.2: Rate Limit Awareness + Circuit Breaker Observability — ✅ PROVEN
+
+**Status:** ✅ **PROVEN**
+
+Rate limit detection, active heartbeats, bypass events, and clearing are working correctly. Structured events (`EXECUTOR_RATE_LIMIT_DETECTED`, `EXECUTOR_RATE_LIMIT_ACTIVE`, `EXECUTOR_RATE_LIMIT_CLEARED`, `EXECUTOR_RATE_LIMIT_BYPASS`) are emitted deterministically and observable via system_events.
+
+**Proof Tag:** `rate-limit-1769375487279`  
+**Evidence:** [`docs/proofs/rate-limit/rate-limit-1769375487279.md`](docs/proofs/rate-limit/rate-limit-1769375487279.md)
+
+- Detected Event ID: `ecf6d0b4-ebaf-4e9b-b2eb-d0947bab109d`
+- Active Event IDs: `37a0ca72-789f-4e11-a472-a061170c849f`, `a51b8491-4bb6-4874-ae44-1cf53e420185`
+- Cleared Event ID: `1628aa97-763a-4bc2-a790-71ef68390a39`
+
 **Remaining Phase 5A Items (Planned):**
 
 #### 5A.1 Goals

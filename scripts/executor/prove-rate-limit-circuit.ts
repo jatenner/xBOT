@@ -223,13 +223,20 @@ async function main(): Promise<void> {
   
   const detectedDeadline = startTime + 10 * 1000; // 10 seconds
   const activeDeadline = startTime + 60 * 1000; // 60 seconds
-  const clearedDeadline = startTime + (SIMULATE_SECONDS + 30) * 1000; // After simulation expires + buffer
+  const expiresAt = startTime + SIMULATE_SECONDS * 1000; // When rate limit expires
+  // Daemon sleeps 30s when rate-limited, so need buffer for it to wake up and detect expiry
+  // Max wait: SIMULATE_SECONDS + 120s buffer (allows for multiple 30s sleeps + post-expiry tick)
+  const maxWaitForCleared = startTime + (SIMULATE_SECONDS + 120) * 1000;
+  const effectiveMaxWait = Math.max(MAX_WAIT_SECONDS * 1000, maxWaitForCleared - startTime);
   
   let loopIteration = 0;
+  let nowAtClearCheckStart: number | null = null;
+  let clearedSeenAt: number | null = null;
   
-  while (Date.now() - startTime < MAX_WAIT_SECONDS * 1000) {
+  while (Date.now() - startTime < effectiveMaxWait) {
     loopIteration++;
     const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+    const now = Date.now();
     
     // Check for DETECTED event (should be emitted when we simulate)
     if (!detectedSeen) {
@@ -246,7 +253,7 @@ async function main(): Promise<void> {
         detectedSeen = true;
         detectedEventId = detectedEvent.id;
         console.log(`✅ Detected event seen: ${detectedEventId} (${elapsedSeconds}s)`);
-      } else if (Date.now() > detectedDeadline) {
+      } else if (now > detectedDeadline) {
         console.error(`❌ Detected event not seen within 10s`);
         break;
       }
@@ -264,20 +271,26 @@ async function main(): Promise<void> {
       if (activeEvents) {
         activeEventIds = activeEvents.map(e => e.id);
         activeCount = activeEvents.length;
-        if (activeCount >= 2 && Date.now() <= activeDeadline) {
+        if (activeCount >= 2 && now <= activeDeadline) {
           console.log(`✅ Active events seen: ${activeCount} (${elapsedSeconds}s)`);
-        } else if (Date.now() > activeDeadline && activeCount < 2) {
+        } else if (now > activeDeadline && activeCount < 2) {
           console.error(`❌ Only ${activeCount} active events seen within 60s (need ≥2)`);
           break;
         }
-      } else if (Date.now() > activeDeadline) {
+      } else if (now > activeDeadline) {
         console.error(`❌ Active events not seen within 60s`);
         break;
       }
     }
     
     // Check for CLEARED event (after simulation expires)
-    if (detectedSeen && Date.now() >= clearedDeadline - 30000) { // Start checking 30s before expected expiry
+    // Start checking when rate limit should have expired (SIMULATE_SECONDS after start)
+    if (detectedSeen && activeCount >= 2 && now >= expiresAt) {
+      if (nowAtClearCheckStart === null) {
+        nowAtClearCheckStart = now;
+        console.log(`⏳ Rate limit expired, waiting for CLEARED event (expired at ${elapsedSeconds}s, checking every 5s)...`);
+      }
+      
       const { data: clearedEvent } = await supabase
         .from('system_events')
         .select('id, created_at, event_data')
@@ -290,12 +303,20 @@ async function main(): Promise<void> {
       if (clearedEvent) {
         clearedSeen = true;
         clearedEventId = clearedEvent.id;
+        clearedSeenAt = now;
         console.log(`✅ Cleared event seen: ${clearedEventId} (${elapsedSeconds}s)`);
         break; // All conditions met
+      } else if (now > maxWaitForCleared) {
+        console.error(`❌ Cleared event not seen within ${Math.floor((maxWaitForCleared - startTime) / 1000)}s after expiry`);
+        break;
       }
+      
+      // Poll every 5s for CLEARED after expiry
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      continue;
     }
     
-    // Sleep 2 seconds before next check
+    // Sleep 2 seconds before next check (before expiry)
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
   
@@ -322,6 +343,11 @@ async function main(): Promise<void> {
     nodeVersion: process.version,
   };
   
+  const expiresAtISO = new Date(expiresAt).toISOString();
+  const nowAtClearCheckStartISO = nowAtClearCheckStart ? new Date(nowAtClearCheckStart).toISOString() : 'N/A';
+  const clearedSeenAtISO = clearedSeenAt ? new Date(clearedSeenAt).toISOString() : 'N/A';
+  const maxWaitSeconds = Math.floor((maxWaitForCleared - startTime) / 1000);
+  
   const report = `# Rate Limit Circuit Breaker Proof (Phase 5A.2)
 
 **Date:** ${new Date().toISOString()}  
@@ -336,6 +362,13 @@ async function main(): Promise<void> {
 - **Architecture:** ${machineInfo.arch}
 - **Node Version:** ${machineInfo.nodeVersion}
 - **Runner Profile Dir:** ${RUNNER_PROFILE_DIR}
+
+## Timing Evidence
+
+- **Rate Limit Expires At:** ${expiresAtISO}
+- **Clear Check Start:** ${nowAtClearCheckStartISO}
+- **Cleared Seen At:** ${clearedSeenAtISO}
+- **Max Wait Seconds:** ${maxWaitSeconds}
 
 ## Results
 

@@ -667,17 +667,20 @@ async function main(): Promise<void> {
     }
     
     // 🔒 GLOBAL RATE LIMIT CIRCUIT BREAKER: Check before processing any decisions
-    const { isRateLimitActive, getRateLimitSecondsRemaining, emitBackoffActiveEvent, clearRateLimitState } = await import('../../src/utils/rateLimitCircuitBreaker');
+    const { isRateLimitActive, getRateLimitSecondsRemaining, emitBackoffActiveEvent, clearRateLimitState, getRateLimitState } = await import('../../src/utils/rateLimitCircuitBreaker');
     
-    // Phase 5A.2: Auto-clear expired rate limits
-    if (isRateLimitActive()) {
-      const secondsRemaining = getRateLimitSecondsRemaining();
-      if (secondsRemaining <= 0) {
-        // Rate limit expired - clear it
+    // Phase 5A.2: Check for expired rate limits (even if state says inactive, it might have expired)
+    const rateLimitState = getRateLimitState();
+    if (rateLimitState.rate_limit_until) {
+      const until = new Date(rateLimitState.rate_limit_until);
+      const now = new Date();
+      if (now >= until) {
+        // Rate limit expired - clear it (idempotent)
         await clearRateLimitState();
         console.log(`[EXECUTOR_DAEMON] ✅ Rate limit expired - cleared`);
-      } else {
+      } else if (isRateLimitActive()) {
         // Rate limit still active
+        const secondsRemaining = getRateLimitSecondsRemaining();
         console.log(`[EXECUTOR_DAEMON] ⛔ RATE LIMIT ACTIVE: Backing off for ${secondsRemaining}s (circuit breaker)`);
         await emitBackoffActiveEvent(); // Phase 5A.2: Emits EXECUTOR_RATE_LIMIT_ACTIVE
         
@@ -686,6 +689,20 @@ async function main(): Promise<void> {
         if (!proofMode) {
           // Sleep for 30s and continue loop (don't claim anything)
           await new Promise(resolve => setTimeout(resolve, 30000));
+          
+          // Phase 5A.2: After waking from backoff sleep, immediately re-check expiry
+          // This ensures we detect expiry even if it happened during sleep
+          const stateAfterSleep = getRateLimitState();
+          if (stateAfterSleep.rate_limit_until) {
+            const untilAfterSleep = new Date(stateAfterSleep.rate_limit_until);
+            const nowAfterSleep = new Date();
+            if (nowAfterSleep >= untilAfterSleep) {
+              // Rate limit expired during sleep - clear it now (idempotent)
+              await clearRateLimitState();
+              console.log(`[EXECUTOR_DAEMON] ✅ Rate limit expired during backoff - cleared`);
+            }
+          }
+          
           continue; // Skip this tick
         } else {
           // PROOF_MODE: Allow proof decisions to proceed (they will emit BYPASS events in postingQueue)
