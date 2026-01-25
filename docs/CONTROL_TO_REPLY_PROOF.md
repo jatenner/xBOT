@@ -1,11 +1,11 @@
 # Control → Executor → X Proof (Reply)
 
-**Date:** 2026-01-24T16:22:06.921Z  
+**Date:** 2026-01-25T21:56:52.762Z  
 **Status:** ❌ FAIL
 
 ## Machine Info
 
-- **Hostname:** Mac-312.lan
+- **Hostname:** Mac-350.lan
 - **Platform:** darwin
 - **Architecture:** arm64
 - **Node Version:** v22.14.0
@@ -20,8 +20,8 @@
 | Decision Claimed | ❌ | queued | - |
 | Attempt Recorded | ❌ | N/A | - |
 | Result Recorded | ❌ | N/A | - |
-| Success/Failure Event | ✅ | 21b78fda-2a0f-453b-b210-b4403d547553 | - |
-| Exactly One Decision | ❌ | 0 | HARD |
+| Success/Failure Event | ✅ | bae8e78e-9846-40de-a5bf-d4ffa9e120f6 | - |
+| Exactly One Decision | ✅ | 1 | HARD |
 | Exactly One Attempt | ❌ | 0 | HARD |
 | Windows Opened | ✅ | 0 | HARD |
 | Chrome CDP Processes | ✅ | 0 | HARD |
@@ -29,17 +29,17 @@
 
 ## Evidence
 
-- **Decision ID:** ed2ab9e6-72e9-4dda-b7b3-28c6c35014f7
+- **Decision ID:** 1db7ad10-5e77-4141-9bf2-8a125f632690
 - **Target Tweet ID:** 2014718451563004351
-- **Proof Tag:** control-reply-1769271406334
+- **Proof Tag:** control-reply-1769377899036
 - **Pipeline Source:** control_reply_scheduler
 - **Decision Status:** queued
 - **Attempt ID:** N/A
 - **Outcome ID:** N/A
-- **Event IDs:** 21b78fda-2a0f-453b-b210-b4403d547553
-- **Fetched Tweet Preview:** Surprisingly, 20 minutes of nature exposure can elevate mood and reduce cortisol by 20% (Stanford 2022). This counters t...
-- **Fetched Author Handle:** @Signal_Synapse
-- **Snapshot Hash:** b19399a449fe1c36e58585d1200a01b4
+- **Event IDs:** bae8e78e-9846-40de-a5bf-d4ffa9e120f6
+
+
+
 - **Semantic Similarity Used:** 0.750
 
 
@@ -49,41 +49,57 @@
 
 
 
-- **Result URL:** https://x.com/Signal_Synapse/status/2015096733693366778
+
 
 ## Log Excerpts
 
 ```
-[ANCHOR_CHECK] ✅ Bypassing anchor check for proof decision (proof_tag=control-reply-1769270744714)
-[REPLY_DECISION] ✅ PROOF_MODE BYPASS: Allowing proof decision (proof_tag=control-reply-1769270744714, ancestry skipped)
-[POSTING_QUEUE] 💬 Posting reply to @undefined: "Quick note: sleep quality and sunlight timing matt..."
-[POSTING_QUEUE][REPLY] decision_id=81c5b071-df3d-4dda-8c58-ed4eac23ec68 priority=-1 proof_tag=control-reply-1769270744714
-[BROWSER_SEM] 🔓 reply_posting acquired browser (priority -1)
-[POSTING_QUEUE]    Previous reply ID: 2015096733693366778
-[BROWSER_SEM] ❌ Operation failed for reply_posting: Duplicate reply prevented: Already replied to 2014718451563004351
-[BROWSER_SEM] 🔐 reply_posting released browser (queue: 0)
-[POSTING_QUEUE] ❌ POSTING FAILED: Duplicate reply prevented: Already replied to 2014718451563004351
-[POSTING_QUEUE] 🔄 reply will retry (attempt 3/3) in 20min
-[POSTING_QUEUE] 📝 Error: Duplicate reply prevented: Already replied to 2014718451563004351
-[RAMP_MODE] ramp_enabled=true ramp_level=3 posts_last_hour=0 replies_last_hour=1 blocked_self_reply=0 blocked_reply_to_reply=2 blocked_freshness=0 blocked_generic=5 NOT_IN_DB_count=0
-[EXECUTOR_DAEMON] 🔒 PROOF_MODE: Skipping reply queue background work
-[EXECUTOR_DAEMON] ts=2026-01-24T16:20:15.773Z pages=1 browser_launches=1 posting_ready=1 posting_attempts=1 reply_ready=0 reply_attempts=0 backoff=0s
-[POSTING_QUEUE] ℹ️  Reply-specific columns will be validated per-decision for reply decisions
-[POSTING_QUEUE] 🔒 PROOF_MODE: Filtering to proof_tag starting with 'control-reply-' only
-[POSTING_QUEUE] ✅ After rate limits: 0 decisions can post (2 content, 3 replies available)
-[POSTING_QUEUE] 🔍 DIAGNOSTIC [1/1]: decision_id=56bcaa12-4d2b-4ca6-9d87-6a0ef9499f4a type=reply gate=DEFERRED reason=retry_deferral (retry #2, scheduled 4min in future)
-[EXECUTOR_DAEMON] 🔒 PROOF_MODE: Skipping reply queue background work
-[EXECUTOR_DAEMON] ts=2026-01-24T16:21:17.461Z pages=1 browser_launches=1 posting_ready=0 posting_attempts=0 reply_ready=0 reply_attempts=0 backoff=0s
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[REPLY_SELECT] ✅ Resolved 2015543125322641620 → root 2015489613469540730 (checks: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true)
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[REPLY_SELECT] ✅ Resolved 2015543125322641620 → root 2015489613469540730 (checks: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true)
+[BROWSER_POOL][TIMEOUT] label=resolve_root_tweet timeoutMs=180000
+[REPLY_SELECT]   Checks performed: replying_to_text=false, social_context=false, main_article_reply_indicator=false, multiple_articles=true
+[BROWSER_POOL][TIMEOUT] label=curated_feed timeoutMs=180000
+[BROWSER_POOL] ⏱️ QUEUE TIMEOUT: resolve_root_tweet waited 60s (timeout: 60s)
+[BROWSER_POOL] ❌ CRITICAL: Browser pool timeout - system may need restart
+[ANCESTRY_TRACE] stage=acquire_context decision_id=ancestry-1769378009200-nft8q3y09 duration_ms=60003 success=false error=acquire_context_timeout: Queue timeout after 60s - pool overloaded (priority: 5, timeout: 60s, queue_len=0, active=1/5)
+[REPLY_SELECT] ❌ Error resolving root for consent_wall_DrDanielAmen_1769378008933: ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT: Queue timeout after 60s - pool overloaded (priority: 5, timeout: 60s, queue_len=0, active=1/5)
+[CURATED_FEED] ⏱️ Timeout or error: Curated feed timeout after 90s (90109ms)
+[BROWSER_POOL] ⏱️ QUEUE TIMEOUT: resolve_root_tweet waited 60s (timeout: 60s)
+[BROWSER_POOL] ❌ CRITICAL: Browser pool timeout - system may need restart
+[ANCESTRY_TRACE] stage=acquire_context decision_id=ancestry-1769378071212-k1e8b9tq5 duration_ms=60003 success=false error=acquire_context_timeout: Queue timeout after 60s - pool overloaded (priority: 5, timeout: 60s, queue_len=1, active=1/5)
+[REPLY_SELECT] ❌ Error resolving root for consent_wall_DrDanielAmen_1769378008933: ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT: Queue timeout after 60s - pool overloaded (priority: 5, timeout: 60s, queue_len=1, active=1/5)
+[BROWSER_POOL][TIMEOUT] label=discovered_accounts_fetch timeoutMs=180000
+[BROWSER_POOL][TIMEOUT] label=curated_feed timeoutMs=180000
+[EXECUTOR_DAEMON] ts=2026-01-25T21:55:54.490Z pages=1 browser_launches=1 posting_ready=1 posting_attempts=1 reply_ready=0 reply_attempts=0 backoff=60s last_error=Cannot read properties of undefined (reading 'evaluated')
+[DISCOVERED_FEED] ❌ Feed failed after 90176ms: Discovered accounts feed timeout after 90s
 ```
 
 ## Diagnostic Snapshot (Failure Analysis)
 
 ### Decision Status
-- **Final Status:** posted
-- **Error Message:** N/A
+- **Final Status:** blocked
+- **Error Message:** {"target_exists":true,"is_root_tweet":true,"content_similarity":0.06521739130434782,"fetched_text":"Surprisingly, 20 minutes of nature exposure can elevate mood and reduce cortisol by 20% (Stanford 2022). This counters the notion that only long vacations enhance well-being. However, not for those wi","snapshot_text":"This is a test tweet content snapshot for control→executor proof. It must be at least 20 characters long to pass FINAL_REPLY_GATE."}
 
 ### Failure Event Data
-No REPLY_FAILED event found
+
+```json
+{
+  "failed_at": "2026-01-25T21:51:49.670Z",
+  "decision_id": "1db7ad10-5e77-4141-9bf2-8a125f632690",
+  "skip_reason": "context_mismatch",
+  "error_message": "{\"target_exists\":true,\"is_root_tweet\":true,\"content_similarity\":0.06521739130434782,\"fetched_text\":\"Surprisingly, 20 minutes of nature exposure can elevate mood and reduce cortisol by 20% (Stanford 2022). This counters the notion that only long vacations enhance well-being. However, not for those wi\",\"snapshot_text\":\"This is a test tweet content snapshot for control→executor proof. It must be at least 20 characters long to pass FINAL_REPLY_GATE.\"}",
+  "target_tweet_id": "2014718451563004351",
+  "pipeline_error_reason": "SAFETY_GATE_context_mismatch"
+}
+```
+
+- **Error Code:** UNKNOWN
+- **HTTP Status:** N/A
+- **Is Rate Limit:** No
+- **Is Timeout:** No
+
 
 ### Outcomes Result
 No outcomes result found
@@ -96,3 +112,4 @@ No skipped events found
 
 ❌ **FAIL** - One or more checks failed
 
+**Failure Code:** UNKNOWN
