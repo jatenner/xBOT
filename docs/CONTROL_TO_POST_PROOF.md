@@ -1,108 +1,333 @@
 # Control → Executor → X Proof (Posting)
 
-**Date:** 2026-01-24T19:03:35.545Z  
-**Status:** ✅ PASS
+**Date:** 2026-01-25T14:47:32.231Z  
+**Status:** ⏳ IN PROGRESS
 
 ## Machine Info
 
-- **Hostname:** Mac-312.lan
+- **Hostname:** Mac-345.lan
 - **Platform:** darwin
 - **Architecture:** arm64
 - **Node Version:** v22.14.0
 - **Runner Profile Dir:** /Users/jonahtenner/Desktop/xBOT/.runner-profile
+
+## Evidence
+
+- **Decision ID:** 265ee523-3cc3-4558-a13d-eebece8879ee
+- **Proof Tag:** control-post-1769352451494
+- **Pipeline Source:** control_posting_queue
+- **Decision Status:** queued (initial)
+- **Attempt ID:** N/A (pending)
+- **Outcome ID:** N/A (pending)
+- **Event IDs:** N/A (pending)
+- **DRY_RUN:** false
 
 ## Results
 
 | Check | Status | Evidence | Assertion |
 |-------|--------|----------|-----------|
 | Control Decision Created | ✅ | control_posting_queue | - |
-| Decision Queued | ✅ | posted | - |
-| Decision Claimed | ✅ | posted | - |
-| Attempt Recorded | ❌ | N/A | - |
-| Result Recorded | ❌ | N/A | - |
-| Success/Failure Event | ✅ | N/A | - |
-| Exactly One Decision | ✅ | 1 | HARD |
-| Exactly One Attempt | ❌ | 0 | HARD |
-| Windows Opened | ✅ | 0 | HARD |
-| Chrome CDP Processes | ✅ | 0 | HARD |
-| Pages Max | ✅ | 1 | HARD |
+| Decision Queued | ✅ | queued | - |
+| Decision Claimed | ⏳ | pending | - |
+| Attempt Recorded | ⏳ | pending | - |
+| Result Recorded | ⏳ | pending | - |
+| Success/Failure Event | ⏳ | pending | - |
 
-## Evidence
+---
 
-- **Decision ID:** ce631dee-6503-4752-8fc7-ff52a6caced0
-- **Proof Tag:** control-post-1769281173411
-- **Pipeline Source:** control_posting_queue
-- **Decision Status:** posted
+*Report will be updated as proof progresses...*
+
+---
+
+**Heartbeat:** 2026-01-25T14:47:33.635Z
+- **Decision Found:** yes
+- **Decision Status:** queued
+- **Claimed:** no
+- **Tweet ID:** N/A
+- **URL:** N/A
+- **Created At:** 2026-01-25T14:47:31.918+00:00
+- **Fallback Used:** no
+
+- **Boot Seen:** no
+- **Boot Event ID:** N/A
+- **Boot TS:** N/A
+- **Ready Seen:** no
+- **Ready Event ID:** N/A
+- **Ready TS:** N/A
+- **Tick Start Seen:** no
+- **Tick Start Event ID:** N/A
+- **Tick ID:** N/A
+- **Tick Start TS:** N/A
+- **Tick End Seen:** no
+- **Last Tick End TS:** N/A
+- **Last Tick Duration (ms):** undefined
+- **Daemon Exit Seen:** no
+- **Daemon Exit Event ID:** N/A
+- **Daemon Exit Reason:** N/A
+- **Daemon Crash Seen:** no
+- **Daemon Crash Event ID:** N/A
+- **Daemon Crash Error:** N/A
+- **Candidate Events:** 0
+- **Selected Events:** 0
+- **Skipped Events:** 0
+- **Claim Attempt Events:** 0
+- **Claim OK Events:** 0
+- **Claim Fail Events:** 0
+- **Claim Stall Events:** 0
 - **Attempt ID:** N/A
 - **Outcome ID:** N/A
 - **Event IDs:** N/A
-- **Result URL:** https://x.com/Signal_Synapse/status/2015138300814639129
-- **Tweet ID:** 2015138300814639129
-
-## Log Excerpts
-
-```
-[ATOMIC_POST] 📊 Writing POST_SUCCESS event (idempotent)...
-[ATOMIC_POST] ✅ POST_SUCCESS event written: decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0 tweet_id=2015138300814639129
-[PERFORMANCE_SNAPSHOT] 📋 Enqueueing snapshots for decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0 tweet_id=2015138300814639129
-[BROWSER_SEM] 🔐 posting released browser (queue: 0)
-[LIFECYCLE] decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0 step=POST_CLICKED tweet_id=2015138300814639129
-[POSTING_QUEUE][FLOW]    Calling writePostReceipt() with decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0, post_type=single, tweet_ids_count=1
-[CRITICAL] ⚠️⚠️⚠️ ABOUT TO WRITE RECEIPT - decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0 tweet_id=2015138300814639129
-[RECEIPT]    decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0
-[RECEIPT] ✅ Proof-of-posting DURABLE (can reconcile even if next step fails)
-[LIFECYCLE] decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0 step=RECEIPT_SAVED receipt_id=2c46cdab-e9a1-4530-8fa5-5eef03e15e5c
-[LIFECYCLE] decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0 step=BACKUP_SAVED tweet_ids_count=1
-[BROWSER_POOL][TIMEOUT] label=content_verification timeoutMs=180000
-[CRITICAL] ⚠️⚠️⚠️ ABOUT TO CALL markDecisionPosted - decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0 tweet_id=2015138300814639129
-[POSTING_QUEUE][FLOW]    - decision_id: ce631dee-6503-4752-8fc7-ff52a6caced0
-[POSTING_QUEUE] ✅ Database updated (attempt 1/3): tweet_id 2015138300814639129 saved for decision ce631dee-6503-4752-8fc7-ff52a6caced0
-[POSTING_QUEUE] ⏭️ POST_SUCCESS already exists for decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0 (written by atomicPostExecutor), skipping duplicate
-[POSTING_QUEUE] 📝 Decision ce631dee-6503-4752-8fc7-ff52a6caced0 marked as posted with tweet ID: 2015138300814639129
-[LIFECYCLE] decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0 step=SUCCESS type=single tweet_id=2015138300814639129 tweet_ids_count=1
-[POSTING_QUEUE][SUCCESS] decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0 type=single tweet_id=2015138300814639129 url=https://x.com/Signal_Synapse/status/2015138300814639129
-[EXECUTOR_DAEMON] ts=2026-01-24T19:03:23.600Z pages=1 browser_launches=1 posting_ready=3 posting_attempts=3 reply_ready=0 reply_attempts=0 backoff=0s
-```
-
-## Diagnostic Snapshot (Failure Analysis)
-
-### Decision Status
-- **Final Status:** posted
-- **Error Message:** N/A
-
-### Failure Event Data
-No POST_FAILED event found
-
-### Outcomes Result
-No outcomes result found
-
-### Daemon Lifecycle Events
-No daemon crash event found
-No daemon exit event found
-
-### Claim Events
-
-- **Claim Attempt Count:** 0
-- **Claim Attempt Event IDs:** N/A
-- **Claim OK Count:** 1
-- **Claim OK Event IDs:** b3630213-3cde-4221-9bfc-d6d565aad906
-- **Claim Fail Count:** 0
-- **Claim Fail Event IDs:** N/A
-
-- **Claim Stall Count:** 0
-- **Claim Stall Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
 
 
-### Skipped Events
-No skipped events found
+---
+
+**Heartbeat:** 2026-01-25T14:47:46.912Z
+- **Decision Found:** yes
+- **Decision Status:** posting_attempt
+- **Claimed:** no
+- **Tweet ID:** N/A
+- **URL:** N/A
+- **Created At:** 2026-01-25T14:47:36.2+00:00
+- **Fallback Used:** no
+
+- **Boot Seen:** yes
+- **Boot Event ID:** 0d391462-b2bf-47f9-a191-a664584d7f2f
+- **Boot TS:** 2026-01-25T14:47:32.725+00:00
+- **Ready Seen:** yes
+- **Ready Event ID:** 44b3cf72-51b6-4994-a73c-bff90c5c6bce
+- **Ready TS:** 2026-01-25T14:47:33.49+00:00
+- **Tick Start Seen:** yes
+- **Tick Start Event ID:** e6683be6-491a-4f1a-a61f-5089dcbef4e4
+- **Tick ID:** ccfd966a-b5f4-4456-bfbe-5a31bf741c3e
+- **Tick Start TS:** 2026-01-25T14:47:33.602+00:00
+- **Tick End Seen:** no
+- **Last Tick End TS:** N/A
+- **Last Tick Duration (ms):** undefined
+- **Daemon Exit Seen:** no
+- **Daemon Exit Event ID:** N/A
+- **Daemon Exit Reason:** N/A
+- **Daemon Crash Seen:** no
+- **Daemon Crash Event ID:** N/A
+- **Daemon Crash Error:** N/A
+- **Candidate Events:** 1
+- **Selected Events:** 1
+- **Skipped Events:** 0
+- **Claim Attempt Events:** 1
+- **Claim OK Events:** 1
+- **Claim Fail Events:** 0
+- **Claim Stall Events:** 0
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
 
 
-## Result
+---
 
-✅ **PASS** - All execution checks and executor safety invariants passed
+**Heartbeat:** 2026-01-25T14:47:59.695Z
+- **Decision Found:** yes
+- **Decision Status:** posting_attempt
+- **Claimed:** no
+- **Tweet ID:** N/A
+- **URL:** N/A
+- **Created At:** 2026-01-25T14:47:36.2+00:00
+- **Fallback Used:** no
+
+- **Boot Seen:** yes
+- **Boot Event ID:** 0d391462-b2bf-47f9-a191-a664584d7f2f
+- **Boot TS:** 2026-01-25T14:47:32.725+00:00
+- **Ready Seen:** yes
+- **Ready Event ID:** 44b3cf72-51b6-4994-a73c-bff90c5c6bce
+- **Ready TS:** 2026-01-25T14:47:33.49+00:00
+- **Tick Start Seen:** yes
+- **Tick Start Event ID:** e6683be6-491a-4f1a-a61f-5089dcbef4e4
+- **Tick ID:** ccfd966a-b5f4-4456-bfbe-5a31bf741c3e
+- **Tick Start TS:** 2026-01-25T14:47:33.602+00:00
+- **Tick End Seen:** no
+- **Last Tick End TS:** N/A
+- **Last Tick Duration (ms):** undefined
+- **Daemon Exit Seen:** no
+- **Daemon Exit Event ID:** N/A
+- **Daemon Exit Reason:** N/A
+- **Daemon Crash Seen:** no
+- **Daemon Crash Event ID:** N/A
+- **Daemon Crash Error:** N/A
+- **Candidate Events:** 1
+- **Selected Events:** 1
+- **Skipped Events:** 0
+- **Claim Attempt Events:** 1
+- **Claim OK Events:** 1
+- **Claim Fail Events:** 0
+- **Claim Stall Events:** 0
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
 
 
+---
+
+**Heartbeat:** 2026-01-25T14:48:12.676Z
+- **Decision Found:** yes
+- **Decision Status:** posting_attempt
+- **Claimed:** no
+- **Tweet ID:** N/A
+- **URL:** N/A
+- **Created At:** 2026-01-25T14:47:36.2+00:00
+- **Fallback Used:** no
+
+- **Boot Seen:** yes
+- **Boot Event ID:** 0d391462-b2bf-47f9-a191-a664584d7f2f
+- **Boot TS:** 2026-01-25T14:47:32.725+00:00
+- **Ready Seen:** yes
+- **Ready Event ID:** 44b3cf72-51b6-4994-a73c-bff90c5c6bce
+- **Ready TS:** 2026-01-25T14:47:33.49+00:00
+- **Tick Start Seen:** yes
+- **Tick Start Event ID:** e6683be6-491a-4f1a-a61f-5089dcbef4e4
+- **Tick ID:** ccfd966a-b5f4-4456-bfbe-5a31bf741c3e
+- **Tick Start TS:** 2026-01-25T14:47:33.602+00:00
+- **Tick End Seen:** no
+- **Last Tick End TS:** N/A
+- **Last Tick Duration (ms):** undefined
+- **Daemon Exit Seen:** no
+- **Daemon Exit Event ID:** N/A
+- **Daemon Exit Reason:** N/A
+- **Daemon Crash Seen:** no
+- **Daemon Crash Event ID:** N/A
+- **Daemon Crash Error:** N/A
+- **Candidate Events:** 1
+- **Selected Events:** 1
+- **Skipped Events:** 0
+- **Claim Attempt Events:** 1
+- **Claim OK Events:** 1
+- **Claim Fail Events:** 0
+- **Claim Stall Events:** 0
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
 
 
+---
+
+**Heartbeat:** 2026-01-25T14:48:25.649Z
+- **Decision Found:** yes
+- **Decision Status:** posting_attempt
+- **Claimed:** no
+- **Tweet ID:** N/A
+- **URL:** N/A
+- **Created At:** 2026-01-25T14:47:36.2+00:00
+- **Fallback Used:** no
+
+- **Boot Seen:** yes
+- **Boot Event ID:** 0d391462-b2bf-47f9-a191-a664584d7f2f
+- **Boot TS:** 2026-01-25T14:47:32.725+00:00
+- **Ready Seen:** yes
+- **Ready Event ID:** 44b3cf72-51b6-4994-a73c-bff90c5c6bce
+- **Ready TS:** 2026-01-25T14:47:33.49+00:00
+- **Tick Start Seen:** yes
+- **Tick Start Event ID:** e6683be6-491a-4f1a-a61f-5089dcbef4e4
+- **Tick ID:** ccfd966a-b5f4-4456-bfbe-5a31bf741c3e
+- **Tick Start TS:** 2026-01-25T14:47:33.602+00:00
+- **Tick End Seen:** no
+- **Last Tick End TS:** N/A
+- **Last Tick Duration (ms):** undefined
+- **Daemon Exit Seen:** no
+- **Daemon Exit Event ID:** N/A
+- **Daemon Exit Reason:** N/A
+- **Daemon Crash Seen:** no
+- **Daemon Crash Event ID:** N/A
+- **Daemon Crash Error:** N/A
+- **Candidate Events:** 1
+- **Selected Events:** 1
+- **Skipped Events:** 0
+- **Claim Attempt Events:** 1
+- **Claim OK Events:** 1
+- **Claim Fail Events:** 0
+- **Claim Stall Events:** 0
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
 
 
+---
+
+**Heartbeat:** 2026-01-25T14:48:38.716Z
+- **Decision Found:** yes
+- **Decision Status:** posting_attempt
+- **Claimed:** no
+- **Tweet ID:** N/A
+- **URL:** N/A
+- **Created At:** 2026-01-25T14:47:36.2+00:00
+- **Fallback Used:** no
+
+- **Boot Seen:** yes
+- **Boot Event ID:** 0d391462-b2bf-47f9-a191-a664584d7f2f
+- **Boot TS:** 2026-01-25T14:47:32.725+00:00
+- **Ready Seen:** yes
+- **Ready Event ID:** 44b3cf72-51b6-4994-a73c-bff90c5c6bce
+- **Ready TS:** 2026-01-25T14:47:33.49+00:00
+- **Tick Start Seen:** yes
+- **Tick Start Event ID:** e6683be6-491a-4f1a-a61f-5089dcbef4e4
+- **Tick ID:** ccfd966a-b5f4-4456-bfbe-5a31bf741c3e
+- **Tick Start TS:** 2026-01-25T14:47:33.602+00:00
+- **Tick End Seen:** no
+- **Last Tick End TS:** N/A
+- **Last Tick Duration (ms):** undefined
+- **Daemon Exit Seen:** no
+- **Daemon Exit Event ID:** N/A
+- **Daemon Exit Reason:** N/A
+- **Daemon Crash Seen:** no
+- **Daemon Crash Event ID:** N/A
+- **Daemon Crash Error:** N/A
+- **Candidate Events:** 1
+- **Selected Events:** 1
+- **Skipped Events:** 0
+- **Claim Attempt Events:** 1
+- **Claim OK Events:** 1
+- **Claim Fail Events:** 0
+- **Claim Stall Events:** 0
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+- **Event IDs:** N/A
+- **Failed Event:** no
+- **Result URL:** N/A
+
+
+---
+
+## Diagnostic Snapshot (Termination: uncaughtException)
+
+**Written at:** 2026-01-25T14:48:50.151Z
+**Termination Signal:** uncaughtException
+
+### Decision Status (from cache)
+- **Decision ID:** 265ee523-3cc3-4558-a13d-eebece8879ee
+- **Proof Tag:** control-post-1769352451494
+- **Found:** yes
+- **Final Status:** posting_attempt
+- **Claimed:** no
+- **Tweet ID:** N/A
+- **URL:** N/A
+- **Created At:** 2026-01-25T14:47:36.2+00:00
+- **Fallback Used:** no
+
+
+### Outcomes (from cache)
+- **Attempt ID:** N/A
+- **Outcome ID:** N/A
+
+### Events (from cache)
+- **Event IDs:** N/A
+- **Failed Event Present:** no
+
+- **Result URL:** N/A
+
+**Note:** This snapshot uses cached state from the last polling cycle. For complete details, check the database directly.

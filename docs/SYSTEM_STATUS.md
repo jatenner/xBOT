@@ -238,6 +238,41 @@ When Proof Level 4 fails, the proof reports include diagnostic snapshots with fa
 
 ---
 
+## Proof Regression Gate (CI)
+
+**Purpose:** Automated regression testing for Level 4 proofs to ensure they never break.
+
+**CI Behavior:**
+- **PRs and pushes to main:** Run Level 4 POST and REPLY proofs in DRY_RUN mode (safe, no Twitter side effects)
+- **Real execution:** Requires manual trigger via GitHub Actions workflow_dispatch
+- **Artifacts:** Proof reports uploaded as workflow artifacts for inspection
+
+**Local Testing:**
+```bash
+# Run both proofs in DRY_RUN mode locally
+pnpm run proof:regression
+
+# Or run individually:
+pnpm run executor:prove:e2e-control-post
+TARGET_TWEET_ID=2014718451563004351 pnpm run executor:prove:e2e-control-reply
+```
+
+**Manual Real Execution:**
+- Go to GitHub Actions → "Proof Regression Gate" → "Run workflow"
+- Select mode: `post`, `reply`, or `both`
+- For reply/both modes, provide `target_tweet_id` (numeric, >= 15 digits)
+- Workflow will run with `PROOF_MODE=true EXECUTE_REAL_ACTION=true`
+- Proof reports uploaded as artifacts
+
+**Documentation Rules:**
+- Docs (`SYSTEM_STATUS.md`, `README_MASTER.md`) must only be marked PROVEN when:
+  - Proof report exists (`docs/CONTROL_TO_POST_PROOF.md` or `docs/CONTROL_TO_REPLY_PROOF.md`)
+  - Proof report shows `Status: ✅ PASS`
+  - Proof report includes `https://x.com/` URL (verifies actual execution)
+  - Evidence includes decision_id, proof_tag, and key system_events IDs
+
+---
+
 ## Control→Executor→X Proof (Level 4)
 
 ### Posting Pipeline Proof

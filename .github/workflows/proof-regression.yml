@@ -1,0 +1,133 @@
+name: Proof Regression Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Proof mode to run'
+        required: true
+        type: choice
+        options:
+          - post
+          - reply
+          - both
+      target_tweet_id:
+        description: 'Target tweet ID (required for reply/both modes)'
+        required: false
+        type: string
+
+jobs:
+  proof-regression:
+    runs-on: ubuntu-latest
+    # Skip if workflow_dispatch (real execution requires manual approval)
+    if: github.event_name != 'workflow_dispatch'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10.18.2
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Build
+        run: pnpm run build || echo "Build warnings allowed"
+      
+      - name: Run Level 4 POST proof (DRY_RUN)
+        run: |
+          echo "🧪 Running Level 4 POST proof in DRY_RUN mode..."
+          pnpm run executor:prove:e2e-control-post || exit 1
+      
+      - name: Run Level 4 REPLY proof (DRY_RUN)
+        run: |
+          echo "🧪 Running Level 4 REPLY proof in DRY_RUN mode..."
+          TARGET_TWEET_ID=2014718451563004351 pnpm run executor:prove:e2e-control-reply || exit 1
+      
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-reports-dry-run
+          path: |
+            docs/CONTROL_TO_POST_PROOF.md
+            docs/CONTROL_TO_REPLY_PROOF.md
+            docs/SYSTEM_STATUS.md
+          retention-days: 7
+          if-no-files-found: warn
+
+  proof-real-execution:
+    runs-on: ubuntu-latest
+    # Only run on workflow_dispatch (manual trigger)
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10.18.2
+      
+      - name: Validate inputs
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+          TARGET_TWEET_ID="${{ github.event.inputs.target_tweet_id }}"
+          
+          if [[ "$MODE" == "reply" || "$MODE" == "both" ]]; then
+            if [[ -z "$TARGET_TWEET_ID" ]]; then
+              echo "❌ Error: target_tweet_id is required for reply/both modes"
+              exit 1
+            fi
+            # Validate tweet ID format (should be numeric, >= 15 digits)
+            if ! [[ "$TARGET_TWEET_ID" =~ ^[0-9]{15,}$ ]]; then
+              echo "❌ Error: target_tweet_id must be numeric and >= 15 digits"
+              exit 1
+            fi
+          fi
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Build
+        run: pnpm run build || echo "Build warnings allowed"
+      
+      - name: Run Level 4 POST proof (REAL)
+        if: github.event.inputs.mode == 'post' || github.event.inputs.mode == 'both'
+        run: |
+          echo "🚀 Running Level 4 POST proof in REAL execution mode..."
+          echo "⚠️  This will post to Twitter!"
+          PROOF_MODE=true EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post || exit 1
+      
+      - name: Run Level 4 REPLY proof (REAL)
+        if: github.event.inputs.mode == 'reply' || github.event.inputs.mode == 'both'
+        run: |
+          echo "🚀 Running Level 4 REPLY proof in REAL execution mode..."
+          echo "⚠️  This will reply to Twitter!"
+          PROOF_MODE=true EXECUTE_REAL_ACTION=true TARGET_TWEET_ID="${{ github.event.inputs.target_tweet_id }}" pnpm run executor:prove:e2e-control-reply || exit 1
+      
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-reports-real-execution
+          path: |
+            docs/CONTROL_TO_POST_PROOF.md
+            docs/CONTROL_TO_REPLY_PROOF.md
+            docs/SYSTEM_STATUS.md
+          retention-days: 30
+          if-no-files-found: error

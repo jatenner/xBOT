@@ -649,6 +649,17 @@ tail -100 ./.runner-profile/logs/executor.log | grep "posting_attempts\|reply_at
 railway logs --service xBOT --lines 200 | grep "POST_SUCCESS\|REPLY_SUCCESS" | tail -5
 ```
 
+### Proof Regression Gate (CI)
+
+**Automated Regression Testing:**
+- **PRs and pushes to main:** Run Level 4 proofs in DRY_RUN mode (safe, no Twitter side effects)
+- **Real execution:** Manual trigger via GitHub Actions workflow_dispatch only
+- **Local testing:** `pnpm run proof:regression` (runs both proofs in DRY_RUN)
+
+**Documentation Rules:**
+- Docs marked PROVEN only when proof report exists with `https://x.com/` URL
+- See [`docs/SYSTEM_STATUS.md`](docs/SYSTEM_STATUS.md) for full regression gate details
+
 ### Proof Level 4: Control → Executor → X (Full Pipeline)
 
 **Status:**
