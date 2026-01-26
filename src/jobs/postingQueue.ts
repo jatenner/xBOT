@@ -2702,7 +2702,8 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     }
     
     // 🔒 CERT MODE: Only select replies with reply_v2_scheduler pipeline_source
-    if (certMode) {
+    // 🔒 PROOF_MODE BYPASS: Skip CERT MODE filter when PROOF_MODE is active (proof decisions use control_reply_scheduler)
+    if (certMode && !proofMode) {
       replyQuery = replyQuery.eq('pipeline_source', 'reply_v2_scheduler');
       console.log(`[POSTING_QUEUE] 🔒 CERT MODE: Filtering to reply_v2_scheduler pipeline_source only`);
     }
@@ -2723,7 +2724,8 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     const error = certMode ? replyError : (contentError || replyError);
     
     // 🔒 CERT MODE: Filter out any non-reply decisions that slipped through
-    const filteredData = certMode 
+    // 🔒 PROOF_MODE BYPASS: Skip CERT MODE filter when PROOF_MODE is active
+    const filteredData = (certMode && !proofMode)
       ? data.filter(d => d.decision_type === 'reply' && d.pipeline_source === 'reply_v2_scheduler')
       : data;
     

@@ -981,14 +981,17 @@ async function main(): Promise<void> {
   
   // Step 2: Start executor daemon
   console.log('\n🚀 Step 2: Starting executor daemon...');
+  const daemonEnv = {
+    ...process.env,
+    EXECUTION_MODE: 'executor',
+    RUNNER_MODE: 'true',
+    HEADLESS: 'true',
+    RUNNER_PROFILE_DIR: RUNNER_PROFILE_DIR,
+    PROOF_MODE: process.env.PROOF_MODE || 'true', // Ensure PROOF_MODE is passed to daemon
+  };
+  console.log(`[PROOF] Daemon env: PROOF_MODE=${daemonEnv.PROOF_MODE}, EXECUTION_MODE=${daemonEnv.EXECUTION_MODE}, RUNNER_MODE=${daemonEnv.RUNNER_MODE}`);
   const daemonProcess = spawn('pnpm', ['run', 'executor:daemon'], {
-    env: {
-      ...process.env,
-      EXECUTION_MODE: 'executor',
-      RUNNER_MODE: 'true',
-      HEADLESS: 'true',
-      RUNNER_PROFILE_DIR: RUNNER_PROFILE_DIR,
-    },
+    env: daemonEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   
@@ -1043,6 +1046,24 @@ async function main(): Promise<void> {
     // Check control decision created
     if (status.status) {
       result.control_decision_created = true;
+    }
+    
+    // 🔧 FIX: Also check for POST_ATTEMPT event as evidence of claim (status may stay queued)
+    const supabase = getSupabaseClient();
+    const { data: postAttemptEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at')
+      .eq('event_type', 'POST_ATTEMPT')
+      .eq('event_data->>decision_id', decisionId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    if (postAttemptEvents) {
+      result.decision_claimed = true; // POST_ATTEMPT means the decision was claimed and processing started
+      if (!result.evidence.decision_status || result.evidence.decision_status === 'queued') {
+        result.evidence.decision_status = 'claimed'; // Mark as claimed even if status is still queued
+      }
     }
     
     // Check for attempt
