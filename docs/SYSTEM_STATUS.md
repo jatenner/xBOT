@@ -39,9 +39,17 @@
 - Claim OK Event ID: `b3630213-3cde-4221-9bfc-d6d565aad906`
 - **Note:** Claim instrumentation (CLAIM_ATTEMPT/OK/FAIL events + CLAIM_STALL watchdog) is now part of proof evidence.
 
-🚧 **Proof Level 4: Control → Executor → X (REPLYING)** — IN PROGRESS
+✅ **Proof Level 4: Control → Executor → X (REPLY)** — PROVEN
 
-Real execution proof pending completion. DRY_RUN tests pass correctly.
+**Proof Tag:** `control-reply-1769440472369`  
+**Evidence:** [`docs/proofs/control-reply/control-reply-1769440472369.md`](docs/proofs/control-reply/control-reply-1769440472369.md)  
+**Reply:** `https://x.com/Signal_Synapse/status/2015805866801295663`
+
+- Decision ID: `aa05774f-e0fd-494c-8ea1-48e91b8df55a`
+- Target Tweet ID: `2015580329344446898`
+- Reply Tweet ID: `2015805866801295663`
+- Success Event ID: `39b6ce05-bc91-4f0c-af51-c106ddd05a32`
+- Attempt ID: `663ef150-368a-4172-afd5-5eacd6c45423`
 
 ✅ **Phase 5A.1: Executor Health & Liveness** — PROVEN
 
@@ -68,7 +76,10 @@ Phase 4 (Control → Executor → X) is formally complete. The full pipeline fro
    - Tweet URL: `https://x.com/Signal_Synapse/status/2015574485135487461`
    - Proof Tag: `control-post-1769385308714`
 
-2. **Level 4 REPLY** — Real execution proof pending completion
+2. **Level 4 REPLY** — Full pipeline proven with immutable evidence:
+   - Immutable Proof: [`docs/proofs/control-reply/control-reply-1769440472369.md`](docs/proofs/control-reply/control-reply-1769440472369.md)
+   - Reply URL: `https://x.com/Signal_Synapse/status/2015805866801295663`
+   - Proof Tag: `control-reply-1769440472369`
 
 ### Stability Commitment
 

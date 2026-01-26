@@ -667,7 +667,7 @@ railway logs --service xBOT --lines 200 | grep "POST_SUCCESS\|REPLY_SUCCESS" | t
   Evidence: [`docs/proofs/control-post/control-post-1769385308714.md`](docs/proofs/control-post/control-post-1769385308714.md)  
   Tweet: `https://x.com/Signal_Synapse/status/2015574485135487461`
 
-- **REPLY:** 🚧 IN PROGRESS — Real execution proof pending completion
+- **REPLY:** ✅ PROVEN — [`docs/proofs/control-reply/control-reply-1769440472369.md`](docs/proofs/control-reply/control-reply-1769440472369.md) — Reply: `https://x.com/Signal_Synapse/status/2015805866801295663`
 
 ### Phase 4 Completion Summary
 

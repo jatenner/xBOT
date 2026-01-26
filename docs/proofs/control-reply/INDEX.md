@@ -11,3 +11,6 @@ This file is append-only. Each proof run adds a new row.
 | 2026-01-26T01:38:53.804Z | `control-reply-1769391506637` | `2c6184a8-5190-4329-86e4-79e5df54042e` | `2014718451563004351` | N/A | ❌ FAIL | [`control-reply-1769391506637.md`](./control-reply-1769391506637.md) |
 | 2026-01-26T01:56:38.164Z | `control-reply-1769392281699` | `c6ce6692-065a-46bb-b2f6-6f7a228dceb5` | `2014718451563004351` | N/A | ❌ FAIL | [`control-reply-1769392281699.md`](./control-reply-1769392281699.md) |
 | 2026-01-26T02:48:12.864Z | `control-reply-1769395393590` | `8cdbf84c-2088-4b14-a3da-0896e6d999ba` | `2014718451563004351` | N/A | ⏳ IN PROGRESS | [`control-reply-1769395393590.md`](./control-reply-1769395393590.md) |
+| 2026-01-26T15:13:56.872Z | `control-reply-1769440137594` | `8905bf83-9220-4d3b-b13e-a3ebb9145512` | `2014718451563004351` | N/A | ❌ FAIL | [`control-reply-1769440137594.md`](./control-reply-1769440137594.md) |
+| 2026-01-26T15:23:42.928Z | `control-reply-1769440472369` | `aa05774f-e0fd-494c-8ea1-48e91b8df55a` | `2015580329344446898` | N/A | ⏳ IN PROGRESS | [`control-reply-1769440472369.md`](./control-reply-1769440472369.md) |
+| 2026-01-26T15:24:08.136Z | control-reply-1769440472369 | aa05774f... | N/A | ✅ PASS | https://x.com/Signal_Synapse/status/2015805866801295663 | [Report](./control-reply-1769440472369.md) |
