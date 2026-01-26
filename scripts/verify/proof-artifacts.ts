@@ -156,25 +156,31 @@ function findProvenClaims(docPath: string): ProvenClaim[] {
     }
 
     // Check for PROVEN claims related to Phase 5A.3 Stability
-    if (line.includes('PROVEN') && (line.includes('Phase 5A.3') || line.includes('Stability') || line.includes('stability') || line.includes('Long-Running') || line.includes('long-running'))) {
-      // Extract immutable report path if mentioned (check current line and context)
-      const stabilityContextLines = lines.slice(i, Math.min(i + 5, lines.length)).join(' ');
-      const immutableMatch = stabilityContextLines.match(PROOF_IMMUTABLE_PATTERNS.STABILITY);
-      const proofTagMatch = stabilityContextLines.match(/(stability-\d+)/);
-      if (immutableMatch || proofTagMatch || line.includes('Phase 5A.3')) {
-        const immutablePath = immutableMatch 
-          ? `docs/proofs/stability/${immutableMatch[1]}`
-          : proofTagMatch
-          ? `docs/proofs/stability/${proofTagMatch[1]}.md`
-          : undefined;
-        claims.push({
-          doc: docPath,
-          lineNumber: lineNum,
-          line: line.trim(),
-          type: 'STABILITY',
-          reportPath: 'docs/proofs/stability/INDEX.md', // Use INDEX as pointer
-          immutableReportPath: immutablePath,
-        });
+    // Exclude instruction text like "mark as PROVEN" or "to mark as PROVEN"
+    const isInstructionText = /mark.*as.*PROVEN|to mark.*PROVEN|update.*to.*PROVEN/i.test(line);
+    if (line.includes('PROVEN') && !isInstructionText && (line.includes('Phase 5A.3') || line.includes('Stability') || line.includes('stability') || line.includes('Long-Running') || line.includes('long-running'))) {
+      // Only detect actual PROVEN status markers, not instructions
+      const isActualProvenStatus = /Phase 5A\.3.*PROVEN|✅.*PROVEN|PROVEN.*Phase 5A\.3|Status.*PROVEN/i.test(line);
+      if (isActualProvenStatus) {
+        // Extract immutable report path if mentioned (check current line and context)
+        const stabilityContextLines = lines.slice(i, Math.min(i + 5, lines.length)).join(' ');
+        const immutableMatch = stabilityContextLines.match(PROOF_IMMUTABLE_PATTERNS.STABILITY);
+        const proofTagMatch = stabilityContextLines.match(/(stability-\d+)/);
+        if (immutableMatch || proofTagMatch || line.includes('Phase 5A.3')) {
+          const immutablePath = immutableMatch 
+            ? `docs/proofs/stability/${immutableMatch[1]}`
+            : proofTagMatch
+            ? `docs/proofs/stability/${proofTagMatch[1]}.md`
+            : undefined;
+          claims.push({
+            doc: docPath,
+            lineNumber: lineNum,
+            line: line.trim(),
+            type: 'STABILITY',
+            reportPath: 'docs/proofs/stability/INDEX.md', // Use INDEX as pointer
+            immutableReportPath: immutablePath,
+          });
+        }
       }
     }
   }

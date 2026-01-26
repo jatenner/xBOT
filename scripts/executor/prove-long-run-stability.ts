@@ -30,6 +30,34 @@ const PROOF_DURATION_MINUTES = parseInt(process.env.PROOF_DURATION_MINUTES || '3
 const PROOF_DURATION_SECONDS = PROOF_DURATION_MINUTES * 60;
 const PROOF_TAG = `stability-${Date.now()}`;
 
+// Termination tracking
+let terminationReason: {
+  signal?: string;
+  daemonExitCode?: number | null;
+  daemonKilled?: boolean;
+  stopSwitchDetected?: boolean;
+  authRequired?: boolean;
+  hardFailCondition?: string;
+  timestamp?: string;
+} | null = null;
+
+// Signal handlers for proof script
+process.on('SIGTERM', () => {
+  terminationReason = {
+    signal: 'SIGTERM',
+    timestamp: new Date().toISOString(),
+  };
+  console.error('\n[SIGTERM] Proof script received SIGTERM - recording termination reason');
+});
+
+process.on('SIGINT', () => {
+  terminationReason = {
+    signal: 'SIGINT',
+    timestamp: new Date().toISOString(),
+  };
+  console.error('\n[SIGINT] Proof script received SIGINT - recording termination reason');
+});
+
 /**
  * Get immutable report path
  */
@@ -232,9 +260,31 @@ async function main(): Promise<void> {
   
   console.log('⏳ Monitoring executor stability...\n');
   
+  // Check for STOP switch before starting (and clear it if PROOF_MODE)
+  if (fs.existsSync(STOP_SWITCH_PATH)) {
+    console.log('🔧 Preflight: Clearing STOP switch for proof run...');
+    fs.unlinkSync(STOP_SWITCH_PATH);
+  }
+  
   while (Date.now() < endTime) {
+    // Check for termination signal on proof script
+    if (terminationReason?.signal) {
+      console.error(`\n⚠️  Proof script received ${terminationReason.signal} - exiting loop`);
+      break;
+    }
+    
     const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
     const remainingSeconds = Math.floor((endTime - Date.now()) / 1000);
+    
+    // Check for STOP switch (should not exist in PROOF_MODE, but check anyway)
+    if (fs.existsSync(STOP_SWITCH_PATH)) {
+      terminationReason = {
+        stopSwitchDetected: true,
+        timestamp: new Date().toISOString(),
+      };
+      console.error(`\n⚠️  STOP switch detected - exiting loop`);
+      break;
+    }
     
     // Check for BOOT event
     if (!bootSeen) {
@@ -252,6 +302,10 @@ async function main(): Promise<void> {
         bootEventId = bootEvent.id;
         console.log(`✅ Boot event seen: ${bootEventId} (${elapsedSeconds}s)`);
       } else if (Date.now() > bootDeadline) {
+        terminationReason = {
+          hardFailCondition: 'BOOT_EVENT_NOT_SEEN_WITHIN_20S',
+          timestamp: new Date().toISOString(),
+        };
         console.error(`❌ Boot event not seen within 20s`);
         break;
       }
@@ -273,6 +327,10 @@ async function main(): Promise<void> {
         readyEventId = readyEvent.id;
         console.log(`✅ Ready event seen: ${readyEventId} (${elapsedSeconds}s)`);
       } else if (Date.now() > readyDeadline) {
+        terminationReason = {
+          hardFailCondition: 'READY_EVENT_NOT_SEEN_WITHIN_90S',
+          timestamp: new Date().toISOString(),
+        };
         console.error(`❌ Ready event not seen within 90s`);
         break;
       }
@@ -319,9 +377,30 @@ async function main(): Promise<void> {
       .gte('created_at', new Date(startTime).toISOString())
       .limit(1);
     
+    // Check for AUTH_REQUIRED events
+    const { data: authRequiredEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_AUTH_REQUIRED')
+      .gte('created_at', new Date(startTime).toISOString())
+      .limit(1);
+    
+    if (authRequiredEvents && authRequiredEvents.length > 0) {
+      terminationReason = {
+        authRequired: true,
+        timestamp: new Date().toISOString(),
+      };
+      console.error(`❌ AUTH_REQUIRED event detected - authentication needed`);
+      break;
+    }
+    
     if (crashEvents && crashEvents.length > 0) {
       hasCrash = true;
       crashEventId = crashEvents[0].id;
+      terminationReason = {
+        hardFailCondition: 'CRASH_EVENT_DETECTED',
+        timestamp: new Date().toISOString(),
+      };
       console.error(`❌ Crash event detected: ${crashEventId}`);
       break;
     }
@@ -329,13 +408,22 @@ async function main(): Promise<void> {
     // Check for browser pool exhaustion
     if (await checkBrowserPoolExhaustion(supabase, startTime)) {
       hasBrowserPoolExhaustion = true;
+      terminationReason = {
+        hardFailCondition: 'BROWSER_POOL_EXHAUSTION_DETECTED',
+        timestamp: new Date().toISOString(),
+      };
       console.error(`❌ Browser pool exhaustion detected`);
       break;
     }
     
     // Check if daemon died
     if (daemonProcess.killed || daemonProcess.exitCode !== null) {
-      console.error(`❌ Daemon exited unexpectedly (exit code: ${daemonProcess.exitCode})`);
+      terminationReason = {
+        daemonKilled: daemonProcess.killed,
+        daemonExitCode: daemonProcess.exitCode,
+        timestamp: new Date().toISOString(),
+      };
+      console.error(`❌ Daemon exited unexpectedly (killed: ${daemonProcess.killed}, exit code: ${daemonProcess.exitCode})`);
       break;
     }
     
@@ -422,6 +510,26 @@ async function main(): Promise<void> {
 - **End Time:** ${new Date(Date.now()).toISOString()}
 - **Duration:** ${elapsedMinutes} minutes
 - **Health OK Events:** ${actualHealthOk} events over ${elapsedMinutes} minutes (avg: ${(actualHealthOk / Math.max(elapsedMinutes, 1)).toFixed(2)} per minute)
+
+${!durationCompleted && terminationReason ? `
+## Termination / Early Exit Reason
+
+**Duration Not Completed:** Proof ended after ${elapsedMinutes} minutes (expected: ${PROOF_DURATION_MINUTES} minutes)
+
+**Termination Details:**
+${terminationReason.signal ? `- **Signal Received:** ${terminationReason.signal}${terminationReason.timestamp ? ` (at ${terminationReason.timestamp})` : ''}` : ''}
+${terminationReason.daemonExitCode !== undefined ? `- **Daemon Exit Code:** ${terminationReason.daemonExitCode}${terminationReason.daemonKilled ? ' (daemon was killed)' : ''}` : ''}
+${terminationReason.stopSwitchDetected ? `- **STOP Switch Detected:** Yes (STOP_EXECUTOR file found)` : ''}
+${terminationReason.authRequired ? `- **Auth Required:** Yes (EXECUTOR_AUTH_REQUIRED event detected)` : ''}
+${terminationReason.hardFailCondition ? `- **Hard Fail Condition:** ${terminationReason.hardFailCondition}` : ''}
+${terminationReason.timestamp && !terminationReason.signal ? `- **Termination Time:** ${terminationReason.timestamp}` : ''}
+
+**Recommendation:** Re-run proof ensuring:
+- No external processes send SIGTERM/SIGINT to proof script
+- STOP_EXECUTOR file does not exist before/during proof
+- System does not sleep/hibernate during proof (use \`caffeinate\` on macOS)
+- Full ${PROOF_DURATION_MINUTES}-minute duration is allowed to complete
+` : ''}
 
 ## Result
 
