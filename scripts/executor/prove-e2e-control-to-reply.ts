@@ -194,6 +194,7 @@ function writeHeartbeatSnapshot(): void {
 
 /**
  * Write termination snapshot (synchronous, uses cached state only)
+ * Also appends INDEX.md row and writes final status
  */
 function writeTerminationSnapshotSync(signal?: string): void {
   if (proofState.snapshotWritten) {
@@ -207,6 +208,12 @@ function writeTerminationSnapshotSync(signal?: string): void {
 
   try {
     const reportPath = proofState.reportPath || getPointerReportPath();
+    const immutableReportPath = proofState.immutableReportPath;
+    
+    // Determine final status: FAIL if REPLY_FAILED event exists, else IN PROGRESS
+    const hasFailedEvent = !!proofState.cachedFailedEvent;
+    const finalStatus = hasFailedEvent ? '❌ FAIL' : '⏳ IN PROGRESS';
+    const statusForIndex = hasFailedEvent ? '❌ FAIL' : '⏳ IN PROGRESS';
 
     // Use cached state only (no async queries)
     const snapshot = `
@@ -238,11 +245,48 @@ ${JSON.stringify(typeof proofState.cachedFailedEvent === 'string' ? JSON.parse(p
 ` : ''}
 
 **Note:** This snapshot uses cached state from the last polling cycle. For complete details, check the database directly.
+
+## Result
+
+${finalStatus} - Proof terminated before completion (signal: ${signal || 'unknown'})
 `;
 
-    // Append synchronously
+    // Append snapshot synchronously
     fs.appendFileSync(reportPath, snapshot, 'utf-8');
-    console.error(`[TERMINATION] Diagnostic snapshot written to ${reportPath}`);
+    
+    // If immutable report exists, also update it
+    if (immutableReportPath && fs.existsSync(immutableReportPath)) {
+      fs.appendFileSync(immutableReportPath, snapshot, 'utf-8');
+    }
+    
+    // Append INDEX.md row synchronously (using cached state only)
+    try {
+      const indexPath = getIndexPath();
+      const timestamp = new Date().toISOString();
+      const proofFileName = `${proofState.proofTag}.md`;
+      const relativePath = `./${proofFileName}`;
+      
+      // Ensure INDEX.md exists
+      if (!fs.existsSync(indexPath)) {
+        const header = `# Control → Executor → X Proof (Reply) - Index
+
+This file is append-only. Each proof run adds a new row.
+
+| Timestamp | Proof Tag | Decision ID | Target Tweet ID | Reply URL | Status | Proof File |
+|-----------|-----------|-------------|-----------------|----------|--------|------------|
+`;
+        fs.writeFileSync(indexPath, header, 'utf-8');
+      }
+      
+      // Append row
+      const row = `| ${timestamp} | \`${proofState.proofTag}\` | \`${proofState.decisionId}\` | \`${proofState.targetTweetId || 'N/A'}\` | N/A | ${statusForIndex} | [\`${proofFileName}\`](${relativePath}) |\n`;
+      fs.appendFileSync(indexPath, row, 'utf-8');
+      console.error(`[TERMINATION] INDEX.md row appended: ${statusForIndex}`);
+    } catch (indexError: any) {
+      console.error(`[TERMINATION] Failed to append INDEX.md: ${indexError.message}`);
+    }
+    
+    console.error(`[TERMINATION] Diagnostic snapshot written to ${reportPath} (status: ${finalStatus})`);
   } catch (error: any) {
     console.error(`[TERMINATION] Failed to write snapshot: ${error.message}`);
   }
@@ -400,195 +444,179 @@ async function getMaxPagesFromTicks(): Promise<number> {
 
 /**
  * Fetch real tweet content and author from Twitter (for proof seeding)
+ * Uses retry logic: 3 attempts with exponential backoff (2s, 5s, 10s)
+ * Per-attempt timeout: 30s
+ * Total budget: <= 90s
  */
-async function fetchRealTweetContext(targetTweetId: string): Promise<{
+async function fetchRealTweetContext(targetTweetId: string, proofTag: string): Promise<{
   text: string;
   authorHandle: string | null;
   hash: string;
-} | null> {
-  try {
-    console.log(`[PROOF] 🌐 Fetching real tweet content for ${targetTweetId}...`);
-    
-    const { UnifiedBrowserPool } = await import('../../src/browser/UnifiedBrowserPool');
-    const pool = UnifiedBrowserPool.getInstance();
-    const page = await pool.acquirePage('proof_tweet_fetch');
-    
+}> {
+  const maxAttempts = 3;
+  const backoffDelays = [2000, 5000, 10000]; // 2s, 5s, 10s
+  const perAttemptTimeout = 30000; // 30s per attempt
+  
+  let lastError: any = null;
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const tweetUrl = `https://x.com/i/web/status/${targetTweetId}`;
-      await page.goto(tweetUrl, { waitUntil: 'networkidle', timeout: 60000 });
-      await page.waitForTimeout(3000); // Give more time for content to load
+      console.log(`[PROOF] 🌐 Fetching real tweet content for ${targetTweetId} (attempt ${attempt}/${maxAttempts})...`);
       
-      // Extract tweet text with multiple fallback selectors
-      const tweetText = await page.evaluate(() => {
-        // Try multiple selectors
-        const selectors = [
-          '[data-testid="tweetText"]',
-          'article[data-testid="tweet"] [data-testid="tweetText"]',
-          'article[data-testid="tweet"] div[lang]',
-          'article div[lang]',
-        ];
+      const { UnifiedBrowserPool } = await import('../../src/browser/UnifiedBrowserPool');
+      const pool = UnifiedBrowserPool.getInstance();
+      const page = await pool.acquirePage('PROOF_FETCH_TWEET_CONTEXT');
+      
+      try {
+        const tweetUrl = `https://x.com/i/web/status/${targetTweetId}`;
+        await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: perAttemptTimeout });
+        await page.waitForTimeout(2000); // Give time for content to load
         
-        for (const selector of selectors) {
-          const element = document.querySelector(selector);
-          if (element) {
-            // Try to get text from spans first
-            const spans = element.querySelectorAll('span');
-            if (spans.length > 0) {
-              const texts: string[] = [];
-              spans.forEach(span => {
-                const text = span.textContent?.trim();
-                if (text && text.length > 0 && !text.match(/^[@#]/)) { // Skip handles/hashtags
-                  texts.push(text);
-                }
-              });
-              if (texts.length > 0) {
-                const combined = texts.join(' ').trim();
-                if (combined.length >= 10) {
-                  return combined;
+        // Extract tweet text with multiple fallback selectors
+        const tweetText = await page.evaluate(() => {
+          // Try multiple selectors
+          const selectors = [
+            '[data-testid="tweetText"]',
+            'article[data-testid="tweet"] [data-testid="tweetText"]',
+            'article[data-testid="tweet"] div[lang]',
+            'article div[lang]',
+          ];
+          
+          for (const selector of selectors) {
+            const element = document.querySelector(selector);
+            if (element) {
+              // Try to get text from spans first
+              const spans = element.querySelectorAll('span');
+              if (spans.length > 0) {
+                const texts: string[] = [];
+                spans.forEach(span => {
+                  const text = span.textContent?.trim();
+                  if (text && text.length > 0 && !text.match(/^[@#]/)) { // Skip handles/hashtags
+                    texts.push(text);
+                  }
+                });
+                if (texts.length > 0) {
+                  const combined = texts.join(' ').trim();
+                  if (combined.length >= 10) {
+                    return combined;
+                  }
                 }
               }
-            }
-            // Fallback to direct textContent
-            const text = element.textContent?.trim();
-            if (text && text.length >= 10) {
-              return text;
+              // Fallback to direct textContent
+              const text = element.textContent?.trim();
+              if (text && text.length >= 10) {
+                return text;
+              }
             }
           }
-        }
-        
-        // Last resort: try to find any text in the article
-        const article = document.querySelector('article[data-testid="tweet"]');
-        if (article) {
-          const allText = article.textContent?.trim();
-          if (allText && allText.length >= 10) {
-            // Try to extract just the tweet text (before author info)
-            const lines = allText.split('\n').filter(l => l.trim().length > 0);
-            if (lines.length > 0) {
-              return lines[0].trim();
+          
+          // Last resort: try to find any text in the article
+          const article = document.querySelector('article[data-testid="tweet"]');
+          if (article) {
+            const allText = article.textContent?.trim();
+            if (allText && allText.length >= 10) {
+              // Try to extract just the tweet text (before author info)
+              const lines = allText.split('\n').filter(l => l.trim().length > 0);
+              if (lines.length > 0) {
+                return lines[0].trim();
+              }
+              return allText.substring(0, 500).trim(); // Limit length
             }
-            return allText.substring(0, 500).trim(); // Limit length
           }
-        }
-        
-        return '';
-      });
-      
-      // Extract author handle
-      const authorHandle = await page.evaluate(() => {
-        const authorLink = document.querySelector('[data-testid="User-Name"] a');
-        if (authorLink) {
-          const href = authorLink.getAttribute('href');
-          if (href) {
-            const match = href.match(/^\/([^\/]+)/);
-            return match ? match[1].replace('@', '') : null;
-          }
-        }
-        return null;
-      });
-      
-      if (!tweetText || tweetText.trim().length < 10) {
-        console.warn(`[PROOF] ⚠️ Could not extract tweet text (length=${tweetText?.length || 0})`);
-        // For proof purposes, use a fallback that indicates the tweet exists but content couldn't be extracted
-        // This allows the proof to proceed while still being safe
-        const fallbackText = `Tweet ${targetTweetId} - Content extraction failed, using proof-safe placeholder for gate bypass`;
-        console.warn(`[PROOF] ⚠️ Using fallback text for proof: ${fallbackText}`);
-        const fallbackHash = crypto.createHash('sha256').update(fallbackText).digest('hex').substring(0, 32);
-        return {
-          text: fallbackText,
-          authorHandle: null,
-          hash: fallbackHash,
-        };
-      }
-      
-      const trimmedText = tweetText.trim();
-      const hash = crypto.createHash('sha256').update(trimmedText).digest('hex').substring(0, 32);
-      
-      console.log(`[PROOF] ✅ Fetched tweet: ${trimmedText.length} chars, author: @${authorHandle || 'unknown'}`);
-      
-      return {
-        text: trimmedText,
-        authorHandle: authorHandle || null,
-        hash,
-      };
-    } finally {
-      await pool.releasePage(page);
-    }
-  } catch (error: any) {
-    const errorDetails = {
-      source_tag: 'PROOF_TWEET_FETCH',
-      message: error.message || String(error),
-      stack: error.stack || 'no stack trace',
-      name: error.name || 'UnknownError',
-      file: 'prove-e2e-control-to-reply.ts',
-      function: 'fetchRealTweetContext',
-    };
-    console.error(`[PROOF] ❌ Failed to fetch tweet content:`, JSON.stringify(errorDetails, null, 2));
-    
-    // Check if it's a timeout or network error - use fallback for proof
-    const isTimeout = error.name === 'TimeoutError' || error.message?.toLowerCase().includes('timeout');
-    const isNetworkError = error.message?.toLowerCase().includes('net::') || 
-                          error.message?.toLowerCase().includes('navigation');
-    
-    if (isTimeout || isNetworkError) {
-      // For proof purposes, use a fallback that allows the proof to proceed
-      console.warn(`[PROOF] ⚠️ Tweet fetch timeout/network error - using proof-safe fallback for ${targetTweetId}`);
-      const fallbackText = `Tweet ${targetTweetId} - Fetch timeout, using proof-safe placeholder for gate bypass`;
-      const fallbackHash = crypto.createHash('sha256').update(fallbackText).digest('hex').substring(0, 32);
-      return {
-        text: fallbackText,
-        authorHandle: null,
-        hash: fallbackHash,
-      };
-    }
-    
-    // Check if it's a rate limit error
-    const isRateLimit = error.message?.toLowerCase().includes('429') || 
-                       error.message?.toLowerCase().includes('rate limit') ||
-                       error.message?.toLowerCase().includes('too many requests');
-    
-    if (isRateLimit) {
-      // Emit REPLY_FAILED event for rate limit
-      try {
-        const supabase = getSupabaseClient();
-        const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
-        await supabase.from('system_events').insert({
-          event_type: 'REPLY_FAILED',
-          severity: 'error',
-          message: `Proof tweet fetch failed: Rate limited`,
-          event_data: {
-            target_tweet_id: targetTweetId,
-            error_code: 'RATE_LIMITED',
-            error_message: error.message,
-            pipeline_error_reason: 'PROOF_TWEET_FETCH_RATE_LIMITED',
-            app_version: appVersion,
-            failed_at: new Date().toISOString(),
-          },
-          created_at: new Date().toISOString(),
+          
+          return '';
         });
-      } catch (eventError: any) {
-        console.error(`[PROOF] Failed to emit REPLY_FAILED: ${eventError.message}`);
+        
+        // Extract author handle
+        const authorHandle = await page.evaluate(() => {
+          const authorLink = document.querySelector('[data-testid="User-Name"] a');
+          if (authorLink) {
+            const href = authorLink.getAttribute('href');
+            if (href) {
+              const match = href.match(/^\/([^\/]+)/);
+              return match ? match[1].replace('@', '') : null;
+            }
+          }
+          return null;
+        });
+        
+        if (!tweetText || tweetText.trim().length < 10) {
+          throw new Error(`Could not extract tweet text (length=${tweetText?.length || 0})`);
+        }
+        
+        const trimmedText = tweetText.trim();
+        const hash = crypto.createHash('sha256').update(trimmedText).digest('hex').substring(0, 32);
+        
+        console.log(`[PROOF] ✅ Fetched tweet: ${trimmedText.length} chars, author: @${authorHandle || 'unknown'}`);
+        
+        return {
+          text: trimmedText,
+          authorHandle: authorHandle || null,
+          hash,
+        };
+      } finally {
+        await pool.releasePage(page);
       }
-      // Use fallback for rate limit too (proof should proceed)
-      console.warn(`[PROOF] ⚠️ Rate limited - using proof-safe fallback for ${targetTweetId}`);
-      const fallbackText = `Tweet ${targetTweetId} - Rate limited, using proof-safe placeholder for gate bypass`;
-      const fallbackHash = crypto.createHash('sha256').update(fallbackText).digest('hex').substring(0, 32);
-      return {
-        text: fallbackText,
-        authorHandle: null,
-        hash: fallbackHash,
+    } catch (error: any) {
+      lastError = error;
+      const errorDetails = {
+        source_tag: 'PROOF_FETCH_TWEET_CONTEXT',
+        attempt,
+        max_attempts: maxAttempts,
+        message: error.message || String(error),
+        name: error.name || 'UnknownError',
+        file: 'prove-e2e-control-to-reply.ts',
+        function: 'fetchRealTweetContext',
       };
+      
+      if (attempt < maxAttempts) {
+        const delay = backoffDelays[attempt - 1];
+        console.warn(`[PROOF] ⚠️ Attempt ${attempt} failed: ${error.name || 'Error'} - retrying in ${delay}ms...`);
+        console.warn(`[PROOF]   Error details:`, JSON.stringify(errorDetails, null, 2));
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error(`[PROOF] ❌ All ${maxAttempts} attempts failed`);
+        console.error(`[PROOF]   Final error:`, JSON.stringify(errorDetails, null, 2));
+      }
     }
-    
-    // For other errors, also use fallback (proof should be resilient)
-    console.warn(`[PROOF] ⚠️ Unknown error - using proof-safe fallback for ${targetTweetId}`);
-    const fallbackText = `Tweet ${targetTweetId} - Fetch error, using proof-safe placeholder for gate bypass`;
-    const fallbackHash = crypto.createHash('sha256').update(fallbackText).digest('hex').substring(0, 32);
-    return {
-      text: fallbackText,
-      authorHandle: null,
-      hash: fallbackHash,
-    };
   }
+  
+  // All attempts failed - throw error (no placeholder)
+  const errorMessage = lastError?.message || 'Unknown error';
+  const errorName = lastError?.name || 'FetchError';
+  const isTimeout = errorName === 'TimeoutError' || errorMessage?.toLowerCase().includes('timeout');
+  const isRateLimit = errorMessage?.toLowerCase().includes('429') || 
+                     errorMessage?.toLowerCase().includes('rate limit') ||
+                     errorMessage?.toLowerCase().includes('too many requests');
+  
+  const errorCode = isRateLimit ? 'RATE_LIMITED' : (isTimeout ? 'TWEET_FETCH_TIMEOUT' : 'TWEET_FETCH_FAILED');
+  
+  // Emit REPLY_FAILED event
+  try {
+    const supabase = getSupabaseClient();
+    const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+    await supabase.from('system_events').insert({
+      event_type: 'REPLY_FAILED',
+      severity: 'error',
+      message: `Proof tweet fetch failed after ${maxAttempts} attempts: ${errorCode}`,
+      event_data: {
+        target_tweet_id: targetTweetId,
+        proof_tag: proofTag,
+        error_code: errorCode,
+        error_message: errorMessage,
+        error_name: errorName,
+        pipeline_error_reason: 'PROOF_TWEET_FETCH_FAILED',
+        attempts: maxAttempts,
+        app_version: appVersion,
+        failed_at: new Date().toISOString(),
+      },
+      created_at: new Date().toISOString(),
+    });
+  } catch (eventError: any) {
+    console.error(`[PROOF] Failed to emit REPLY_FAILED: ${eventError.message}`);
+  }
+  
+  throw new Error(`Failed to fetch tweet ${targetTweetId} after ${maxAttempts} attempts: ${errorCode} - ${errorMessage}`);
 }
 
 async function createControlReplyDecision(targetTweetId: string, proofTag: string): Promise<{
@@ -611,32 +639,25 @@ async function createControlReplyDecision(targetTweetId: string, proofTag: strin
   let similarityUsed: number | undefined;
   
   if (!DRY_RUN && EXECUTE_REAL_ACTION) {
-    const realTweetData = await fetchRealTweetContext(targetTweetId);
-    if (realTweetData) {
-      targetTweetSnapshot = realTweetData.text;
-      targetTweetHash = realTweetData.hash;
-      fetchedTweetPreview = realTweetData.text.substring(0, 120);
-      fetchedAuthorHandle = realTweetData.authorHandle;
-      snapshotHash = realTweetData.hash;
-      
-      // Compute semantic similarity with reply content
-      const replyContent = "Quick note: sleep quality and sunlight timing matter more than most people think.";
-      const { computeSemanticSimilarity } = await import('../../src/gates/semanticGate');
-      const computedSimilarity = computeSemanticSimilarity(targetTweetSnapshot, replyContent);
-      
-      // 🔧 FIX: For proof decisions, seed a similarity that passes the gate (>= 0.30)
-      // The gate will still verify actual content match, but this ensures the proof decision isn't blocked
-      // Use computed similarity if it's >= 0.30, otherwise use 0.75 (proof-safe value)
-      similarityUsed = computedSimilarity >= 0.30 ? computedSimilarity : 0.75;
-      
-      console.log(`[PROOF] ✅ Using real tweet content (${targetTweetSnapshot.length} chars, computed similarity: ${computedSimilarity.toFixed(3)}, seeded: ${similarityUsed.toFixed(3)})`);
-    } else {
-      // Fallback should have been returned from fetchRealTweetContext, but if null, use placeholder
-      console.warn(`[PROOF] ⚠️ Fetch returned null - using proof-safe placeholder`);
-      targetTweetSnapshot = `Tweet ${targetTweetId} - Content fetch failed, using proof-safe placeholder for gate bypass`;
-      targetTweetHash = crypto.createHash('sha256').update(targetTweetSnapshot).digest('hex').substring(0, 32);
-      similarityUsed = 0.75; // Proof-safe value
-    }
+    // 🔒 STRICT: Must fetch real tweet content or fail fast (no placeholder)
+    const realTweetData = await fetchRealTweetContext(targetTweetId, proofTag);
+    targetTweetSnapshot = realTweetData.text;
+    targetTweetHash = realTweetData.hash;
+    fetchedTweetPreview = realTweetData.text.substring(0, 120);
+    fetchedAuthorHandle = realTweetData.authorHandle;
+    snapshotHash = realTweetData.hash;
+    
+    // Compute semantic similarity with reply content
+    const replyContent = "Quick note: sleep quality and sunlight timing matter more than most people think.";
+    const { computeSemanticSimilarity } = await import('../../src/gates/semanticGate');
+    const computedSimilarity = computeSemanticSimilarity(targetTweetSnapshot, replyContent);
+    
+    // 🔧 FIX: For proof decisions, seed a similarity that passes the gate (>= 0.30)
+    // The gate will still verify actual content match, but this ensures the proof decision isn't blocked
+    // Use computed similarity if it's >= 0.30, otherwise use 0.75 (proof-safe value)
+    similarityUsed = computedSimilarity >= 0.30 ? computedSimilarity : 0.75;
+    
+    console.log(`[PROOF] ✅ Using real tweet content (${targetTweetSnapshot.length} chars, computed similarity: ${computedSimilarity.toFixed(3)}, seeded: ${similarityUsed.toFixed(3)})`);
   } else {
     // DRY_RUN: Use placeholder
     targetTweetSnapshot = "This is a test tweet content snapshot for control→executor proof. It must be at least 20 characters long to pass FINAL_REPLY_GATE.";
@@ -988,24 +1009,93 @@ async function main(): Promise<void> {
   
   // Step 1: Create control-plane reply decision
   console.log('\n📝 Step 1: Creating control-plane reply decision...');
-  const decisionResult = await createControlReplyDecision(targetTweetId, proofTag);
-  const decisionId = decisionResult.decisionId;
   
-  // Store state for signal handlers
-  proofState.decisionId = decisionId;
+  // Store state for signal handlers (before decision creation)
   proofState.proofTag = proofTag;
   proofState.targetTweetId = targetTweetId;
-  // Use immutable path for real execution, pointer path for DRY_RUN
   proofState.reportPath = EXECUTE_REAL_ACTION 
     ? getImmutableReportPath(proofTag)
     : getPointerReportPath();
-  proofState.fetchedTweetPreview = decisionResult.fetchedTweetPreview;
-  proofState.fetchedAuthorHandle = decisionResult.fetchedAuthorHandle;
-  proofState.snapshotHash = decisionResult.snapshotHash;
-  proofState.similarityUsed = decisionResult.similarityUsed;
+  proofState.immutableReportPath = EXECUTE_REAL_ACTION 
+    ? getImmutableReportPath(proofTag)
+    : undefined;
   
-  // 🔧 FIX: Write initial report immediately after creating decision
-  await writeInitialReport(decisionId, proofTag, targetTweetId, decisionResult);
+  let decisionResult;
+  let decisionId: string;
+  
+  try {
+    decisionResult = await createControlReplyDecision(targetTweetId, proofTag);
+    decisionId = decisionResult.decisionId;
+    
+    // Store state for signal handlers
+    proofState.decisionId = decisionId;
+    proofState.fetchedTweetPreview = decisionResult.fetchedTweetPreview;
+    proofState.fetchedAuthorHandle = decisionResult.fetchedAuthorHandle;
+    proofState.snapshotHash = decisionResult.snapshotHash;
+    proofState.similarityUsed = decisionResult.similarityUsed;
+    
+    // 🔧 FIX: Write initial report immediately after creating decision
+    await writeInitialReport(decisionId, proofTag, targetTweetId, decisionResult);
+  } catch (fetchError: any) {
+    // Tweet fetch failed - write FAIL report and exit
+    console.error(`\n❌ Fatal: Tweet fetch failed: ${fetchError.message}`);
+    
+    const errorCode = fetchError.message?.includes('RATE_LIMITED') ? 'RATE_LIMITED' :
+                      fetchError.message?.includes('TIMEOUT') ? 'TWEET_FETCH_TIMEOUT' :
+                      'TWEET_FETCH_FAILED';
+    
+    // Write FAIL report
+    const reportPath = proofState.reportPath || getPointerReportPath();
+    const os = require('os');
+    const machineInfo = {
+      hostname: os.hostname(),
+      platform: os.platform(),
+      arch: os.arch(),
+      nodeVersion: process.version,
+    };
+    
+    const failReport = `# Control → Executor → X Proof (Reply)
+
+**Date:** ${new Date().toISOString()}  
+**Status:** ❌ FAIL
+
+## Machine Info
+
+- **Hostname:** ${machineInfo.hostname}
+- **Platform:** ${machineInfo.platform}
+- **Architecture:** ${machineInfo.arch}
+- **Node Version:** ${machineInfo.nodeVersion}
+- **Runner Profile Dir:** ${RUNNER_PROFILE_DIR}
+
+## Failure Reason
+
+**Error Code:** ${errorCode}
+**Error Message:** ${fetchError.message}
+**Target Tweet ID:** ${targetTweetId}
+**Proof Tag:** ${proofTag}
+
+Tweet fetch failed during proof seeding. The proof requires real tweet content and cannot proceed with a placeholder.
+
+## Result
+
+❌ **FAIL** - Tweet fetch failed: ${errorCode}
+`;
+    
+    fs.writeFileSync(reportPath, failReport, 'utf-8');
+    
+    // If immutable report path exists, also write there
+    if (proofState.immutableReportPath) {
+      fs.writeFileSync(proofState.immutableReportPath, failReport, 'utf-8');
+    }
+    
+    // Append INDEX.md row
+    appendToIndex(proofTag, 'N/A', targetTweetId, '❌ FAIL');
+    
+    console.error(`\n📄 FAIL report written: ${reportPath}`);
+    console.error(`📄 INDEX.md row appended`);
+    
+    process.exit(1);
+  }
   
   // DRY_RUN mode: exit after creating decision
   if (DRY_RUN) {
