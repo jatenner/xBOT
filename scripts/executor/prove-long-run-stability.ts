@@ -5,10 +5,7 @@
  * Proves executor can run continuously without degradation over extended periods.
  * 
  * Usage:
- *   # Default 30 minutes
  *   pnpm run executor:prove:long-run-stability
- * 
- *   # Custom duration (in minutes)
  *   PROOF_DURATION_MINUTES=60 pnpm run executor:prove:long-run-stability
  * 
  * Safety:
@@ -27,6 +24,8 @@ import { getSupabaseClient } from '../../src/db/index';
 const RUNNER_PROFILE_DIR = resolveRunnerProfileDir();
 const STOP_SWITCH_PATH = RUNNER_PROFILE_PATHS.stopSwitch();
 const PIDFILE_PATH = RUNNER_PROFILE_PATHS.pidFile();
+
+// Duration: default 30 minutes, override via env
 const PROOF_DURATION_MINUTES = parseInt(process.env.PROOF_DURATION_MINUTES || '30', 10);
 const PROOF_DURATION_SECONDS = PROOF_DURATION_MINUTES * 60;
 const PROOF_TAG = `stability-${Date.now()}`;
@@ -59,7 +58,6 @@ function getIndexPath(): string {
 function appendToIndex(
   proofTag: string,
   status: string,
-  durationMinutes: number,
   bootEventId?: string,
   readyEventId?: string,
   healthOkCount?: number,
@@ -77,14 +75,14 @@ function appendToIndex(
 
 This file is append-only. Each proof run adds a new row.
 
-| Timestamp | Proof Tag | Duration (min) | Status | Boot Event ID | Ready Event ID | Health OK Count | Crash Event ID | Proof File |
-|-----------|-----------|----------------|--------|---------------|----------------|-----------------|----------------|------------|
+| Timestamp | Proof Tag | Status | Duration (min) | Boot Event ID | Ready Event ID | Health OK Count | Crash Event ID | Proof File |
+|-----------|-----------|--------|----------------|---------------|----------------|-----------------|----------------|------------|
 `;
       fs.writeFileSync(indexPath, header, 'utf-8');
     }
     
     // Append new row
-    const row = `| ${timestamp} | \`${proofTag}\` | ${durationMinutes} | ${status} | ${bootEventId || 'N/A'} | ${readyEventId || 'N/A'} | ${healthOkCount || 0} | ${crashEventId || 'N/A'} | [\`${proofFileName}\`](${relativePath}) |\n`;
+    const row = `| ${timestamp} | \`${proofTag}\` | ${status} | ${PROOF_DURATION_MINUTES} | ${bootEventId || 'N/A'} | ${readyEventId || 'N/A'} | ${healthOkCount || 0} | ${crashEventId || 'N/A'} | [\`${proofFileName}\`](${relativePath}) |\n`;
     fs.appendFileSync(indexPath, row, 'utf-8');
   } catch (error: any) {
     console.warn(`⚠️  Failed to append to INDEX: ${error.message}`);
@@ -126,6 +124,7 @@ function writeInitialReport(proofTag: string, durationMinutes: number): string {
 - **Ready Event:** N/A (pending)
 - **Health OK Events:** N/A (pending)
 - **Crash Events:** N/A (pending)
+- **Browser Pool Status:** N/A (pending)
 
 ## Results
 
@@ -136,7 +135,7 @@ function writeInitialReport(proofTag: string, durationMinutes: number): string {
 | Health OK Events (≥1 per 60s, no gaps >90s) | ⏳ | pending | HARD |
 | No Crash Events | ⏳ | pending | HARD |
 | No Browser Pool Exhaustion | ⏳ | pending | HARD |
-| Duration Completed (${durationMinutes} min) | ⏳ | pending | HARD |
+| Duration Completed | ⏳ | pending | HARD |
 
 ---
 
@@ -149,95 +148,26 @@ function writeInitialReport(proofTag: string, durationMinutes: number): string {
 }
 
 /**
- * Write final report
+ * Check for browser pool exhaustion events
  */
-function writeFinalReport(
-  reportPath: string,
-  proofTag: string,
-  durationMinutes: number,
-  bootEventId: string | null,
-  readyEventId: string | null,
-  healthOkEvents: Array<{ id: string; created_at: string }>,
-  crashEventId: string | null,
-  maxGapSeconds: number,
-  passed: boolean
-): void {
-  const os = require('os');
-  const machineInfo = {
-    hostname: os.hostname(),
-    platform: os.platform(),
-    arch: os.arch(),
-    nodeVersion: process.version,
-  };
+async function checkBrowserPoolExhaustion(supabase: any, startTime: number): Promise<boolean> {
+  const { data: exhaustionEvents } = await supabase
+    .from('system_events')
+    .select('id, created_at, event_data')
+    .in('event_type', ['EXECUTOR_HEALTH_DEGRADED', 'BROWSER_POOL_EXHAUSTED', 'BROWSER_POOL_SATURATED'])
+    .gte('created_at', new Date(startTime).toISOString())
+    .limit(10);
   
-  const bootPass = bootEventId !== null;
-  const readyPass = readyEventId !== null;
-  const healthOkPass = healthOkEvents.length >= Math.floor(durationMinutes);
-  const noGapsPass = maxGapSeconds <= 90;
-  const noCrashPass = crashEventId === null;
-  const durationPass = true; // If we're writing final report, duration completed
-  
-  const allPassed = bootPass && readyPass && healthOkPass && noGapsPass && noCrashPass && durationPass;
-  
-  const finalReport = `
-
----
-
-## Final Results
-
-**Status:** ${allPassed ? '✅ PASS' : '❌ FAIL'}
-
-### Evidence Summary
-
-- **Proof Tag:** ${proofTag}
-- **Duration:** ${durationMinutes} minutes (${Math.floor(durationMinutes * 60)} seconds)
-- **Boot Event ID:** ${bootEventId || 'N/A'}
-- **Ready Event ID:** ${readyEventId || 'N/A'}
-- **Health OK Events:** ${healthOkEvents.length} total
-- **Max Gap Between Health OK Events:** ${maxGapSeconds} seconds
-- **Crash Event ID:** ${crashEventId || 'N/A (none)'}
-
-### Health OK Event Timeline
-
-${healthOkEvents.length > 0 ? healthOkEvents.map((e, i) => {
-  const timestamp = new Date(e.created_at).toISOString();
-  const elapsed = i > 0 ? Math.floor((new Date(e.created_at).getTime() - new Date(healthOkEvents[i-1].created_at).getTime()) / 1000) : 0;
-  return `- **Event ${i+1}:** ${e.id} at ${timestamp}${i > 0 ? ` (gap: ${elapsed}s)` : ''}`;
-}).join('\n') : '- No Health OK events recorded'}
-
-### Results Table
-
-| Check | Status | Evidence | Assertion |
-|-------|--------|----------|-----------|
-| Boot Event (20s) | ${bootPass ? '✅' : '❌'} | ${bootEventId || 'not seen'} | HARD |
-| Ready Event (90s) | ${readyPass ? '✅' : '❌'} | ${readyEventId || 'not seen'} | HARD |
-| Health OK Events (≥${Math.floor(durationMinutes)} events) | ${healthOkPass ? '✅' : '❌'} | ${healthOkEvents.length} events | HARD |
-| No Gaps >90s | ${noGapsPass ? '✅' : '❌'} | max gap: ${maxGapSeconds}s | HARD |
-| No Crash Events | ${noCrashPass ? '✅' : '❌'} | ${crashEventId || 'none'} | HARD |
-| Duration Completed | ${durationPass ? '✅' : '❌'} | ${durationMinutes} minutes | HARD |
-
-## Result
-
-${allPassed ? '✅ **PASS**' : '❌ **FAIL**'} - Long-running executor stability proof ${allPassed ? 'completed successfully' : 'failed'}.
-
-${allPassed ? '' : `
-### Failure Details
-
-${!bootPass ? '- Boot event not seen within 20s\n' : ''}${!readyPass ? '- Ready event not seen within 90s\n' : ''}${!healthOkPass ? `- Insufficient Health OK events: ${healthOkEvents.length} < ${Math.floor(durationMinutes)}\n` : ''}${!noGapsPass ? `- Gap between Health OK events exceeded 90s: ${maxGapSeconds}s\n` : ''}${!noCrashPass ? `- Crash event detected: ${crashEventId}\n` : ''}
-`}
-`;
-
-  fs.appendFileSync(reportPath, finalReport, 'utf-8');
-  console.log(`📝 Final report written to ${reportPath}`);
+  return (exhaustionEvents?.length || 0) > 0;
 }
 
 async function main(): Promise<void> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('  🧪 PROOF Phase 5A.3: Long-Running Executor Stability');
+  console.log('   🧪 PROOF Phase 5A.3: Long-Running Executor Stability');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
   console.log(`📋 Proof Tag: ${PROOF_TAG}`);
-  console.log(`📋 Duration: ${PROOF_DURATION_MINUTES} minutes (${PROOF_DURATION_SECONDS} seconds)\n`);
+  console.log(`⏱️  Duration: ${PROOF_DURATION_MINUTES} minutes (${PROOF_DURATION_SECONDS} seconds)\n`);
   
   const reportPath = writeInitialReport(PROOF_TAG, PROOF_DURATION_MINUTES);
   
@@ -281,29 +211,30 @@ async function main(): Promise<void> {
   // Poll for events
   let bootEventId: string | null = null;
   let readyEventId: string | null = null;
-  const healthOkEvents: Array<{ id: string; created_at: string }> = [];
+  let healthOkEvents: Array<{ id: string; created_at: string }> = [];
   let crashEventId: string | null = null;
   
   let bootSeen = false;
   let readySeen = false;
+  let hasBrowserPoolExhaustion = false;
+  let hasCrash = false;
   
   const bootDeadline = startTime + 20 * 1000; // 20 seconds
   const readyDeadline = startTime + 90 * 1000; // 90 seconds
   const endTime = startTime + PROOF_DURATION_SECONDS * 1000;
   
   let lastHealthOkTime: number | null = null;
-  let maxGapSeconds = 0;
-  
-  console.log(`⏳ Monitoring executor for ${PROOF_DURATION_MINUTES} minutes...\n`);
+  let maxHealthOkGap = 0;
   
   // Poll every 10 seconds
+  const pollInterval = 10000;
+  let lastPollTime = startTime;
+  
+  console.log('⏳ Monitoring executor stability...\n');
+  
   while (Date.now() < endTime) {
     const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
     const remainingSeconds = Math.floor((endTime - Date.now()) / 1000);
-    
-    if (elapsedSeconds % 60 === 0 && elapsedSeconds > 0) {
-      console.log(`⏱️  ${Math.floor(elapsedSeconds / 60)}/${PROOF_DURATION_MINUTES} minutes elapsed (${healthOkEvents.length} Health OK events)`);
-    }
     
     // Check for BOOT event
     if (!bootSeen) {
@@ -347,7 +278,7 @@ async function main(): Promise<void> {
       }
     }
     
-    // Check for HEALTH_OK events
+    // Check for HEALTH_OK events (continuous monitoring)
     if (readySeen) {
       const { data: healthOkEventsData } = await supabase
         .from('system_events')
@@ -357,37 +288,48 @@ async function main(): Promise<void> {
         .order('created_at', { ascending: true });
       
       if (healthOkEventsData) {
-        // Update our list with any new events
-        for (const event of healthOkEventsData) {
-          if (!healthOkEvents.find(e => e.id === event.id)) {
-            healthOkEvents.push({ id: event.id, created_at: event.created_at });
-            
-            // Calculate gap from previous event
-            if (lastHealthOkTime !== null) {
-              const gapSeconds = Math.floor((new Date(event.created_at).getTime() - lastHealthOkTime) / 1000);
-              if (gapSeconds > maxGapSeconds) {
-                maxGapSeconds = gapSeconds;
-              }
-            }
-            lastHealthOkTime = new Date(event.created_at).getTime();
+        healthOkEvents = healthOkEventsData;
+        
+        // Check for gaps >90s
+        for (let i = 1; i < healthOkEvents.length; i++) {
+          const prevTime = new Date(healthOkEvents[i - 1].created_at).getTime();
+          const currTime = new Date(healthOkEvents[i].created_at).getTime();
+          const gapSeconds = (currTime - prevTime) / 1000;
+          if (gapSeconds > maxHealthOkGap) {
+            maxHealthOkGap = gapSeconds;
           }
+        }
+        
+        if (healthOkEvents.length > 0) {
+          lastHealthOkTime = new Date(healthOkEvents[healthOkEvents.length - 1].created_at).getTime();
+        }
+        
+        // Log progress every 60 seconds
+        if (elapsedSeconds % 60 === 0 && elapsedSeconds > 0) {
+          console.log(`📊 Progress: ${elapsedSeconds}s elapsed, ${remainingSeconds}s remaining, ${healthOkEvents.length} HEALTH_OK events, max gap: ${maxHealthOkGap.toFixed(1)}s`);
         }
       }
     }
     
     // Check for CRASH events
-    const { data: crashEvent } = await supabase
+    const { data: crashEvents } = await supabase
       .from('system_events')
       .select('id, created_at, event_data')
       .eq('event_type', 'EXECUTOR_DAEMON_CRASH')
       .gte('created_at', new Date(startTime).toISOString())
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
     
-    if (crashEvent && !crashEventId) {
-      crashEventId = crashEvent.id;
+    if (crashEvents && crashEvents.length > 0) {
+      hasCrash = true;
+      crashEventId = crashEvents[0].id;
       console.error(`❌ Crash event detected: ${crashEventId}`);
+      break;
+    }
+    
+    // Check for browser pool exhaustion
+    if (await checkBrowserPoolExhaustion(supabase, startTime)) {
+      hasBrowserPoolExhaustion = true;
+      console.error(`❌ Browser pool exhaustion detected`);
       break;
     }
     
@@ -397,82 +339,127 @@ async function main(): Promise<void> {
       break;
     }
     
-    // Sleep 10 seconds before next check
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    // Sleep before next check
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
   }
   
-  const actualDurationSeconds = Math.floor((Date.now() - startTime) / 1000);
-  const actualDurationMinutes = Math.floor(actualDurationSeconds / 60);
+  // Final check: ensure we got at least one HEALTH_OK per 60s on average
+  const expectedMinHealthOk = Math.floor(PROOF_DURATION_SECONDS / 60);
+  const actualHealthOk = healthOkEvents.length;
+  const healthOkPass = actualHealthOk >= expectedMinHealthOk && maxHealthOkGap <= 90;
   
-  console.log(`\n⏱️  Proof duration completed: ${actualDurationMinutes} minutes (${actualDurationSeconds} seconds)`);
-  console.log(`📊 Health OK events: ${healthOkEvents.length}`);
-  console.log(`📊 Max gap: ${maxGapSeconds}s\n`);
+  // Check final gap (time since last HEALTH_OK)
+  const finalGap = lastHealthOkTime ? (Date.now() - lastHealthOkTime) / 1000 : Infinity;
+  const finalGapPass = finalGap <= 90;
+  
+  // Duration completed
+  const durationCompleted = Date.now() >= endTime;
   
   // Stop daemon
-  console.log('🛑 Stopping daemon...');
+  console.log('\n🛑 Stopping daemon...');
   fs.writeFileSync(STOP_SWITCH_PATH, '', 'utf-8');
-  await new Promise(resolve => setTimeout(resolve, 10000));
+  await new Promise(resolve => setTimeout(resolve, 5000));
   if (daemonProcess.exitCode === null) {
     daemonProcess.kill();
   }
   
-  // Final checks
-  const bootPass = bootEventId !== null;
-  const readyPass = readyEventId !== null;
-  const healthOkPass = healthOkEvents.length >= Math.floor(PROOF_DURATION_MINUTES);
-  const noGapsPass = maxGapSeconds <= 90;
-  const noCrashPass = crashEventId === null;
-  const durationPass = actualDurationSeconds >= PROOF_DURATION_SECONDS * 0.95; // Allow 5% tolerance
-  
-  const allPassed = bootPass && readyPass && healthOkPass && noGapsPass && noCrashPass && durationPass;
+  // Determine pass/fail
+  const pass = bootSeen && readySeen && healthOkPass && finalGapPass && !hasCrash && !hasBrowserPoolExhaustion && durationCompleted;
   
   // Write final report
-  writeFinalReport(
-    reportPath,
-    PROOF_TAG,
-    PROOF_DURATION_MINUTES,
-    bootEventId,
-    readyEventId,
-    healthOkEvents,
-    crashEventId,
-    maxGapSeconds,
-    allPassed
-  );
+  const os = require('os');
+  const machineInfo = {
+    hostname: os.hostname(),
+    platform: os.platform(),
+    arch: os.arch(),
+    nodeVersion: process.version,
+  };
+  
+  const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
+  
+  const report = `# Long-Running Executor Stability Proof (Phase 5A.3)
+
+**Date:** ${new Date().toISOString()}  
+**Status:** ${pass ? '✅ PASS' : '❌ FAIL'}
+**Proof Tag:** ${PROOF_TAG}
+**Duration:** ${PROOF_DURATION_MINUTES} minutes (actual: ${elapsedMinutes} minutes)
+
+## Machine Info
+
+- **Hostname:** ${machineInfo.hostname}
+- **Platform:** ${machineInfo.platform}
+- **Architecture:** ${machineInfo.arch}
+- **Node Version:** ${machineInfo.nodeVersion}
+- **Runner Profile Dir:** ${RUNNER_PROFILE_DIR}
+
+## Results
+
+| Check | Status | Evidence | Assertion |
+|-------|--------|----------|-----------|
+| Boot Event (20s) | ${bootSeen ? '✅' : '❌'} | ${bootEventId || 'N/A'} | HARD |
+| Ready Event (90s) | ${readySeen ? '✅' : '❌'} | ${readyEventId || 'N/A'} | HARD |
+| Health OK Events (≥1 per 60s) | ${healthOkPass ? '✅' : '❌'} | ${actualHealthOk} events (expected: ≥${expectedMinHealthOk}) | HARD |
+| No Gaps >90s | ${finalGapPass && maxHealthOkGap <= 90 ? '✅' : '❌'} | Max gap: ${maxHealthOkGap.toFixed(1)}s, Final gap: ${finalGap.toFixed(1)}s | HARD |
+| No Crash Events | ${!hasCrash ? '✅' : '❌'} | ${crashEventId || 'N/A'} | HARD |
+| No Browser Pool Exhaustion | ${!hasBrowserPoolExhaustion ? '✅' : '❌'} | ${hasBrowserPoolExhaustion ? 'Detected' : 'None'} | HARD |
+| Duration Completed | ${durationCompleted ? '✅' : '❌'} | ${elapsedMinutes}/${PROOF_DURATION_MINUTES} minutes | HARD |
+
+## Evidence
+
+- **Proof Tag:** ${PROOF_TAG}
+- **Boot Event ID:** ${bootEventId || 'N/A'}
+- **Ready Event ID:** ${readyEventId || 'N/A'}
+- **Health OK Event Count:** ${actualHealthOk}
+- **Health OK Event IDs:** ${healthOkEvents.length > 0 ? healthOkEvents.slice(0, 10).map(e => e.id).join(', ') + (healthOkEvents.length > 10 ? ` ... (${healthOkEvents.length} total)` : '') : 'N/A'}
+- **Max Health OK Gap:** ${maxHealthOkGap.toFixed(1)}s
+- **Final Gap:** ${finalGap.toFixed(1)}s
+- **Crash Event ID:** ${crashEventId || 'N/A'}
+- **Browser Pool Exhaustion:** ${hasBrowserPoolExhaustion ? 'Yes' : 'No'}
+
+## Timeline Summary
+
+- **Start Time:** ${new Date(startTime).toISOString()}
+- **End Time:** ${new Date(Date.now()).toISOString()}
+- **Duration:** ${elapsedMinutes} minutes
+- **Health OK Events:** ${actualHealthOk} events over ${elapsedMinutes} minutes (avg: ${(actualHealthOk / Math.max(elapsedMinutes, 1)).toFixed(2)} per minute)
+
+## Result
+
+${pass ? '✅ **PASS** - Executor ran continuously for ' + PROOF_DURATION_MINUTES + ' minutes without degradation' : '❌ **FAIL** - One or more stability checks failed'}
+`;
+
+  fs.writeFileSync(reportPath, report, 'utf-8');
+  console.log(`📄 Report written: ${reportPath}`);
   
   // Append to INDEX
   appendToIndex(
     PROOF_TAG,
-    allPassed ? '✅ PASS' : '❌ FAIL',
-    PROOF_DURATION_MINUTES,
+    pass ? '✅ PASS' : '❌ FAIL',
     bootEventId || undefined,
     readyEventId || undefined,
-    healthOkEvents.length,
+    actualHealthOk,
     crashEventId || undefined
   );
+  console.log(`📄 Index updated: ${getIndexPath()}`);
   
-  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  if (allPassed) {
-    console.log('           ✅ TEST PASSED');
-  } else {
-    console.log('           ❌ TEST FAILED');
+  if (!pass) {
+    console.error('\n❌ STABILITY CHECKS FAILED:');
+    if (!bootSeen) console.error('   - Boot event not seen within 20s');
+    if (!readySeen) console.error('   - Ready event not seen within 90s');
+    if (!healthOkPass) console.error(`   - Health OK events: ${actualHealthOk} (expected: ≥${expectedMinHealthOk})`);
+    if (maxHealthOkGap > 90) console.error(`   - Max Health OK gap: ${maxHealthOkGap.toFixed(1)}s (max allowed: 90s)`);
+    if (finalGap > 90) console.error(`   - Final gap: ${finalGap.toFixed(1)}s (max allowed: 90s)`);
+    if (hasCrash) console.error(`   - Crash event detected: ${crashEventId}`);
+    if (hasBrowserPoolExhaustion) console.error('   - Browser pool exhaustion detected');
+    if (!durationCompleted) console.error(`   - Duration not completed: ${elapsedMinutes}/${PROOF_DURATION_MINUTES} minutes`);
+    process.exit(1);
   }
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
-  console.log('Long-Running Stability Results:');
-  console.log(`  boot_event_seen: ${bootPass} ${bootPass ? '✅' : '❌'}`);
-  console.log(`  ready_event_seen: ${readyPass} ${readyPass ? '✅' : '❌'}`);
-  console.log(`  health_ok_events: ${healthOkEvents.length} (expected: ≥${Math.floor(PROOF_DURATION_MINUTES)}) ${healthOkPass ? '✅' : '❌'}`);
-  console.log(`  max_gap_seconds: ${maxGapSeconds} (expected: ≤90) ${noGapsPass ? '✅' : '❌'}`);
-  console.log(`  no_crash_events: ${noCrashPass} ${noCrashPass ? '✅' : '❌'}`);
-  console.log(`  duration_completed: ${actualDurationMinutes} min (expected: ${PROOF_DURATION_MINUTES} min) ${durationPass ? '✅' : '❌'}`);
-  console.log('');
-  console.log(`📄 Report: ${reportPath}`);
-  console.log(`📄 INDEX: ${getIndexPath()}`);
-  
-  process.exit(allPassed ? 0 : 1);
+  console.log(`\n✅ Executor stability proof passed: ${actualHealthOk} HEALTH_OK events over ${elapsedMinutes} minutes`);
+  process.exit(0);
 }
 
-main().catch(async (error) => {
-  console.error('\n❌ Fatal error:', error);
+main().catch((error) => {
+  console.error('Fatal error:', error);
   process.exit(1);
 });
