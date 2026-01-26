@@ -1381,6 +1381,25 @@ Rate limit detection, active heartbeats, bypass events, and clearing are working
 - Active Event IDs: `37a0ca72-789f-4e11-a472-a061170c849f`, `a51b8491-4bb6-4874-ae44-1cf53e420185`
 - Cleared Event ID: `1628aa97-763a-4bc2-a790-71ef68390a39`
 
+#### Phase 5A.3: Long-Running Executor Stability — 🚧 PLANNED
+
+**Status:** 🚧 **PLANNED**
+
+Proves executor can run continuously without degradation over extended periods (default: 30 minutes). Validates continuous health event emission, absence of crashes, and stable operation.
+
+**Requirements:**
+- EXECUTOR_HEALTH_BOOT seen within 20s
+- EXECUTOR_HEALTH_READY seen within 90s
+- ≥1 EXECUTOR_HEALTH_OK every 60s (no gaps >90s)
+- No EXECUTOR_DAEMON_CRASH events
+- No browser pool exhaustion
+- Duration completed successfully
+
+**Proof Script:** `pnpm run executor:prove:long-run-stability`  
+**Custom Duration:** `PROOF_DURATION_MINUTES=60 pnpm run executor:prove:long-run-stability`
+
+**Evidence:** Will be written to `docs/proofs/stability/` after proof passes.
+
 **Remaining Phase 5A Items (Planned):**
 
 #### 5A.1 Goals

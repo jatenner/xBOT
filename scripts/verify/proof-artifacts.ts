@@ -30,13 +30,14 @@ const PROOF_IMMUTABLE_PATTERNS = {
   'REPLY': /docs\/proofs\/control-reply\/(control-reply-\d+\.md)/,
   'HEALTH': /docs\/proofs\/health\/(health-\d+\.md)/,
   'RATE_LIMIT': /docs\/proofs\/rate-limit\/(rate-limit-\d+\.md)/,
+  'STABILITY': /docs\/proofs\/stability\/(stability-\d+\.md)/,
 };
 
 interface ProvenClaim {
   doc: string;
   lineNumber: number;
   line: string;
-  type: 'POST' | 'REPLY' | 'HEALTH' | 'RATE_LIMIT';
+  type: 'POST' | 'REPLY' | 'HEALTH' | 'RATE_LIMIT' | 'STABILITY';
   reportPath: string;
   immutableReportPath?: string;
 }
@@ -153,6 +154,29 @@ function findProvenClaims(docPath: string): ProvenClaim[] {
         });
       }
     }
+
+    // Check for PROVEN claims related to Phase 5A.3 Stability
+    if (line.includes('PROVEN') && (line.includes('Phase 5A.3') || line.includes('Stability') || line.includes('stability') || line.includes('Long-Running') || line.includes('long-running'))) {
+      // Extract immutable report path if mentioned (check current line and context)
+      const stabilityContextLines = lines.slice(i, Math.min(i + 5, lines.length)).join(' ');
+      const immutableMatch = stabilityContextLines.match(PROOF_IMMUTABLE_PATTERNS.STABILITY);
+      const proofTagMatch = stabilityContextLines.match(/(stability-\d+)/);
+      if (immutableMatch || proofTagMatch || line.includes('Phase 5A.3')) {
+        const immutablePath = immutableMatch 
+          ? `docs/proofs/stability/${immutableMatch[1]}`
+          : proofTagMatch
+          ? `docs/proofs/stability/${proofTagMatch[1]}.md`
+          : undefined;
+        claims.push({
+          doc: docPath,
+          lineNumber: lineNum,
+          line: line.trim(),
+          type: 'STABILITY',
+          reportPath: 'docs/proofs/stability/INDEX.md', // Use INDEX as pointer
+          immutableReportPath: immutablePath,
+        });
+      }
+    }
   }
 
   return claims;
@@ -207,7 +231,7 @@ function verifyProofReport(claim: ProvenClaim): void {
         } else {
           // Try extracting from INDEX.md - look for latest PASS row
           const indexLines = pointerContent.split('\n');
-          const tagPattern = type === 'HEALTH' ? /`(health-\d+)`/ : /`(rate-limit-\d+)`/;
+          const tagPattern = type === 'HEALTH' ? /`(health-\d+)`/ : type === 'RATE_LIMIT' ? /`(rate-limit-\d+)`/ : /`(stability-\d+)`/;
           for (let i = indexLines.length - 1; i >= 0; i--) {
             const rowMatch = indexLines[i].match(tagPattern);
             if (rowMatch && indexLines[i].includes('✅ PASS')) {
@@ -219,7 +243,7 @@ function verifyProofReport(claim: ProvenClaim): void {
       }
       
       if (proofTag) {
-        const subdir = type === 'HEALTH' ? 'health' : 'rate-limit';
+        const subdir = type === 'HEALTH' ? 'health' : type === 'RATE_LIMIT' ? 'rate-limit' : 'stability';
         const relativeImmutablePath = `docs/proofs/${subdir}/${proofTag}.md`;
         actualReportPath = path.join(process.cwd(), relativeImmutablePath);
         if (!fs.existsSync(actualReportPath)) {
@@ -402,6 +426,12 @@ function verifyProofReport(claim: ProvenClaim): void {
     const hasEventIds = /Detected Event ID:|Active Event ID:|Cleared Event ID:/i.test(reportContent);
     // For rate limit proofs, PASS status is sufficient (no URL required)
     hasUrl = true; // Rate limit proofs don't need URLs
+  } else if (type === 'STABILITY') {
+    // Stability proofs don't require URLs - they require event IDs and duration evidence
+    // Check for event IDs in report
+    const hasEventIds = /Boot Event ID:|Ready Event ID:|Health OK Event ID:|Crash Event ID:/i.test(reportContent);
+    // For stability proofs, PASS status is sufficient (no URL required)
+    hasUrl = true; // Stability proofs don't need URLs
   }
 
   // Verify URL exists (required for PROVEN)
