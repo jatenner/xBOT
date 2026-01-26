@@ -4483,6 +4483,105 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
         console.error(`[POSTING_QUEUE] ❌ POSTING FAILED: ${postError.message}`);
         console.error(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 100)}..."`);
       
+        // 🔒 PROOF_MODE FAIL-FAST: For proof decisions with duplicate errors, fail immediately (no retry)
+        const decisionFeatures = (decision.features || {}) as Record<string, any>;
+        const proofTag = decisionFeatures.proof_tag;
+        const isProofDecision = !!proofTag && String(proofTag).startsWith('control-reply-');
+        const isDuplicateError = postError.message?.includes('Duplicate reply prevented') || 
+                                 postError.message?.includes('DUPLICATE_PREVENTED');
+        
+        if (isProofDecision && isDuplicateError && decision.decision_type === 'reply') {
+          console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Duplicate error for proof decision - failing fast (no retry)`);
+          
+          // Get previous reply ID from error message or query DB
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          const { data: existingReply } = await supabase
+            .from('content_metadata')
+            .select('tweet_id, posted_at')
+            .eq('decision_type', 'reply')
+            .eq('target_tweet_id', decision.target_tweet_id)
+            .eq('status', 'posted')
+            .limit(1)
+            .maybeSingle();
+          
+          const previousReplyId = existingReply?.tweet_id || null;
+          const failedAt = new Date().toISOString();
+          
+          // Emit REPLY_FAILED immediately
+          try {
+            const appVersion = process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+            await supabase.from('system_events').insert({
+              event_type: 'REPLY_FAILED',
+              severity: 'error',
+              message: `Proof reply duplicate prevented: decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id}`,
+              event_data: {
+                decision_id: decision.id,
+                target_tweet_id: decision.target_tweet_id,
+                proof_tag: proofTag,
+                error_code: 'DUPLICATE_PREVENTED',
+                pipeline_error_reason: 'DUPLICATE_PREVENTED',
+                error_message: postError.message,
+                previous_reply_tweet_id: previousReplyId,
+                failed_at: failedAt,
+                app_version: appVersion,
+              },
+              created_at: new Date().toISOString(),
+            });
+            console.log(`[REPLY_FAILED] decision_id=${decision.id} target_tweet_id=${decision.target_tweet_id} error_code=DUPLICATE_PREVENTED previous_reply=${previousReplyId}`);
+          } catch (eventError: any) {
+            console.error(`[POSTING_QUEUE] ⚠️ Failed to emit REPLY_FAILED: ${eventError.message}`);
+          }
+          
+          // Mark decision as failed/blocked
+          try {
+            await supabase
+              .from('content_metadata')
+              .update({
+                status: 'blocked',
+                error_message: `Duplicate reply prevented: Already replied to ${decision.target_tweet_id}${previousReplyId ? ` (reply ID: ${previousReplyId})` : ''}`,
+                updated_at: failedAt,
+              })
+              .eq('decision_id', decision.id);
+            
+            // Also update reply_decisions if it exists
+            await supabase
+              .from('reply_decisions')
+              .update({
+                posting_completed_at: failedAt,
+                pipeline_error_reason: 'DUPLICATE_PREVENTED',
+              })
+              .eq('decision_id', decision.id);
+            
+            console.log(`[POSTING_QUEUE] ✅ Proof decision marked as blocked (duplicate prevented)`);
+          } catch (updateError: any) {
+            console.error(`[POSTING_QUEUE] ⚠️ Failed to update decision status: ${updateError.message}`);
+          }
+          
+          // Use deterministic failure recorder as well
+          try {
+            const { recordDeterministicFailure } = await import('../utils/deterministicFailureRecorder');
+            await recordDeterministicFailure({
+              decision_id: decision.id,
+              decision_type: 'reply',
+              pipeline_source: 'postingQueue',
+              proof_tag: proofTag,
+              error_name: 'DuplicateReplyPrevented',
+              error_message: postError.message,
+              step: 'postReply_duplicate_check',
+              http_status: null,
+              is_timeout: false,
+              is_rate_limit: false,
+            });
+          } catch (recordError: any) {
+            console.error(`[POSTING_QUEUE] ⚠️ Failed to record deterministic failure: ${recordError.message}`);
+          }
+          
+          // Fail fast - don't retry
+          await updatePostingMetrics('error');
+          return false;
+        }
+      
         // 🔥 SUCCESS VERIFICATION: Check if tweet actually posted despite error (common with timeouts)
         const isTimeout = /timeout|exceeded/i.test(postError.message);
         if (isTimeout) {

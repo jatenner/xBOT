@@ -215,6 +215,13 @@ function writeTerminationSnapshotSync(signal?: string): void {
     const finalStatus = hasFailedEvent ? '❌ FAIL' : '⏳ IN PROGRESS';
     const statusForIndex = hasFailedEvent ? '❌ FAIL' : '⏳ IN PROGRESS';
 
+    // 🔒 PREFER EVENT-BASED TRUTH: Check for claim events (CLAIM_OK, CLAIM_ATTEMPT, REPLY_ATTEMPT)
+    const hasClaimOk = (proofState.cachedClaimOkEvents?.length || 0) > 0;
+    const hasClaimAttempt = (proofState.cachedClaimAttemptEvents?.length || 0) > 0;
+    const hasReplyAttempt = (proofState.cachedReplyAttemptEvents?.length || 0) > 0;
+    const claimedViaEvents = hasClaimOk || hasClaimAttempt || hasReplyAttempt;
+    const claimedStatus = claimedViaEvents ? 'yes (via events)' : (proofState.cachedDecisionStatus?.claimed ? 'yes (via status)' : 'no');
+
     // Use cached state only (no async queries)
     const snapshot = `
 ---
@@ -229,7 +236,7 @@ function writeTerminationSnapshotSync(signal?: string): void {
 - **Target Tweet ID:** ${proofState.targetTweetId || 'N/A'}
 - **Proof Tag:** ${proofState.proofTag}
 - **Final Status:** ${proofState.cachedDecisionStatus?.status || 'unknown'}
-- **Claimed:** ${proofState.cachedDecisionStatus?.claimed ? 'yes' : 'no'}
+- **Claimed:** ${claimedStatus}
 
 ### Outcomes (from cache)
 - **Attempt ID:** ${proofState.cachedAttemptId || 'N/A'}
@@ -238,6 +245,9 @@ function writeTerminationSnapshotSync(signal?: string): void {
 ### Events (from cache)
 - **Event IDs:** ${proofState.cachedEventIds?.length ? proofState.cachedEventIds.join(', ') : 'N/A'}
 - **Failed Event Present:** ${proofState.cachedFailedEvent ? 'yes' : 'no'}
+- **Proof Events:** Candidate=${proofState.cachedCandidateEvents?.length || 0}, Selected=${proofState.cachedSelectedEvents?.length || 0}, Skipped=${proofState.cachedSkippedEvents?.length || 0}
+- **Claim Events:** Attempt=${proofState.cachedClaimAttemptEvents?.length || 0}, OK=${proofState.cachedClaimOkEvents?.length || 0}, Fail=${proofState.cachedClaimFailEvents?.length || 0}, Stall=${proofState.cachedClaimStallEvents?.length || 0}
+- **Reply Attempt Events:** ${proofState.cachedReplyAttemptEvents?.length || 0}
 ${proofState.cachedFailedEvent ? `
 \`\`\`json
 ${JSON.stringify(typeof proofState.cachedFailedEvent === 'string' ? JSON.parse(proofState.cachedFailedEvent) : proofState.cachedFailedEvent, null, 2)}
