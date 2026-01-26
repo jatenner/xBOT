@@ -1729,6 +1729,26 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
           } catch (eventError: any) {
             console.error(`[POSTING_QUEUE] Failed to emit proof candidate event: ${eventError.message}`);
           }
+        } else if (proofTag && String(proofTag).startsWith('control-reply-')) {
+          try {
+            await supabase.from('system_events').insert({
+              event_type: 'EXECUTOR_PROOF_REPLY_CANDIDATE_FOUND',
+              severity: 'info',
+              message: `Proof reply candidate found: ${decision.id}`,
+              event_data: {
+                decision_id: decision.id,
+                proof_tag: proofTag,
+                scheduled_at: decision.created_at,
+                status: decision.status,
+                pipeline_source: decisionFeatures.pipeline_source || null,
+                target_tweet_id: decision.target_tweet_id || null,
+              },
+              created_at: new Date().toISOString(),
+            });
+            console.log(`[POSTING_QUEUE] 🎯 Proof reply candidate found: ${decision.id} (proof_tag: ${proofTag})`);
+          } catch (eventError: any) {
+            console.error(`[POSTING_QUEUE] Failed to emit proof reply candidate event: ${eventError.message}`);
+          }
         }
       }
     }
@@ -1745,7 +1765,7 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
       return 0; // Keep original order for same priority
     });
     
-    // Emit event when proof decision is selected (for POST decisions)
+    // Emit event when proof decision is selected (for POST and REPLY decisions)
     for (const decision of readyDecisions) {
       const decisionFeatures = (decision.features || {}) as Record<string, any>;
       const proofTag = decisionFeatures.proof_tag;
@@ -1770,6 +1790,27 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
           console.log(`[POSTING_QUEUE] 🎯 Proof post selected: ${decision.id} (proof_tag: ${proofTag || 'none'})`);
         } catch (eventError: any) {
           console.error(`[POSTING_QUEUE] Failed to emit proof selection event: ${eventError.message}`);
+        }
+      } else if (hasProofTag && decision.decision_type === 'reply') {
+        try {
+          await supabase.from('system_events').insert({
+            event_type: 'EXECUTOR_PROOF_REPLY_SELECTED',
+            severity: 'info',
+            message: `Proof reply selected: ${decision.id}`,
+            event_data: {
+              decision_id: decision.id,
+              proof_tag: proofTag || null,
+              decision_type: decision.decision_type,
+              scheduled_at: decision.created_at,
+              status: decision.status,
+              pipeline_source: decisionFeatures.pipeline_source || decision.pipeline_source || null,
+              target_tweet_id: decision.target_tweet_id || null,
+            },
+            created_at: new Date().toISOString(),
+          });
+          console.log(`[POSTING_QUEUE] 🎯 Proof reply selected: ${decision.id} (proof_tag: ${proofTag || 'none'})`);
+        } catch (eventError: any) {
+          console.error(`[POSTING_QUEUE] Failed to emit proof reply selection event: ${eventError.message}`);
         }
       }
     }
@@ -3779,6 +3820,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             message: `Failed to claim decision: ${decision.id}`,
             event_data: {
               decision_id: decision.id,
+              decision_type: decision.decision_type || 'unknown',
               proof_tag: proofTag || null,
               pipeline_source: pipelineSource,
               error: claimError.message,

@@ -1,14 +1,14 @@
 # Control → Executor → X Proof (Reply) [Latest]
 
-**Last Updated:** 2026-01-26T01:24:58.936Z
+**Last Updated:** 2026-01-26T01:56:38.165Z
 **Status:** ❌ FAIL
 
 
 ## Latest Proof
 
-- **Proof Tag:** control-reply-1769390379133
-- **Canonical Report:** [`proofs/control-reply/control-reply-1769390379133.md`](proofs/control-reply/control-reply-1769390379133.md)
-- **Timestamp:** 2026-01-26T01:24:58.936Z
+- **Proof Tag:** control-reply-1769392281699
+- **Canonical Report:** [`proofs/control-reply/control-reply-1769392281699.md`](proofs/control-reply/control-reply-1769392281699.md)
+- **Timestamp:** 2026-01-26T01:56:38.165Z
 
 ---
 

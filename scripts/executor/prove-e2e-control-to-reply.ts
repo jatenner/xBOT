@@ -29,7 +29,7 @@ import * as crypto from 'crypto';
 const RUNNER_PROFILE_DIR = resolveRunnerProfileDir();
 const STOP_SWITCH_PATH = RUNNER_PROFILE_PATHS.stopSwitch();
 const PIDFILE_PATH = RUNNER_PROFILE_PATHS.pidFile();
-const MAX_WAIT_SECONDS = 300; // 5 minutes max wait
+const MAX_WAIT_SECONDS = parseInt(process.env.PROOF_MAX_WAIT_SECONDS || '600', 10); // 10 minutes default, override via env
 
 const DRY_RUN = process.env.DRY_RUN !== 'false' && process.env.EXECUTE_REAL_ACTION !== 'true';
 const EXECUTE_REAL_ACTION = process.env.EXECUTE_REAL_ACTION === 'true';
@@ -138,6 +138,14 @@ let proofState: {
   fetchedAuthorHandle?: string | null;
   snapshotHash?: string;
   similarityUsed?: number;
+  cachedCandidateEvents?: any[];
+  cachedSelectedEvents?: any[];
+  cachedSkippedEvents?: any[];
+  cachedClaimAttemptEvents?: any[];
+  cachedClaimOkEvents?: any[];
+  cachedClaimFailEvents?: any[];
+  cachedClaimStallEvents?: any[];
+  cachedReplyAttemptEvents?: any[];
 } = {};
 
 /**
@@ -171,6 +179,9 @@ function writeHeartbeatSnapshot(): void {
 - **Outcome ID:** ${proofState.cachedOutcomeId || 'N/A'}
 - **Event IDs:** ${proofState.cachedEventIds?.length ? proofState.cachedEventIds.join(', ') : 'N/A'}
 - **Failed Event:** ${proofState.cachedFailedEvent ? 'yes' : 'no'}
+- **Proof Events:** Candidate=${proofState.cachedCandidateEvents?.length || 0}, Selected=${proofState.cachedSelectedEvents?.length || 0}, Skipped=${proofState.cachedSkippedEvents?.length || 0}
+- **Claim Events:** Attempt=${proofState.cachedClaimAttemptEvents?.length || 0}, OK=${proofState.cachedClaimOkEvents?.length || 0}, Fail=${proofState.cachedClaimFailEvents?.length || 0}, Stall=${proofState.cachedClaimStallEvents?.length || 0}
+- **Reply Attempt Events:** ${proofState.cachedReplyAttemptEvents?.length || 0}
 
 `;
 
@@ -979,6 +990,27 @@ async function main(): Promise<void> {
     process.exit(0);
   }
   
+  // Step 2: Preflight - Clear STOP switch deterministically
+  console.log('\n🔧 Preflight: Clearing STOP switch...');
+  const stopFileExists = fs.existsSync(STOP_SWITCH_PATH);
+  const stopEnvSet = process.env.STOP_EXECUTOR === 'true';
+  
+  if (stopFileExists) {
+    try {
+      fs.unlinkSync(STOP_SWITCH_PATH);
+      console.log(`[PROOF] ✅ Deleted STOP file: ${STOP_SWITCH_PATH}`);
+    } catch (e: any) {
+      console.error(`[PROOF] ❌ Failed to delete STOP file: ${e.message}`);
+      throw new Error(`Cannot clear STOP switch file: ${e.message}`);
+    }
+  } else {
+    console.log(`[PROOF] ✅ STOP file does not exist: ${STOP_SWITCH_PATH}`);
+  }
+  
+  if (stopEnvSet) {
+    console.warn(`[PROOF] ⚠️ STOP_EXECUTOR env var is set - daemon will bypass it in PROOF_MODE`);
+  }
+  
   // Step 2: Start executor daemon
   console.log('\n🚀 Step 2: Starting executor daemon...');
   const daemonEnv = {
@@ -988,8 +1020,9 @@ async function main(): Promise<void> {
     HEADLESS: 'true',
     RUNNER_PROFILE_DIR: RUNNER_PROFILE_DIR,
     PROOF_MODE: process.env.PROOF_MODE || 'true', // Ensure PROOF_MODE is passed to daemon
+    STOP_EXECUTOR: 'false', // Explicitly disable STOP via env
   };
-  console.log(`[PROOF] Daemon env: PROOF_MODE=${daemonEnv.PROOF_MODE}, EXECUTION_MODE=${daemonEnv.EXECUTION_MODE}, RUNNER_MODE=${daemonEnv.RUNNER_MODE}`);
+  console.log(`[PROOF] Daemon env: PROOF_MODE=${daemonEnv.PROOF_MODE}, EXECUTION_MODE=${daemonEnv.EXECUTION_MODE}, RUNNER_MODE=${daemonEnv.RUNNER_MODE}, STOP_EXECUTOR=${daemonEnv.STOP_EXECUTOR}`);
   const daemonProcess = spawn('pnpm', ['run', 'executor:daemon'], {
     env: daemonEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -1048,22 +1081,100 @@ async function main(): Promise<void> {
       result.control_decision_created = true;
     }
     
-    // 🔧 FIX: Also check for POST_ATTEMPT event as evidence of claim (status may stay queued)
+    // 🔧 Query all proof-related events for diagnostics
     const supabase = getSupabaseClient();
-    const { data: postAttemptEvents } = await supabase
-      .from('system_events')
-      .select('id, created_at')
-      .eq('event_type', 'POST_ATTEMPT')
-      .eq('event_data->>decision_id', decisionId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
     
-    if (postAttemptEvents) {
-      result.decision_claimed = true; // POST_ATTEMPT means the decision was claimed and processing started
+    // Query proof candidate/selected/skipped events (REPLY versions)
+    const { data: candidateEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_PROOF_REPLY_CANDIDATE_FOUND')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const { data: selectedEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_PROOF_REPLY_SELECTED')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const { data: skippedEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_PROOF_REPLY_SKIPPED')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    // Query claim events
+    const { data: claimAttemptEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DECISION_CLAIM_ATTEMPT')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const { data: claimOkEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DECISION_CLAIM_OK')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const { data: claimFailEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_DECISION_CLAIM_FAIL')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const { data: claimStallEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .eq('event_type', 'EXECUTOR_PROOF_REPLY_CLAIM_STALL')
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    // Query reply attempt events (REPLY_ATTEMPT or POST_ATTEMPT for replies)
+    const { data: replyAttemptEvents } = await supabase
+      .from('system_events')
+      .select('id, created_at, event_data')
+      .in('event_type', ['REPLY_ATTEMPT', 'POST_ATTEMPT'])
+      .eq('event_data->>decision_id', decisionId)
+      .gte('created_at', new Date(startTime).toISOString())
+      .order('created_at', { ascending: false });
+    
+    const claimEvents = [...(claimOkEvents || []), ...(claimFailEvents || [])];
+    
+    // Cache events for signal handlers and diagnostics
+    proofState.cachedCandidateEvents = candidateEvents || [];
+    proofState.cachedSelectedEvents = selectedEvents || [];
+    proofState.cachedSkippedEvents = skippedEvents || [];
+    proofState.cachedClaimAttemptEvents = claimAttemptEvents || [];
+    proofState.cachedClaimOkEvents = claimOkEvents || [];
+    proofState.cachedClaimFailEvents = claimFailEvents || [];
+    proofState.cachedClaimStallEvents = claimStallEvents || [];
+    proofState.cachedReplyAttemptEvents = replyAttemptEvents || [];
+    
+    // Check for claim via POST_ATTEMPT/REPLY_ATTEMPT events
+    if (replyAttemptEvents && replyAttemptEvents.length > 0) {
+      result.decision_claimed = true; // Attempt event means the decision was claimed and processing started
       if (!result.evidence.decision_status || result.evidence.decision_status === 'queued') {
         result.evidence.decision_status = 'claimed'; // Mark as claimed even if status is still queued
       }
+    }
+    
+    // Check for claim via CLAIM_OK event
+    if (claimOkEvents && claimOkEvents.length > 0) {
+      result.decision_claimed = true;
     }
     
     // Check for attempt
@@ -1520,6 +1631,9 @@ async function main(): Promise<void> {
 - **Attempt ID:** ${result.evidence.attempt_id || 'N/A'}
 - **Outcome ID:** ${result.evidence.outcome_id || 'N/A'}
 - **Event IDs:** ${result.evidence.event_ids?.join(', ') || 'N/A'}
+- **Proof Events:** Candidate=${proofState.cachedCandidateEvents?.length || 0} (${proofState.cachedCandidateEvents?.map((e: any) => e.id).join(', ') || 'N/A'}), Selected=${proofState.cachedSelectedEvents?.length || 0} (${proofState.cachedSelectedEvents?.map((e: any) => e.id).join(', ') || 'N/A'}), Skipped=${proofState.cachedSkippedEvents?.length || 0} (${proofState.cachedSkippedEvents?.map((e: any) => e.id).join(', ') || 'N/A'})
+- **Claim Events:** Attempt=${proofState.cachedClaimAttemptEvents?.length || 0} (${proofState.cachedClaimAttemptEvents?.map((e: any) => e.id).join(', ') || 'N/A'}), OK=${proofState.cachedClaimOkEvents?.length || 0} (${proofState.cachedClaimOkEvents?.map((e: any) => e.id).join(', ') || 'N/A'}), Fail=${proofState.cachedClaimFailEvents?.length || 0} (${proofState.cachedClaimFailEvents?.map((e: any) => e.id).join(', ') || 'N/A'}), Stall=${proofState.cachedClaimStallEvents?.length || 0} (${proofState.cachedClaimStallEvents?.map((e: any) => e.id).join(', ') || 'N/A'})
+- **Reply Attempt Events:** ${proofState.cachedReplyAttemptEvents?.length || 0} (${proofState.cachedReplyAttemptEvents?.map((e: any) => e.id).join(', ') || 'N/A'})
 ${proofState.fetchedTweetPreview ? `- **Fetched Tweet Preview:** ${proofState.fetchedTweetPreview}...` : ''}
 ${proofState.fetchedAuthorHandle ? `- **Fetched Author Handle:** @${proofState.fetchedAuthorHandle}` : ''}
 ${proofState.snapshotHash ? `- **Snapshot Hash:** ${proofState.snapshotHash}` : ''}

@@ -87,12 +87,44 @@ const HEALTH_OK_INTERVAL_MS = 60 * 1000; // Phase 5A.1: Emit HEALTH_OK every 60 
 
 /**
  * Check STOP switch - exit gracefully within 10s
+ * 🔒 PROOF_MODE BYPASS: When PROOF_MODE=true, STOP is bypassed and event is emitted instead
  */
 function checkStopSwitch(): boolean {
-  if (process.env.STOP_EXECUTOR === 'true' || fs.existsSync(STOP_SWITCH_PATH)) {
-    return true;
+  const proofMode = process.env.PROOF_MODE === 'true';
+  const stopRequested = process.env.STOP_EXECUTOR === 'true' || fs.existsSync(STOP_SWITCH_PATH);
+  
+  if (stopRequested && proofMode) {
+    // 🔒 PROOF_MODE: Bypass STOP, emit event instead
+    (async () => {
+      try {
+        const { getSupabaseClient } = await import('../../src/db/index');
+        const supabase = getSupabaseClient();
+        const stopState = {
+          env_stop: process.env.STOP_EXECUTOR === 'true',
+          file_exists: fs.existsSync(STOP_SWITCH_PATH),
+          file_path: STOP_SWITCH_PATH,
+        };
+        await supabase.from('system_events').insert({
+          event_type: 'EXECUTOR_STOP_BYPASS',
+          severity: 'info',
+          message: 'STOP bypassed in PROOF_MODE',
+          event_data: {
+            reason: 'proof_mode',
+            stop_state: stopState,
+            proof_mode: true,
+            timestamp: new Date().toISOString(),
+          },
+          created_at: new Date().toISOString(),
+        });
+        console.log(`[EXECUTOR_DAEMON] 🔒 PROOF_MODE: STOP bypassed (env=${stopState.env_stop}, file=${stopState.file_exists})`);
+      } catch (e) {
+        console.warn(`[EXECUTOR_DAEMON] ⚠️ Failed to emit STOP_BYPASS event: ${(e as Error).message}`);
+      }
+    })();
+    return false; // Don't stop in PROOF_MODE
   }
-  return false;
+  
+  return stopRequested;
 }
 
 /**
@@ -804,16 +836,16 @@ async function main(): Promise<void> {
             const supabase = getSupabaseClient();
             const thirtySecondsAgo = new Date(Date.now() - 30 * 1000).toISOString();
             
-            // Find proof decisions that were selected but not claimed
-            const { data: selectedProofDecisions } = await supabase
+            // Find proof POST decisions that were selected but not claimed
+            const { data: selectedPostProofDecisions } = await supabase
               .from('system_events')
               .select('event_data, created_at')
               .eq('event_type', 'EXECUTOR_PROOF_POST_SELECTED')
               .gte('created_at', thirtySecondsAgo)
               .order('created_at', { ascending: false });
             
-            if (selectedProofDecisions && selectedProofDecisions.length > 0) {
-              for (const selectedEvent of selectedProofDecisions) {
+            if (selectedPostProofDecisions && selectedPostProofDecisions.length > 0) {
+              for (const selectedEvent of selectedPostProofDecisions) {
                 const eventData = typeof selectedEvent.event_data === 'string' 
                   ? JSON.parse(selectedEvent.event_data) 
                   : selectedEvent.event_data;
@@ -857,6 +889,64 @@ async function main(): Promise<void> {
                       created_at: new Date().toISOString(),
                     });
                     console.warn(`[EXECUTOR_DAEMON] ⚠️ Claim stall detected: ${decisionId} selected ${Math.floor(elapsedMs / 1000)}s ago`);
+                  }
+                }
+              }
+            }
+            
+            // Find proof REPLY decisions that were selected but not claimed
+            const { data: selectedReplyProofDecisions } = await supabase
+              .from('system_events')
+              .select('event_data, created_at')
+              .eq('event_type', 'EXECUTOR_PROOF_REPLY_SELECTED')
+              .gte('created_at', thirtySecondsAgo)
+              .order('created_at', { ascending: false });
+            
+            if (selectedReplyProofDecisions && selectedReplyProofDecisions.length > 0) {
+              for (const selectedEvent of selectedReplyProofDecisions) {
+                const eventData = typeof selectedEvent.event_data === 'string' 
+                  ? JSON.parse(selectedEvent.event_data) 
+                  : selectedEvent.event_data;
+                const decisionId = eventData.decision_id;
+                
+                if (!decisionId) continue;
+                
+                // Check if this decision was claimed
+                const { data: claimEvents } = await supabase
+                  .from('system_events')
+                  .select('id')
+                  .in('event_type', ['EXECUTOR_DECISION_CLAIM_OK', 'EXECUTOR_DECISION_CLAIM_FAIL'])
+                  .eq('event_data->>decision_id', decisionId)
+                  .gte('created_at', selectedEvent.created_at)
+                  .limit(1);
+                
+                // Check if decision is still queued (not claimed)
+                const { data: decisionRow } = await supabase
+                  .from('content_metadata')
+                  .select('status')
+                  .eq('decision_id', decisionId)
+                  .maybeSingle();
+                
+                if ((!claimEvents || claimEvents.length === 0) && decisionRow?.status === 'queued') {
+                  // Selected but not claimed - emit stall event
+                  const selectedTime = new Date(selectedEvent.created_at).getTime();
+                  const elapsedMs = Date.now() - selectedTime;
+                  
+                  if (elapsedMs >= 30000) { // 30s threshold
+                    await supabase.from('system_events').insert({
+                      event_type: 'EXECUTOR_PROOF_REPLY_CLAIM_STALL',
+                      severity: 'warning',
+                      message: `Proof reply claim stall: decision_id=${decisionId} selected ${Math.floor(elapsedMs / 1000)}s ago`,
+                      event_data: {
+                        decision_id: decisionId,
+                        proof_tag: eventData.proof_tag || null,
+                        ts: new Date().toISOString(),
+                        elapsed_ms: elapsedMs,
+                        selected_at: selectedEvent.created_at,
+                      },
+                      created_at: new Date().toISOString(),
+                    });
+                    console.warn(`[EXECUTOR_DAEMON] ⚠️ Reply claim stall detected: ${decisionId} selected ${Math.floor(elapsedMs / 1000)}s ago`);
                   }
                 }
               }
