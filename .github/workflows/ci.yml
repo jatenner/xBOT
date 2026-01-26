@@ -5,13 +5,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 10.18.2
       - uses: actions/setup-node@v4
         with: 
           node-version: 20
-          cache: 'pnpm'
+      - name: Enable corepack and prepare pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.18.2 --activate
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build || echo "Build warnings allowed"
       - run: pnpm exec tsc --noEmit --skipLibCheck 2>&1 | grep -v "scripts/runner/session-check.ts" || echo "TypeScript check warnings allowed"

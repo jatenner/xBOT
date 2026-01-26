@@ -29,14 +29,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 10.18.2
-      
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'pnpm'
+      
+      - name: Enable corepack and prepare pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.18.2 --activate
       
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -79,14 +79,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 10.18.2
-      
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'pnpm'
+      
+      - name: Enable corepack and prepare pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.18.2 --activate
       
       - name: Validate inputs
         run: |
