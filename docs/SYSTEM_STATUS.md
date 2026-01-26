@@ -31,23 +31,17 @@
 
 ✅ **Proof Level 4: Control → Executor → X (POSTING)** — PROVEN
 
-**Proof Tag:** `control-post-1769281173411`  
-**Evidence:** [`docs/proofs/control-post/control-post-1769281173411.md`](docs/proofs/control-post/control-post-1769281173411.md)  
-**Tweet:** `https://x.com/Signal_Synapse/status/2015138300814639129`
+**Proof Tag:** `control-post-1769385308714`  
+**Evidence:** [`docs/proofs/control-post/control-post-1769385308714.md`](docs/proofs/control-post/control-post-1769385308714.md)  
+**Tweet:** `https://x.com/Signal_Synapse/status/2015574485135487461`
 
 - Decision ID: `ce631dee-6503-4752-8fc7-ff52a6caced0`
 - Claim OK Event ID: `b3630213-3cde-4221-9bfc-d6d565aad906`
 - **Note:** Claim instrumentation (CLAIM_ATTEMPT/OK/FAIL events + CLAIM_STALL watchdog) is now part of proof evidence.
 
-✅ **Proof Level 4: Control → Executor → X (REPLYING)** — PROVEN
+🚧 **Proof Level 4: Control → Executor → X (REPLYING)** — IN PROGRESS
 
-**Proof Tag:** `control-reply-1769271406334`  
-**Evidence:** [`docs/proofs/control-reply/control-reply-1769271406334.md`](docs/proofs/control-reply/control-reply-1769271406334.md)  
-**Reply:** `https://x.com/Signal_Synapse/status/2015096733693366778`
-
-- Decision ID: `ed2ab9e6-72e9-4dda-b7b3-28c6c35014f7`
-- Target Tweet ID: `2014718451563004351`
-- Event ID: `21b78fda-2a0f-453b-b210-b4403d547553`
+Real execution proof pending completion. DRY_RUN tests pass correctly.
 
 ✅ **Phase 5A.1: Executor Health & Liveness** — PROVEN
 
@@ -70,14 +64,11 @@ Phase 4 (Control → Executor → X) is formally complete. The full pipeline fro
 ### What is Proven
 
 1. **Level 4 POST** — Full pipeline proven with immutable evidence:
-   - Immutable Proof: [`docs/proofs/control-post/control-post-1769281173411.md`](docs/proofs/control-post/control-post-1769281173411.md)
-   - Tweet URL: `https://x.com/Signal_Synapse/status/2015138300814639129`
-   - Proof Tag: `control-post-1769281173411`
+   - Immutable Proof: [`docs/proofs/control-post/control-post-1769385308714.md`](docs/proofs/control-post/control-post-1769385308714.md)
+   - Tweet URL: `https://x.com/Signal_Synapse/status/2015574485135487461`
+   - Proof Tag: `control-post-1769385308714`
 
-2. **Level 4 REPLY** — Full pipeline proven with immutable evidence:
-   - Immutable Proof: [`docs/proofs/control-reply/control-reply-1769271406334.md`](docs/proofs/control-reply/control-reply-1769271406334.md)
-   - Reply URL: `https://x.com/Signal_Synapse/status/2015096733693366778`
-   - Proof Tag: `control-reply-1769271406334`
+2. **Level 4 REPLY** — Real execution proof pending completion
 
 ### Stability Commitment
 
