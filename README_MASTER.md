@@ -1400,6 +1400,29 @@ Proves executor can run continuously without degradation over extended periods (
 
 **Evidence:** Will be written to `docs/proofs/stability/` after proof passes.
 
+**Operator Runbook:**
+
+1. **Stop executor first** (if running):
+   ```bash
+   pnpm run executor:stop
+   ```
+
+2. **Run proof** (default 30 minutes):
+   ```bash
+   pnpm run executor:prove:long-run-stability
+   ```
+   
+   Or with custom duration (60 minutes):
+   ```bash
+   PROOF_DURATION_MINUTES=60 pnpm run executor:prove:long-run-stability
+   ```
+
+3. **After PASS:**
+   - Update `docs/SYSTEM_STATUS.md` and `README_MASTER.md` Phase 5A.3 section to mark as ✅ PROVEN
+   - Include proof tag, immutable report path, and key event IDs (Boot, Ready, Health OK count)
+   - Run verification: `pnpm run verify:docs:truth`
+   - Commit and push: `git add docs/ && git commit -m "proof(5a.3): mark stability PROVEN" && git push`
+
 **Remaining Phase 5A Items (Planned):**
 
 #### 5A.1 Goals

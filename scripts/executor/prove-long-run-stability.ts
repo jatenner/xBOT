@@ -426,6 +426,48 @@ async function main(): Promise<void> {
 ## Result
 
 ${pass ? '✅ **PASS** - Executor ran continuously for ' + PROOF_DURATION_MINUTES + ' minutes without degradation' : '❌ **FAIL** - One or more stability checks failed'}
+
+${pass ? `---
+
+## Post-Proof Instructions
+
+**To mark Phase 5A.3 as PROVEN:**
+
+1. **Update documentation:**
+   - Open \`docs/SYSTEM_STATUS.md\`
+   - Find "Phase 5A.3: Long-Running Executor Stability" section (around line 424)
+   - Change status from "🚧 PLANNED" to "✅ PROVEN"
+   - Add evidence block:
+     \`\`\`
+     **Proof Tag:** \`${PROOF_TAG}\`
+     **Evidence:** [\`docs/proofs/stability/${PROOF_TAG}.md\`](docs/proofs/stability/${PROOF_TAG}.md)
+     - Boot Event ID: \`${bootEventId || 'N/A'}\`
+     - Ready Event ID: \`${readyEventId || 'N/A'}\`
+     - Health OK Events: ${actualHealthOk} events
+     - Duration: ${elapsedMinutes} minutes
+     \`\`\`
+   
+   - Repeat same changes in \`README_MASTER.md\` (around line 1384)
+
+2. **Verify documentation:**
+   \`\`\`bash
+   pnpm run verify:docs:truth
+   \`\`\`
+
+3. **Commit and push:**
+   \`\`\`bash
+   git add docs/SYSTEM_STATUS.md README_MASTER.md docs/proofs/stability/
+   git commit -m "proof(5a.3): mark Long-Running Executor Stability PROVEN
+
+   - Proof Tag: ${PROOF_TAG}
+   - Duration: ${elapsedMinutes} minutes
+   - Health OK Events: ${actualHealthOk}
+   - Boot Event ID: ${bootEventId || 'N/A'}
+   - Ready Event ID: ${readyEventId || 'N/A'}
+   - Immutable Report: docs/proofs/stability/${PROOF_TAG}.md"
+   git push origin main
+   \`\`\`
+` : ''}
 `;
 
   fs.writeFileSync(reportPath, report, 'utf-8');
