@@ -118,8 +118,8 @@ CI enforces verification via `verify:docs:truth` — PROVEN claims must referenc
 | Executor Stability (15m) | PROVEN | `pnpm run executor:prove:15m` | `docs/EXECUTOR_15MIN_HEADLESS_PROOF.md` |
 | E2E Posting Execution | PROVEN | `pnpm run executor:prove:e2e-post` | `docs/EXECUTION_E2E_POST_PROOF.md` |
 | E2E Reply Execution | PROVEN | `TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-reply` | `docs/EXECUTION_E2E_REPLY_PROOF.md` |
-| Control→Executor→X (Posting) | ✅ PROVEN | `EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post` | `docs/proofs/control-post/control-post-1769281173411.md` (2026-01-24 19:03:35: tweet_url=https://x.com/Signal_Synapse/status/2015138300814639129, decision_id=ce631dee-6503-4752-8fc7-ff52a6caced0, claim_ok_event_id=b3630213-3cde-4221-9bfc-d6d565aad906) |
-| Control→Executor→X (Replying) | ✅ PROVEN | `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-control-reply` | `docs/proofs/control-reply/control-reply-1769271406334.md` (2026-01-24 16:18:00: reply_url=https://x.com/Signal_Synapse/status/2015096733693366778) |
+| Control→Executor→X (Posting) | ✅ PROVEN | `EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post` | `docs/proofs/control-post/control-post-1769385308714.md` (2026-01-25 23:56:46: tweet_url=https://x.com/Signal_Synapse/status/2015574485135487461) |
+| Control→Executor→X (Replying) | 🚧 IN PROGRESS | `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-control-reply` | Real execution proof pending completion |
 | Learning System Updates | UNPROVEN | SQL queries on `outcomes` and `learning_posts` | Manual verification |
 
 ---
