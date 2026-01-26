@@ -169,20 +169,12 @@ function verifyProofReport(claim: ProvenClaim): void {
     // Docs reference immutable report directly - verify that
     actualReportPath = immutableReportPath;
     if (!fs.existsSync(actualReportPath)) {
-      // Missing immutable file - convert to warning for POST/REPLY (may not exist locally)
-      // But keep as error for HEALTH/RATE_LIMIT (should always exist)
-      if (type === 'POST' || type === 'REPLY') {
-        warnings.push(
-          `⚠️  ${doc}:${lineNumber} claims PROVEN for ${type} but immutable proof report missing locally: ${actualReportPath}\n` +
-          `   Doc references immutable path directly, so this may be expected if proof was run in a different environment.`
-        );
-        return;
-      } else {
-        errors.push(
-          `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but immutable proof report missing: ${actualReportPath}`
-        );
-        return;
-      }
+      // Missing immutable file - HARD FAIL for all types (including POST/REPLY)
+      errors.push(
+        `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but immutable proof report missing: ${actualReportPath}\n` +
+        `   PROVEN status requires immutable proof artifact with PASS + URL evidence.`
+      );
+      return;
     }
     reportContent = fs.readFileSync(actualReportPath, 'utf-8');
   } else {
@@ -271,10 +263,10 @@ function verifyProofReport(claim: ProvenClaim): void {
           if (relativeImmutablePath) {
             actualReportPath = path.join(process.cwd(), relativeImmutablePath);
             if (!fs.existsSync(actualReportPath)) {
-              // Missing immutable file - skip verification with warning (may not exist locally)
-              warnings.push(
-                `⚠️  ${doc}:${lineNumber} claims PROVEN for ${type} but immutable report missing locally: ${actualReportPath}\n` +
-                `   This may be expected if proof was run in a different environment.`
+              // Missing immutable file - HARD FAIL
+              errors.push(
+                `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but immutable proof report missing: ${actualReportPath}\n` +
+                `   PROVEN status requires immutable proof artifact with PASS + URL evidence.`
               );
               return;
             }
@@ -295,10 +287,10 @@ function verifyProofReport(claim: ProvenClaim): void {
             const relativeImmutablePath = `docs/proofs/${subdir}/${proofTag}.md`;
             actualReportPath = path.join(process.cwd(), relativeImmutablePath);
             if (!fs.existsSync(actualReportPath)) {
-              // Missing immutable file - skip verification with warning (may not exist locally)
-              warnings.push(
-                `⚠️  ${doc}:${lineNumber} claims PROVEN for ${type} but immutable report missing locally: ${actualReportPath}\n` +
-                `   This may be expected if proof was run in a different environment.`
+              // Missing immutable file - HARD FAIL
+              errors.push(
+                `❌ ${doc}:${lineNumber} claims PROVEN for ${type} but immutable proof report missing: ${actualReportPath}\n` +
+                `   PROVEN status requires immutable proof artifact with PASS + URL evidence.`
               );
               return;
             }

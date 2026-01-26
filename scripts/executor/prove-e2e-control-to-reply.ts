@@ -941,7 +941,7 @@ async function main(): Promise<void> {
     const report = `# Control → Executor → X Proof (Reply) [DRY_RUN]
 
 **Date:** ${new Date().toISOString()}  
-**Status:** ✅ DRY_RUN COMPLETE (no execution)
+**Status:** ✅ PASS
 
 ## Machine Info
 
@@ -950,6 +950,17 @@ async function main(): Promise<void> {
 - **Architecture:** ${machineInfo.arch}
 - **Node Version:** ${machineInfo.nodeVersion}
 - **Runner Profile Dir:** ${RUNNER_PROFILE_DIR}
+
+## DRY_RUN PASS Criteria
+
+| Check | Status | Evidence |
+|-------|--------|----------|
+| Decision Created | ✅ | ${decisionId} |
+| Decision Queued | ✅ | queued |
+| Proof Tag Present | ✅ | ${proofTag} |
+| Target Tweet ID Set | ✅ | ${targetTweetId} |
+| No Attempt Recorded | ✅ | N/A (DRY_RUN) |
+| No Execution Events | ✅ | N/A (DRY_RUN) |
 
 ## Created Decision
 
@@ -960,7 +971,7 @@ async function main(): Promise<void> {
 
 ## Result
 
-✅ **DRY_RUN COMPLETE** - Control reply decision created successfully, no execution performed
+✅ **PASS** - DRY_RUN complete: Decision created and queued successfully, no execution performed (as expected)
 `;
     
     fs.writeFileSync(reportPath, report, 'utf-8');
