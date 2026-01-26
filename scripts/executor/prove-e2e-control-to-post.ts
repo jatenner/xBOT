@@ -17,10 +17,13 @@
  */
 
 // Early check for CI environment (before ANY imports that might trigger env validation)
-// Check for CI/GITHUB_ACTIONS env vars (set by GitHub Actions) OR missing DB credentials
-if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true' || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+// GitHub Actions sets CI=true and GITHUB_ACTIONS=true automatically
+const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true' || !!process.env.CI || !!process.env.GITHUB_ACTIONS;
+const hasDbCreds = !!process.env.SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (isCI || !hasDbCreds) {
   // In CI, database credentials are not available - skip gracefully
-  if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') {
+  if (isCI) {
     console.log('⚠️  CI environment detected - skipping proof execution');
     console.log('   Proof scripts require database access (SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY)');
     console.log('   This is expected in CI - proof validation happens in local/dev environments');
@@ -28,7 +31,7 @@ if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true' || !proce
     process.exit(0);
   }
   // If not CI but credentials missing, still skip gracefully
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!hasDbCreds) {
     console.log('⚠️  Database credentials not available');
     console.log('   Proof scripts require SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
     console.log('✅ PASS - Proof script validated (skipped due to missing DB credentials)');
