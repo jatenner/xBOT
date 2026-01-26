@@ -663,13 +663,11 @@ railway logs --service xBOT --lines 200 | grep "POST_SUCCESS\|REPLY_SUCCESS" | t
 ### Proof Level 4: Control → Executor → X (Full Pipeline)
 
 **Status:**
-- **POSTING:** ✅ PROVEN — `control-post-1769281173411`  
-  Evidence: [`docs/proofs/control-post/control-post-1769281173411.md`](docs/proofs/control-post/control-post-1769281173411.md)  
-  Tweet: `https://x.com/Signal_Synapse/status/2015138300814639129`
+- **POSTING:** ✅ PROVEN — `control-post-1769385308714`  
+  Evidence: [`docs/proofs/control-post/control-post-1769385308714.md`](docs/proofs/control-post/control-post-1769385308714.md)  
+  Tweet: `https://x.com/Signal_Synapse/status/2015574485135487461`
 
-- **REPLY:** ✅ PROVEN — `control-reply-1769271406334`  
-  Evidence: [`docs/proofs/control-reply/control-reply-1769271406334.md`](docs/proofs/control-reply/control-reply-1769271406334.md)  
-  Reply: `https://x.com/Signal_Synapse/status/2015096733693366778`
+- **REPLY:** 🚧 IN PROGRESS — Real execution proof pending completion
 
 ### Phase 4 Completion Summary
 
