@@ -1208,6 +1208,12 @@ Railway automatically deploys from `main` branch when GitHub Actions checks pass
 **Manual/Emergency Deploy (CLI):**
 CLI deployment via `pnpm run deploy:railway:both` is for emergency manual deployments only. Railway GitHub Integration is the canonical deployment mechanism.
 
+**If Railway deploy is SKIPPED due to CI failure:**
+1. Run manual deploy: `pnpm run deploy:railway:both`
+2. If unauthorized, run: `railway login --browserless` (follow prompts)
+3. Verify SHA match: `pnpm run verify:sha:both`
+4. Both services must show matching SHA and `executionMode=control`
+
 ```bash
 # Emergency manual deploy (only if Railway GitHub Integration fails)
 pnpm run deploy:railway:xbot    # Deploy xBOT only
@@ -1218,15 +1224,11 @@ pnpm run deploy:railway:both    # Deploy both services
 **SHA verification (after deploy):**
 ```bash
 # Preferred: Use /healthz endpoint (fastest, most reliable)
-curl -s https://xbot-production-844b.up.railway.app/healthz | jq '{sha, serviceName, executionMode, runnerMode}'
-curl -s https://serene-cat-production.up.railway.app/healthz | jq '{sha, serviceName, executionMode, runnerMode}'
-
-# Or use convenience script (uses BOOT logs)
 pnpm run verify:sha:both
 
-# Or manually via BOOT logs:
-railway logs --service xBOT --lines 10 | grep BOOT
-railway logs --service serene-cat --lines 10 | grep BOOT
+# Or manually via curl:
+curl -s "https://xbot-production-844b.up.railway.app/healthz?ts=$(date +%s)" | jq '{sha, serviceName, executionMode, runnerMode}'
+curl -s "https://serene-cat-production.up.railway.app/healthz?ts=$(date +%s)" | jq '{sha, serviceName, executionMode, runnerMode}'
 ```
 
 **Expected:** Both services show matching SHA and `executionMode=control` (visible in `/healthz` response).

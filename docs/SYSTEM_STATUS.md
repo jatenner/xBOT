@@ -12,6 +12,12 @@
 - SHA verification via `/healthz` endpoints (deterministic, cache-busted)
 - Evidence: `curl` responses show matching SHAs, `executionMode=control`
 
+**If Railway deploy is SKIPPED due to CI failure:**
+- Run manual deploy: `pnpm run deploy:railway:both`
+- If unauthorized, run: `railway login --browserless` (follow prompts)
+- Verify SHA match: `pnpm run verify:sha:both`
+- Both services must show matching SHA and `executionMode=control`
+
 ✅ **Executor Safety (Headless Operation)**
 - Executor daemon runs headless (`HEADLESS=true` enforced)
 - No visible Chrome windows (`windows_opened=0` proven)

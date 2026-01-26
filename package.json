@@ -86,7 +86,7 @@
     "deploy:railway:xbot": "railway up --service xBOT --detach",
     "deploy:railway:serene": "railway up --service serene-cat --detach",
     "deploy:railway:both": "railway up --service xBOT --detach && railway up --service serene-cat --detach",
-    "verify:sha:both": "railway logs --service xBOT --lines 10 | grep BOOT && railway logs --service serene-cat --lines 10 | grep BOOT",
+    "verify:sha:both": "tsx scripts/ops/verify-sha-both.ts",
     "deploy:verify": "tsx scripts/ops/deploy_and_verify.ts",
     "deploy:verify:both": "tsx scripts/ops/deploy_and_verify_both.ts",
     "runner:reply-queue-once": "tsx scripts/runner/reply-queue-once.ts",
