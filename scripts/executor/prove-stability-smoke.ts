@@ -24,8 +24,8 @@ const RUNNER_PROFILE_DIR = resolveRunnerProfileDir();
 const STOP_SWITCH_PATH = RUNNER_PROFILE_PATHS.stopSwitch();
 const PIDFILE_PATH = RUNNER_PROFILE_PATHS.pidFile();
 
-// Duration: fixed 10 minutes for smoke test
-const PROOF_DURATION_MINUTES = 10;
+// Duration: configurable via env var, default 10 minutes for smoke test
+const PROOF_DURATION_MINUTES = parseInt(process.env.PROOF_DURATION_MINUTES || '10', 10);
 const PROOF_DURATION_SECONDS = PROOF_DURATION_MINUTES * 60;
 const PROOF_TAG = `stability-smoke-${Date.now()}`;
 
@@ -108,7 +108,7 @@ async function checkWorkloadProgress(supabase: any, startTime: number): Promise<
 
 async function main(): Promise<void> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('   🧪 PROOF Phase 5A.4: Stability Smoke Test (10 minutes)');
+  console.log(`   🧪 PROOF Phase 5A.4: Stability Smoke Test (${PROOF_DURATION_MINUTES} minutes)`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
   console.log(`📋 Proof Tag: ${PROOF_TAG}`);

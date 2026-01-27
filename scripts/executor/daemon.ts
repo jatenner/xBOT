@@ -82,8 +82,15 @@ let backoffSeconds = 0;
 let lastBrowserLaunchTime = 0;
 let browserLaunchCount = 0;
 let tickCounter = 0; // Phase 5A.1: Track tick count for health events
-let lastHealthOkTime = 0; // Phase 5A.1: Track last HEALTH_OK emission
 const HEALTH_OK_INTERVAL_MS = 60 * 1000; // Phase 5A.1: Emit HEALTH_OK every 60 seconds
+let healthOkIntervalId: NodeJS.Timeout | null = null; // Dedicated interval for HEALTH_OK emission
+let lastHealthOkEmittedTime = 0; // Track when HEALTH_OK was last emitted (for watchdog)
+// Global state for HEALTH_OK emission (updated by main loop)
+let postingReady = 0;
+let postingAttempts = 0;
+let replyReady = 0;
+let replyAttempts = 0;
+let lastError: string | undefined;
 
 /**
  * Check STOP switch - exit gracefully within 10s
@@ -602,6 +609,92 @@ async function emitLifecycleEvent(eventType: string, eventData: any): Promise<vo
 }
 
 /**
+ * Emit HEALTH_OK event (non-blocking, fire-and-forget)
+ * This function is called by setInterval and must never block or await
+ */
+function emitHealthOk(): void {
+  // Fire-and-forget: don't await anything
+  (async () => {
+    try {
+      const { getSupabaseClient } = await import('../../src/db/index');
+      const supabase = getSupabaseClient();
+      
+      // Get browser pool metrics if available (non-blocking)
+      let browserPoolMetrics: any = {};
+      try {
+        const { UnifiedBrowserPool } = await import('../../src/browser/UnifiedBrowserPool');
+        const pool = UnifiedBrowserPool.getInstance();
+        const poolAny = pool as any;
+        browserPoolMetrics = {
+          browser_pool_queue_len: poolAny.queue?.length || 0,
+          browser_pool_active: poolAny.getActiveCount?.() || 0,
+          browser_pool_max_contexts: poolAny.MAX_CONTEXTS || 0,
+        };
+      } catch (poolError: any) {
+        // Ignore pool errors - don't block HEALTH_OK
+      }
+      
+      // Get current state snapshot (read-only, no await)
+      const currentTickCounter = tickCounter;
+      const currentPages = page ? 1 : 0;
+      const currentBrowserLaunches = browserLaunchCount;
+      const currentPostingReady = postingReady;
+      const currentPostingAttempts = postingAttempts;
+      const currentReplyReady = replyReady;
+      const currentReplyAttempts = replyAttempts;
+      const currentBackoffSeconds = backoffSeconds;
+      const currentLastError = lastError || null;
+      
+      // Insert event (fire-and-forget, don't await)
+      supabase.from('system_events').insert({
+        event_type: 'EXECUTOR_HEALTH_OK',
+        severity: 'info',
+        message: `Executor health OK: tick_count=${currentTickCounter} pages=${currentPages} browser_launches=${currentBrowserLaunches}`,
+        event_data: {
+          ts: new Date().toISOString(),
+          tick_count: currentTickCounter,
+          pages: currentPages,
+          browser_launches: currentBrowserLaunches,
+          posting_ready: currentPostingReady,
+          posting_attempts: currentPostingAttempts,
+          reply_ready: currentReplyReady,
+          reply_attempts: currentReplyAttempts,
+          backoff_seconds: currentBackoffSeconds,
+          last_error: currentLastError,
+          proof_mode: process.env.PROOF_MODE === 'true',
+          ...browserPoolMetrics,
+        },
+        created_at: new Date().toISOString(),
+      }).then(() => {
+        // Success: update last emission time
+        lastHealthOkEmittedTime = Date.now();
+      }).catch((e: any) => {
+        // Failure: log but don't stop future ticks
+        console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit health OK event: ${e.message}`);
+      });
+    } catch (e: any) {
+      // Catch-all: log but don't stop future ticks
+      console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit health OK event: ${e.message}`);
+    }
+  })();
+}
+
+/**
+ * Health watchdog: logs warning if HEALTH_OK hasn't been emitted in >90s
+ * This is diagnostic only, not fatal
+ */
+function startHealthWatchdog(): void {
+  setInterval(() => {
+    const now = Date.now();
+    const timeSinceLastHealthOk = now - lastHealthOkEmittedTime;
+    
+    if (lastHealthOkEmittedTime > 0 && timeSinceLastHealthOk > 90 * 1000) {
+      console.warn(`[EXECUTOR_DAEMON] ⚠️  HEALTH_OK watchdog: ${Math.floor(timeSinceLastHealthOk / 1000)}s since last HEALTH_OK emission (threshold: 90s)`);
+    }
+  }, 30 * 1000); // Check every 30 seconds
+}
+
+/**
  * Main daemon loop
  */
 async function main(): Promise<void> {
@@ -693,6 +786,17 @@ async function main(): Promise<void> {
     });
     
     console.log(`[EXECUTOR_DAEMON] ✅ Ready event emitted (PID: ${daemonPid})`);
+  
+    // Start dedicated HEALTH_OK interval (non-blocking, independent of main loop)
+    lastHealthOkEmittedTime = Date.now(); // Initialize timestamp
+    healthOkIntervalId = setInterval(() => {
+      emitHealthOk();
+    }, HEALTH_OK_INTERVAL_MS);
+    console.log(`[EXECUTOR_DAEMON] ✅ HEALTH_OK interval started (every ${HEALTH_OK_INTERVAL_MS / 1000}s)`);
+    
+    // Start health watchdog (diagnostic only)
+    startHealthWatchdog();
+    console.log(`[EXECUTOR_DAEMON] ✅ Health watchdog started`);
   
   // Main loop
   // tickCounter is already declared globally (Phase 5A.1)
@@ -806,11 +910,12 @@ async function main(): Promise<void> {
       console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit tick start event: ${e.message}`);
     }
     
-    let postingReady = 0;
-    let postingAttempts = 0;
-    let replyReady = 0;
-    let replyAttempts = 0;
-    let lastError: string | undefined;
+    // Update global state for HEALTH_OK emission
+    postingReady = 0;
+    postingAttempts = 0;
+    replyReady = 0;
+    replyAttempts = 0;
+    lastError = undefined;
     
     try {
       // Enforce page cap
@@ -1038,54 +1143,8 @@ async function main(): Promise<void> {
       lastError,
     });
     
-    // Phase 5A.1: Emit EXECUTOR_HEALTH_OK periodically (every HEALTH_OK_INTERVAL_MS)
-    const now = Date.now();
-    if (now - lastHealthOkTime >= HEALTH_OK_INTERVAL_MS) {
-      lastHealthOkTime = now;
-      try {
-        const { getSupabaseClient } = await import('../../src/db/index');
-        const supabase = getSupabaseClient();
-        
-        // Get browser pool metrics if available
-        let browserPoolMetrics: any = {};
-        try {
-          const { UnifiedBrowserPool } = await import('../../src/browser/UnifiedBrowserPool');
-          const pool = UnifiedBrowserPool.getInstance();
-          const poolAny = pool as any;
-          browserPoolMetrics = {
-            browser_pool_queue_len: poolAny.queue?.length || 0,
-            browser_pool_active: poolAny.getActiveCount?.() || 0,
-            browser_pool_max_contexts: poolAny.MAX_CONTEXTS || 0,
-          };
-        } catch (poolError: any) {
-          // Ignore pool errors
-        }
-        
-        await supabase.from('system_events').insert({
-          event_type: 'EXECUTOR_HEALTH_OK',
-          severity: 'info',
-          message: `Executor health OK: tick_count=${tickCounter} pages=${pages} browser_launches=${browserLaunchCount}`,
-          event_data: {
-            ts: new Date().toISOString(),
-            tick_id: tickId,
-            tick_count: tickCounter,
-            pages: pages,
-            browser_launches: browserLaunchCount,
-            posting_ready: postingReady,
-            posting_attempts: postingAttempts,
-            reply_ready: replyReady,
-            reply_attempts: replyAttempts,
-            backoff_seconds: backoffSeconds,
-            last_error: lastError || null,
-            proof_mode: process.env.PROOF_MODE === 'true',
-            ...browserPoolMetrics,
-          },
-          created_at: new Date().toISOString(),
-        });
-      } catch (e: any) {
-        console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit health OK event: ${e.message}`);
-      }
-    }
+    // HEALTH_OK is now emitted by dedicated setInterval (started after browser init)
+    // Removed from main loop to prevent blocking/starvation under load
     
     // 🔧 A) Emit EXECUTOR_DAEMON_TICK_END event after tick completes
     const tickEnd = Date.now();
@@ -1161,6 +1220,13 @@ async function main(): Promise<void> {
     
     // Cleanup
     console.log('[EXECUTOR_DAEMON] 🧹 Cleaning up...');
+    
+    // Clear HEALTH_OK interval
+    if (healthOkIntervalId) {
+      clearInterval(healthOkIntervalId);
+      healthOkIntervalId = null;
+      console.log('[EXECUTOR_DAEMON] ✅ Cleared HEALTH_OK interval');
+    }
     
     if (page) {
       try {
