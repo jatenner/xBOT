@@ -1466,6 +1466,32 @@ Proves executor can run continuously for 2 hours under real workload conditions 
    pnpm run executor:prove:stability-real-load
    ```
 
+#### Phase 5A.5: STOP Switch Under Real Load — ✅ PROVEN
+
+**Status:** ✅ **PROVEN**
+
+Proves that the STOP switch halts the executor safely under real load, with bounded shutdown time and no state corruption. Validates graceful completion of in-flight operations, no new posts after STOP observed, and clean exit.
+
+**Proof Tag:** `stop-switch-1769549639527`  
+**Evidence:** [`docs/proofs/stability/stop-switch-1769549639527.md`](docs/proofs/stability/stop-switch-1769549639527.md)
+
+- Stop Trigger Time: `2026-01-27T21:34:17.758Z`
+- Stop Observed Latency: 1.0s
+- Shutdown Completion Latency: 100.8s
+- Decisions In Progress (before STOP): 10
+- No New Posts After STOP: ✅ (0 new posts)
+- No Duplicate Posts: ✅
+- Clean Exit: ✅ (exit code 0)
+
+**Acceptance Criteria:**
+- STOP observed latency: Daemon detects STOP within ≤10 seconds of file creation
+- Shutdown completion latency: Daemon exits cleanly within ≤300 seconds of STOP trigger
+- No new posts after STOP observed (only posts that were NOT already in progress)
+- No duplicate posts for the same decision
+- Clean exit (exit code 0)
+
+**Proof Script:** `pnpm run executor:prove:stop-switch-under-load`
+
 **Remaining Phase 5A Items (Planned):**
 
 #### 5A.1 Goals

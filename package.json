@@ -103,6 +103,7 @@
     "executor:prove:long-run-stability": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-long-run-stability.ts",
     "executor:prove:stability-real-load": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-stability-real-load.ts",
     "executor:prove:stability-smoke": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-stability-smoke.ts",
+    "executor:prove:stop-switch-under-load": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-stop-switch-under-load.ts",
     "proof:seed:5a4": "tsx scripts/proof/seed-5a4-workload.ts",
     "proof:regression": "pnpm run executor:prove:e2e-control-post && TARGET_TWEET_ID=${TARGET_TWEET_ID:-2014718451563004351} pnpm run executor:prove:e2e-control-reply",
     "tweet:id": "tsx scripts/utils/extract-tweet-id.ts",
