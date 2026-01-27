@@ -423,13 +423,39 @@ async function enforcePageCap(): Promise<void> {
  * Run posting queue
  */
 async function runPostingQueue(): Promise<{ attempts_started: number; ready: number; selected: number }> {
-  const { processPostingQueue } = await import('../../src/jobs/postingQueue');
-  const result = await processPostingQueue();
-  return {
-    attempts_started: result.attempts_started,
-    ready: result.ready_candidates,
-    selected: result.selected_candidates
-  };
+  try {
+    const { processPostingQueue } = await import('../../src/jobs/postingQueue');
+    const result = await processPostingQueue();
+    return {
+      attempts_started: result.attempts_started,
+      ready: result.ready_candidates,
+      selected: result.selected_candidates
+    };
+  } catch (error: any) {
+    // 🔧 FIX: Catch posting queue errors to prevent daemon crash
+    console.error(`[EXECUTOR_DAEMON] ⚠️  Posting queue error: ${error?.message || error}`);
+    // Emit error event but don't crash daemon
+    try {
+      const { getSupabaseClient } = await import('../../src/db/index');
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'EXECUTOR_POSTING_QUEUE_ERROR',
+        severity: 'error',
+        message: `Posting queue error: ${error?.message || String(error)}`,
+        event_data: {
+          error_name: error?.name || 'Error',
+          error_message: error?.message || String(error),
+          stack: error?.stack?.substring(0, 1000) || null,
+          proof_mode: process.env.PROOF_MODE === 'true',
+        },
+        created_at: new Date().toISOString(),
+      });
+    } catch (eventError: any) {
+      console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit error event: ${eventError.message}`);
+    }
+    // Return empty result to continue daemon operation
+    return { attempts_started: 0, ready: 0, selected: 0 };
+  }
 }
 
 /**
@@ -1167,6 +1193,37 @@ async function main(): Promise<void> {
     console.log('[EXECUTOR_DAEMON] ✅ Exited gracefully');
   }
 }
+
+// 🔧 FIX: Handle unhandled promise rejections to prevent daemon crash
+process.on('unhandledRejection', async (reason: any, promise: Promise<any>) => {
+  const errorMessage = reason?.message || String(reason);
+  const errorStack = reason?.stack || '';
+  console.error(`[EXECUTOR_DAEMON] ⚠️  Unhandled promise rejection: ${errorMessage}`);
+  console.error(`[EXECUTOR_DAEMON] Stack: ${errorStack.substring(0, 500)}`);
+  
+  // Emit crash event but don't exit (allow daemon to continue)
+  try {
+    const { getSupabaseClient } = await import('../../src/db/index');
+    const supabase = getSupabaseClient();
+    await supabase.from('system_events').insert({
+      event_type: 'EXECUTOR_UNHANDLED_REJECTION',
+      severity: 'error',
+      message: `Unhandled promise rejection: ${errorMessage}`,
+      event_data: {
+        error_name: reason?.name || 'UnhandledRejection',
+        error_message: errorMessage,
+        stack: errorStack.substring(0, 2000),
+        proof_mode: process.env.PROOF_MODE === 'true',
+      },
+      created_at: new Date().toISOString(),
+    });
+  } catch (eventError: any) {
+    console.warn(`[EXECUTOR_DAEMON] ⚠️  Failed to emit unhandled rejection event: ${eventError.message}`);
+  }
+  
+  // Don't exit - allow daemon to continue running
+  // The error is logged and event is emitted, but daemon keeps running
+});
 
 // Handle signals
 process.on('SIGINT', async () => {
