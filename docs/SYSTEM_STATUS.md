@@ -469,6 +469,47 @@ Proves executor can run continuously without degradation over extended periods (
    PROOF_DURATION_MINUTES=60 pnpm run executor:prove:long-run-stability
    ```
 
+#### Phase 5A.4: Stability Under Real Load (2 hours) — ✅ PROVEN
+
+**Status:** ✅ **PROVEN**
+
+Proves executor can run continuously for 2 hours under real workload conditions without degradation. Validates continuous health event emission, absence of crashes, browser pool stability, and actual pipeline progress (workload processing).
+
+**Claim:** Executor maintains stability and processes workload over extended 2-hour period under real production-like conditions.
+
+**Proof Tag:** `stability-1769538319189`  
+**Evidence:** [`docs/proofs/stability/stability-1769538319189.md`](docs/proofs/stability/stability-1769538319189.md)
+
+- Boot Event ID: `05f4bbab-1596-4f11-9b0d-e0639d722564`
+- Ready Event ID: `0412c6eb-afe1-473b-9f09-d5f583428f3b`
+- Health OK Events: 119
+- Max Gap: 60.0s
+- Duration: 120 minutes
+- Workload Progress: 3 transitions (`aa05774f-e0fd-494c-8ea1-48e91b8df55a`, `f8397f00-db0c-4844-9f50-2d2c370bbb97`, `888061ef-c4cf-4027-8fee-aafe086b1450`)
+
+**Acceptance Criteria:**
+- EXECUTOR_HEALTH_BOOT seen within 20s
+- EXECUTOR_HEALTH_READY seen within 90s
+- ≥1 EXECUTOR_HEALTH_OK every 60s (no gaps >90s)
+- No EXECUTOR_DAEMON_CRASH events
+- No browser pool exhaustion indicators
+- At least one unit of pipeline progress observed (content_metadata status transition from `queued` → `posted` OR `queued` → `posting` during proof period)
+- Duration completed successfully (2 hours)
+
+**Proof Script:** `pnpm run executor:prove:stability-real-load`
+
+**Operator Runbook:**
+
+1. **Stop executor first** (if running):
+   ```bash
+   pnpm run executor:stop
+   ```
+
+2. **Run proof** (2 hours):
+   ```bash
+   pnpm run executor:prove:stability-real-load
+   ```
+
 **Remaining Phase 5A Items (Planned):**
 
 #### 5A.1 Goals
