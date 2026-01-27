@@ -427,11 +427,19 @@ Rate limit detection, active heartbeats, bypass events, and clearing are working
 - Active Event IDs: `f3ae8e14-4723-4d3a-acf5-404861a23557`, `f574120a-2ff0-4a94-9f22-8d4bda9ac27d`
 - Cleared Event ID: `1628aa97-763a-4bc2-a790-71ef68390a39`
 
-#### Phase 5A.3: Long-Running Executor Stability — 🚧 PLANNED
+#### Phase 5A.3: Long-Running Executor Stability — ✅ PROVEN
 
-**Status:** 🚧 **PLANNED**
+**Status:** ✅ **PROVEN**
 
 Proves executor can run continuously without degradation over extended periods (default: 30 minutes). Validates continuous health event emission, absence of crashes, and stable operation.
+
+**Proof Tag:** `stability-1769467679448`  
+**Evidence:** [`docs/proofs/stability/stability-1769467679448.md`](docs/proofs/stability/stability-1769467679448.md)
+
+- Boot Event ID: `625ff7d4-6a35-439b-bb86-a934deb86e8e`
+- Ready Event ID: `ede4634e-39fc-4c2e-a6b9-5086fbe3a348`
+- Health OK Events: 30
+- Duration: 30 minutes
 
 **Requirements:**
 - EXECUTOR_HEALTH_BOOT seen within 20s
@@ -443,8 +451,6 @@ Proves executor can run continuously without degradation over extended periods (
 
 **Proof Script:** `pnpm run executor:prove:long-run-stability`  
 **Custom Duration:** `PROOF_DURATION_MINUTES=60 pnpm run executor:prove:long-run-stability`
-
-**Evidence:** Will be written to `docs/proofs/stability/` after proof passes.
 
 **Operator Runbook:**
 
@@ -462,12 +468,6 @@ Proves executor can run continuously without degradation over extended periods (
    ```bash
    PROOF_DURATION_MINUTES=60 pnpm run executor:prove:long-run-stability
    ```
-
-3. **After PASS:**
-   - Update `docs/SYSTEM_STATUS.md` and `README_MASTER.md` Phase 5A.3 section to mark as ✅ PROVEN
-   - Include proof tag, immutable report path, and key event IDs (Boot, Ready, Health OK count)
-   - Run verification: `pnpm run verify:docs:truth`
-   - Commit and push: `git add docs/ && git commit -m "proof(5a.3): mark stability PROVEN" && git push`
 
 **Remaining Phase 5A Items (Planned):**
 

@@ -218,11 +218,11 @@ function verifyProofReport(claim: ProvenClaim): void {
     
     const pointerContent = fs.readFileSync(reportPath, 'utf-8');
     
-    // For HEALTH/RATE_LIMIT proofs, INDEX.md format is different - extract from doc line or INDEX
-    if ((type === 'HEALTH' || type === 'RATE_LIMIT') && reportPath.includes('INDEX.md')) {
-      // Extract proof tag from doc line (look for health-<timestamp> or rate-limit-<timestamp> pattern)
+    // For HEALTH/RATE_LIMIT/STABILITY proofs, INDEX.md format is different - extract from doc line or INDEX
+    if ((type === 'HEALTH' || type === 'RATE_LIMIT' || type === 'STABILITY') && reportPath.includes('INDEX.md')) {
+      // Extract proof tag from doc line (look for health-<timestamp>, rate-limit-<timestamp>, or stability-<timestamp> pattern)
       let proofTag: string | null = null;
-      const pattern = type === 'HEALTH' ? /health-(\d+)/ : /rate-limit-(\d+)/;
+      const pattern = type === 'HEALTH' ? /health-(\d+)/ : type === 'RATE_LIMIT' ? /rate-limit-(\d+)/ : /stability-(\d+)/;
       const proofTagMatch = line.match(pattern);
       if (proofTagMatch) {
         proofTag = proofTagMatch[0];
