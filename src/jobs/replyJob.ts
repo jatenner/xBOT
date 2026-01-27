@@ -29,6 +29,8 @@ import { strategicReplySystem } from '../growth/strategicReplySystem';
 import { getPersonalityScheduler, type GeneratorType } from '../scheduling/personalityScheduler';
 import { ReplyDiagnosticLogger } from '../utils/replyDiagnostics';
 import { formatContentForTwitter } from '../posting/aiVisualFormatter';
+import { filterEligibleCandidates, EligibilityReason, type ReplyTargetCandidate } from '../growth/replyTargetEligibility';
+import { scoreAndSelectTopK, formatScoringForStorage } from '../growth/replyTargetScoring';
 
 // ============================================================
 // RATE LIMIT CONFIGURATION (from .env)
@@ -785,29 +787,108 @@ async function generateRealReplies(): Promise<void> {
   // Replace allOpportunities with root-only opportunities
   const allOpportunitiesFiltered = rootOnlyOpportunities;
   
+  // 🎯 PHASE 6.2: REPLY TARGETING POLICY - Eligibility Filter + Scoring
+  console.log('[REPLY_JOB] 🎯 Applying reply targeting policy (eligibility + scoring)...');
+  
+  // Convert to ReplyTargetCandidate format
+  const candidates: ReplyTargetCandidate[] = allOpportunitiesFiltered.map(opp => ({
+    id: opp.id,
+    target_tweet_id: opp.target_tweet_id || opp.tweet_id,
+    target_username: opp.target_username || opp.tweet_author || opp.account_username,
+    tweet_posted_at: opp.tweet_posted_at,
+    is_root_tweet: opp.is_root_tweet,
+    root_tweet_id: opp.root_tweet_id,
+    status: opp.status,
+    replied_to: opp.replied_to,
+    target_in_reply_to_tweet_id: opp.target_in_reply_to_tweet_id,
+    in_reply_to_tweet_id: opp.in_reply_to_tweet_id,
+    // Include scoring-relevant fields
+    like_count: opp.like_count,
+    reply_count: opp.reply_count,
+    retweet_count: opp.retweet_count,
+    posted_minutes_ago: opp.posted_minutes_ago,
+    engagement_rate: opp.engagement_rate,
+    target_followers: opp.target_followers,
+    account_followers: opp.account_followers,
+  }));
+  
+  // Filter eligible candidates
+  const { eligible, ineligible } = await filterEligibleCandidates(candidates, {
+    checkTargetExists: true, // Check for existing replies
+    requireRootTweet: true, // Require root tweets
+  });
+  
+  // Track rejection reasons for metrics
+  const rejectionReasons = new Map<EligibilityReason, number>();
+  ineligible.forEach(({ decision }) => {
+    rejectionReasons.set(decision.reason, (rejectionReasons.get(decision.reason) || 0) + 1);
+  });
+  
+  // Score and select top-K
+  const eligibilityReasonsMap = new Map<string, EligibilityReason>();
+  eligible.forEach(c => eligibilityReasonsMap.set(c.target_tweet_id, EligibilityReason.ELIGIBLE));
+  ineligible.forEach(({ candidate, decision }) => {
+    eligibilityReasonsMap.set(candidate.target_tweet_id, decision.reason);
+  });
+  
+  const scored = scoreAndSelectTopK(eligible, eligibilityReasonsMap);
+  
+  // Structured log per cycle
+  const topRejectionReasons = Array.from(rejectionReasons.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([reason, count]) => `${reason}=${count}`)
+    .join(', ');
+  
+  console.log(`[REPLY_TARGETING] candidates=${candidates.length} eligible=${eligible.length} selected=${scored.length} rejections=[${topRejectionReasons}] top_score=${scored.length > 0 ? scored[0].score.toFixed(3) : 'N/A'}`);
+  
+  if (scored.length === 0) {
+    console.log('[REPLY_JOB] ⚠️ No eligible candidates after targeting policy, waiting for harvester...');
+    return;
+  }
+  
   // 🎯 HIGH-VALUE TIER FILTERING: Tier_S first, then Tier_A, never Tier_B unless starvation
-  const tierSCandidates = allOpportunitiesFiltered.filter(opp => String(opp.tier || '').toUpperCase() === 'S');
-  const tierACandidates = allOpportunitiesFiltered.filter(opp => String(opp.tier || '').toUpperCase() === 'A');
-  const tierBCandidates = allOpportunitiesFiltered.filter(opp => String(opp.tier || '').toUpperCase() === 'B');
+  // Apply tier filtering to scored candidates (preserve scoring order within tiers)
+  const tierSCandidates = scored.filter(opp => {
+    const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === opp.target_tweet_id);
+    return String(original?.tier || '').toUpperCase() === 'S';
+  });
+  const tierACandidates = scored.filter(opp => {
+    const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === opp.target_tweet_id);
+    return String(original?.tier || '').toUpperCase() === 'A';
+  });
+  const tierBCandidates = scored.filter(opp => {
+    const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === opp.target_tweet_id);
+    return String(original?.tier || '').toUpperCase() === 'B';
+  });
   
   console.log(`[REPLY_JOB] 🎯 Tier distribution: S=${tierSCandidates.length} A=${tierACandidates.length} B=${tierBCandidates.length}`);
   
-  // Select tier-based candidates
+  // Select tier-based candidates (preserving scoring order)
   let selectedOpportunities: any[] = [];
   let tierUsed = '';
   let tierReason = '';
   
   if (tierSCandidates.length > 0) {
-    selectedOpportunities = tierSCandidates;
+    selectedOpportunities = tierSCandidates.map(scored => {
+      const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === scored.target_tweet_id);
+      return { ...original, _scoring: formatScoringForStorage(scored.scoringComponents), _eligibility: { eligible: true, reason: scored.eligibilityReason } };
+    });
     tierUsed = 'S';
     tierReason = 'Tier_S available (high-value: fresh + high engagement)';
   } else if (tierACandidates.length > 0) {
-    selectedOpportunities = tierACandidates;
+    selectedOpportunities = tierACandidates.map(scored => {
+      const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === scored.target_tweet_id);
+      return { ...original, _scoring: formatScoringForStorage(scored.scoringComponents), _eligibility: { eligible: true, reason: scored.eligibilityReason } };
+    });
     tierUsed = 'A';
     tierReason = 'Tier_A available (good engagement, no Tier_S)';
   } else if (tierBCandidates.length > 0) {
     // Starvation mode: only top 1 Tier_B
-    selectedOpportunities = tierBCandidates.slice(0, 1);
+    selectedOpportunities = tierBCandidates.slice(0, 1).map(scored => {
+      const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === scored.target_tweet_id);
+      return { ...original, _scoring: formatScoringForStorage(scored.scoringComponents), _eligibility: { eligible: true, reason: scored.eligibilityReason } };
+    });
     tierUsed = 'B';
     tierReason = 'STARVATION: Only Tier_B available, using top 1 candidate';
     console.warn(`[REPLY_JOB] ⚠️ STARVATION MODE: No Tier_S/A available, using Tier_B (top 1 only)`);
@@ -1325,7 +1406,10 @@ async function generateRealReplies(): Promise<void> {
     // 🎯 CRITICAL: Pass through root tweet data from DB
     is_root_tweet: opp.is_root_tweet || false,
     is_reply_tweet: opp.is_reply_tweet || false,
-    root_tweet_id: opp.root_tweet_id || null
+    root_tweet_id: opp.root_tweet_id || null,
+    // 🎯 PHASE 6.2: Preserve targeting policy data for auditability
+    _scoring: opp._scoring || null,
+    _eligibility: opp._eligibility || null
   }));
   
   console.log(`[REPLY_JOB] ✅ Found ${opportunities.length} reply opportunities from database pool`);
@@ -2420,7 +2504,10 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
       generator: reply.generator_used || 'unknown',
       tweet_url: reply.tweet_url || null,
       parent_tweet_id: reply.target_tweet_id,
-      parent_username: reply.target_username
+      parent_username: reply.target_username,
+      // 🎯 PHASE 6.2: Reply targeting policy auditability
+      ...(reply._scoring || {}),
+      ...(reply._eligibility ? { reply_targeting_eligibility: reply._eligibility } : {})
     },
         
         // ═══════════════════════════════════════════════════════════════════════

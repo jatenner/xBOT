@@ -42,12 +42,20 @@ export interface ReplyTargetCandidate {
   target_tweet_id: string;
   target_username?: string;
   tweet_posted_at?: string | Date;
-  is_root_tweet?: boolean;
+  is_root_tweet?: boolean | number | string;
   root_tweet_id?: string;
   status?: string;
-  replied_to?: boolean;
+  replied_to?: boolean | number | string;
   target_in_reply_to_tweet_id?: string;
   in_reply_to_tweet_id?: string;
+  // Scoring-relevant fields
+  like_count?: number;
+  reply_count?: number;
+  retweet_count?: number;
+  posted_minutes_ago?: number;
+  engagement_rate?: number;
+  target_followers?: number;
+  account_followers?: number;
 }
 
 /**
@@ -96,7 +104,7 @@ export async function checkEligibility(
   }
 
   // Also check reply_opportunities for replied_to flag
-  if (candidate.replied_to === true) {
+  if (candidate.replied_to === true || candidate.replied_to === 1 || candidate.replied_to === 'true') {
     return {
       eligible: false,
       reason: EligibilityReason.ALREADY_REPLIED_RECENTLY,
@@ -129,14 +137,15 @@ export async function checkEligibility(
   // 4. Check if root tweet (if required)
   const requireRoot = options?.requireRootTweet !== false; // Default true for safety
   if (requireRoot) {
-    const isRoot = candidate.is_root_tweet === true || candidate.is_root_tweet === 1;
-    const hasInReplyTo = candidate.target_in_reply_to_tweet_id || candidate.in_reply_to_tweet_id;
+    const isRootValue = candidate.is_root_tweet;
+    const isRoot = isRootValue === true || isRootValue === 1 || isRootValue === 'true' || String(isRootValue).toLowerCase() === 'true';
+    const hasInReplyTo = !!(candidate.target_in_reply_to_tweet_id || candidate.in_reply_to_tweet_id);
 
     if (!isRoot || hasInReplyTo) {
       return {
         eligible: false,
         reason: EligibilityReason.NOT_ROOT_TWEET,
-        reasonDetails: `is_root_tweet=${candidate.is_root_tweet}, has_in_reply_to=${!!hasInReplyTo}`,
+        reasonDetails: `is_root_tweet=${candidate.is_root_tweet}, has_in_reply_to=${hasInReplyTo}`,
         checkedAt,
       };
     }
