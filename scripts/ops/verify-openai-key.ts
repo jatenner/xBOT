@@ -6,13 +6,13 @@
  * Uses the same env loading logic as executor:daemon.
  */
 
-import 'dotenv/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import OpenAI from 'openai';
 
 // Load .env.local first, then .env (same as daemon.ts)
+// IMPORTANT: Do NOT use 'dotenv/config' import - it loads .env before we can check .env.local
 const envLocalPath = path.join(process.cwd(), '.env.local');
 const envPath = path.join(process.cwd(), '.env');
 
