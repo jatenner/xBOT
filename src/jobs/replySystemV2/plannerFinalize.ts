@@ -34,7 +34,7 @@ export async function plannerFinalizeDecision(
     console.log(`[REPLY_V2_PLANNER_FINALIZE] Finalizing decision_id=${decisionId} strategy=${fields.strategy_id}`);
     
     // Build features object
-    const features = {
+    const features: any = {
       plan_mode: 'railway',
       strategy_id: fields.strategy_id,
       strategy_version: fields.strategy_version,
@@ -44,6 +44,16 @@ export async function plannerFinalizeDecision(
       topic_fit: fields.topic_fit,
       score_bucket: fields.score_bucket,
     };
+    
+    // Store root_tweet_id in features (required for FINAL_REPLY_GATE when reading from content_metadata view)
+    if (fields.root_tweet_id) {
+      features.root_tweet_id = fields.root_tweet_id;
+    }
+    
+    // Store target_tweet_id in features (for consistency)
+    if (fields.target_tweet_id) {
+      features.target_tweet_id = fields.target_tweet_id;
+    }
     
     // Update base table (content_generation_metadata_comprehensive)
     const scheduledAt = new Date().toISOString(); // Set scheduled_at for posting queue
