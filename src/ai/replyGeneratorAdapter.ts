@@ -28,6 +28,7 @@ export interface ReplyGenerationRequest {
   reply_context?: ReplyContext;
   template_id?: string; // 🎨 QUALITY TRACKING: Template to use
   prompt_version?: string; // 🎨 QUALITY TRACKING: Prompt version
+  custom_prompt?: string; // 🎯 PHASE 6.4: Custom strategy prompt template
 }
 
 export interface ReplyGenerationResult {
@@ -113,14 +114,20 @@ export async function generateReplyContent(
     contextString += `\n\nPREVIOUS TWEET IN THREAD: "${request.reply_context.thread_prev_text}"`;
   }
   
-  const prompt = `Generate a helpful, contextual reply to this tweet:
+  // 🎯 PHASE 6.4: Use custom strategy prompt if provided, otherwise use default
+  const basePrompt = `Generate a helpful, contextual reply to this tweet:
 
 ${contextString}
 Author: @${request.target_username}
 Reply Intent: ${replyIntent}
 Health Relevance: ${relevanceScore >= 0.6 ? 'High' : relevanceScore >= 0.3 ? 'Medium' : 'Low'}
 
-YOUR REPLY MUST:
+YOUR REPLY MUST:`;
+  
+  // 🎯 PHASE 6.4: If custom_prompt provided, prepend it to base prompt; otherwise use default
+  const prompt = request.custom_prompt 
+    ? `${request.custom_prompt}\n\n${basePrompt}`
+    : `${basePrompt}
 1. **CRITICAL**: ALWAYS reference a SPECIFIC concrete detail from the target tweet (a claim, metric, term, intervention, mechanism, or named entity). If you cannot reference something specific, return {"content": "", "skip_reason": "no_concrete_detail"}.
 2. **MANDATORY**: Include at least ONE anchor term from the tweet (extract 3-8 key terms: nouns, phrases, hashtags, numbers, or keywords from the tweet text above).
 3. **MANDATORY**: Mention the tweet topic explicitly and reference at least one concrete detail from the tweet.

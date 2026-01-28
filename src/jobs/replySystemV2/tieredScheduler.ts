@@ -10,6 +10,17 @@ import { getNextCandidateFromQueue } from './queueManager';
 import { createHash } from 'crypto';
 import { computeSemanticSimilarity } from '../../gates/semanticGate';
 
+/**
+ * Get score bucket for strategy attribution
+ */
+function getScoreBucket(score: number): string {
+  if (score >= 0.8) return '0.8-1.0';
+  if (score >= 0.6) return '0.6-0.8';
+  if (score >= 0.4) return '0.4-0.6';
+  if (score >= 0.2) return '0.2-0.4';
+  return '0.0-0.2';
+}
+
 // Outcome tracking interface
 interface OutcomeData {
   outcome_type: 'DECISION_CREATED' | 'DENY' | 'SKIP' | 'ERROR' | 'TIMEOUT';
@@ -888,6 +899,41 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       predicted_24h_views: candidateData.predicted_24h_views || 0,
     };
     
+    // 🎯 PHASE 6.4: Strategy selection BEFORE inserting into content_metadata
+    let strategySelection: any = null;
+    let selectedStrategy: any = null;
+    try {
+      const { epsilonGreedyStrategySelection } = await import('../../growth/epsilonGreedy');
+      const { getStrategy, getDefaultStrategy } = await import('../../growth/replyStrategies');
+      
+      // Create a mock ScoredCandidate for strategy selection (V2 doesn't use the same scoring format)
+      // We'll use candidate score as a proxy for targeting score
+      const mockScoredCandidates = [{
+        target_tweet_id: candidate.candidate_tweet_id,
+        score: candidateScore / 100, // Normalize to 0-1
+        scoringComponents: {
+          topicFit: candidateFeatures.topic_relevance || 0,
+          targetingScore: candidateScore / 100,
+        },
+        eligibilityReason: 'eligible' as any,
+      }] as any[];
+      
+      strategySelection = await epsilonGreedyStrategySelection(mockScoredCandidates);
+      selectedStrategy = getStrategy(strategySelection.strategyId, strategySelection.strategyVersion) || getDefaultStrategy();
+      
+      console.log(`[REPLY_V2] 🎯 PHASE 6.4: Selected strategy=${selectedStrategy.strategy_id}/${selectedStrategy.strategy_version} mode=${strategySelection.selectionMode} reason=${strategySelection.reason}`);
+    } catch (strategyError: any) {
+      console.warn(`[REPLY_V2] ⚠️ Strategy selection failed, using default:`, strategyError.message);
+      const { getDefaultStrategy } = await import('../../growth/replyStrategies');
+      selectedStrategy = getDefaultStrategy();
+      strategySelection = {
+        strategyId: selectedStrategy.strategy_id,
+        strategyVersion: selectedStrategy.strategy_version,
+        selectionMode: 'fallback',
+        reason: `Strategy selection error: ${strategyError.message}`,
+      };
+    }
+    
     // Record decision BEFORE inserting into content_metadata
     // 🎯 PIPELINE STAGES: Set scored_at timestamp
     const scoredAt = new Date().toISOString();
@@ -1009,6 +1055,17 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       .maybeSingle();
     
     if (!existingMetadataRow) {
+      // 🎯 PHASE 6.4: Add strategy attribution to features
+      const strategyFeatures = {
+        strategy_id: selectedStrategy?.strategy_id || 'insight_punch',
+        strategy_version: String(selectedStrategy?.strategy_version || '1'),
+        selection_mode: strategySelection?.selectionMode || 'fallback',
+        strategy_description: selectedStrategy?.description || '',
+        targeting_score_total: candidateScore / 100,
+        topic_fit: candidateFeatures.topic_relevance || 0,
+        score_bucket: getScoreBucket(candidateScore / 100),
+      };
+      
       const { error: insertError2 } = await supabase
         .from('content_metadata')
         .insert({
@@ -1025,6 +1082,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           pipeline_source: 'reply_v2_scheduler',
           build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
           quality_score: candidate.overall_score / 100,
+          features: strategyFeatures, // 🎯 PHASE 6.4: Strategy attribution
         });
       
       if (insertError2) {
@@ -1124,18 +1182,20 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       .eq('decision_id', decisionId);
     console.log(`[PIPELINE] decision_id=${decisionId} stage=generate_start ok=true detail=generation_started_at_set`);
     
-    // 🎨 QUALITY TRACKING: Select reply template
+    // 🎯 PHASE 6.4: Use selected strategy for generation (replace V2 template selection)
+    // Strategy selection already done above, now use strategy prompt template
     let templateSelection;
     let templateSelectedAt: string | null = null;
     try {
-      console.log(`[PIPELINE] decision_id=${decisionId} stage=template_select ok=start detail=selecting_template`);
-      const { selectReplyTemplate } = await import('./replyTemplateSelector');
-      templateSelection = await selectReplyTemplate({
-        topic_relevance_score: (candidateData.topic_relevance_score || 0) / 100, // Normalize to 0-1
-        candidate_score: candidateData.overall_score || candidate.overall_score || 0,
-        topic: keywords.join(', '),
-        content_preview: candidateData.candidate_content.substring(0, 100),
-      });
+      console.log(`[PIPELINE] decision_id=${decisionId} stage=template_select ok=start detail=using_phase6_strategy`);
+      
+      // Map Phase 6.4 strategy to V2 template format for compatibility
+      templateSelection = {
+        template_id: selectedStrategy?.strategy_id || 'insight_punch',
+        prompt_version: selectedStrategy?.strategy_version || '1',
+        template_name: selectedStrategy?.description || 'Insight punch strategy',
+        selection_reason: `phase6_strategy_${strategySelection?.selectionMode || 'fallback'}`,
+      };
       
       if (!templateSelection || !templateSelection.template_id) {
         throw new Error('Template selection returned null or missing template_id');
@@ -1233,12 +1293,12 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         console.log(`[SCHEDULER] ✅ CERT reply generated: ${replyContent.length} chars`);
       } else {
         // Normal generation path
-        // 🎨 QUALITY TRACKING: Use template-aware generation
+        // 🎯 PHASE 6.4: Use strategy prompt template for generation
         const { generateReplyContent } = await import('../../ai/replyGeneratorAdapter');
-        const { getTemplatePrompt } = await import('./replyTemplateSelector');
+        const { formatStrategyPrompt } = await import('../../growth/replyStrategies');
         
-        // Get template prompt structure (if available)
-        const templatePrompt = await getTemplatePrompt(templateSelection.template_id);
+        // 🎯 PHASE 6.4: Build strategy prompt - the strategy template will be prepended to the base prompt
+        const strategyPrompt = formatStrategyPrompt(selectedStrategy, '');
         
         const replyResult = await Promise.race([
           generateReplyContent({
@@ -1248,8 +1308,9 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
             angle: 'reply_context',
             tone: 'helpful',
             model: 'gpt-4o-mini',
-            template_id: templateSelection.template_id, // 🎨 QUALITY TRACKING
-            prompt_version: promptVersion, // 🎨 QUALITY TRACKING
+            template_id: templateSelection.template_id, // 🎨 QUALITY TRACKING (maps to strategy_id)
+            prompt_version: promptVersion, // 🎨 QUALITY TRACKING (maps to strategy_version)
+            custom_prompt: strategyPrompt, // 🎯 PHASE 6.4: Use strategy prompt template (includes base instructions)
             reply_context: {
               target_text: normalizedSnapshot,
               root_text: replyContext.root_tweet_text || normalizedSnapshot,
@@ -1518,14 +1579,14 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       throw new Error(`[SCHEDULER] ❌ Decision ${decisionId} not found in content_metadata`);
     }
     
-    const existingFeatures = (existingMetadataForUpdate?.features as any) || {};
-    const existingReasonCodes = existingFeatures.reason_codes || [];
+    const existingFeaturesForUpdate = (existingMetadataForUpdate?.features as any) || {};
+    const existingReasonCodes = existingFeaturesForUpdate.reason_codes || [];
     const updatedReasonCodes = isFallback 
       ? [...new Set([...existingReasonCodes, 'fallback_used'])]
       : existingReasonCodes;
     
     const updatedFeatures = { 
-      ...existingFeatures, 
+      ...existingFeaturesForUpdate, 
       is_fallback: isFallback,
       semantic_similarity: semanticSimilarity, // 🔒 TASK 2: Store in features JSONB (column doesn't exist in content_metadata)
       reason_codes: updatedReasonCodes, // 🔒 TASK 3: Include fallback_used if fallback was used
@@ -1571,12 +1632,23 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     }
     
     // Update content_metadata (primary table)
+    // 🎯 PHASE 6.4: Merge strategy attribution into features
+    const strategyFeatures = {
+      strategy_id: selectedStrategy?.strategy_id || 'insight_punch',
+      strategy_version: String(selectedStrategy?.strategy_version || '1'),
+      selection_mode: strategySelection?.selectionMode || 'fallback',
+      strategy_description: selectedStrategy?.description || '',
+      targeting_score_total: candidateScore / 100,
+      topic_fit: candidateFeatures.topic_relevance || 0,
+      score_bucket: getScoreBucket(candidateScore / 100),
+    };
+    
     const { data: metadataUpdate, error: updateError2 } = await supabase
       .from('content_metadata')
       .update({
         status: 'queued', // 🔒 TASK 3: Set to queued AFTER all fields populated
         content: replyContent,
-        features: updatedFeatures, // 🔒 TASK 2+3: Store semantic_similarity + fallback flag in features JSONB
+        features: { ...existingFeaturesForUpdate, ...updatedFeatures, ...strategyFeatures }, // 🎯 PHASE 6.4: Merge strategy attribution
         pipeline_source: existingMetadataForUpdate?.pipeline_source || 'reply_v2_scheduler', // Preserve pipeline_source
       })
       .eq('decision_id', decisionId)
