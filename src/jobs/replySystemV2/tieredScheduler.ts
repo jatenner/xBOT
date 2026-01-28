@@ -442,12 +442,80 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     let isReplyFromFetch: boolean | undefined = undefined;
     
     if (planOnlyMode) {
-      // PLAN_ONLY: Use candidate content directly (no browser fetch)
-      targetTweetContentSnapshot = candidateData.candidate_content || '';
-      snapshotSource = 'candidate_extract';
-      snapshotLenLive = 0;
-      isReplyFromFetch = undefined; // Unknown in plan-only mode
-      console.log(`[SCHEDULER] 📋 PLAN_ONLY: Using candidate content (${targetTweetContentSnapshot.length} chars) - skipping browser fetch`);
+      // 🔒 PREFLIGHT CHECK: Verify tweet exists before planning (reduce target_not_found_or_deleted)
+      try {
+        const { fetchTweetData } = await import('../../gates/contextLockVerifier');
+        const preflightTweetData = await Promise.race([
+          fetchTweetData(candidate.candidate_tweet_id),
+          new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('PREFLIGHT_TIMEOUT')), 8000); // 8s timeout for preflight
+          }),
+        ]) as any;
+        
+        if (!preflightTweetData || !preflightTweetData.text || preflightTweetData.text.length < 20) {
+          console.warn(`[SCHEDULER] ⚠️ PREFLIGHT: Tweet ${candidate.candidate_tweet_id} not found or too short, skipping`);
+          clearTimeout(watchdogTimer);
+          stageTimings.total_ms = Date.now() - candidateStartTime;
+          
+          if (candidateLeaseId) {
+            const { releaseLease } = await import('./queueManager');
+            await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+          }
+          
+          await logOutcome(supabase, schedulerRunId, {
+            outcome_type: 'DENY',
+            candidate_tweet_id: candidate.candidate_tweet_id,
+            candidate_id: candidate.evaluation_id,
+            author_handle: candidateData.candidate_author_username,
+            url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+            deny_reason_code: 'PREFLIGHT_TWEET_NOT_FOUND',
+            deny_reason_detail: 'Tweet not found or too short during preflight check',
+            decision_id: decisionId,
+            stage_timings: stageTimings,
+          });
+          
+          throw new Error(`Preflight check failed: tweet ${candidate.candidate_tweet_id} not found or too short`);
+        }
+        
+        // Use preflight-fetched content (more reliable than candidate extract)
+        targetTweetContentSnapshot = preflightTweetData.text.trim();
+        snapshotSource = 'preflight_fetch';
+        snapshotLenLive = preflightTweetData.text.trim().length;
+        isReplyFromFetch = preflightTweetData.isReply || false;
+        console.log(`[SCHEDULER] ✅ PREFLIGHT: Tweet verified (${snapshotLenLive} chars), proceeding with planning`);
+      } catch (preflightError: any) {
+        if (preflightError.message.includes('PREFLIGHT_TIMEOUT') || preflightError.message.includes('not found')) {
+          console.warn(`[SCHEDULER] ⚠️ PREFLIGHT failed: ${preflightError.message}, skipping candidate`);
+          clearTimeout(watchdogTimer);
+          stageTimings.total_ms = Date.now() - candidateStartTime;
+          
+          if (candidateLeaseId) {
+            const { releaseLease } = await import('./queueManager');
+            await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+          }
+          
+          await logOutcome(supabase, schedulerRunId, {
+            outcome_type: 'DENY',
+            candidate_tweet_id: candidate.candidate_tweet_id,
+            candidate_id: candidate.evaluation_id,
+            author_handle: candidateData.candidate_author_username,
+            url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+            deny_reason_code: 'PREFLIGHT_FAILED',
+            deny_reason_detail: preflightError.message,
+            decision_id: decisionId,
+            stage_timings: stageTimings,
+          });
+          
+          throw preflightError;
+        }
+        
+        // Fallback to candidate content if preflight fails for other reasons
+        console.warn(`[SCHEDULER] ⚠️ PREFLIGHT error (non-fatal): ${preflightError.message}, using candidate content`);
+        targetTweetContentSnapshot = candidateData.candidate_content || '';
+        snapshotSource = 'candidate_extract';
+        snapshotLenLive = 0;
+        isReplyFromFetch = undefined;
+      }
       
       if (!targetTweetContentSnapshot || targetTweetContentSnapshot.length < 20) {
         clearTimeout(watchdogTimer);

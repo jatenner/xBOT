@@ -176,10 +176,24 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
     ]) as any;
     
     const generationElapsed = Date.now() - generationStartTime;
-    const generatedContent = replyResult.content;
+    let generatedContent = replyResult.content;
     
     if (!generatedContent || generatedContent.trim().length === 0) {
       throw new Error('Generated content is empty');
+    }
+    
+    // 🔒 LENGTH FIX: Truncate if >220 chars (adapter may not enforce strictly)
+    const MAX_REPLY_LENGTH = 220;
+    if (generatedContent.length > MAX_REPLY_LENGTH) {
+      console.warn(`[PLAN_ONLY_GENERATOR] ⚠️ Generated content too long (${generatedContent.length} chars), truncating to ${MAX_REPLY_LENGTH}...`);
+      // Truncate at word boundary
+      let truncated = generatedContent.substring(0, MAX_REPLY_LENGTH - 3);
+      const lastSpace = truncated.lastIndexOf(' ');
+      if (lastSpace > MAX_REPLY_LENGTH - 20) {
+        truncated = truncated.substring(0, lastSpace);
+      }
+      generatedContent = truncated.trim() + '...';
+      console.log(`[PLAN_ONLY_GENERATOR] ✅ Truncated to ${generatedContent.length} chars`);
     }
     
     console.log(`[PLAN_ONLY_GENERATOR] ✅ Generated content: ${generatedContent.length} chars in ${generationElapsed}ms`);

@@ -945,12 +945,18 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
             return null;
           })) : null;
       
-      // 🔒 AUTO-HEAL: For context_mismatch with similarity >= 0.35, regenerate content
+      // 🔒 AUTO-HEAL: For context_mismatch with similarity >= 0.33 (wider band for fresh decisions <20m old)
+      const decisionAgeMs = decision.created_at ? Date.now() - new Date(decision.created_at).getTime() : null;
+      const decisionAgeMinutes = decisionAgeMs ? Math.round(decisionAgeMs / 60000) : null;
+      const isFreshDecision = decisionAgeMinutes !== null && decisionAgeMinutes < 20;
+      const autoHealMinSimilarity = isFreshDecision ? 0.33 : 0.35; // Wider band for fresh decisions
+      
       if (contextVerification.skip_reason === 'context_mismatch' && 
           details.content_similarity !== undefined &&
-          details.content_similarity >= 0.35 &&
+          details.content_similarity >= autoHealMinSimilarity &&
           details.content_similarity < 0.45 &&
-          details.target_exists === true) {
+          details.target_exists === true &&
+          details.is_root_tweet === true) {
         
         console.log(`[POSTING_QUEUE] 🔄 AUTO-HEAL: Near-miss context_mismatch (similarity=${details.content_similarity.toFixed(3)}), regenerating content...`);
         
@@ -2055,8 +2061,8 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     let repliesPostedThisCycle = 0;
     
     // 🔒 FRESHNESS DRAIN: Log age of decision being processed
-    if (filteredData.length > 0 && filteredData[0].pipeline_source === 'reply_v2_planner') {
-      const firstDecision = filteredData[0];
+    if (readyDecisions.length > 0 && readyDecisions[0].pipeline_source === 'reply_v2_planner') {
+      const firstDecision = readyDecisions[0];
       const decisionAgeMs = Date.now() - new Date(firstDecision.created_at).getTime();
       const decisionAgeMinutes = Math.round(decisionAgeMs / 60000);
       console.log(`[POSTING_QUEUE] 🔄 Processing decision age_minutes=${decisionAgeMinutes} (newest-first)`);
@@ -2933,9 +2939,6 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     // 🔒 CONTROLLED WINDOW GATE: If CONTROLLED_DECISION_ID is set, ONLY select that decision_id for replies too
     // 🔒 MANDATE 2: CERT MODE - Hard filter for reply decisions only
     
-    // 🔒 PRIORITY FIX: Prioritize newest reply_v2_planner decisions (created within 20 minutes)
-    const freshCutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
-    
     let replyQuery = supabase
       .from('content_metadata')
       .select('*, visual_format')
@@ -2969,10 +2972,8 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       replyQuery = replyQuery.eq('decision_id', controlledDecisionId);
     }
     
-    // 🔒 PRIORITY FIX: Prioritize newest reply_v2_planner decisions (created within 20 minutes)
-    // For reply_v2_planner decisions, prefer newest-first ordering
+    // For reply_v2_planner decisions, prefer newest-first ordering (already set above)
     const { data: replyPosts, error: replyError } = await replyQuery
-      .order('created_at', { ascending: false }) // Newest first for planner decisions
       .limit(10); // Get up to 10 replies
     
     // 🔒 CERT MODE: Only include replies, exclude threads/singles
