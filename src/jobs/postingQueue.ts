@@ -2674,6 +2674,7 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     console.log(`[POSTING_QUEUE] 📅 Fetching posts ready within ${GRACE_MINUTES} minute window`);
     console.log(`[POSTING_QUEUE] 🕒 Current time: ${now.toISOString()}`);
     console.log(`[POSTING_QUEUE] 🕒 Grace window: ${graceWindow.toISOString()}`);
+    console.log(`[POSTING_QUEUE] 🔍 RUNNER_MODE=${process.env.RUNNER_MODE || 'false'}, EXECUTION_MODE=${process.env.EXECUTION_MODE || 'unknown'}, certMode=${certMode}`);
     
     // CRITICAL FIX: Check what's already been posted to avoid duplicates
     const { data: alreadyPosted } = await supabase
@@ -2729,7 +2730,7 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       .select('*, visual_format')
       .eq('status', 'queued')
       .eq('decision_type', 'reply')
-      .lte('scheduled_at', graceWindow.toISOString()); // Include replies scheduled in past OR near future
+      .or(`scheduled_at.is.null,scheduled_at.lte.${graceWindow.toISOString()}`); // Include NULL scheduled_at (treat as ready now) OR scheduled in past/near future
     
     // 🔒 PROOF_MODE: Only process proof decisions (exclusive mode) - already set above for contentQuery
     if (proofMode) {
