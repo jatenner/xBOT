@@ -371,44 +371,15 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
   
   // 🔒 STABILITY HEURISTICS: Prefer candidates from opportunities with stability_score=1.0 (5-45min window)
   // Check if opportunities have stability features
-  query = query
-    .order('predicted_tier', { ascending: true }) // Tier 1 first
-    .order('overall_score', { ascending: false }) // Then by score
-    .limit(10); // Get more candidates to filter by stability
-  
-  const { data: candidates, error } = await query;
-  
-  if (error || !candidates || candidates.length === 0) {
-    if (error) {
-      console.log(`[QUEUE_MANAGER] ⚠️ Query error for tier ${tier}: ${error.message}`);
-    }
-    return null;
-  }
-  
-  // Filter by stability if features available, then take top by score
-  const candidatesWithStability = candidates.map(c => {
-    // Try to get stability from reply_opportunities
-    return c;
-  });
-  
-  // Prefer candidates from stable opportunities (5-45min window)
-  const stableCandidates = candidatesWithStability.filter(c => {
-    // This will be enhanced when we join with reply_opportunities
-    return true; // For now, keep all
-  });
-  
-  const selectedCandidate = stableCandidates.length > 0 ? stableCandidates[0] : candidates[0];
-  
-  if (!selectedCandidate) {
-    return null;
-  }
-  
-  const candidate = selectedCandidate;
-  
   if (tier !== undefined && !singleId) {
     // Only filter by tier if not in SINGLE_ID mode
     query = query.eq('predicted_tier', tier);
   }
+  
+  query = query
+    .order('predicted_tier', { ascending: true }) // Tier 1 first
+    .order('overall_score', { ascending: false }) // Then by score
+    .limit(10); // Get more candidates to filter by stability
   
   const { data: candidates, error } = await query;
   
@@ -428,7 +399,38 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
     return null;
   }
   
-  const candidate = candidates[0];
+  // 🔒 STABILITY HEURISTICS: Prefer candidates from opportunities in 5-45min window
+  // Join with reply_opportunities to get stability features
+  const candidateTweetIds = candidates.map(c => c.candidate_tweet_id);
+  const { data: opps } = await supabase
+    .from('reply_opportunities')
+    .select('target_tweet_id, features')
+    .in('target_tweet_id', candidateTweetIds);
+  
+  const stabilityMap = new Map<string, number>();
+  if (opps) {
+    for (const opp of opps) {
+      const features = (opp.features || {}) as any;
+      const stabilityScore = features.stability_score || 0.5;
+      stabilityMap.set(opp.target_tweet_id, stabilityScore);
+    }
+  }
+  
+  // Sort by stability_score (prefer 1.0 = 5-45min window), then by overall_score
+  const candidatesWithStability = candidates.map(c => ({
+    ...c,
+    stability_score: stabilityMap.get(c.candidate_tweet_id) || 0.5
+  }));
+  
+  candidatesWithStability.sort((a, b) => {
+    // First by stability_score (desc), then by overall_score (desc)
+    if (b.stability_score !== a.stability_score) {
+      return b.stability_score - a.stability_score;
+    }
+    return b.overall_score - a.overall_score;
+  });
+  
+  const candidate = candidatesWithStability[0];
   
   // If lease columns exist, atomically lease the candidate
   if (hasLeases) {

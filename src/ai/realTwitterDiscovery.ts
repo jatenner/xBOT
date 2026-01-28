@@ -1337,7 +1337,7 @@ export class RealTwitterDiscovery {
    */
   async storeOpportunities(opportunities: ReplyOpportunity[]): Promise<void> {
     // 🔒 STABILITY HEURISTICS: Filter out tweets <2 minutes old (edit risk) and prefer 5-45 minutes
-    const now = Date.now();
+    const nowTime = Date.now();
     const minAgeMs = 2 * 60 * 1000; // 2 minutes minimum
     const preferredMinAgeMs = 5 * 60 * 1000; // 5 minutes preferred minimum
     const preferredMaxAgeMs = 45 * 60 * 1000; // 45 minutes preferred maximum
@@ -1348,8 +1348,8 @@ export class RealTwitterDiscovery {
       }
       
       const postedAt = opp.tweet_posted_at ? new Date(opp.tweet_posted_at).getTime() : 
-                       (now - (opp.posted_minutes_ago || 0) * 60 * 1000);
-      const ageMs = now - postedAt;
+                       (nowTime - (opp.posted_minutes_ago || 0) * 60 * 1000);
+      const ageMs = nowTime - postedAt;
       
       // Filter out <2 minutes (edit risk)
       if (ageMs < minAgeMs) {
@@ -1362,8 +1362,8 @@ export class RealTwitterDiscovery {
     // Add stability signals to features
     const oppsWithStability = filteredOpps.map(opp => {
       const postedAt = opp.tweet_posted_at ? new Date(opp.tweet_posted_at).getTime() : 
-                       (now - (opp.posted_minutes_ago || 0) * 60 * 1000);
-      const ageMs = now - postedAt;
+                       (nowTime - (opp.posted_minutes_ago || 0) * 60 * 1000);
+      const ageMs = nowTime - postedAt;
       const ageMinutes = Math.round(ageMs / 60000);
       
       // Bucket age

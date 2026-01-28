@@ -1070,11 +1070,12 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
         }
       } else {
         // Hard block for deleted tweets or low similarity
-        console.error(`[POSTING_QUEUE] ⛔ CONTEXT LOCK FAILED: ${contextVerification.skip_reason}`);
+        const skipReason = contextVerification.skip_reason;
+        console.error(`[POSTING_QUEUE] ⛔ CONTEXT LOCK FAILED: ${skipReason}`);
         console.error(`[POSTING_QUEUE]   decision_id=${decisionId}`);
         console.error(`[POSTING_QUEUE]   target_tweet_id=${decision.target_tweet_id}`);
         console.error(`[POSTING_QUEUE]   computed_age_minutes=${ageMinutes || 'unknown'}`);
-        console.error(`[POSTING_QUEUE]   stale_reason=${contextVerification.skip_reason}`);
+        console.error(`[POSTING_QUEUE]   stale_reason=${skipReason}`);
         console.error(`[POSTING_QUEUE]   details=${JSON.stringify(details)}`);
         
         const finalStatus = skipReason === 'target_not_found_or_deleted' ? 'blocked_permanent' : 'blocked';
@@ -2705,6 +2706,7 @@ interface QueuedDecision {
   // PHASE 5 additions for learning system
   predicted_followers?: number;
   hook_type?: string;
+  pipeline_source?: string; // Pipeline source (e.g., 'reply_v2_planner')
 }
 
 interface QueuedDecisionRow {
@@ -2968,8 +2970,6 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     }
     
     // 🔒 PRIORITY FIX: Prioritize newest reply_v2_planner decisions (created within 20 minutes)
-    const freshCutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
-    
     // For reply_v2_planner decisions, prefer newest-first ordering
     const { data: replyPosts, error: replyError } = await replyQuery
       .order('created_at', { ascending: false }) // Newest first for planner decisions
