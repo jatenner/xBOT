@@ -931,15 +931,36 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
     );
     
     if (!contextVerification.pass) {
+      const details = contextVerification.details;
+      const ageMinutes = decision.target_tweet_id ? 
+        (await supabase.from('reply_opportunities')
+          .select('tweet_posted_at')
+          .eq('target_tweet_id', decision.target_tweet_id)
+          .maybeSingle()
+          .then(r => {
+            if (r.data?.tweet_posted_at) {
+              const ageMs = Date.now() - new Date(r.data.tweet_posted_at).getTime();
+              return Math.round(ageMs / 60000);
+            }
+            return null;
+          })) : null;
+      
       console.error(`[POSTING_QUEUE] ⛔ CONTEXT LOCK FAILED: ${contextVerification.skip_reason}`);
       console.error(`[POSTING_QUEUE]   decision_id=${decisionId}`);
-      console.error(`[POSTING_QUEUE]   details=${JSON.stringify(contextVerification.details)}`);
+      console.error(`[POSTING_QUEUE]   target_tweet_id=${decision.target_tweet_id}`);
+      console.error(`[POSTING_QUEUE]   computed_age_minutes=${ageMinutes || 'unknown'}`);
+      console.error(`[POSTING_QUEUE]   stale_reason=${contextVerification.skip_reason}`);
+      console.error(`[POSTING_QUEUE]   details=${JSON.stringify(details)}`);
       
       await supabase.from('content_generation_metadata_comprehensive')
         .update({
           status: 'blocked',
           skip_reason: contextVerification.skip_reason,
-          error_message: JSON.stringify(contextVerification.details)
+          error_message: JSON.stringify({
+            ...details,
+            computed_age_minutes: ageMinutes,
+            stale_reason: contextVerification.skip_reason
+          })
         })
         .eq('decision_id', decisionId);
       
