@@ -19,6 +19,9 @@ export interface PlannerFinalizeFields {
   score_bucket: string;
   root_tweet_id?: string; // Required for FINAL_REPLY_GATE
   target_tweet_id?: string; // Required for posting
+  target_tweet_content_snapshot?: string; // Required for FINAL_REPLY_GATE
+  target_tweet_content_hash?: string; // Required for FINAL_REPLY_GATE
+  semantic_similarity?: number; // Required for FINAL_REPLY_GATE (defaults to 0.75 if not provided)
 }
 
 /**
@@ -53,6 +56,19 @@ export async function plannerFinalizeDecision(
     // Store target_tweet_id in features (for consistency)
     if (fields.target_tweet_id) {
       features.target_tweet_id = fields.target_tweet_id;
+    }
+    
+    // Store FINAL_REPLY_GATE required fields in features (view doesn't expose these columns)
+    if (fields.target_tweet_content_snapshot) {
+      features.target_tweet_content_snapshot = fields.target_tweet_content_snapshot;
+    }
+    
+    if (fields.target_tweet_content_hash) {
+      features.target_tweet_content_hash = fields.target_tweet_content_hash;
+    }
+    
+    if (fields.semantic_similarity !== undefined) {
+      features.semantic_similarity = fields.semantic_similarity;
     }
     
     // Update base table (content_generation_metadata_comprehensive)

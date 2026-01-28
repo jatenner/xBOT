@@ -1172,6 +1172,9 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         score_bucket: getScoreBucket(candidateScore / 100),
         root_tweet_id: ancestry.rootTweetId || candidate.candidate_tweet_id, // Use resolved root or fallback to candidate
         target_tweet_id: candidate.candidate_tweet_id,
+        target_tweet_content_snapshot: normalizedSnapshot, // Required for FINAL_REPLY_GATE
+        target_tweet_content_hash: targetTweetContentHash, // Required for FINAL_REPLY_GATE
+        semantic_similarity: 0.75, // Default semantic similarity for PLAN_ONLY (will be computed during generation on Mac Runner)
       });
       
       if (!finalizeResult.success) {
