@@ -11,6 +11,7 @@
 
 import { getGrowthConfig } from '../config/growthConfig';
 import { getStrategiesByReward } from './strategyRewards';
+import { getAllStrategies, getDefaultStrategy } from './replyStrategies';
 import type { ScoredCandidate } from './replyTargetScoring';
 
 /**
@@ -24,7 +25,10 @@ export interface StrategySelection {
 }
 
 /**
- * Select strategy using ε-greedy from scored candidates
+ * Select strategy using ε-greedy from available reply strategies
+ * 
+ * Phase 6.4: Selects from explicit reply strategies (insight_punch, actionable_checklist, etc.)
+ * rather than extracting from candidate features.
  * 
  * Returns strategy_id and selection_mode for attribution
  */
@@ -36,33 +40,23 @@ export async function epsilonGreedyStrategySelection(
   const epsilon = config.EPSILON_GREEDY_EPSILON;
   const minSamples = config.EPSILON_GREEDY_MIN_SAMPLES;
   
-  if (candidates.length === 0) {
+  // Get all available reply strategies
+  const availableStrategies = getAllStrategies();
+  
+  if (availableStrategies.length === 0) {
+    const defaultStrategy = getDefaultStrategy();
     return {
-      strategyId: 'baseline',
-      strategyVersion: '1',
+      strategyId: defaultStrategy.strategy_id,
+      strategyVersion: defaultStrategy.strategy_version,
       selectionMode: 'exploit',
-      reason: 'no_candidates',
+      reason: 'no_strategies_available',
     };
   }
   
-  // Extract unique strategies from candidates
-  const strategyMap = new Map<string, ScoredCandidate[]>();
-  for (const candidate of candidates) {
-    const features = (candidate as any)._scoring || {};
-    const strategyId = features.strategy_id || 'baseline';
-    const strategyVersion = String(features.strategy_version || '1');
-    const key = `${strategyId}:${strategyVersion}`;
-    
-    if (!strategyMap.has(key)) {
-      strategyMap.set(key, []);
-    }
-    strategyMap.get(key)!.push(candidate);
-  }
-  
-  // Get eligible strategies (with min_samples)
-  const eligibleStrategies = await getStrategiesByReward(minSamples);
+  // Get eligible strategies from strategy_rewards (with min_samples)
+  const eligibleRewardStats = await getStrategiesByReward(minSamples);
   const eligibleStrategyKeys = new Set(
-    eligibleStrategies.map(s => `${s.strategy_id}:${s.strategy_version}`)
+    eligibleRewardStats.map(s => `${s.strategy_id}:${s.strategy_version}`)
   );
   
   // ε-greedy decision
@@ -72,46 +66,46 @@ export async function epsilonGreedyStrategySelection(
   
   const shouldExplore = randomValue < epsilon;
   
-  if (shouldExplore && strategyMap.size > 1) {
+  if (shouldExplore && availableStrategies.length > 1) {
     // Explore: choose random strategy from available
-    const strategyKeys = Array.from(strategyMap.keys());
-    const randomIndex = Math.floor((rngSeed !== undefined ? seededRandom(rngSeed + 1) : Math.random()) * strategyKeys.length);
-    const selectedKey = strategyKeys[randomIndex];
-    const [strategyId, strategyVersion] = selectedKey.split(':');
+    const randomIndex = Math.floor((rngSeed !== undefined ? seededRandom(rngSeed + 1) : Math.random()) * availableStrategies.length);
+    const selectedStrategy = availableStrategies[randomIndex];
     
     return {
-      strategyId: strategyId || 'baseline',
-      strategyVersion: strategyVersion || '1',
+      strategyId: selectedStrategy.strategy_id,
+      strategyVersion: selectedStrategy.strategy_version,
       selectionMode: 'explore',
       reason: `epsilon_exploration (ε=${epsilon})`,
     };
   }
   
   // Exploit: choose highest mean_reward among eligible strategies
-  if (eligibleStrategies.length > 0) {
-    // Find best eligible strategy present in candidates
-    for (const strategy of eligibleStrategies) {
-      const key = `${strategy.strategy_id}:${strategy.strategy_version}`;
-      if (strategyMap.has(key)) {
+  if (eligibleRewardStats.length > 0) {
+    // Find best eligible strategy that exists in available strategies
+    for (const rewardStat of eligibleRewardStats) {
+      const matchingStrategy = availableStrategies.find(
+        s => s.strategy_id === rewardStat.strategy_id && 
+             s.strategy_version === rewardStat.strategy_version
+      );
+      
+      if (matchingStrategy) {
         return {
-          strategyId: strategy.strategy_id,
-          strategyVersion: strategy.strategy_version,
+          strategyId: matchingStrategy.strategy_id,
+          strategyVersion: matchingStrategy.strategy_version,
           selectionMode: 'exploit',
-          reason: `highest_mean_reward=${strategy.mean_reward.toFixed(3)} (samples=${strategy.sample_count})`,
+          reason: `highest_mean_reward=${rewardStat.mean_reward.toFixed(3)} (samples=${rewardStat.sample_count})`,
         };
       }
     }
   }
   
-  // Fallback: use highest targeting score (current behavior)
-  const bestCandidate = candidates[0]; // Already sorted by score
-  const bestFeatures = (bestCandidate as any)._scoring || {};
-  
+  // Fallback: use default strategy (insight_punch)
+  const defaultStrategy = getDefaultStrategy();
   return {
-    strategyId: bestFeatures.strategy_id || 'baseline',
-    strategyVersion: String(bestFeatures.strategy_version || '1'),
+    strategyId: defaultStrategy.strategy_id,
+    strategyVersion: defaultStrategy.strategy_version,
     selectionMode: 'exploit',
-    reason: `fallback_to_targeting_score=${bestCandidate.score.toFixed(3)} (no_strategy_meets_min_samples=${minSamples})`,
+    reason: `fallback_to_default (no_strategy_meets_min_samples=${minSamples})`,
   };
 }
 

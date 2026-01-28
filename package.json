@@ -107,6 +107,7 @@
     "executor:prove:reply-targeting": "tsx scripts/executor/prove-reply-targeting.ts",
     "executor:prove:topic-fit": "tsx scripts/executor/prove-topic-fit.ts",
     "executor:prove:reward-learning": "tsx scripts/executor/prove-reward-learning.ts",
+    "executor:prove:reply-strategies": "tsx scripts/executor/prove-reply-strategies.ts",
     "proof:seed:5a4": "tsx scripts/proof/seed-5a4-workload.ts",
     "proof:regression": "pnpm run executor:prove:e2e-control-post && TARGET_TWEET_ID=${TARGET_TWEET_ID:-2014718451563004351} pnpm run executor:prove:e2e-control-reply",
     "tweet:id": "tsx scripts/utils/extract-tweet-id.ts",

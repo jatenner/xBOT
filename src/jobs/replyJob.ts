@@ -32,6 +32,7 @@ import { formatContentForTwitter } from '../posting/aiVisualFormatter';
 import { filterEligibleCandidates, EligibilityReason, type ReplyTargetCandidate } from '../growth/replyTargetEligibility';
 import { scoreAndSelectTopK, formatScoringForStorage } from '../growth/replyTargetScoring';
 import { epsilonGreedyStrategySelection } from '../growth/epsilonGreedy';
+import { getAllStrategies, getStrategy, getDefaultStrategy, formatStrategyPrompt } from '../growth/replyStrategies';
 
 /**
  * Get score bucket for strategy attribution
@@ -913,11 +914,11 @@ async function generateRealReplies(): Promise<void> {
   
   console.log(`[REPLY_JOB] ✅ Selected ${selectedOpportunities.length} opportunities from tier=${tierUsed} reason=${tierReason}`);
   
-  // 🎯 PHASE 6.3B: ε-greedy strategy selection (does not increase volume)
+  // 🎯 PHASE 6.4: ε-greedy strategy selection for multi-strategy learning
   let finalOpportunities = selectedOpportunities;
-  let strategySelection: any = null;
+  let globalStrategySelection: any = null;
   
-  if (selectedOpportunities.length > 1) {
+  if (selectedOpportunities.length > 0) {
     try {
       // Convert to ScoredCandidate format for ε-greedy
       const scoredForSelection = scored.filter(sc => {
@@ -925,47 +926,40 @@ async function generateRealReplies(): Promise<void> {
         return selectedOpportunities.some(so => (so.target_tweet_id || so.tweet_id) === sc.target_tweet_id);
       });
       
-      strategySelection = await epsilonGreedyStrategySelection(scoredForSelection);
+      // Select strategy using ε-greedy (chooses from available reply strategies)
+      globalStrategySelection = await epsilonGreedyStrategySelection(scoredForSelection);
       
-      // Apply strategy selection (filter to matching strategy if available)
-      const { applyStrategySelection } = await import('../growth/epsilonGreedy');
-      const strategyFiltered = applyStrategySelection(scoredForSelection, strategySelection);
+      // Get the selected strategy details
+      const selectedStrategy = getStrategy(globalStrategySelection.strategyId, globalStrategySelection.strategyVersion) || getDefaultStrategy();
       
-      if (strategyFiltered.length > 0 && strategyFiltered.length < selectedOpportunities.length) {
-        // Strategy selection filtered candidates
-        finalOpportunities = strategyFiltered.map(sc => {
-          const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === sc.target_tweet_id);
-          return { ...original, _scoring: formatScoringForStorage(sc.scoringComponents), _eligibility: { eligible: true, reason: sc.eligibilityReason }, strategy_id: strategySelection.strategyId, strategy_version: strategySelection.strategyVersion, selection_mode: strategySelection.selectionMode };
-        });
-        console.log(`[REPLY_JOB] 🎲 ε-greedy: ${strategySelection.selectionMode} strategy=${strategySelection.strategyId}/${strategySelection.strategyVersion} filtered ${selectedOpportunities.length} → ${finalOpportunities.length}`);
-      } else {
-        // No filtering (all candidates match or fallback)
-        finalOpportunities = selectedOpportunities.map(opp => ({
-          ...opp,
-          strategy_id: strategySelection.strategyId,
-          strategy_version: strategySelection.strategyVersion,
-          selection_mode: strategySelection.selectionMode,
-        }));
-        console.log(`[REPLY_JOB] 🎲 ε-greedy: ${strategySelection.selectionMode} strategy=${strategySelection.strategyId}/${strategySelection.strategyVersion} (no filtering, ${finalOpportunities.length} candidates)`);
-      }
-    } catch (egError: any) {
-      console.warn(`[REPLY_JOB] ⚠️ ε-greedy selection failed, using tier selection:`, egError.message);
-      // Fallback: use tier selection without strategy filtering
+      // Apply strategy to all opportunities (they'll use this strategy for generation)
       finalOpportunities = selectedOpportunities.map(opp => ({
         ...opp,
-        strategy_id: 'baseline',
-        strategy_version: '1',
-        selection_mode: 'exploit',
+        strategy_id: selectedStrategy.strategy_id,
+        strategy_version: selectedStrategy.strategy_version,
+        selection_mode: globalStrategySelection.selectionMode,
+        strategy_description: selectedStrategy.description,
       }));
+      
+      console.log(`[REPLY_JOB] 🎯 PHASE 6.4: Selected strategy=${selectedStrategy.strategy_id}/${selectedStrategy.strategy_version} mode=${globalStrategySelection.selectionMode} reason=${globalStrategySelection.reason}`);
+    } catch (egError: any) {
+      console.warn(`[REPLY_JOB] ⚠️ Strategy selection failed, using default:`, egError.message);
+      // Fallback: use default strategy
+      const defaultStrategy = getDefaultStrategy();
+      finalOpportunities = selectedOpportunities.map(opp => ({
+        ...opp,
+        strategy_id: defaultStrategy.strategy_id,
+        strategy_version: defaultStrategy.strategy_version,
+        selection_mode: 'exploit',
+        strategy_description: defaultStrategy.description,
+      }));
+      globalStrategySelection = {
+        strategyId: defaultStrategy.strategy_id,
+        strategyVersion: defaultStrategy.strategy_version,
+        selectionMode: 'exploit',
+        reason: 'fallback_to_default',
+      };
     }
-  } else {
-    // Single candidate - no strategy selection needed
-    finalOpportunities = selectedOpportunities.map(opp => ({
-      ...opp,
-      strategy_id: 'baseline',
-      strategy_version: '1',
-      selection_mode: 'exploit',
-    }));
   }
   
   // Replace allOpportunities with finalOpportunities for downstream processing
@@ -1799,14 +1793,11 @@ async function generateRealReplies(): Promise<void> {
             const replyAngle = 'reply_context'; // Default angle for replies
             const replyTone = 'helpful'; // Default tone for replies
             
-            // 🔥 CRITICAL: Build explicit contextual reply prompt (UPGRADED FOR QUALITY)
-            const templateChoice = Math.floor(Math.random() * 3);
-            const templates = [
-              'AGREE + ADD: Echo their point, add mechanism/data, end with hook',
-              'NUANCE + ADD: Respectful correction, one key fact, end with hook',
-              'MINI-PLAYBOOK: 2-step suggestion, end with hook'
-            ];
-            const chosenTemplate = templates[templateChoice];
+            // 🎯 PHASE 6.4: Get strategy for this reply
+            const opportunityAny = opportunity as any;
+            const strategyId = opportunityAny.strategy_id || 'insight_punch';
+            const strategyVersion = opportunityAny.strategy_version || '1';
+            const selectedStrategy = getStrategy(strategyId, strategyVersion) || getDefaultStrategy();
             
             // Build context string for prompt
             let contextString = `TARGET_TWEET: "${parentText}"`;
@@ -1820,46 +1811,19 @@ async function generateRealReplies(): Promise<void> {
               contextString += `\nPREVIOUS_TWEET_IN_THREAD: "${threadPrevText}"`;
             }
             
-            const explicitReplyPrompt = `You are replying to this tweet:
+            // Base prompt with context
+            const basePrompt = `You are replying to this tweet:
 
 ${contextString}
 AUTHOR: @${target.account.username}
 KEY_TOPICS: ${keywords.join(', ')}
 
-YOUR REPLY MUST FOLLOW THIS TEMPLATE: ${chosenTemplate}
-
-CRITICAL REQUIREMENTS:
-1. **ECHO FIRST**: First sentence must paraphrase their claim. Use patterns like:
-   - "You're basically saying X..."
-   - "That point about X is spot on"
-   - "Right — the key here is X"
-   - "Makes sense — when you consider X"
-
-2. **LENGTH**: 1-3 short lines, max 220 chars total
-
-3. **ADD VALUE**: One practical insight, mechanism, or stat (not generic advice)
-
-4. **END WITH HOOK**: Question OR "try this" suggestion (drive engagement)
-
-HARD BANS:
-- NO "Studies show" / "Research suggests" unless naming the study
-- NO generic "improves health" endings
-- NO medical disclaimers or lectures
-- NO thread markers (1/, 🧵, Part, continued)
-- NO multi-paragraph responses
-- NO bullet lists
-
-GOOD EXAMPLES:
-- "That cortisol spike makes sense — happens when blood sugar crashes after refined carbs. Have you tried protein + fat instead?"
-- "Right, fiber feeds gut bacteria → they produce butyrate → reduces inflammation. Takes 2-3 weeks to see effects though."
-- "Makes sense. Two-step fix: 1) Cut seed oils, 2) Add omega-3s daily. Which one would be easier for you?"
-
-BAD EXAMPLES:
-- "Research shows fiber is important for gut health..." (generic, no echo)
-- "Interestingly, I've noticed..." (about you, not them)
-- "1/ Let me explain why this matters..." (thread marker)
-
-Reply (1-3 lines, echo their point first):`;
+Reply (follow the strategy requirements above):`;
+            
+            // 🎯 PHASE 6.4: Format strategy-specific prompt
+            const explicitReplyPrompt = formatStrategyPrompt(selectedStrategy, basePrompt);
+            
+            console.log(`[REPLY_JOB] 🎯 Using strategy: ${selectedStrategy.strategy_id}/${selectedStrategy.strategy_version} (${selectedStrategy.description.substring(0, 50)}...)`);
             
             // Route through orchestratorRouter for generator-based replies
             // Pass full context object for better reply generation
@@ -2165,11 +2129,12 @@ Reply (1-3 lines, echo their point first):`;
       const smartDelays = [5, 20]; // Minutes from NOW
       const staggerDelay = smartDelays[i] || (5 + i * 15); // Fallback for >2 replies
       
-      // 🎯 PHASE 6.3B: Extract strategy attribution from opportunity
+      // 🎯 PHASE 6.4: Extract strategy attribution from opportunity
       const opportunityAny = opportunity as any;
-      const strategyId = opportunityAny.strategy_id || 'baseline';
+      const strategyId = opportunityAny.strategy_id || 'insight_punch';
       const strategyVersion = String(opportunityAny.strategy_version || '1');
       const selectionMode = opportunityAny.selection_mode || 'exploit';
+      const strategyDescription = opportunityAny.strategy_description || '';
       
       const reply = {
         decision_id,
@@ -2192,10 +2157,11 @@ Reply (1-3 lines, echo their point first):`;
         // original_candidate_tweet_id: opportunity.original_candidate_tweet_id || null, // REMOVED: column doesn't exist in prod schema
         // resolved_via_root: opportunity.resolved_via_root || false // REMOVED: column doesn't exist in prod schema
         
-        // 🎯 PHASE 6.3B: Strategy attribution for reward learning
+        // 🎯 PHASE 6.4: Strategy attribution for reward learning
         strategy_id: strategyId,
         strategy_version: strategyVersion,
         selection_mode: selectionMode,
+        strategy_description: strategyDescription,
       };
       
       // ============================================================
@@ -2587,10 +2553,11 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
       // 🎯 PHASE 6.2: Reply targeting policy auditability
       ...(reply._scoring || {}),
       ...(reply._eligibility ? { reply_targeting_eligibility: reply._eligibility } : {}),
-      // 🎯 PHASE 6.3B: Strategy attribution for reward learning
-      strategy_id: reply.strategy_id || 'baseline',
+      // 🎯 PHASE 6.4: Strategy attribution for reward learning
+      strategy_id: reply.strategy_id || 'insight_punch',
       strategy_version: String(reply.strategy_version || '1'),
       selection_mode: reply.selection_mode || 'exploit',
+      strategy_description: reply.strategy_description || '',
       targeting_score_total: reply._scoring?.reply_targeting_score || 0,
       topic_fit: reply._scoring?.reply_targeting_components?.topic_fit || 0,
       score_bucket: getScoreBucket(reply._scoring?.reply_targeting_score || 0),
