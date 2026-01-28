@@ -110,6 +110,7 @@
     "executor:prove:reply-strategies": "tsx scripts/executor/prove-reply-strategies.ts",
     "executor:prove:reply-pipeline-nonzero": "tsx scripts/executor/prove-reply-pipeline-nonzero.ts",
     "executor:prove:reply-v2-strategy-attribution": "tsx scripts/executor/prove-reply-v2-strategy-attribution.ts",
+    "executor:prove:reply-v2-plan-only": "tsx scripts/executor/prove-reply-v2-plan-only.ts",
     "proof:seed:5a4": "tsx scripts/proof/seed-5a4-workload.ts",
     "proof:regression": "pnpm run executor:prove:e2e-control-post && TARGET_TWEET_ID=${TARGET_TWEET_ID:-2014718451563004351} pnpm run executor:prove:e2e-control-reply",
     "tweet:id": "tsx scripts/utils/extract-tweet-id.ts",

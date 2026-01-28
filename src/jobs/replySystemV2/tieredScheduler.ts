@@ -187,73 +187,33 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   
   // 🔒 CRITICAL: Log job start IMMEDIATELY (before any work)
   const runnerModeLabel = process.env.RUNNER_MODE === 'true' ? 'MAC_RUNNER' : 'RAILWAY';
-  const earlyExitReason = process.env.RUNNER_MODE !== 'true' ? 'RUNNER_MODE_NOT_SET' : null;
+  
+  // 🎯 PLAN_ONLY mode: Railway can plan decisions without Playwright
+  // Default to plan-only on Railway (RUNNER_MODE != true), full execution on Mac Runner
+  const planOnlyMode = process.env.REPLY_V2_PLAN_ONLY !== 'false' && process.env.RUNNER_MODE !== 'true';
   
   try {
     await supabase.from('system_events').insert({
       event_type: 'reply_v2_scheduler_job_started',
       severity: 'info',
-      message: `Reply V2 scheduler job started: scheduler_run_id=${schedulerRunId} runner_mode=${runnerModeLabel}`,
+      message: `Reply V2 scheduler job started: scheduler_run_id=${schedulerRunId} runner_mode=${runnerModeLabel} plan_only=${planOnlyMode}`,
       event_data: {
         scheduler_run_id: schedulerRunId,
         slot_time: slotTime.toISOString(),
         runner_mode: runnerModeLabel,
-        early_exit_reason: earlyExitReason,
+        plan_only_mode: planOnlyMode,
       },
       created_at: new Date().toISOString(),
     });
-    console.log(`[SCHEDULER] ✅ Job start logged: ${schedulerRunId} (runner_mode=${runnerModeLabel})`);
+    console.log(`[SCHEDULER] ✅ Job start logged: ${schedulerRunId} (runner_mode=${runnerModeLabel}, plan_only=${planOnlyMode})`);
   } catch (logError: any) {
     console.error(`[SCHEDULER] ❌ Failed to log job start: ${logError.message}`);
     // Continue anyway - logging failure shouldn't block scheduler
   }
   
-  // Early exit check for Railway (Playwright disabled)
-  if (process.env.RUNNER_MODE !== 'true') {
-    const exitMsg = `[SCHEDULER] ⏸️ Early exit: RUNNER_MODE not set. Scheduler requires browser access (Playwright disabled on Railway). Run on Mac Runner with RUNNER_MODE=true.`;
-    console.log(exitMsg);
-    await supabase.from('system_events').insert({
-      event_type: 'reply_v2_scheduler_early_exit',
-      severity: 'warning',
-      message: exitMsg,
-      event_data: { scheduler_run_id: schedulerRunId, reason: 'RUNNER_MODE_NOT_SET' },
-      created_at: new Date().toISOString(),
-    });
-    
-    // Get ready candidates count
-    const { count: queueCount } = await supabase
-      .from('reply_candidate_queue')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'queued')
-      .gt('expires_at', new Date().toISOString());
-    readyCandidates = queueCount || 0;
-    
-    // Emit block and tick
-    await emitReplyQueueBlock('RUNNER_MODE_NOT_SET');
-    await emitReplyQueueTick();
-    
-    // Update job heartbeat
-    try {
-      const { recordJobSkip } = await import('../jobHeartbeat');
-      await recordJobSkip('reply_queue', 'RUNNER_MODE_NOT_SET');
-    } catch (e) {
-      // Ignore heartbeat errors
-    }
-    
-    // Log outcome
-    await logOutcome(supabase, schedulerRunId, {
-      outcome_type: 'SKIP',
-      candidate_tweet_id: 'N/A',
-      url: 'N/A',
-      deny_reason_code: 'RUNNER_MODE_NOT_SET',
-      stage_timings: { total_ms: 0 },
-    });
-    
-    return {
-      posted: false,
-      reason: 'RUNNER_MODE_NOT_SET',
-      behind_schedule: false,
-    };
+  // 🎯 PLAN_ONLY mode: Continue with decision planning (skip browser steps)
+  if (planOnlyMode) {
+    console.log(`[SCHEDULER] 📋 PLAN_ONLY mode: Will create decisions without browser steps (ancestry/generation/posting)`);
   }
   
   console.log('[SCHEDULER] ⏰ Attempting scheduled reply...');
@@ -475,65 +435,24 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     const { v4: uuidv4 } = await import('uuid');
     decisionId = uuidv4();
     
-    // 🔒 TASK 1: Fetch FULL tweet text from Twitter (canonical source)
-    // Use the same fetchTweetData function from contextLockVerifier
-    console.log(`[SCHEDULER] 🌐 Fetching full tweet text from Twitter for ${candidate.candidate_tweet_id}...`);
+    // 🎯 PLAN_ONLY mode: Skip browser fetch, use candidate content
     let targetTweetContentSnapshot: string;
     let snapshotSource: 'live_fetch' | 'candidate_extract' = 'live_fetch';
     let snapshotLenLive = 0;
-    
-    const FETCH_TWEET_TIMEOUT_MS = 12000; // 12s hard timeout for tweet fetch
-    const fetchStartTime = Date.now();
-    console.log(`[SCHEDULER] 💓 Heartbeat: Starting tweet fetch (timeout: ${FETCH_TWEET_TIMEOUT_MS}ms)...`);
-    
-    // Store isReply from fetch for fail-open logic
     let isReplyFromFetch: boolean | undefined = undefined;
     
-    try {
-      // Use the EXACT same fetch function as contextLockVerifier
-      const { fetchTweetData } = await import('../../gates/contextLockVerifier');
-      const tweetData = await Promise.race([
-        fetchTweetData(candidate.candidate_tweet_id),
-        new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('FETCH_TWEET_TIMEOUT')), FETCH_TWEET_TIMEOUT_MS);
-        }),
-      ]) as any;
-      
-      const fetchElapsed = Date.now() - fetchStartTime;
-      stageTimings.fetch_ms = fetchElapsed;
-      console.log(`[SCHEDULER] 💓 Heartbeat: Tweet fetch completed in ${fetchElapsed}ms`);
-      
-      if (tweetData && tweetData.text && tweetData.text.trim().length >= 20) {
-        targetTweetContentSnapshot = tweetData.text.trim();
-        snapshotLenLive = tweetData.text.trim().length;
-        snapshotSource = 'live_fetch';
-        isReplyFromFetch = tweetData.isReply || false; // Store isReply for fail-open logic
-        console.log(`[SCHEDULER] ✅ Fetched full tweet text in ${fetchElapsed}ms: ${snapshotLenLive} chars, isReply=${isReplyFromFetch}`);
-      } else {
-        throw new Error(`Fetched text too short or null: ${tweetData?.text?.length || 0} chars`);
-      }
-    } catch (fetchError: any) {
-      const fetchElapsed = Date.now() - fetchStartTime;
-      stageTimings.fetch_ms = fetchElapsed;
-      const errorMsg = fetchError.message.includes('TIMEOUT') 
-        ? `fetch timed out after ${fetchElapsed}ms` 
-        : fetchError.message;
-      console.warn(`[SCHEDULER] ⚠️ Failed to fetch live tweet text (${fetchElapsed}ms): ${errorMsg}, falling back to candidate content`);
-      
-      // If it's a timeout, log it but continue with fallback
-      if (fetchError.message.includes('TIMEOUT')) {
-        console.log(`[SCHEDULER] 💓 Heartbeat: Fetch timeout after ${fetchElapsed}ms - using fallback`);
-      }
-      // Fallback to candidate content
+    if (planOnlyMode) {
+      // PLAN_ONLY: Use candidate content directly (no browser fetch)
       targetTweetContentSnapshot = candidateData.candidate_content || '';
       snapshotSource = 'candidate_extract';
       snapshotLenLive = 0;
+      isReplyFromFetch = undefined; // Unknown in plan-only mode
+      console.log(`[SCHEDULER] 📋 PLAN_ONLY: Using candidate content (${targetTweetContentSnapshot.length} chars) - skipping browser fetch`);
       
       if (!targetTweetContentSnapshot || targetTweetContentSnapshot.length < 20) {
         clearTimeout(watchdogTimer);
         stageTimings.total_ms = Date.now() - candidateStartTime;
         
-        // Release lease on failure
         if (candidateLeaseId) {
           const { releaseLease } = await import('./queueManager');
           await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
@@ -550,6 +469,78 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           stage_timings: stageTimings,
         });
         throw new Error(`Candidate content too short: ${targetTweetContentSnapshot.length} chars`);
+      }
+    } else {
+      // 🔒 TASK 1: Fetch FULL tweet text from Twitter (canonical source)
+      // Use the same fetchTweetData function from contextLockVerifier
+      console.log(`[SCHEDULER] 🌐 Fetching full tweet text from Twitter for ${candidate.candidate_tweet_id}...`);
+      
+      const FETCH_TWEET_TIMEOUT_MS = 12000; // 12s hard timeout for tweet fetch
+      const fetchStartTime = Date.now();
+      console.log(`[SCHEDULER] 💓 Heartbeat: Starting tweet fetch (timeout: ${FETCH_TWEET_TIMEOUT_MS}ms)...`);
+      
+      try {
+        // Use the EXACT same fetch function as contextLockVerifier
+        const { fetchTweetData } = await import('../../gates/contextLockVerifier');
+        const tweetData = await Promise.race([
+          fetchTweetData(candidate.candidate_tweet_id),
+          new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('FETCH_TWEET_TIMEOUT')), FETCH_TWEET_TIMEOUT_MS);
+          }),
+        ]) as any;
+        
+        const fetchElapsed = Date.now() - fetchStartTime;
+        stageTimings.fetch_ms = fetchElapsed;
+        console.log(`[SCHEDULER] 💓 Heartbeat: Tweet fetch completed in ${fetchElapsed}ms`);
+        
+        if (tweetData && tweetData.text && tweetData.text.trim().length >= 20) {
+          targetTweetContentSnapshot = tweetData.text.trim();
+          snapshotLenLive = tweetData.text.trim().length;
+          snapshotSource = 'live_fetch';
+          isReplyFromFetch = tweetData.isReply || false; // Store isReply for fail-open logic
+          console.log(`[SCHEDULER] ✅ Fetched full tweet text in ${fetchElapsed}ms: ${snapshotLenLive} chars, isReply=${isReplyFromFetch}`);
+        } else {
+          throw new Error(`Fetched text too short or null: ${tweetData?.text?.length || 0} chars`);
+        }
+      } catch (fetchError: any) {
+        const fetchElapsed = Date.now() - fetchStartTime;
+        stageTimings.fetch_ms = fetchElapsed;
+        const errorMsg = fetchError.message.includes('TIMEOUT') 
+          ? `fetch timed out after ${fetchElapsed}ms` 
+          : fetchError.message;
+        console.warn(`[SCHEDULER] ⚠️ Failed to fetch live tweet text (${fetchElapsed}ms): ${errorMsg}, falling back to candidate content`);
+        
+        // If it's a timeout, log it but continue with fallback
+        if (fetchError.message.includes('TIMEOUT')) {
+          console.log(`[SCHEDULER] 💓 Heartbeat: Fetch timeout after ${fetchElapsed}ms - using fallback`);
+        }
+        // Fallback to candidate content
+        targetTweetContentSnapshot = candidateData.candidate_content || '';
+        snapshotSource = 'candidate_extract';
+        snapshotLenLive = 0;
+        
+        if (!targetTweetContentSnapshot || targetTweetContentSnapshot.length < 20) {
+          clearTimeout(watchdogTimer);
+          stageTimings.total_ms = Date.now() - candidateStartTime;
+          
+          // Release lease on failure
+          if (candidateLeaseId) {
+            const { releaseLease } = await import('./queueManager');
+            await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+          }
+          
+          await logOutcome(supabase, schedulerRunId, {
+            outcome_type: 'ERROR',
+            candidate_tweet_id: candidate.candidate_tweet_id,
+            candidate_id: candidate.evaluation_id,
+            author_handle: candidateData.candidate_author_username,
+            url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+            error_stage: 'fetch',
+            error_message: `Candidate content too short: ${targetTweetContentSnapshot.length} chars`,
+            stage_timings: stageTimings,
+          });
+          throw new Error(`Candidate content too short: ${targetTweetContentSnapshot.length} chars`);
+        }
       }
     }
     
@@ -591,63 +582,81 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     // 🔍 FORENSIC PIPELINE: Resolve ancestry and record decision
     const { resolveTweetAncestry, recordReplyDecision, shouldAllowReply } = await import('./replyDecisionRecorder');
     
-    // Add timeout and logging around ancestry resolution
-    const ancestryStartTime = Date.now();
-    const ANCESTRY_TIMEOUT_MS = 12000; // 12s hard timeout for ancestry
-    console.log(`[SCHEDULER] 💓 Heartbeat: Starting ancestry resolution (timeout: ${ANCESTRY_TIMEOUT_MS}ms)...`);
-    
+    // 🎯 PLAN_ONLY mode: Skip ancestry resolution, use fallback
     let ancestry;
-    try {
-      ancestry = await Promise.race([
-        resolveTweetAncestry(candidate.candidate_tweet_id),
-        new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('ANCESTRY_TIMEOUT')), ANCESTRY_TIMEOUT_MS);
-        }),
-      ]) as any;
-      const ancestryElapsed = Date.now() - ancestryStartTime;
-      stageTimings.ancestry_ms = ancestryElapsed;
-      console.log(`[SCHEDULER] 💓 Heartbeat: Ancestry resolution completed in ${ancestryElapsed}ms`);
-      console.log(`[SCHEDULER] ✅ Ancestry resolved in ${ancestryElapsed}ms: status=${ancestry.status}, isRoot=${ancestry.isRoot}`);
-    } catch (ancestryError: any) {
-      const ancestryElapsed = Date.now() - ancestryStartTime;
-      stageTimings.ancestry_ms = ancestryElapsed;
-      console.error(`[SCHEDULER] ❌ Ancestry resolution failed after ${ancestryElapsed}ms: ${ancestryError.message}`);
-      
-      // Return an error ancestry result
+    if (planOnlyMode) {
+      // PLAN_ONLY: Use fallback ancestry (assume root tweet)
       ancestry = {
         targetTweetId: candidate.candidate_tweet_id,
         targetInReplyToTweetId: null,
-        rootTweetId: null,
-        ancestryDepth: null,
-        isRoot: false,
-        status: 'ERROR' as const,
-        confidence: 'LOW' as const,
-        method: 'timeout',
-        error: `ANCESTRY_TIMEOUT: ${ancestryError.message}`,
+        rootTweetId: candidate.candidate_tweet_id, // Assume root in plan-only mode
+        ancestryDepth: 0,
+        isRoot: true, // Assume root for plan-only
+        status: 'OK' as const,
+        confidence: 'LOW' as const, // Lower confidence since we didn't verify
+        method: 'plan_only_fallback',
         cache_hit: false,
       };
+      stageTimings.ancestry_ms = 0;
+      console.log(`[SCHEDULER] 📋 PLAN_ONLY: Using fallback ancestry (assumed root) - skipping browser resolution`);
+    } else {
+      // Add timeout and logging around ancestry resolution
+      const ancestryStartTime = Date.now();
+      const ANCESTRY_TIMEOUT_MS = 12000; // 12s hard timeout for ancestry
+      console.log(`[SCHEDULER] 💓 Heartbeat: Starting ancestry resolution (timeout: ${ANCESTRY_TIMEOUT_MS}ms)...`);
       
-      // Log timeout outcome and release lease
-      clearTimeout(watchdogTimer);
-      stageTimings.total_ms = Date.now() - candidateStartTime;
-      
-      if (candidateLeaseId) {
-        const { releaseLease } = await import('./queueManager');
-        await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+      try {
+        ancestry = await Promise.race([
+          resolveTweetAncestry(candidate.candidate_tweet_id),
+          new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('ANCESTRY_TIMEOUT')), ANCESTRY_TIMEOUT_MS);
+          }),
+        ]) as any;
+        const ancestryElapsed = Date.now() - ancestryStartTime;
+        stageTimings.ancestry_ms = ancestryElapsed;
+        console.log(`[SCHEDULER] 💓 Heartbeat: Ancestry resolution completed in ${ancestryElapsed}ms`);
+        console.log(`[SCHEDULER] ✅ Ancestry resolved in ${ancestryElapsed}ms: status=${ancestry.status}, isRoot=${ancestry.isRoot}`);
+      } catch (ancestryError: any) {
+        const ancestryElapsed = Date.now() - ancestryStartTime;
+        stageTimings.ancestry_ms = ancestryElapsed;
+        console.error(`[SCHEDULER] ❌ Ancestry resolution failed after ${ancestryElapsed}ms: ${ancestryError.message}`);
+        
+        // Return an error ancestry result
+        ancestry = {
+          targetTweetId: candidate.candidate_tweet_id,
+          targetInReplyToTweetId: null,
+          rootTweetId: null,
+          ancestryDepth: null,
+          isRoot: false,
+          status: 'ERROR' as const,
+          confidence: 'LOW' as const,
+          method: 'timeout',
+          error: `ANCESTRY_TIMEOUT: ${ancestryError.message}`,
+          cache_hit: false,
+        };
+        
+        // Log timeout outcome and release lease
+        clearTimeout(watchdogTimer);
+        stageTimings.total_ms = Date.now() - candidateStartTime;
+        
+        if (candidateLeaseId) {
+          const { releaseLease } = await import('./queueManager');
+          await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+        }
+        
+        await logOutcome(supabase, schedulerRunId, {
+          outcome_type: 'TIMEOUT',
+          candidate_tweet_id: candidate.candidate_tweet_id,
+          candidate_id: candidate.evaluation_id,
+          author_handle: (candidateData as any)?.candidate_author_username,
+          url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+          error_stage: 'ancestry',
+          error_message: ancestryError.message,
+          stage_timings: stageTimings,
+        });
+        
+        throw new Error(`Ancestry resolution timeout: ${ancestryError.message}`);
       }
-      
-      await logOutcome(supabase, schedulerRunId, {
-        outcome_type: 'TIMEOUT',
-        candidate_tweet_id: candidate.candidate_tweet_id,
-        candidate_id: candidate.evaluation_id,
-        author_handle: (candidateData as any)?.candidate_author_username,
-        url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
-        error_stage: 'ancestry',
-        error_message: ancestryError.message,
-        stage_timings: stageTimings,
-      });
-      
-      throw new Error(`Ancestry resolution timeout: ${ancestryError.message}`);
     }
     
     const allowCheckStartTime = Date.now();
@@ -1024,12 +1033,13 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           root_tweet_id: ancestry.rootTweetId, // 🔒 CRITICAL: Use resolved root tweet ID
           target_tweet_content_snapshot: normalizedSnapshot, // 🔒 TASK 1: Populated from live fetch
           target_tweet_content_hash: targetTweetContentHash, // 🔒 TASK 1: Populated from live fetch
-          pipeline_source: 'reply_v2_scheduler',
+          pipeline_source: planOnlyMode ? 'reply_v2_planner' : 'reply_v2_scheduler',
           build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
-          candidate_evaluation_id: candidate.evaluation_id,
-          queue_id: queueId,
-          scheduler_run_id: schedulerRunId,
-        });
+        candidate_evaluation_id: candidate.evaluation_id,
+        queue_id: queueId,
+        scheduler_run_id: schedulerRunId,
+        pipeline_source: planOnlyMode ? 'reply_v2_planner' : 'reply_v2_scheduler',
+      });
       
       if (insertError1) {
         throw new Error(`Failed to insert decision: ${insertError1.message}`);
@@ -1082,7 +1092,10 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           pipeline_source: 'reply_v2_scheduler',
           build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
           quality_score: candidate.overall_score / 100,
-          features: strategyFeatures, // 🎯 PHASE 6.4: Strategy attribution
+          features: {
+            ...strategyFeatures,
+            plan_mode: planOnlyMode ? 'railway' : 'runner', // 🎯 PLAN_ONLY: Mark execution mode
+          }, // 🎯 PHASE 6.4: Strategy attribution
         });
       
       if (insertError2) {
@@ -1137,12 +1150,71 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         candidate_evaluation_id: candidate.evaluation_id,
         scheduler_run_id: schedulerRunId,
         queue_id: queueId,
-        pipeline_source: 'reply_v2_scheduler',
+        pipeline_source: planOnlyMode ? 'reply_v2_planner' : 'reply_v2_scheduler',
       },
       created_at: new Date().toISOString(),
     });
     
     console.log(`[SCHEDULER] ✅ Decision + permit created: decision_id=${decisionId} permit_id=${permit_id}`);
+    
+    // 🎯 PLAN_ONLY mode: Skip generation and posting, mark decision as queued for Mac Runner
+    if (planOnlyMode) {
+      console.log(`[SCHEDULER] 📋 PLAN_ONLY: Skipping generation and posting - decision will be executed by Mac Runner`);
+      
+      // Update decision status to 'queued' (ready for Mac Runner execution)
+      await supabase
+        .from('content_metadata')
+        .update({
+          status: 'queued',
+          content: '[PLAN_ONLY - Pending Mac Runner execution]',
+          pipeline_source: 'reply_v2_planner', // Mark as planner-created
+          features: {
+            ...((await supabase.from('content_metadata').select('features').eq('decision_id', decisionId).maybeSingle()).data?.features || {}),
+            plan_mode: 'railway',
+            strategy_id: selectedStrategy?.strategy_id || 'insight_punch',
+            strategy_version: String(selectedStrategy?.strategy_version || '1'),
+            selection_mode: strategySelection?.selectionMode || 'fallback',
+            strategy_description: selectedStrategy?.description || '',
+            targeting_score_total: candidateScore / 100,
+            topic_fit: candidateFeatures.topic_relevance || 0,
+            score_bucket: getScoreBucket(candidateScore / 100),
+          },
+        })
+        .eq('decision_id', decisionId);
+      
+      // Update reply_decisions
+      await supabase
+        .from('reply_decisions')
+        .update({
+          decision: 'ALLOW',
+          template_id: selectedStrategy?.strategy_id || 'insight_punch',
+          prompt_version: selectedStrategy?.strategy_version || '1',
+          template_status: 'SET',
+          pipeline_error_reason: null,
+        })
+        .eq('decision_id', decisionId);
+      
+      // Release lease
+      if (candidateLeaseId) {
+        const { releaseLease } = await import('./queueManager');
+        await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+      }
+      
+      clearTimeout(watchdogTimer);
+      selectedCandidates = 1;
+      
+      await emitReplyQueueTick();
+      
+      console.log(`[SCHEDULER] ✅ PLAN_ONLY decision created: decision_id=${decisionId} strategy=${selectedStrategy?.strategy_id || 'insight_punch'}`);
+      
+      return {
+        posted: false,
+        candidate_tweet_id: candidate.candidate_tweet_id,
+        tier: candidate.predicted_tier,
+        reason: 'PLAN_ONLY_MODE - Decision queued for Mac Runner execution',
+        behind_schedule: false,
+      };
+    }
     
     // NOW generate reply content (after decision+permit exist)
     const { routeContentGeneration } = await import('../../ai/orchestratorRouter');
@@ -1648,8 +1720,13 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       .update({
         status: 'queued', // 🔒 TASK 3: Set to queued AFTER all fields populated
         content: replyContent,
-        features: { ...existingFeaturesForUpdate, ...updatedFeatures, ...strategyFeatures }, // 🎯 PHASE 6.4: Merge strategy attribution
-        pipeline_source: existingMetadataForUpdate?.pipeline_source || 'reply_v2_scheduler', // Preserve pipeline_source
+        features: { 
+          ...existingFeaturesForUpdate, 
+          ...updatedFeatures, 
+          ...strategyFeatures,
+          plan_mode: planOnlyMode ? 'railway' : 'runner', // 🎯 PLAN_ONLY: Mark execution mode
+        }, // 🎯 PHASE 6.4: Merge strategy attribution
+        pipeline_source: planOnlyMode ? 'reply_v2_planner' : (existingMetadataForUpdate?.pipeline_source || 'reply_v2_scheduler'), // Preserve or update pipeline_source
       })
       .eq('decision_id', decisionId)
       .select('decision_id, status, features')
