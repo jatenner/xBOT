@@ -7,6 +7,18 @@
 
 ## What's Working (Proven)
 
+✅ **Reply System V2 PLAN_ONLY Bridge** — PROVEN (Generation)
+
+**Proof Tag:** `e2e-reply-v2-plan-only-grounding-fix-1769633000000`  
+**Evidence:** [`docs/proofs/learning/e2e-reply-v2-plan-only-grounding-fix-1769633000000.md`](docs/proofs/learning/e2e-reply-v2-plan-only-grounding-fix-1769633000000.md)  
+**Commit SHA:** `2fe9965b768fc93c09048801ea7786133a66020a`
+
+- Railway planner creates `reply_v2_planner` decisions with `status='queued'` and strategy attribution
+- Mac Runner daemon consumes queued decisions
+- PLAN_ONLY content generation works: OpenAI API calls succeed, content generated with `generated_by='mac_runner'`
+- Grounding check passes: Generated content includes 2+ terms from tweet snapshot
+- **Note:** Posting currently blocked by stale targets (expected behavior). Need fresh opportunities from harvester.
+
 ✅ **Railway Control-Plane Deployment**
 - Both services (`xBOT`, `serene-cat`) deploy via Railway GitHub Integration + Wait for CI
 - SHA verification via `/healthz` endpoints (deterministic, cache-busted)

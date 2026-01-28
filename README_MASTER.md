@@ -1611,6 +1611,27 @@ Proves that the STOP switch halts the executor safely under real load, with boun
 
 ---
 
+## NEXT MILESTONES
+
+1. **Reply Learning Loop** — In progress
+   - ✅ Strategy attribution (`features.strategy_id`, `features.selection_mode`)
+   - ✅ Reward computation (`features.reward`)
+   - ✅ `strategy_rewards` table updates
+   - ⚠️ PLAN_ONLY generation working, posting blocked by stale targets
+   - 🔄 **Next:** Harvest fresh opportunities, verify end-to-end posting → rewards
+
+2. **Posting Strategy Learning** — Planned
+   - Multi-strategy content generation with ε-greedy selection
+   - Reward attribution and strategy optimization
+   - Similar to reply learning but for original posts
+
+3. **Follower-Per-Day KPI Loop** — Planned
+   - Track follower growth rate
+   - Optimize posting/reply volume and timing
+   - A/B test strategies for follower acquisition
+
+---
+
 ## Roadmap: What's built vs what's left
 
 ### Built / in place (system foundations)
