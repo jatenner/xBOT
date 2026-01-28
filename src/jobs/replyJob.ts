@@ -729,11 +729,15 @@ async function generateRealReplies(): Promise<void> {
   const allOpportunities: any[] = [];
   const batchSize = 20;
   let offset = 0;
+  let usingFallbackThreshold = false;
   
   // 🎯 Phase 3: Join with discovered_accounts to get priority_score for sorting
-  // 🔒 FRESHNESS GATE: Only consider tweets < 180 min old
+  // 🔒 FRESHNESS GATE: Only consider tweets < 180 min old (primary filter)
+  // If no fresh opportunities found, fallback to < 6 hours old for Tier C candidates
   const MAX_AGE_MIN = 180;
+  const FALLBACK_AGE_MIN = 6 * 60; // 6 hours for fallback
   const freshnessThreshold = new Date(Date.now() - MAX_AGE_MIN * 60 * 1000).toISOString();
+  const fallbackThreshold = new Date(Date.now() - FALLBACK_AGE_MIN * 60 * 1000).toISOString();
   
   while (true) {
     const { data: batch, error: oppError } = await supabaseClient
@@ -768,12 +772,20 @@ async function generateRealReplies(): Promise<void> {
     await new Promise(r => setTimeout(r, 10));
   }
   
-  if (allOpportunities.length === 0) {
+  // 📊 PIPELINE DIAGNOSTICS: Track counts at each stage
+  const rawCount = allOpportunities.length;
+  const tierDistribution: Record<string, number> = {};
+  allOpportunities.forEach(opp => {
+    const tier = String(opp.tier || 'UNKNOWN').toUpperCase();
+    tierDistribution[tier] = (tierDistribution[tier] || 0) + 1;
+  });
+  
+  if (rawCount === 0) {
     console.log('[REPLY_JOB] ⚠️ No opportunities in pool, waiting for harvester...');
     return;
   }
   
-  console.log(`[REPLY_JOB] 📊 Loaded ${allOpportunities.length} opportunities in batches`);
+  console.log(`[REPLY_JOB] 📊 Loaded ${rawCount} opportunities in batches`);
   
   // 🔒 HARD GATE: Filter out any non-root tweets (safety check even if DB query filtered)
   const rootOnlyOpportunities = allOpportunities.filter(opp => {
@@ -787,18 +799,46 @@ async function generateRealReplies(): Promise<void> {
     return true;
   });
   
-  const skippedNonRoot = allOpportunities.length - rootOnlyOpportunities.length;
+  const rootCount = rootOnlyOpportunities.length;
+  const skippedNonRoot = rawCount - rootCount;
   if (skippedNonRoot > 0) {
     console.log(`[REPLY_JOB] 🔒 Root tweet gate: skipped ${skippedNonRoot} non-root tweets`);
   }
   
-  if (rootOnlyOpportunities.length === 0) {
+  if (rootCount === 0) {
     console.log('[REPLY_JOB] ⚠️ No root tweet opportunities after filtering, waiting for harvester...');
     return;
   }
   
+  // 🔒 FRESHNESS GATE: Filter stale tweets (already filtered in query, but double-check)
+  const now = Date.now();
+  const staleThresholdMs = 24 * 60 * 60 * 1000; // 24 hours
+  const fallbackStaleThresholdMs = 6 * 60 * 60 * 1000; // 6 hours for fallback
+  
+  let freshOpportunities: any[];
+  if (usingFallbackThreshold) {
+    // In fallback mode, allow up to 6 hours old
+    freshOpportunities = rootOnlyOpportunities.filter(opp => {
+      if (!opp.tweet_posted_at) return false;
+      const postedAt = new Date(opp.tweet_posted_at).getTime();
+      const ageHours = (now - postedAt) / (1000 * 60 * 60);
+      return ageHours <= 6; // Stricter threshold for fallback
+    });
+  } else {
+    // Normal mode: 24 hours
+    freshOpportunities = rootOnlyOpportunities.filter(opp => {
+      if (!opp.tweet_posted_at) return false;
+      const postedAt = new Date(opp.tweet_posted_at).getTime();
+      const ageHours = (now - postedAt) / (1000 * 60 * 60);
+      return ageHours <= 24;
+    });
+  }
+  
+  const freshCountAfterFilter = freshOpportunities.length;
+  const staleCount = rootCount - freshCountAfterFilter;
+  
   // Replace allOpportunities with root-only opportunities
-  const allOpportunitiesFiltered = rootOnlyOpportunities;
+  const allOpportunitiesFiltered = freshOpportunities;
   
   // 🎯 PHASE 6.2: REPLY TARGETING POLICY - Eligibility Filter + Scoring
   console.log('[REPLY_JOB] 🎯 Applying reply targeting policy (eligibility + scoring)...');
@@ -833,6 +873,9 @@ async function generateRealReplies(): Promise<void> {
     requireRootTweet: true, // Require root tweets
   });
   
+  const eligibleCount = eligible.length;
+  const ineligibleCount = ineligible.length;
+  
   // Track rejection reasons for metrics
   const rejectionReasons = new Map<EligibilityReason, number>();
   ineligible.forEach(({ decision }) => {
@@ -847,6 +890,7 @@ async function generateRealReplies(): Promise<void> {
   });
   
   const scored = await scoreAndSelectTopK(eligible, eligibilityReasonsMap);
+  const selectedCount = scored.length;
   
   // Structured log per cycle
   const topRejectionReasons = Array.from(rejectionReasons.entries())
@@ -877,28 +921,38 @@ async function generateRealReplies(): Promise<void> {
     return String(original?.tier || '').toUpperCase() === 'B';
   });
   
-  console.log(`[REPLY_JOB] 🎯 Tier distribution: S=${tierSCandidates.length} A=${tierACandidates.length} B=${tierBCandidates.length}`);
+  const tierSCount = tierSCandidates.length;
+  const tierACount = tierACandidates.length;
+  const tierBCount = tierBCandidates.length;
+  const tierCCount = scored.filter(opp => {
+    const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === opp.target_tweet_id);
+    const tier = String(original?.tier || '').toUpperCase();
+    return tier === 'C' || (tier !== 'S' && tier !== 'A' && tier !== 'B' && tier !== 'UNKNOWN');
+  }).length;
+  
+  console.log(`[REPLY_JOB] 🎯 Tier distribution: S=${tierSCount} A=${tierACount} B=${tierBCount} C=${tierCCount}`);
   
   // Select tier-based candidates (preserving scoring order)
   let selectedOpportunities: any[] = [];
   let tierUsed = '';
   let tierReason = '';
+  let tierFallbackUsed = false;
   
-  if (tierSCandidates.length > 0) {
+  if (tierSCount > 0) {
     selectedOpportunities = tierSCandidates.map(scored => {
       const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === scored.target_tweet_id);
       return { ...original, _scoring: formatScoringForStorage(scored.scoringComponents), _eligibility: { eligible: true, reason: scored.eligibilityReason } };
     });
     tierUsed = 'S';
     tierReason = 'Tier_S available (high-value: fresh + high engagement)';
-  } else if (tierACandidates.length > 0) {
+  } else if (tierACount > 0) {
     selectedOpportunities = tierACandidates.map(scored => {
       const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === scored.target_tweet_id);
       return { ...original, _scoring: formatScoringForStorage(scored.scoringComponents), _eligibility: { eligible: true, reason: scored.eligibilityReason } };
     });
     tierUsed = 'A';
     tierReason = 'Tier_A available (good engagement, no Tier_S)';
-  } else if (tierBCandidates.length > 0) {
+  } else if (tierBCount > 0) {
     // Starvation mode: only top 1 Tier_B
     selectedOpportunities = tierBCandidates.slice(0, 1).map(scored => {
       const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === scored.target_tweet_id);
@@ -907,10 +961,75 @@ async function generateRealReplies(): Promise<void> {
     tierUsed = 'B';
     tierReason = 'STARVATION: Only Tier_B available, using top 1 candidate';
     console.warn(`[REPLY_JOB] ⚠️ STARVATION MODE: No Tier_S/A available, using Tier_B (top 1 only)`);
+  } else if ((tierCCount > 0 || Object.keys(tierDistribution).some(t => !['S', 'A', 'B'].includes(t))) && rawCount > 0) {
+    // 🎯 CONSERVATIVE TIER C/OTHER FALLBACK: Only if no S/A/B tiers available
+    // Apply strict filters: root tweet, age <= 6h, topic_fit >= 0.65 or targeting_score >= 0.6
+    const tierCCandidates = scored.filter(opp => {
+      const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === opp.target_tweet_id);
+      const tier = String(original?.tier || '').toUpperCase();
+      // Include Tier C and any other non-S/A/B tiers (e.g., ACCEPTABLE)
+      return tier === 'C' || (tier !== 'S' && tier !== 'A' && tier !== 'B' && tier !== 'UNKNOWN');
+    });
+    
+    const fallbackCandidates = tierCCandidates.filter(opp => {
+      const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === opp.target_tweet_id);
+      if (!original) return false;
+      
+      // Check age <= 6 hours
+      if (original.tweet_posted_at) {
+        const postedAt = new Date(original.tweet_posted_at).getTime();
+        const ageHours = (now - postedAt) / (1000 * 60 * 60);
+        if (ageHours > 6) return false;
+      }
+      
+      // Check topic_fit or targeting_score threshold
+      const topicFit = opp.scoringComponents.topicFit || 0;
+      const targetingScore = opp.score || 0;
+      if (topicFit < 0.65 && targetingScore < 0.6) return false;
+      
+      return true;
+    });
+    
+    if (fallbackCandidates.length > 0) {
+      // Limit to 1 reply max in fallback mode
+      selectedOpportunities = fallbackCandidates.slice(0, 1).map(scored => {
+        const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === scored.target_tweet_id);
+        return { 
+          ...original, 
+          _scoring: formatScoringForStorage(scored.scoringComponents), 
+          _eligibility: { eligible: true, reason: scored.eligibilityReason },
+          tier_fallback_used: true,
+        };
+      });
+      tierUsed = 'C';
+      tierReason = 'TIER_C_FALLBACK: No S/A/B tiers, using Tier_C with strict filters (age<=6h, topic_fit>=0.65 or score>=0.6, limit=1)';
+      tierFallbackUsed = true;
+      console.warn(`[REPLY_JOB] ⚠️ TIER_C_FALLBACK: Using Tier_C candidate with strict filters (${fallbackCandidates.length} candidates, selecting top 1)`);
+    } else {
+      console.log('[REPLY_JOB] ⚠️ No opportunities with valid tiers (including Tier_C fallback), waiting for harvester...');
+      return;
+    }
   } else {
     console.log('[REPLY_JOB] ⚠️ No opportunities with valid tiers, waiting for harvester...');
     return;
   }
+  
+  // 📊 PIPELINE DIAGNOSTICS: Single structured log line with all stage counts
+  const rejectionBreakdown = Array.from(rejectionReasons.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, count]) => `${reason}=${count}`)
+    .join(',');
+  
+  const tierBreakdown = Object.entries(tierDistribution)
+    .map(([tier, count]) => `${tier}=${count}`)
+    .join(' ');
+  
+  // Calculate target_exists count (approximate from ineligible)
+  const targetExistsCount = ineligible.filter(({ decision }) => decision.reason === 'target_exists').length;
+  const alreadyRepliedCount = ineligible.filter(({ decision }) => decision.reason === 'already_replied_recently').length;
+  
+  console.log(`[REPLY_PIPELINE] raw=${rawCount} root=${rootCount} fresh=${freshCountAfterFilter} stale=${staleCount} not_replied=${eligibleCount + alreadyRepliedCount} no_target_exists=${eligibleCount + targetExistsCount} tier_ok=${tierSCount + tierACount + tierBCount} eligible=${eligibleCount} selected=${selectedOpportunities.length} rejections=[${rejectionBreakdown}] tier_fallback=${tierFallbackUsed ? 'true' : 'false'} fallback_threshold=${usingFallbackThreshold ? 'true' : 'false'}`);
+  console.log(`[REPLY_PIPELINE_TIERS] ${tierBreakdown}`);
   
   console.log(`[REPLY_JOB] ✅ Selected ${selectedOpportunities.length} opportunities from tier=${tierUsed} reason=${tierReason}`);
   
