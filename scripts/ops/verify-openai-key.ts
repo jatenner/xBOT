@@ -98,59 +98,67 @@ if (cleanedKey !== openaiKey) {
   console.log(`   Cleaned length: ${cleanedKey.length}`);
 }
 
-console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('🧪 Testing OpenAI API call...\n');
+async function testOpenAIKey(): Promise<void> {
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🧪 Testing OpenAI API call...\n');
 
-// Test API call with cleaned key
-if (!cleanedKey) {
-  console.error('❌ OPENAI_API_KEY not set - cannot test');
-  process.exit(1);
-}
+  // Test API call with cleaned key
+  if (!cleanedKey) {
+    console.error('❌ OPENAI_API_KEY not set - cannot test');
+    process.exit(1);
+  }
 
-try {
-  const openai = new OpenAI({
-    apiKey: cleanedKey
-  });
-  
-  // Make minimal API call (list models - very lightweight)
-  console.log('📡 Calling OpenAI API: models.list()...');
   const startTime = Date.now();
   
-  const response = await openai.models.list();
-  const elapsed = Date.now() - startTime;
-  
-  console.log(`✅ API call succeeded (${elapsed}ms)`);
-  console.log(`   Status: OK`);
-  console.log(`   Models returned: ${response.data.length}`);
-  console.log(`   Sample models: ${response.data.slice(0, 3).map(m => m.id).join(', ')}`);
-  
-  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('✅ VERIFICATION PASSED: OpenAI API key is valid');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-  
-  process.exit(0);
-  
-} catch (error: any) {
-  const elapsed = Date.now() - startTime;
-  const statusCode = error.status || error.response?.status || 'unknown';
-  const errorMessage = error.message || String(error);
-  
-  console.error(`❌ API call failed (${elapsed}ms)`);
-  console.error(`   Status code: ${statusCode}`);
-  console.error(`   Error: ${errorMessage}`);
-  
-  if (statusCode === 401) {
-    console.error('\n🚨 AUTHENTICATION FAILED: API key is invalid or expired');
-    console.error('   Action required:');
-    console.error('   1. Check https://platform.openai.com/account/api-keys');
-    console.error('   2. Verify key is active and not revoked');
-    console.error('   3. Update OPENAI_API_KEY in .env or .env.local');
-    console.error('   4. Ensure key starts with "sk-" (user key) or "sk-proj-" (project key)');
+  try {
+    const openai = new OpenAI({
+      apiKey: cleanedKey
+    });
+    
+    // Make minimal API call (list models - very lightweight)
+    console.log('📡 Calling OpenAI API: models.list()...');
+    
+    const response = await openai.models.list();
+    const elapsed = Date.now() - startTime;
+    
+    console.log(`✅ API call succeeded (${elapsed}ms)`);
+    console.log(`   Status: OK`);
+    console.log(`   Models returned: ${response.data.length}`);
+    console.log(`   Sample models: ${response.data.slice(0, 3).map(m => m.id).join(', ')}`);
+    
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('✅ VERIFICATION PASSED: OpenAI API key is valid');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    
+    process.exit(0);
+    
+  } catch (error: any) {
+    const elapsed = Date.now() - startTime;
+    const statusCode = error.status || error.response?.status || 'unknown';
+    const errorMessage = error.message || String(error);
+    
+    console.error(`❌ API call failed (${elapsed}ms)`);
+    console.error(`   Status code: ${statusCode}`);
+    console.error(`   Error: ${errorMessage}`);
+    
+    if (statusCode === 401) {
+      console.error('\n🚨 AUTHENTICATION FAILED: API key is invalid or expired');
+      console.error('   Action required:');
+      console.error('   1. Check https://platform.openai.com/account/api-keys');
+      console.error('   2. Verify key is active and not revoked');
+      console.error('   3. Update OPENAI_API_KEY in .env or .env.local');
+      console.error('   4. Ensure key starts with "sk-" (user key) or "sk-proj-" (project key)');
+    }
+    
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('❌ VERIFICATION FAILED');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    
+    process.exit(1);
   }
-  
-  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('❌ VERIFICATION FAILED');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-  
-  process.exit(1);
 }
+
+testOpenAIKey().catch(error => {
+  console.error('❌ Unexpected error:', error);
+  process.exit(1);
+});
