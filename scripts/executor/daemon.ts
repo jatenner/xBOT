@@ -698,6 +698,41 @@ function startHealthWatchdog(): void {
  * Main daemon loop
  */
 async function main(): Promise<void> {
+  // 🔒 FAIL-FAST: Check for OpenAI API key if RUNNER_MODE is enabled
+  const runnerMode = process.env.RUNNER_MODE === 'true';
+  if (runnerMode) {
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey || !openaiApiKey.startsWith('sk-')) {
+      console.error('[EXECUTOR_DAEMON] 🚨 FATAL: OPENAI_API_KEY missing or invalid');
+      console.error('[EXECUTOR_DAEMON] 🚨 Mac Runner requires OPENAI_API_KEY for PLAN_ONLY content generation');
+      console.error('[EXECUTOR_DAEMON] 🚨 Key present:', !!openaiApiKey);
+      console.error('[EXECUTOR_DAEMON] 🚨 Key prefix:', openaiApiKey ? openaiApiKey.slice(0, 3) : 'none');
+      
+      // Log to system_events
+      try {
+        const { getSupabaseClient } = await import('../../src/db/index');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'mac_runner_missing_openai_key',
+          severity: 'critical',
+          message: 'OPENAI_API_KEY missing/invalid; Mac Runner cannot generate PLAN_ONLY content',
+          event_data: {
+            runner_mode: runnerMode,
+            key_present: !!openaiApiKey,
+            key_prefix: openaiApiKey ? openaiApiKey.slice(0, 3) : 'none',
+          },
+          created_at: new Date().toISOString(),
+        });
+      } catch (logError: any) {
+        console.warn(`[EXECUTOR_DAEMON] ⚠️ Failed to log error: ${logError.message}`);
+      }
+      
+      // Exit with code 1 (fail fast)
+      process.exit(1);
+    } else {
+      console.log('[EXECUTOR_DAEMON] ✅ OPENAI_API_KEY present (prefix: sk-)');
+    }
+  }
   const daemonPid = process.pid;
   let exitCode = 0;
   let exitReason: 'normal' | 'crash' | 'signal' = 'normal';

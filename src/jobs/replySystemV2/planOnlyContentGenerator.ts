@@ -60,6 +60,34 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
     return { success: false, error: errorMsg };
   }
   
+  // 🔒 FAIL-FAST: Check for OpenAI API key before attempting generation
+  const openaiApiKey = process.env.OPENAI_API_KEY;
+  if (!openaiApiKey || !openaiApiKey.startsWith('sk-')) {
+    const errorMsg = 'OPENAI_API_KEY missing or invalid - cannot generate content for PLAN_ONLY decision';
+    console.error(`[PLAN_ONLY_GENERATOR] ❌ ${errorMsg} decision_id=${decisionId}`);
+    
+    // Log to system_events with specific event type
+    try {
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'mac_runner_missing_openai_key',
+        severity: 'error',
+        message: errorMsg,
+        event_data: {
+          decision_id: decisionId,
+          reason: 'OPENAI_API_KEY_MISSING_OR_INVALID',
+          key_present: !!openaiApiKey,
+          key_prefix: openaiApiKey ? openaiApiKey.slice(0, 3) : 'none',
+        },
+        created_at: new Date().toISOString(),
+      });
+    } catch (logError: any) {
+      console.warn(`[PLAN_ONLY_GENERATOR] ⚠️ Failed to log error: ${logError.message}`);
+    }
+    
+    return { success: false, error: errorMsg };
+  }
+  
   // Check if content is already generated (idempotent check)
   const currentContent = decision.content || '';
   const isPlaceholder = 
