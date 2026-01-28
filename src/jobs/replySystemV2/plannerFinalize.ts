@@ -44,12 +44,14 @@ export async function plannerFinalizeDecision(
     };
     
     // Update base table (content_generation_metadata_comprehensive)
+    const scheduledAt = new Date().toISOString(); // Set scheduled_at for posting queue
     const { error: updateError1 } = await supabase
       .from('content_generation_metadata_comprehensive')
       .update({
         status: 'queued',
         content: '[PLAN_ONLY - Pending Mac Runner execution]',
         pipeline_source: 'reply_v2_planner',
+        scheduled_at: scheduledAt, // Required for posting queue to pick up
         features: features,
       })
       .eq('decision_id', decisionId);
@@ -81,6 +83,7 @@ export async function plannerFinalizeDecision(
       .update({
         status: 'queued',
         content: '[PLAN_ONLY - Pending Mac Runner execution]',
+        scheduled_at: scheduledAt, // Required for posting queue to pick up
         features: features,
       })
       .eq('decision_id', decisionId);

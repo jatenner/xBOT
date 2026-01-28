@@ -2742,11 +2742,11 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       replyQuery = replyQuery.or('is_test_post.is.null,is_test_post.eq.false');
     }
     
-    // 🔒 CERT MODE: Only select replies with reply_v2_scheduler pipeline_source
+    // 🔒 CERT MODE: Only select replies with reply_v2_scheduler OR reply_v2_planner pipeline_source
     // 🔒 PROOF_MODE BYPASS: Skip CERT MODE filter when PROOF_MODE is active (proof decisions use control_reply_scheduler)
     if (certMode && !proofMode) {
-      replyQuery = replyQuery.eq('pipeline_source', 'reply_v2_scheduler');
-      console.log(`[POSTING_QUEUE] 🔒 CERT MODE: Filtering to reply_v2_scheduler pipeline_source only`);
+      replyQuery = replyQuery.in('pipeline_source', ['reply_v2_scheduler', 'reply_v2_planner']);
+      console.log(`[POSTING_QUEUE] 🔒 CERT MODE: Filtering to reply_v2_scheduler or reply_v2_planner pipeline_source`);
     }
     
     if (controlledDecisionId && !isKnownTestId) {
@@ -2767,7 +2767,7 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     // 🔒 CERT MODE: Filter out any non-reply decisions that slipped through
     // 🔒 PROOF_MODE BYPASS: Skip CERT MODE filter when PROOF_MODE is active
     const filteredData = (certMode && !proofMode)
-      ? data.filter(d => d.decision_type === 'reply' && d.pipeline_source === 'reply_v2_scheduler')
+      ? data.filter(d => d.decision_type === 'reply' && (d.pipeline_source === 'reply_v2_scheduler' || d.pipeline_source === 'reply_v2_planner'))
       : data;
     
     if (certMode && filteredData.length !== data.length) {
