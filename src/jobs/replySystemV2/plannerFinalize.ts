@@ -17,6 +17,8 @@ export interface PlannerFinalizeFields {
   targeting_score_total: number;
   topic_fit: number;
   score_bucket: string;
+  root_tweet_id?: string; // Required for FINAL_REPLY_GATE
+  target_tweet_id?: string; // Required for posting
 }
 
 /**
@@ -45,15 +47,27 @@ export async function plannerFinalizeDecision(
     
     // Update base table (content_generation_metadata_comprehensive)
     const scheduledAt = new Date().toISOString(); // Set scheduled_at for posting queue
+    const updatePayload: any = {
+      status: 'queued',
+      content: '[PLAN_ONLY - Pending Mac Runner execution]',
+      pipeline_source: 'reply_v2_planner',
+      scheduled_at: scheduledAt, // Required for posting queue to pick up
+      features: features,
+    };
+    
+    // Set root_tweet_id if provided (required for FINAL_REPLY_GATE)
+    if (fields.root_tweet_id) {
+      updatePayload.root_tweet_id = fields.root_tweet_id;
+    }
+    
+    // Set target_tweet_id if provided (required for posting)
+    if (fields.target_tweet_id) {
+      updatePayload.target_tweet_id = fields.target_tweet_id;
+    }
+    
     const { error: updateError1 } = await supabase
       .from('content_generation_metadata_comprehensive')
-      .update({
-        status: 'queued',
-        content: '[PLAN_ONLY - Pending Mac Runner execution]',
-        pipeline_source: 'reply_v2_planner',
-        scheduled_at: scheduledAt, // Required for posting queue to pick up
-        features: features,
-      })
+      .update(updatePayload)
       .eq('decision_id', decisionId);
     
     if (updateError1) {

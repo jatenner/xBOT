@@ -1170,6 +1170,8 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         targeting_score_total: candidateScore / 100,
         topic_fit: candidateFeatures.topic_relevance || 0,
         score_bucket: getScoreBucket(candidateScore / 100),
+        root_tweet_id: ancestry.rootTweetId || candidate.candidate_tweet_id, // Use resolved root or fallback to candidate
+        target_tweet_id: candidate.candidate_tweet_id,
       });
       
       if (!finalizeResult.success) {
