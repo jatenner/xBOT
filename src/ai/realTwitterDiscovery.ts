@@ -1336,6 +1336,74 @@ export class RealTwitterDiscovery {
    * Phase 3 Enhancement: Boosts opportunity_score based on discovered_accounts.priority_score      
    */
   async storeOpportunities(opportunities: ReplyOpportunity[]): Promise<void> {
+    // 🔒 STABILITY HEURISTICS: Filter out tweets <2 minutes old (edit risk) and prefer 5-45 minutes
+    const now = Date.now();
+    const minAgeMs = 2 * 60 * 1000; // 2 minutes minimum
+    const preferredMinAgeMs = 5 * 60 * 1000; // 5 minutes preferred minimum
+    const preferredMaxAgeMs = 45 * 60 * 1000; // 45 minutes preferred maximum
+    
+    const filteredOpps = opportunities.filter(opp => {
+      if (!opp.tweet_posted_at && !opp.posted_minutes_ago) {
+        return true; // Keep if no age data (will be filtered later)
+      }
+      
+      const postedAt = opp.tweet_posted_at ? new Date(opp.tweet_posted_at).getTime() : 
+                       (now - (opp.posted_minutes_ago || 0) * 60 * 1000);
+      const ageMs = now - postedAt;
+      
+      // Filter out <2 minutes (edit risk)
+      if (ageMs < minAgeMs) {
+        return false;
+      }
+      
+      return true; // Keep all others (preference scoring happens in planner)
+    });
+    
+    // Add stability signals to features
+    const oppsWithStability = filteredOpps.map(opp => {
+      const postedAt = opp.tweet_posted_at ? new Date(opp.tweet_posted_at).getTime() : 
+                       (now - (opp.posted_minutes_ago || 0) * 60 * 1000);
+      const ageMs = now - postedAt;
+      const ageMinutes = Math.round(ageMs / 60000);
+      
+      // Bucket age
+      let ageBucket = 'unknown';
+      if (ageMinutes < 5) ageBucket = '0-5min';
+      else if (ageMinutes < 15) ageBucket = '5-15min';
+      else if (ageMinutes < 30) ageBucket = '15-30min';
+      else if (ageMinutes < 45) ageBucket = '30-45min';
+      else if (ageMinutes < 60) ageBucket = '45-60min';
+      else ageBucket = '60min+';
+      
+      // Bucket followers (if available)
+      const followers = (opp as any).account_followers || 0;
+      let followersBucket = 'unknown';
+      if (followers >= 100000) followersBucket = '100k+';
+      else if (followers >= 50000) followersBucket = '50k-100k';
+      else if (followers >= 10000) followersBucket = '10k-50k';
+      else if (followers >= 5000) followersBucket = '5k-10k';
+      else if (followers >= 1000) followersBucket = '1k-5k';
+      else followersBucket = '<1k';
+      
+      // Calculate engagement velocity (likes per minute)
+      const velocity = ageMinutes > 0 ? (opp.like_count || 0) / ageMinutes : 0;
+      
+      return {
+        ...opp,
+        features: {
+          ...((opp as any).features || {}),
+          tweet_age_minutes_bucket: ageBucket,
+          tweet_age_minutes: ageMinutes,
+          author_followers_bucket: followersBucket,
+          author_followers: followers,
+          engagement_velocity: velocity,
+          stability_score: ageMinutes >= 5 && ageMinutes <= 45 ? 1.0 : 0.5, // Boost for preferred window
+        }
+      };
+    });
+    
+    // Replace opportunities with filtered + stability-enhanced version
+    opportunities = oppsWithStability as any;
     if (opportunities.length === 0) return;
     
     // ═══════════════════════════════════════════════════════════════════════════

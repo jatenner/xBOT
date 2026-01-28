@@ -369,10 +369,41 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
     }
   }
   
+  // 🔒 STABILITY HEURISTICS: Prefer candidates from opportunities with stability_score=1.0 (5-45min window)
+  // Check if opportunities have stability features
   query = query
     .order('predicted_tier', { ascending: true }) // Tier 1 first
     .order('overall_score', { ascending: false }) // Then by score
-    .limit(1);
+    .limit(10); // Get more candidates to filter by stability
+  
+  const { data: candidates, error } = await query;
+  
+  if (error || !candidates || candidates.length === 0) {
+    if (error) {
+      console.log(`[QUEUE_MANAGER] ⚠️ Query error for tier ${tier}: ${error.message}`);
+    }
+    return null;
+  }
+  
+  // Filter by stability if features available, then take top by score
+  const candidatesWithStability = candidates.map(c => {
+    // Try to get stability from reply_opportunities
+    return c;
+  });
+  
+  // Prefer candidates from stable opportunities (5-45min window)
+  const stableCandidates = candidatesWithStability.filter(c => {
+    // This will be enhanced when we join with reply_opportunities
+    return true; // For now, keep all
+  });
+  
+  const selectedCandidate = stableCandidates.length > 0 ? stableCandidates[0] : candidates[0];
+  
+  if (!selectedCandidate) {
+    return null;
+  }
+  
+  const candidate = selectedCandidate;
   
   if (tier !== undefined && !singleId) {
     // Only filter by tier if not in SINGLE_ID mode

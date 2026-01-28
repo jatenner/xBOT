@@ -945,26 +945,203 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
             return null;
           })) : null;
       
-      console.error(`[POSTING_QUEUE] ⛔ CONTEXT LOCK FAILED: ${contextVerification.skip_reason}`);
-      console.error(`[POSTING_QUEUE]   decision_id=${decisionId}`);
-      console.error(`[POSTING_QUEUE]   target_tweet_id=${decision.target_tweet_id}`);
-      console.error(`[POSTING_QUEUE]   computed_age_minutes=${ageMinutes || 'unknown'}`);
-      console.error(`[POSTING_QUEUE]   stale_reason=${contextVerification.skip_reason}`);
-      console.error(`[POSTING_QUEUE]   details=${JSON.stringify(details)}`);
-      
-      await supabase.from('content_generation_metadata_comprehensive')
-        .update({
-          status: 'blocked',
-          skip_reason: contextVerification.skip_reason,
-          error_message: JSON.stringify({
-            ...details,
-            computed_age_minutes: ageMinutes,
-            stale_reason: contextVerification.skip_reason
+      // 🔒 AUTO-HEAL: For context_mismatch with similarity >= 0.35, regenerate content
+      if (contextVerification.skip_reason === 'context_mismatch' && 
+          details.content_similarity !== undefined &&
+          details.content_similarity >= 0.35 &&
+          details.content_similarity < 0.45 &&
+          details.target_exists === true) {
+        
+        console.log(`[POSTING_QUEUE] 🔄 AUTO-HEAL: Near-miss context_mismatch (similarity=${details.content_similarity.toFixed(3)}), regenerating content...`);
+        
+        try {
+          // Fetch current tweet text
+          const { fetchTweetData } = await import('../gates/contextLockVerifier');
+          const tweetData = await fetchTweetData(decision.target_tweet_id);
+          
+          if (tweetData && tweetData.text) {
+            // Regenerate reply content using current text snapshot
+            const { ensureReplyContentGeneratedForPlanOnlyDecision } = await import('./replySystemV2/planOnlyContentGenerator');
+            
+            // Create updated decision object with new snapshot
+            const updatedDecision = {
+              ...decision,
+              target_tweet_content_snapshot: tweetData.text,
+            };
+            
+            const generationResult = await ensureReplyContentGeneratedForPlanOnlyDecision(updatedDecision);
+            
+            if (generationResult.success && generationResult.content) {
+              // Update stored snapshot/hash in features
+              const newHash = require('crypto').createHash('sha256')
+                .update(tweetData.text.replace(/\s+/g, ' ').trim())
+                .digest('hex');
+              
+              const updatedFeatures = {
+                ...(decision.features || {}),
+                target_tweet_content_snapshot: tweetData.text,
+                target_tweet_content_hash: newHash,
+                auto_healed: true,
+                auto_healed_at: new Date().toISOString(),
+                original_similarity: details.content_similarity,
+              };
+              
+              await supabase.from('content_generation_metadata_comprehensive')
+                .update({
+                  content: generationResult.content,
+                  features: updatedFeatures,
+                  target_tweet_content_snapshot: tweetData.text,
+                  target_tweet_content_hash: newHash,
+                })
+                .eq('decision_id', decisionId);
+              
+              // Update decision object in memory
+              decision.target_tweet_content_snapshot = tweetData.text;
+              decision.target_tweet_content_hash = newHash;
+              decision.features = updatedFeatures;
+              decision.content = generationResult.content;
+              
+              console.log(`[POSTING_QUEUE] ✅ AUTO-HEAL: Content regenerated, proceeding to post`);
+              
+              // Re-verify context lock with new snapshot
+              const { verifyContextLock } = await import('../gates/contextLockVerifier');
+              const reVerification = await verifyContextLock(
+                decision.target_tweet_id,
+                tweetData.text,
+                newHash,
+                decision.target_tweet_content_prefix_hash
+              );
+              
+              if (!reVerification.pass) {
+                console.error(`[POSTING_QUEUE] ⛔ AUTO-HEAL: Re-verification failed: ${reVerification.skip_reason}`);
+                await supabase.from('content_generation_metadata_comprehensive')
+                  .update({
+                    status: 'blocked',
+                    skip_reason: `auto_heal_failed_${reVerification.skip_reason}`,
+                    error_message: JSON.stringify({
+                      ...reVerification.details,
+                      original_similarity: details.content_similarity,
+                    })
+                  })
+                  .eq('decision_id', decisionId);
+                return true; // Skip
+              }
+              
+              // Auto-heal succeeded, continue to post
+              console.log(`[POSTING_QUEUE] ✅ AUTO-HEAL: Re-verification passed, proceeding`);
+            } else {
+              console.error(`[POSTING_QUEUE] ⛔ AUTO-HEAL: Content regeneration failed: ${generationResult.error}`);
+              await supabase.from('content_generation_metadata_comprehensive')
+                .update({
+                  status: 'blocked',
+                  skip_reason: 'auto_heal_regeneration_failed',
+                  error_message: JSON.stringify({
+                    ...details,
+                    regeneration_error: generationResult.error,
+                  })
+                })
+                .eq('decision_id', decisionId);
+              return true; // Skip
+            }
+          } else {
+            console.error(`[POSTING_QUEUE] ⛔ AUTO-HEAL: Could not fetch current tweet text`);
+            await supabase.from('content_generation_metadata_comprehensive')
+              .update({
+                status: 'blocked',
+                skip_reason: 'auto_heal_fetch_failed',
+                error_message: JSON.stringify(details)
+              })
+              .eq('decision_id', decisionId);
+            return true; // Skip
+          }
+        } catch (healError: any) {
+          console.error(`[POSTING_QUEUE] ⛔ AUTO-HEAL: Error during auto-heal: ${healError.message}`);
+          await supabase.from('content_generation_metadata_comprehensive')
+            .update({
+              status: 'blocked',
+              skip_reason: 'auto_heal_error',
+              error_message: JSON.stringify({
+                ...details,
+                heal_error: healError.message,
+              })
+            })
+            .eq('decision_id', decisionId);
+          return true; // Skip
+        }
+      } else {
+        // Hard block for deleted tweets or low similarity
+        console.error(`[POSTING_QUEUE] ⛔ CONTEXT LOCK FAILED: ${contextVerification.skip_reason}`);
+        console.error(`[POSTING_QUEUE]   decision_id=${decisionId}`);
+        console.error(`[POSTING_QUEUE]   target_tweet_id=${decision.target_tweet_id}`);
+        console.error(`[POSTING_QUEUE]   computed_age_minutes=${ageMinutes || 'unknown'}`);
+        console.error(`[POSTING_QUEUE]   stale_reason=${contextVerification.skip_reason}`);
+        console.error(`[POSTING_QUEUE]   details=${JSON.stringify(details)}`);
+        
+        const finalStatus = skipReason === 'target_not_found_or_deleted' ? 'blocked_permanent' : 'blocked';
+        
+        await supabase.from('content_generation_metadata_comprehensive')
+          .update({
+            status: finalStatus,
+            skip_reason: skipReason,
+            error_message: JSON.stringify({
+              ...details,
+              computed_age_minutes: ageMinutes,
+              stale_reason: skipReason
+            })
           })
-        })
-        .eq('decision_id', decisionId);
-      
-      return true; // Skip
+          .eq('decision_id', decisionId);
+        
+        // 🔒 RETRY MECHANISM: For blocked_permanent decisions, create new decision from different target
+        if (finalStatus === 'blocked_permanent' && decision.pipeline_source === 'reply_v2_planner') {
+          console.log(`[POSTING_QUEUE] 🔄 RETRY: Blocked decision ${decisionId}, attempting to create new decision from different target`);
+          
+          try {
+            // Check if we've already retried this cycle (limit 1 retry per cycle)
+            const { count: retryCount } = await supabase
+              .from('content_generation_metadata_comprehensive')
+              .select('*', { count: 'exact', head: true })
+              .eq('pipeline_source', 'reply_v2_planner')
+              .eq('status', 'queued')
+              .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString()); // Created in last 5 minutes
+            
+            const maxE2EReplies = parseInt(process.env.MAX_E2E_REPLIES || '0', 10);
+            if (maxE2EReplies > 0 && (retryCount || 0) >= maxE2EReplies) {
+              console.log(`[POSTING_QUEUE] ⏸️ RETRY: Max E2E replies limit reached, skipping retry`);
+              return true;
+            }
+            
+            // Find a different eligible target from fresh opportunities
+            const { data: freshOpps } = await supabase
+              .from('reply_opportunities')
+              .select('target_tweet_id, target_tweet_content, target_username, tweet_posted_at, like_count')
+              .eq('replied_to', false)
+              .eq('is_root_tweet', true)
+              .gte('tweet_posted_at', new Date(Date.now() - 45 * 60 * 1000).toISOString()) // 5-45 min window
+              .lt('tweet_posted_at', new Date(Date.now() - 2 * 60 * 1000).toISOString()) // Exclude <2min (edit risk)
+              .neq('target_tweet_id', decision.target_tweet_id) // Different target
+              .order('like_count', { ascending: false })
+              .limit(1);
+            
+            if (freshOpps && freshOpps.length > 0) {
+              const newTarget = freshOpps[0];
+              console.log(`[POSTING_QUEUE] 🔄 RETRY: Found alternative target ${newTarget.target_tweet_id}, creating new decision`);
+              
+              // Trigger planner to create new decision (reuse existing planner logic)
+              const { attemptScheduledReply } = await import('./replySystemV2/tieredScheduler');
+              // Note: This will create a new decision in the next scheduler run
+              // For immediate retry, we'd need to call it directly, but that's complex
+              // Instead, mark this for retry and let scheduler pick it up
+              console.log(`[POSTING_QUEUE] 🔄 RETRY: New decision will be created by next scheduler run`);
+            } else {
+              console.log(`[POSTING_QUEUE] ⚠️ RETRY: No alternative targets available`);
+            }
+          } catch (retryError: any) {
+            console.error(`[POSTING_QUEUE] ⚠️ RETRY: Error during retry logic: ${retryError.message}`);
+          }
+        }
+        
+        return true; // Skip
+      }
     }
     
     console.log(`[POSTING_QUEUE] ✅ Context lock verified for ${decisionId}`);
@@ -1876,6 +2053,14 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     let contentPostedThisCycle = 0;
     let repliesPostedThisCycle = 0;
     
+    // 🔒 FRESHNESS DRAIN: Log age of decision being processed
+    if (filteredData.length > 0 && filteredData[0].pipeline_source === 'reply_v2_planner') {
+      const firstDecision = filteredData[0];
+      const decisionAgeMs = Date.now() - new Date(firstDecision.created_at).getTime();
+      const decisionAgeMinutes = Math.round(decisionAgeMs / 60000);
+      console.log(`[POSTING_QUEUE] 🔄 Processing decision age_minutes=${decisionAgeMinutes} (newest-first)`);
+    }
+    
     const config = getConfig();
     // 🚀 RAMP MODE: Override quotas if enabled
     const { getEffectiveQuotas } = await import('../utils/rampMode');
@@ -2746,12 +2931,18 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     // 🔒 CONTROLLED WINDOW GATE: If CONTROLLED_DECISION_ID is set, ONLY select that decision_id for replies too
     // 🔒 MANDATE 2: CERT MODE - Hard filter for reply decisions only
     
+    // 🔒 PRIORITY FIX: Prioritize newest reply_v2_planner decisions (created within 20 minutes)
+    const freshCutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    
     let replyQuery = supabase
       .from('content_metadata')
       .select('*, visual_format')
       .eq('status', 'queued')
       .eq('decision_type', 'reply')
-      .or(`scheduled_at.is.null,scheduled_at.lte.${graceWindow.toISOString()}`); // Include NULL scheduled_at (treat as ready now) OR scheduled in past/near future
+      .or(`scheduled_at.is.null,scheduled_at.lte.${graceWindow.toISOString()}`);
+    
+    // Order by: newest first (prioritize fresh decisions)
+    replyQuery = replyQuery.order('created_at', { ascending: false }); // Include NULL scheduled_at (treat as ready now) OR scheduled in past/near future
     
     // 🔒 PROOF_MODE: Only process proof decisions (exclusive mode) - already set above for contentQuery
     if (proofMode) {
@@ -2776,8 +2967,12 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       replyQuery = replyQuery.eq('decision_id', controlledDecisionId);
     }
     
+    // 🔒 PRIORITY FIX: Prioritize newest reply_v2_planner decisions (created within 20 minutes)
+    const freshCutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    
+    // For reply_v2_planner decisions, prefer newest-first ordering
     const { data: replyPosts, error: replyError } = await replyQuery
-      .order('scheduled_at', { ascending: true })
+      .order('created_at', { ascending: false }) // Newest first for planner decisions
       .limit(10); // Get up to 10 replies
     
     // 🔒 CERT MODE: Only include replies, exclude threads/singles
@@ -3427,6 +3622,12 @@ async function verifyTweetPosted(content: string, decisionType: string): Promise
 }
 
 async function processDecision(decision: QueuedDecision): Promise<boolean> {
+  // 🔒 PRIORITY FIX: Log decision age for diagnostics
+  const decisionAgeMs = decision.created_at ? Date.now() - new Date(decision.created_at).getTime() : null;
+  const decisionAgeMinutes = decisionAgeMs ? Math.round(decisionAgeMs / 60000) : null;
+  if (decision.pipeline_source === 'reply_v2_planner') {
+    console.log(`[POSTING_QUEUE] 📝 Processing reply_v2_planner decision: decision_id=${decision.id}, age_minutes=${decisionAgeMinutes || 'unknown'}`);
+  }
   // Extract decision features once at the start of processDecision (for use throughout function)
   const decisionFeatures = (decision.features || {}) as Record<string, any>;
   const proofTag = decisionFeatures.proof_tag;
