@@ -17,7 +17,6 @@
  *   EXECUTION_MODE=executor RUNNER_MODE=true RUNNER_PROFILE_DIR=./.runner-profile pnpm run executor:daemon
  */
 
-import 'dotenv/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
@@ -26,6 +25,7 @@ import { resolveRunnerProfileDir, ensureRunnerProfileDir, RUNNER_PROFILE_PATHS }
 import { requireExecutorMode, getModeLabel, isExecutor } from '../../src/infra/executionMode';
 
 // Load .env.local first, then .env
+// IMPORTANT: Do NOT use 'dotenv/config' import - it loads .env before we can check .env.local
 const envLocalPath = path.join(process.cwd(), '.env.local');
 const envPath = path.join(process.cwd(), '.env');
 
