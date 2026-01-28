@@ -19,6 +19,8 @@ import { scoreCandidate, scoreAndSelectTopK, formatScoringForStorage } from '../
 import type { ReplyTargetCandidate } from '../../src/growth/replyTargetEligibility';
 import { getSupabaseClient } from '../../src/db/index';
 
+// Note: scoreAndSelectTopK is now async for topic-fit embeddings
+
 const PROOF_TAG = `targeting-${Date.now()}`;
 
 /**
@@ -262,7 +264,7 @@ async function main() {
     const eligibilityReasons = new Map<string, EligibilityReason>();
     eligible.forEach(c => eligibilityReasons.set(c.target_tweet_id, EligibilityReason.ELIGIBLE));
     
-    const scored = scoreAndSelectTopK(eligible, eligibilityReasons);
+    const scored = await scoreAndSelectTopK(eligible, eligibilityReasons);
     
     console.log(`✅ Scored ${eligible.length} candidates, selected top ${scored.length}`);
     

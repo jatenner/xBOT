@@ -810,6 +810,8 @@ async function generateRealReplies(): Promise<void> {
     engagement_rate: opp.engagement_rate,
     target_followers: opp.target_followers,
     account_followers: opp.account_followers,
+    // Include tweet content for topic-fit scoring
+    target_tweet_content: opp.target_tweet_content || opp.tweet_content || '',
   }));
   
   // Filter eligible candidates
@@ -824,14 +826,14 @@ async function generateRealReplies(): Promise<void> {
     rejectionReasons.set(decision.reason, (rejectionReasons.get(decision.reason) || 0) + 1);
   });
   
-  // Score and select top-K
+  // Score and select top-K (async for topic-fit embeddings)
   const eligibilityReasonsMap = new Map<string, EligibilityReason>();
   eligible.forEach(c => eligibilityReasonsMap.set(c.target_tweet_id, EligibilityReason.ELIGIBLE));
   ineligible.forEach(({ candidate, decision }) => {
     eligibilityReasonsMap.set(candidate.target_tweet_id, decision.reason);
   });
   
-  const scored = scoreAndSelectTopK(eligible, eligibilityReasonsMap);
+  const scored = await scoreAndSelectTopK(eligible, eligibilityReasonsMap);
   
   // Structured log per cycle
   const topRejectionReasons = Array.from(rejectionReasons.entries())

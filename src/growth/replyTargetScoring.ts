@@ -12,6 +12,7 @@
 import { getGrowthConfig } from '../config/growthConfig';
 import { EligibilityReason } from './replyTargetEligibility';
 import type { ReplyTargetCandidate } from './replyTargetEligibility';
+import { computeTopicFit, computeTopicFitWithDetails } from './topicAnchors';
 
 /**
  * Scoring components breakdown (for auditability)
@@ -22,6 +23,11 @@ export interface ScoringComponents {
   authorInfluence: number; // 0-1, normalized follower count or engagement proxy
   recency: number; // 0-1, fresher = higher
   totalScore: number; // Weighted sum
+  topicFitDetails?: {
+    bestAnchor?: string;
+    rawSimilarity?: number;
+    fallbackUsed?: boolean;
+  };
 }
 
 /**
@@ -35,18 +41,42 @@ export interface ScoredCandidate extends ReplyTargetCandidate {
 
 /**
  * Calculate topic fit score using embedding similarity
- * For now, returns a placeholder (0.5) - requires embedding infrastructure
+ * Falls back to 0.5 if embeddings unavailable
  */
-function calculateTopicFit(candidate: ReplyTargetCandidate): number {
-  // TODO: Implement actual embedding similarity when embeddings are available
-  // For now, return a neutral score
-  // In production, this would:
-  // 1. Get candidate tweet embedding
-  // 2. Get our content embeddings
-  // 3. Calculate cosine similarity
-  // 4. Normalize to 0-1
+async function calculateTopicFit(
+  candidate: ReplyTargetCandidate & { target_tweet_content?: string }
+): Promise<{ score: number; details?: any }> {
+  const candidateText = candidate.target_tweet_content || '';
   
-  return 0.5; // Placeholder
+  if (!candidateText || candidateText.length < 10) {
+    // No text or too short - use fallback
+    return { score: 0.5, details: { fallbackUsed: true, reason: 'no_text' } };
+  }
+  
+  try {
+    // Check if embeddings are disabled via env flag
+    if (process.env.DISABLE_TOPIC_FIT_EMBEDDINGS === 'true') {
+      return { score: 0.5, details: { fallbackUsed: true, reason: 'disabled_by_env' } };
+    }
+    
+    // Compute real topic fit with details
+    const fitDetails = await computeTopicFitWithDetails(candidateText);
+    
+    return {
+      score: fitDetails.score,
+      details: {
+        bestAnchor: fitDetails.bestAnchor,
+        rawSimilarity: fitDetails.bestAnchor 
+          ? fitDetails.similarities[fitDetails.bestAnchor] 
+          : undefined,
+        fallbackUsed: false,
+      },
+    };
+  } catch (error: any) {
+    // Fallback on error (log once per cycle, not per candidate)
+    console.warn('[REPLY_TARGET_SCORING] Topic fit computation failed, using fallback:', error.message);
+    return { score: 0.5, details: { fallbackUsed: true, reason: 'error', error: error.message } };
+  }
 }
 
 /**
@@ -137,9 +167,9 @@ function calculateRecency(candidate: ReplyTargetCandidate): number {
 }
 
 /**
- * Score a single candidate
+ * Score a single candidate (async for topic-fit embeddings)
  */
-export function scoreCandidate(candidate: ReplyTargetCandidate & {
+export async function scoreCandidate(candidate: ReplyTargetCandidate & {
   like_count?: number;
   reply_count?: number;
   retweet_count?: number;
@@ -147,10 +177,12 @@ export function scoreCandidate(candidate: ReplyTargetCandidate & {
   engagement_rate?: number;
   target_followers?: number;
   account_followers?: number;
-}): ScoringComponents {
+  target_tweet_content?: string;
+}): Promise<ScoringComponents> {
   const config = getGrowthConfig();
   
-  const topicFit = calculateTopicFit(candidate);
+  const topicFitResult = await calculateTopicFit(candidate);
+  const topicFit = topicFitResult.score;
   const engagementVelocity = calculateEngagementVelocity(candidate);
   const authorInfluence = calculateAuthorInfluence(candidate);
   const recency = calculateRecency(candidate);
@@ -168,21 +200,22 @@ export function scoreCandidate(candidate: ReplyTargetCandidate & {
     authorInfluence,
     recency,
     totalScore,
+    topicFitDetails: topicFitResult.details,
   };
 }
 
 /**
- * Score multiple candidates and return top-K
+ * Score multiple candidates and return top-K (async for topic-fit embeddings)
  */
-export function scoreAndSelectTopK(
+export async function scoreAndSelectTopK(
   candidates: ReplyTargetCandidate[],
   eligibilityReasons: Map<string, EligibilityReason>
-): ScoredCandidate[] {
+): Promise<ScoredCandidate[]> {
   const config = getGrowthConfig();
   
-  // Score all candidates
-  const scored: ScoredCandidate[] = candidates.map(candidate => {
-    const components = scoreCandidate(candidate);
+  // Score all candidates (parallel for performance)
+  const scoredPromises = candidates.map(async (candidate) => {
+    const components = await scoreCandidate(candidate);
     const eligibilityReason = eligibilityReasons.get(candidate.target_tweet_id) || EligibilityReason.ELIGIBLE;
     
     return {
@@ -192,6 +225,8 @@ export function scoreAndSelectTopK(
       eligibilityReason,
     };
   });
+  
+  const scored = await Promise.all(scoredPromises);
   
   // Sort by score (descending)
   scored.sort((a, b) => b.score - a.score);
@@ -211,6 +246,9 @@ export function formatScoringForStorage(scoring: ScoringComponents): Record<stri
       engagement_velocity: scoring.engagementVelocity,
       author_influence: scoring.authorInfluence,
       recency: scoring.recency,
+      ...(scoring.topicFitDetails && {
+        topic_fit_details: scoring.topicFitDetails,
+      }),
     },
     reply_targeting_scored_at: new Date().toISOString(),
   };
