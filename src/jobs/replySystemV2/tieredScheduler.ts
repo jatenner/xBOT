@@ -1035,11 +1035,10 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           target_tweet_content_hash: targetTweetContentHash, // 🔒 TASK 1: Populated from live fetch
           pipeline_source: planOnlyMode ? 'reply_v2_planner' : 'reply_v2_scheduler',
           build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
-        candidate_evaluation_id: candidate.evaluation_id,
-        queue_id: queueId,
-        scheduler_run_id: schedulerRunId,
-        pipeline_source: planOnlyMode ? 'reply_v2_planner' : 'reply_v2_scheduler',
-      });
+          candidate_evaluation_id: candidate.evaluation_id,
+          queue_id: queueId,
+          scheduler_run_id: schedulerRunId,
+        });
       
       if (insertError1) {
         throw new Error(`Failed to insert decision: ${insertError1.message}`);
@@ -1161,26 +1160,22 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     if (planOnlyMode) {
       console.log(`[SCHEDULER] 📋 PLAN_ONLY: Skipping generation and posting - decision will be executed by Mac Runner`);
       
-      // Update decision status to 'queued' (ready for Mac Runner execution)
-      await supabase
-        .from('content_metadata')
-        .update({
-          status: 'queued',
-          content: '[PLAN_ONLY - Pending Mac Runner execution]',
-          pipeline_source: 'reply_v2_planner', // Mark as planner-created
-          features: {
-            ...((await supabase.from('content_metadata').select('features').eq('decision_id', decisionId).maybeSingle()).data?.features || {}),
-            plan_mode: 'railway',
-            strategy_id: selectedStrategy?.strategy_id || 'insight_punch',
-            strategy_version: String(selectedStrategy?.strategy_version || '1'),
-            selection_mode: strategySelection?.selectionMode || 'fallback',
-            strategy_description: selectedStrategy?.description || '',
-            targeting_score_total: candidateScore / 100,
-            topic_fit: candidateFeatures.topic_relevance || 0,
-            score_bucket: getScoreBucket(candidateScore / 100),
-          },
-        })
-        .eq('decision_id', decisionId);
+      // Finalize decision using dedicated helper (updates base table + view)
+      const { plannerFinalizeDecision } = await import('./plannerFinalize');
+      const finalizeResult = await plannerFinalizeDecision(decisionId, {
+        strategy_id: selectedStrategy?.strategy_id || 'insight_punch',
+        strategy_version: String(selectedStrategy?.strategy_version || '1'),
+        selection_mode: strategySelection?.selectionMode || 'fallback',
+        strategy_description: selectedStrategy?.description || '',
+        targeting_score_total: candidateScore / 100,
+        topic_fit: candidateFeatures.topic_relevance || 0,
+        score_bucket: getScoreBucket(candidateScore / 100),
+      });
+      
+      if (!finalizeResult.success) {
+        console.error(`[SCHEDULER] ❌ PLAN_ONLY finalization failed: ${finalizeResult.error}`);
+        // Continue anyway - decision exists, just not finalized
+      }
       
       // Update reply_decisions
       await supabase
