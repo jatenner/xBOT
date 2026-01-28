@@ -83,8 +83,35 @@ export class OpenAIBudgetedClient {
   };
   
   private constructor() {
+    // Clean and trim API key before creating client
+    let apiKey = process.env.OPENAI_API_KEY || '';
+    
+    // Remove leading/trailing whitespace
+    apiKey = apiKey.trim();
+    
+    // Remove quotes if present
+    if ((apiKey.startsWith('"') && apiKey.endsWith('"')) || 
+        (apiKey.startsWith("'") && apiKey.endsWith("'"))) {
+      apiKey = apiKey.slice(1, -1).trim();
+    }
+    
+    // Check for alternative env var names (prefer OPENAI_API_KEY)
+    if (!apiKey && process.env.OPENAI_KEY) {
+      apiKey = process.env.OPENAI_KEY.trim();
+      console.warn('[OPENAI_CLIENT] ⚠️ Using OPENAI_KEY instead of OPENAI_API_KEY');
+    }
+    
+    if (!apiKey && process.env.OPENAI_API_TOKEN) {
+      apiKey = process.env.OPENAI_API_TOKEN.trim();
+      console.warn('[OPENAI_CLIENT] ⚠️ Using OPENAI_API_TOKEN instead of OPENAI_API_KEY');
+    }
+    
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY not set - cannot initialize OpenAI client');
+    }
+    
     this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY!
+      apiKey: apiKey
     });
     
     // Initialize config FIRST before any methods that use it

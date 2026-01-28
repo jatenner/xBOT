@@ -29,11 +29,96 @@ import { requireExecutorMode, getModeLabel, isExecutor } from '../../src/infra/e
 const envLocalPath = path.join(process.cwd(), '.env.local');
 const envPath = path.join(process.cwd(), '.env');
 
+let envFileLoaded: string | null = null;
+let envLoadedFromDotenv = false;
+
 if (fs.existsSync(envLocalPath)) {
   require('dotenv').config({ path: envLocalPath });
+  envFileLoaded = envLocalPath;
+  envLoadedFromDotenv = true;
 } else if (fs.existsSync(envPath)) {
   require('dotenv').config({ path: envPath });
+  envFileLoaded = envPath;
+  envLoadedFromDotenv = true;
 }
+
+// 🔍 OPENAI API KEY DIAGNOSTICS
+function diagnoseOpenAIKey(): void {
+  const crypto = require('crypto');
+  
+  // Check for alternative env var names
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const openaiKeyAlt = process.env.OPENAI_KEY;
+  const openaiToken = process.env.OPENAI_API_TOKEN;
+  
+  // Check if key came from process.env (before dotenv) or dotenv file
+  const keyFromProcessEnv = !!process.env.OPENAI_API_KEY && !envLoadedFromDotenv;
+  
+  // Get key info (safe - never print full key)
+  const keyLength = openaiKey ? openaiKey.length : 0;
+  const keyPrefix = openaiKey ? openaiKey.slice(0, 7) : 'none';
+  const keySuffix = openaiKey && keyLength > 4 ? openaiKey.slice(-4) : 'none';
+  
+  // Compute SHA256 hash for comparison
+  const keyHash = openaiKey 
+    ? crypto.createHash('sha256').update(openaiKey).digest('hex').substring(0, 16)
+    : 'none';
+  
+  // Check for whitespace issues
+  const hasLeadingWhitespace = openaiKey ? /^\s/.test(openaiKey) : false;
+  const hasTrailingWhitespace = openaiKey ? /\s$/.test(openaiKey) : false;
+  const hasQuotes = openaiKey ? /^["']|["']$/.test(openaiKey) : false;
+  
+  // Trim and clean key if needed
+  let cleanedKey = openaiKey;
+  if (cleanedKey) {
+    cleanedKey = cleanedKey.trim();
+    if (cleanedKey.startsWith('"') && cleanedKey.endsWith('"')) {
+      cleanedKey = cleanedKey.slice(1, -1);
+    } else if (cleanedKey.startsWith("'") && cleanedKey.endsWith("'")) {
+      cleanedKey = cleanedKey.slice(1, -1);
+    }
+    cleanedKey = cleanedKey.trim();
+    
+    // Update process.env with cleaned key
+    if (cleanedKey !== openaiKey) {
+      process.env.OPENAI_API_KEY = cleanedKey;
+      console.log(`[OPENAI_KEY_DIAG] ⚠️ Key cleaned: removed whitespace/quotes`);
+    }
+  }
+  
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('     🔍 OPENAI API KEY DIAGNOSTICS');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log(`Env file loaded: ${envFileLoaded || 'none'}`);
+  console.log(`Key source: ${keyFromProcessEnv ? 'process.env (before dotenv)' : (envLoadedFromDotenv ? 'dotenv file' : 'not found')}`);
+  console.log(`Key present: ${!!openaiKey}`);
+  console.log(`Key length: ${keyLength}`);
+  console.log(`Key prefix: ${keyPrefix}`);
+  console.log(`Key suffix: ${keySuffix}`);
+  console.log(`Key hash (SHA256, first 16): ${keyHash}`);
+  
+  if (hasLeadingWhitespace || hasTrailingWhitespace) {
+    console.log(`⚠️ WARNING: Key has ${hasLeadingWhitespace ? 'leading' : ''}${hasLeadingWhitespace && hasTrailingWhitespace ? ' and ' : ''}${hasTrailingWhitespace ? 'trailing' : ''} whitespace`);
+  }
+  
+  if (hasQuotes) {
+    console.log(`⚠️ WARNING: Key has quotes around it`);
+  }
+  
+  if (openaiKeyAlt) {
+    console.log(`⚠️ WARNING: OPENAI_KEY env var also set (may override)`);
+  }
+  
+  if (openaiToken) {
+    console.log(`⚠️ WARNING: OPENAI_API_TOKEN env var also set (may override)`);
+  }
+  
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+}
+
+// Run diagnostics immediately after env loading
+diagnoseOpenAIKey();
 
 // Set executor mode environment
 process.env.EXECUTION_MODE = 'executor';
