@@ -38,6 +38,17 @@ export const GrowthConfigSchema = z.object({
   
   // Top-K selection
   REPLY_TARGET_TOP_K: z.number().int().min(1).default(5), // Select top 5 per cycle
+  
+  // Reward computation weights
+  REWARD_WEIGHT_LIKES: z.number().min(0).default(0.5),
+  REWARD_WEIGHT_REPLIES: z.number().min(0).default(1.5),
+  REWARD_WEIGHT_REPOSTS: z.number().min(0).default(2.0),
+  REWARD_WEIGHT_RETWEETS: z.number().min(0).default(2.0),
+  REWARD_WEIGHT_BOOKMARKS: z.number().min(0).default(0.2),
+  
+  // ε-greedy strategy selection
+  EPSILON_GREEDY_EPSILON: z.number().min(0).max(1).default(0.1), // 10% exploration
+  EPSILON_GREEDY_MIN_SAMPLES: z.number().int().min(1).default(10), // Min samples before exploiting
 });
 
 export type GrowthConfig = z.infer<typeof GrowthConfigSchema>;
@@ -98,6 +109,27 @@ export function loadGrowthConfig(): GrowthConfig {
       : undefined,
     REPLY_TARGET_TOP_K: process.env.REPLY_TARGET_TOP_K 
       ? parseInt(process.env.REPLY_TARGET_TOP_K, 10) 
+      : undefined,
+    REWARD_WEIGHT_LIKES: process.env.REWARD_WEIGHT_LIKES 
+      ? parseFloat(process.env.REWARD_WEIGHT_LIKES) 
+      : undefined,
+    REWARD_WEIGHT_REPLIES: process.env.REWARD_WEIGHT_REPLIES 
+      ? parseFloat(process.env.REWARD_WEIGHT_REPLIES) 
+      : undefined,
+    REWARD_WEIGHT_REPOSTS: process.env.REWARD_WEIGHT_REPOSTS 
+      ? parseFloat(process.env.REWARD_WEIGHT_REPOSTS) 
+      : undefined,
+    REWARD_WEIGHT_RETWEETS: process.env.REWARD_WEIGHT_RETWEETS 
+      ? parseFloat(process.env.REWARD_WEIGHT_RETWEETS) 
+      : undefined,
+    REWARD_WEIGHT_BOOKMARKS: process.env.REWARD_WEIGHT_BOOKMARKS 
+      ? parseFloat(process.env.REWARD_WEIGHT_BOOKMARKS) 
+      : undefined,
+    EPSILON_GREEDY_EPSILON: process.env.EPSILON_GREEDY_EPSILON 
+      ? parseFloat(process.env.EPSILON_GREEDY_EPSILON) 
+      : undefined,
+    EPSILON_GREEDY_MIN_SAMPLES: process.env.EPSILON_GREEDY_MIN_SAMPLES 
+      ? parseInt(process.env.EPSILON_GREEDY_MIN_SAMPLES, 10) 
       : undefined,
   };
 

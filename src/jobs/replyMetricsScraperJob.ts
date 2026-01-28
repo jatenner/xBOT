@@ -344,6 +344,45 @@ export async function replyMetricsScraperJob(): Promise<void> {
             successFeatures.tweet_url = canonicalTweetUrl;
           }
 
+          // 🎯 PHASE 6.3B: Compute and persist reward for strategy learning
+          let reward = 0;
+          let rewardData: Record<string, any> = {};
+          
+          try {
+            const { computeReward, formatRewardForStorage } = await import('../growth/reward');
+            const { recordStrategyReward } = await import('../growth/strategyRewards');
+            
+            // Get strategy info from features
+            const strategyId = reservationFeatures.strategy_id || 'baseline';
+            const strategyVersion = String(reservationFeatures.strategy_version || '1');
+            
+            // Compute reward from engagement metrics
+            reward = computeReward({
+              likes: metrics.likes || 0,
+              replies: metrics.replies || 0,
+              reposts: metrics.retweets || 0,
+              retweets: metrics.retweets || 0,
+              bookmarks: 0, // Not available in current metrics
+              impressions: metrics.views || 0,
+            });
+            
+            // Format reward for storage
+            rewardData = formatRewardForStorage(reward, {
+              likes: metrics.likes || 0,
+              replies: metrics.replies || 0,
+              reposts: metrics.retweets || 0,
+              impressions: metrics.views || 0,
+            });
+            
+            // Record reward in strategy_rewards table
+            await recordStrategyReward(strategyId, strategyVersion, reward);
+            
+            console.log(`[REPLY_METRICS] 🎯 Computed reward=${reward.toFixed(3)} for strategy=${strategyId}/${strategyVersion}`);
+          } catch (rewardError: any) {
+            console.warn(`[REPLY_METRICS] ⚠️ Failed to compute/persist reward:`, rewardError.message);
+            // Don't fail - reward tracking is not critical
+          }
+          
           // Update content_metadata so dashboards & analytics stay in sync
           const { error: metaError } = await supabase
             .from('content_metadata')
@@ -353,7 +392,10 @@ export async function replyMetricsScraperJob(): Promise<void> {
               actual_retweets: metrics.retweets ?? null,
               actual_replies: metrics.replies ?? null,
               updated_at: new Date().toISOString(),
-              features: successFeatures
+              features: {
+                ...successFeatures,
+                ...rewardData, // Include reward data
+              }
             })
             .eq('decision_id', reply.decision_id);
 

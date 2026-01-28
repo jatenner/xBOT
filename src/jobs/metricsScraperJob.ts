@@ -803,6 +803,61 @@ export async function metricsScraperJob(): Promise<void> {
               // Don't fail - metrics are stored, just learning update failed
             }
             
+            // 🎯 PHASE 6.3B: Compute and persist reward for strategy learning
+            try {
+              const { computeReward, formatRewardForStorage } = await import('../growth/reward');
+              const { recordStrategyReward } = await import('../growth/strategyRewards');
+              
+              // Get strategy info from features
+              const { data: decisionData } = await supabase
+                .from('content_metadata')
+                .select('features, decision_id')
+                .eq('decision_id', post.decision_id)
+                .single();
+              
+              const features = (decisionData?.features as any) || {};
+              const strategyId = features.strategy_id || 'baseline';
+              const strategyVersion = String(features.strategy_version || '1');
+              
+              // Compute reward from engagement metrics
+              const reward = computeReward({
+                likes: likesValue,
+                replies: repliesValue,
+                reposts: retweetsValue,
+                retweets: retweetsValue,
+                bookmarks: 0, // Not available in current metrics
+                impressions: viewsValue,
+              });
+              
+              // Update features with reward
+              const rewardData = formatRewardForStorage(reward, {
+                likes: likesValue,
+                replies: repliesValue,
+                reposts: retweetsValue,
+                impressions: viewsValue,
+              });
+              
+              await supabase
+                .from('content_metadata')
+                .update({
+                  features: {
+                    ...features,
+                    ...rewardData,
+                    strategy_id: strategyId,
+                    strategy_version: strategyVersion,
+                  },
+                })
+                .eq('decision_id', post.decision_id);
+              
+              // Record reward in strategy_rewards table
+              await recordStrategyReward(strategyId, strategyVersion, reward);
+              
+              console.log(`[METRICS_JOB] 🎯 Computed reward=${reward.toFixed(3)} for strategy=${strategyId}/${strategyVersion}`);
+            } catch (rewardError: any) {
+              console.warn(`[METRICS_JOB] ⚠️ Failed to compute/persist reward:`, rewardError.message);
+              // Don't fail - reward tracking is not critical
+            }
+            
             // Rate limit: wait 2 seconds between scrapes in batch
             await new Promise(resolve => setTimeout(resolve, 2000));
             

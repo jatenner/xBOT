@@ -677,8 +677,26 @@ async function storeContentDecisions(decisions: any[]): Promise<void> {
         generator_name: decision.generator_name || null,
         generator_confidence: decision.generator_confidence || null,
         experiment_arm: decision.experiment_arm || null,
-        style: decision.style || null
+        style: decision.style || null,
+        // 🎯 PHASE 6.3B: Strategy attribution for reward learning
+        features: {
+          strategy_id: decision.strategy_id || 'baseline',
+          strategy_version: String(decision.strategy_version || '1'),
+          selection_mode: decision.selection_mode || 'exploit',
+          targeting_score_total: decision.targeting_score_total || 0,
+          topic_fit: decision.topic_fit || 0,
+          score_bucket: getScoreBucket(decision.targeting_score_total || 0),
+        }
       };
+      
+      // Helper function for score bucket
+      function getScoreBucket(score: number): string {
+        if (score >= 0.8) return '0.8-1.0';
+        if (score >= 0.6) return '0.6-0.8';
+        if (score >= 0.4) return '0.4-0.6';
+        if (score >= 0.2) return '0.2-0.4';
+        return '0.0-0.2';
+      }
       
       console.log(`[UNIFIED_PLAN] 🔍 Insert data prepared for ${decision.decision_id}`);
       console.log(`[UNIFIED_PLAN] 🏷️ TOPIC TRACKING: Storing topic_cluster="${metadataRecord.topic_cluster}"`);

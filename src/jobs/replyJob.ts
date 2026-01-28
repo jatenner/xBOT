@@ -31,6 +31,18 @@ import { ReplyDiagnosticLogger } from '../utils/replyDiagnostics';
 import { formatContentForTwitter } from '../posting/aiVisualFormatter';
 import { filterEligibleCandidates, EligibilityReason, type ReplyTargetCandidate } from '../growth/replyTargetEligibility';
 import { scoreAndSelectTopK, formatScoringForStorage } from '../growth/replyTargetScoring';
+import { epsilonGreedyStrategySelection } from '../growth/epsilonGreedy';
+
+/**
+ * Get score bucket for strategy attribution
+ */
+function getScoreBucket(score: number): string {
+  if (score >= 0.8) return '0.8-1.0';
+  if (score >= 0.6) return '0.6-0.8';
+  if (score >= 0.4) return '0.4-0.6';
+  if (score >= 0.2) return '0.2-0.4';
+  return '0.0-0.2';
+}
 
 // ============================================================
 // RATE LIMIT CONFIGURATION (from .env)
@@ -901,9 +913,63 @@ async function generateRealReplies(): Promise<void> {
   
   console.log(`[REPLY_JOB] ✅ Selected ${selectedOpportunities.length} opportunities from tier=${tierUsed} reason=${tierReason}`);
   
-  // Replace allOpportunities with selectedOpportunities for downstream processing
-  // This ensures we only process high-value tiers (S/A, or B in starvation mode)
-  const processedOpportunities = selectedOpportunities;
+  // 🎯 PHASE 6.3B: ε-greedy strategy selection (does not increase volume)
+  let finalOpportunities = selectedOpportunities;
+  let strategySelection: any = null;
+  
+  if (selectedOpportunities.length > 1) {
+    try {
+      // Convert to ScoredCandidate format for ε-greedy
+      const scoredForSelection = scored.filter(sc => {
+        const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === sc.target_tweet_id);
+        return selectedOpportunities.some(so => (so.target_tweet_id || so.tweet_id) === sc.target_tweet_id);
+      });
+      
+      strategySelection = await epsilonGreedyStrategySelection(scoredForSelection);
+      
+      // Apply strategy selection (filter to matching strategy if available)
+      const { applyStrategySelection } = await import('../growth/epsilonGreedy');
+      const strategyFiltered = applyStrategySelection(scoredForSelection, strategySelection);
+      
+      if (strategyFiltered.length > 0 && strategyFiltered.length < selectedOpportunities.length) {
+        // Strategy selection filtered candidates
+        finalOpportunities = strategyFiltered.map(sc => {
+          const original = allOpportunitiesFiltered.find(o => (o.target_tweet_id || o.tweet_id) === sc.target_tweet_id);
+          return { ...original, _scoring: formatScoringForStorage(sc.scoringComponents), _eligibility: { eligible: true, reason: sc.eligibilityReason }, strategy_id: strategySelection.strategyId, strategy_version: strategySelection.strategyVersion, selection_mode: strategySelection.selectionMode };
+        });
+        console.log(`[REPLY_JOB] 🎲 ε-greedy: ${strategySelection.selectionMode} strategy=${strategySelection.strategyId}/${strategySelection.strategyVersion} filtered ${selectedOpportunities.length} → ${finalOpportunities.length}`);
+      } else {
+        // No filtering (all candidates match or fallback)
+        finalOpportunities = selectedOpportunities.map(opp => ({
+          ...opp,
+          strategy_id: strategySelection.strategyId,
+          strategy_version: strategySelection.strategyVersion,
+          selection_mode: strategySelection.selectionMode,
+        }));
+        console.log(`[REPLY_JOB] 🎲 ε-greedy: ${strategySelection.selectionMode} strategy=${strategySelection.strategyId}/${strategySelection.strategyVersion} (no filtering, ${finalOpportunities.length} candidates)`);
+      }
+    } catch (egError: any) {
+      console.warn(`[REPLY_JOB] ⚠️ ε-greedy selection failed, using tier selection:`, egError.message);
+      // Fallback: use tier selection without strategy filtering
+      finalOpportunities = selectedOpportunities.map(opp => ({
+        ...opp,
+        strategy_id: 'baseline',
+        strategy_version: '1',
+        selection_mode: 'exploit',
+      }));
+    }
+  } else {
+    // Single candidate - no strategy selection needed
+    finalOpportunities = selectedOpportunities.map(opp => ({
+      ...opp,
+      strategy_id: 'baseline',
+      strategy_version: '1',
+      selection_mode: 'exploit',
+    }));
+  }
+  
+  // Replace allOpportunities with finalOpportunities for downstream processing
+  const processedOpportunities = finalOpportunities;
   
   const normalizeTierCounts = (opps: Array<{ tier?: string | null }>) =>
     opps.reduce<Record<string, number>>((acc, opp) => {
@@ -2099,6 +2165,12 @@ Reply (1-3 lines, echo their point first):`;
       const smartDelays = [5, 20]; // Minutes from NOW
       const staggerDelay = smartDelays[i] || (5 + i * 15); // Fallback for >2 replies
       
+      // 🎯 PHASE 6.3B: Extract strategy attribution from opportunity
+      const opportunityAny = opportunity as any;
+      const strategyId = opportunityAny.strategy_id || 'baseline';
+      const strategyVersion = String(opportunityAny.strategy_version || '1');
+      const selectionMode = opportunityAny.selection_mode || 'exploit';
+      
       const reply = {
         decision_id,
         content: strategicReply.content,
@@ -2119,6 +2191,11 @@ Reply (1-3 lines, echo their point first):`;
         root_tweet_id: opportunity.root_tweet_id || null,
         // original_candidate_tweet_id: opportunity.original_candidate_tweet_id || null, // REMOVED: column doesn't exist in prod schema
         // resolved_via_root: opportunity.resolved_via_root || false // REMOVED: column doesn't exist in prod schema
+        
+        // 🎯 PHASE 6.3B: Strategy attribution for reward learning
+        strategy_id: strategyId,
+        strategy_version: strategyVersion,
+        selection_mode: selectionMode,
       };
       
       // ============================================================
@@ -2509,7 +2586,14 @@ async function queueReply(reply: any, delayMinutes: number = 5): Promise<void> {
       parent_username: reply.target_username,
       // 🎯 PHASE 6.2: Reply targeting policy auditability
       ...(reply._scoring || {}),
-      ...(reply._eligibility ? { reply_targeting_eligibility: reply._eligibility } : {})
+      ...(reply._eligibility ? { reply_targeting_eligibility: reply._eligibility } : {}),
+      // 🎯 PHASE 6.3B: Strategy attribution for reward learning
+      strategy_id: reply.strategy_id || 'baseline',
+      strategy_version: String(reply.strategy_version || '1'),
+      selection_mode: reply.selection_mode || 'exploit',
+      targeting_score_total: reply._scoring?.reply_targeting_score || 0,
+      topic_fit: reply._scoring?.reply_targeting_components?.topic_fit || 0,
+      score_bucket: getScoreBucket(reply._scoring?.reply_targeting_score || 0),
     },
         
         // ═══════════════════════════════════════════════════════════════════════
