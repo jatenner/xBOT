@@ -125,12 +125,19 @@ Health Relevance: ${relevanceScore >= 0.6 ? 'High' : relevanceScore >= 0.3 ? 'Me
 YOUR REPLY MUST:`;
   
   // 🎯 PHASE 6.4: If custom_prompt provided, prepend it to base prompt; otherwise use default
-  const prompt = request.custom_prompt 
-    ? `${request.custom_prompt}\n\n${basePrompt}`
-    : `${basePrompt}
-1. **CRITICAL**: ALWAYS reference a SPECIFIC concrete detail from the target tweet (a claim, metric, term, intervention, mechanism, or named entity). If you cannot reference something specific, return {"content": "", "skip_reason": "no_concrete_detail"}.
+  // 🔒 PLAN_ONLY GROUNDING FIX: For planner decisions, require explicit token overlap
+  const isPlanOnly = request.template_id && request.template_id.startsWith('insight_');
+  const groundingRequirement = isPlanOnly
+    ? `1. **CRITICAL**: You MUST include 2-4 exact words or phrases from the target tweet in your reply. Quote them directly or use them naturally in context. Examples: if tweet says "meditation improves strength by 20%", your reply MUST include at least 2 of: "meditation", "strength", "20%", "improves". If you cannot do this, return {"content": "", "skip_reason": "no_concrete_detail"}.
+2. **MANDATORY**: Include at least ONE anchor term from the KEY TERMS list above (${tweetAnchors.slice(0, 5).join(', ')}).
+3. **MANDATORY**: Reference the specific claim or detail from the tweet (e.g., "That 20% improvement" or "The meditation practice you mentioned").`
+    : `1. **CRITICAL**: ALWAYS reference a SPECIFIC concrete detail from the target tweet (a claim, metric, term, intervention, mechanism, or named entity). If you cannot reference something specific, return {"content": "", "skip_reason": "no_concrete_detail"}.
 2. **MANDATORY**: Include at least ONE anchor term from the tweet (extract 3-8 key terms: nouns, phrases, hashtags, numbers, or keywords from the tweet text above).
-3. **MANDATORY**: Mention the tweet topic explicitly and reference at least one concrete detail from the tweet.
+3. **MANDATORY**: Mention the tweet topic explicitly and reference at least one concrete detail from the tweet.`;
+  
+  const prompt = request.custom_prompt 
+    ? `${request.custom_prompt}\n\n${basePrompt}\n${groundingRequirement}`
+    : `${basePrompt}\n${groundingRequirement}
 4. Be 1-2 sentences, ≤220 characters (strict)
 5. Sound confident and human, like a real person replying
 6. Never roleplay as the author - don't use "we" or "our" unless the bot account (@SignalAndSynapse) is actually the author

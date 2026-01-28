@@ -152,6 +152,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
     console.log(`[PLAN_ONLY_GENERATOR] 📝 Generating reply using strategy=${strategyId} version=${strategyVersion}`);
     const generationStartTime = Date.now();
     
+    // 🔒 PLAN_ONLY GROUNDING FIX: Ensure template_id is passed so adapter can detect PLAN_ONLY mode
     const replyResult = await Promise.race([
       generateReplyContent({
         target_username: targetUsername,
@@ -160,7 +161,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
         angle: 'reply_context',
         tone: 'helpful',
         model: 'gpt-4o-mini',
-        template_id: strategyId,
+        template_id: strategyId, // Pass strategy_id so adapter can detect PLAN_ONLY and apply stricter grounding
         prompt_version: strategyVersion,
         custom_prompt: strategyPrompt,
         reply_context: {

@@ -2767,15 +2767,27 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     
     // 🔒 CERT MODE: Filter out any non-reply decisions that slipped through
     // 🔒 PROOF_MODE BYPASS: Skip CERT MODE filter when PROOF_MODE is active
-    const filteredData = (certMode && !proofMode)
+    let filteredData = (certMode && !proofMode)
       ? data.filter(d => d.decision_type === 'reply' && (d.pipeline_source === 'reply_v2_scheduler' || d.pipeline_source === 'reply_v2_planner'))
       : data;
+    
+    // 🔒 E2E LIMIT: Enforce MAX_E2E_REPLIES for reply_v2_planner decisions during proving phase
+    const maxE2EReplies = parseInt(process.env.MAX_E2E_REPLIES || '0', 10);
+    if (maxE2EReplies > 0) {
+      const plannerReplies = filteredData.filter(d => d.pipeline_source === 'reply_v2_planner');
+      const otherReplies = filteredData.filter(d => d.pipeline_source !== 'reply_v2_planner');
+      const limitedPlannerReplies = plannerReplies.slice(0, maxE2EReplies);
+      filteredData = [...otherReplies, ...limitedPlannerReplies];
+      if (plannerReplies.length > maxE2EReplies) {
+        console.log(`[POSTING_QUEUE] 🔒 E2E_LIMIT: Limited reply_v2_planner decisions from ${plannerReplies.length} to ${maxE2EReplies}`);
+      }
+    }
     
     if (certMode && filteredData.length !== data.length) {
       console.warn(`[POSTING_QUEUE] ⚠️  CERT MODE: Filtered out ${data.length - filteredData.length} non-reply decisions`);
     }
     
-    console.log(`[POSTING_QUEUE] 📊 Content posts: ${certMode ? 0 : (contentPosts?.length || 0)}, Replies: ${replyPosts?.length || 0} (cert_mode=${certMode})`);
+    console.log(`[POSTING_QUEUE] 📊 Content posts: ${certMode ? 0 : (contentPosts?.length || 0)}, Replies: ${replyPosts?.length || 0} (cert_mode=${certMode}, max_e2e_replies=${maxE2EReplies || 'unlimited'})`);
     
     // 🔒 MANDATE 1: Log noop if no candidates
     if (filteredData.length === 0) {
