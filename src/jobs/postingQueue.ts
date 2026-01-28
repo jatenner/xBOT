@@ -4264,6 +4264,36 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           // End of single/thread block
         } else if (decision.decision_type === 'reply') {
           // ═══════════════════════════════════════════════════════════════════════
+          // 🎯 PLAN_ONLY CONTENT GENERATION - Generate content if placeholder exists
+          // ═══════════════════════════════════════════════════════════════════════
+          try {
+            const { ensureReplyContentGeneratedForPlanOnlyDecision } = await import('./replySystemV2/planOnlyContentGenerator');
+            const generationResult = await ensureReplyContentGeneratedForPlanOnlyDecision(decision);
+            
+            if (!generationResult.success) {
+              console.error(`[POSTING_QUEUE] ❌ PLAN_ONLY generation failed: ${generationResult.error}`);
+              // Mark decision as failed
+              await supabase.from('content_generation_metadata_comprehensive')
+                .update({
+                  status: 'failed',
+                  error_message: `PLAN_ONLY generation failed: ${generationResult.error}`,
+                })
+                .eq('decision_id', decision.id);
+              
+              return false; // Skip this decision
+            }
+            
+            // Update decision.content if generation succeeded
+            if (generationResult.content) {
+              decision.content = generationResult.content;
+              console.log(`[POSTING_QUEUE] ✅ PLAN_ONLY content generated: ${generationResult.content.length} chars`);
+            }
+          } catch (genError: any) {
+            console.error(`[POSTING_QUEUE] ❌ PLAN_ONLY generation error: ${genError.message}`);
+            // Don't block - let safety gates handle it
+          }
+          
+          // ═══════════════════════════════════════════════════════════════════════
           // 🔒 REPLY SAFETY GATES - Run all checks, skip if any fail
           // ═══════════════════════════════════════════════════════════════════════
           const shouldSkip = await checkReplySafetyGates(decision, supabase);

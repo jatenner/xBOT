@@ -158,6 +158,13 @@ export function getStrategy(strategyId: string, strategyVersion: string = '1'): 
 }
 
 /**
+ * Get strategy by ID (uses default version '1')
+ */
+export function getStrategyById(strategyId: string): ReplyStrategy | null {
+  return getStrategy(strategyId, '1');
+}
+
+/**
  * Get default/baseline strategy
  */
 export function getDefaultStrategy(): ReplyStrategy {
