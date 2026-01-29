@@ -953,8 +953,9 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
   
   try {
     const { verifyContextLock } = await import('../gates/contextLockVerifier');
-    // 🔒 PREFLIGHT PRIORITY: Pass preflight_status to lower threshold for 'ok' decisions
-    const preflightStatus = decisionFeatures.preflight_status;
+    // 🔒 PREFLIGHT PRIORITY: Pass runtime_preflight_status to lower threshold for 'ok' decisions
+    // Check both preflight_status (scheduler preflight) and runtime_preflight_status (runtime preflight)
+    const preflightStatus = decisionFeatures.runtime_preflight_status || decisionFeatures.preflight_status;
     const contextVerification = await verifyContextLock(
       decision.target_tweet_id,
       decision.target_tweet_content_snapshot,
