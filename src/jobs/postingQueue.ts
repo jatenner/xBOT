@@ -247,11 +247,13 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
       const proofTag = decisionFeatures.proof_tag;
       const isProofDecision = proofTag && String(proofTag).startsWith('control-reply-');
       
-      if (pipelineSource === 'reply_v2_scheduler' || isProofDecision) {
-        const reason = isProofDecision ? 'proof_decision_no_opportunity_required' : 'scheduler_decision_no_opportunity_required';
-        console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=verified_by_${isProofDecision ? 'proof' : 'scheduler'} reason=${reason}`);
-        guardResults.root_check = { pass: true, reason: isProofDecision ? 'proof_verified_root' : 'scheduler_verified_root' };
-        // Skip freshness check for scheduler/proof decisions (they're already filtered by age in fetch or manually seeded)
+      // 🔒 PREFLIGHT PRIORITY: Allow reply_v2_planner decisions (they have preflight verification)
+      if (pipelineSource === 'reply_v2_scheduler' || pipelineSource === 'reply_v2_planner' || isProofDecision) {
+        const reason = isProofDecision ? 'proof_decision_no_opportunity_required' : 
+                       (pipelineSource === 'reply_v2_planner' ? 'planner_decision_preflight_verified' : 'scheduler_decision_no_opportunity_required');
+        console.log(`[ROOT_CHECK] decision_id=${decisionId} is_root=verified_by_${isProofDecision ? 'proof' : pipelineSource} reason=${reason}`);
+        guardResults.root_check = { pass: true, reason: isProofDecision ? 'proof_verified_root' : (pipelineSource === 'reply_v2_planner' ? 'planner_preflight_verified' : 'scheduler_verified_root') };
+        // Skip freshness check for scheduler/planner/proof decisions (they're already filtered by age in fetch or manually seeded)
       } else {
         // No opportunity found - fail closed for non-scheduler/proof decisions
         guardResults.root_check = { pass: false, reason: 'opportunity_not_found' };
