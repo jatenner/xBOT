@@ -219,11 +219,13 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
     const { extractKeywords } = await import('../../gates/ReplyQualityGate');
     const keywords = extractKeywords(targetTweetContent);
     
-    // 🔒 GROUNDING ENFORCEMENT: Extract 2-4 exact phrases from target tweet snapshot
-    const { extractGroundingPhrases, verifyGroundingPhrases } = await import('./groundingPhraseExtractor');
-    const requiredPhrases = extractGroundingPhrases(targetTweetContent);
+    // 🔒 GROUNDING ENFORCEMENT: Extract anchor tokens (clean, human-readable words)
+    const { extractAnchorTokens, verifyAnchorTokens, extractGroundingPhrases, verifyGroundingPhrases } = await import('./groundingPhraseExtractor');
+    const anchorTokens = extractAnchorTokens(targetTweetContent);
+    const requiredPhrases = extractGroundingPhrases(targetTweetContent); // Keep for backward compatibility
     
     console.log(`[PLAN_ONLY_GENERATOR] 📝 Generating reply using strategy=${strategyId} version=${strategyVersion}`);
+    console.log(`[PLAN_ONLY_GENERATOR] 🔒 Anchor tokens (${anchorTokens.length}): ${anchorTokens.join(', ')}`);
     console.log(`[PLAN_ONLY_GENERATOR] 🔒 Required grounding phrases (${requiredPhrases.length}): ${requiredPhrases.join(', ')}`);
     
     // Generate reply content with retry logic for grounding enforcement
@@ -231,14 +233,21 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
     let generationAttempt = 0;
     const maxAttempts = 2; // Initial attempt + 1 retry
     let repairApplied = false; // Track if repair was used
+    let firstAttemptOutput: string | null = null;
+    let retryOutput: string | null = null;
     
     while (generationAttempt < maxAttempts && !generatedContent) {
       generationAttempt++;
       const generationStartTime = Date.now();
       
-      // 🔒 HARD-ENFORCEMENT: Always include explicit phrase requirements from the start
+      // 🔒 HARD-ENFORCEMENT: Always include explicit anchor token requirements from the start
       let enhancedPrompt = strategyPrompt;
-      if (requiredPhrases.length > 0) {
+      if (anchorTokens.length >= 2) {
+        // Use anchor tokens for explicit requirement
+        const anchorList = anchorTokens.slice(0, 2).map(a => `"${a}"`).join(' and ');
+        enhancedPrompt = `${strategyPrompt}\n\n**CRITICAL ANCHOR REQUIREMENT**: Your reply MUST include these exact anchor words from the target tweet verbatim: ${anchorList}. These words MUST appear naturally in your reply - failure to include both anchor words makes the reply invalid.`;
+      } else if (requiredPhrases.length > 0) {
+        // Fallback to phrases if anchors not available
         const phraseList = requiredPhrases.map(p => `"${p}"`).join(' and ');
         enhancedPrompt = `${strategyPrompt}\n\n**CRITICAL REQUIREMENT**: Your reply MUST include at least ${requiredPhrases.length === 1 ? '1' : '2'} of these exact phrases from the target tweet verbatim: ${phraseList}. Include them naturally in context - failure to include required phrases makes the reply invalid.`;
       }
@@ -269,6 +278,13 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
       const generationElapsed = Date.now() - generationStartTime;
       let candidateContent = replyResult.content;
       
+      // Store output for debug bundle
+      if (generationAttempt === 1) {
+        firstAttemptOutput = candidateContent;
+      } else {
+        retryOutput = candidateContent;
+      }
+      
       if (!candidateContent || candidateContent.trim().length === 0) {
         if (generationAttempt < maxAttempts) {
           console.log(`[PLAN_ONLY_GENERATOR] ⚠️ Attempt ${generationAttempt}: Generated content is empty, retrying...`);
@@ -277,66 +293,92 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
         throw new Error('Generated content is empty');
       }
       
-      // Verify grounding phrases
-      if (requiredPhrases.length > 0) {
-        let contentToCheck = candidateContent;
-        const groundingCheck = verifyGroundingPhrases(contentToCheck, requiredPhrases);
+      // Verify grounding (prefer anchor tokens if available, fallback to phrases)
+      let contentToCheck = candidateContent;
+      let groundingCheck: { passed: boolean; matchedPhrases?: string[]; missingPhrases?: string[]; matchedAnchors?: string[]; missingAnchors?: string[]; tokenOverlaps?: string[]; tokenOverlapCount?: number };
+      
+      if (anchorTokens.length >= 2) {
+        // Use anchor token verification (stricter)
+        const anchorCheck = verifyAnchorTokens(contentToCheck, anchorTokens);
+        groundingCheck = {
+          passed: anchorCheck.passed,
+          matchedAnchors: anchorCheck.matchedAnchors,
+          missingAnchors: anchorCheck.missingAnchors,
+          tokenOverlaps: anchorCheck.tokenOverlaps,
+          tokenOverlapCount: anchorCheck.tokenOverlapCount,
+        };
+      } else {
+        // Fallback to phrase verification
+        const phraseCheck = verifyGroundingPhrases(contentToCheck, requiredPhrases);
+        groundingCheck = {
+          passed: phraseCheck.passed,
+          matchedPhrases: phraseCheck.matchedPhrases,
+          missingPhrases: phraseCheck.missingPhrases,
+        };
+      }
         
         if (!groundingCheck.passed) {
-          // 🔒 REPAIR STEP: Try to append missing phrases
-          const missingPhrases = groundingCheck.missingPhrases;
-          if (missingPhrases.length > 0 && contentToCheck.length < 180) {
-            // Only repair if we have room (leave ~20 chars for repair)
-            const repairTail = ` (Re: "${missingPhrases[0]}")`;
-            const repairedContent = contentToCheck.trim() + repairTail;
-            
-            // Re-verify repaired content
-            const repairCheck = verifyGroundingPhrases(repairedContent, requiredPhrases);
-            if (repairCheck.passed) {
-              console.log(`[PLAN_ONLY_GENERATOR] ✅ Repair successful: Appended missing phrase "${missingPhrases[0]}", grounding now verified`);
-              contentToCheck = repairedContent;
-              repairApplied = true; // Mark repair as applied
-            } else {
-              // Repair didn't help - need to retry generation
-              if (generationAttempt < maxAttempts) {
-                console.log(`[PLAN_ONLY_GENERATOR] ⚠️ Attempt ${generationAttempt}: Missing grounding phrases. Matched: ${groundingCheck.matchedPhrases.join(', ') || 'none'}, Missing: ${groundingCheck.missingPhrases.join(', ')}, repair insufficient, retrying generation...`);
-                continue;
-              } else {
-                // Final attempt - repair failed, log and throw
-                const errorMsg = `UNGROUNDED_AFTER_RETRY: Reply does not contain required grounding phrases. Required: ${requiredPhrases.join(', ')}, Matched: ${groundingCheck.matchedPhrases.join(', ') || 'none'}, Missing: ${groundingCheck.missingPhrases.join(', ')}`;
-                
-                // Log to system_events
-                try {
-                  await supabase.from('system_events').insert({
-                    event_type: 'reply_v2_ungrounded_after_retry',
-                    severity: 'error',
-                    message: errorMsg,
-                    event_data: {
-                      decision_id: decisionId,
-                      required_phrases: requiredPhrases,
-                      matched_phrases: groundingCheck.matchedPhrases,
-                      missing_phrases: groundingCheck.missingPhrases,
-                      attempt_count: generationAttempt,
-                      repair_attempted: true,
-                      repair_failed: true,
-                    },
-                    created_at: new Date().toISOString(),
-                  });
-                } catch (logError: any) {
-                  console.warn(`[PLAN_ONLY_GENERATOR] ⚠️ Failed to log error: ${logError.message}`);
-                }
-                
-                throw new Error(errorMsg);
+          // 🔒 REPAIR STEP: Try to append missing anchor/phrase
+          let repairSucceeded = false;
+          if (anchorTokens.length >= 2 && groundingCheck.missingAnchors && groundingCheck.missingAnchors.length > 0) {
+            // Try to append missing anchor
+            const missingAnchor = groundingCheck.missingAnchors[0];
+            if (contentToCheck.length < 180) {
+              const repairTail = ` (${missingAnchor})`;
+              const repairedContent = contentToCheck.trim() + repairTail;
+              
+              // Re-verify repaired content
+              const repairCheck = verifyAnchorTokens(repairedContent, anchorTokens);
+              if (repairCheck.passed) {
+                console.log(`[PLAN_ONLY_GENERATOR] ✅ Repair successful: Appended missing anchor "${missingAnchor}", grounding now verified`);
+                contentToCheck = repairedContent;
+                repairApplied = true;
+                repairSucceeded = true;
               }
             }
-          } else {
-            // Cannot repair - retry generation
+          } else if (groundingCheck.missingPhrases && groundingCheck.missingPhrases.length > 0) {
+            // Fallback: try to append missing phrase
+            const missingPhrase = groundingCheck.missingPhrases[0];
+            if (contentToCheck.length < 180) {
+              const repairTail = ` (Re: "${missingPhrase}")`;
+              const repairedContent = contentToCheck.trim() + repairTail;
+              
+              // Re-verify repaired content
+              const repairCheck = verifyGroundingPhrases(repairedContent, requiredPhrases);
+              if (repairCheck.passed) {
+                console.log(`[PLAN_ONLY_GENERATOR] ✅ Repair successful: Appended missing phrase "${missingPhrase}", grounding now verified`);
+                contentToCheck = repairedContent;
+                repairApplied = true;
+                repairSucceeded = true;
+              }
+            }
+          }
+          
+          if (!repairSucceeded) {
+            // Repair didn't help or cannot repair - need to retry generation or fail
+            const matchedInfo = anchorTokens.length >= 2 
+              ? `Matched anchors: ${groundingCheck.matchedAnchors?.join(', ') || 'none'}, Missing: ${groundingCheck.missingAnchors?.join(', ') || 'none'}, Token overlaps: ${groundingCheck.tokenOverlapCount || 0}`
+              : `Matched phrases: ${groundingCheck.matchedPhrases?.join(', ') || 'none'}, Missing: ${groundingCheck.missingPhrases?.join(', ') || 'none'}`;
+            
             if (generationAttempt < maxAttempts) {
-              console.log(`[PLAN_ONLY_GENERATOR] ⚠️ Attempt ${generationAttempt}: Missing grounding phrases. Matched: ${groundingCheck.matchedPhrases.join(', ') || 'none'}, Missing: ${groundingCheck.missingPhrases.join(', ')}, cannot repair (content too long or no missing phrases), retrying generation...`);
+              console.log(`[PLAN_ONLY_GENERATOR] ⚠️ Attempt ${generationAttempt}: Missing grounding. ${matchedInfo}, retrying generation...`);
               continue;
             } else {
-              // Final attempt - cannot repair, log and throw
-              const errorMsg = `UNGROUNDED_AFTER_RETRY: Reply does not contain required grounding phrases. Required: ${requiredPhrases.join(', ')}, Matched: ${groundingCheck.matchedPhrases.join(', ') || 'none'}, Missing: ${groundingCheck.missingPhrases.join(', ')}`;
+              // Final attempt - log debug bundle and throw
+              await logGroundingDebugBundle(
+                decisionId,
+                decision.target_tweet_id || '',
+                targetTweetContent,
+                anchorTokens.length >= 2 ? anchorTokens : requiredPhrases,
+                firstAttemptOutput || '',
+                retryOutput || '',
+                groundingCheck,
+                supabase
+              );
+              
+              const errorMsg = anchorTokens.length >= 2
+                ? `UNGROUNDED_AFTER_RETRY: Reply does not contain required anchor tokens. Required: ${anchorTokens.join(', ')}, ${matchedInfo}`
+                : `UNGROUNDED_AFTER_RETRY: Reply does not contain required grounding phrases. Required: ${requiredPhrases.join(', ')}, ${matchedInfo}`;
               
               // Log to system_events
               try {
@@ -346,12 +388,16 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
                   message: errorMsg,
                   event_data: {
                     decision_id: decisionId,
+                    anchor_tokens: anchorTokens,
                     required_phrases: requiredPhrases,
+                    matched_anchors: groundingCheck.matchedAnchors,
+                    missing_anchors: groundingCheck.missingAnchors,
                     matched_phrases: groundingCheck.matchedPhrases,
                     missing_phrases: groundingCheck.missingPhrases,
+                    token_overlap_count: groundingCheck.tokenOverlapCount,
                     attempt_count: generationAttempt,
-                    repair_attempted: false,
-                    repair_failed: false,
+                    repair_attempted: true,
+                    repair_failed: !repairSucceeded,
                   },
                   created_at: new Date().toISOString(),
                 });
@@ -363,7 +409,10 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
             }
           }
         } else {
-          console.log(`[PLAN_ONLY_GENERATOR] ✅ Grounding verified: Matched ${groundingCheck.matchedPhrases.length} phrases: ${groundingCheck.matchedPhrases.join(', ')}`);
+          const matchedInfo = anchorTokens.length >= 2
+            ? `Matched ${groundingCheck.matchedAnchors?.length || 0} anchors: ${groundingCheck.matchedAnchors?.join(', ') || 'none'}`
+            : `Matched ${groundingCheck.matchedPhrases?.length || 0} phrases: ${groundingCheck.matchedPhrases?.join(', ') || 'none'}`;
+          console.log(`[PLAN_ONLY_GENERATOR] ✅ Grounding verified: ${matchedInfo}`);
         }
         
         candidateContent = contentToCheck; // Use repaired content if repair was applied
@@ -403,15 +452,23 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
     
     // Persist generated content to base table
     const generatedAt = new Date().toISOString();
-    const finalGroundingCheck = verifyGroundingPhrases(generatedContent, requiredPhrases);
+    // Final grounding check (use anchor tokens if available)
+    let finalGroundingCheck: any;
+    if (anchorTokens.length >= 2) {
+      finalGroundingCheck = verifyAnchorTokens(generatedContent, anchorTokens);
+    } else {
+      finalGroundingCheck = verifyGroundingPhrases(generatedContent, requiredPhrases);
+    }
+    
     const updatedFeatures = {
       ...decisionFeatures,
       generated_by: 'mac_runner',
       generated_at: generatedAt,
+      anchor_tokens: anchorTokens, // Store anchor tokens
       required_grounding_phrases: requiredPhrases, // Store for proof reporting
       grounding_phrases: requiredPhrases, // Legacy field
-      grounding_phrases_matched: finalGroundingCheck.matchedPhrases,
-      grounding_extractor_version: '2.0', // Version with normalization + repair
+      grounding_phrases_matched: finalGroundingCheck.matchedPhrases || finalGroundingCheck.matchedAnchors || [],
+      grounding_extractor_version: '3.0', // Version with anchor tokens + improved extractor
       grounding_repair_applied: repairApplied, // Track if repair was used
     };
     
@@ -458,6 +515,54 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
     }
     
     return { success: false, error: errorMsg };
+  }
+}
+
+/**
+ * Log grounding debug bundle for UNGROUNDED_AFTER_RETRY failures
+ */
+async function logGroundingDebugBundle(
+  decisionId: string,
+  targetTweetId: string,
+  tweetText: string,
+  extractedTerms: string[],
+  firstAttempt: string,
+  retryAttempt: string,
+  matcherResult: any,
+  supabase: any
+): Promise<void> {
+  const debugBundle = {
+    decision_id: decisionId,
+    target_tweet_id: targetTweetId,
+    tweet_text_used_for_generation: tweetText.substring(0, 300),
+    extracted_grounding_terms: extractedTerms,
+    model_output_first_attempt: firstAttempt.substring(0, 240),
+    model_output_retry: retryAttempt.substring(0, 240),
+    matcher_result: {
+      passed: matcherResult.passed,
+      exact_matches_count: matcherResult.matchedAnchors?.length || matcherResult.matchedPhrases?.length || 0,
+      token_overlap_count: matcherResult.tokenOverlapCount || 0,
+      matched_tokens: matcherResult.matchedAnchors || matcherResult.matchedPhrases || [],
+      missing_tokens: matcherResult.missingAnchors || matcherResult.missingPhrases || [],
+      token_overlaps: matcherResult.tokenOverlaps || [],
+    },
+    timestamp: new Date().toISOString(),
+  };
+  
+  // Log to executor.log (single-line JSON)
+  console.log(`[GROUNDING_DEBUG_BUNDLE] ${JSON.stringify(debugBundle)}`);
+  
+  // Save full bundle to file
+  try {
+    const { mkdirSync, writeFileSync } = await import('fs');
+    const { join } = await import('path');
+    const debugDir = join(process.cwd(), '.runner-profile', 'debug', 'grounding');
+    mkdirSync(debugDir, { recursive: true });
+    const debugFile = join(debugDir, `${decisionId}.json`);
+    writeFileSync(debugFile, JSON.stringify(debugBundle, null, 2));
+    console.log(`[GROUNDING_DEBUG_BUNDLE] 💾 Saved debug bundle to ${debugFile}`);
+  } catch (fileError: any) {
+    console.warn(`[GROUNDING_DEBUG_BUNDLE] ⚠️ Failed to save debug bundle: ${fileError.message}`);
   }
 }
 

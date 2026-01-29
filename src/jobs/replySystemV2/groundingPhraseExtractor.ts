@@ -6,9 +6,86 @@
  */
 
 /**
+ * Extract anchor tokens (2-3 clean words) from target tweet content
+ * Improved: filters out garbage tokens, possessives, broken handles
+ * Returns clean, human-readable anchor tokens for explicit prompt inclusion
+ */
+export function extractAnchorTokens(snapshot: string): string[] {
+  if (!snapshot || snapshot.length < 20) {
+    return [];
+  }
+  
+  // Normalize: lowercase, remove extra whitespace
+  const normalized = snapshot
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  // Split into words and clean them
+  const words = normalized
+    .split(/\s+/)
+    .map(w => {
+      // Remove leading/trailing punctuation
+      w = w.replace(/^[^\w]+|[^\w]+$/g, '');
+      // Remove possessives ('s, s')
+      w = w.replace(/'s$|s'$/g, '');
+      // Remove trailing apostrophes
+      w = w.replace(/'+$/g, '');
+      return w;
+    })
+    .filter(w => {
+      // Filter criteria:
+      // - Length >= 4 chars (meaningful tokens)
+      if (w.length < 4) return false;
+      // - Not a URL or handle
+      if (w.startsWith('http') || w.startsWith('@') || w.includes('://')) return false;
+      // - Not mostly symbols
+      const symbolCount = (w.match(/[^\w]/g) || []).length;
+      if (symbolCount > w.length / 2) return false;
+      // - Not a broken handle (ends with partial handle)
+      if (w.match(/[a-z]+'s$/i) && w.length < 8) return false;
+      // - Not a stopword
+      const stopwords = new Set(['that', 'this', 'with', 'from', 'have', 'been', 'will', 'would', 'could', 'should']);
+      if (stopwords.has(w)) return false;
+      return true;
+    });
+  
+  if (words.length < 2) {
+    // Fallback: return compact quote snippet if too short
+    const snippet = snapshot.substring(0, Math.min(60, snapshot.length)).trim();
+    return snippet.length >= 10 ? [snippet] : [];
+  }
+  
+  // Score tokens (prefer nouns/verbs, longer words, avoid common words)
+  const scoredTokens: Array<{ token: string; score: number }> = [];
+  const commonWords = new Set(['this', 'that', 'with', 'from', 'have', 'been', 'will', 'would', 'could', 'should', 'what', 'when', 'where', 'which', 'there', 'their', 'they', 'them', 'these', 'those']);
+  
+  for (const token of words) {
+    let score = token.length; // Longer = better
+    if (token.length >= 6) score += 2; // Prefer longer words
+    if (token.length >= 8) score += 1; // Even longer
+    if (!commonWords.has(token)) score += 1; // Avoid common words
+    // Prefer words that look like nouns/verbs (simple heuristic: length >= 5)
+    if (token.length >= 5 && !token.match(/^(ing|ed|er|ly)$/)) score += 1;
+    
+    scoredTokens.push({ token, score });
+  }
+  
+  // Sort by score (descending)
+  scoredTokens.sort((a, b) => b.score - a.score);
+  
+  // Select top 2-3 anchor tokens
+  const anchors = scoredTokens.slice(0, 3).map(t => t.token);
+  
+  return anchors.length >= 2 ? anchors : (anchors.length === 1 ? [anchors[0], words.find(w => w !== anchors[0] && w.length >= 4) || anchors[0]] : []);
+}
+
+/**
  * Extract 2-4 exact phrases (2-6 words each) from target tweet content
  * Deterministic: same input always produces same phrases
  * Robust: strips leading/trailing punctuation, avoids emoji-only, prefers nouns/keywords
+ * 
+ * @deprecated Use extractAnchorTokens for better anchor selection
  */
 export function extractGroundingPhrases(snapshot: string): string[] {
   if (!snapshot || snapshot.length < 20) {
@@ -163,6 +240,70 @@ function extractTokens(text: string): Set<string> {
     .map(t => t.replace(/[^\w]/g, '')) // Remove punctuation
     .filter(t => t.length >= 4); // Only tokens >= 4 chars
   return new Set(tokens);
+}
+
+/**
+ * Check if reply contains required anchor tokens
+ * Strict but realistic: requires both anchors verbatim OR 1 anchor + 3 token overlaps
+ * 
+ * Rules (for anchor-based grounding):
+ * - 2+ anchor tokens appear verbatim (case-insensitive, punctuation-normalized) OR
+ * - 1 anchor token verbatim + 3+ token overlaps (tokens >= 4 chars)
+ * 
+ * This is stricter than phrase matching but more reliable when anchors are clean tokens.
+ */
+export function verifyAnchorTokens(replyText: string, anchorTokens: string[]): {
+  passed: boolean;
+  matchedAnchors: string[];
+  missingAnchors: string[];
+  tokenOverlaps: string[];
+  tokenOverlapCount: number;
+} {
+  if (anchorTokens.length === 0) {
+    return { passed: true, matchedAnchors: [], missingAnchors: [], tokenOverlaps: [], tokenOverlapCount: 0 };
+  }
+  
+  const replyNormalized = normalizeForGrounding(replyText);
+  const replyTokens = extractTokens(replyText);
+  const matchedAnchors: string[] = [];
+  const missingAnchors: string[] = [];
+  
+  // Check exact anchor token matches (verbatim)
+  for (const anchor of anchorTokens) {
+    const anchorNormalized = normalizeForGrounding(anchor);
+    // Check if anchor appears as a word boundary match (not substring)
+    const anchorRegex = new RegExp(`\\b${anchorNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (anchorRegex.test(replyNormalized)) {
+      matchedAnchors.push(anchor);
+    } else {
+      missingAnchors.push(anchor);
+    }
+  }
+  
+  // Extract tokens from anchor tokens for overlap check
+  const anchorTokenSet = new Set<string>();
+  for (const anchor of anchorTokens) {
+    const anchorTokensExtracted = extractTokens(anchor);
+    anchorTokensExtracted.forEach(t => anchorTokenSet.add(t));
+  }
+  
+  // Count token overlaps
+  const tokenOverlaps = Array.from(replyTokens).filter(t => anchorTokenSet.has(t));
+  const tokenOverlapCount = tokenOverlaps.length;
+  
+  // Determine if grounding passes
+  // Rule 1: Both anchors appear verbatim
+  if (matchedAnchors.length >= 2) {
+    return { passed: true, matchedAnchors, missingAnchors, tokenOverlaps: Array.from(tokenOverlaps), tokenOverlapCount };
+  }
+  
+  // Rule 2: 1 anchor verbatim + 3+ token overlaps
+  if (matchedAnchors.length >= 1 && tokenOverlapCount >= 3) {
+    return { passed: true, matchedAnchors, missingAnchors, tokenOverlaps: Array.from(tokenOverlaps), tokenOverlapCount };
+  }
+  
+  // Failed: insufficient grounding
+  return { passed: false, matchedAnchors, missingAnchors, tokenOverlaps: Array.from(tokenOverlaps), tokenOverlapCount };
 }
 
 /**
