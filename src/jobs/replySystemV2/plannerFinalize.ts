@@ -22,6 +22,9 @@ export interface PlannerFinalizeFields {
   target_tweet_content_snapshot?: string; // Required for FINAL_REPLY_GATE
   target_tweet_content_hash?: string; // Required for FINAL_REPLY_GATE
   semantic_similarity?: number; // Required for FINAL_REPLY_GATE (defaults to 0.75 if not provided)
+  preflight_ok?: boolean; // 🔒 TASK 5: Proof of existence from preflight check
+  preflight_fetched_at?: string; // When preflight verified tweet exists
+  preflight_text_hash?: string; // Hash of preflight-fetched text
 }
 
 /**
@@ -69,6 +72,17 @@ export async function plannerFinalizeDecision(
     
     if (fields.semantic_similarity !== undefined) {
       features.semantic_similarity = fields.semantic_similarity;
+    }
+    
+    // 🔒 TASK 5: Store preflight proof of existence
+    if (fields.preflight_ok !== undefined) {
+      features.preflight_ok = fields.preflight_ok;
+    }
+    if (fields.preflight_fetched_at) {
+      features.preflight_fetched_at = fields.preflight_fetched_at;
+    }
+    if (fields.preflight_text_hash) {
+      features.preflight_text_hash = fields.preflight_text_hash;
     }
     
     // Update base table (content_generation_metadata_comprehensive)

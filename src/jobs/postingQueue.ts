@@ -921,6 +921,20 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
   // ═══════════════════════════════════════════════════════════════════════
   console.log(`[POSTING_QUEUE] 🔍 Verifying context lock for decision ${decisionId}`);
   
+  // 🔒 TASK 5: Check preflight proof of existence
+  const decisionFeatures = (decision.features || {}) as Record<string, any>;
+  const preflightOk = decisionFeatures.preflight_ok === true;
+  const preflightFetchedAt = decisionFeatures.preflight_fetched_at;
+  const preflightTextHash = decisionFeatures.preflight_text_hash;
+  
+  if (preflightOk && preflightFetchedAt && preflightTextHash) {
+    console.log(`[POSTING_QUEUE] ✅ Preflight proof present: fetched_at=${preflightFetchedAt}, hash=${preflightTextHash.substring(0, 16)}...`);
+    // Preflight proof exists - tweet was verified at planning time
+    // Still need to verify it still exists now (tweet could have been deleted since preflight)
+  } else if (decision.pipeline_source === 'reply_v2_planner') {
+    console.warn(`[POSTING_QUEUE] ⚠️ Preflight proof missing for planner decision ${decisionId} - tweet may have been deleted before planning`);
+  }
+  
   try {
     const { verifyContextLock } = await import('../gates/contextLockVerifier');
     const contextVerification = await verifyContextLock(
@@ -1086,6 +1100,24 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
         
         const finalStatus = skipReason === 'target_not_found_or_deleted' ? 'blocked_permanent' : 'blocked';
         
+        // 🔒 TASK 5: If preflight_ok was true but tweet is now deleted, log the gap
+        if (preflightOk && skipReason === 'target_not_found_or_deleted') {
+          console.error(`[POSTING_QUEUE] 🚨 PREFLIGHT GAP: Tweet ${decision.target_tweet_id} was verified at ${preflightFetchedAt} but is now deleted`);
+          await supabase.from('system_events').insert({
+            event_type: 'preflight_gap_detected',
+            severity: 'warning',
+            message: `Preflight verified tweet exists but tweet deleted before posting`,
+            event_data: {
+              decision_id: decisionId,
+              target_tweet_id: decision.target_tweet_id,
+              preflight_fetched_at: preflightFetchedAt,
+              preflight_text_hash: preflightTextHash,
+              gap_minutes: preflightFetchedAt ? Math.round((Date.now() - new Date(preflightFetchedAt).getTime()) / 60000) : null,
+            },
+            created_at: new Date().toISOString(),
+          });
+        }
+        
         await supabase.from('content_generation_metadata_comprehensive')
           .update({
             status: finalStatus,
@@ -1093,7 +1125,9 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
             error_message: JSON.stringify({
               ...details,
               computed_age_minutes: ageMinutes,
-              stale_reason: skipReason
+              stale_reason: skipReason,
+              preflight_ok: preflightOk,
+              preflight_fetched_at: preflightFetchedAt,
             })
           })
           .eq('decision_id', decisionId);

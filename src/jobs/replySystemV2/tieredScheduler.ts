@@ -437,7 +437,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     
     // 🎯 PLAN_ONLY mode: Skip browser fetch, use candidate content
     let targetTweetContentSnapshot: string;
-    let snapshotSource: 'live_fetch' | 'candidate_extract' = 'live_fetch';
+    let snapshotSource: 'live_fetch' | 'candidate_extract' | 'preflight_fetch' = 'live_fetch';
     let snapshotLenLive = 0;
     let isReplyFromFetch: boolean | undefined = undefined;
     
@@ -483,6 +483,18 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         snapshotLenLive = preflightTweetData.text.trim().length;
         isReplyFromFetch = preflightTweetData.isReply || false;
         console.log(`[SCHEDULER] ✅ PREFLIGHT: Tweet verified (${snapshotLenLive} chars), proceeding with planning`);
+        
+        // 🔒 TASK 5: Store preflight proof of existence
+        const { normalizeTweetText } = await import('../../gates/contextLockVerifier');
+        const normalizedPreflightText = normalizeTweetText(preflightTweetData.text.trim());
+        const preflightTextHash = createHash('sha256')
+          .update(normalizedPreflightText)
+          .digest('hex');
+        
+        // Store preflight proof (will be passed to plannerFinalizeDecision)
+        (candidate as any).preflight_ok = true;
+        (candidate as any).preflight_fetched_at = new Date().toISOString();
+        (candidate as any).preflight_text_hash = preflightTextHash;
       } catch (preflightError: any) {
         if (preflightError.message.includes('PREFLIGHT_TIMEOUT') || preflightError.message.includes('not found')) {
           console.warn(`[SCHEDULER] ⚠️ PREFLIGHT failed: ${preflightError.message}, skipping candidate`);
@@ -1243,6 +1255,10 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         target_tweet_content_snapshot: normalizedSnapshot, // Required for FINAL_REPLY_GATE
         target_tweet_content_hash: targetTweetContentHash, // Required for FINAL_REPLY_GATE
         semantic_similarity: 0.75, // Default semantic similarity for PLAN_ONLY (will be computed during generation on Mac Runner)
+        // 🔒 TASK 5: Pass preflight proof if available
+        preflight_ok: (candidate as any).preflight_ok || false,
+        preflight_fetched_at: (candidate as any).preflight_fetched_at,
+        preflight_text_hash: (candidate as any).preflight_text_hash,
       });
       
       if (!finalizeResult.success) {
