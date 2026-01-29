@@ -558,6 +558,61 @@ export async function shouldAllowReply(ancestry: ReplyAncestry, context?: { cons
     
     // 🎯 FAIL-OPEN: Allow UNCERTAIN if we have evidence it's a root tweet
     if (ancestry.status === 'UNCERTAIN') {
+      // 🔒 REPLY V2 OVERRIDE: Allow UNCERTAIN for Reply V2 decisions with runtime_preflight_status='ok'
+      // Runtime preflight already verified tweet exists and is accessible, and planner verified it's a root tweet
+      const decisionId = context?.decision_id;
+      if (decisionId) {
+        const { getSupabaseClient } = await import('../../db/index');
+        const supabase = getSupabaseClient();
+        
+        // Check comprehensive table first (where Reply V2 decisions are stored)
+        const { data: decisionMetaComprehensive } = await supabase
+          .from('content_generation_metadata_comprehensive')
+          .select('pipeline_source, features')
+          .eq('decision_id', decisionId)
+          .maybeSingle();
+        
+        // Also check content_metadata as fallback
+        const { data: decisionMeta } = await supabase
+          .from('content_metadata')
+          .select('pipeline_source, features')
+          .eq('decision_id', decisionId)
+          .maybeSingle();
+        
+        const decisionMetaFinal = decisionMetaComprehensive || decisionMeta;
+        const pipelineSource = decisionMetaFinal?.pipeline_source || (decisionMetaFinal?.features as any)?.pipeline_source;
+        const isReplyV2 = pipelineSource === 'reply_v2_planner' || pipelineSource === 'reply_v2_scheduler';
+        
+        const decisionFeatures = (decisionMetaFinal?.features || {}) as Record<string, any>;
+        const runtimePreflightOk = decisionFeatures.runtime_preflight_status === 'ok';
+        
+        if (isReplyV2 && runtimePreflightOk) {
+          console.log(`[ANCESTRY] ✅ SOFT-PASS UNCERTAIN for ReplyV2 runtime_ok decision_id=${decisionId} pipeline_source=${pipelineSource}`);
+          
+          // Log soft-pass event
+          await supabase.from('system_events').insert({
+            event_type: 'ANCESTRY_SOFTPASS_REPLYV2_RUNTIME_OK',
+            severity: 'info',
+            message: `Soft-pass UNCERTAIN ancestry for Reply V2 decision with runtime_preflight_status=ok`,
+            event_data: {
+              decision_id: decisionId,
+              target_tweet_id: ancestry.targetTweetId,
+              pipeline_source: pipelineSource,
+              runtime_preflight_status: 'ok',
+              ancestry_status: 'UNCERTAIN',
+              ancestry_method: ancestry.method,
+              ancestry_confidence: ancestry.confidence,
+            },
+            created_at: new Date().toISOString(),
+          });
+          
+          return {
+            allow: true,
+            reason: `Reply V2 soft-pass: UNCERTAIN ancestry allowed for runtime_preflight_status=ok decision (pipeline_source=${pipelineSource})`,
+          };
+        }
+      }
+      
       // Check for consent_wall in error message (if present)
       const hasConsentWall = ancestry.error?.toLowerCase().includes('consent_wall') || false;
       const consentWallPassed = !hasConsentWall; // consent_wall=false means we passed
