@@ -586,6 +586,8 @@ export async function shouldAllowReply(ancestry: ReplyAncestry, context?: { cons
         const decisionFeatures = (decisionMetaFinal?.features || {}) as Record<string, any>;
         const runtimePreflightOk = decisionFeatures.runtime_preflight_status === 'ok';
         
+        console.log(`[ANCESTRY] 🔍 Checking Reply V2 soft-pass for decision_id=${decisionId}: pipeline_source=${pipelineSource || 'null'} isReplyV2=${isReplyV2} runtime_preflight_status=${decisionFeatures.runtime_preflight_status || 'null'} runtimePreflightOk=${runtimePreflightOk}`);
+        
         if (isReplyV2 && runtimePreflightOk) {
           console.log(`[ANCESTRY] ✅ SOFT-PASS UNCERTAIN for ReplyV2 runtime_ok decision_id=${decisionId} pipeline_source=${pipelineSource}`);
           
