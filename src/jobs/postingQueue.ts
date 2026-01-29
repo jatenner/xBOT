@@ -4672,12 +4672,54 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
                 setTimeout(() => reject(new Error('timeout')), runtimePreflightTimeoutMs)
               );
               
-              const tweetData = await Promise.race([fetchPromise, timeoutPromise]);
+              let tweetData: any = null;
+              let fetchError: any = null;
+              
+              try {
+                tweetData = await Promise.race([fetchPromise, timeoutPromise]);
+              } catch (fetchErr: any) {
+                fetchError = fetchErr;
+                // Check if it's a timeout
+                if (fetchErr.message === 'timeout') {
+                  throw fetchErr; // Let timeout handler deal with it
+                }
+                // Otherwise, it's a classification error from fetchTweetData
+              }
+              
               const runtimePreflightLatency = Date.now() - runtimePreflightStart;
               
+              if (!tweetData && fetchError) {
+                // Classify failure reason from fetchTweetData
+                const failureReason = fetchError.failureReason || 'error';
+                const isInaccessible = failureReason === 'inaccessible';
+                const isDeleted = failureReason === 'deleted';
+                const status = isInaccessible ? 'inaccessible' : (isDeleted ? 'deleted' : 'error');
+                
+                console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=${status} latency_ms=${runtimePreflightLatency} reason=${fetchError.message}`);
+                await supabase.from('content_generation_metadata_comprehensive')
+                  .update({
+                    status: 'blocked_permanent',
+                    error_message: JSON.stringify({
+                      stale_reason: isInaccessible ? 'target_inaccessible_runtime' : (isDeleted ? 'target_not_found_or_deleted_runtime' : 'target_fetch_error_runtime'),
+                      runtime_preflight_status: status,
+                      runtime_preflight_reason: fetchError.message,
+                      runtime_preflight_latency_ms: runtimePreflightLatency
+                    }),
+                    features: {
+                      ...decisionFeatures,
+                      runtime_preflight_status: status,
+                      runtime_preflight_reason: fetchError.message,
+                      runtime_preflight_checked_at: new Date().toISOString(),
+                      runtime_preflight_latency_ms: runtimePreflightLatency
+                    }
+                  })
+                  .eq('decision_id', decision.id);
+                return false; // Skip this decision
+              }
+              
               if (!tweetData) {
-                // Tweet deleted/not found
-                console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=deleted latency_ms=${runtimePreflightLatency}`);
+                // Fallback: null return without error (shouldn't happen, but handle gracefully)
+                console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=deleted latency_ms=${runtimePreflightLatency} (null return)`);
                 await supabase.from('content_generation_metadata_comprehensive')
                   .update({
                     status: 'blocked_permanent',

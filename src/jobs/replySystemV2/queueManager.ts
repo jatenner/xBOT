@@ -80,6 +80,39 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
   
   console.log(`[QUEUE_MANAGER] 📊 Found ${topCandidates.length} candidates to consider`);
   
+  // 🔒 STEP 2.5: Filter out candidates that are known to be inaccessible
+  // Check recent runtime preflight results for inaccessible/deleted status
+  const candidateTweetIds = topCandidates.map(c => c.candidate_tweet_id);
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { data: recentPreflights } = await supabase
+    .from('content_generation_metadata_comprehensive')
+    .select('target_tweet_id, features')
+    .in('target_tweet_id', candidateTweetIds)
+    .gte('updated_at', oneHourAgo)
+    .eq('decision_type', 'reply');
+  
+  const inaccessibleTweetIds = new Set<string>();
+  if (recentPreflights) {
+    recentPreflights.forEach((preflight: any) => {
+      const features = preflight.features || {};
+      const status = features.runtime_preflight_status;
+      if (status === 'inaccessible' || status === 'deleted') {
+        inaccessibleTweetIds.add(preflight.target_tweet_id);
+      }
+    });
+  }
+  
+  if (inaccessibleTweetIds.size > 0) {
+    console.log(`[QUEUE_MANAGER] 🔒 Filtering out ${inaccessibleTweetIds.size} inaccessible/deleted candidates`);
+    const filteredCandidates = topCandidates.filter(c => !inaccessibleTweetIds.has(c.candidate_tweet_id));
+    if (filteredCandidates.length < topCandidates.length) {
+      console.log(`[QUEUE_MANAGER] 📊 After filtering: ${filteredCandidates.length} accessible candidates (removed ${topCandidates.length - filteredCandidates.length})`);
+      // Replace topCandidates with filtered list
+      topCandidates.length = 0;
+      topCandidates.push(...filteredCandidates);
+    }
+  }
+  
   // Step 3: Check which are already in queue (non-expired)
   const { data: existingQueue } = await supabase
     .from('reply_candidate_queue')

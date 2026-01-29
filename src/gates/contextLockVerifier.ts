@@ -62,10 +62,12 @@ function computeTextSimilarity(text1: string, text2: string): number {
 /**
  * Fetch tweet via Playwright and extract text + metadata
  * Exported for use by scheduler
+ * Returns null if tweet is inaccessible or deleted, with detailed reason in error
  */
 export async function fetchTweetData(targetTweetId: string): Promise<{
   text: string;
   isReply: boolean;
+  failureReason?: 'inaccessible' | 'deleted' | 'timeout' | 'error';
 } | null> {
   let page: Page | null = null;
   let context: any = null;
@@ -181,22 +183,52 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
           const pageTitle = await page.title().catch(() => '');
           const pageUrl = page.url();
           
-          // Debug logging for deleted/timeout cases
+          // 🔍 CLASSIFICATION: Distinguish inaccessible (403/auth wall) vs deleted
           const hasDeletedText = pageContent.includes('This Post is unavailable') || 
                                 pageContent.includes('Post is unavailable') ||
-                                pageContent.includes('Something went wrong');
+                                pageContent.includes('This post is no longer available') ||
+                                pageContent.includes('deleted') ||
+                                pageContent.includes('unavailable');
           const hasLoginWall = pageContent.includes('Log in') || 
+                             pageContent.includes('Sign in') ||
                              pageTitle.toLowerCase().includes('log in') ||
-                             pageUrl.includes('/i/flow/login');
+                             pageTitle.toLowerCase().includes('sign in') ||
+                             pageUrl.includes('/i/flow/login') ||
+                             pageUrl.includes('/i/flow/signin');
+          const hasForbidden = pageContent.includes('forbidden') ||
+                             pageContent.includes('403') ||
+                             pageContent.includes('protected') ||
+                             pageContent.includes('This account is protected') ||
+                             pageContent.includes('You are unable to view this post');
           
-          console.warn(`[CONTEXT_LOCK_VERIFY] 🔍 DEBUG deleted detection for ${targetTweetId}:`);
+          // Determine failure reason
+          let failureReason: 'inaccessible' | 'deleted' | 'timeout' | 'error' = 'error';
+          let classificationMarker = '';
+          
+          if (hasDeletedText && !hasLoginWall && !hasForbidden) {
+            failureReason = 'deleted';
+            classificationMarker = 'deleted_text';
+          } else if (hasLoginWall || hasForbidden) {
+            failureReason = 'inaccessible';
+            classificationMarker = hasLoginWall ? 'login_wall' : 'forbidden';
+          } else if (hasDeletedText) {
+            // Deleted text but also has auth indicators - likely inaccessible
+            failureReason = 'inaccessible';
+            classificationMarker = 'deleted_text_with_auth';
+          } else {
+            // Shell present but no clear markers - default to inaccessible (likely protected/private)
+            failureReason = 'inaccessible';
+            classificationMarker = 'shell_no_tweet';
+          }
+          
+          console.warn(`[CONTEXT_LOCK_VERIFY] 🔍 Classification for ${targetTweetId}:`);
+          console.warn(`  failure_reason=${failureReason} marker=${classificationMarker}`);
           console.warn(`  detection_latency_ms=${detectionLatency}`);
           console.warn(`  page_url=${pageUrl}`);
           console.warn(`  page_title=${pageTitle.substring(0, 100)}`);
-          console.warn(`  has_deleted_text=${hasDeletedText}`);
-          console.warn(`  has_login_wall=${hasLoginWall}`);
+          console.warn(`  has_deleted_text=${hasDeletedText} has_login_wall=${hasLoginWall} has_forbidden=${hasForbidden}`);
           
-          // Save debug screenshot for deleted cases
+          // Save debug screenshot for deleted/inaccessible cases
           try {
             const fs = require('fs');
             const path = require('path');
@@ -205,14 +237,20 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
               fs.mkdirSync(debugDir, { recursive: true });
             }
             await page.screenshot({ 
-              path: path.join(debugDir, `deleted_${targetTweetId}_${Date.now()}.png`),
+              path: path.join(debugDir, `${failureReason}_${targetTweetId}_${Date.now()}.png`),
               fullPage: false
             }).catch(() => {});
           } catch (e) {
             // Ignore screenshot errors
           }
           
-          return null; // Treat as deleted/unavailable
+          // Return null with failure reason (will be handled by caller)
+          // Note: We can't return an object with failureReason here because the return type is | null
+          // The caller will need to check the error or we need to change the return type
+          // For now, throw an error with the failure reason encoded
+          const error: any = new Error(`Tweet ${failureReason}: ${classificationMarker}`);
+          error.failureReason = failureReason;
+          throw error;
         }
       } else {
         // No shell, no tweet - likely error page or timeout
@@ -308,8 +346,16 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
       isReply
     };
   } catch (error: any) {
+    // Check if error has failureReason (from our classification)
+    if (error.failureReason) {
+      // Re-throw with failure reason so caller can classify
+      throw error;
+    }
     console.error(`[CONTEXT_LOCK_VERIFY] ❌ Error fetching tweet ${targetTweetId}: ${error.message}`);
-    return null;
+    // For other errors, wrap with generic error
+    const genericError: any = new Error(error.message);
+    genericError.failureReason = 'error';
+    throw genericError;
   } finally {
     if (page) {
       try {
