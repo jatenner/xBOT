@@ -64,10 +64,11 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
     query = query.gte('created_at', runStartedAt);
     console.log(`[QUEUE_MANAGER] 🔍 Filtering for fresh evaluations (created_at >= ${runStartedAt})`);
   } else {
-    // ONE_SHOT_FRESH_ONLY=false: Use recent valid evaluations from last 2h
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    query = query.gte('created_at', twoHoursAgo);
-    console.log(`[QUEUE_MANAGER] 🔍 Filtering for recent evaluations (created_at >= ${twoHoursAgo})`);
+    // 🔒 FIX: Widen freshness window from 2h to 24h to include valid candidates
+    // Runtime preflight gating protects against stale tweets, so older candidates are safe for planning
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    query = query.gte('created_at', twentyFourHoursAgo);
+    console.log(`[QUEUE_MANAGER] 🔍 Filtering for recent evaluations (created_at >= ${twentyFourHoursAgo}, 24h window)`);
   }
   
   const { data: topCandidates } = await query.limit(shortlistSize * 2); // Get more than needed to account for duplicates
