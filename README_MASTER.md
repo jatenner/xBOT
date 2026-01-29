@@ -1613,12 +1613,30 @@ Proves that the STOP switch halts the executor safely under real load, with boun
 
 ## NEXT MILESTONES
 
+### Proving Phase: OK-Only Runtime Preflight Gating (ACTIVE)
+
+**Status:** Strict OK-only gating enabled for proving phase  
+**Commit SHA:** `0d014751`
+
+- Runtime preflight check runs on Mac Runner before generation/posting
+- Only decisions with `runtime_preflight_status='ok'` proceed to generation
+- All non-ok statuses (deleted/timeout/error) are blocked immediately
+- No fallback posting on timeout during proving phase (correctness over throughput)
+- Decision selection prioritizes `runtime_preflight_status='ok'` > `preflight_status='ok'` > others
+
+**Next Milestones:**
+- **P1:** 1 posted reply + reward (IN PROGRESS)
+  - Run: `pnpm tsx scripts/ops/e2e-prove-1-posted-reply.ts`
+- **P2:** 5 posted replies + strategy_rewards updated
+- **P3:** Enable timeout fallback with guardrails (Phase 2)
+
 1. **Reply Learning Loop** — In progress
    - ✅ Strategy attribution (`features.strategy_id`, `features.selection_mode`)
    - ✅ Reward computation (`features.reward`)
    - ✅ `strategy_rewards` table updates
-   - ⚠️ PLAN_ONLY generation working, posting blocked by stale targets
-   - 🔄 **Next:** Harvest fresh opportunities, verify end-to-end posting → rewards
+   - ✅ PLAN_ONLY generation working
+   - ✅ Runtime preflight OK-only gating (proving phase)
+   - 🔄 **Next:** Get 1 posted reply + reward, then scale to 5
 
 2. **Posting Strategy Learning** — Planned
    - Multi-strategy content generation with ε-greedy selection
