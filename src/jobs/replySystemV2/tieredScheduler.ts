@@ -383,13 +383,26 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         const preflightLatency = Date.now() - preflightStart;
         const isTimeout = preflightError.message.includes('PREFLIGHT_TIMEOUT');
         
+        // 🔍 CLASSIFICATION: Check for inaccessible vs deleted
+        const failureReason = preflightError.failureReason || 'error';
+        const isInaccessible = failureReason === 'inaccessible';
+        const isDeleted = failureReason === 'deleted';
+        
+        let status: 'timeout' | 'deleted' | 'protected' | 'error';
         if (isTimeout) {
           preflightTimeout++;
+          status = 'timeout';
+        } else if (isInaccessible) {
+          preflightDeleted++; // Count as bad for stats
+          status = 'protected'; // Use 'protected' status for inaccessible (matches cache enum)
+        } else if (isDeleted) {
+          preflightDeleted++;
+          status = 'deleted';
         } else {
           preflightDeleted++;
+          status = 'error';
         }
         
-        const status: 'timeout' | 'error' = isTimeout ? 'timeout' : 'error';
         await cachePreflight(cand.candidate_tweet_id, {
           status,
           checked_at: new Date().toISOString(),
@@ -397,8 +410,9 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           latency_ms: preflightLatency,
         });
         
-        // Continue to next candidate (soft failure)
-        continue;
+        // 🔒 STRICT: Skip inaccessible/deleted candidates (no soft fallback)
+        console.log(`[SCHEDULER] 🚫 Skipping candidate ${cand.candidate_tweet_id}: preflight ${status} (${preflightError.message})`);
+        continue; // Try next candidate
       }
     } else {
       // Not plan-only mode, use candidate as-is
@@ -412,16 +426,41 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     }
   }
   
-  // 🔒 SOFT FALLBACK: If no candidate passed preflight, use best available with preflight_status='skipped'
-  if (!selectedCandidate && candidatesToTry.length > 0) {
-    const bestCandidate = candidatesToTry[0]; // Use first (highest tier)
-    selectedCandidate = {
-      candidate: bestCandidate.candidate,
-      tier: bestCandidate.tier,
-      preflightStatus: preflightAttempted > 0 ? 'timeout' : 'skipped',
-      preflightOk: false,
+  // 🔒 STRICT: Only proceed if candidate passed preflight (no soft fallback for inaccessible/deleted)
+  if (!selectedCandidate) {
+    console.log(`[SCHEDULER] ⚠️ No candidate passed preflight: attempted=${preflightAttempted} ok=${preflightOk} timeout=${preflightTimeout} deleted=${preflightDeleted}`);
+    console.log(`[PIPELINE] scheduler_run_id=${schedulerRunId} stage=scheduler_end ok=false detail=no_preflight_ok`);
+    
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_planner_no_preflight_ok',
+      severity: 'warning',
+      message: `Planner found no candidates with preflight OK: attempted=${preflightAttempted} ok=${preflightOk} timeout=${preflightTimeout} deleted=${preflightDeleted}`,
+      event_data: {
+        scheduler_run_id: schedulerRunId,
+        preflight_attempted: preflightAttempted,
+        preflight_ok: preflightOk,
+        preflight_timeout: preflightTimeout,
+        preflight_deleted: preflightDeleted,
+        cache_hits_ok: cacheHitsOk,
+        cache_hits_bad: cacheHitsBad,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
+    return {
+      posted: false,
+      decision_id: null,
+      candidate_tweet_id: null,
+      scheduler_run_id: schedulerRunId,
+      preflight_stats: {
+        attempted: preflightAttempted,
+        ok: preflightOk,
+        timeout: preflightTimeout,
+        deleted: preflightDeleted,
+        cache_hits_ok: cacheHitsOk,
+        cache_hits_bad: cacheHitsBad,
+      },
     };
-    console.log(`[SCHEDULER] ⚠️ SOFT FALLBACK: No candidate passed preflight, using best available with status=${selectedCandidate.preflightStatus}`);
   }
   
   // Extract selected candidate
@@ -639,12 +678,10 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           console.log(`[SCHEDULER] ⚠️ PREFLIGHT OK but fetch error: ${err.message}, using candidate content`);
         }
       } else {
-        // Preflight not OK (timeout/skipped/deleted) - use candidate content (soft fallback)
-        console.log(`[SCHEDULER] ⚠️ PREFLIGHT status=${preflightStatus}, using candidate content (soft fallback)`);
-        targetTweetContentSnapshot = candidateData.candidate_content || '';
-        snapshotSource = 'candidate_extract';
-        snapshotLenLive = 0;
-        isReplyFromFetch = undefined;
+        // 🔒 STRICT: Preflight not OK - should not reach here (selectedCandidate only set if preflightOk=true)
+        // But handle gracefully if somehow we get here
+        console.error(`[SCHEDULER] ❌ CRITICAL: Preflight not OK (${preflightStatus}) but proceeding - this should not happen`);
+        throw new Error(`Preflight failed (${preflightStatus}) but decision creation attempted - strict mode violation`);
       }
       
       // 🔒 SOFT PREFLIGHT: Allow short content if preflight was skipped/timeout (let Mac Runner verify)
