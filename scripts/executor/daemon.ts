@@ -844,8 +844,19 @@ async function main(): Promise<void> {
     node_version: process.version,
   });
   
+  // 🔍 EXECUTOR STARTUP: Print current SHA and ROOT_CHECK status
+  let currentSha = 'unknown';
+  try {
+    currentSha = execSync('git rev-parse --short HEAD', { encoding: 'utf-8', cwd: process.cwd() }).trim();
+  } catch {
+    // Ignore if git not available
+  }
+  
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           🚀 MAC EXECUTOR DAEMON - True Headless 24/7 Execution');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log(`[EXECUTOR_STARTUP] Current SHA: ${currentSha}`);
+  console.log(`[EXECUTOR_STARTUP] ROOT_CHECK logging enabled (checks comprehensive table for pipeline_source)`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
   try {
