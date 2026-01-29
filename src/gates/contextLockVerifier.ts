@@ -455,11 +455,12 @@ export async function verifyContextLock(
         live_hash: liveHash.substring(0, 32),
         snapshot_hash: targetTweetContentHash.substring(0, 32),
         similarity: similarity,
-        threshold: CONTEXT_LOCK_MIN_SIMILARITY,
+        threshold: effectiveThreshold,
         normalized_length: normalizedFetchedText.length,
         snapshot_length: normalizedSnapshot.length,
         fetched_text_preview: fetchedText.substring(0, 200),
         snapshot_text_preview: targetTweetContentSnapshot.substring(0, 200),
+        preflight_status: preflightStatus || null,
       },
       created_at: new Date().toISOString(),
     });
