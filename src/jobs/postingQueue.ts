@@ -6942,73 +6942,82 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   
   console.log(`[POSTING_QUEUE] ✅ Duplicate check passed - no existing reply to ${decision.target_tweet_id}`);
   
-  // 🔒 HARD PRE-POST GUARD: Navigate to tweet URL and detect if it's a reply
-  console.log(`[POSTING_QUEUE] 🔍 Pre-post guard: Verifying target tweet is root (not a reply)...`);
-  try {
-    const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
-    const pool = UnifiedBrowserPool.getInstance();
-    const page = await pool.acquirePage('pre_post_guard_verify');
-    
+  // 🔒 RUNTIME_PREFLIGHT_TRUST: If runtime preflight already verified tweet is root,
+  // skip the expensive pre-post guard check (same trust model as context lock)
+  const decisionFeatures = (decision.features || {}) as Record<string, any>;
+  const runtimePreflightOk = decisionFeatures.runtime_preflight_status === 'ok';
+  
+  if (runtimePreflightOk) {
+    console.log(`[POSTING_QUEUE] ✅ Pre-post guard skipped: Runtime preflight already verified tweet is root (status=ok)`);
+  } else {
+    // 🔒 HARD PRE-POST GUARD: Navigate to tweet URL and detect if it's a reply
+    console.log(`[POSTING_QUEUE] 🔍 Pre-post guard: Verifying target tweet is root (not a reply)...`);
     try {
-      const tweetUrl = `https://x.com/i/web/status/${decision.target_tweet_id}`;
-      await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(2000); // Wait for content to load
+      const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+      const pool = UnifiedBrowserPool.getInstance();
+      const page = await pool.acquirePage('pre_post_guard_verify');
       
-      // Detect if this is a reply by checking for "Replying to @..." indicator
-      const isReply = await page.evaluate(() => {
-        // Check for "Replying to" text
-        const replyingToIndicator = Array.from(document.querySelectorAll('*')).find(el => {
-          const text = el.textContent || '';
-          return text.includes('Replying to') || text.includes('Replying');
+      try {
+        const tweetUrl = `https://x.com/i/web/status/${decision.target_tweet_id}`;
+        await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.waitForTimeout(2000); // Wait for content to load
+        
+        // Detect if this is a reply by checking for "Replying to @..." indicator
+        const isReply = await page.evaluate(() => {
+          // Check for "Replying to" text
+          const replyingToIndicator = Array.from(document.querySelectorAll('*')).find(el => {
+            const text = el.textContent || '';
+            return text.includes('Replying to') || text.includes('Replying');
+          });
+          
+          // Check for conversation context (thread indicator)
+          const conversationContext = document.querySelector('[data-testid="reply"]')?.closest('article');
+          const hasMultipleTweets = document.querySelectorAll('article[data-testid="tweet"]').length > 1;
+          
+          // Check if URL contains conversation context
+          const url = window.location.href;
+          const isReplyUrl = url.includes('/status/') && hasMultipleTweets;
+          
+          return !!(replyingToIndicator || (conversationContext && hasMultipleTweets && isReplyUrl));
         });
         
-        // Check for conversation context (thread indicator)
-        const conversationContext = document.querySelector('[data-testid="reply"]')?.closest('article');
-        const hasMultipleTweets = document.querySelectorAll('article[data-testid="tweet"]').length > 1;
+        if (isReply) {
+          console.error(`[POSTING_QUEUE] 🚫 BLOCKED: Target tweet ${decision.target_tweet_id} is a REPLY (detected via Twitter UI)`);
+          console.error(`[POSTING_QUEUE]   decision_id=${decision.id}`);
+          console.error(`[POSTING_QUEUE]   REASON: Pre-post guard detected "Replying to" indicator or conversation context`);
+          
+          // Mark as blocked
+          await supabase.from('content_generation_metadata_comprehensive')
+            .update({ status: 'blocked', skip_reason: 'pre_post_guard_reply_detected' })
+            .eq('decision_id', decision.id);
+          
+          // Log to system_events
+          await supabase.from('system_events').insert({
+            event_type: 'pre_post_guard_reply_blocked',
+            severity: 'critical',
+            message: `Pre-post guard blocked reply: target tweet ${decision.target_tweet_id} is a reply`,
+            event_data: {
+              decision_id: decision.id,
+              target_tweet_id: decision.target_tweet_id,
+              tweet_url: tweetUrl
+            },
+            created_at: new Date().toISOString()
+          });
+          
+          throw new Error(`Pre-post guard: Target tweet is a reply, not a root tweet`);
+        }
         
-        // Check if URL contains conversation context
-        const url = window.location.href;
-        const isReplyUrl = url.includes('/status/') && hasMultipleTweets;
-        
-        return !!(replyingToIndicator || (conversationContext && hasMultipleTweets && isReplyUrl));
-      });
-      
-      if (isReply) {
-        console.error(`[POSTING_QUEUE] 🚫 BLOCKED: Target tweet ${decision.target_tweet_id} is a REPLY (detected via Twitter UI)`);
-        console.error(`[POSTING_QUEUE]   decision_id=${decision.id}`);
-        console.error(`[POSTING_QUEUE]   REASON: Pre-post guard detected "Replying to" indicator or conversation context`);
-        
-        // Mark as blocked
-        await supabase.from('content_generation_metadata_comprehensive')
-          .update({ status: 'blocked', skip_reason: 'pre_post_guard_reply_detected' })
-          .eq('decision_id', decision.id);
-        
-        // Log to system_events
-        await supabase.from('system_events').insert({
-          event_type: 'pre_post_guard_reply_blocked',
-          severity: 'critical',
-          message: `Pre-post guard blocked reply: target tweet ${decision.target_tweet_id} is a reply`,
-          event_data: {
-            decision_id: decision.id,
-            target_tweet_id: decision.target_tweet_id,
-            tweet_url: tweetUrl
-          },
-          created_at: new Date().toISOString()
-        });
-        
-        throw new Error(`Pre-post guard: Target tweet is a reply, not a root tweet`);
+        console.log(`[POSTING_QUEUE] ✅ Pre-post guard passed: Target tweet is a root tweet`);
+      } finally {
+        await pool.releasePage(page);
       }
-      
-      console.log(`[POSTING_QUEUE] ✅ Pre-post guard passed: Target tweet is a root tweet`);
-    } finally {
-      await pool.releasePage(page);
+    } catch (guardError: any) {
+      if (guardError.message?.includes('Pre-post guard')) {
+        throw guardError; // Re-throw guard failures
+      }
+      console.warn(`[POSTING_QUEUE] ⚠️ Pre-post guard check failed (non-fatal): ${guardError.message}`);
+      // Continue if guard check fails (non-fatal, but log it)
     }
-  } catch (guardError: any) {
-    if (guardError.message?.includes('Pre-post guard')) {
-      throw guardError; // Re-throw guard failures
-    }
-    console.warn(`[POSTING_QUEUE] ⚠️ Pre-post guard check failed (non-fatal): ${guardError.message}`);
-    // Continue if guard check fails (non-fatal, but log it)
   }
   
   // 🔒 SELF-REPLY THREAD CHECK: Prevent replying to our own replies
