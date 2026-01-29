@@ -236,13 +236,25 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
       // OR if it's a proof decision (control-reply-* proof_tag)
       // For scheduler/proof decisions, we already verified root in FINAL_REPLY_GATE, so allow posting
       // Fetch pipeline_source and proof_tag from DB if not in decision object
+      // 🔒 FIX: Check both content_metadata and content_generation_metadata_comprehensive tables
       const { data: decisionMeta } = await supabase
         .from('content_metadata')
         .select('pipeline_source, features')
         .eq('decision_id', decisionId)
-        .single();
+        .maybeSingle();
       
-      const pipelineSource = decision.pipeline_source || decisionMeta?.pipeline_source;
+      // Also check comprehensive table if metadata table doesn't have pipeline_source
+      let comprehensivePipelineSource: string | null = null;
+      if (!decisionMeta?.pipeline_source) {
+        const { data: comprehensiveMeta } = await supabase
+          .from('content_generation_metadata_comprehensive')
+          .select('pipeline_source, features')
+          .eq('decision_id', decisionId)
+          .maybeSingle();
+        comprehensivePipelineSource = comprehensiveMeta?.pipeline_source || null;
+      }
+      
+      const pipelineSource = decision.pipeline_source || decisionMeta?.pipeline_source || comprehensivePipelineSource;
       const decisionFeatures = (decision.features || decisionMeta?.features || {}) as Record<string, any>;
       const proofTag = decisionFeatures.proof_tag;
       const isProofDecision = proofTag && String(proofTag).startsWith('control-reply-');
