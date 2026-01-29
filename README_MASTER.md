@@ -716,7 +716,12 @@ EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post
 
 **Report Location:** `docs/CONTROL_TO_POST_PROOF.md` (created by proof script)
 
-**⚠️ Status (2026-01-24):** ❌ FAILED - Real execution attempt failed. Decision created and claimed, but posting attempt timed out after 180s. No attempt recorded in outcomes, no POST_SUCCESS/POST_FAILED event emitted. Root cause: Playwright posting operation timed out. See `docs/CONTROL_TO_POST_PROOF.md` for full details.
+**✅ Status:** PROVEN — `control-post-1769385308714`  
+Evidence: [`docs/proofs/control-post/control-post-1769385308714.md`](docs/proofs/control-post/control-post-1769385308714.md)  
+Tweet: `https://x.com/Signal_Synapse/status/2015574485135487461`
+
+**Note:** Older Attempt (2026-01-24): FAILED (historical) — Real execution attempt failed. Decision created and claimed, but posting attempt timed out after 180s. No attempt recorded in outcomes, no POST_SUCCESS/POST_FAILED event emitted. Root cause: Playwright posting operation timed out. See `docs/CONTROL_TO_POST_PROOF.md` for full details.  
+**Current Status:** ✅ PROVEN via `control-post-1769385308714`
 
 **Reply Pipeline Proof:**
 ```bash
@@ -748,7 +753,12 @@ EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=1234567890123456789 pnpm run executor:p
 
 **Report Location:** `docs/CONTROL_TO_REPLY_PROOF.md` (created by proof script)
 
-**⚠️ Status (2026-01-24):** ❌ FAILED - Real execution attempt failed. Decision created but never claimed within 5-minute timeout. Decision status remained "queued". Root cause: Executor did not process the decision within timeout period. See `docs/CONTROL_TO_REPLY_PROOF.md` for full details.
+**✅ Status:** PROVEN — `control-reply-1769440472369`  
+Evidence: [`docs/proofs/control-reply/control-reply-1769440472369.md`](docs/proofs/control-reply/control-reply-1769440472369.md)  
+Reply: `https://x.com/Signal_Synapse/status/2015805866801295663`
+
+**Note:** Older Attempt (2026-01-24): FAILED (historical) — Real execution attempt failed. Decision created but never claimed within 5-minute timeout. Decision status remained "queued". Root cause: Executor did not process the decision within timeout period. See `docs/CONTROL_TO_REPLY_PROOF.md` for full details.  
+**Current Status:** ✅ PROVEN via `control-reply-1769440472369`
 
 **Safety Gating:**
 - **Default:** DRY_RUN mode (seeds decision, validates flow, but does NOT post/reply)
@@ -1738,5 +1748,33 @@ We must build:
    - fail-fast if CDP mode detected
 4) Cadence is a learned policy bounded by safety rails, not pure hardcode.
 5) LaunchAgent plist must NEVER contain `RUNNER_BROWSER=cdp` (enforced by install script and daemon fail-fast guard).
+
+---
+
+## NO NEW SYSTEMS RULE (Default)
+
+**Principle:** Do NOT create new jobs, queues, tables, schedulers, pipelines, or abstractions unless absolutely necessary.
+
+**Default Behavior:** Only make small, surgical edits to finish the next proof milestone.
+
+**Exception Process:** If a new system is believed necessary, write a "Necessity Justification" section that passes ALL tests:
+
+1. **Blocking:** Milestone cannot be completed otherwise
+2. **Proofable:** Can be proven deterministically
+3. **Net Simplification:** System simplifies after ship (not just adds complexity)
+4. **Doc-First:** Explainable in <25 lines
+5. **Rollback Plan:** Includes feature flags and clear rollback steps
+
+**Examples of What NOT to Do:**
+- Creating a new queue system when existing queues work
+- Adding a new scheduler when existing schedulers can be extended
+- Creating new tables when existing schema can accommodate
+- Building new abstractions when direct code changes suffice
+
+**Examples of What IS Allowed:**
+- Adding instrumentation/logging to existing systems
+- Fixing bugs in existing code paths
+- Adding configuration flags to existing systems
+- Documenting operational runbooks
 
 ---

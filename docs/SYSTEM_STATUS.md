@@ -1,7 +1,30 @@
 # xBOT System Status
 
-**Last Updated:** 2026-01-26  
+**Last Updated:** 2026-01-29  
 **Purpose:** Single source of truth for operational status, proof coverage, and verification commands
+
+---
+
+## Living SYSTEM_STATUS Discipline
+
+**Rule:** This document must reflect PROVEN reality, not aspirations or plans.
+
+**Status Labels:**
+- ✅ **PROVEN:** Has immutable proof file with PASS status and `https://x.com/` URL (for posting/reply proofs)
+- 🚧 **IN PROGRESS:** Currently being worked on, has partial proof or clear next steps
+- ❌ **FAILING:** Known to be broken, has failure evidence or regression
+- ⚠️ **PLANNED:** Not implemented, conceptual only
+
+**Update Rules:**
+1. Never mark something PROVEN without proof file reference
+2. When proof exists, update status immediately (don't wait for "perfect" moment)
+3. Distinguish between "older attempt failed" vs "current status"
+4. Reference proof tags and evidence file paths explicitly
+
+**Verification:**
+- CI enforces: `verify:docs:truth` checks PROVEN claims reference existing proof files
+- Proof files are immutable (append-only)
+- INDEX.md files track all proof runs
 
 ---
 
@@ -79,6 +102,7 @@
 - Reply Tweet ID: `2015805866801295663`
 - Success Event ID: `39b6ce05-bc91-4f0c-af51-c106ddd05a32`
 - Attempt ID: `663ef150-368a-4172-afd5-5eacd6c45423`
+- **Status:** ✅ PROVEN - Full pipeline from control-plane decision → executor execution → verified reply URL
 
 ✅ **Phase 5A.1: Executor Health & Liveness** — PROVEN
 
@@ -700,17 +724,96 @@ EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post
 
 ---
 
-## Next Milestones
+## Now / Next / Later Dashboard
 
-### Proving Phase (Current)
+### NOW: What Is Running and How to Observe It
+
+**Control-Plane (Railway):**
+- **Posting Queue:** Ticking every 1-5 minutes, creating decisions
+- **Reply V2 Planner:** Creating `reply_v2_planner` decisions from `reply_opportunities`
+- **Reply V2 Scheduler:** Selecting candidates and updating `pipeline_source='reply_v2_scheduler'`
+- **Observe:** `railway logs --service serene-cat --lines 50 | grep "POSTING_QUEUE_TICK\|REPLY_QUEUE_TICK"`
+
+**Executor-Plane (Mac Runner):**
+- **Daemon:** Running headless, claiming decisions, executing browser automation
+- **Observe:** `pnpm run ops:executor:status` or `tail -50 ./.runner-profile/logs/executor.log`
+
+**Harvester (Local):**
+- **Status:** Runs locally (not on Railway), controlled by `HARVESTING_ENABLED` flag
+- **Observe:** Check `reply_opportunities` table for fresh opportunities (< 24h old)
+
+**Verification Commands:**
+```bash
+# Check Railway control-plane activity
+railway logs --service serene-cat --lines 50 | grep "POSTING_QUEUE_TICK\|REPLY_QUEUE_TICK"
+
+# Check executor status
+pnpm run ops:executor:status
+
+# Check reply opportunities pool
+psql $DATABASE_URL -c "SELECT COUNT(*) as pool_size, COUNT(*) FILTER (WHERE tweet_posted_at > NOW() - INTERVAL '24 hours') as fresh_count FROM reply_opportunities WHERE replied_to = false;"
+
+# Check queued reply decisions
+psql $DATABASE_URL -c "SELECT decision_id, status, pipeline_source, features->>'runtime_preflight_status' as runtime_preflight_status, created_at FROM content_metadata WHERE decision_type = 'reply' AND pipeline_source IN ('reply_v2_planner', 'reply_v2_scheduler') ORDER BY created_at DESC LIMIT 10;"
+```
+
+### NEXT: Single Next Milestone and Exact Steps
 
 **P1: 1 Posted Reply + Reward** — IN PROGRESS
-- Goal: Get 1 `reply_v2_planner` decision to POST successfully
-- Success criteria:
-  - Decision transitions: `queued` → `runtime_preflight_status='ok'` → `posting_attempt` → `posted`
-  - `features.tweet_id` populated
-  - `features.reward` computed (after scraper runs)
-- Run: `pnpm tsx scripts/ops/e2e-prove-1-posted-reply.ts`
+
+**Goal:** Get 1 `reply_v2_planner` decision to POST successfully with `runtime_preflight_status='ok'`
+
+**Success Criteria:**
+- Decision transitions: `queued` → `runtime_preflight_status='ok'` → `posting_attempt` → `posted`
+- `features.tweet_id` populated
+- `features.reward` computed (after scraper runs)
+
+**Exact Steps:**
+1. **Ensure harvester is running and creating fresh opportunities:**
+   ```bash
+   # Check harvester status (local)
+   ps aux | grep replyOpportunityHarvester
+   
+   # Run harvester manually if needed
+   pnpm tsx scripts/ops/run-harvester-single-cycle.ts
+   ```
+
+2. **Trigger planner to create decisions:**
+   ```bash
+   railway run --service xBOT pnpm tsx scripts/ops/run-reply-v2-planner-once.ts
+   ```
+
+3. **Ensure executor is running:**
+   ```bash
+   pnpm run ops:executor:status
+   # If not running: pnpm run executor:daemon
+   ```
+
+4. **Monitor for successful post:**
+   ```bash
+   # Watch executor logs
+   tail -f ./.runner-profile/logs/executor.log | grep "REPLY_SUCCESS\|runtime_preflight_status"
+   
+   # Or run proof script
+   pnpm tsx scripts/ops/e2e-prove-1-posted-reply.ts
+   ```
+
+5. **Verify reward computation:**
+   ```sql
+   -- Check for posted reply with reward
+   SELECT decision_id, status, features->>'tweet_id' as tweet_id, 
+          features->>'reward' as reward, features->>'runtime_preflight_status' as runtime_preflight_status
+   FROM content_metadata
+   WHERE decision_type = 'reply'
+     AND status = 'posted'
+     AND features->>'runtime_preflight_status' = 'ok'
+   ORDER BY posted_at DESC
+   LIMIT 1;
+   ```
+
+**Primary Blocker:** Runtime preflight checks failing (targets deleted/stale/timeout) during proving phase OK-only gating. Need fresh opportunities from harvester and successful runtime preflight verification.
+
+### LATER: Upcoming Milestones
 
 **P2: 5 Posted Replies + Strategy Rewards Updated**
 - Goal: Prove learning loop is functioning
@@ -726,17 +829,12 @@ EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post
   - Success rate maintained
   - No increase in deleted target failures
 
-## Next Steps
+**Action Brain (Planned)**
+- External intelligence integration
+- Advanced content strategy optimization
+- Multi-strategy learning loops
 
-1. **Run E2E Proof for 1 Posted Reply:**
-   - Trigger planner: `railway run --service xBOT pnpm tsx scripts/ops/run-reply-v2-planner-once.ts`
-   - Start Mac Runner: `RUNNER_MODE=true MAX_E2E_REPLIES=1 pnpm run executor:daemon`
-   - Monitor: `pnpm tsx scripts/ops/e2e-prove-1-posted-reply.ts`
-
-2. **Verify Learning System:**
-   - Query `content_generation_metadata_comprehensive` for posted replies with rewards
-   - Query `strategy_rewards` table for updated mean_reward values
-
-3. **Update This Document:**
-   - Mark P1 as PROVEN once 1 posted reply + reward achieved
-   - Add proof report links
+**Posting Systems (Planned)**
+- Enhanced posting strategy learning
+- Time-of-day/day-of-week optimization
+- Topic selection improvements
