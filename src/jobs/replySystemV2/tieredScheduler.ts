@@ -304,6 +304,23 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     console.log('[SCHEDULER] ⚠️ No candidates available in queue');
     console.log(`[PIPELINE] scheduler_run_id=${schedulerRunId} stage=scheduler_end ok=false detail=queue_empty`);
     
+    // 🔒 TASK D: Log explicit error events for "no candidates" reasons
+    await supabase.from('system_events').insert({
+      event_type: 'reply_v2_planner_no_candidates',
+      severity: 'warning',
+      message: `Planner found no candidates: queue_size=${queueSize} tier_1=${tier1Count} tier_2=${tier2Count} tier_3=${tier3Count}`,
+      event_data: {
+        scheduler_run_id: schedulerRunId,
+        queue_size: queueSize,
+        tier_1_count: tier1Count,
+        tier_2_count: tier2Count,
+        tier_3_count: tier3Count,
+        denied_tweet_ids_count: deniedTweetIds.size,
+        behind_schedule: behindSchedule,
+      },
+      created_at: new Date().toISOString(),
+    });
+    
     // Log SLO event
     await supabase
       .from('reply_slo_events')
@@ -520,6 +537,20 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           
           throw preflightError;
         }
+        
+        // 🔒 TASK D: Log preflight failures explicitly
+        await supabase.from('system_events').insert({
+          event_type: 'reply_v2_planner_preflight_failed',
+          severity: 'warning',
+          message: `Preflight check failed: ${preflightError.message}`,
+          event_data: {
+            scheduler_run_id: schedulerRunId,
+            candidate_tweet_id: candidate.candidate_tweet_id,
+            error: preflightError.message,
+            error_type: preflightError.message.includes('PREFLIGHT_TIMEOUT') ? 'timeout' : 'other',
+          },
+          created_at: new Date().toISOString(),
+        });
         
         // Fallback to candidate content if preflight fails for other reasons
         console.warn(`[SCHEDULER] ⚠️ PREFLIGHT error (non-fatal): ${preflightError.message}, using candidate content`);
