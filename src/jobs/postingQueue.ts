@@ -964,20 +964,33 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
             return null;
           })) : null;
       
-      // 🔒 AUTO-HEAL: For context_mismatch with similarity >= 0.33 (wider band for fresh decisions <20m old)
-      const decisionAgeMs = decision.created_at ? Date.now() - new Date(decision.created_at).getTime() : null;
-      const decisionAgeMinutes = decisionAgeMs ? Math.round(decisionAgeMs / 60000) : null;
-      const isFreshDecision = decisionAgeMinutes !== null && decisionAgeMinutes < 20;
-      const autoHealMinSimilarity = isFreshDecision ? 0.33 : 0.35; // Wider band for fresh decisions
+      // 🔒 AUTO-HEAL: Conservative auto-heal for context_mismatch in narrow band (0.30-0.45)
+      // Only for reply_v2_planner decisions (PLAN_ONLY proving phase)
+      const isPlannerDecision = decision.pipeline_source === 'reply_v2_planner';
+      const similarity = details.content_similarity !== undefined ? details.content_similarity : 0;
       
-      if (contextVerification.skip_reason === 'context_mismatch' && 
-          details.content_similarity !== undefined &&
-          details.content_similarity >= autoHealMinSimilarity &&
-          details.content_similarity < 0.45 &&
+      if (isPlannerDecision &&
+          contextVerification.skip_reason === 'context_mismatch' && 
+          similarity >= 0.30 &&
+          similarity < 0.45 &&
           details.target_exists === true &&
           details.is_root_tweet === true) {
         
-        console.log(`[POSTING_QUEUE] 🔄 AUTO-HEAL: Near-miss context_mismatch (similarity=${details.content_similarity.toFixed(3)}), regenerating content...`);
+        console.log(`[AUTO_HEAL] start decision_id=${decisionId} similarity=${similarity.toFixed(3)} target=${decision.target_tweet_id}`);
+        
+        // Log auto-heal attempt
+        await supabase.from('system_events').insert({
+          event_type: 'reply_v2_auto_heal_attempt',
+          severity: 'info',
+          message: `Auto-heal attempt for context_mismatch`,
+          event_data: {
+            decision_id: decisionId,
+            target_tweet_id: decision.target_tweet_id,
+            similarity: similarity,
+            original_snapshot_hash: decision.target_tweet_content_hash?.substring(0, 32),
+          },
+          created_at: new Date().toISOString(),
+        });
         
         try {
           // Fetch current tweet text
@@ -1037,15 +1050,37 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
                 decision.target_tweet_content_prefix_hash
               );
               
+              const newSimilarity = reVerification.details?.content_similarity || 0;
+              console.log(`[AUTO_HEAL] regenerated decision_id=${decisionId} new_similarity=${newSimilarity.toFixed(3)}`);
+              
               if (!reVerification.pass) {
-                console.error(`[POSTING_QUEUE] ⛔ AUTO-HEAL: Re-verification failed: ${reVerification.skip_reason}`);
+                console.error(`[AUTO_HEAL] failed decision_id=${decisionId} reason=${reVerification.skip_reason} new_similarity=${newSimilarity.toFixed(3)}`);
+                
+                // Log failure
+                await supabase.from('system_events').insert({
+                  event_type: 'reply_v2_auto_heal_failed',
+                  severity: 'warning',
+                  message: `Auto-heal re-verification failed`,
+                  event_data: {
+                    decision_id: decisionId,
+                    target_tweet_id: decision.target_tweet_id,
+                    original_similarity: similarity,
+                    new_similarity: newSimilarity,
+                    reason: reVerification.skip_reason,
+                  },
+                  created_at: new Date().toISOString(),
+                });
+                
+                // Hard block if similarity < 0.30, otherwise regular block
+                const finalStatus = newSimilarity < 0.30 ? 'blocked_permanent' : 'blocked';
                 await supabase.from('content_generation_metadata_comprehensive')
                   .update({
-                    status: 'blocked',
+                    status: finalStatus,
                     skip_reason: `auto_heal_failed_${reVerification.skip_reason}`,
                     error_message: JSON.stringify({
                       ...reVerification.details,
-                      original_similarity: details.content_similarity,
+                      original_similarity: similarity,
+                      new_similarity: newSimilarity,
                     })
                   })
                   .eq('decision_id', decisionId);
@@ -1053,7 +1088,21 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
               }
               
               // Auto-heal succeeded, continue to post
-              console.log(`[POSTING_QUEUE] ✅ AUTO-HEAL: Re-verification passed, proceeding`);
+              console.log(`[AUTO_HEAL] success decision_id=${decisionId} new_similarity=${newSimilarity.toFixed(3)}`);
+              
+              // Log success
+              await supabase.from('system_events').insert({
+                event_type: 'reply_v2_auto_heal_success',
+                severity: 'info',
+                message: `Auto-heal succeeded`,
+                event_data: {
+                  decision_id: decisionId,
+                  target_tweet_id: decision.target_tweet_id,
+                  original_similarity: similarity,
+                  new_similarity: newSimilarity,
+                },
+                created_at: new Date().toISOString(),
+              });
             } else {
               console.error(`[POSTING_QUEUE] ⛔ AUTO-HEAL: Content regeneration failed: ${generationResult.error}`);
               await supabase.from('content_generation_metadata_comprehensive')
@@ -1094,16 +1143,20 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
           return true; // Skip
         }
       } else {
-        // Hard block for deleted tweets or low similarity
+        // Hard block for deleted tweets, low similarity (<0.30), or non-planner decisions
         const skipReason = contextVerification.skip_reason;
+        const isLowSimilarity = similarity < 0.30;
+        const shouldHardBlock = skipReason === 'target_not_found_or_deleted' || isLowSimilarity;
+        
         console.error(`[POSTING_QUEUE] ⛔ CONTEXT LOCK FAILED: ${skipReason}`);
         console.error(`[POSTING_QUEUE]   decision_id=${decisionId}`);
         console.error(`[POSTING_QUEUE]   target_tweet_id=${decision.target_tweet_id}`);
+        console.error(`[POSTING_QUEUE]   similarity=${similarity.toFixed(3)}`);
         console.error(`[POSTING_QUEUE]   computed_age_minutes=${ageMinutes || 'unknown'}`);
         console.error(`[POSTING_QUEUE]   stale_reason=${skipReason}`);
         console.error(`[POSTING_QUEUE]   details=${JSON.stringify(details)}`);
         
-        const finalStatus = skipReason === 'target_not_found_or_deleted' ? 'blocked_permanent' : 'blocked';
+        const finalStatus = shouldHardBlock ? 'blocked_permanent' : 'blocked';
         
         // 🔒 TASK 5: If preflight_ok was true but tweet is now deleted, log the gap
         if (preflightOk && skipReason === 'target_not_found_or_deleted') {

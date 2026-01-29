@@ -219,60 +219,131 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
     const { extractKeywords } = await import('../../gates/ReplyQualityGate');
     const keywords = extractKeywords(targetTweetContent);
     
-    // Generate reply content
+    // 🔒 GROUNDING ENFORCEMENT: Extract 2-4 exact phrases from target tweet snapshot
+    const { extractGroundingPhrases, verifyGroundingPhrases } = await import('./groundingPhraseExtractor');
+    const requiredPhrases = extractGroundingPhrases(targetTweetContent);
+    
     console.log(`[PLAN_ONLY_GENERATOR] 📝 Generating reply using strategy=${strategyId} version=${strategyVersion}`);
-    const generationStartTime = Date.now();
+    console.log(`[PLAN_ONLY_GENERATOR] 🔒 Required grounding phrases (${requiredPhrases.length}): ${requiredPhrases.join(', ')}`);
     
-    // 🔒 PLAN_ONLY GROUNDING FIX: Ensure template_id is passed so adapter can detect PLAN_ONLY mode
-    const replyResult = await Promise.race([
-      generateReplyContent({
-        target_username: targetUsername,
-        target_tweet_content: targetTweetContent,
-        topic: keywords.join(', ') || 'health',
-        angle: 'reply_context',
-        tone: 'helpful',
-        model: 'gpt-4o-mini',
-        template_id: strategyId, // Pass strategy_id so adapter can detect PLAN_ONLY and apply stricter grounding
-        prompt_version: strategyVersion,
-        custom_prompt: strategyPrompt,
-        reply_context: {
-          target_text: targetTweetContent,
-          root_text: targetTweetContent, // For PLAN_ONLY, assume root = target
-          root_tweet_id: decision.target_tweet_id || decisionFeatures.root_tweet_id || '',
-        },
-      }),
-      new Promise<any>((_, reject) => {
-        setTimeout(() => reject(new Error('GENERATION_TIMEOUT')), 25000); // 25s timeout
-      }),
-    ]) as any;
+    // Generate reply content with retry logic for grounding enforcement
+    let generatedContent: string | null = null;
+    let generationAttempt = 0;
+    const maxAttempts = 2; // Initial attempt + 1 retry
     
-    const generationElapsed = Date.now() - generationStartTime;
-    let generatedContent = replyResult.content;
+    while (generationAttempt < maxAttempts && !generatedContent) {
+      generationAttempt++;
+      const generationStartTime = Date.now();
+      
+      // Build enhanced prompt with explicit phrase requirements on retry
+      let enhancedPrompt = strategyPrompt;
+      if (generationAttempt > 1 && requiredPhrases.length > 0) {
+        enhancedPrompt = `${strategyPrompt}\n\n**CRITICAL RETRY REQUIREMENT**: Your reply MUST include at least 2 of these exact phrases from the target tweet: ${requiredPhrases.map(p => `"${p}"`).join(', ')}. Quote them directly or use them naturally in context.`;
+      }
+      
+      // 🔒 PLAN_ONLY GROUNDING FIX: Ensure template_id is passed so adapter can detect PLAN_ONLY mode
+      const replyResult = await Promise.race([
+        generateReplyContent({
+          target_username: targetUsername,
+          target_tweet_content: targetTweetContent,
+          topic: keywords.join(', ') || 'health',
+          angle: 'reply_context',
+          tone: 'helpful',
+          model: 'gpt-4o-mini',
+          template_id: strategyId, // Pass strategy_id so adapter can detect PLAN_ONLY and apply stricter grounding
+          prompt_version: strategyVersion,
+          custom_prompt: enhancedPrompt,
+          reply_context: {
+            target_text: targetTweetContent,
+            root_text: targetTweetContent, // For PLAN_ONLY, assume root = target
+            root_tweet_id: decision.target_tweet_id || decisionFeatures.root_tweet_id || '',
+          },
+        }),
+        new Promise<any>((_, reject) => {
+          setTimeout(() => reject(new Error('GENERATION_TIMEOUT')), 25000); // 25s timeout
+        }),
+      ]) as any;
+      
+      const generationElapsed = Date.now() - generationStartTime;
+      let candidateContent = replyResult.content;
+      
+      if (!candidateContent || candidateContent.trim().length === 0) {
+        if (generationAttempt < maxAttempts) {
+          console.log(`[PLAN_ONLY_GENERATOR] ⚠️ Attempt ${generationAttempt}: Generated content is empty, retrying...`);
+          continue;
+        }
+        throw new Error('Generated content is empty');
+      }
+      
+      // Verify grounding phrases
+      if (requiredPhrases.length > 0) {
+        const groundingCheck = verifyGroundingPhrases(candidateContent, requiredPhrases);
+        
+        if (!groundingCheck.passed) {
+          if (generationAttempt < maxAttempts) {
+            console.log(`[PLAN_ONLY_GENERATOR] ⚠️ Attempt ${generationAttempt}: Missing grounding phrases. Matched: ${groundingCheck.matchedPhrases.join(', ') || 'none'}, Missing: ${groundingCheck.missingPhrases.join(', ')}, retrying...`);
+            continue;
+          } else {
+            // Final attempt failed - log and mark as failed
+            const errorMsg = `UNGROUNDED_AFTER_RETRY: Reply does not contain required grounding phrases. Required: ${requiredPhrases.join(', ')}, Matched: ${groundingCheck.matchedPhrases.join(', ') || 'none'}, Missing: ${groundingCheck.missingPhrases.join(', ')}`;
+            
+            // Log to system_events
+            try {
+              await supabase.from('system_events').insert({
+                event_type: 'reply_v2_ungrounded_after_retry',
+                severity: 'error',
+                message: errorMsg,
+                event_data: {
+                  decision_id: decisionId,
+                  required_phrases: requiredPhrases,
+                  matched_phrases: groundingCheck.matchedPhrases,
+                  missing_phrases: groundingCheck.missingPhrases,
+                  attempt_count: generationAttempt,
+                },
+                created_at: new Date().toISOString(),
+              });
+            } catch (logError: any) {
+              console.warn(`[PLAN_ONLY_GENERATOR] ⚠️ Failed to log error: ${logError.message}`);
+            }
+            
+            throw new Error(errorMsg);
+          }
+        } else {
+          console.log(`[PLAN_ONLY_GENERATOR] ✅ Grounding verified: Matched ${groundingCheck.matchedPhrases.length} phrases: ${groundingCheck.matchedPhrases.join(', ')}`);
+        }
+      }
+      
+      generatedContent = candidateContent;
+      console.log(`[PLAN_ONLY_GENERATOR] ✅ Generated content (attempt ${generationAttempt}): ${generatedContent.length} chars in ${generationElapsed}ms`);
+    }
     
-    if (!generatedContent || generatedContent.trim().length === 0) {
-      throw new Error('Generated content is empty');
+    if (!generatedContent) {
+      throw new Error('Failed to generate content after retries');
     }
     
     // 🔒 HARD LENGTH CLAMP: Enforce MAX_REPLY_LENGTH with grounding preservation
     const MAX_REPLY_LENGTH = parseInt(process.env.MAX_REPLY_LENGTH || '200', 10); // Default 200 for safety
     
+    const originalLength = generatedContent.length;
     if (generatedContent.length > MAX_REPLY_LENGTH) {
-      // Extract key phrases from target tweet for grounding preservation
-      const { extractKeywords } = await import('../../gates/ReplyQualityGate');
-      const keyPhrases = extractKeywords(targetTweetContent);
-      const requiredPhrases = keyPhrases.slice(0, 4); // Keep top 4 phrases
-      
-      // Clamp while preserving grounding
+      // Clamp while preserving required grounding phrases
       generatedContent = clampReplyLengthPreserveGrounding(
         generatedContent,
         MAX_REPLY_LENGTH,
         requiredPhrases
       );
       
-      console.log(`[PLAN_ONLY_GENERATOR] ⚠️ Clamped content from ${replyResult.content.length} to ${generatedContent.length} chars (preserved ${requiredPhrases.length} grounding phrases)`);
+      console.log(`[PLAN_ONLY_GENERATOR] ⚠️ Clamped content from ${originalLength} to ${generatedContent.length} chars (preserved ${requiredPhrases.length} grounding phrases)`);
+      
+      // Re-verify grounding after clamp (phrases might have been cut off)
+      if (requiredPhrases.length > 0) {
+        const postClampCheck = verifyGroundingPhrases(generatedContent, requiredPhrases);
+        if (!postClampCheck.passed) {
+          console.warn(`[PLAN_ONLY_GENERATOR] ⚠️ Warning: Clamp may have removed required phrases. Matched: ${postClampCheck.matchedPhrases.join(', ') || 'none'}`);
+          // Don't fail here - clamp is best-effort preservation
+        }
+      }
     }
-    
-    console.log(`[PLAN_ONLY_GENERATOR] ✅ Generated content: ${generatedContent.length} chars in ${generationElapsed}ms`);
     
     // Persist generated content to base table
     const generatedAt = new Date().toISOString();
@@ -280,6 +351,8 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
       ...decisionFeatures,
       generated_by: 'mac_runner',
       generated_at: generatedAt,
+      grounding_phrases: requiredPhrases, // Store for proof reporting
+      grounding_phrases_matched: verifyGroundingPhrases(generatedContent, requiredPhrases).matchedPhrases,
     };
     
     const { error: updateError } = await supabase
