@@ -409,6 +409,40 @@ LIMIT 10;
 
 ---
 
+## Latency Calibration (Runtime Preflight Timeout)
+
+**Problem:** Runtime preflight checks timeout at 10s default, causing `runtime_preflight_status='timeout'` even when fetches would succeed with more time.
+
+**Root Cause:** Default timeout (10s) is too aggressive for slow network conditions or Twitter's response times.
+
+**Solution:** Increase timeout to 20s via `RUNTIME_PREFLIGHT_TIMEOUT_MS` env var.
+
+### Calibration Steps
+
+**Step 1: Update LaunchAgent plist**
+```bash
+# Edit ~/Library/LaunchAgents/com.xbot.executor.plist
+# Add under EnvironmentVariables:
+<key>RUNTIME_PREFLIGHT_TIMEOUT_MS</key>
+<string>20000</string>
+```
+
+**Step 2: Reload daemon**
+```bash
+launchctl stop com.xbot.executor
+launchctl unload ~/Library/LaunchAgents/com.xbot.executor.plist
+launchctl load ~/Library/LaunchAgents/com.xbot.executor.plist
+```
+
+**Step 3: Verify timeout in logs**
+```bash
+tail -f .runner-profile/executor.log | grep "RUNTIME_PREFLIGHT.*timeout_ms=20000"
+```
+
+**Note:** Timeout is clamped between 3s (min) and 20s (max) for safety. Default remains 10s if env var not set.
+
+---
+
 ## Parallel Ops Routine (Keep-It-Running)
 
 **Once auth is fixed and harvester works:**
