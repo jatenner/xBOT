@@ -399,16 +399,27 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
     }
   }
   
-  // Check for minimum substance indicators
-  // Reply should have at least one of: question mark, specific term, or action word
-  const hasQuestion = content.includes('?');
-  const hasActionWord = /\b(try|consider|check|notice|think|look|might|could|would|should)\b/i.test(content);
-  const hasSpecificTerm = /\b(mg|vitamin|protein|calories|hours?|minutes?|percent|%|study|research|data)\b/i.test(content);
-  
-  if (!hasQuestion && !hasActionWord && !hasSpecificTerm) {
-    guardResults.substance_gate = { pass: false, reason: 'lacks_substance_markers' };
-    console.log(`[SUBSTANCE_GATE] FAIL: lacks_substance_markers (no question, action word, or specific term)`);
-    return { pass: false, reason: 'substance_gate_no_markers', guard_results: guardResults };
+  // 🔒 PLAN_ONLY SKIP: Skip substance gate if content is still placeholder (content generation hasn't run yet)
+  const isPlaceholder = content.includes('[PLAN_ONLY') || content.includes('Pending Mac Runner execution');
+  if (isPlaceholder) {
+    console.log(`[SUBSTANCE_GATE] ⏭️ Skipping substance gate check - content is placeholder (PLAN_ONLY)`);
+    guardResults.substance_gate = { pass: true, reason: 'skipped_placeholder' };
+    // Don't return here - continue to other checks
+  } else {
+    // Check for minimum substance indicators
+    // Reply should have at least one of: question mark, specific term, or action word
+    const hasQuestion = content.includes('?');
+    const hasActionWord = /\b(try|consider|check|notice|think|look|might|could|would|should)\b/i.test(content);
+    const hasSpecificTerm = /\b(mg|vitamin|protein|calories|hours?|minutes?|percent|%|study|research|data)\b/i.test(content);
+    
+    if (!hasQuestion && !hasActionWord && !hasSpecificTerm) {
+      guardResults.substance_gate = { pass: false, reason: 'lacks_substance_markers' };
+      console.log(`[SUBSTANCE_GATE] FAIL: lacks_substance_markers (no question, action word, or specific term)`);
+      return { pass: false, reason: 'substance_gate_no_markers', guard_results: guardResults };
+    }
+    
+    guardResults.substance_gate = { pass: true, hasQuestion, hasActionWord, hasSpecificTerm };        
+    console.log(`[SUBSTANCE_GATE] pass=true question=${hasQuestion} action=${hasActionWord} specific=${hasSpecificTerm}`);
   }
   
   guardResults.substance_gate = { pass: true, hasQuestion, hasActionWord, hasSpecificTerm };        
