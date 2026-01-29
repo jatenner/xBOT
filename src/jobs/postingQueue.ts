@@ -937,11 +937,14 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
   
   try {
     const { verifyContextLock } = await import('../gates/contextLockVerifier');
+    // 🔒 PREFLIGHT PRIORITY: Pass preflight_status to lower threshold for 'ok' decisions
+    const preflightStatus = decisionFeatures.preflight_status;
     const contextVerification = await verifyContextLock(
       decision.target_tweet_id,
       decision.target_tweet_content_snapshot,
       decision.target_tweet_content_hash,
-      decision.target_tweet_content_prefix_hash // 🔒 TASK 2: Pass prefix hash for fallback matching
+      decision.target_tweet_content_prefix_hash, // 🔒 TASK 2: Pass prefix hash for fallback matching
+      preflightStatus // 🔒 PREFLIGHT PRIORITY: Lower threshold for 'ok' decisions
     );
     
     if (!contextVerification.pass) {
@@ -3006,14 +3009,56 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       replyQuery = replyQuery.eq('decision_id', controlledDecisionId);
     }
     
-    // For reply_v2_planner decisions, prefer newest-first ordering (already set above)
+    // 🔒 PREFLIGHT PRIORITY: Fetch all replies first, then prioritize by preflight_status
     const { data: replyPosts, error: replyError } = await replyQuery
-      .limit(10); // Get up to 10 replies
+      .limit(50); // Fetch more to allow sorting by preflight_status
+    
+    // 🔒 PREFLIGHT PRIORITY: Sort replies by preflight_status priority
+    // Priority order: 'ok' > 'skipped' > 'timeout' > others
+    const preflightPriority = (status: string | null | undefined): number => {
+      if (status === 'ok') return 1;
+      if (status === 'skipped') return 2;
+      if (status === 'timeout') return 3;
+      return 4; // Other statuses or null
+    };
+    
+    const sortedReplyPosts = (replyPosts || []).sort((a: any, b: any) => {
+      const featuresA = (a.features || {}) as Record<string, any>;
+      const featuresB = (b.features || {}) as Record<string, any>;
+      const statusA = featuresA.preflight_status;
+      const statusB = featuresB.preflight_status;
+      
+      const priorityA = preflightPriority(statusA);
+      const priorityB = preflightPriority(statusB);
+      
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB; // Lower priority number = higher priority
+      }
+      
+      // If same priority, prefer newer (created_at DESC)
+      const createdAtA = new Date(a.created_at || 0).getTime();
+      const createdAtB = new Date(b.created_at || 0).getTime();
+      return createdAtB - createdAtA;
+    });
+    
+    // 🔒 HARD GUARD: If preflight_status='ok' exists, ONLY process 'ok' decisions in this tick
+    const okDecisions = sortedReplyPosts.filter((d: any) => {
+      const features = (d.features || {}) as Record<string, any>;
+      return features.preflight_status === 'ok';
+    });
+    
+    const finalReplyPosts = okDecisions.length > 0 
+      ? okDecisions.slice(0, 10) // Only 'ok' decisions if any exist
+      : sortedReplyPosts.slice(0, 10); // Otherwise, use sorted list
+    
+    if (okDecisions.length > 0 && sortedReplyPosts.length > okDecisions.length) {
+      console.log(`[POSTING_QUEUE] 🔒 PREFLIGHT_GUARD: ${okDecisions.length} 'ok' decisions found, skipping ${sortedReplyPosts.length - okDecisions.length} 'timeout'/'skipped' decisions`);
+    }
     
     // 🔒 CERT MODE: Only include replies, exclude threads/singles
     const data = certMode 
-      ? [...(replyPosts || [])] // CERT MODE: Only replies
-      : [...(contentPosts || []), ...(replyPosts || [])]; // Normal mode: content + replies
+      ? [...(finalReplyPosts || [])] // CERT MODE: Only replies
+      : [...(contentPosts || []), ...(finalReplyPosts || [])]; // Normal mode: content + replies
     const error = certMode ? replyError : (contentError || replyError);
     
     // 🔒 CERT MODE: Filter out any non-reply decisions that slipped through

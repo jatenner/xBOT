@@ -258,9 +258,15 @@ export async function verifyContextLock(
   targetTweetId: string,
   targetTweetContentSnapshot: string,
   targetTweetContentHash: string,
-  targetTweetContentPrefixHash?: string // 🔒 TASK 2: Optional prefix hash for fallback matching
+  targetTweetContentPrefixHash?: string, // 🔒 TASK 2: Optional prefix hash for fallback matching
+  preflightStatus?: string // 🔒 PREFLIGHT PRIORITY: Lower threshold for 'ok' decisions
 ): Promise<VerificationResult> {
-  console.log(`[CONTEXT_LOCK_VERIFY] 🔍 Verifying context lock for tweet ${targetTweetId}`);
+  console.log(`[CONTEXT_LOCK_VERIFY] 🔍 Verifying context lock for tweet ${targetTweetId}${preflightStatus ? ` (preflight_status=${preflightStatus})` : ''}`);
+  
+  // 🔒 PREFLIGHT PRIORITY: Lower similarity threshold for preflight_status='ok' decisions
+  const effectiveThreshold = preflightStatus === 'ok' 
+    ? 0.35 // Lower threshold for verified tweets
+    : CONTEXT_LOCK_MIN_SIMILARITY; // Default threshold
 
   // Check if verification is enabled
   if (!CONTEXT_LOCK_VERIFY_ENABLED) {
@@ -396,11 +402,11 @@ export async function verifyContextLock(
     const similarity = computeTextSimilarity(normalizedFetchedText, normalizedSnapshot);
     
     console.log(
-      `[CONTEXT_LOCK_VERIFY] 📊 Content similarity: ${similarity.toFixed(3)} (threshold: ${CONTEXT_LOCK_MIN_SIMILARITY})`
+      `[CONTEXT_LOCK_VERIFY] 📊 Content similarity: ${similarity.toFixed(3)} (threshold: ${effectiveThreshold})`
     );
     
-    // 🔒 TASK 3: Similarity fallback check
-    if (similarity >= CONTEXT_LOCK_MIN_SIMILARITY) {
+    // 🔒 TASK 3: Similarity fallback check (use effective threshold)
+    if (similarity >= effectiveThreshold) {
       console.log(`[CONTEXT_LOCK_VERIFY] ✅ Similarity fallback passed for ${targetTweetId}`);
       
       // 🔒 TASK 4: Emit hash_mismatch_similarity_pass event
@@ -414,7 +420,7 @@ export async function verifyContextLock(
           live_hash: liveHash.substring(0, 32),
           snapshot_hash: targetTweetContentHash.substring(0, 32),
           similarity: similarity,
-          threshold: CONTEXT_LOCK_MIN_SIMILARITY,
+          threshold: effectiveThreshold,
           normalized_length: normalizedFetchedText.length,
           snapshot_length: normalizedSnapshot.length,
         },

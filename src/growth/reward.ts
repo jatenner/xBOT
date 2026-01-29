@@ -22,6 +22,10 @@ export interface EngagementMetrics {
   bookmarks?: number;
   impressions?: number;
   views?: number; // Alias for impressions
+  follower_delta_1h?: number; // 🔒 FOLLOWER GROWTH: Follower delta in last 1 hour
+  follower_delta_6h?: number; // 🔒 FOLLOWER GROWTH: Follower delta in last 6 hours
+  follower_delta_24h?: number; // 🔒 FOLLOWER GROWTH: Follower delta in last 24 hours
+  profile_clicks?: number; // 🔒 FOLLOWER GROWTH: Profile clicks (if available)
 }
 
 /**
@@ -60,6 +64,12 @@ export function computeReward(metrics: EngagementMetrics): number {
     reposts * weightReposts +
     bookmarks * weightBookmarks;
   
+  // 🔒 FOLLOWER GROWTH: Add follower_delta reward (dominant signal)
+  // Use 24h delta if available, otherwise 6h, otherwise 1h
+  const followerDelta = metrics.follower_delta_24h || metrics.follower_delta_6h || metrics.follower_delta_1h || 0;
+  const followerReward = followerDelta * 5.0; // Dominant signal: 5x multiplier
+  reward += followerReward;
+  
   // Normalize by impressions if available
   if (impressions > 0) {
     reward = reward / Math.sqrt(impressions);
@@ -81,6 +91,10 @@ export function formatRewardForStorage(reward: number, metrics: EngagementMetric
       reposts: metrics.reposts || metrics.retweets || 0,
       bookmarks: metrics.bookmarks || 0,
       impressions: metrics.impressions || metrics.views || 0,
+      follower_delta_1h: metrics.follower_delta_1h || null,
+      follower_delta_6h: metrics.follower_delta_6h || null,
+      follower_delta_24h: metrics.follower_delta_24h || null,
+      profile_clicks: metrics.profile_clicks || null,
     },
     reward_computed_at: new Date().toISOString(),
   };

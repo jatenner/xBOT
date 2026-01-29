@@ -182,18 +182,12 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
       throw new Error('Generated content is empty');
     }
     
-    // 🔒 LENGTH FIX: Truncate if >220 chars (adapter may not enforce strictly)
-    const MAX_REPLY_LENGTH = 220;
+    // 🔒 HARD LENGTH CAP: Fail early if >200 chars (NOT post-hoc truncation)
+    const MAX_REPLY_LENGTH = parseInt(process.env.MAX_REPLY_LENGTH || '200', 10); // Default 200 for safety
     if (generatedContent.length > MAX_REPLY_LENGTH) {
-      console.warn(`[PLAN_ONLY_GENERATOR] ⚠️ Generated content too long (${generatedContent.length} chars), truncating to ${MAX_REPLY_LENGTH}...`);
-      // Truncate at word boundary
-      let truncated = generatedContent.substring(0, MAX_REPLY_LENGTH - 3);
-      const lastSpace = truncated.lastIndexOf(' ');
-      if (lastSpace > MAX_REPLY_LENGTH - 20) {
-        truncated = truncated.substring(0, lastSpace);
-      }
-      generatedContent = truncated.trim() + '...';
-      console.log(`[PLAN_ONLY_GENERATOR] ✅ Truncated to ${generatedContent.length} chars`);
+      const errorMsg = `Generated content exceeds hard cap: ${generatedContent.length} chars > ${MAX_REPLY_LENGTH} chars`;
+      console.error(`[PLAN_ONLY_GENERATOR] ❌ ${errorMsg}`);
+      throw new Error(`Invalid reply: too long (>${MAX_REPLY_LENGTH} chars)`);
     }
     
     console.log(`[PLAN_ONLY_GENERATOR] ✅ Generated content: ${generatedContent.length} chars in ${generationElapsed}ms`);

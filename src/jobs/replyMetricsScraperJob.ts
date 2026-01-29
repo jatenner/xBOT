@@ -356,7 +356,13 @@ export async function replyMetricsScraperJob(): Promise<void> {
             const strategyId = reservationFeatures.strategy_id || 'baseline';
             const strategyVersion = String(reservationFeatures.strategy_version || '1');
             
-            // Compute reward from engagement metrics
+            // 🔒 FOLLOWER GROWTH: Extract follower_delta from features (if tracked)
+            const followerDelta24h = reservationFeatures.follower_delta_24h || null;
+            const followerDelta6h = reservationFeatures.follower_delta_6h || null;
+            const followerDelta1h = reservationFeatures.follower_delta_1h || null;
+            const profileClicks = reservationFeatures.profile_clicks || null;
+            
+            // Compute reward from engagement metrics (with follower shaping)
             reward = computeReward({
               likes: metrics.likes || 0,
               replies: metrics.replies || 0,
@@ -364,14 +370,22 @@ export async function replyMetricsScraperJob(): Promise<void> {
               retweets: metrics.retweets || 0,
               bookmarks: 0, // Not available in current metrics
               impressions: metrics.views || 0,
+              follower_delta_1h: followerDelta1h || undefined,
+              follower_delta_6h: followerDelta6h || undefined,
+              follower_delta_24h: followerDelta24h || undefined,
+              profile_clicks: profileClicks || undefined,
             });
             
-            // Format reward for storage
+            // Format reward for storage (includes follower telemetry)
             rewardData = formatRewardForStorage(reward, {
               likes: metrics.likes || 0,
               replies: metrics.replies || 0,
               reposts: metrics.retweets || 0,
               impressions: metrics.views || 0,
+              follower_delta_1h: followerDelta1h || undefined,
+              follower_delta_6h: followerDelta6h || undefined,
+              follower_delta_24h: followerDelta24h || undefined,
+              profile_clicks: profileClicks || undefined,
             });
             
             // Record reward in strategy_rewards table
