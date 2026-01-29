@@ -112,7 +112,20 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
       page = await pool.withContext(
         'context_verifier',
         async (context) => {
-          return await context.newPage();
+          const newPage = await context.newPage();
+          
+          // 🔥 OPTIMIZATION: Block heavy resources to speed up runtime preflight
+          // Images, media, fonts, stylesheets are not needed for tweet existence check
+          await newPage.route('**/*', (route: any) => {
+            const resourceType = route.request().resourceType();
+            if (['image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
+              route.abort();
+            } else {
+              route.continue();
+            }
+          });
+          
+          return newPage;
         },
         1 // Priority 1 (same as posting) - critical for runtime preflight
       );
@@ -123,38 +136,92 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
 
     await page.goto(tweetUrl, {
       waitUntil: 'domcontentloaded',
-      timeout: 12000 // 12s timeout (reduced from 15s)
+      timeout: 10000 // Reduced from 12s - faster timeout with resource blocking
     });
 
-    // Wait for shell indicators first (faster than tweet article)
-    const shellOrTweet = await Promise.race([
-      page.waitForSelector('nav[role="navigation"]', { timeout: 5000 }).then(() => 'shell').catch(() => null),
-      page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 5000 }).then(() => 'shell').catch(() => null),
-      page.waitForSelector('article[data-testid="tweet"]', { timeout: 8000 }).then(() => 'tweet').catch(() => null),
-      new Promise(resolve => setTimeout(() => resolve(null), 9000)), // Fallback timeout
-    ]).catch(() => null);
+    // 🔥 OPTIMIZED: Faster detection strategy - check tweet first, then shell
+    // Most tweets load faster than shell navigation, so prioritize tweet detection
+    const detectionStart = Date.now();
+    let shellOrTweet: string | null = null;
     
-    if (!shellOrTweet) {
-      // Shell present but tweet missing - try reload once
-      console.warn(`[CONTEXT_LOCK_VERIFY] ⚠️ Shell present but tweet missing for ${targetTweetId}, attempting reload...`);
-      await page.reload({ waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {});
-      await page.waitForTimeout(2000);
-    }
-    
-    // Wait for tweet article to load (with shorter timeout)
     try {
-      await page.waitForSelector('article[data-testid="tweet"]', { timeout: 8000 });
-    } catch (waitError: any) {
-      // Check if shell is present but tweet is missing
-      const hasShell = await page.$('nav[role="navigation"]').catch(() => null);
-      if (hasShell) {
-        console.warn(`[CONTEXT_LOCK_VERIFY] ⚠️ Shell present but tweet article not found for ${targetTweetId} - returning NO_CONTENT_DETECTED`);
-        return null; // Treat as NO_CONTENT_DETECTED, not consent wall
+      // Try tweet first (most common success case)
+      await page.waitForSelector('article[data-testid="tweet"]', { timeout: 6000 });
+      shellOrTweet = 'tweet';
+    } catch {
+      // Tweet not found - check for shell (might be auth wall or deleted)
+      try {
+        await Promise.race([
+          page.waitForSelector('nav[role="navigation"]', { timeout: 3000 }).then(() => 'shell'),
+          page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 3000 }).then(() => 'shell'),
+        ]);
+        shellOrTweet = 'shell';
+      } catch {
+        // Neither found - might be loading or error page
+        shellOrTweet = null;
       }
-      throw waitError;
     }
     
-    await page.waitForTimeout(1000); // Reduced from 2s - let content stabilize
+    const detectionLatency = Date.now() - detectionStart;
+    
+    if (!shellOrTweet || shellOrTweet === 'shell') {
+      // Shell present but tweet missing - try reload once (might be slow load)
+      if (shellOrTweet === 'shell') {
+        console.warn(`[CONTEXT_LOCK_VERIFY] ⚠️ Shell present but tweet missing for ${targetTweetId}, attempting reload...`);
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 6000 }).catch(() => {});
+        await page.waitForTimeout(1500); // Reduced wait
+        
+        // Try tweet again after reload
+        try {
+          await page.waitForSelector('article[data-testid="tweet"]', { timeout: 6000 });
+          shellOrTweet = 'tweet';
+        } catch {
+          // Still no tweet - check page content for deletion/auth indicators
+          const pageContent = await page.content().catch(() => '');
+          const pageTitle = await page.title().catch(() => '');
+          const pageUrl = page.url();
+          
+          // Debug logging for deleted/timeout cases
+          const hasDeletedText = pageContent.includes('This Post is unavailable') || 
+                                pageContent.includes('Post is unavailable') ||
+                                pageContent.includes('Something went wrong');
+          const hasLoginWall = pageContent.includes('Log in') || 
+                             pageTitle.toLowerCase().includes('log in') ||
+                             pageUrl.includes('/i/flow/login');
+          
+          console.warn(`[CONTEXT_LOCK_VERIFY] 🔍 DEBUG deleted detection for ${targetTweetId}:`);
+          console.warn(`  detection_latency_ms=${detectionLatency}`);
+          console.warn(`  page_url=${pageUrl}`);
+          console.warn(`  page_title=${pageTitle.substring(0, 100)}`);
+          console.warn(`  has_deleted_text=${hasDeletedText}`);
+          console.warn(`  has_login_wall=${hasLoginWall}`);
+          
+          // Save debug screenshot for deleted cases
+          try {
+            const fs = require('fs');
+            const path = require('path');
+            const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'debug');
+            if (!fs.existsSync(debugDir)) {
+              fs.mkdirSync(debugDir, { recursive: true });
+            }
+            await page.screenshot({ 
+              path: path.join(debugDir, `deleted_${targetTweetId}_${Date.now()}.png`),
+              fullPage: false
+            }).catch(() => {});
+          } catch (e) {
+            // Ignore screenshot errors
+          }
+          
+          return null; // Treat as deleted/unavailable
+        }
+      } else {
+        // No shell, no tweet - likely error page or timeout
+        return null;
+      }
+    }
+    
+    // Tweet found - minimal wait for content stabilization
+    await page.waitForTimeout(500); // Reduced from 1000ms
 
     // Handle "Show more" button if present
     try {
@@ -200,20 +267,25 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
     if (!tweetText || tweetText.trim().length < 10) {
       console.warn(`[CONTEXT_LOCK_VERIFY] ⚠️ Could not extract tweet text for ${targetTweetId} (length=${tweetText?.length || 0})`);
       
-      // Save debug artifacts in CDP mode
-      if (process.env.RUNNER_MODE === 'true' && process.env.RUNNER_BROWSER === 'cdp') {
+      // Save debug artifacts for all modes (not just CDP)
+      try {
         const fs = require('fs');
         const path = require('path');
-        const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'harvest_debug');
+        const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'debug');
         if (!fs.existsSync(debugDir)) {
           fs.mkdirSync(debugDir, { recursive: true });
         }
         
-        await page.screenshot({ path: path.join(debugDir, `${targetTweetId}_no_content.png`) }).catch(() => {});
+        await page.screenshot({ 
+          path: path.join(debugDir, `no_content_${targetTweetId}_${Date.now()}.png`),
+          fullPage: false
+        }).catch(() => {});
         const html = await page.content().catch(() => '');
         if (html) {
-          fs.writeFileSync(path.join(debugDir, `${targetTweetId}_no_content.html`), html);
+          fs.writeFileSync(path.join(debugDir, `no_content_${targetTweetId}_${Date.now()}.html`), html);
         }
+      } catch (e) {
+        // Ignore debug save errors
       }
       
       return null;
