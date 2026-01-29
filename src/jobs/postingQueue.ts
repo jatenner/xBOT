@@ -4661,10 +4661,15 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             try {
               const { fetchTweetData } = await import('../gates/contextLockVerifier');
               
-              // Short timeout for runtime preflight (6s)
+              // 🔒 CONFIGURABLE TIMEOUT: Runtime preflight timeout via env var (default 10s, clamped 3-20s)
+              const rawTimeout = parseInt(process.env.RUNTIME_PREFLIGHT_TIMEOUT_MS || '10000', 10);
+              const runtimePreflightTimeoutMs = isNaN(rawTimeout) 
+                ? 10000 
+                : Math.max(3000, Math.min(20000, rawTimeout));
+              
               const fetchPromise = fetchTweetData(decision.target_tweet_id);
               const timeoutPromise = new Promise<null>((_, reject) => 
-                setTimeout(() => reject(new Error('timeout')), 6000)
+                setTimeout(() => reject(new Error('timeout')), runtimePreflightTimeoutMs)
               );
               
               const tweetData = await Promise.race([fetchPromise, timeoutPromise]);
@@ -4693,14 +4698,15 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               }
               
               // Tweet exists and is accessible (protected check handled by context lock verifier)
-              console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=ok latency_ms=${runtimePreflightLatency}`);
+              console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=ok latency_ms=${runtimePreflightLatency} timeout_ms=${runtimePreflightTimeoutMs}`);
               await supabase.from('content_generation_metadata_comprehensive')
                 .update({
                   features: {
                     ...decisionFeatures,
                     runtime_preflight_status: 'ok',
                     runtime_preflight_checked_at: new Date().toISOString(),
-                    runtime_preflight_latency_ms: runtimePreflightLatency
+                    runtime_preflight_latency_ms: runtimePreflightLatency,
+                    runtime_preflight_timeout_ms: runtimePreflightTimeoutMs
                   }
                 })
                 .eq('decision_id', decision.id);
@@ -4709,13 +4715,18 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               decisionFeatures.runtime_preflight_status = 'ok';
               decisionFeatures.runtime_preflight_checked_at = new Date().toISOString();
               decisionFeatures.runtime_preflight_latency_ms = runtimePreflightLatency;
+              decisionFeatures.runtime_preflight_timeout_ms = runtimePreflightTimeoutMs;
               
             } catch (preflightError: any) {
               const runtimePreflightLatency = Date.now() - runtimePreflightStart;
+              const rawTimeout = parseInt(process.env.RUNTIME_PREFLIGHT_TIMEOUT_MS || '10000', 10);
+              const runtimePreflightTimeoutMs = isNaN(rawTimeout) 
+                ? 10000 
+                : Math.max(3000, Math.min(20000, rawTimeout));
               const isTimeout = preflightError.message === 'timeout';
               const status = isTimeout ? 'timeout' : 'error';
               
-              console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=${status} latency_ms=${runtimePreflightLatency} error=${preflightError.message}`);
+              console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=${status} latency_ms=${runtimePreflightLatency} timeout_ms=${runtimePreflightTimeoutMs} error=${preflightError.message}`);
               
               // 🔒 PROVING PHASE: Strict OK-only gating - block all non-ok statuses
               const finalStatus = isTimeout ? 'blocked' : 'blocked_permanent';
@@ -4726,6 +4737,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
                     stale_reason: `runtime_preflight_${status}`,
                     runtime_preflight_status: status,
                     runtime_preflight_latency_ms: runtimePreflightLatency,
+                    runtime_preflight_timeout_ms: runtimePreflightTimeoutMs,
                     error: preflightError.message,
                     proving_phase: 'ok_only_gating'
                   }),
@@ -4733,7 +4745,8 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
                     ...decisionFeatures,
                     runtime_preflight_status: status,
                     runtime_preflight_checked_at: new Date().toISOString(),
-                    runtime_preflight_latency_ms: runtimePreflightLatency
+                    runtime_preflight_latency_ms: runtimePreflightLatency,
+                    runtime_preflight_timeout_ms: runtimePreflightTimeoutMs
                   }
                 })
                 .eq('decision_id', decision.id);
