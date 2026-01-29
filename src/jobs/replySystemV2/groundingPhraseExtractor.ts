@@ -154,8 +154,25 @@ export function normalizeForGrounding(text: string): string {
 }
 
 /**
- * Check if reply contains at least 2 of the required grounding phrases
- * Uses normalized comparison to handle smart quotes, apostrophes, whitespace
+ * Extract tokens (words >= 4 chars) from text for overlap matching
+ */
+function extractTokens(text: string): Set<string> {
+  const normalized = normalizeForGrounding(text);
+  const tokens = normalized
+    .split(/\s+/)
+    .map(t => t.replace(/[^\w]/g, '')) // Remove punctuation
+    .filter(t => t.length >= 4); // Only tokens >= 4 chars
+  return new Set(tokens);
+}
+
+/**
+ * Check if reply contains at least 2 of the required grounding phrases OR sufficient token overlap
+ * Uses normalized comparison + token overlap for robustness
+ * 
+ * Rules:
+ * - 2+ exact phrase matches (case-insensitive, punctuation-normalized) OR
+ * - 1 exact phrase + 2+ token overlaps (tokens >= 4 chars) OR
+ * - 4+ token overlaps (if no exact phrases)
  */
 export function verifyGroundingPhrases(replyText: string, requiredPhrases: string[]): {
   passed: boolean;
@@ -167,9 +184,11 @@ export function verifyGroundingPhrases(replyText: string, requiredPhrases: strin
   }
   
   const replyNormalized = normalizeForGrounding(replyText);
+  const replyTokens = extractTokens(replyText);
   const matchedPhrases: string[] = [];
   const missingPhrases: string[] = [];
   
+  // Check exact phrase matches
   for (const phrase of requiredPhrases) {
     const phraseNormalized = normalizeForGrounding(phrase);
     if (replyNormalized.includes(phraseNormalized)) {
@@ -179,9 +198,39 @@ export function verifyGroundingPhrases(replyText: string, requiredPhrases: strin
     }
   }
   
-  // Require at least 2 phrases to match (or 1 if only 1 phrase available)
-  const minRequired = requiredPhrases.length === 1 ? 1 : 2;
-  const passed = matchedPhrases.length >= minRequired;
+  // Extract tokens from all required phrases for overlap check
+  const allRequiredTokens = new Set<string>();
+  for (const phrase of requiredPhrases) {
+    const phraseTokens = extractTokens(phrase);
+    phraseTokens.forEach(t => allRequiredTokens.add(t));
+  }
   
-  return { passed, matchedPhrases, missingPhrases };
+  // Count token overlaps (tokens that appear in both reply and required phrases)
+  const tokenOverlaps = Array.from(replyTokens).filter(t => allRequiredTokens.has(t));
+  const tokenOverlapCount = tokenOverlaps.length;
+  
+  // Determine if grounding passes
+  // Rule 1: 2+ exact phrase matches (or 1 if only 1 phrase available)
+  const minRequiredPhrases = requiredPhrases.length === 1 ? 1 : 2;
+  if (matchedPhrases.length >= minRequiredPhrases) {
+    return { passed: true, matchedPhrases, missingPhrases };
+  }
+  
+  // Rule 2: 1 exact phrase + 2+ token overlaps
+  if (matchedPhrases.length >= 1 && tokenOverlapCount >= 2) {
+    return { passed: true, matchedPhrases, missingPhrases };
+  }
+  
+  // Rule 3: 4+ token overlaps (if no exact phrases, require more tokens)
+  if (matchedPhrases.length === 0 && tokenOverlapCount >= 4) {
+    return { passed: true, matchedPhrases, missingPhrases };
+  }
+  
+  // Rule 4: 3+ token overlaps if we have 1 phrase match (relaxed for edge cases)
+  if (matchedPhrases.length >= 1 && tokenOverlapCount >= 3) {
+    return { passed: true, matchedPhrases, missingPhrases };
+  }
+  
+  // Failed: insufficient grounding
+  return { passed: false, matchedPhrases, missingPhrases };
 }

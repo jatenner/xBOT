@@ -133,32 +133,43 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
       );
     }
 
+    const totalStart = Date.now();
     const tweetUrl = `https://x.com/i/status/${targetTweetId}`;
     console.log(`[CONTEXT_LOCK_VERIFY] 🌐 Navigating to ${tweetUrl}`);
 
+    const navStart = Date.now();
     await page.goto(tweetUrl, {
       waitUntil: 'domcontentloaded',
-      timeout: 10000 // Reduced from 12s - faster timeout with resource blocking
+      timeout: 8000 // Reduced from 10s - faster timeout with resource blocking
     });
+    const navMs = Date.now() - navStart;
 
     // 🔥 OPTIMIZED: Faster detection strategy - check tweet first, then shell
     // Most tweets load faster than shell navigation, so prioritize tweet detection
     const detectionStart = Date.now();
     let shellOrTweet: string | null = null;
+    let tweetSelectorMs = 0;
+    let shellMs = 0;
     
     try {
       // Try tweet first (most common success case)
-      await page.waitForSelector('article[data-testid="tweet"]', { timeout: 6000 });
+      const tweetSelectorStart = Date.now();
+      await page.waitForSelector('article[data-testid="tweet"]', { timeout: 5000 }); // Reduced from 6s
+      tweetSelectorMs = Date.now() - tweetSelectorStart;
       shellOrTweet = 'tweet';
     } catch {
+      tweetSelectorMs = Date.now() - detectionStart;
       // Tweet not found - check for shell (might be auth wall or deleted)
       try {
+        const shellStart = Date.now();
         await Promise.race([
-          page.waitForSelector('nav[role="navigation"]', { timeout: 3000 }).then(() => 'shell'),
-          page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 3000 }).then(() => 'shell'),
+          page.waitForSelector('nav[role="navigation"]', { timeout: 2000 }).then(() => 'shell'), // Reduced from 3s
+          page.waitForSelector('[data-testid="SideNav_NewTweet_Button"]', { timeout: 2000 }).then(() => 'shell'),
         ]);
+        shellMs = Date.now() - shellStart;
         shellOrTweet = 'shell';
       } catch {
+        shellMs = Date.now() - detectionStart - tweetSelectorMs;
         // Neither found - might be loading or error page
         shellOrTweet = null;
       }
@@ -166,16 +177,19 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
     
     const detectionLatency = Date.now() - detectionStart;
     
+    let reloadMs = 0;
     if (!shellOrTweet || shellOrTweet === 'shell') {
       // Shell present but tweet missing - try reload once (might be slow load)
       if (shellOrTweet === 'shell') {
         console.warn(`[CONTEXT_LOCK_VERIFY] ⚠️ Shell present but tweet missing for ${targetTweetId}, attempting reload...`);
-        await page.reload({ waitUntil: 'domcontentloaded', timeout: 6000 }).catch(() => {});
-        await page.waitForTimeout(1500); // Reduced wait
+        const reloadStart = Date.now();
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 5000 }).catch(() => {}); // Reduced from 6s
+        await page.waitForTimeout(1000); // Reduced from 1500ms
+        reloadMs = Date.now() - reloadStart;
         
         // Try tweet again after reload
         try {
-          await page.waitForSelector('article[data-testid="tweet"]', { timeout: 6000 });
+          await page.waitForSelector('article[data-testid="tweet"]', { timeout: 5000 }); // Reduced from 6s
           shellOrTweet = 'tweet';
         } catch {
           // Still no tweet - check page content for deletion/auth indicators
@@ -259,15 +273,22 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
     }
     
     // Tweet found - minimal wait for content stabilization
-    await page.waitForTimeout(500); // Reduced from 1000ms
+    const stabilizationStart = Date.now();
+    await page.waitForTimeout(300); // Reduced from 500ms
+    const stabilizationMs = Date.now() - stabilizationStart;
 
-    // Handle "Show more" button if present
+    // Handle "Show more" button if present (non-blocking, don't wait if slow)
     try {
-      const showMoreButton = await page.$('article[data-testid="tweet"] span:has-text("Show more")').catch(() => null);
+      const showMoreStart = Date.now();
+      const showMoreButton = await Promise.race([
+        page.$('article[data-testid="tweet"] span:has-text("Show more")'),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)) // Max 500ms wait
+      ]).catch(() => null);
       if (showMoreButton) {
         await showMoreButton.click().catch(() => {});
-        await page.waitForTimeout(1000); // Wait for expansion
+        await page.waitForTimeout(500); // Reduced from 1000ms
       }
+      const showMoreMs = Date.now() - showMoreStart;
     } catch (e) {
       // Ignore show more errors
     }
@@ -339,6 +360,8 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
       })
       .catch(() => false);
 
+    const totalMs = Date.now() - totalStart;
+    console.log(`[PREFLIGHT_TIMING] decision_id=${targetTweetId} nav_ms=${navMs} tweet_selector_ms=${tweetSelectorMs} shell_ms=${shellMs} reload_ms=${reloadMs} stabilization_ms=${stabilizationMs || 0} total_ms=${totalMs}`);
     console.log(`[CONTEXT_LOCK_VERIFY] ✅ Fetched tweet: length=${tweetText.length}, isReply=${isReply}`);
 
     return {
