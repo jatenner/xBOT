@@ -105,9 +105,17 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
       }
     } else {
       // Use browser pool on Railway
+      // 🔥 FIX: Use priority 1 (same as posting) so context_verifier is not dropped when queue is deep
+      // Runtime preflight is critical for posting decisions - must not be starved
       const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
       const pool = UnifiedBrowserPool.getInstance();
-      page = await pool.acquirePage('context_verifier');
+      page = await pool.withContext(
+        'context_verifier',
+        async (context) => {
+          return await context.newPage();
+        },
+        1 // Priority 1 (same as posting) - critical for runtime preflight
+      );
     }
 
     const tweetUrl = `https://x.com/i/status/${targetTweetId}`;
