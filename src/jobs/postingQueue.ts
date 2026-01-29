@@ -252,9 +252,11 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
           .eq('decision_id', decisionId)
           .maybeSingle();
         comprehensivePipelineSource = comprehensiveMeta?.pipeline_source || null;
+        console.log(`[ROOT_CHECK] 🔍 Checked comprehensive table for ${decisionId}: pipeline_source=${comprehensivePipelineSource || 'null'}`);
       }
       
       const pipelineSource = decision.pipeline_source || decisionMeta?.pipeline_source || comprehensivePipelineSource;
+      console.log(`[ROOT_CHECK] 🔍 Resolved pipeline_source for ${decisionId}: decision=${decision.pipeline_source || 'null'} metadata=${decisionMeta?.pipeline_source || 'null'} comprehensive=${comprehensivePipelineSource || 'null'} final=${pipelineSource || 'null'}`);
       const decisionFeatures = (decision.features || decisionMeta?.features || {}) as Record<string, any>;
       const proofTag = decisionFeatures.proof_tag;
       const isProofDecision = proofTag && String(proofTag).startsWith('control-reply-');
