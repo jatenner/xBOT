@@ -7,6 +7,77 @@
 
 import { getSupabaseClient } from '../../db/index';
 
+/**
+ * Clamp reply length while preserving required grounding phrases
+ * Ensures reply never exceeds maxLen and always includes required phrases
+ */
+function clampReplyLengthPreserveGrounding(
+  content: string,
+  maxLen: number,
+  requiredPhrases: string[]
+): string {
+  if (content.length <= maxLen) {
+    return content;
+  }
+  
+  // If content is too long, try to truncate at word boundary while preserving phrases
+  const contentLower = content.toLowerCase();
+  const phrasePositions: Array<{ phrase: string; start: number; end: number }> = [];
+  
+  // Find positions of required phrases
+  for (const phrase of requiredPhrases) {
+    if (phrase.length < 3) continue; // Skip very short phrases
+    const phraseLower = phrase.toLowerCase();
+    const index = contentLower.indexOf(phraseLower);
+    if (index >= 0) {
+      phrasePositions.push({
+        phrase,
+        start: index,
+        end: index + phrase.length
+      });
+    }
+  }
+  
+  // Sort by position
+  phrasePositions.sort((a, b) => a.start - b.start);
+  
+  // If we have phrases, try to keep them
+  if (phrasePositions.length > 0) {
+    const lastPhraseEnd = phrasePositions[phrasePositions.length - 1].end;
+    
+    // If last phrase is within maxLen, truncate after it
+    if (lastPhraseEnd <= maxLen - 10) { // Leave room for ellipsis
+      const truncated = content.substring(0, maxLen - 3);
+      const lastSpace = truncated.lastIndexOf(' ');
+      if (lastSpace > lastPhraseEnd) {
+        return truncated.substring(0, lastSpace).trim() + '...';
+      }
+      return truncated.trim() + '...';
+    }
+    
+    // If last phrase is beyond maxLen, try to include at least first phrase
+    const firstPhraseEnd = phrasePositions[0].end;
+    if (firstPhraseEnd <= maxLen - 10) {
+      const truncated = content.substring(0, maxLen - 3);
+      const lastSpace = truncated.lastIndexOf(' ');
+      if (lastSpace > firstPhraseEnd) {
+        return truncated.substring(0, lastSpace).trim() + '...';
+      }
+      return truncated.trim() + '...';
+    }
+  }
+  
+  // Fallback: truncate at word boundary
+  const truncated = content.substring(0, maxLen - 3);
+  const lastSpace = truncated.lastIndexOf(' ');
+  if (lastSpace > maxLen * 0.7) { // Only use word boundary if it's not too early
+    return truncated.substring(0, lastSpace).trim() + '...';
+  }
+  
+  // Last resort: hard truncate
+  return truncated.trim() + '...';
+}
+
 export interface PlanOnlyGenerationResult {
   success: boolean;
   content?: string;
@@ -182,12 +253,23 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
       throw new Error('Generated content is empty');
     }
     
-    // 🔒 HARD LENGTH CAP: Fail early if >200 chars (NOT post-hoc truncation)
+    // 🔒 HARD LENGTH CLAMP: Enforce MAX_REPLY_LENGTH with grounding preservation
     const MAX_REPLY_LENGTH = parseInt(process.env.MAX_REPLY_LENGTH || '200', 10); // Default 200 for safety
+    
     if (generatedContent.length > MAX_REPLY_LENGTH) {
-      const errorMsg = `Generated content exceeds hard cap: ${generatedContent.length} chars > ${MAX_REPLY_LENGTH} chars`;
-      console.error(`[PLAN_ONLY_GENERATOR] ❌ ${errorMsg}`);
-      throw new Error(`Invalid reply: too long (>${MAX_REPLY_LENGTH} chars)`);
+      // Extract key phrases from target tweet for grounding preservation
+      const { extractKeywords } = await import('../../gates/ReplyQualityGate');
+      const keyPhrases = extractKeywords(targetTweetContent);
+      const requiredPhrases = keyPhrases.slice(0, 4); // Keep top 4 phrases
+      
+      // Clamp while preserving grounding
+      generatedContent = clampReplyLengthPreserveGrounding(
+        generatedContent,
+        MAX_REPLY_LENGTH,
+        requiredPhrases
+      );
+      
+      console.log(`[PLAN_ONLY_GENERATOR] ⚠️ Clamped content from ${replyResult.content.length} to ${generatedContent.length} chars (preserved ${requiredPhrases.length} grounding phrases)`);
     }
     
     console.log(`[PLAN_ONLY_GENERATOR] ✅ Generated content: ${generatedContent.length} chars in ${generationElapsed}ms`);

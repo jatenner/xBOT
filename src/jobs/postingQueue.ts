@@ -4581,6 +4581,119 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           // End of single/thread block
         } else if (decision.decision_type === 'reply') {
           // ═══════════════════════════════════════════════════════════════════════
+          // 🔒 RUNTIME PREFLIGHT CHECK - JIT verification for reply_v2_planner decisions
+          // ═══════════════════════════════════════════════════════════════════════
+          const isPlannerDecision = pipelineSource === 'reply_v2_planner' || decisionFeatures.plan_mode === 'railway';
+          const isRunnerMode = process.env.RUNNER_MODE === 'true';
+          
+          if (isPlannerDecision && isRunnerMode && decision.target_tweet_id) {
+            const runtimePreflightStart = Date.now();
+            try {
+              const { fetchTweetData } = await import('../gates/contextLockVerifier');
+              
+              // Short timeout for runtime preflight (6s)
+              const fetchPromise = fetchTweetData(decision.target_tweet_id);
+              const timeoutPromise = new Promise<null>((_, reject) => 
+                setTimeout(() => reject(new Error('timeout')), 6000)
+              );
+              
+              const tweetData = await Promise.race([fetchPromise, timeoutPromise]);
+              const runtimePreflightLatency = Date.now() - runtimePreflightStart;
+              
+              if (!tweetData) {
+                // Tweet deleted/not found
+                console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=deleted latency_ms=${runtimePreflightLatency}`);
+                await supabase.from('content_generation_metadata_comprehensive')
+                  .update({
+                    status: 'blocked_permanent',
+                    error_message: JSON.stringify({
+                      stale_reason: 'target_not_found_or_deleted_runtime',
+                      runtime_preflight_status: 'deleted',
+                      runtime_preflight_latency_ms: runtimePreflightLatency
+                    }),
+                    features: {
+                      ...decisionFeatures,
+                      runtime_preflight_status: 'deleted',
+                      runtime_preflight_checked_at: new Date().toISOString(),
+                      runtime_preflight_latency_ms: runtimePreflightLatency
+                    }
+                  })
+                  .eq('decision_id', decision.id);
+                return false; // Skip this decision
+              }
+              
+              // Tweet exists and is accessible (protected check handled by context lock verifier)
+              console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=ok latency_ms=${runtimePreflightLatency}`);
+              await supabase.from('content_generation_metadata_comprehensive')
+                .update({
+                  features: {
+                    ...decisionFeatures,
+                    runtime_preflight_status: 'ok',
+                    runtime_preflight_checked_at: new Date().toISOString(),
+                    runtime_preflight_latency_ms: runtimePreflightLatency
+                  }
+                })
+                .eq('decision_id', decision.id);
+              
+              // Update decision features for downstream use
+              decisionFeatures.runtime_preflight_status = 'ok';
+              decisionFeatures.runtime_preflight_checked_at = new Date().toISOString();
+              decisionFeatures.runtime_preflight_latency_ms = runtimePreflightLatency;
+              
+            } catch (preflightError: any) {
+              const runtimePreflightLatency = Date.now() - runtimePreflightStart;
+              const isTimeout = preflightError.message === 'timeout';
+              
+              console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=${isTimeout ? 'timeout' : 'error'} latency_ms=${runtimePreflightLatency} error=${preflightError.message}`);
+              
+              // Check if we have other candidates in queue (bounded fallback)
+              const { count: queuedCount } = await supabase
+                .from('content_generation_metadata_comprehensive')
+                .select('*', { count: 'exact', head: true })
+                .eq('decision_type', 'reply')
+                .eq('pipeline_source', 'reply_v2_planner')
+                .eq('status', 'queued')
+                .neq('decision_id', decision.id);
+              
+              if (queuedCount && queuedCount > 0) {
+                // Other candidates exist - block this one
+                await supabase.from('content_generation_metadata_comprehensive')
+                  .update({
+                    status: 'blocked_permanent',
+                    error_message: JSON.stringify({
+                      stale_reason: `runtime_preflight_${isTimeout ? 'timeout' : 'error'}`,
+                      runtime_preflight_status: isTimeout ? 'timeout' : 'error',
+                      runtime_preflight_latency_ms: runtimePreflightLatency,
+                      error: preflightError.message
+                    }),
+                    features: {
+                      ...decisionFeatures,
+                      runtime_preflight_status: isTimeout ? 'timeout' : 'error',
+                      runtime_preflight_checked_at: new Date().toISOString(),
+                      runtime_preflight_latency_ms: runtimePreflightLatency
+                    }
+                  })
+                  .eq('decision_id', decision.id);
+                return false; // Skip this decision
+              } else {
+                // No other candidates - continue with this one (bounded fallback)
+                console.log(`[RUNTIME_PREFLIGHT] ⚠️ No other candidates, continuing with timeout decision`);
+                await supabase.from('content_generation_metadata_comprehensive')
+                  .update({
+                    features: {
+                      ...decisionFeatures,
+                      runtime_preflight_status: isTimeout ? 'timeout' : 'error',
+                      runtime_preflight_checked_at: new Date().toISOString(),
+                      runtime_preflight_latency_ms: runtimePreflightLatency
+                    }
+                  })
+                  .eq('decision_id', decision.id);
+                decisionFeatures.runtime_preflight_status = isTimeout ? 'timeout' : 'error';
+              }
+            }
+          }
+          
+          // ═══════════════════════════════════════════════════════════════════════
           // 🎯 PLAN_ONLY CONTENT GENERATION - Generate content if placeholder exists
           // ═══════════════════════════════════════════════════════════════════════
           try {

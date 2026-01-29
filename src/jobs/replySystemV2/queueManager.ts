@@ -399,27 +399,50 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
     return null;
   }
   
-  // 🔒 STABILITY HEURISTICS: Prefer candidates from opportunities in 5-45min window
-  // Join with reply_opportunities to get stability features
+  // 🔒 TARGET STABILITY HEURISTICS: Prefer candidates with tweet age 5-45 minutes
+  // Join with reply_opportunities to get tweet age and stability features
   const candidateTweetIds = candidates.map(c => c.candidate_tweet_id);
   const { data: opps } = await supabase
     .from('reply_opportunities')
-    .select('target_tweet_id, features')
+    .select('target_tweet_id, features, tweet_posted_at, created_at')
     .in('target_tweet_id', candidateTweetIds);
   
   const stabilityMap = new Map<string, number>();
+  const ageMap = new Map<string, number>(); // age in minutes
+  
   if (opps) {
+    const now = Date.now();
     for (const opp of opps) {
       const features = (opp.features || {}) as any;
       const stabilityScore = features.stability_score || 0.5;
       stabilityMap.set(opp.target_tweet_id, stabilityScore);
+      
+      // Calculate tweet age in minutes
+      const postedAt = opp.tweet_posted_at || opp.created_at;
+      if (postedAt) {
+        const ageMs = now - new Date(postedAt).getTime();
+        const ageMinutes = ageMs / (60 * 1000);
+        ageMap.set(opp.target_tweet_id, ageMinutes);
+        
+        // Boost stability score for 5-45min window
+        if (ageMinutes >= 5 && ageMinutes <= 45) {
+          stabilityMap.set(opp.target_tweet_id, Math.max(stabilityScore, 1.0));
+        } else if (ageMinutes < 2) {
+          // Deprioritize very fresh tweets (<2 min, edit risk)
+          stabilityMap.set(opp.target_tweet_id, Math.min(stabilityScore, 0.3));
+        } else if (ageMinutes > 120) {
+          // Deprioritize old tweets (>2 hours, deletion risk)
+          stabilityMap.set(opp.target_tweet_id, Math.min(stabilityScore, 0.4));
+        }
+      }
     }
   }
   
   // Sort by stability_score (prefer 1.0 = 5-45min window), then by overall_score
   const candidatesWithStability = candidates.map(c => ({
     ...c,
-    stability_score: stabilityMap.get(c.candidate_tweet_id) || 0.5
+    stability_score: stabilityMap.get(c.candidate_tweet_id) || 0.5,
+    age_minutes: ageMap.get(c.candidate_tweet_id) || null
   }));
   
   candidatesWithStability.sort((a, b) => {
