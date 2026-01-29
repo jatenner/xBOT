@@ -268,25 +268,169 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   // Check if we're behind schedule
   const behindSchedule = await checkBehindSchedule();
   
-  // Try tiers in order
-  let candidate = await getNextCandidateFromQueue(1, deniedTweetIds); // Tier 1 first
-  let tier = 1;
+  // 🔒 SOFT PREFLIGHT: Collect multiple candidates and try preflight with bounds
+  const PREFLIGHT_MAX_PER_CYCLE = parseInt(process.env.PREFLIGHT_MAX_PER_CYCLE || '3', 10);
+  const PREFLIGHT_TIMEOUT_MS = 6000; // 6s timeout (tightened from 15s)
+  
+  // Collect candidates from all tiers (try tier 1, then 2, then 3 if behind schedule)
+  const candidatesToTry: Array<{ candidate: any; tier: number }> = [];
+  
+  // Try tier 1 first
+  let tier1Candidate = await getNextCandidateFromQueue(1, deniedTweetIds);
+  if (tier1Candidate) {
+    candidatesToTry.push({ candidate: tier1Candidate, tier: 1 });
+  }
+  
+  // Try tier 2
+  let tier2Candidate = await getNextCandidateFromQueue(2, deniedTweetIds);
+  if (tier2Candidate) {
+    candidatesToTry.push({ candidate: tier2Candidate, tier: 2 });
+  }
+  
+  // Try tier 3 only if behind schedule
+  if (behindSchedule) {
+    let tier3Candidate = await getNextCandidateFromQueue(3, deniedTweetIds);
+    if (tier3Candidate) {
+      candidatesToTry.push({ candidate: tier3Candidate, tier: 3 });
+    }
+  }
+  
+  // Preflight tracking
+  let candidatesTotal = candidatesToTry.length;
+  let cacheHitsOk = 0;
+  let cacheHitsBad = 0;
+  let preflightAttempted = 0;
+  let preflightOk = 0;
+  let preflightTimeout = 0;
+  let preflightDeleted = 0;
+  let decisionsCreated = 0;
+  
+  // Try preflight on candidates (bounded)
+  let selectedCandidate: { candidate: any; tier: number; preflightStatus: string; preflightOk: boolean } | null = null;
+  
+  for (let i = 0; i < Math.min(candidatesToTry.length, PREFLIGHT_MAX_PER_CYCLE); i++) {
+    const { candidate: cand, tier: candTier } = candidatesToTry[i];
+    
+    // Check cache first
+    const { getCachedPreflight, cachePreflight } = await import('./preflightCache');
+    const cached = await getCachedPreflight(cand.candidate_tweet_id);
+    
+    if (cached) {
+      if (cached.status === 'ok') {
+        cacheHitsOk++;
+        selectedCandidate = {
+          candidate: cand,
+          tier: candTier,
+          preflightStatus: 'ok',
+          preflightOk: true,
+        };
+        break; // Found good cached candidate
+      } else if (cached.status === 'deleted' || cached.status === 'protected') {
+        cacheHitsBad++;
+        continue; // Skip bad cached candidates
+      }
+    }
+    
+    // Attempt preflight (bounded, sequential)
+    if (planOnlyMode) {
+      preflightAttempted++;
+      const preflightStart = Date.now();
+      
+      try {
+        const { fetchTweetData } = await import('../../gates/contextLockVerifier');
+        const preflightTweetData = await Promise.race([
+          fetchTweetData(cand.candidate_tweet_id),
+          new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('PREFLIGHT_TIMEOUT')), PREFLIGHT_TIMEOUT_MS);
+          }),
+        ]) as any;
+        
+        const preflightLatency = Date.now() - preflightStart;
+        
+        if (!preflightTweetData || !preflightTweetData.text || preflightTweetData.text.length < 20) {
+          preflightDeleted++;
+          const status = 'deleted' as const;
+          await cachePreflight(cand.candidate_tweet_id, {
+            status,
+            checked_at: new Date().toISOString(),
+            reason: 'Tweet not found or too short',
+            latency_ms: preflightLatency,
+          });
+          continue; // Try next candidate
+        }
+        
+        // Preflight OK
+        preflightOk++;
+        const { normalizeTweetText } = await import('../../gates/contextLockVerifier');
+        const normalizedText = normalizeTweetText(preflightTweetData.text.trim());
+        const textHash = createHash('sha256').update(normalizedText).digest('hex');
+        
+        await cachePreflight(cand.candidate_tweet_id, {
+          status: 'ok',
+          checked_at: new Date().toISOString(),
+          text_hash: textHash,
+          latency_ms: preflightLatency,
+        });
+        
+        selectedCandidate = {
+          candidate: cand,
+          tier: candTier,
+          preflightStatus: 'ok',
+          preflightOk: true,
+        };
+        break; // Found good candidate
+      } catch (preflightError: any) {
+        const preflightLatency = Date.now() - preflightStart;
+        const isTimeout = preflightError.message.includes('PREFLIGHT_TIMEOUT');
+        
+        if (isTimeout) {
+          preflightTimeout++;
+        } else {
+          preflightDeleted++;
+        }
+        
+        const status: 'timeout' | 'error' = isTimeout ? 'timeout' : 'error';
+        await cachePreflight(cand.candidate_tweet_id, {
+          status,
+          checked_at: new Date().toISOString(),
+          reason: preflightError.message,
+          latency_ms: preflightLatency,
+        });
+        
+        // Continue to next candidate (soft failure)
+        continue;
+      }
+    } else {
+      // Not plan-only mode, use candidate as-is
+      selectedCandidate = {
+        candidate: cand,
+        tier: candTier,
+        preflightStatus: 'skipped',
+        preflightOk: false,
+      };
+      break;
+    }
+  }
+  
+  // 🔒 SOFT FALLBACK: If no candidate passed preflight, use best available with preflight_status='skipped'
+  if (!selectedCandidate && candidatesToTry.length > 0) {
+    const bestCandidate = candidatesToTry[0]; // Use first (highest tier)
+    selectedCandidate = {
+      candidate: bestCandidate.candidate,
+      tier: bestCandidate.tier,
+      preflightStatus: preflightAttempted > 0 ? 'timeout' : 'skipped',
+      preflightOk: false,
+    };
+    console.log(`[SCHEDULER] ⚠️ SOFT FALLBACK: No candidate passed preflight, using best available with status=${selectedCandidate.preflightStatus}`);
+  }
+  
+  // Extract selected candidate
+  let candidate = selectedCandidate?.candidate;
+  let tier = selectedCandidate?.tier || 0;
   let candidateLeaseId: string | undefined = candidate?.lease_id;
   let candidateQueueId: string | undefined = candidate?.id;
-  
-  if (!candidate) {
-    candidate = await getNextCandidateFromQueue(2, deniedTweetIds); // Tier 2
-    tier = 2;
-    candidateLeaseId = candidate?.lease_id;
-    candidateQueueId = candidate?.id;
-  }
-  
-  if (!candidate && behindSchedule) {
-    candidate = await getNextCandidateFromQueue(3, deniedTweetIds); // Tier 3 only if behind
-    tier = 3;
-    candidateLeaseId = candidate?.lease_id;
-    candidateQueueId = candidate?.id;
-  }
+  const preflightStatus = selectedCandidate?.preflightStatus || 'skipped';
+  const preflightOkFlag = selectedCandidate?.preflightOk || false;
   
   // Get queue metrics for SLO tracking
   const { data: queueMetrics } = await supabase
@@ -459,127 +603,79 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     let isReplyFromFetch: boolean | undefined = undefined;
     
     if (planOnlyMode) {
-      // 🔒 PREFLIGHT CHECK: Verify tweet exists before planning (reduce target_not_found_or_deleted)
-      try {
+      // 🔒 SOFT PREFLIGHT: Use preflight status from candidate selection (already done above)
+      if (preflightOkFlag && preflightStatus === 'ok') {
+        // Preflight OK - we already fetched during preflight, but need text for snapshot
+        // Fetch fresh text for snapshot (we know tweet exists from preflight)
         const { fetchTweetData } = await import('../../gates/contextLockVerifier');
-        const preflightTweetData = await Promise.race([
-          fetchTweetData(candidate.candidate_tweet_id),
-          new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('PREFLIGHT_TIMEOUT')), 15000); // 15s timeout for preflight (increased from 8s)
-          }),
-        ]) as any;
-        
-        if (!preflightTweetData || !preflightTweetData.text || preflightTweetData.text.length < 20) {
-          console.warn(`[SCHEDULER] ⚠️ PREFLIGHT: Tweet ${candidate.candidate_tweet_id} not found or too short, skipping`);
-          clearTimeout(watchdogTimer);
-          stageTimings.total_ms = Date.now() - candidateStartTime;
+        try {
+          const preflightTweetData = await Promise.race([
+            fetchTweetData(candidate.candidate_tweet_id),
+            new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('PREFLIGHT_TIMEOUT')), PREFLIGHT_TIMEOUT_MS);
+            }),
+          ]) as any;
           
-          if (candidateLeaseId) {
-            const { releaseLease } = await import('./queueManager');
-            await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+          if (preflightTweetData && preflightTweetData.text && preflightTweetData.text.length >= 20) {
+            targetTweetContentSnapshot = preflightTweetData.text.trim();
+            snapshotSource = 'preflight_fetch';
+            snapshotLenLive = preflightTweetData.text.trim().length;
+            isReplyFromFetch = preflightTweetData.isReply || false;
+            console.log(`[SCHEDULER] ✅ PREFLIGHT: Tweet verified (${snapshotLenLive} chars), proceeding with planning`);
+          } else {
+            // Fallback to candidate content
+            targetTweetContentSnapshot = candidateData.candidate_content || '';
+            snapshotSource = 'candidate_extract';
+            snapshotLenLive = 0;
+            isReplyFromFetch = undefined;
+            console.log(`[SCHEDULER] ⚠️ PREFLIGHT OK but fetch failed, using candidate content`);
           }
-          
-          await logOutcome(supabase, schedulerRunId, {
-            outcome_type: 'DENY',
-            candidate_tweet_id: candidate.candidate_tweet_id,
-            candidate_id: candidate.evaluation_id,
-            author_handle: candidateData.candidate_author_username,
-            url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
-            deny_reason_code: 'PREFLIGHT_TWEET_NOT_FOUND',
-            deny_reason_detail: 'Tweet not found or too short during preflight check',
-            decision_id: decisionId,
-            stage_timings: stageTimings,
-          });
-          
-          throw new Error(`Preflight check failed: tweet ${candidate.candidate_tweet_id} not found or too short`);
+        } catch (err: any) {
+          // Fallback to candidate content
+          targetTweetContentSnapshot = candidateData.candidate_content || '';
+          snapshotSource = 'candidate_extract';
+          snapshotLenLive = 0;
+          isReplyFromFetch = undefined;
+          console.log(`[SCHEDULER] ⚠️ PREFLIGHT OK but fetch error: ${err.message}, using candidate content`);
         }
-        
-        // Use preflight-fetched content (more reliable than candidate extract)
-        targetTweetContentSnapshot = preflightTweetData.text.trim();
-        snapshotSource = 'preflight_fetch';
-        snapshotLenLive = preflightTweetData.text.trim().length;
-        isReplyFromFetch = preflightTweetData.isReply || false;
-        console.log(`[SCHEDULER] ✅ PREFLIGHT: Tweet verified (${snapshotLenLive} chars), proceeding with planning`);
-        
-        // 🔒 TASK 5: Store preflight proof of existence
-        const { normalizeTweetText } = await import('../../gates/contextLockVerifier');
-        const normalizedPreflightText = normalizeTweetText(preflightTweetData.text.trim());
-        const preflightTextHash = createHash('sha256')
-          .update(normalizedPreflightText)
-          .digest('hex');
-        
-        // Store preflight proof (will be passed to plannerFinalizeDecision)
-        (candidate as any).preflight_ok = true;
-        (candidate as any).preflight_fetched_at = new Date().toISOString();
-        (candidate as any).preflight_text_hash = preflightTextHash;
-      } catch (preflightError: any) {
-        if (preflightError.message.includes('PREFLIGHT_TIMEOUT') || preflightError.message.includes('not found')) {
-          console.warn(`[SCHEDULER] ⚠️ PREFLIGHT failed: ${preflightError.message}, skipping candidate`);
-          clearTimeout(watchdogTimer);
-          stageTimings.total_ms = Date.now() - candidateStartTime;
-          
-          if (candidateLeaseId) {
-            const { releaseLease } = await import('./queueManager');
-            await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
-          }
-          
-          await logOutcome(supabase, schedulerRunId, {
-            outcome_type: 'DENY',
-            candidate_tweet_id: candidate.candidate_tweet_id,
-            candidate_id: candidate.evaluation_id,
-            author_handle: candidateData.candidate_author_username,
-            url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
-            deny_reason_code: 'PREFLIGHT_FAILED',
-            deny_reason_detail: preflightError.message,
-            decision_id: decisionId,
-            stage_timings: stageTimings,
-          });
-          
-          throw preflightError;
-        }
-        
-        // 🔒 TASK D: Log preflight failures explicitly
-        await supabase.from('system_events').insert({
-          event_type: 'reply_v2_planner_preflight_failed',
-          severity: 'warning',
-          message: `Preflight check failed: ${preflightError.message}`,
-          event_data: {
-            scheduler_run_id: schedulerRunId,
-            candidate_tweet_id: candidate.candidate_tweet_id,
-            error: preflightError.message,
-            error_type: preflightError.message.includes('PREFLIGHT_TIMEOUT') ? 'timeout' : 'other',
-          },
-          created_at: new Date().toISOString(),
-        });
-        
-        // Fallback to candidate content if preflight fails for other reasons
-        console.warn(`[SCHEDULER] ⚠️ PREFLIGHT error (non-fatal): ${preflightError.message}, using candidate content`);
+      } else {
+        // Preflight not OK (timeout/skipped/deleted) - use candidate content (soft fallback)
+        console.log(`[SCHEDULER] ⚠️ PREFLIGHT status=${preflightStatus}, using candidate content (soft fallback)`);
         targetTweetContentSnapshot = candidateData.candidate_content || '';
         snapshotSource = 'candidate_extract';
         snapshotLenLive = 0;
         isReplyFromFetch = undefined;
       }
       
+      // 🔒 SOFT PREFLIGHT: Allow short content if preflight was skipped/timeout (let Mac Runner verify)
       if (!targetTweetContentSnapshot || targetTweetContentSnapshot.length < 20) {
-        clearTimeout(watchdogTimer);
-        stageTimings.total_ms = Date.now() - candidateStartTime;
-        
-        if (candidateLeaseId) {
-          const { releaseLease } = await import('./queueManager');
-          await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+        if (preflightStatus === 'skipped' || preflightStatus === 'timeout') {
+          // Soft fallback - use candidate content even if short, let Mac Runner verify
+          console.log(`[SCHEDULER] ⚠️ Content short (${targetTweetContentSnapshot?.length || 0} chars) but preflight=${preflightStatus}, proceeding with soft fallback`);
+          targetTweetContentSnapshot = candidateData.candidate_content || `Tweet ${candidate.candidate_tweet_id}`;
+          snapshotSource = 'candidate_extract';
+        } else {
+          // Hard failure only if preflight was OK but content is still short
+          clearTimeout(watchdogTimer);
+          stageTimings.total_ms = Date.now() - candidateStartTime;
+          
+          if (candidateLeaseId) {
+            const { releaseLease } = await import('./queueManager');
+            await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+          }
+          
+          await logOutcome(supabase, schedulerRunId, {
+            outcome_type: 'ERROR',
+            candidate_tweet_id: candidate.candidate_tweet_id,
+            candidate_id: candidate.evaluation_id,
+            author_handle: candidateData.candidate_author_username,
+            url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+            error_stage: 'fetch',
+            error_message: `Candidate content too short: ${targetTweetContentSnapshot.length} chars`,
+            stage_timings: stageTimings,
+          });
+          throw new Error(`Candidate content too short: ${targetTweetContentSnapshot.length} chars`);
         }
-        
-        await logOutcome(supabase, schedulerRunId, {
-          outcome_type: 'ERROR',
-          candidate_tweet_id: candidate.candidate_tweet_id,
-          candidate_id: candidate.evaluation_id,
-          author_handle: candidateData.candidate_author_username,
-          url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
-          error_stage: 'fetch',
-          error_message: `Candidate content too short: ${targetTweetContentSnapshot.length} chars`,
-          stage_timings: stageTimings,
-        });
-        throw new Error(`Candidate content too short: ${targetTweetContentSnapshot.length} chars`);
       }
     } else {
       // 🔒 TASK 1: Fetch FULL tweet text from Twitter (canonical source)
@@ -1286,10 +1382,12 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         target_tweet_content_snapshot: normalizedSnapshot, // Required for FINAL_REPLY_GATE
         target_tweet_content_hash: targetTweetContentHash, // Required for FINAL_REPLY_GATE
         semantic_similarity: 0.75, // Default semantic similarity for PLAN_ONLY (will be computed during generation on Mac Runner)
-        // 🔒 TASK 5: Pass preflight proof if available
-        preflight_ok: (candidate as any).preflight_ok || false,
-        preflight_fetched_at: (candidate as any).preflight_fetched_at,
-        preflight_text_hash: (candidate as any).preflight_text_hash,
+        // 🔒 SOFT PREFLIGHT: Pass preflight status fields
+        preflight_status: preflightStatus,
+        preflight_ok: preflightOkFlag,
+        preflight_fetched_at: preflightOkFlag ? new Date().toISOString() : undefined,
+        preflight_checked_at: new Date().toISOString(),
+        preflight_reason: preflightStatus !== 'ok' ? `Preflight status: ${preflightStatus}` : undefined,
       });
       
       if (!finalizeResult.success) {
@@ -1317,10 +1415,34 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       
       clearTimeout(watchdogTimer);
       selectedCandidates = 1;
+      decisionsCreated = 1;
+      
+      // 🔒 SOFT PREFLIGHT: Log preflight summary
+      await supabase.from('system_events').insert({
+        event_type: 'reply_v2_preflight_summary',
+        severity: 'info',
+        message: `Preflight summary: candidates_total=${candidatesTotal} cache_hits_ok=${cacheHitsOk} cache_hits_bad=${cacheHitsBad} preflight_attempted=${preflightAttempted} preflight_ok=${preflightOk} preflight_timeout=${preflightTimeout} preflight_deleted=${preflightDeleted} decisions_created=${decisionsCreated}`,
+        event_data: {
+          scheduler_run_id: schedulerRunId,
+          candidates_total: candidatesTotal,
+          cache_hits_ok: cacheHitsOk,
+          cache_hits_bad: cacheHitsBad,
+          preflight_attempted: preflightAttempted,
+          preflight_ok: preflightOk,
+          preflight_timeout: preflightTimeout,
+          preflight_deleted: preflightDeleted,
+          decisions_created: decisionsCreated,
+          selected_preflight_status: preflightStatus,
+          selected_preflight_ok: preflightOkFlag,
+        },
+        created_at: new Date().toISOString(),
+      });
+      
+      console.log(`[SCHEDULER] 📊 PREFLIGHT SUMMARY: total=${candidatesTotal} cache_ok=${cacheHitsOk} cache_bad=${cacheHitsBad} attempted=${preflightAttempted} ok=${preflightOk} timeout=${preflightTimeout} deleted=${preflightDeleted} created=${decisionsCreated}`);
       
       await emitReplyQueueTick();
       
-      console.log(`[SCHEDULER] ✅ PLAN_ONLY decision created: decision_id=${decisionId} strategy=${selectedStrategy?.strategy_id || 'insight_punch'}`);
+      console.log(`[SCHEDULER] ✅ PLAN_ONLY decision created: decision_id=${decisionId} strategy=${selectedStrategy?.strategy_id || 'insight_punch'} preflight_status=${preflightStatus}`);
       
       return {
         posted: false,

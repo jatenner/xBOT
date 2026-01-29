@@ -25,6 +25,10 @@ export interface PlannerFinalizeFields {
   preflight_ok?: boolean; // 🔒 TASK 5: Proof of existence from preflight check
   preflight_fetched_at?: string; // When preflight verified tweet exists
   preflight_text_hash?: string; // Hash of preflight-fetched text
+  preflight_status?: string; // 🔒 SOFT PREFLIGHT: Status ('ok'|'deleted'|'protected'|'timeout'|'error'|'skipped')
+  preflight_checked_at?: string; // When preflight was checked
+  preflight_latency_ms?: number; // Preflight check latency
+  preflight_reason?: string; // Reason for preflight status
 }
 
 /**
@@ -74,15 +78,27 @@ export async function plannerFinalizeDecision(
       features.semantic_similarity = fields.semantic_similarity;
     }
     
-    // 🔒 TASK 5: Store preflight proof of existence
+    // 🔒 SOFT PREFLIGHT: Store preflight status fields
+    if (fields.preflight_status) {
+      features.preflight_status = fields.preflight_status;
+    }
     if (fields.preflight_ok !== undefined) {
       features.preflight_ok = fields.preflight_ok;
     }
     if (fields.preflight_fetched_at) {
       features.preflight_fetched_at = fields.preflight_fetched_at;
     }
+    if (fields.preflight_checked_at) {
+      features.preflight_checked_at = fields.preflight_checked_at;
+    }
     if (fields.preflight_text_hash) {
       features.preflight_text_hash = fields.preflight_text_hash;
+    }
+    if (fields.preflight_latency_ms !== undefined) {
+      features.preflight_latency_ms = fields.preflight_latency_ms;
+    }
+    if (fields.preflight_reason) {
+      features.preflight_reason = fields.preflight_reason;
     }
     
     // Update base table (content_generation_metadata_comprehensive)
