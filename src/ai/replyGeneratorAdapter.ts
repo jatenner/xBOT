@@ -225,8 +225,10 @@ Format as JSON:
     throw error;
   }
   
-  if (replyData.content.length > 220) {
-    throw new Error('Invalid reply: too long (>220 chars)');
+  // 🔒 HARD LENGTH CAP: Use same limit as planOnlyContentGenerator (200 chars, configurable)
+  const MAX_REPLY_LENGTH = parseInt(process.env.MAX_REPLY_LENGTH || '200', 10);
+  if (replyData.content.length > MAX_REPLY_LENGTH) {
+    throw new Error(`Invalid reply: too long (>${MAX_REPLY_LENGTH} chars)`);
   }
   
   // 🔒 QUALITY GATE: Verify reply references concrete detail from tweet
@@ -376,8 +378,10 @@ Format as JSON:
     throw new Error('UNGROUNDED_GENERATION_SKIP: fallback reply is empty');
   }
   
-  if (replyData.content.length > 220) {
-    throw new Error('Invalid fallback reply: too long (>220 chars)');
+  // 🔒 HARD LENGTH CAP: Use same limit as planOnlyContentGenerator (200 chars, configurable)
+  const MAX_REPLY_LENGTH = parseInt(process.env.MAX_REPLY_LENGTH || '200', 10);
+  if (replyData.content.length > MAX_REPLY_LENGTH) {
+    throw new Error(`Invalid fallback reply: too long (>${MAX_REPLY_LENGTH} chars)`);
   }
   
   // 🔒 TASK 2: Verify fallback reply is grounded (relaxed check for non-English content)
