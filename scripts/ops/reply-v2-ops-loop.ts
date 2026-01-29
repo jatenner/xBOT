@@ -33,8 +33,9 @@ async function runCommandWithTimeout(
   cmd: string,
   description: string,
   timeoutMs: number
-): Promise<{ success: boolean; output: string; timedOut: boolean }> {
-  console.log(`\n🔄 ${description}...`);
+): Promise<{ success: boolean; output: string; timedOut: boolean; durationMs: number }> {
+  const startTime = Date.now();
+  console.log(`[OPS_LOOP] start ${description}`);
   try {
     const output = execSync(cmd, {
       encoding: 'utf-8',
@@ -42,15 +43,18 @@ async function runCommandWithTimeout(
       stdio: 'pipe',
       timeout: timeoutMs
     });
-    return { success: true, output, timedOut: false };
+    const durationMs = Date.now() - startTime;
+    console.log(`[OPS_LOOP] end ${description} duration_ms=${durationMs}`);
+    return { success: true, output, timedOut: false, durationMs };
   } catch (error: any) {
+    const durationMs = Date.now() - startTime;
     const timedOut = error.signal === 'SIGTERM' || error.message.includes('timeout');
     if (timedOut) {
-      console.log(`⏱️  ${description} timed out after ${timeoutMs / 1000}s (continuing loop)`);
-      return { success: false, output: '', timedOut: true };
+      console.log(`[OPS_LOOP] end ${description} duration_ms=${durationMs} timed_out=true (continuing loop)`);
+      return { success: false, output: '', timedOut: true, durationMs };
     }
-    console.error(`❌ ${description} error: ${error.message}`);
-    return { success: false, output: '', timedOut: false };
+    console.error(`[OPS_LOOP] end ${description} duration_ms=${durationMs} error=${error.message}`);
+    return { success: false, output: '', timedOut: false, durationMs };
   }
 }
 
@@ -105,6 +109,7 @@ async function checkOpportunities(): Promise<{
 async function checkDecisions(): Promise<{
   total_last_30m: number;
   total_last_60m: number;
+  total_last_60m_metadata: number; // Also check content_metadata table
   queued: number;
   runtime_ok: number;
   runtime_inaccessible: number;
@@ -127,6 +132,15 @@ async function checkDecisions(): Promise<{
   
   const { data: data60m } = await supabase
     .from('content_generation_metadata_comprehensive')
+    .select('decision_id, status, features, posted_tweet_id, pipeline_source, created_at')
+    .eq('decision_type', 'reply')
+    .in('pipeline_source', ['reply_v2_planner', 'reply_v2_scheduler'])
+    .gte('created_at', oneHourAgo)
+    .order('created_at', { ascending: false });
+  
+  // Also check content_metadata table
+  const { data: data60mMetadata } = await supabase
+    .from('content_metadata')
     .select('decision_id, status, features, posted_tweet_id, pipeline_source, created_at')
     .eq('decision_type', 'reply')
     .in('pipeline_source', ['reply_v2_planner', 'reply_v2_scheduler'])
@@ -168,6 +182,7 @@ async function checkDecisions(): Promise<{
   return {
     total_last_30m: replyV2_30m.length,
     total_last_60m: replyV2_60m.length,
+    total_last_60m_metadata: (data60mMetadata || []).length,
     queued,
     runtime_ok: runtimeOk,
     runtime_inaccessible: runtimeInaccessible,
@@ -215,7 +230,8 @@ async function printHeartbeat() {
   console.log(`  total: ${decisions.total_last_30m}`);
   console.log(`  by pipeline_source:`, decisions.by_pipeline_source);
   console.log(`\nDecisions (last 60m):`);
-  console.log(`  total: ${decisions.total_last_60m}`);
+  console.log(`  total (comprehensive): ${decisions.total_last_60m}`);
+  console.log(`  total (metadata): ${decisions.total_last_60m_metadata}`);
   console.log(`  queued: ${decisions.queued}`);
   console.log(`  runtime_ok: ${decisions.runtime_ok}`);
   console.log(`  runtime_inaccessible: ${decisions.runtime_inaccessible}`);
@@ -303,19 +319,23 @@ async function main() {
       harvestCyclesThisHour++;
       
       console.log(`\n🌾 HARVEST CYCLE (${harvestCyclesThisHour}/${MAX_HARVEST_CYCLES_PER_HOUR} this hour)`);
+      const beforeOpps = await checkOpportunities();
       const result = await runCommandWithTimeout(
         'pnpm tsx scripts/ops/run-harvester-single-cycle.ts',
-        'Harvest cycle',
+        'harvest_cycle',
         HARVEST_TIMEOUT_MS
       );
+      
+      const afterOpps = await checkOpportunities();
+      const newOpportunities = afterOpps.fresh_12h - beforeOpps.fresh_12h;
+      console.log(`[OPS_LOOP] harvest_cycle new_opportunities=${newOpportunities} fresh_12h=${beforeOpps.fresh_12h}->${afterOpps.fresh_12h}`);
       
       if (result.timedOut) {
         console.log('⚠️  Harvest cycle timed out (logged, continuing loop)');
       }
       
-      const opps = await checkOpportunities();
-      if (opps.fresh_12h > maxFresh12h) {
-        maxFresh12h = opps.fresh_12h;
+      if (afterOpps.fresh_12h > maxFresh12h) {
+        maxFresh12h = afterOpps.fresh_12h;
       }
       
       // Aggressive pool fill if below target
@@ -334,31 +354,116 @@ async function main() {
       
       console.log(`\n🎯 PLAN + SCHEDULE CYCLE`);
       
+      // Check eligibility snapshot BEFORE planner runs
+      const supabase = getSupabaseClient();
+      const oppsSnapshot = await checkOpportunities();
+      const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      
+      // Check reply_opportunities eligibility
+      const { data: allOpps } = await supabase
+        .from('reply_opportunities')
+        .select('replied_to, tweet_posted_at, target_tweet_id');
+      
+      const fresh12hCount = (allOpps || []).filter(o => 
+        !o.replied_to && 
+        o.tweet_posted_at && 
+        new Date(o.tweet_posted_at).getTime() > new Date(twelveHoursAgo).getTime()
+      ).length;
+      
+      const unclaimedCount = (allOpps || []).filter(o => !o.replied_to).length;
+      
+      // Check for inaccessible/protected filter exclusions
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data: recentPreflights } = await supabase
+        .from('content_generation_metadata_comprehensive')
+        .select('features->>runtime_preflight_status, features->>target_tweet_id')
+        .eq('decision_type', 'reply')
+        .in('pipeline_source', ['reply_v2_planner', 'reply_v2_scheduler'])
+        .gte('created_at', oneHourAgo);
+      
+      const inaccessibleCount = (recentPreflights || []).filter((d: any) => {
+        const f = d.features || {};
+        return f.runtime_preflight_status === 'inaccessible' || f.runtime_preflight_status === 'protected';
+      }).length;
+      
+      // Check candidate_evaluations eligibility
+      const { data: evaluations } = await supabase
+        .from('candidate_evaluations')
+        .select('passed_hard_filters, predicted_tier, status, created_at')
+        .gte('created_at', twentyFourHoursAgo);
+      
+      const passedHardFilters = (evaluations || []).filter(e => e.passed_hard_filters === true).length;
+      const tier1to3 = (evaluations || []).filter(e => e.passed_hard_filters === true && e.predicted_tier <= 3).length;
+      const evaluatedStatus = (evaluations || []).filter(e => e.status === 'evaluated' && e.passed_hard_filters === true && e.predicted_tier <= 3).length;
+      
+      // Check candidate queue eligibility
+      const { data: queueCandidates } = await supabase
+        .from('reply_candidate_queue')
+        .select('status, expires_at')
+        .eq('status', 'queued')
+        .gt('expires_at', new Date().toISOString());
+      
+      const eligibleQueueCount = queueCandidates?.length || 0;
+      
+      console.log(`[OPS_LOOP] eligibility_snapshot:`);
+      console.log(`  reply_opportunities:`);
+      console.log(`    fresh_12h: ${fresh12hCount}`);
+      console.log(`    unclaimed: ${unclaimedCount}`);
+      console.log(`    not_replied_to: ${unclaimedCount}`);
+      console.log(`  candidate_evaluations (last 24h):`);
+      console.log(`    passed_hard_filters: ${passedHardFilters}`);
+      console.log(`    tier_1_to_3: ${tier1to3}`);
+      console.log(`    status=evaluated: ${evaluatedStatus}`);
+      console.log(`  filters:`);
+      console.log(`    excluded_by_inaccessible_filter: ${inaccessibleCount} (last hour)`);
+      console.log(`  candidate_queue:`);
+      console.log(`    eligible_queue_count: ${eligibleQueueCount}`);
+      console.log(`  final_eligible_count: ${eligibleQueueCount} (from queue)`);
+      
       // Run planner
-      await runCommandWithTimeout(
+      const plannerStart = Date.now();
+      const plannerResult = await runCommandWithTimeout(
         'REPLY_V2_PLAN_ONLY=true RUNNER_MODE=false pnpm tsx scripts/ops/run-reply-v2-planner-once.ts',
-        'Planner',
+        'planner',
         2 * 60 * 1000 // 2 minute timeout
       );
       
-      // Check decisions created in last 15 minutes
-      const supabase = getSupabaseClient();
+      // Check decisions created in last 15 minutes (both tables)
       const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-      const { data: recentDecisions } = await supabase
+      
+      const { data: recentDecisionsComprehensive } = await supabase
         .from('content_generation_metadata_comprehensive')
-        .select('decision_id, pipeline_source, status')
+        .select('decision_id, pipeline_source, status, created_at')
         .eq('decision_type', 'reply')
         .in('pipeline_source', ['reply_v2_planner', 'reply_v2_scheduler'])
         .gte('created_at', fifteenMinutesAgo);
       
-      const decisionsCount = recentDecisions?.length || 0;
-      const queuedCount = recentDecisions?.filter((d: any) => d.status === 'queued').length || 0;
+      const { data: recentDecisionsMetadata } = await supabase
+        .from('content_metadata')
+        .select('decision_id, pipeline_source, status, created_at')
+        .eq('decision_type', 'reply')
+        .in('pipeline_source', ['reply_v2_planner', 'reply_v2_scheduler'])
+        .gte('created_at', fifteenMinutesAgo);
       
-      console.log(`\n📊 Decisions created in last 15m: ${decisionsCount}`);
-      console.log(`  queued: ${queuedCount}`);
+      const decisionsCountComprehensive = recentDecisionsComprehensive?.length || 0;
+      const decisionsCountMetadata = recentDecisionsMetadata?.length || 0;
+      const queuedCount = (recentDecisionsComprehensive || []).filter((d: any) => d.status === 'queued').length;
       
-      if (decisionsCount === 0) {
-        console.log(`⚠️  No decisions created - check planner logs for reason`);
+      console.log(`[OPS_LOOP] planner decisions_created_comprehensive=${decisionsCountComprehensive} decisions_created_metadata=${decisionsCountMetadata} queued=${queuedCount}`);
+      
+      if (decisionsCountComprehensive === 0 && decisionsCountMetadata === 0) {
+        console.log(`[OPS_LOOP] ⚠️  No decisions created - eligible_queue_count=${eligibleQueueCount} fresh_12h=${oppsSnapshot.fresh_12h}`);
+        if (eligibleQueueCount === 0) {
+          console.log(`[OPS_LOOP] ⚠️  Top blocker: No eligible candidates in queue (need refreshCandidateQueue or scoring)`);
+          if (evaluatedStatus === 0) {
+            console.log(`[OPS_LOOP] ⚠️  Root cause: No evaluated candidates (need orchestrator/scorer to run)`);
+          } else if (tier1to3 === 0) {
+            console.log(`[OPS_LOOP] ⚠️  Root cause: All candidates are tier 4 (too low quality)`);
+          }
+        } else if (oppsSnapshot.fresh_12h < 10) {
+          console.log(`[OPS_LOOP] ⚠️  Top blocker: Low fresh_12h (${oppsSnapshot.fresh_12h} < 10)`);
+        }
       }
     }
     
