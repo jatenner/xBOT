@@ -465,7 +465,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         const preflightTweetData = await Promise.race([
           fetchTweetData(candidate.candidate_tweet_id),
           new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('PREFLIGHT_TIMEOUT')), 8000); // 8s timeout for preflight
+            setTimeout(() => reject(new Error('PREFLIGHT_TIMEOUT')), 15000); // 15s timeout for preflight (increased from 8s)
           }),
         ]) as any;
         
