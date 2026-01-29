@@ -7,6 +7,109 @@
 
 ---
 
+## Fix Harvester Auth (Twitter Session)
+
+**Problem:** Harvester fails with `logged_in=false`, preventing creation of fresh opportunities.
+
+**Root Cause:** `TWITTER_SESSION_B64` env var is missing, invalid, or expired.
+
+### Prerequisites
+
+- Valid X (Twitter) account credentials
+- Access to set environment variables (local `.env` or Railway)
+- Browser installed (Chrome/Chromium)
+
+### Method 1: Refresh Session via Interactive Script (Recommended)
+
+**Step 1: Run refresh script**
+```bash
+pnpm tsx scripts/refresh-x-session.ts
+```
+
+**Step 2: Follow prompts**
+- Browser window opens
+- Log in to X (Twitter) manually
+- Wait until timeline/home feed appears
+- Press Enter when done
+
+**Step 3: Export session to base64**
+```bash
+# On macOS:
+base64 -i twitter_session.json | pbcopy
+
+# On Linux:
+base64 twitter_session.json > twitter_session.b64
+cat twitter_session.b64
+```
+
+**Step 4: Set environment variable**
+
+**For local execution:**
+```bash
+# Add to .env file:
+echo "TWITTER_SESSION_B64=$(base64 -i twitter_session.json)" >> .env
+```
+
+**For Railway:**
+```bash
+railway variables --set "TWITTER_SESSION_B64=<paste_base64_here>"
+```
+
+**Step 5: Verify auth works**
+```bash
+# Check if session is valid
+pnpm tsx scripts/ops/p1-diagnostic-queries.ts
+
+# Or run harvester and check logs for:
+# [HARVESTER_AUTH] ok=true
+HARVESTING_ENABLED=true pnpm tsx scripts/ops/run-harvester-single-cycle.ts
+```
+
+**Expected:** Logs show `[HARVESTER_AUTH] ok=true` and `[WHOAMI] logged_in=true`
+
+### Method 2: Executor Auth (Runner Profile)
+
+**If using runner profile directory:**
+
+```bash
+# Run executor auth (headed browser)
+RUNNER_PROFILE_DIR=./.runner-profile pnpm run executor:auth
+
+# This saves session to .runner-profile/chrome-profile/
+# Harvester should pick it up automatically if TWITTER_SESSION_B64 is not set
+```
+
+**Note:** Executor auth saves to runner profile, but harvester prefers `TWITTER_SESSION_B64` env var.
+
+### Session Storage Locations
+
+1. **Environment Variable:** `TWITTER_SESSION_B64` (preferred for harvester)
+2. **File:** `twitter_session.json` (created by `refresh-x-session.ts`)
+3. **Runner Profile:** `.runner-profile/chrome-profile/` (used by executor)
+
+### Confirming logged_in=true
+
+**Quick check:**
+```bash
+# Run a small auth check
+pnpm tsx scripts/whoami-check.ts
+```
+
+**Expected output:**
+```
+logged_in: true
+handle: @your_handle
+```
+
+**Or check harvester logs:**
+```bash
+HARVESTING_ENABLED=true pnpm tsx scripts/ops/run-harvester-single-cycle.ts 2>&1 | grep "HARVESTER_AUTH\|WHOAMI"
+```
+
+**Expected:** `[HARVESTER_AUTH] ok=true` and `[WHOAMI] logged_in=true`
+
+---
+
 ## Prerequisites
 
 1. **Executor running:** `pnpm run ops:executor:status` shows daemon running
@@ -305,6 +408,66 @@ LIMIT 10;
 ```
 
 ---
+
+## Parallel Ops Routine (Keep-It-Running)
+
+**Once auth is fixed and harvester works:**
+
+### Harvester Frequency
+
+**Target:** Keep `fresh_12h >= 50` opportunities at all times
+
+**Run harvester:**
+```bash
+# Single cycle (adds ~50-200 opportunities)
+HARVESTING_ENABLED=true pnpm tsx scripts/ops/run-harvester-single-cycle.ts
+
+# Check freshness after harvest
+pnpm tsx scripts/ops/p1-diagnostic-queries.ts | grep "fresh_12h\|fresh_24h"
+```
+
+**Frequency:**
+- **If fresh_12h < 50:** Run harvester immediately
+- **If fresh_12h >= 50:** Run harvester every 2-4 hours to maintain pool
+- **If fresh_12h >= 200:** Skip harvest (pool is healthy)
+
+### Planner/Scheduler + Executor Loop
+
+**After pool is healthy (fresh_12h >= 50):**
+
+1. **Trigger planner** (creates decisions from opportunities):
+   ```bash
+   railway run --service xBOT pnpm tsx scripts/ops/run-reply-v2-planner-once.ts
+   ```
+
+2. **Ensure executor is running:**
+   ```bash
+   pnpm run ops:executor:status
+   # If not running:
+   pnpm run executor:daemon
+   ```
+
+3. **Monitor for successful post:**
+   ```bash
+   # Watch executor logs
+   tail -f ./.runner-profile/logs/executor.log | grep "REPLY_SUCCESS\|runtime_preflight_status"
+   
+   # Or check DB for posted replies
+   pnpm tsx scripts/ops/p1-diagnostic-queries.ts
+   ```
+
+**Expected flow:**
+- Planner creates `reply_v2_planner` decisions every 15-30 minutes
+- Scheduler selects candidates and updates `pipeline_source='reply_v2_scheduler'`
+- Executor claims decisions and runs runtime preflight
+- If `runtime_preflight_status='ok'`, executor posts reply
+- Reward computed after metrics scraper runs
+
+**Success indicators:**
+- `fresh_12h >= 50` (harvester working)
+- Decisions created every 15-30 minutes (planner working)
+- Decisions claimed within 5 minutes (executor working)
+- `runtime_preflight_status='ok'` decisions posting (preflight working)
 
 ## Next Steps After P1 Success
 
