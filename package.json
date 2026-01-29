@@ -115,6 +115,7 @@
     "executor:prove:runtime-preflight": "tsx scripts/executor/prove-runtime-preflight.ts",
     "executor:prove:runtime-preflight-ok-only": "tsx scripts/executor/prove-runtime-preflight-ok-only.ts",
     "executor:prove:length-clamp": "tsx scripts/executor/prove-length-clamp.ts",
+    "executor:prove:plan-only-length-pipeline": "tsx scripts/executor/prove-plan-only-length-pipeline.ts",
     "executor:prove:reply-v2-plan-only-generation": "tsx scripts/executor/prove-reply-v2-plan-only-generation.ts",
     "executor:prove:reply-v2-preflight-soft": "tsx scripts/executor/prove-reply-v2-preflight-soft.ts",
     "executor:prove:posting-priority-ok-first": "tsx scripts/executor/prove-posting-priority-ok-first.ts",

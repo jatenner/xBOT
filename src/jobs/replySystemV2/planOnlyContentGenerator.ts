@@ -11,7 +11,7 @@ import { getSupabaseClient } from '../../db/index';
  * Clamp reply length while preserving required grounding phrases
  * Ensures reply never exceeds maxLen and always includes required phrases
  */
-function clampReplyLengthPreserveGrounding(
+export function clampReplyLengthPreserveGrounding(
   content: string,
   maxLen: number,
   requiredPhrases: string[]

@@ -225,11 +225,9 @@ Format as JSON:
     throw error;
   }
   
-  // 🔒 HARD LENGTH CAP: Use same limit as planOnlyContentGenerator (200 chars, configurable)
-  const MAX_REPLY_LENGTH = parseInt(process.env.MAX_REPLY_LENGTH || '200', 10);
-  if (replyData.content.length > MAX_REPLY_LENGTH) {
-    throw new Error(`Invalid reply: too long (>${MAX_REPLY_LENGTH} chars)`);
-  }
+  // 🔒 LENGTH VALIDATION REMOVED: planOnlyContentGenerator.ts handles clamping for PLAN_ONLY decisions
+  // For non-PLAN_ONLY paths, length validation should be handled by the caller
+  // Removed throw to allow planOnlyContentGenerator to apply clamp with grounding preservation
   
   // 🔒 QUALITY GATE: Verify reply references concrete detail from tweet
   const tweetTextLower = request.target_tweet_content.toLowerCase();
