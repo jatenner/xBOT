@@ -19,6 +19,17 @@
 - Grounding check passes: Generated content includes 2+ terms from tweet snapshot
 - **Note:** Posting currently blocked by stale targets (expected behavior). Need fresh opportunities from harvester.
 
+🔒 **Proving Phase: OK-Only Runtime Preflight Gating** — ACTIVE
+
+**Commit SHA:** `c9b5def0` (latest)  
+**Status:** Strict OK-only gating enabled for proving phase
+
+- Runtime preflight check runs on Mac Runner before generation/posting
+- Only decisions with `runtime_preflight_status='ok'` proceed to generation
+- All non-ok statuses (deleted/timeout/error) are blocked immediately
+- No fallback posting on timeout during proving phase (correctness over throughput)
+- Decision selection prioritizes `runtime_preflight_status='ok'` > `preflight_status='ok'` > others
+
 ✅ **Railway Control-Plane Deployment**
 - Both services (`xBOT`, `serene-cat`) deploy via Railway GitHub Integration + Wait for CI
 - SHA verification via `/healthz` endpoints (deterministic, cache-busted)
@@ -689,20 +700,43 @@ EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post
 
 ---
 
+## Next Milestones
+
+### Proving Phase (Current)
+
+**P1: 1 Posted Reply + Reward** — IN PROGRESS
+- Goal: Get 1 `reply_v2_planner` decision to POST successfully
+- Success criteria:
+  - Decision transitions: `queued` → `runtime_preflight_status='ok'` → `posting_attempt` → `posted`
+  - `features.tweet_id` populated
+  - `features.reward` computed (after scraper runs)
+- Run: `pnpm tsx scripts/ops/e2e-prove-1-posted-reply.ts`
+
+**P2: 5 Posted Replies + Strategy Rewards Updated**
+- Goal: Prove learning loop is functioning
+- Success criteria:
+  - At least 5 posted replies with `runtime_preflight_status='ok'`
+  - `strategy_rewards` table updated (sample_count incremented)
+  - Mean reward values computed
+
+**P3: Enable Timeout Fallback (Phase 2)**
+- Goal: Allow timeout decisions to proceed with guardrails
+- Success criteria:
+  - Timeout fallback enabled with strict conditions
+  - Success rate maintained
+  - No increase in deleted target failures
+
 ## Next Steps
 
-1. **Run Proof Level 4 (Posting):**
-   - First: `pnpm run executor:prove:e2e-control-post` (DRY_RUN)
-   - Then: `EXECUTE_REAL_ACTION=true pnpm run executor:prove:e2e-control-post` (if DRY_RUN passes)
+1. **Run E2E Proof for 1 Posted Reply:**
+   - Trigger planner: `railway run --service xBOT pnpm tsx scripts/ops/run-reply-v2-planner-once.ts`
+   - Start Mac Runner: `RUNNER_MODE=true MAX_E2E_REPLIES=1 pnpm run executor:daemon`
+   - Monitor: `pnpm tsx scripts/ops/e2e-prove-1-posted-reply.ts`
 
-2. **Run Proof Level 4 (Replying):**
-   - First: `TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-control-reply` (DRY_RUN)
-   - Then: `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=<id> pnpm run executor:prove:e2e-control-reply` (if DRY_RUN passes)
+2. **Verify Learning System:**
+   - Query `content_generation_metadata_comprehensive` for posted replies with rewards
+   - Query `strategy_rewards` table for updated mean_reward values
 
-3. **Verify Learning System:**
-   - Query `outcomes` table for recent metrics
-   - Query `learning_posts` table for updated summaries
-
-4. **Update This Document:**
-   - Mark Proof Level 4 as PROVEN once evidence artifacts exist
-   - Add any new proof coverage
+3. **Update This Document:**
+   - Mark P1 as PROVEN once 1 posted reply + reward achieved
+   - Add proof report links

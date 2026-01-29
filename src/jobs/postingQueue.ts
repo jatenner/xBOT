@@ -3011,27 +3011,32 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       replyQuery = replyQuery.eq('decision_id', controlledDecisionId);
     }
     
-    // 🔒 PREFLIGHT PRIORITY: Fetch all replies first, then prioritize by preflight_status
+    // 🔒 PREFLIGHT PRIORITY: Fetch all replies first, then prioritize by preflight_status + runtime_preflight_status
     const { data: replyPosts, error: replyError } = await replyQuery
       .limit(50); // Fetch more to allow sorting by preflight_status
     
-    // 🔒 PREFLIGHT PRIORITY: Sort replies by preflight_status priority
-    // Priority order: 'ok' > 'skipped' > 'timeout' > others
-    const preflightPriority = (status: string | null | undefined): number => {
-      if (status === 'ok') return 1;
-      if (status === 'skipped') return 2;
-      if (status === 'timeout') return 3;
-      return 4; // Other statuses or null
+    // 🔒 PREFLIGHT PRIORITY: Sort replies by preflight_status + runtime_preflight_status priority
+    // Priority order: runtime_preflight_status='ok' > preflight_status='ok' > 'skipped' > 'timeout' > others
+    const preflightPriority = (preflightStatus: string | null | undefined, runtimePreflightStatus: string | null | undefined): number => {
+      // Highest priority: runtime_preflight_status='ok' (proven at execution time)
+      if (runtimePreflightStatus === 'ok') return 1;
+      // Second priority: preflight_status='ok' (proven at planning time)
+      if (preflightStatus === 'ok') return 2;
+      if (preflightStatus === 'skipped') return 3;
+      if (preflightStatus === 'timeout') return 4;
+      return 5; // Other statuses or null
     };
     
     const sortedReplyPosts = (replyPosts || []).sort((a: any, b: any) => {
       const featuresA = (a.features || {}) as Record<string, any>;
       const featuresB = (b.features || {}) as Record<string, any>;
-      const statusA = featuresA.preflight_status;
-      const statusB = featuresB.preflight_status;
+      const preflightStatusA = featuresA.preflight_status;
+      const preflightStatusB = featuresB.preflight_status;
+      const runtimePreflightStatusA = featuresA.runtime_preflight_status;
+      const runtimePreflightStatusB = featuresB.runtime_preflight_status;
       
-      const priorityA = preflightPriority(statusA);
-      const priorityB = preflightPriority(statusB);
+      const priorityA = preflightPriority(preflightStatusA, runtimePreflightStatusA);
+      const priorityB = preflightPriority(preflightStatusB, runtimePreflightStatusB);
       
       if (priorityA !== priorityB) {
         return priorityA - priorityB; // Lower priority number = higher priority
@@ -3043,18 +3048,30 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       return createdAtB - createdAtA;
     });
     
-    // 🔒 HARD GUARD: If preflight_status='ok' exists, ONLY process 'ok' decisions in this tick
-    const okDecisions = sortedReplyPosts.filter((d: any) => {
+    // 🔒 PROVING PHASE: Prioritize runtime_preflight_status='ok' OR preflight_status='ok'
+    const runtimeOkDecisions = sortedReplyPosts.filter((d: any) => {
       const features = (d.features || {}) as Record<string, any>;
-      return features.preflight_status === 'ok';
+      return features.runtime_preflight_status === 'ok';
     });
+    
+    const plannerOkDecisions = sortedReplyPosts.filter((d: any) => {
+      const features = (d.features || {}) as Record<string, any>;
+      return features.preflight_status === 'ok' && features.runtime_preflight_status !== 'ok';
+    });
+    
+    // Prefer runtime_preflight_status='ok' first, then preflight_status='ok'
+    const okDecisions = runtimeOkDecisions.length > 0 
+      ? runtimeOkDecisions 
+      : plannerOkDecisions;
     
     const finalReplyPosts = okDecisions.length > 0 
       ? okDecisions.slice(0, 10) // Only 'ok' decisions if any exist
       : sortedReplyPosts.slice(0, 10); // Otherwise, use sorted list
     
-    if (okDecisions.length > 0 && sortedReplyPosts.length > okDecisions.length) {
-      console.log(`[POSTING_QUEUE] 🔒 PREFLIGHT_GUARD: ${okDecisions.length} 'ok' decisions found, skipping ${sortedReplyPosts.length - okDecisions.length} 'timeout'/'skipped' decisions`);
+    if (runtimeOkDecisions.length > 0) {
+      console.log(`[POSTING_QUEUE] 🔒 PROVING_PHASE: ${runtimeOkDecisions.length} runtime_preflight_status='ok' decisions found, prioritizing them`);
+    } else if (plannerOkDecisions.length > 0) {
+      console.log(`[POSTING_QUEUE] 🔒 PREFLIGHT_GUARD: ${plannerOkDecisions.length} preflight_status='ok' decisions found, skipping ${sortedReplyPosts.length - plannerOkDecisions.length} 'timeout'/'skipped' decisions`);
     }
     
     // 🔒 CERT MODE: Only include replies, exclude threads/singles
@@ -4643,54 +4660,44 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             } catch (preflightError: any) {
               const runtimePreflightLatency = Date.now() - runtimePreflightStart;
               const isTimeout = preflightError.message === 'timeout';
+              const status = isTimeout ? 'timeout' : 'error';
               
-              console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=${isTimeout ? 'timeout' : 'error'} latency_ms=${runtimePreflightLatency} error=${preflightError.message}`);
+              console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=${status} latency_ms=${runtimePreflightLatency} error=${preflightError.message}`);
               
-              // Check if we have other candidates in queue (bounded fallback)
-              const { count: queuedCount } = await supabase
-                .from('content_generation_metadata_comprehensive')
-                .select('*', { count: 'exact', head: true })
-                .eq('decision_type', 'reply')
-                .eq('pipeline_source', 'reply_v2_planner')
-                .eq('status', 'queued')
-                .neq('decision_id', decision.id);
+              // 🔒 PROVING PHASE: Strict OK-only gating - block all non-ok statuses
+              const finalStatus = isTimeout ? 'blocked' : 'blocked_permanent';
+              await supabase.from('content_generation_metadata_comprehensive')
+                .update({
+                  status: finalStatus,
+                  error_message: JSON.stringify({
+                    stale_reason: `runtime_preflight_${status}`,
+                    runtime_preflight_status: status,
+                    runtime_preflight_latency_ms: runtimePreflightLatency,
+                    error: preflightError.message,
+                    proving_phase: 'ok_only_gating'
+                  }),
+                  features: {
+                    ...decisionFeatures,
+                    runtime_preflight_status: status,
+                    runtime_preflight_checked_at: new Date().toISOString(),
+                    runtime_preflight_latency_ms: runtimePreflightLatency
+                  }
+                })
+                .eq('decision_id', decision.id);
               
-              if (queuedCount && queuedCount > 0) {
-                // Other candidates exist - block this one
-                await supabase.from('content_generation_metadata_comprehensive')
-                  .update({
-                    status: 'blocked_permanent',
-                    error_message: JSON.stringify({
-                      stale_reason: `runtime_preflight_${isTimeout ? 'timeout' : 'error'}`,
-                      runtime_preflight_status: isTimeout ? 'timeout' : 'error',
-                      runtime_preflight_latency_ms: runtimePreflightLatency,
-                      error: preflightError.message
-                    }),
-                    features: {
-                      ...decisionFeatures,
-                      runtime_preflight_status: isTimeout ? 'timeout' : 'error',
-                      runtime_preflight_checked_at: new Date().toISOString(),
-                      runtime_preflight_latency_ms: runtimePreflightLatency
-                    }
-                  })
-                  .eq('decision_id', decision.id);
-                return false; // Skip this decision
-              } else {
-                // No other candidates - continue with this one (bounded fallback)
-                console.log(`[RUNTIME_PREFLIGHT] ⚠️ No other candidates, continuing with timeout decision`);
-                await supabase.from('content_generation_metadata_comprehensive')
-                  .update({
-                    features: {
-                      ...decisionFeatures,
-                      runtime_preflight_status: isTimeout ? 'timeout' : 'error',
-                      runtime_preflight_checked_at: new Date().toISOString(),
-                      runtime_preflight_latency_ms: runtimePreflightLatency
-                    }
-                  })
-                  .eq('decision_id', decision.id);
-                decisionFeatures.runtime_preflight_status = isTimeout ? 'timeout' : 'error';
-              }
+              console.log(`[RUNTIME_PREFLIGHT] 🚫 PROVING PHASE: Blocked decision due to runtime_preflight_status=${status} (OK-only gating)`);
+              return false; // Skip this decision - do not proceed to generation/posting
             }
+          }
+          
+          // 🔒 PROVING PHASE: Ensure runtime_preflight_status='ok' before proceeding
+          if (isPlannerDecision && isRunnerMode) {
+            const currentRuntimePreflight = decisionFeatures.runtime_preflight_status;
+            if (currentRuntimePreflight !== 'ok') {
+              console.log(`[RUNTIME_PREFLIGHT] 🚫 PROVING PHASE: Blocked decision - runtime_preflight_status=${currentRuntimePreflight} (required: 'ok')`);
+              return false; // Do not proceed to generation/posting
+            }
+            console.log(`[RUNTIME_PREFLIGHT] ✅ PROVING PHASE: Proceeding - runtime_preflight_status=ok`);
           }
           
           // ═══════════════════════════════════════════════════════════════════════
