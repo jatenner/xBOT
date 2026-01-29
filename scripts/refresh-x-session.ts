@@ -34,17 +34,22 @@ async function refreshSession(): Promise<void> {
   console.log('⚠️  IMPORTANT: Keep the browser window open until prompted!');
   console.log('');
   
-  // Wait for user confirmation
-  await new Promise<void>((resolve) => {
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-    process.stdin.once('data', () => {
-      process.stdin.setRawMode(false);
-      process.stdin.pause();
-      resolve();
+  // Wait for user confirmation (non-blocking if stdin not available)
+  if (process.stdin.isTTY) {
+    await new Promise<void>((resolve) => {
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.once('data', () => {
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        resolve();
+      });
+      console.log('Press any key to open browser...');
     });
-    console.log('Press any key to open browser...');
-  });
+  } else {
+    console.log('Opening browser in 3 seconds...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  }
 
   let browser: Browser | null = null;
   let context: BrowserContext | null = null;
@@ -75,10 +80,15 @@ async function refreshSession(): Promise<void> {
     console.log('   (Browser window should be visible - log in there)');
     console.log('');
     
-    // Wait for login indicators
+    // Wait for login indicators (extended wait for manual login)
     let loggedIn = false;
-    const maxWaitTime = 300000; // 5 minutes max wait
+    const maxWaitTime = 600000; // 10 minutes max wait for manual login
     const startTime = Date.now();
+    
+    console.log('⏳ Waiting for manual login (up to 10 minutes)...');
+    console.log('   Please log in to X.com in the browser window');
+    console.log('   Script will auto-detect when login is complete');
+    console.log('');
     
     while (!loggedIn && (Date.now() - startTime) < maxWaitTime) {
       try {
@@ -114,12 +124,14 @@ async function refreshSession(): Promise<void> {
         }
         
         // Wait a bit before checking again
-        await page.waitForTimeout(2000);
-        process.stdout.write('.');
+        await page.waitForTimeout(5000);
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        process.stdout.write(`\r⏳ Waiting... (${elapsed}s) - Please log in to X.com`);
       } catch (error) {
         // Continue waiting
-        await page.waitForTimeout(2000);
-        process.stdout.write('.');
+        await page.waitForTimeout(5000);
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        process.stdout.write(`\r⏳ Waiting... (${elapsed}s) - Please log in to X.com`);
       }
     }
     
