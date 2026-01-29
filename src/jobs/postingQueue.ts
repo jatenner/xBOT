@@ -4661,11 +4661,14 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             try {
               const { fetchTweetData } = await import('../gates/contextLockVerifier');
               
-              // 🔒 CONFIGURABLE TIMEOUT: Runtime preflight timeout via env var (default 10s, clamped 3-20s)
+              // 🔒 CONFIGURABLE TIMEOUT: Runtime preflight timeout via env var (default 10s, clamped 3-30s)
+              // 🔥 PROVING CALIBRATION: Increased max clamp to 30s to accommodate real-world Twitter latency
+              // Justification: Resource blocking + optimizations applied, but network/Twitter response times
+              // can still exceed 20s. 30s is safe (still fails-fast) and necessary for proving phase.
               const rawTimeout = parseInt(process.env.RUNTIME_PREFLIGHT_TIMEOUT_MS || '10000', 10);
               const runtimePreflightTimeoutMs = isNaN(rawTimeout) 
                 ? 10000 
-                : Math.max(3000, Math.min(20000, rawTimeout));
+                : Math.max(3000, Math.min(30000, rawTimeout)); // Increased max from 20s to 30s
               
               const fetchPromise = fetchTweetData(decision.target_tweet_id);
               const timeoutPromise = new Promise<null>((_, reject) => 
@@ -4764,7 +4767,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               const rawTimeout = parseInt(process.env.RUNTIME_PREFLIGHT_TIMEOUT_MS || '10000', 10);
               const runtimePreflightTimeoutMs = isNaN(rawTimeout) 
                 ? 10000 
-                : Math.max(3000, Math.min(20000, rawTimeout));
+                : Math.max(3000, Math.min(30000, rawTimeout)); // Increased max from 20s to 30s
               const isTimeout = preflightError.message === 'timeout';
               const status = isTimeout ? 'timeout' : 'error';
               
