@@ -113,6 +113,7 @@
     "executor:prove:reply-v2-plan-only": "tsx scripts/executor/prove-reply-v2-plan-only.ts",
     "executor:prove:reply-v2-planner-finalize": "tsx scripts/executor/prove-reply-v2-planner-finalize.ts",
     "executor:prove:reply-v2-plan-only-generation": "tsx scripts/executor/prove-reply-v2-plan-only-generation.ts",
+    "executor:prove:reply-v2-preflight-soft": "tsx scripts/executor/prove-reply-v2-preflight-soft.ts",
     "proof:seed:5a4": "tsx scripts/proof/seed-5a4-workload.ts",
     "proof:regression": "pnpm run executor:prove:e2e-control-post && TARGET_TWEET_ID=${TARGET_TWEET_ID:-2014718451563004351} pnpm run executor:prove:e2e-control-reply",
     "tweet:id": "tsx scripts/utils/extract-tweet-id.ts",
