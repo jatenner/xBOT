@@ -25,6 +25,8 @@
     <string>true</string>
     <key>RUNNER_PROFILE_DIR</key>
     <string>/Users/jonahtenner/Desktop/xBOT/.runner-profile</string>
+    <key>RUNTIME_PREFLIGHT_TIMEOUT_MS</key>
+    <string>20000</string>
     <key>PATH</key>
     <string>/Users/jonahtenner/.npm-global/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
