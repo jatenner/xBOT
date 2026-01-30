@@ -474,7 +474,7 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
   }
   
   // Sort by stability_score (prefer 1.0 = 5-45min window), then by overall_score
-  const candidatesWithStability = candidates.map(c => ({
+  const candidatesWithStability = filteredCandidates.map(c => ({
     ...c,
     stability_score: stabilityMap.get(c.candidate_tweet_id) || 0.5,
     age_minutes: ageMap.get(c.candidate_tweet_id) || null
