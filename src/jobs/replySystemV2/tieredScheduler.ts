@@ -270,7 +270,12 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   
   // 🔒 SOFT PREFLIGHT: Collect multiple candidates and try preflight with bounds
   const PREFLIGHT_MAX_PER_CYCLE = parseInt(process.env.PREFLIGHT_MAX_PER_CYCLE || '3', 10);
-  const PREFLIGHT_TIMEOUT_MS = 6000; // 6s timeout (tightened from 15s)
+  // 🔒 CONFIGURABLE TIMEOUT: Scheduler preflight timeout via env var (default 20s for P1, clamped 3-30s)
+  // Matches executor runtime_preflight timeout clamp for consistency
+  const rawSchedulerTimeout = parseInt(process.env.SCHEDULER_PREFLIGHT_TIMEOUT_MS || '20000', 10);
+  const PREFLIGHT_TIMEOUT_MS = isNaN(rawSchedulerTimeout) 
+    ? 20000 
+    : Math.max(3000, Math.min(30000, rawSchedulerTimeout)); // Clamp 3s-30s
   
   // Collect candidates from all tiers (try tier 1, then 2, then 3 if behind schedule)
   const candidatesToTry: Array<{ candidate: any; tier: number }> = [];
