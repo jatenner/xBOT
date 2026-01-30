@@ -217,6 +217,7 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
     const candidateTweetIds = topCandidates.map(c => c.candidate_tweet_id);
     
     // Join with reply_opportunities to filter to root tweets only
+    // 🔗 BRIDGE FIX: Don't filter opportunities by age - if evaluation exists, opportunity should exist
     const { data: rootOpportunities } = await supabase
       .from('reply_opportunities')
       .select('target_tweet_id, is_root_tweet, target_in_reply_to_tweet_id')
