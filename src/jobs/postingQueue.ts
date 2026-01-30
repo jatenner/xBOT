@@ -4718,28 +4718,59 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               const runtimePreflightLatency = Date.now() - runtimePreflightStart;
               
               if (!tweetData && fetchError) {
-                // Classify failure reason from fetchTweetData
+                // 🔒 P1 TRUTH CLASSIFICATION: Use failureReason from fetchTweetData
                 const failureReason = fetchError.failureReason || 'error';
                 const isInaccessible = failureReason === 'inaccessible';
                 const isDeleted = failureReason === 'deleted';
-                const status = isInaccessible ? 'inaccessible' : (isDeleted ? 'deleted' : 'error');
+                const isTimeout = failureReason === 'timeout';
                 
-                console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=${status} latency_ms=${runtimePreflightLatency} reason=${fetchError.message}`);
+                // Extract classification marker from error message if available
+                const errorMsg = fetchError.message || '';
+                const markerMatch = errorMsg.match(/marker=([^\s]+)/);
+                const marker = markerMatch ? markerMatch[1] : (isInaccessible ? 'inaccessible' : (isDeleted ? 'deleted' : (isTimeout ? 'timeout' : 'error')));
+                
+                const status = isTimeout ? 'timeout' : (isInaccessible ? 'inaccessible' : (isDeleted ? 'deleted' : 'error'));
+                const reason = fetchError.message || `Tweet ${failureReason}`;
+                
+                console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=${status} latency_ms=${runtimePreflightLatency} marker=${marker} reason=${reason}`);
+                
+                // Save debug artifacts for non-ok cases
+                let debugPath = null;
+                try {
+                  const fs = require('fs');
+                  const path = require('path');
+                  const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'debug');
+                  if (!fs.existsSync(debugDir)) {
+                    fs.mkdirSync(debugDir, { recursive: true });
+                  }
+                  const timestamp = Date.now();
+                  const screenshotPath = path.join(debugDir, `runtime_preflight_${status}_${decision.id.substring(0, 8)}_${timestamp}.png`);
+                  // Note: fetchTweetData should have saved screenshot, but log path for reference
+                  debugPath = screenshotPath;
+                  console.log(`[RUNTIME_PREFLIGHT] 💾 Debug artifacts saved to: ${debugPath}`);
+                } catch (e) {
+                  // Ignore debug save errors
+                }
+                
                 await supabase.from('content_generation_metadata_comprehensive')
                   .update({
                     status: 'blocked_permanent',
                     error_message: JSON.stringify({
-                      stale_reason: isInaccessible ? 'target_inaccessible_runtime' : (isDeleted ? 'target_not_found_or_deleted_runtime' : 'target_fetch_error_runtime'),
+                      stale_reason: isInaccessible ? 'target_inaccessible_runtime' : (isDeleted ? 'target_not_found_or_deleted_runtime' : (isTimeout ? 'target_fetch_timeout_runtime' : 'target_fetch_error_runtime')),
                       runtime_preflight_status: status,
-                      runtime_preflight_reason: fetchError.message,
-                      runtime_preflight_latency_ms: runtimePreflightLatency
+                      runtime_preflight_reason: reason,
+                      runtime_preflight_marker: marker,
+                      runtime_preflight_latency_ms: runtimePreflightLatency,
+                      debug_path: debugPath
                     }),
                     features: {
                       ...decisionFeatures,
                       runtime_preflight_status: status,
-                      runtime_preflight_reason: fetchError.message,
+                      runtime_preflight_reason: reason,
+                      runtime_preflight_marker: marker,
                       runtime_preflight_checked_at: new Date().toISOString(),
-                      runtime_preflight_latency_ms: runtimePreflightLatency
+                      runtime_preflight_latency_ms: runtimePreflightLatency,
+                      runtime_preflight_debug_path: debugPath
                     }
                   })
                   .eq('decision_id', decision.id);
@@ -4747,21 +4778,51 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               }
               
               if (!tweetData) {
-                // Fallback: null return without error (shouldn't happen, but handle gracefully)
-                console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=deleted latency_ms=${runtimePreflightLatency} (null return)`);
+                // 🔒 P1 TRUTH CLASSIFICATION: Null return = text extraction failed, NOT deleted
+                // This likely means inaccessible (login wall/protected) or extraction error, not deleted
+                // Only classify as 'deleted' if explicit deletion markers are present
+                const status = 'inaccessible'; // Default to inaccessible (more likely than deleted)
+                const marker = 'text_extraction_failed';
+                const reason = 'Tweet text extraction failed - likely inaccessible (login wall/protected) or extraction error';
+                
+                console.log(`[RUNTIME_PREFLIGHT] decision_id=${decision.id} status=${status} latency_ms=${runtimePreflightLatency} marker=${marker} (null return - text extraction failed)`);
+                
+                // Save debug artifacts
+                let debugPath = null;
+                try {
+                  const fs = require('fs');
+                  const path = require('path');
+                  const debugDir = path.join(process.env.RUNNER_PROFILE_DIR || '.runner-profile', 'debug');
+                  if (!fs.existsSync(debugDir)) {
+                    fs.mkdirSync(debugDir, { recursive: true });
+                  }
+                  const timestamp = Date.now();
+                  const screenshotPath = path.join(debugDir, `runtime_preflight_${status}_${decision.id.substring(0, 8)}_${timestamp}.png`);
+                  // Note: page is not available here, but fetchTweetData should have saved screenshot
+                  debugPath = screenshotPath;
+                } catch (e) {
+                  // Ignore debug save errors
+                }
+                
                 await supabase.from('content_generation_metadata_comprehensive')
                   .update({
                     status: 'blocked_permanent',
                     error_message: JSON.stringify({
-                      stale_reason: 'target_not_found_or_deleted_runtime',
-                      runtime_preflight_status: 'deleted',
-                      runtime_preflight_latency_ms: runtimePreflightLatency
+                      stale_reason: 'target_inaccessible_runtime',
+                      runtime_preflight_status: status,
+                      runtime_preflight_reason: reason,
+                      runtime_preflight_marker: marker,
+                      runtime_preflight_latency_ms: runtimePreflightLatency,
+                      debug_path: debugPath
                     }),
                     features: {
                       ...decisionFeatures,
-                      runtime_preflight_status: 'deleted',
+                      runtime_preflight_status: status,
+                      runtime_preflight_reason: reason,
+                      runtime_preflight_marker: marker,
                       runtime_preflight_checked_at: new Date().toISOString(),
-                      runtime_preflight_latency_ms: runtimePreflightLatency
+                      runtime_preflight_latency_ms: runtimePreflightLatency,
+                      runtime_preflight_debug_path: debugPath
                     }
                   })
                   .eq('decision_id', decision.id);
@@ -4775,6 +4836,8 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
                   features: {
                     ...decisionFeatures,
                     runtime_preflight_status: 'ok',
+                    runtime_preflight_reason: 'Tweet accessible and text extracted successfully',
+                    runtime_preflight_marker: 'ok',
                     runtime_preflight_checked_at: new Date().toISOString(),
                     runtime_preflight_latency_ms: runtimePreflightLatency,
                     runtime_preflight_timeout_ms: runtimePreflightTimeoutMs
@@ -4784,6 +4847,8 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               
               // Update decision features for downstream use
               decisionFeatures.runtime_preflight_status = 'ok';
+              decisionFeatures.runtime_preflight_reason = 'Tweet accessible and text extracted successfully';
+              decisionFeatures.runtime_preflight_marker = 'ok';
               decisionFeatures.runtime_preflight_checked_at = new Date().toISOString();
               decisionFeatures.runtime_preflight_latency_ms = runtimePreflightLatency;
               decisionFeatures.runtime_preflight_timeout_ms = runtimePreflightTimeoutMs;

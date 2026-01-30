@@ -326,7 +326,48 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
     if (!tweetText || tweetText.trim().length < 10) {
       console.warn(`[CONTEXT_LOCK_VERIFY] ⚠️ Could not extract tweet text for ${targetTweetId} (length=${tweetText?.length || 0})`);
       
+      // 🔍 P1 TRUTH CLASSIFICATION: Check page content for login wall/forbidden markers before returning null
+      const pageContent = await page.content().catch(() => '');
+      const pageTitle = await page.title().catch(() => '');
+      const pageUrl = page.url();
+      
+      const hasLoginWall = pageContent.includes('Log in') || 
+                         pageContent.includes('Sign in') ||
+                         pageTitle.toLowerCase().includes('log in') ||
+                         pageTitle.toLowerCase().includes('sign in') ||
+                         pageUrl.includes('/i/flow/login') ||
+                         pageUrl.includes('/i/flow/signin');
+      const hasForbidden = pageContent.includes('forbidden') ||
+                         pageContent.includes('403') ||
+                         pageContent.includes('protected') ||
+                         pageContent.includes('This account is protected') ||
+                         pageContent.includes('You are unable to view this post');
+      const hasDeletedText = pageContent.includes('This Post is unavailable') || 
+                            pageContent.includes('Post is unavailable') ||
+                            pageContent.includes('This post is no longer available');
+      
+      // Determine failure reason based on page markers
+      let failureReason: 'inaccessible' | 'deleted' | 'timeout' | 'error' = 'error';
+      let classificationMarker = '';
+      
+      if (hasDeletedText && !hasLoginWall && !hasForbidden) {
+        failureReason = 'deleted';
+        classificationMarker = 'deleted_text';
+      } else if (hasLoginWall || hasForbidden) {
+        failureReason = 'inaccessible';
+        classificationMarker = hasLoginWall ? 'login_wall' : 'forbidden';
+      } else {
+        // Text extraction failed but no clear markers - default to inaccessible (likely protected/private)
+        failureReason = 'inaccessible';
+        classificationMarker = 'text_extraction_failed';
+      }
+      
+      console.warn(`[CONTEXT_LOCK_VERIFY] 🔍 Classification for ${targetTweetId} (text extraction failed):`);
+      console.warn(`  failure_reason=${failureReason} marker=${classificationMarker}`);
+      console.warn(`  has_deleted_text=${hasDeletedText} has_login_wall=${hasLoginWall} has_forbidden=${hasForbidden}`);
+      
       // Save debug artifacts for all modes (not just CDP)
+      let debugPath = null;
       try {
         const fs = require('fs');
         const path = require('path');
@@ -334,20 +375,33 @@ export async function fetchTweetData(targetTweetId: string): Promise<{
         if (!fs.existsSync(debugDir)) {
           fs.mkdirSync(debugDir, { recursive: true });
         }
-        
+        const timestamp = Date.now();
+        const screenshotPath = path.join(debugDir, `${failureReason}_${targetTweetId}_${timestamp}.png`);
         await page.screenshot({ 
-          path: path.join(debugDir, `no_content_${targetTweetId}_${Date.now()}.png`),
+          path: screenshotPath,
           fullPage: false
         }).catch(() => {});
         const html = await page.content().catch(() => '');
         if (html) {
-          fs.writeFileSync(path.join(debugDir, `no_content_${targetTweetId}_${Date.now()}.html`), html);
+          const htmlPath = path.join(debugDir, `${failureReason}_${targetTweetId}_${timestamp}.html`);
+          fs.writeFileSync(htmlPath, html);
+          // Extract first 500 chars of text for quick inspection
+          const textPreview = html.substring(0, 500).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+          const textPath = path.join(debugDir, `${failureReason}_${targetTweetId}_${timestamp}.txt`);
+          fs.writeFileSync(textPath, `URL: ${pageUrl}\nTitle: ${pageTitle}\nPreview: ${textPreview}`);
+          debugPath = screenshotPath;
+          console.warn(`[CONTEXT_LOCK_VERIFY] 💾 Debug artifacts saved: ${screenshotPath}, ${htmlPath}, ${textPath}`);
         }
       } catch (e) {
         // Ignore debug save errors
       }
       
-      return null;
+      // Throw error with failure reason so caller can classify properly
+      const error: any = new Error(`Tweet ${failureReason}: ${classificationMarker}`);
+      error.failureReason = failureReason;
+      error.classificationMarker = classificationMarker;
+      error.debugPath = debugPath;
+      throw error;
     }
 
     // Check if it's a reply (has "Replying to" link)

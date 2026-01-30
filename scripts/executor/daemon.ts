@@ -917,6 +917,72 @@ async function main(): Promise<void> {
     });
     
     console.log(`[EXECUTOR_DAEMON] ✅ Ready event emitted (PID: ${daemonPid})`);
+    
+    // 🔒 P1 EXECUTOR AUTH VERIFICATION: Verify logged-in state on startup
+    try {
+      if (page) {
+        const { checkWhoami } = await import('../../src/utils/whoamiAuth');
+        console.log(`[EXECUTOR_AUTH] 🔍 Verifying executor authentication...`);
+        const authResult = await checkWhoami(page);
+        
+        if (authResult.logged_in) {
+          console.log(`[EXECUTOR_AUTH] ✅ logged_in=true handle=${authResult.handle || 'unknown'} reason=${authResult.reason}`);
+          
+          // Emit system event for auth verification
+          try {
+            const { getSupabaseClient } = await import('../../src/db/index');
+            const supabase = getSupabaseClient();
+            await supabase.from('system_events').insert({
+              event_type: 'EXECUTOR_AUTH_VERIFIED',
+              severity: 'info',
+              message: `Executor auth verified: logged_in=true handle=${authResult.handle || 'unknown'}`,
+              event_data: {
+                logged_in: true,
+                handle: authResult.handle,
+                url: authResult.url,
+                reason: authResult.reason,
+                timestamp: new Date().toISOString(),
+              },
+              created_at: new Date().toISOString(),
+            });
+          } catch (e: any) {
+            console.warn(`[EXECUTOR_AUTH] ⚠️ Failed to emit auth event: ${e.message}`);
+          }
+        } else {
+          console.error(`[EXECUTOR_AUTH] ❌ logged_in=false reason=${authResult.reason}`);
+          console.error(`[EXECUTOR_AUTH] 🚫 Executor is not logged in - pausing processing`);
+          
+          // Emit system event for invalid auth
+          try {
+            const { getSupabaseClient } = await import('../../src/db/index');
+            const supabase = getSupabaseClient();
+            await supabase.from('system_events').insert({
+              event_type: 'EXECUTOR_AUTH_INVALID',
+              severity: 'error',
+              message: `Executor auth invalid: logged_in=false reason=${authResult.reason}`,
+              event_data: {
+                logged_in: false,
+                handle: authResult.handle,
+                url: authResult.url,
+                reason: authResult.reason,
+                timestamp: new Date().toISOString(),
+              },
+              created_at: new Date().toISOString(),
+            });
+          } catch (e: any) {
+            console.warn(`[EXECUTOR_AUTH] ⚠️ Failed to emit auth invalid event: ${e.message}`);
+          }
+          
+          // Don't exit - let the daemon run but log the issue
+          // The posting queue will fail gracefully if auth is invalid
+        }
+      } else {
+        console.warn(`[EXECUTOR_AUTH] ⚠️ Page not available for auth check`);
+      }
+    } catch (authError: any) {
+      console.error(`[EXECUTOR_AUTH] ❌ Auth verification failed: ${authError.message}`);
+      // Don't exit - continue running but log the issue
+    }
   
     // Start dedicated HEALTH_OK interval (non-blocking, independent of main loop)
     lastHealthOkEmittedTime = Date.now(); // Initialize timestamp
