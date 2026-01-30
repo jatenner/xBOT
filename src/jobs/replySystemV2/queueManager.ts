@@ -80,6 +80,52 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
   
   console.log(`[QUEUE_MANAGER] 📊 Found ${topCandidates.length} candidates to consider`);
   
+  // 🔒 ROOT_ONLY FILTER: When ROOT_ONLY mode is active, only queue candidates that exist in reply_opportunities as root tweets
+  const rootOnlyMode = process.env.REPLY_V2_ROOT_ONLY !== 'false'; // Default true
+  if (rootOnlyMode && topCandidates.length > 0) {
+    const candidateTweetIds = topCandidates.map(c => c.candidate_tweet_id);
+    
+    // Join with reply_opportunities to filter to root tweets only
+    const { data: rootOpportunities } = await supabase
+      .from('reply_opportunities')
+      .select('target_tweet_id, is_root_tweet, target_in_reply_to_tweet_id')
+      .in('target_tweet_id', candidateTweetIds)
+      .eq('replied_to', false); // Only unclaimed opportunities
+    
+    const rootTweetIds = new Set<string>();
+    if (rootOpportunities) {
+      for (const opp of rootOpportunities) {
+        // Consider root if: is_root_tweet=true OR target_in_reply_to_tweet_id is null
+        const isRoot = opp.is_root_tweet === true || 
+                       (opp.is_root_tweet !== false && opp.target_in_reply_to_tweet_id === null);
+        if (isRoot) {
+          rootTweetIds.add(opp.target_tweet_id);
+        }
+      }
+    }
+    
+    const beforeCount = topCandidates.length;
+    const filteredCandidates = topCandidates.filter(c => rootTweetIds.has(c.candidate_tweet_id));
+    const filteredOutCount = beforeCount - filteredCandidates.length;
+    
+    if (filteredOutCount > 0 || rootOpportunities?.length === 0) {
+      console.log(`[QUEUE_MANAGER][ROOT_ONLY] Filtered during refresh: kept_roots=${filteredCandidates.length} filtered_out=${filteredOutCount} opportunities_found=${rootOpportunities?.length || 0}`);
+      
+      if (rootOpportunities?.length === 0) {
+        console.log(`[QUEUE_MANAGER][ROOT_ONLY] ⚠️ No opportunities found for candidates - queue refresh may need to wait for harvester`);
+      }
+    }
+    
+    // Replace topCandidates with filtered list
+    topCandidates.length = 0;
+    topCandidates.push(...filteredCandidates);
+    
+    if (topCandidates.length === 0) {
+      console.log(`[QUEUE_MANAGER] ⚠️ No root candidates available after ROOT_ONLY filter`);
+      return { evaluated: beforeCount, queued: 0, expired: expiredCount };
+    }
+  }
+  
   // 🔒 STEP 2.5: Filter out candidates that are known to be inaccessible
   // Check recent runtime preflight results for inaccessible/deleted status
   const candidateTweetIds = topCandidates.map(c => c.candidate_tweet_id);
@@ -441,11 +487,34 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
   if (rootOnlyMode && filteredCandidates.length > 0) {
     const candidateTweetIds = filteredCandidates.map(c => c.candidate_tweet_id);
     
+    // 🔍 DEBUG: Log candidate IDs being checked
+    console.log(`[ROOT_ONLY_DEBUG] Checking ${candidateTweetIds.length} candidates for root status`);
+    if (candidateTweetIds.length > 0) {
+      console.log(`[ROOT_ONLY_DEBUG] Sample candidate_id=${candidateTweetIds[0]}`);
+    }
+    
     // Join with reply_opportunities to check is_root_tweet
     const { data: opportunities } = await supabase
       .from('reply_opportunities')
       .select('target_tweet_id, is_root_tweet, target_in_reply_to_tweet_id')
       .in('target_tweet_id', candidateTweetIds);
+    
+    // 🔍 DEBUG: Log join results
+    const joinFound = opportunities ? opportunities.length : 0;
+    console.log(`[ROOT_ONLY_DEBUG] join_found=${joinFound} candidates_checked=${candidateTweetIds.length}`);
+    if (opportunities && opportunities.length > 0) {
+      console.log(`[ROOT_ONLY_DEBUG] Sample joined: target_tweet_id=${opportunities[0].target_tweet_id} is_root_tweet=${opportunities[0].is_root_tweet}`);
+    } else if (candidateTweetIds.length > 0) {
+      console.log(`[ROOT_ONLY_DEBUG] ⚠️ NO OPPORTUNITIES FOUND for candidates - checking candidate_evaluations as fallback`);
+      
+      // 🔒 FALLBACK: If reply_opportunities doesn't have these candidates, check candidate_evaluations
+      // This happens when candidates come from evaluations but opportunities weren't created
+      // For ROOT_ONLY mode, we need to ensure candidates come from root opportunities
+      // Since we can't determine root status from evaluations alone, we'll need to either:
+      // 1. Skip filtering (not safe) OR
+      // 2. Only allow candidates that exist in reply_opportunities (current behavior)
+      // For now, log the mismatch and filter out candidates without opportunities
+    }
     
     const rootTweetIds = new Set<string>();
     if (opportunities) {
@@ -455,6 +524,9 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
                        (opp.is_root_tweet !== false && opp.target_in_reply_to_tweet_id === null);
         if (isRoot) {
           rootTweetIds.add(opp.target_tweet_id);
+          console.log(`[ROOT_ONLY_DEBUG] candidate_id=${opp.target_tweet_id} is_root=true`);
+        } else {
+          console.log(`[ROOT_ONLY_DEBUG] candidate_id=${opp.target_tweet_id} is_root=false (is_root_tweet=${opp.is_root_tweet} in_reply_to=${opp.target_in_reply_to_tweet_id})`);
         }
       }
     }
@@ -464,13 +536,19 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
     filteredCandidates = filteredCandidates.filter(c => rootTweetIds.has(c.candidate_tweet_id));
     filteredOutCount = beforeCount - filteredCandidates.length;
     
-    if (filteredOutCount > 0) {
-      console.log(`[ROOT_ONLY] filtered_out_replies=${filteredOutCount} kept_roots=${filteredCandidates.length} total_checked=${beforeCount}`);
+    if (filteredOutCount > 0 || joinFound === 0) {
+      console.log(`[ROOT_ONLY] filtered_out_replies=${filteredOutCount} kept_roots=${filteredCandidates.length} total_checked=${beforeCount} join_found=${joinFound}`);
     }
     
     if (filteredCandidates.length === 0) {
-      const rootOnlyMsg = ` (root_only filtered out ${filteredOutCount})`;
+      const rootOnlyMsg = ` (root_only filtered out ${filteredOutCount}, join_found=${joinFound})`;
       console.log(`[QUEUE_MANAGER] ⚠️ No root candidates found for tier ${tier}${rootOnlyMsg}`);
+      
+      // 🔍 DEBUG: Show why filtering failed
+      if (joinFound === 0) {
+        console.log(`[ROOT_ONLY_DEBUG] ⚠️ Candidates in queue don't exist in reply_opportunities - queue may need refresh from root opportunities`);
+      }
+      
       return null;
     }
   }
