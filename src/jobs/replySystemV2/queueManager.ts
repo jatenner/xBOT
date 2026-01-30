@@ -82,6 +82,137 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
   
   // 🔒 ROOT_ONLY FILTER: When ROOT_ONLY mode is active, only queue candidates that exist in reply_opportunities as root tweets
   const rootOnlyMode = process.env.REPLY_V2_ROOT_ONLY !== 'false'; // Default true
+  
+  // 🔗 BRIDGE: Evaluate root opportunities that don't have evaluations yet
+  if (rootOnlyMode) {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    
+    // Find root opportunities
+    const { data: rootOpps } = await supabase
+      .from('reply_opportunities')
+      .select('target_tweet_id, target_username, target_tweet_content, tweet_posted_at, like_count, reply_count, retweet_count, is_root_tweet, target_in_reply_to_tweet_id')
+      .eq('replied_to', false)
+      .eq('is_root_tweet', true)
+      .gte('created_at', twentyFourHoursAgo)
+      .limit(100); // Get up to 100 to check
+    
+    // Get all evaluated tweet IDs
+    const { data: evaluatedIds } = await supabase
+      .from('candidate_evaluations')
+      .select('candidate_tweet_id')
+      .limit(10000);
+    
+    const evaluatedSet = new Set((evaluatedIds || []).map(e => e.candidate_tweet_id));
+    
+    // Filter to only unevaluated opportunities
+    const unevaluatedRootOpps = (rootOpps || []).filter(opp => !evaluatedSet.has(opp.target_tweet_id)).slice(0, 50); // Limit to 50 at a time
+    
+    if (unevaluatedRootOpps && unevaluatedRootOpps.length > 0) {
+      console.log(`[ROOT_EVAL] 🔗 Evaluating ${unevaluatedRootOpps.length} root opportunities without evaluations...`);
+      
+      const { scoreCandidate } = await import('./candidateScorer');
+      let evaluatedCount = 0;
+      let skippedCount = 0;
+      
+      for (const opp of unevaluatedRootOpps) {
+        try {
+          // Check if evaluation already exists (race condition protection)
+          const { data: existing } = await supabase
+            .from('candidate_evaluations')
+            .select('candidate_tweet_id')
+            .eq('candidate_tweet_id', opp.target_tweet_id)
+            .maybeSingle();
+          
+          if (existing) {
+            skippedCount++;
+            console.log(`[ROOT_EVAL] skipped — evaluation already exists ${opp.target_tweet_id}`);
+            continue;
+          }
+          
+          // Score the opportunity
+          const score = await scoreCandidate(
+            opp.target_tweet_id,
+            opp.target_username || 'unknown',
+            opp.target_tweet_content || '',
+            opp.tweet_posted_at || new Date().toISOString(),
+            opp.like_count || 0,
+            opp.reply_count || 0,
+            opp.retweet_count || 0,
+            `root_opp_bridge_${Date.now()}`
+          );
+          
+          // Insert evaluation with idempotency (ON CONFLICT DO NOTHING)
+          const { error: insertError } = await supabase
+            .from('candidate_evaluations')
+            .insert({
+              candidate_tweet_id: opp.target_tweet_id,
+              candidate_author_username: opp.target_username || 'unknown',
+              candidate_content: opp.target_tweet_content || '',
+              candidate_posted_at: opp.tweet_posted_at || new Date().toISOString(),
+              source_id: null, // No candidate_source for opportunities
+              source_type: 'reply_opportunity',
+              source_feed_name: 'root_opportunity_bridge',
+              feed_run_id: `root_opp_bridge_${Date.now()}`,
+              is_root_tweet: score.is_root_tweet,
+              is_parody: score.is_parody,
+              topic_relevance_score: score.topic_relevance_score,
+              spam_score: score.spam_score,
+              velocity_score: score.velocity_score,
+              recency_score: score.recency_score,
+              author_signal_score: score.author_signal_score,
+              overall_score: score.overall_score,
+              passed_hard_filters: score.passed_hard_filters,
+              filter_reason: score.filter_reason,
+              predicted_24h_views: score.predicted_24h_views,
+              predicted_tier: score.predicted_tier,
+              status: score.passed_hard_filters ? 'evaluated' : 'blocked',
+              ai_judge_decision: score.judge_decision ? {
+                relevance: score.judge_decision.relevance,
+                replyability: score.judge_decision.replyability,
+                momentum: score.judge_decision.momentum,
+                audience_fit: score.judge_decision.audience_fit,
+                spam_risk: score.judge_decision.spam_risk,
+                expected_views_bucket: score.judge_decision.expected_views_bucket,
+                decision: score.judge_decision.decision,
+                reasons: score.judge_decision.reasons
+              } : null,
+              judge_relevance: score.judge_decision?.relevance,
+              judge_replyability: score.judge_decision?.replyability,
+            })
+            .select('candidate_tweet_id')
+            .maybeSingle();
+          
+          if (insertError) {
+            // Check if it's a duplicate/unique constraint error (idempotency)
+            if (insertError.message.includes('duplicate') || insertError.message.includes('unique') || insertError.code === '23505') {
+              skippedCount++;
+              console.log(`[ROOT_EVAL] skipped — evaluation already exists ${opp.target_tweet_id} (race condition)`);
+            } else {
+              console.error(`[ROOT_EVAL] ⚠️ Failed to create evaluation for ${opp.target_tweet_id}: ${insertError.message}`);
+            }
+          } else {
+            evaluatedCount++;
+            console.log(`[ROOT_EVAL] created candidate_evaluation for root opportunity ${opp.target_tweet_id} (passed=${score.passed_hard_filters} tier=${score.predicted_tier})`);
+          }
+        } catch (evalError: any) {
+          console.error(`[ROOT_EVAL] ⚠️ Error evaluating ${opp.target_tweet_id}: ${evalError.message}`);
+        }
+      }
+      
+      console.log(`[ROOT_EVAL] ✅ Bridge complete: evaluated=${evaluatedCount} skipped=${skippedCount} total=${unevaluatedRootOpps.length}`);
+      
+      // If we created new evaluations, re-query topCandidates to include them
+      if (evaluatedCount > 0) {
+        const { data: refreshedCandidates } = await query.limit(shortlistSize * 2);
+        if (refreshedCandidates && refreshedCandidates.length > topCandidates.length) {
+          topCandidates.length = 0;
+          topCandidates.push(...refreshedCandidates);
+          console.log(`[QUEUE_MANAGER] 📊 Refreshed candidates after bridge: ${topCandidates.length} total`);
+        }
+      }
+    }
+  }
+  
   if (rootOnlyMode && topCandidates.length > 0) {
     const candidateTweetIds = topCandidates.map(c => c.candidate_tweet_id);
     
