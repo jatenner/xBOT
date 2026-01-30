@@ -422,20 +422,21 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
     return null;
   }
   
-  if (!candidates || candidates.length === 0) {
+  if (!filteredCandidates || filteredCandidates.length === 0) {
     // Debug: Check if any candidates exist without filters
     const { count: totalCount } = await supabase
       .from('reply_candidate_queue')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'queued')
       .gt('expires_at', now.toISOString());
-    console.log(`[QUEUE_MANAGER] ⚠️ No candidate found for tier ${tier} (total available: ${totalCount || 0})`);
+    const rootOnlyMsg = rootOnlyMode ? ` (root_only filtered out ${filteredOutCount})` : '';
+    console.log(`[QUEUE_MANAGER] ⚠️ No candidate found for tier ${tier} (total available: ${totalCount || 0}${rootOnlyMsg})`);
     return null;
   }
   
   // 🔒 TARGET STABILITY HEURISTICS: Prefer candidates with tweet age 5-45 minutes
   // Join with reply_opportunities to get tweet age and stability features
-  const candidateTweetIds = candidates.map(c => c.candidate_tweet_id);
+  const candidateTweetIds = filteredCandidates.map(c => c.candidate_tweet_id);
   const { data: opps } = await supabase
     .from('reply_opportunities')
     .select('target_tweet_id, features, tweet_posted_at, created_at')
