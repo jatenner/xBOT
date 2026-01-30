@@ -352,18 +352,46 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         
         const preflightLatency = Date.now() - preflightStart;
         
-        // 🔒 P1 ACCESSIBILITY FILTER: Classify null/empty responses
-        // Note: fetchTweetData throws errors with failureReason for inaccessible/deleted, so null here means text extraction failed
+        // 🔒 TRUTH CLASSIFICATION: fetchTweetData should never return null/empty - it throws errors instead
+        // If we get here, text extraction succeeded
         if (!preflightTweetData || !preflightTweetData.text || preflightTweetData.text.length < 20) {
+          // This shouldn't happen, but handle gracefully
+          console.warn(`[SCHEDULER] ⚠️ Unexpected null/short text from fetchTweetData for ${cand.candidate_tweet_id}`);
           preflightDeleted++;
-          const status = 'deleted' as const; // Null/empty = likely deleted or extraction failed
-          console.log(`[SCHEDULER] 🚫 Skipping candidate ${cand.candidate_tweet_id}: preflight deleted (text extraction failed or too short)`);
+          const status = 'protected' as const; // Classify as inaccessible (text extraction failed)
           await cachePreflight(cand.candidate_tweet_id, {
             status,
             checked_at: new Date().toISOString(),
-            reason: 'Tweet not found or too short (text extraction failed)',
+            reason: 'Text extraction failed or too short',
             latency_ms: preflightLatency,
+            marker: 'text_extraction_failed',
           });
+          // Check soft preflight mode before skipping
+          const softMode = process.env.SCHEDULER_PREFLIGHT_SOFT_MODE === 'true' || 
+                          (process.env.REPLY_V2_PLAN_ONLY === 'true' && process.env.SCHEDULER_PREFLIGHT_SOFT_MODE !== 'false');
+          if (softMode) {
+            // Check freshness for soft preflight
+            const { data: opp } = await supabase
+              .from('reply_opportunities')
+              .select('tweet_posted_at, is_root_tweet')
+              .eq('target_tweet_id', cand.candidate_tweet_id)
+              .maybeSingle();
+            
+            if (opp?.tweet_posted_at && opp?.is_root_tweet) {
+              const p1MaxAgeHours = parseInt(process.env.P1_TARGET_MAX_AGE_HOURS || '3', 10);
+              const ageHours = (Date.now() - new Date(opp.tweet_posted_at).getTime()) / (60 * 60 * 1000);
+              if (ageHours <= p1MaxAgeHours) {
+                console.log(`[SCHEDULER] 🔓 SOFT_PREFLIGHT: Allowing fresh target ${cand.candidate_tweet_id} (age=${ageHours.toFixed(1)}h, preflight=${status})`);
+                selectedCandidate = {
+                  candidate: cand,
+                  tier: candTier,
+                  preflightStatus: 'soft_ok',
+                  preflightOk: true, // Allow decision creation
+                };
+                break;
+              }
+            }
+          }
           continue; // Try next candidate
         }
         
@@ -391,18 +419,23 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         const preflightLatency = Date.now() - preflightStart;
         const isTimeout = preflightError.message.includes('PREFLIGHT_TIMEOUT');
         
-        // 🔍 CLASSIFICATION: Check for inaccessible vs deleted
+        // 🔍 TRUTH CLASSIFICATION: Extract failureReason and classificationMarker from error
         const failureReason = preflightError.failureReason || 'error';
+        const classificationMarker = preflightError.classificationMarker || '';
         const isInaccessible = failureReason === 'inaccessible';
         const isDeleted = failureReason === 'deleted';
         
+        // 🔒 TRUTH: Classify text_extraction_failed as inaccessible, NOT deleted
         let status: 'timeout' | 'deleted' | 'protected' | 'error';
+        let marker = classificationMarker;
         if (isTimeout) {
           preflightTimeout++;
           status = 'timeout';
-        } else if (isInaccessible) {
+        } else if (isInaccessible || classificationMarker === 'text_extraction_failed') {
+          // Text extraction failed or inaccessible → protected (inaccessible)
           preflightDeleted++; // Count as bad for stats
           status = 'protected'; // Use 'protected' status for inaccessible (matches cache enum)
+          if (!marker) marker = 'text_extraction_failed';
         } else if (isDeleted) {
           preflightDeleted++;
           status = 'deleted';
@@ -414,12 +447,40 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         await cachePreflight(cand.candidate_tweet_id, {
           status,
           checked_at: new Date().toISOString(),
-          reason: preflightError.message,
+          reason: preflightError.message || `Preflight ${status}`,
           latency_ms: preflightLatency,
+          marker,
         });
         
-        // 🔒 STRICT: Skip inaccessible/deleted candidates (no soft fallback)
-        console.log(`[SCHEDULER] 🚫 Skipping candidate ${cand.candidate_tweet_id}: preflight ${status} (${preflightError.message})`);
+        // 🔓 SOFT PREFLIGHT: Check if we should allow fresh targets even with inaccessible status
+        const softMode = process.env.SCHEDULER_PREFLIGHT_SOFT_MODE === 'true' || 
+                        (process.env.REPLY_V2_PLAN_ONLY === 'true' && process.env.SCHEDULER_PREFLIGHT_SOFT_MODE !== 'false');
+        if (softMode && (status === 'protected' || status === 'error')) {
+          // Check freshness for soft preflight
+          const { data: opp } = await supabase
+            .from('reply_opportunities')
+            .select('tweet_posted_at, is_root_tweet')
+            .eq('target_tweet_id', cand.candidate_tweet_id)
+            .maybeSingle();
+          
+          if (opp?.tweet_posted_at && opp?.is_root_tweet) {
+            const p1MaxAgeHours = parseInt(process.env.P1_TARGET_MAX_AGE_HOURS || '3', 10);
+            const ageHours = (Date.now() - new Date(opp.tweet_posted_at).getTime()) / (60 * 60 * 1000);
+            if (ageHours <= p1MaxAgeHours) {
+              console.log(`[SCHEDULER] 🔓 SOFT_PREFLIGHT: Allowing fresh target ${cand.candidate_tweet_id} (age=${ageHours.toFixed(1)}h, preflight=${status}, marker=${marker})`);
+              selectedCandidate = {
+                candidate: cand,
+                tier: candTier,
+                preflightStatus: 'soft_ok',
+                preflightOk: true, // Allow decision creation
+              };
+              break; // Found candidate via soft preflight
+            }
+          }
+        }
+        
+        // 🔒 STRICT: Skip inaccessible/deleted candidates (unless soft preflight allowed)
+        console.log(`[SCHEDULER] 🚫 Skipping candidate ${cand.candidate_tweet_id}: preflight ${status} (${preflightError.message || status}) marker=${marker || 'none'}`);
         continue; // Try next candidate
       }
     } else {
@@ -1428,11 +1489,12 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         target_tweet_content_hash: targetTweetContentHash, // Required for FINAL_REPLY_GATE
         semantic_similarity: 0.75, // Default semantic similarity for PLAN_ONLY (will be computed during generation on Mac Runner)
         // 🔒 SOFT PREFLIGHT: Pass preflight status fields
-        preflight_status: preflightStatus,
+        preflight_status: preflightStatus === 'soft_ok' ? 'unknown' : preflightStatus, // Store soft_ok as 'unknown' for DB compatibility
         preflight_ok: preflightOkFlag,
-        preflight_fetched_at: preflightOkFlag ? new Date().toISOString() : undefined,
+        preflight_fetched_at: (preflightOkFlag && preflightStatus === 'ok') ? new Date().toISOString() : undefined,
         preflight_checked_at: new Date().toISOString(),
-        preflight_reason: preflightStatus !== 'ok' ? `Preflight status: ${preflightStatus}` : undefined,
+        preflight_reason: preflightStatus !== 'ok' ? `Preflight status: ${preflightStatus}${preflightStatus === 'soft_ok' ? ' (soft preflight for fresh target)' : ''}` : undefined,
+        preflight_marker: preflightStatus === 'soft_ok' ? 'soft_preflight_fresh' : undefined,
       });
       
       if (!finalizeResult.success) {
