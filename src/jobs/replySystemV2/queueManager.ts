@@ -87,13 +87,20 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
   if (rootOnlyMode) {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     
-    // Find root opportunities
+    // 🔒 P1 FRESHNESS FILTER: For P1 proving, prefer very fresh targets (<6h) to avoid deleted/inaccessible
+    const p1MaxAgeHours = parseInt(process.env.P1_TARGET_MAX_AGE_HOURS || '6', 10);
+    const p1MaxAgeMs = p1MaxAgeHours * 60 * 60 * 1000;
+    const p1CutoffTime = new Date(Date.now() - p1MaxAgeMs).toISOString();
+    
+    // Find root opportunities (prefer fresh ones for P1)
     const { data: rootOpps } = await supabase
       .from('reply_opportunities')
       .select('target_tweet_id, target_username, target_tweet_content, tweet_posted_at, like_count, reply_count, retweet_count, is_root_tweet, target_in_reply_to_tweet_id')
       .eq('replied_to', false)
       .eq('is_root_tweet', true)
       .gte('created_at', twentyFourHoursAgo)
+      .gte('tweet_posted_at', p1CutoffTime) // 🔒 P1: Only very fresh tweets (<6h default)
+      .order('tweet_posted_at', { ascending: false }) // Prefer newest first
       .limit(100); // Get up to 100 to check
     
     // Get all evaluated tweet IDs
