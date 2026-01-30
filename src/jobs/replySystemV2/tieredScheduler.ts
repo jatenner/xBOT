@@ -352,13 +352,16 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         
         const preflightLatency = Date.now() - preflightStart;
         
+        // 🔒 P1 ACCESSIBILITY FILTER: Classify null/empty responses
+        // Note: fetchTweetData throws errors with failureReason for inaccessible/deleted, so null here means text extraction failed
         if (!preflightTweetData || !preflightTweetData.text || preflightTweetData.text.length < 20) {
           preflightDeleted++;
-          const status = 'deleted' as const;
+          const status = 'deleted' as const; // Null/empty = likely deleted or extraction failed
+          console.log(`[SCHEDULER] 🚫 Skipping candidate ${cand.candidate_tweet_id}: preflight deleted (text extraction failed or too short)`);
           await cachePreflight(cand.candidate_tweet_id, {
             status,
             checked_at: new Date().toISOString(),
-            reason: 'Tweet not found or too short',
+            reason: 'Tweet not found or too short (text extraction failed)',
             latency_ms: preflightLatency,
           });
           continue; // Try next candidate
