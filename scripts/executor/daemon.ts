@@ -370,6 +370,86 @@ async function emitAuthRequiredAndExit(): Promise<void> {
 /**
  * Launch headless browser (rate-limited)
  */
+/**
+ * Load TWITTER_SESSION_B64 and decode to storage state
+ * Tries: 1) process.env, 2) .env.local, 3) .env file
+ * Fails fast if not found
+ */
+function loadTwitterSessionFromEnv(): { cookies: any[]; origins: any[] } | null {
+  let b64 = process.env.TWITTER_SESSION_B64;
+  
+  // If not in process.env, try loading from .env files
+  if (!b64 || !b64.trim()) {
+    const envLocalPath = path.join(process.cwd(), '.env.local');
+    const envPath = path.join(process.cwd(), '.env');
+    
+    // Try .env.local first, then .env
+    for (const envFile of [envLocalPath, envPath]) {
+      if (fs.existsSync(envFile)) {
+        try {
+          const envContent = fs.readFileSync(envFile, 'utf8');
+          const match = envContent.match(/^TWITTER_SESSION_B64=(.+)$/m);
+          if (match && match[1]) {
+            b64 = match[1].trim();
+            console.log(`[EXECUTOR_DAEMON] ✅ Loaded TWITTER_SESSION_B64 from ${envFile}`);
+            break;
+          }
+        } catch (e: any) {
+          console.warn(`[EXECUTOR_DAEMON] ⚠️ Failed to read ${envFile}: ${e.message}`);
+        }
+      }
+    }
+  }
+  
+  if (!b64 || !b64.trim()) {
+    console.error(`[EXECUTOR_DAEMON] ❌ FATAL: TWITTER_SESSION_B64 not found in environment or .env files`);
+    console.error(`[EXECUTOR_DAEMON] 🔐 Set TWITTER_SESSION_B64 in LaunchAgent plist or .env file`);
+    throw new Error('TWITTER_SESSION_B64 is required for executor authentication');
+  }
+  
+  try {
+    // Decode base64 to JSON string
+    const decoded = Buffer.from(b64.trim(), 'base64').toString('utf8');
+    const state = JSON.parse(decoded);
+    
+    if (!state || !Array.isArray(state.cookies)) {
+      throw new Error('Invalid storage state: missing cookies array');
+    }
+    
+    // Normalize cookie domains for both .twitter.com and .x.com
+    const normalizedCookies = state.cookies.map((c: any) => {
+      const domain = (c.domain || '').replace(/^https?:\/\//, '');
+      if (domain.includes('twitter.com') || domain.includes('x.com')) {
+        // Return array with both domains
+        return [
+          { ...c, domain: '.twitter.com' },
+          { ...c, domain: '.x.com' }
+        ];
+      }
+      return c;
+    }).flat();
+    
+    // Deduplicate cookies by name+domain+path
+    const seen = new Set<string>();
+    const uniqueCookies = normalizedCookies.filter((c: any) => {
+      const key = `${c.name}|${c.domain}|${c.path || '/'}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    
+    console.log(`[EXECUTOR_DAEMON] ✅ Loaded ${uniqueCookies.length} cookies from TWITTER_SESSION_B64`);
+    
+    return {
+      cookies: uniqueCookies,
+      origins: state.origins || []
+    };
+  } catch (error: any) {
+    console.error(`[EXECUTOR_DAEMON] ❌ FATAL: Failed to decode TWITTER_SESSION_B64: ${error.message}`);
+    throw new Error(`Invalid TWITTER_SESSION_B64: ${error.message}`);
+  }
+}
+
 async function launchBrowser(): Promise<void> {
   const now = Date.now();
   const timeSinceLastLaunch = now - lastBrowserLaunchTime;
@@ -399,8 +479,12 @@ async function launchBrowser(): Promise<void> {
     fs.mkdirSync(BROWSER_USER_DATA_DIR, { recursive: true });
   }
   
+  // 🔒 Load TWITTER_SESSION_B64 before creating context
+  const storageState = loadTwitterSessionFromEnv();
+  
   // HARD REQUIREMENT: Always headless=true, userDataDir under RUNNER_PROFILE_DIR
   // Use launchPersistentContext for userDataDir support (Playwright requirement)
+  // Note: launchPersistentContext doesn't accept storageState directly, so we add cookies after creation
   context = await chromium.launchPersistentContext(BROWSER_USER_DATA_DIR, {
     headless: true, // HARD: Always headless (no visible windows)
     channel: 'chrome', // Use system Chrome
@@ -414,6 +498,17 @@ async function launchBrowser(): Promise<void> {
     userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     viewport: { width: 1280, height: 720 },
   });
+  
+  // 🔒 Apply TWITTER_SESSION_B64 cookies to context
+  if (storageState && storageState.cookies.length > 0) {
+    try {
+      await context.addCookies(storageState.cookies);
+      console.log(`[EXECUTOR_DAEMON] ✅ Applied ${storageState.cookies.length} cookies to browser context`);
+    } catch (cookieError: any) {
+      console.error(`[EXECUTOR_DAEMON] ⚠️ Failed to add cookies: ${cookieError.message}`);
+      // Don't fail - cookies might already be present or context might reject some
+    }
+  }
   
   // Get browser from context
   browser = context.browser();
