@@ -352,21 +352,23 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         
         const preflightLatency = Date.now() - preflightStart;
         
-        // 🔒 TRUTH CLASSIFICATION: fetchTweetData should never return null/empty - it throws errors instead
-        // If we get here, text extraction succeeded
+        // 🔒 TRUTH CLASSIFICATION: Handle null return or empty/short text
+        // fetchTweetData can return null OR throw errors with failureReason
         if (!preflightTweetData || !preflightTweetData.text || preflightTweetData.text.length < 20) {
-          // This shouldn't happen, but handle gracefully
-          console.warn(`[SCHEDULER] ⚠️ Unexpected null/short text from fetchTweetData for ${cand.candidate_tweet_id}`);
+          // Null or empty text → classify as inaccessible (text extraction failed)
           preflightDeleted++;
           const status = 'protected' as const; // Classify as inaccessible (text extraction failed)
+          const marker = 'text_extraction_failed';
+          console.log(`[SCHEDULER] 🚫 Skipping candidate ${cand.candidate_tweet_id}: preflight ${status} (text extraction failed or too short)`);
           await cachePreflight(cand.candidate_tweet_id, {
             status,
             checked_at: new Date().toISOString(),
             reason: 'Text extraction failed or too short',
             latency_ms: preflightLatency,
-            marker: 'text_extraction_failed',
+            marker,
           });
-          // Check soft preflight mode before skipping
+          
+          // 🔓 SOFT PREFLIGHT: Check if we should allow fresh targets even with inaccessible status
           const softMode = process.env.SCHEDULER_PREFLIGHT_SOFT_MODE === 'true' || 
                           (process.env.REPLY_V2_PLAN_ONLY === 'true' && process.env.SCHEDULER_PREFLIGHT_SOFT_MODE !== 'false');
           if (softMode) {
@@ -381,14 +383,14 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
               const p1MaxAgeHours = parseInt(process.env.P1_TARGET_MAX_AGE_HOURS || '3', 10);
               const ageHours = (Date.now() - new Date(opp.tweet_posted_at).getTime()) / (60 * 60 * 1000);
               if (ageHours <= p1MaxAgeHours) {
-                console.log(`[SCHEDULER] 🔓 SOFT_PREFLIGHT: Allowing fresh target ${cand.candidate_tweet_id} (age=${ageHours.toFixed(1)}h, preflight=${status})`);
+                console.log(`[SCHEDULER] 🔓 SOFT_PREFLIGHT: Allowing fresh target ${cand.candidate_tweet_id} (age=${ageHours.toFixed(1)}h, preflight=${status}, marker=${marker})`);
                 selectedCandidate = {
                   candidate: cand,
                   tier: candTier,
                   preflightStatus: 'soft_ok',
                   preflightOk: true, // Allow decision creation
                 };
-                break;
+                break; // Found candidate via soft preflight
               }
             }
           }
