@@ -422,16 +422,57 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
     return null;
   }
   
-  if (!filteredCandidates || filteredCandidates.length === 0) {
+  if (!candidates || candidates.length === 0) {
     // Debug: Check if any candidates exist without filters
     const { count: totalCount } = await supabase
       .from('reply_candidate_queue')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'queued')
       .gt('expires_at', now.toISOString());
-    const rootOnlyMsg = rootOnlyMode ? ` (root_only filtered out ${filteredOutCount})` : '';
-    console.log(`[QUEUE_MANAGER] ⚠️ No candidate found for tier ${tier} (total available: ${totalCount || 0}${rootOnlyMsg})`);
+    console.log(`[QUEUE_MANAGER] ⚠️ No candidate found for tier ${tier} (total available: ${totalCount || 0})`);
     return null;
+  }
+  
+  // 🔒 ROOT_ONLY FILTER: Filter out reply tweets when REPLY_V2_ROOT_ONLY=true
+  const rootOnlyMode = process.env.REPLY_V2_ROOT_ONLY !== 'false'; // Default true
+  let filteredCandidates = candidates;
+  let filteredOutCount = 0;
+  
+  if (rootOnlyMode && filteredCandidates.length > 0) {
+    const candidateTweetIds = filteredCandidates.map(c => c.candidate_tweet_id);
+    
+    // Join with reply_opportunities to check is_root_tweet
+    const { data: opportunities } = await supabase
+      .from('reply_opportunities')
+      .select('target_tweet_id, is_root_tweet, target_in_reply_to_tweet_id')
+      .in('target_tweet_id', candidateTweetIds);
+    
+    const rootTweetIds = new Set<string>();
+    if (opportunities) {
+      for (const opp of opportunities) {
+        // Consider root if: is_root_tweet=true OR target_in_reply_to_tweet_id is null
+        const isRoot = opp.is_root_tweet === true || 
+                       (opp.is_root_tweet !== false && opp.target_in_reply_to_tweet_id === null);
+        if (isRoot) {
+          rootTweetIds.add(opp.target_tweet_id);
+        }
+      }
+    }
+    
+    // Filter candidates to only root tweets
+    const beforeCount = filteredCandidates.length;
+    filteredCandidates = filteredCandidates.filter(c => rootTweetIds.has(c.candidate_tweet_id));
+    filteredOutCount = beforeCount - filteredCandidates.length;
+    
+    if (filteredOutCount > 0) {
+      console.log(`[ROOT_ONLY] filtered_out_replies=${filteredOutCount} kept_roots=${filteredCandidates.length} total_checked=${beforeCount}`);
+    }
+    
+    if (filteredCandidates.length === 0) {
+      const rootOnlyMsg = ` (root_only filtered out ${filteredOutCount})`;
+      console.log(`[QUEUE_MANAGER] ⚠️ No root candidates found for tier ${tier}${rootOnlyMsg}`);
+      return null;
+    }
   }
   
   // 🔒 TARGET STABILITY HEURISTICS: Prefer candidates with tweet age 5-45 minutes
