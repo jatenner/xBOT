@@ -40,11 +40,16 @@ if (!envFileLoaded) {
 
 console.log(`[HARVESTER_DAEMON] ✅ Loaded env from: ${envFileLoaded}`);
 
-// Verify TWITTER_SESSION_B64 is present (harvester doesn't need it, but check for debugging)
-if (!process.env.TWITTER_SESSION_B64) {
-  console.warn('[HARVESTER_DAEMON] ⚠️ TWITTER_SESSION_B64 not found (harvester uses browser auth, not session)');
-  // Don't exit - harvester uses browser-based auth, not session cookies
+// 🔐 VERIFY TWITTER_SESSION_B64 is present (required for harvester auth)
+const sessionB64 = process.env.TWITTER_SESSION_B64?.trim();
+if (!sessionB64 || sessionB64.length === 0) {
+  console.error('[HARVESTER_DAEMON] ❌ TWITTER_SESSION_B64 not found in environment');
+  console.error('[HARVESTER_DAEMON] 🔐 Harvester requires TWITTER_SESSION_B64 for browser authentication');
+  console.error('[HARVESTER_DAEMON] 💡 Set TWITTER_SESSION_B64 in .env.local or LaunchAgent plist');
+  process.exit(1);
 }
+
+console.log(`[HARVESTER_DAEMON] 🔐 TWITTER_SESSION_B64: present (${sessionB64.length} chars)`);
 
 const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
 const LOG_FILE = path.join(RUNNER_PROFILE_DIR, 'harvester.log');

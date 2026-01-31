@@ -43,6 +43,69 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   try {
     const supabase = getSupabaseClient();
     
+    // 🔐 HARVESTER AUTH VERIFICATION: Verify authentication before harvesting
+    let authVerified = false;
+    let authHandle: string | null = null;
+    let authReason = 'not_checked';
+    
+    try {
+      const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+      const { checkWhoami } = await import('../utils/whoamiAuth');
+      const pool = UnifiedBrowserPool.getInstance();
+      
+      // Get a page to check auth
+      const authPage = await pool.acquirePage('harvester_auth_check');
+      try {
+        console.log('[HARVESTER_AUTH] 🔐 Verifying authentication...');
+        const whoami = await checkWhoami(authPage);
+        authVerified = whoami.logged_in;
+        authHandle = whoami.handle;
+        authReason = whoami.reason;
+        
+        console.log(`[HARVESTER_AUTH] logged_in=${authVerified} handle=${authHandle || 'unknown'} url=${whoami.url} reason=${authReason}`);
+        
+        // Emit system event
+        await supabase.from('system_events').insert({
+          event_type: authVerified ? 'HARVESTER_AUTH_VERIFIED' : 'HARVESTER_AUTH_INVALID',
+          severity: authVerified ? 'info' : 'error',
+          message: authVerified 
+            ? `Harvester authenticated as ${authHandle || 'unknown'}`
+            : `Harvester auth failed: ${authReason}`,
+          event_data: {
+            logged_in: authVerified,
+            handle: authHandle,
+            url: whoami.url,
+            title: whoami.title,
+            reason: authReason,
+          },
+          created_at: new Date().toISOString(),
+        });
+        
+        if (!authVerified) {
+          console.error(`[HARVESTER_AUTH] ❌ Authentication failed: ${authReason}`);
+          console.error(`[HARVESTER_AUTH] ⚠️ Skipping harvest cycle - authentication required`);
+          throw new Error(`Harvester authentication failed: ${authReason}. Ensure TWITTER_SESSION_B64 is set and valid.`);
+        }
+        
+        console.log(`[HARVESTER_AUTH] ✅ Authentication verified: ${authHandle || 'authenticated'}`);
+      } finally {
+        await pool.releasePage(authPage);
+      }
+    } catch (authError: any) {
+      console.error(`[HARVESTER_AUTH] ❌ Auth check failed: ${authError.message}`);
+      await supabase.from('system_events').insert({
+        event_type: 'HARVESTER_AUTH_INVALID',
+        severity: 'error',
+        message: `Harvester auth check failed: ${authError.message}`,
+        event_data: {
+          error: authError.message,
+          reason: authReason,
+        },
+        created_at: new Date().toISOString(),
+      });
+      throw authError; // Fail fast - don't harvest without auth
+    }
+    
     // Step 0: Purge opportunities we already replied to
     const { data: repliedRows, error: repliedError } = await supabase
       .from('content_metadata')
