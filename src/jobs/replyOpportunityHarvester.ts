@@ -600,8 +600,6 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     .eq('replied_to', false)
     .gt('expires_at', new Date().toISOString());
   
-  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  
   // 🔍 P1 THROUGHPUT: Count fresh root opportunities in pool
   const { data: freshOpps } = await supabase
     .from('reply_opportunities')
@@ -622,9 +620,9 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     return new Date(o.tweet_posted_at).getTime() > (Date.now() - 6 * 60 * 60 * 1000);
   }).length || 0;
   
-  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  const harvestElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   
-  console.log(`[HARVESTER] ✅ Harvest complete in ${elapsed}s!`);
+  console.log(`[HARVESTER] ✅ Harvest complete in ${harvestElapsed}s!`);
   console.log(`[HARVESTER] 📊 Pool size: ${poolSize} → ${finalPoolSize}`);
   console.log(`[HARVESTER] 🔍 Searches processed: ${searchesProcessed}/${searchQueries.length}`);
   console.log(`[HARVESTER] 🌾 Harvested: ${totalHarvested} new viral tweet opportunities`);
