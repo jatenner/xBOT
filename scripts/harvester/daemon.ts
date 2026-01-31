@@ -41,9 +41,32 @@ if (!envFileLoaded) {
 console.log(`[HARVESTER_DAEMON] ✅ Loaded env from: ${envFileLoaded}`);
 
 // 🔐 VERIFY TWITTER_SESSION_B64 is present (required for harvester auth)
-const sessionB64 = process.env.TWITTER_SESSION_B64?.trim();
+// Try process.env first (LaunchAgent), then check if dotenv loaded it
+let sessionB64 = process.env.TWITTER_SESSION_B64?.trim();
+
+// If not in process.env, try reading from .env file directly (dotenv may not load very long values)
 if (!sessionB64 || sessionB64.length === 0) {
-  console.error('[HARVESTER_DAEMON] ❌ TWITTER_SESSION_B64 not found in environment');
+  try {
+    const envContent = fs.readFileSync(envFileLoaded, 'utf8');
+    const match = envContent.match(/^TWITTER_SESSION_B64=(.+)$/m);
+    if (match && match[1]) {
+      sessionB64 = match[1].trim();
+      // Remove quotes if present
+      if ((sessionB64.startsWith('"') && sessionB64.endsWith('"')) || 
+          (sessionB64.startsWith("'") && sessionB64.endsWith("'"))) {
+        sessionB64 = sessionB64.slice(1, -1);
+      }
+      // Set in process.env so UnifiedBrowserPool can use it
+      process.env.TWITTER_SESSION_B64 = sessionB64;
+      console.log(`[HARVESTER_DAEMON] 🔐 Loaded TWITTER_SESSION_B64 from ${envFileLoaded} (${sessionB64.length} chars)`);
+    }
+  } catch (readError: any) {
+    console.warn(`[HARVESTER_DAEMON] ⚠️ Failed to read ${envFileLoaded}: ${readError.message}`);
+  }
+}
+
+if (!sessionB64 || sessionB64.length === 0) {
+  console.error('[HARVESTER_DAEMON] ❌ TWITTER_SESSION_B64 not found in environment or .env file');
   console.error('[HARVESTER_DAEMON] 🔐 Harvester requires TWITTER_SESSION_B64 for browser authentication');
   console.error('[HARVESTER_DAEMON] 💡 Set TWITTER_SESSION_B64 in .env.local or LaunchAgent plist');
   process.exit(1);
