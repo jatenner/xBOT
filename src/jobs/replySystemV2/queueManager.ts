@@ -113,21 +113,44 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
       console.log(`[ROOT_EVAL] opps_selected=${rootOpps.length} tweet_posted_at_null_count=${tweetPostedAtNullCount}`);
       
       // Filter by freshness using COALESCE(tweet_posted_at, created_at)
+      // 🔧 FIX: Use created_at for freshness if tweet_posted_at is very old (harvester may have old tweet_posted_at)
+      const beforeFilter = rootOpps.length;
       rootOpps = rootOpps.filter(opp => {
         const effectiveTime = opp.tweet_posted_at || opp.created_at;
-        return effectiveTime >= p1CutoffTime;
+        const effectiveTimeMs = new Date(effectiveTime).getTime();
+        const cutoffMs = new Date(p1CutoffTime).getTime();
+        
+        // Also check if created_at is fresh (opportunity was just harvested)
+        const createdMs = new Date(opp.created_at).getTime();
+        const createdFresh = createdMs >= cutoffMs;
+        
+        // Include if either tweet_posted_at OR created_at is fresh
+        return effectiveTimeMs >= cutoffMs || createdFresh;
       });
       
-      // Sort by effective time (newest first)
+      // Sort by effective time (newest first), prefer created_at if tweet_posted_at is very old
       rootOpps.sort((a, b) => {
-        const timeA = new Date(a.tweet_posted_at || a.created_at).getTime();
-        const timeB = new Date(b.tweet_posted_at || b.created_at).getTime();
+        // Use created_at if tweet_posted_at is >24h old (likely stale)
+        const timeA = (() => {
+          const tweetTime = a.tweet_posted_at ? new Date(a.tweet_posted_at).getTime() : 0;
+          const createdTime = new Date(a.created_at).getTime();
+          const tweetAge = Date.now() - tweetTime;
+          return tweetAge > 24 * 60 * 60 * 1000 ? createdTime : Math.max(tweetTime, createdTime);
+        })();
+        const timeB = (() => {
+          const tweetTime = b.tweet_posted_at ? new Date(b.tweet_posted_at).getTime() : 0;
+          const createdTime = new Date(b.created_at).getTime();
+          const tweetAge = Date.now() - tweetTime;
+          return tweetAge > 24 * 60 * 60 * 1000 ? createdTime : Math.max(tweetTime, createdTime);
+        })();
         return timeB - timeA;
       });
       
       rootOpps = rootOpps.slice(0, 100); // Limit to 100
       
-      console.log(`[ROOT_EVAL] After freshness filter (<${p1MaxAgeHours}h): ${rootOpps.length} opportunities`);
+      console.log(`[ROOT_EVAL] After freshness filter (<${p1MaxAgeHours}h): ${rootOpps.length} opportunities (filtered ${beforeFilter - rootOpps.length})`);
+    } else {
+      console.log(`[ROOT_EVAL] No root opportunities found in initial query`);
     }
     
     // If no fresh opportunities, fallback to 6h window (for P1 proving, we need some candidates)
