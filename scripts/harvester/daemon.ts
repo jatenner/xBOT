@@ -40,10 +40,10 @@ if (!envFileLoaded) {
 
 console.log(`[HARVESTER_DAEMON] ✅ Loaded env from: ${envFileLoaded}`);
 
-// Verify TWITTER_SESSION_B64 is present
+// Verify TWITTER_SESSION_B64 is present (harvester doesn't need it, but check for debugging)
 if (!process.env.TWITTER_SESSION_B64) {
-  console.error('❌ TWITTER_SESSION_B64 not found in environment');
-  process.exit(1);
+  console.warn('[HARVESTER_DAEMON] ⚠️ TWITTER_SESSION_B64 not found (harvester uses browser auth, not session)');
+  // Don't exit - harvester uses browser-based auth, not session cookies
 }
 
 const RUNNER_PROFILE_DIR = process.env.RUNNER_PROFILE_DIR || path.join(process.cwd(), '.runner-profile');
