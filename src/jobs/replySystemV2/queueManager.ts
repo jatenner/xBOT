@@ -434,15 +434,22 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
     }
   }
   
+  // 🔍 DIAGNOSTICS: Log detailed breakdown
+  const rootOnlyKept = rootOnlyMode ? queuedCount : topCandidates.length;
+  const eligibleEvals = topCandidates.filter(c => c.passed_hard_filters && c.predicted_tier <= 3).length;
+  
   console.log(`[QUEUE_MANAGER] 📊 Queue refresh stats:`);
-  console.log(`   Considered: ${topCandidates.length}`);
+  console.log(`   candidates_considered=${topCandidates.length}`);
+  console.log(`   root_only_kept=${rootOnlyKept}`);
+  console.log(`   eligible_evals (passed+tier<=3)=${eligibleEvals}`);
+  console.log(`   queued_count=${queuedCount}`);
+  console.log(`   evaluated=${topCandidates.length} expired=${expiredCount}`);
   console.log(`   Rejected synthetic: ${rejectedSynthetic}`);
   console.log(`   Rejected missing metadata: ${rejectedMissingMetadata}`);
   console.log(`   Rejected already queued: ${rejectedAlreadyQueued}`);
   if (Object.keys(missingMetadataFields).length > 0) {
     console.log(`   Missing fields: ${Object.entries(missingMetadataFields).map(([f, c]) => `${f}=${c}`).join(', ')}`);
   }
-  console.log(`   Queued: ${queuedCount} new candidates`);
   
   return {
     evaluated: topCandidates.length,
