@@ -345,8 +345,17 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
       query: `(biohacking OR peptides OR sauna OR "cold plunge" OR testosterone OR HRT OR supplements) min_faves:2500 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
   ];
   
-  // Build query list based on priority (A → B → C, D only if critical)
-  const searchQueries = [...tierAQueries, ...tierBQueries, ...tierCQueries];
+  // 🔒 P1 THROUGHPUT: Add lower engagement tier for P1 proving (if enabled)
+  const p1Mode = process.env.P1_TARGET_MAX_AGE_HOURS !== undefined; // P1 mode if freshness window is set
+  const tierP1Queries = p1Mode ? [
+    { tier: 'P1', label: 'TIER_P1_HEALTH_1K', minLikes: 1000, maxReplies: 150, maxAgeHours: 6, 
+      query: `${HEALTH_KEYWORDS} min_faves:1000 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
+    { tier: 'P1', label: 'TIER_P1_FITNESS_1K', minLikes: 1000, maxReplies: 150, maxAgeHours: 6, 
+      query: `(fitness OR workout OR exercise OR gym OR running) min_faves:1000 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
+  ] : [];
+  
+  // Build query list based on priority (A → B → C → P1, D only if critical)
+  const searchQueries = [...tierAQueries, ...tierBQueries, ...tierCQueries, ...tierP1Queries];
   const fallbackQueries = tierDFallback;
   
   const testLimitRaw = process.env.HARVESTER_TEST_LIMIT;
@@ -441,9 +450,28 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
       
       const skippedReplyCount = opportunities.length - rootOnlyOpps.length;
       
+      // 🔍 P1 THROUGHPUT: Log root/reply/fresh counts
+      const now = Date.now();
+      const oneHourAgo = now - 60 * 60 * 1000;
+      const threeHoursAgo = now - 3 * 60 * 60 * 1000;
+      const sixHoursAgo = now - 6 * 60 * 60 * 1000;
+      
+      const fresh1h = rootOnlyOpps.filter((o: any) => {
+        const postedAt = o.tweet_posted_at || o.posted_at;
+        return postedAt && new Date(postedAt).getTime() > oneHourAgo;
+      }).length;
+      const fresh3h = rootOnlyOpps.filter((o: any) => {
+        const postedAt = o.tweet_posted_at || o.posted_at;
+        return postedAt && new Date(postedAt).getTime() > threeHoursAgo;
+      }).length;
+      const fresh6h = rootOnlyOpps.filter((o: any) => {
+        const postedAt = o.tweet_posted_at || o.posted_at;
+        return postedAt && new Date(postedAt).getTime() > sixHoursAgo;
+      }).length;
+      
       if (rootOnlyOpps.length > 0) {
         totalHarvested += rootOnlyOpps.length;
-        console.log(`[HARVEST_TIER] tier=${tierLabel} query="${searchQuery.label}" scraped=${opportunities.length} kept=${rootOnlyOpps.length} skipped_reply=${skippedReplyCount}`);
+        console.log(`[HARVEST_TIER] tier=${tierLabel} query="${searchQuery.label}" scraped=${opportunities.length} kept=${rootOnlyOpps.length} skipped_reply=${skippedReplyCount} fresh_1h=${fresh1h} fresh_3h=${fresh3h} fresh_6h=${fresh6h}`);
         
         // 💾 CRITICAL: Store opportunities in database with tier classification
         try {
@@ -576,8 +604,49 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   
   console.log(`[HARVESTER] ✅ Harvest complete in ${elapsed}s!`);
   console.log(`[HARVESTER] 📊 Pool size: ${poolSize} → ${finalPoolSize}`);
+  // 🔍 P1 THROUGHPUT: Count fresh root opportunities in pool
+  const { data: freshOpps } = await supabase
+    .from('reply_opportunities')
+    .select('tweet_posted_at, is_root_tweet')
+    .eq('is_root_tweet', true)
+    .eq('replied_to', false);
+  
+  const fresh1hCount = freshOpps?.filter(o => {
+    if (!o.tweet_posted_at) return false;
+    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 60 * 60 * 1000);
+  }).length || 0;
+  const fresh3hCount = freshOpps?.filter(o => {
+    if (!o.tweet_posted_at) return false;
+    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 3 * 60 * 60 * 1000);
+  }).length || 0;
+  const fresh6hCount = freshOpps?.filter(o => {
+    if (!o.tweet_posted_at) return false;
+    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 6 * 60 * 60 * 1000);
+  }).length || 0;
+  
+  // 🔍 P1 THROUGHPUT: Count fresh root opportunities in pool
+  const { data: freshOpps } = await supabase
+    .from('reply_opportunities')
+    .select('tweet_posted_at, is_root_tweet')
+    .eq('is_root_tweet', true)
+    .eq('replied_to', false);
+  
+  const fresh1hCount = freshOpps?.filter(o => {
+    if (!o.tweet_posted_at) return false;
+    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 60 * 60 * 1000);
+  }).length || 0;
+  const fresh3hCount = freshOpps?.filter(o => {
+    if (!o.tweet_posted_at) return false;
+    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 3 * 60 * 60 * 1000);
+  }).length || 0;
+  const fresh6hCount = freshOpps?.filter(o => {
+    if (!o.tweet_posted_at) return false;
+    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 6 * 60 * 60 * 1000);
+  }).length || 0;
+  
   console.log(`[HARVESTER] 🔍 Searches processed: ${searchesProcessed}/${searchQueries.length}`);
   console.log(`[HARVESTER] 🌾 Harvested: ${totalHarvested} new viral tweet opportunities`);
+  console.log(`[HARVESTER] 📊 ROOT OPPORTUNITIES: fresh_1h=${fresh1hCount} fresh_3h=${fresh3hCount} fresh_6h=${fresh6hCount} total_roots=${freshOpps?.length || 0}`);
   console.log(`[HARVESTER] 🏆 ENGAGEMENT TIER breakdown (total in pool):`);
   console.log(`[HARVESTER]   💎 EXTREME (100K+ likes): ${extremeCount || 0} tweets`);
   console.log(`[HARVESTER]   🚀 ULTRA (50K-100K likes): ${ultraCount || 0} tweets`);

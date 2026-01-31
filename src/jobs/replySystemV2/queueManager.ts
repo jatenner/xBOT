@@ -89,12 +89,12 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     
     // 🔒 P1 FRESHNESS FILTER: For P1 proving, prefer very fresh targets (<3h default) to avoid deleted/inaccessible
-    // But don't filter too strictly - if no fresh ones exist, use slightly older ones
+    // But don't filter too strictly - if no fresh ones exist, widen to 6h, then 24h
     const p1MaxAgeHours = parseInt(process.env.P1_TARGET_MAX_AGE_HOURS || '3', 10);
     const p1MaxAgeMs = p1MaxAgeHours * 60 * 60 * 1000;
     const p1CutoffTime = new Date(Date.now() - p1MaxAgeMs).toISOString();
     
-    // Find root opportunities (prefer fresh ones for P1, but fallback to 24h if none fresh)
+    // Find root opportunities (prefer fresh ones for P1, but fallback to 6h then 24h if none fresh)
     let { data: rootOpps } = await supabase
       .from('reply_opportunities')
       .select('target_tweet_id, target_username, target_tweet_content, tweet_posted_at, like_count, reply_count, retweet_count, is_root_tweet, target_in_reply_to_tweet_id')
@@ -105,10 +105,26 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
       .order('tweet_posted_at', { ascending: false }) // Prefer newest first
       .limit(100); // Get up to 100 to check
     
-    // If no fresh opportunities, fallback to 24h window (for P1 proving, we need some candidates)
+    // If no fresh opportunities, fallback to 6h window (for P1 proving, we need some candidates)
+    if (!rootOpps || rootOpps.length === 0 && p1MaxAgeHours < 6) {
+      console.log(`[ROOT_EVAL] No fresh opportunities (<${p1MaxAgeHours}h), falling back to 6h window...`);
+      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+      const { data: fallback6hOpps } = await supabase
+        .from('reply_opportunities')
+        .select('target_tweet_id, target_username, target_tweet_content, tweet_posted_at, like_count, reply_count, retweet_count, is_root_tweet, target_in_reply_to_tweet_id')
+        .eq('replied_to', false)
+        .eq('is_root_tweet', true)
+        .gte('created_at', twentyFourHoursAgo)
+        .gte('tweet_posted_at', sixHoursAgo)
+        .order('tweet_posted_at', { ascending: false })
+        .limit(75);
+      rootOpps = fallback6hOpps;
+    }
+    
+    // If still no opportunities, fallback to 24h window
     if (!rootOpps || rootOpps.length === 0) {
-      console.log(`[ROOT_EVAL] No fresh opportunities (<${p1MaxAgeHours}h), falling back to 24h window...`);
-      const { data: fallbackOpps } = await supabase
+      console.log(`[ROOT_EVAL] No opportunities (<6h), falling back to 24h window...`);
+      const { data: fallback24hOpps } = await supabase
         .from('reply_opportunities')
         .select('target_tweet_id, target_username, target_tweet_content, tweet_posted_at, like_count, reply_count, retweet_count, is_root_tweet, target_in_reply_to_tweet_id')
         .eq('replied_to', false)
@@ -116,7 +132,7 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
         .gte('created_at', twentyFourHoursAgo)
         .order('tweet_posted_at', { ascending: false })
         .limit(50); // Smaller limit for fallback
-      rootOpps = fallbackOpps;
+      rootOpps = fallback24hOpps;
     }
     
     // Get all evaluated tweet IDs
