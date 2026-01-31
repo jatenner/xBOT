@@ -45,23 +45,39 @@ console.log(`[HARVESTER_DAEMON] ✅ Loaded env from: ${envFileLoaded}`);
 let sessionB64 = process.env.TWITTER_SESSION_B64?.trim();
 
 // If not in process.env, try reading from .env file directly (dotenv may not load very long values)
+// Also try .env if .env.local was loaded but didn't have it
 if (!sessionB64 || sessionB64.length === 0) {
-  try {
-    const envContent = fs.readFileSync(envFileLoaded, 'utf8');
-    const match = envContent.match(/^TWITTER_SESSION_B64=(.+)$/m);
-    if (match && match[1]) {
-      sessionB64 = match[1].trim();
-      // Remove quotes if present
-      if ((sessionB64.startsWith('"') && sessionB64.endsWith('"')) || 
-          (sessionB64.startsWith("'") && sessionB64.endsWith("'"))) {
-        sessionB64 = sessionB64.slice(1, -1);
+  const filesToTry = envFileLoaded === envLocalPath 
+    ? [envLocalPath, envPath] 
+    : [envPath];
+  
+  for (const envFile of filesToTry) {
+    if (!fs.existsSync(envFile)) continue;
+    
+    try {
+      const envContent = fs.readFileSync(envFile, 'utf8');
+      // Match TWITTER_SESSION_B64=value (value can span multiple lines if quoted)
+      // Handle both single-line and multiline (quoted) values
+      const singleLineMatch = envContent.match(/^TWITTER_SESSION_B64=([^\n\r]+)$/m);
+      const multilineMatch = envContent.match(/^TWITTER_SESSION_B64=["']([\s\S]*?)["']$/m);
+      
+      let extracted = singleLineMatch?.[1] || multilineMatch?.[1];
+      
+      if (extracted) {
+        sessionB64 = extracted.trim();
+        // Remove quotes if still present
+        if ((sessionB64.startsWith('"') && sessionB64.endsWith('"')) || 
+            (sessionB64.startsWith("'") && sessionB64.endsWith("'"))) {
+          sessionB64 = sessionB64.slice(1, -1);
+        }
+        // Set in process.env so UnifiedBrowserPool can use it
+        process.env.TWITTER_SESSION_B64 = sessionB64;
+        console.log(`[HARVESTER_DAEMON] 🔐 Loaded TWITTER_SESSION_B64 from ${envFile} (${sessionB64.length} chars)`);
+        break;
       }
-      // Set in process.env so UnifiedBrowserPool can use it
-      process.env.TWITTER_SESSION_B64 = sessionB64;
-      console.log(`[HARVESTER_DAEMON] 🔐 Loaded TWITTER_SESSION_B64 from ${envFileLoaded} (${sessionB64.length} chars)`);
+    } catch (readError: any) {
+      console.warn(`[HARVESTER_DAEMON] ⚠️ Failed to read ${envFile}: ${readError.message}`);
     }
-  } catch (readError: any) {
-    console.warn(`[HARVESTER_DAEMON] ⚠️ Failed to read ${envFileLoaded}: ${readError.message}`);
   }
 }
 
