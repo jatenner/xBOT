@@ -277,6 +277,14 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     ? 20000 
     : Math.max(3000, Math.min(30000, rawSchedulerTimeout)); // Clamp 3s-30s
   
+  // 🔧 FIX: Refresh queue BEFORE selecting candidates to ensure ROOT_EVAL bridge runs
+  // This ensures fresh root opportunities get evaluated before scheduler selects candidates
+  const { refreshCandidateQueue } = await import('./queueManager');
+  const queueRefreshResult = await refreshCandidateQueue();
+  if (queueRefreshResult.evaluated > 0 || queueRefreshResult.queued > 0) {
+    console.log(`[SCHEDULER] 🔄 Queue refreshed: evaluated=${queueRefreshResult.evaluated} queued=${queueRefreshResult.queued}`);
+  }
+  
   // Collect candidates from all tiers (try tier 1, then 2, then 3 if behind schedule)
   const candidatesToTry: Array<{ candidate: any; tier: number }> = [];
   

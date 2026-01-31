@@ -35,6 +35,12 @@ async function main() {
     const beforeTotal = beforeCount.count || 0;
     console.log(`[PLANNER] 📊 Queued decisions before: ${beforeTotal}`);
     
+    // 🔧 FIX: Refresh queue BEFORE scheduler to ensure ROOT_EVAL bridge runs
+    console.log(`[PLANNER] 🔄 Refreshing candidate queue (triggers ROOT_EVAL bridge)...`);
+    const { refreshCandidateQueue } = await import('../../src/jobs/replySystemV2/queueManager');
+    const queueResult = await refreshCandidateQueue();
+    console.log(`[PLANNER] Queue refresh: evaluated=${queueResult.evaluated} queued=${queueResult.queued} expired=${queueResult.expired}`);
+    
     const result = await attemptScheduledReply();
     
     console.log(`\n[PLANNER] 📊 Result:`);
