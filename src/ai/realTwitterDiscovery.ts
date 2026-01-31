@@ -1627,10 +1627,14 @@ export class RealTwitterDiscovery {
           console.log(`[REAL_DISCOVERY] 🎯 Boosted @${opp.tweet_author}: ${baseScore.toFixed(2)} → ${finalScore.toFixed(2)} (priority: ${priorityScore.toFixed(3)})`);
         }
         
-        // Calculate tweet_posted_at from posted_minutes_ago
-        const tweetPostedAt = opp.posted_minutes_ago 
-          ? new Date(Date.now() - opp.posted_minutes_ago * 60 * 1000).toISOString()
-          : new Date().toISOString();
+        // Calculate tweet_posted_at from posted_minutes_ago or use existing tweet_posted_at
+        // 🔧 FIX: Prefer existing tweet_posted_at if available, else calculate from posted_minutes_ago
+        const tweetPostedAt = opp.tweet_posted_at || 
+          (opp.posted_minutes_ago 
+            ? new Date(Date.now() - opp.posted_minutes_ago * 60 * 1000).toISOString()
+            : new Date().toISOString());
+        
+        console.log(`[HARVESTER] wrote opportunity target=${opp.tweet_id} tweet_posted_at=${tweetPostedAt}`);
         
       // 🚨 HARD BLOCK: Detect if tweet content suggests it's a reply
       // (belt-and-suspenders protection even though -filter:replies is in query)
