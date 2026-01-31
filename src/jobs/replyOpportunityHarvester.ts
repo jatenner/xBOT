@@ -602,48 +602,30 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   
+  // 🔍 P1 THROUGHPUT: Count fresh root opportunities in pool
+  const { data: freshOpps } = await supabase
+    .from('reply_opportunities')
+    .select('tweet_posted_at, is_root_tweet')
+    .eq('is_root_tweet', true)
+    .eq('replied_to', false);
+  
+  const fresh1hCount = freshOpps?.filter(o => {
+    if (!o.tweet_posted_at) return false;
+    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 60 * 60 * 1000);
+  }).length || 0;
+  const fresh3hCount = freshOpps?.filter(o => {
+    if (!o.tweet_posted_at) return false;
+    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 3 * 60 * 60 * 1000);
+  }).length || 0;
+  const fresh6hCount = freshOpps?.filter(o => {
+    if (!o.tweet_posted_at) return false;
+    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 6 * 60 * 60 * 1000);
+  }).length || 0;
+  
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  
   console.log(`[HARVESTER] ✅ Harvest complete in ${elapsed}s!`);
   console.log(`[HARVESTER] 📊 Pool size: ${poolSize} → ${finalPoolSize}`);
-  // 🔍 P1 THROUGHPUT: Count fresh root opportunities in pool
-  const { data: freshOpps } = await supabase
-    .from('reply_opportunities')
-    .select('tweet_posted_at, is_root_tweet')
-    .eq('is_root_tweet', true)
-    .eq('replied_to', false);
-  
-  const fresh1hCount = freshOpps?.filter(o => {
-    if (!o.tweet_posted_at) return false;
-    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 60 * 60 * 1000);
-  }).length || 0;
-  const fresh3hCount = freshOpps?.filter(o => {
-    if (!o.tweet_posted_at) return false;
-    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 3 * 60 * 60 * 1000);
-  }).length || 0;
-  const fresh6hCount = freshOpps?.filter(o => {
-    if (!o.tweet_posted_at) return false;
-    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 6 * 60 * 60 * 1000);
-  }).length || 0;
-  
-  // 🔍 P1 THROUGHPUT: Count fresh root opportunities in pool
-  const { data: freshOpps } = await supabase
-    .from('reply_opportunities')
-    .select('tweet_posted_at, is_root_tweet')
-    .eq('is_root_tweet', true)
-    .eq('replied_to', false);
-  
-  const fresh1hCount = freshOpps?.filter(o => {
-    if (!o.tweet_posted_at) return false;
-    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 60 * 60 * 1000);
-  }).length || 0;
-  const fresh3hCount = freshOpps?.filter(o => {
-    if (!o.tweet_posted_at) return false;
-    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 3 * 60 * 60 * 1000);
-  }).length || 0;
-  const fresh6hCount = freshOpps?.filter(o => {
-    if (!o.tweet_posted_at) return false;
-    return new Date(o.tweet_posted_at).getTime() > (Date.now() - 6 * 60 * 60 * 1000);
-  }).length || 0;
-  
   console.log(`[HARVESTER] 🔍 Searches processed: ${searchesProcessed}/${searchQueries.length}`);
   console.log(`[HARVESTER] 🌾 Harvested: ${totalHarvested} new viral tweet opportunities`);
   console.log(`[HARVESTER] 📊 ROOT OPPORTUNITIES: fresh_1h=${fresh1hCount} fresh_3h=${fresh3hCount} fresh_6h=${fresh6hCount} total_roots=${freshOpps?.length || 0}`);
