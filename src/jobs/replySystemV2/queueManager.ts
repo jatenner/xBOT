@@ -85,10 +85,11 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
   
   // 🔗 BRIDGE: Evaluate root opportunities that don't have evaluations yet
   if (rootOnlyMode) {
+    console.log(`[QUEUE_MANAGER] 🔍 ROOT_EVAL bridge: Checking for unevaluated root opportunities...`);
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     
-    // 🔒 P1 FRESHNESS FILTER: For P1 proving, prefer very fresh targets (<1h default) to avoid deleted/inaccessible
-    const p1MaxAgeHours = parseInt(process.env.P1_TARGET_MAX_AGE_HOURS || '1', 10);
+    // 🔒 P1 FRESHNESS FILTER: For P1 proving, prefer very fresh targets (<3h default) to avoid deleted/inaccessible
+    const p1MaxAgeHours = parseInt(process.env.P1_TARGET_MAX_AGE_HOURS || '3', 10);
     const p1MaxAgeMs = p1MaxAgeHours * 60 * 60 * 1000;
     const p1CutoffTime = new Date(Date.now() - p1MaxAgeMs).toISOString();
     
