@@ -188,10 +188,8 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   const schedulerRunId = `scheduler_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const slotTime = new Date();
   
-  // 🔒 REPLY_QUEUE instrumentation
-  const executionMode = process.env.EXECUTION_MODE || 'control'; // Default to control (fail-closed)
+  // 🔒 REPLY_QUEUE instrumentation (executionMode and isExecutorMode already declared above)
   const runnerMode = process.env.RUNNER_MODE === 'true';
-  const isExecutorMode = executionMode === 'executor' && runnerMode;
   console.log(`[REPLY_QUEUE] ✅ job_tick start EXECUTION_MODE=${executionMode} RUNNER_MODE=${runnerMode} isExecutorMode=${isExecutorMode}`);
   let readyCandidates = 0;
   let selectedCandidates = 0;

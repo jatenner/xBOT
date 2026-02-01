@@ -47,10 +47,10 @@ get_public_count() {
   pnpm exec tsx scripts/ops/check-public-count.ts 2>&1 | grep -o '[0-9]*' | head -1 || echo "0"
 }
 
-# Helper: Extract P1_PROBE_SUMMARY ok value
+# Helper: Extract P1_PROBE_SUMMARY ok value (Mac-compatible)
 extract_probe_ok() {
   local log_file="$1"
-  grep "P1_PROBE_SUMMARY" "$log_file" 2>/dev/null | grep -oP 'ok=\K[0-9]+' | head -1 || echo "0"
+  grep "P1_PROBE_SUMMARY" "$log_file" 2>/dev/null | sed -E 's/.*ok=([0-9]+).*/\1/' | head -1 || echo "0"
 }
 
 # Helper: Check if executor daemon is running
