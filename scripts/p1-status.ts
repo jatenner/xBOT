@@ -97,7 +97,8 @@ async function main() {
     console.log(`\n4. Last decision: ⚠️  Not found`);
   }
 
-  // 5. Last posted URL
+  // 5. Last posted URL (P1 flow - after architectural fix: 2026-02-01)
+  const p1StartDate = '2026-02-01';
   const { rows: postedRows } = await client.query(`
     SELECT 
       decision_id,
@@ -109,9 +110,10 @@ async function main() {
     WHERE decision_type = 'reply'
     AND status = 'posted'
     AND tweet_id IS NOT NULL
+    AND posted_at >= $1
     ORDER BY posted_at DESC
     LIMIT 1;
-  `);
+  `, [p1StartDate]);
   if (postedRows.length > 0) {
     const posted = postedRows[0];
     const replyUrl = `https://x.com/i/web/status/${posted.tweet_id}`;
@@ -144,13 +146,19 @@ async function main() {
     (probeSummaryRows[0].event_data as any)?.ok >= 1;
   
   if (hasPostedReply) {
-    console.log(`\n✅ P1 COMPLETE: Reply posted`);
+    console.log(`\n✅ P1 COMPLETE: Reply posted (P1 flow)`);
     process.exit(0);
   } else if (hasOkProbe && publicCount >= 25) {
     console.log(`\n⏳ P1 IN PROGRESS: Ready for posting`);
     process.exit(0);
   } else {
-    console.log(`\n⚠️  P1 NOT READY: Need more candidates or probe ok>=1`);
+    console.log(`\n⚠️  P1 NOT READY:`);
+    if (publicCount < 25) {
+      console.log(`   - Need ${25 - publicCount} more public candidates`);
+    }
+    if (!hasOkProbe) {
+      console.log(`   - Need plan-only ok>=1`);
+    }
     process.exit(1);
   }
 }
