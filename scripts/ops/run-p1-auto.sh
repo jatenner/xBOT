@@ -14,7 +14,7 @@ echo "🎯 P1 Automated Workflow"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
-# Helper: Run Railway command with timeout
+# Helper: Run Railway command with timeout (Mac-compatible)
 run_railway_with_timeout() {
   local cmd="$1"
   local log_file="$2"
@@ -23,14 +23,23 @@ run_railway_with_timeout() {
   echo "Running: $cmd"
   echo "Logging to: $log_file"
   
-  timeout $timeout railway run --service serene-cat bash -c "$cmd" > "$log_file" 2>&1 || {
-    local exit_code=$?
-    if [ $exit_code -eq 124 ]; then
-      echo "⚠️  Command timed out after ${timeout}s (this is OK, checking results...)"
-    else
+  # Mac doesn't have timeout command, use gtimeout if available, otherwise run without timeout
+  if command -v gtimeout >/dev/null 2>&1; then
+    gtimeout $timeout railway run --service serene-cat bash -c "$cmd" > "$log_file" 2>&1 || {
+      local exit_code=$?
+      if [ $exit_code -eq 124 ]; then
+        echo "⚠️  Command timed out after ${timeout}s (this is OK, checking results...)"
+      else
+        echo "⚠️  Command exited with code $exit_code (checking results...)"
+      fi
+    }
+  else
+    # Run without timeout - Railway CLI will handle its own timeouts
+    railway run --service serene-cat bash -c "$cmd" > "$log_file" 2>&1 || {
+      local exit_code=$?
       echo "⚠️  Command exited with code $exit_code (checking results...)"
-    fi
-  }
+    }
+  fi
 }
 
 # Helper: Get public candidate count
@@ -51,26 +60,7 @@ check_executor_running() {
 
 # Helper: Get latest posted reply URL (after P1_START_DATE)
 get_latest_reply_url() {
-  pnpm exec tsx -e "
-    import('dotenv/config');
-    const { getSupabaseClient } = require('./src/db/index.ts');
-    (async () => {
-      const supabase = getSupabaseClient();
-      const { data } = await supabase
-        .from('content_metadata')
-        .select('tweet_id, posted_at')
-        .eq('decision_type', 'reply')
-        .eq('status', 'posted')
-        .not('tweet_id', 'is', null)
-        .gte('posted_at', '$P1_START_DATE')
-        .order('posted_at', { ascending: false })
-        .limit(1)
-        .single();
-      if (data && data.tweet_id) {
-        console.log(\`https://x.com/i/web/status/\${data.tweet_id}\`);
-      }
-    })().catch(() => {});
-  " 2>/dev/null | grep -E "https://x.com" || echo ""
+  pnpm exec tsx scripts/ops/get-latest-p1-reply.ts 2>/dev/null | grep -E "https://x.com" || echo ""
 }
 
 # PHASE A: Harvest cycles until >= 25 candidates
@@ -134,7 +124,7 @@ run_railway_with_timeout \
   "/tmp/planner-plan-only.log" \
   $TIMEOUT
 
-PROBE_OK=$(extract_probe_ok "/tmp/planner-plan-only.log")
+PROBE_OK=$(extract_probe_ok "/tmp/planner-plan-only.log" || echo "0")
 echo "P1_PROBE_SUMMARY ok=$PROBE_OK"
 
 if [ "$PROBE_OK" -eq "0" ]; then
@@ -227,7 +217,7 @@ echo "════════════════════════�
 echo ""
 
 # Extract decision_id and tweet_id from reply URL
-TWEET_ID=$(echo "$REPLY_URL" | grep -oP 'status/\K[0-9]+')
+TWEET_ID=$(echo "$REPLY_URL" | sed -E 's|.*status/([0-9]+).*|\1|')
 DECISION_ID=$(pnpm exec tsx -e "
   import('dotenv/config');
   const { getSupabaseClient } = require('./src/db/index.ts');
@@ -241,7 +231,7 @@ DECISION_ID=$(pnpm exec tsx -e "
       .single();
     if (data) console.log(data.decision_id);
   })().catch(() => {});
-" 2>/dev/null | head -1)
+" 2>/dev/null | head -1 || echo "")
 
 PROBE_SUMMARY=$(grep "P1_PROBE_SUMMARY" /tmp/planner-plan-only.log | head -1)
 
