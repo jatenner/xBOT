@@ -16,16 +16,18 @@ echo ""
 
 # Helper: Run Railway command with timeout (Mac-compatible)
 run_railway_with_timeout() {
-  local cmd="$1"
-  local log_file="$2"
-  local timeout="${3:-$TIMEOUT}"
+  local env_vars="$1"
+  local script_path="$2"
+  local log_file="$3"
+  local timeout="${4:-$TIMEOUT}"
   
-  echo "Running: $cmd"
+  echo "Running: railway run --service serene-cat $env_vars pnpm exec tsx $script_path"
   echo "Logging to: $log_file"
   
   # Mac doesn't have timeout command, use gtimeout if available, otherwise run without timeout
+  # Railway CLI: pass env vars before the command, don't use bash -c
   if command -v gtimeout >/dev/null 2>&1; then
-    gtimeout $timeout railway run --service serene-cat bash -c "$cmd" > "$log_file" 2>&1 || {
+    gtimeout $timeout railway run --service serene-cat $env_vars pnpm exec tsx "$script_path" > "$log_file" 2>&1 || {
       local exit_code=$?
       if [ $exit_code -eq 124 ]; then
         echo "⚠️  Command timed out after ${timeout}s (this is OK, checking results...)"
@@ -35,7 +37,7 @@ run_railway_with_timeout() {
     }
   else
     # Run without timeout - Railway CLI will handle its own timeouts
-    railway run --service serene-cat bash -c "$cmd" > "$log_file" 2>&1 || {
+    railway run --service serene-cat $env_vars pnpm exec tsx "$script_path" > "$log_file" 2>&1 || {
       local exit_code=$?
       echo "⚠️  Command exited with code $exit_code (checking results...)"
     }
@@ -81,7 +83,8 @@ else
     echo "Harvest cycle $i/$MAX_HARVEST_CYCLES..."
     
     run_railway_with_timeout \
-      "P1_MODE=true pnpm exec tsx scripts/ops/run-harvester-single-cycle.ts" \
+      "P1_MODE=true" \
+      "scripts/ops/run-harvester-single-cycle.ts" \
       "/tmp/harvest-cycle-$i.log" \
       $TIMEOUT
     
@@ -120,7 +123,8 @@ echo "════════════════════════�
 echo ""
 
 run_railway_with_timeout \
-  "REPLY_V2_ROOT_ONLY=true P1_MODE=true P1_MAX_PREFLIGHT_ATTEMPTS_PER_TICK=20 REPLY_V2_PLAN_ONLY=true pnpm exec tsx scripts/ops/run-reply-v2-planner-once.ts" \
+  "REPLY_V2_ROOT_ONLY=true P1_MODE=true P1_MAX_PREFLIGHT_ATTEMPTS_PER_TICK=20 REPLY_V2_PLAN_ONLY=true" \
+  "scripts/ops/run-reply-v2-planner-once.ts" \
   "/tmp/planner-plan-only.log" \
   $TIMEOUT
 
@@ -148,7 +152,8 @@ echo "════════════════════════�
 echo ""
 
 run_railway_with_timeout \
-  "REPLY_V2_ROOT_ONLY=true P1_MODE=true P1_MAX_PREFLIGHT_ATTEMPTS_PER_TICK=20 pnpm exec tsx scripts/ops/run-reply-v2-planner-once.ts" \
+  "REPLY_V2_ROOT_ONLY=true P1_MODE=true P1_MAX_PREFLIGHT_ATTEMPTS_PER_TICK=20" \
+  "scripts/ops/run-reply-v2-planner-once.ts" \
   "/tmp/planner-real.log" \
   $TIMEOUT
 
