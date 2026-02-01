@@ -12,13 +12,44 @@ xBOT uses two auth contexts:
 
 ### Mac → Railway Sync
 
-**Script:** `scripts/ops/push-twitter-session-to-railway.ts`
+**Step 1: Export Session from Real Chrome Profile**
 
-**Steps:**
-1. Read session from executor machine (`twitter_session.json` or `TWITTER_SESSION_PATH`)
-2. Base64 encode session data
-3. Update Railway variable: `TWITTER_SESSION_B64`
-4. Verify session on Railway by running freshness check
+**Script:** `scripts/refresh-x-session.ts`
+
+**Prerequisites:**
+- Chrome must be installed
+- You must be logged in to X.com in Chrome (any profile)
+
+**Usage:**
+```bash
+# Default profile
+pnpm tsx scripts/refresh-x-session.ts
+
+# Specific profile
+CHROME_PROFILE_DIR="Profile 1" pnpm tsx scripts/refresh-x-session.ts
+
+# Custom Chrome user data directory
+CHROME_USER_DATA_DIR="/path/to/chrome" CHROME_PROFILE_DIR="Default" pnpm tsx scripts/refresh-x-session.ts
+```
+
+**Environment Variables:**
+- `CHROME_USER_DATA_DIR`: Chrome user data directory (default: `~/Library/Application Support/Google/Chrome` on Mac)
+- `CHROME_PROFILE_DIR`: Profile directory name (default: `Default`)
+
+**What it does:**
+1. Launches Chrome using `launchPersistentContext` with your real Chrome profile
+2. Uses `channel: 'chrome'` (real Chrome, NOT test browser)
+3. Extracts cookies from the profile
+4. Verifies `auth_token` and `ct0` cookies exist
+5. Saves session to `./twitter_session.json`
+
+**If profile not logged in:**
+- Script will list available profiles and check which has X.com auth cookies
+- Log in to X.com in Chrome first, then re-run
+
+**Step 2: Push Session to Railway**
+
+**Script:** `scripts/ops/push-twitter-session-to-railway.ts`
 
 **Command:**
 ```bash
