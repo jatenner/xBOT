@@ -465,6 +465,7 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     : [...tierAQueries, ...tierBQueries, ...tierCQueries, ...tierP1Queries];
   
   // 🎯 P1 SEED LIST FALLBACK: Add seed account queries if public searches fail
+  let fallbackQueries = [...tierDFallback];
   if (p1Mode && p1SeedAccounts.length > 0) {
     // Add seed account queries as fallback (will run if pool is low)
     const seedQueries = p1SeedAccounts.slice(0, 5).map((account, idx) => ({
@@ -480,7 +481,6 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     // Add seed queries to fallback (they'll run if pool is critical)
     fallbackQueries.push(...seedQueries);
   }
-  const fallbackQueries = tierDFallback;
   
   const testLimitRaw = process.env.HARVESTER_TEST_LIMIT;
   const testLimit = testLimitRaw ? Math.max(1, Math.min(searchQueries.length, parseInt(testLimitRaw, 10) || 1)) : searchQueries.length;
