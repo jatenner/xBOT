@@ -700,10 +700,13 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
     query = query.eq('predicted_tier', tier);
   }
   
+  // 🎯 P1: Prefer public_search_* candidates when available
+  const p1Mode = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
+  
   query = query
     .order('predicted_tier', { ascending: true }) // Tier 1 first
     .order('overall_score', { ascending: false }) // Then by score
-    .limit(10); // Get more candidates to filter by stability
+    .limit(p1Mode ? 50 : 10); // Get more candidates in P1 mode to filter by discovery_source
   
   const { data: candidates, error } = await query;
   
