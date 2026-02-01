@@ -710,7 +710,7 @@ async function harvestAccount(
       // If metrics are unknown (null), allow storage with special handling
       if (tweet.like_count === null || tweet.like_count === undefined) {
         // Store with unknown metrics - don't block by freshness
-        const storedScores = await storeOpportunity(tweet, quality, tier, 'normal', undefined, undefined, undefined, undefined, 'unknown', relevanceReplyability);
+        const storedScores = await storeOpportunity(tweet, quality, tier, username, 'normal', undefined, undefined, undefined, undefined, 'unknown', relevanceReplyability);
         result.stored_count++;
         // Track stored opportunity with scores
         storedOpportunities.push({
@@ -733,7 +733,7 @@ async function harvestAccount(
       }
       
       // Store
-      const storedScores = await storeOpportunity(tweet, quality, tier, 'normal', undefined, undefined, undefined, undefined, undefined, relevanceReplyability);
+      const storedScores = await storeOpportunity(tweet, quality, tier, username, 'normal', undefined, undefined, undefined, undefined, undefined, relevanceReplyability);
       result.stored_count++;
       
       // Track stored opportunity with scores
@@ -780,7 +780,7 @@ async function harvestAccount(
           item.tweet.tweet_url
         );
         
-        const storedScores = await storeOpportunity(item.tweet, item.quality, item.tier, undefined, undefined, undefined, undefined, undefined, undefined, fallbackScores);
+        const storedScores = await storeOpportunity(item.tweet, item.quality, item.tier, username, undefined, undefined, undefined, undefined, undefined, undefined, fallbackScores);
         result.stored_count++;
         
         // Track stored opportunity with scores
@@ -1105,6 +1105,7 @@ async function storeOpportunity(
   tweet: ScrapedTweet,
   quality: any,
   tier: string,
+  seedUsername: string, // Seed account username (for discovery_source tracking)
   storedReason?: string,
   likesPerMin?: number,
   repliesPerMin?: number,
@@ -1114,6 +1115,14 @@ async function storeOpportunity(
   precomputedScores?: { relevance_score: number; replyability_score: number }
 ): Promise<{ relevance_score: number; replyability_score: number }> {
   const supabase = getSupabaseClient();
+  
+  // 🔒 VALIDATION: Ensure seedUsername and tweet.author_handle are defined
+  if (!seedUsername || typeof seedUsername !== 'string' || seedUsername.trim() === '') {
+    throw new Error(`storeOpportunity: seedUsername is required but got: ${JSON.stringify(seedUsername)}`);
+  }
+  if (!tweet.author_handle || typeof tweet.author_handle !== 'string' || tweet.author_handle.trim() === '') {
+    throw new Error(`storeOpportunity: tweet.author_handle is required but got: ${JSON.stringify(tweet.author_handle)}`);
+  }
   
   // 🔢 FIX: Ensure age_minutes is an INTEGER (not float/string)
   const ageMinutesRaw = tweet.age_minutes || 0;
@@ -1228,7 +1237,7 @@ async function storeOpportunity(
       account_username: 'xBOT_health', // Our account       
       harvest_source: 'seed_account',   
       harvest_source_detail: tweet.author_handle,
-      discovery_source: `seed_account_${username}`, // 🎯 P1: Track discovery source
+      discovery_source: `seed_account_${seedUsername}`, // 🎯 P1: Track discovery source
       target_in_reply_to_tweet_id: tweet.in_reply_to_tweet_id,
       target_conversation_id: tweet.conversation_id,
       selection_reason: 'harvest_v2', // Track that this was harvested

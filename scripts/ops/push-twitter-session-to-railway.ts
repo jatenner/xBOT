@@ -43,31 +43,47 @@ async function main() {
     process.exit(1);
   }
   
-  // 4. Verify by running freshness check
+  // 4. Verify by running harvester single cycle (checks auth and prints [HARVESTER_AUTH])
   console.log('\n🔍 Verifying session on Railway...');
+  let verificationPassed = false;
   try {
-    execSync(`railway run --service ${railwayService} pnpm tsx -e "
-      import('dotenv/config').then(() => import('./src/utils/authFreshnessCheck')).then(async ({ checkAuthFreshness }) => {
-        const { UnifiedBrowserPool } = await import('./src/browser/UnifiedBrowserPool');
-        const pool = UnifiedBrowserPool.getInstance();
-        const page = await pool.acquirePage('auth_verify');
-        try {
-          const result = await checkAuthFreshness(page);
-          console.log('Auth check result:', JSON.stringify(result, null, 2));
-          process.exit(result.valid ? 0 : 1);
-        } finally {
-          await pool.releasePage(page);
-        }
-      });
-    "`, {
-      stdio: 'inherit',
-      encoding: 'utf8',
-      timeout: 60000,
-    });
-    console.log('✅ Session verified on Railway');
+    const output = execSync(
+      `railway run --service ${railwayService} pnpm exec tsx scripts/ops/run-harvester-single-cycle.ts`,
+      {
+        stdio: 'pipe',
+        encoding: 'utf8',
+        timeout: 120000, // 2 minutes for harvester cycle
+      }
+    );
+    
+    // Check if output contains successful auth log
+    if (output.includes('[HARVESTER_AUTH] logged_in=true')) {
+      verificationPassed = true;
+      console.log('✅ Session verified on Railway (auth check passed)');
+    } else {
+      console.warn('⚠️ Verification output did not contain expected auth success message');
+      console.log('Output preview:', output.slice(0, 500));
+    }
   } catch (error: any) {
-    console.warn(`⚠️ Verification failed: ${error.message}`);
-    console.log('💡 Session may still be valid - check Railway logs');
+    // Check if error output contains auth success (sometimes exit code is non-zero for other reasons)
+    const errorOutput = error.stdout || error.stderr || error.message || '';
+    if (errorOutput.includes('[HARVESTER_AUTH] logged_in=true')) {
+      verificationPassed = true;
+      console.log('✅ Session verified on Railway (auth check passed, but harvester exited with error)');
+    } else {
+      console.warn(`⚠️ Verification failed: ${error.message}`);
+      console.log('💡 Session may still be valid - check Railway logs for [HARVESTER_AUTH]');
+      if (error.stdout) {
+        console.log('Stdout:', error.stdout.slice(0, 500));
+      }
+      if (error.stderr) {
+        console.log('Stderr:', error.stderr.slice(0, 500));
+      }
+    }
+  }
+  
+  if (!verificationPassed) {
+    console.log('💡 Continuing anyway - session push succeeded, verification may have failed for non-auth reasons');
   }
   
   console.log('\n✅ Session sync complete');
