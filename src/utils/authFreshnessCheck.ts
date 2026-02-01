@@ -67,9 +67,17 @@ export async function checkAuthFreshness(page: Page): Promise<AuthFreshnessResul
 
 /**
  * Check if auth is currently blocked (fail-closed check)
+ * 
+ * 🎯 ARCHITECTURAL CHANGE: Railway logged_out is NOT a blocker (only warning)
+ * - Railway (control-plane): Can run public discovery without auth
+ * - Executor (executor-plane): Must be authenticated (fail-closed)
  */
 export async function isAuthBlocked(): Promise<{ blocked: boolean; reason?: string }> {
   try {
+    const executionMode = process.env.EXECUTION_MODE || 'control';
+    const isRailwayMode = executionMode === 'control';
+    const isExecutorMode = executionMode === 'executor' && process.env.RUNNER_MODE === 'true';
+    
     const supabase = getSupabaseClient();
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
@@ -85,6 +93,19 @@ export async function isAuthBlocked(): Promise<{ blocked: boolean; reason?: stri
     if (recentFailures && recentFailures.length > 0) {
       const failure = recentFailures[0];
       const reason = (failure.event_data as any)?.reason || failure.message || 'unknown';
+      
+      // 🎯 EXECUTOR GUARD: Block executor if not authenticated (fail-closed)
+      if (isExecutorMode) {
+        return { blocked: true, reason: `Executor auth required: ${reason}` };
+      }
+      
+      // 🎯 RAILWAY GUARD: Don't block Railway for logged_out/no_timeline (public discovery works)
+      if (isRailwayMode && (reason === 'no_timeline' || reason === 'logged_out' || reason.includes('login'))) {
+        console.warn(`[AUTH_FRESHNESS] ⚠️ Railway not authenticated (${reason}) - public discovery only`);
+        return { blocked: false }; // Not a blocker for Railway
+      }
+      
+      // Other reasons (challenge_wall, etc.) still block
       return { blocked: true, reason };
     }
     

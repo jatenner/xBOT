@@ -113,3 +113,7 @@ ops/supabase-ca.crt
 
 # Data directories
 data/
+
+# local secrets
+.x_cookies.env
+twitter_session.json

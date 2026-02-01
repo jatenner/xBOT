@@ -43,10 +43,12 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   try {
     const supabase = getSupabaseClient();
     
-    // 🔐 HARVESTER AUTH VERIFICATION: Verify authentication before harvesting
+    // 🔐 HARVESTER AUTH VERIFICATION: Check auth status (non-blocking for public discovery)
     let authVerified = false;
     let authHandle: string | null = null;
     let authReason = 'not_checked';
+    const executionMode = process.env.EXECUTION_MODE || 'control';
+    const isRailwayMode = executionMode === 'control';
     
     try {
       const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
@@ -67,60 +69,69 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
         // Emit system event
         await supabase.from('system_events').insert({
           event_type: authVerified ? 'HARVESTER_AUTH_VERIFIED' : 'HARVESTER_AUTH_INVALID',
-          severity: authVerified ? 'info' : 'error',
+          severity: authVerified ? 'info' : isRailwayMode ? 'warning' : 'error',
           message: authVerified 
             ? `Harvester authenticated as ${authHandle || 'unknown'}`
-            : `Harvester auth failed: ${authReason}`,
+            : `Harvester auth failed: ${authReason} (Railway mode: public discovery only)`,
           event_data: {
             logged_in: authVerified,
             handle: authHandle,
             url: whoami.url,
             title: whoami.title,
             reason: authReason,
+            execution_mode: executionMode,
           },
           created_at: new Date().toISOString(),
         });
         
         if (!authVerified) {
-          console.error(`[HARVESTER_AUTH] ❌ Authentication failed: ${authReason}`);
-          console.error(`[HARVESTER_AUTH] ⚠️ Skipping harvest cycle - authentication required`);
-          
-          // 🎯 FAIL-CLOSED: In P1 mode, exit non-zero to prevent harvest
-          const p1Mode = process.env.P1_MODE === 'true';
-          if (p1Mode) {
-            await supabase.from('system_events').insert({
-              event_type: 'harvester_auth_blocked_p1',
-              severity: 'error',
-              message: `Harvester blocked in P1 mode: auth failed - ${authReason}`,
-              event_data: {
-                handle: authHandle,
-                reason: authReason,
-              },
-              created_at: new Date().toISOString(),
-            });
-            process.exit(1); // Fail-closed in P1 mode
+          if (isRailwayMode) {
+            // 🎯 RAILWAY MODE: Allow public discovery without auth (seed harvesting moved to executor)
+            console.warn(`[HARVESTER_AUTH] ⚠️ Railway mode: Not authenticated (${authReason})`);
+            console.warn(`[HARVESTER_AUTH] 📋 Running PUBLIC DISCOVERY ONLY (seed harvesting requires executor auth)`);
+            console.warn(`[HARVESTER_AUTH] 💡 Seed account harvesting will be handled by executor-plane`);
+          } else {
+            // Executor mode: Fail-closed (executor must be authenticated)
+            console.error(`[HARVESTER_AUTH] ❌ Authentication failed: ${authReason}`);
+            throw new Error(`Harvester authentication failed: ${authReason}. Executor must be authenticated.`);
           }
-          
-          throw new Error(`Harvester authentication failed: ${authReason}. Ensure TWITTER_SESSION_B64 is set and valid.`);
+        } else {
+          console.log(`[HARVESTER_AUTH] ✅ Authentication verified: ${authHandle || 'authenticated'}`);
         }
-        
-        console.log(`[HARVESTER_AUTH] ✅ Authentication verified: ${authHandle || 'authenticated'}`);
       } finally {
         await pool.releasePage(authPage);
       }
     } catch (authError: any) {
-      console.error(`[HARVESTER_AUTH] ❌ Auth check failed: ${authError.message}`);
-      await supabase.from('system_events').insert({
-        event_type: 'HARVESTER_AUTH_INVALID',
-        severity: 'error',
-        message: `Harvester auth check failed: ${authError.message}`,
-        event_data: {
-          error: authError.message,
-          reason: authReason,
-        },
-        created_at: new Date().toISOString(),
-      });
-      throw authError; // Fail fast - don't harvest without auth
+      if (isRailwayMode) {
+        // Railway mode: Warn but continue with public discovery
+        console.warn(`[HARVESTER_AUTH] ⚠️ Auth check failed: ${authError.message}`);
+        console.warn(`[HARVESTER_AUTH] 📋 Continuing with PUBLIC DISCOVERY ONLY`);
+        await supabase.from('system_events').insert({
+          event_type: 'HARVESTER_AUTH_INVALID',
+          severity: 'warning',
+          message: `Harvester auth check failed: ${authError.message} (Railway: public discovery only)`,
+          event_data: {
+            error: authError.message,
+            reason: authReason,
+            execution_mode: executionMode,
+          },
+          created_at: new Date().toISOString(),
+        });
+      } else {
+        // Executor mode: Fail fast
+        console.error(`[HARVESTER_AUTH] ❌ Auth check failed: ${authError.message}`);
+        await supabase.from('system_events').insert({
+          event_type: 'HARVESTER_AUTH_INVALID',
+          severity: 'error',
+          message: `Harvester auth check failed: ${authError.message}`,
+          event_data: {
+            error: authError.message,
+            reason: authReason,
+          },
+          created_at: new Date().toISOString(),
+        });
+        throw authError;
+      }
     }
     
     // Step 0: Purge opportunities we already replied to
@@ -244,48 +255,56 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     return;
   }
 
+  // 🌱 SEED ACCOUNT HARVESTER: Only run if authenticated (requires profile scraping)
+  // Railway mode: Skip seed harvesting (moved to executor-plane)
+  // Executor mode: Run seed harvesting (has authenticated Chrome profile)
   let seedAccountOpportunities = 0;
-  try {
-    console.log(`[HARVESTER] 🌱 PRIMARY SOURCE: Seed account harvester`);
-    const { harvestSeedAccounts } = await import('../ai/seedAccountHarvester');
-    const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
-    
-    const seedResult = await withBrowserLock(
-      'seed_account_harvest',
-      BrowserPriority.HARVESTING,
-      async () => {
-        // Use UnifiedBrowserPool instead of deprecated browserManager
-        const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
-        const pool = UnifiedBrowserPool.getInstance();
-        const page = await pool.acquirePage('seed_account_harvest');
-        try {
-          return await harvestSeedAccounts(page, {
-            max_tweets_per_account: 50,
-            max_accounts: 6, // Process 6 accounts per run
-          });
-        } finally {
-          await pool.releasePage(page);
+  if (authVerified) {
+    try {
+      console.log(`[HARVESTER] 🌱 PRIMARY SOURCE: Seed account harvester`);
+      const { harvestSeedAccounts } = await import('../ai/seedAccountHarvester');
+      const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
+      
+      const seedResult = await withBrowserLock(
+        'seed_account_harvest',
+        BrowserPriority.HARVESTING,
+        async () => {
+          // Use UnifiedBrowserPool instead of deprecated browserManager
+          const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+          const pool = UnifiedBrowserPool.getInstance();
+          const page = await pool.acquirePage('seed_account_harvest');
+          try {
+            return await harvestSeedAccounts(page, {
+              max_tweets_per_account: 50,
+              max_accounts: 6, // Process 6 accounts per run
+            });
+          } finally {
+            await pool.releasePage(page);
+          }
         }
-      }
-    );
-    
-    seedAccountOpportunities = seedResult.total_stored;
-    console.log(`[HARVESTER] 🌱 SEED ACCOUNTS: ${seedResult.total_stored}/${seedResult.total_scraped} opportunities stored`);
-    
-    // Log to system_events
-    await supabase.from('system_events').insert({
-      event_type: 'seed_harvest_complete',
-      severity: 'info',
-      message: `Seed account harvest: ${seedResult.total_stored} stored`,
-      event_data: {
-        total_scraped: seedResult.total_scraped,
-        total_stored: seedResult.total_stored,
-        results: seedResult.results,
-      },
-      created_at: new Date().toISOString(),
-    });
-  } catch (seedError: any) {
-    console.error(`[HARVESTER] ❌ Seed account harvest failed:`, seedError.message);
+      );
+      
+      seedAccountOpportunities = seedResult.total_stored;
+      console.log(`[HARVESTER] 🌱 SEED ACCOUNTS: ${seedResult.total_stored}/${seedResult.total_scraped} opportunities stored`);
+      
+      // Log to system_events
+      await supabase.from('system_events').insert({
+        event_type: 'seed_harvest_complete',
+        severity: 'info',
+        message: `Seed account harvest: ${seedResult.total_stored} stored`,
+        event_data: {
+          total_scraped: seedResult.total_scraped,
+          total_stored: seedResult.total_stored,
+          results: seedResult.results,
+        },
+        created_at: new Date().toISOString(),
+      });
+    } catch (seedError: any) {
+      console.error(`[HARVESTER] ❌ Seed account harvest failed:`, seedError.message);
+    }
+  } else {
+    console.log(`[HARVESTER] ⏭️  Skipping seed account harvest (not authenticated - seed harvesting moved to executor-plane)`);
+    console.log(`[HARVESTER] 📋 Seed account harvesting requires authenticated Chrome profile (executor only)`);
   }
     
   // Step 2.5: PROVEN ACCOUNT PRIORITY SEARCH (🧠 LEARNING-POWERED)
@@ -833,9 +852,10 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 🌟 SEED ACCOUNT FALLBACK - Try scraping known health accounts directly
+    // 🌟 SEED ACCOUNT FALLBACK - Only if authenticated (requires profile scraping)
+    // Railway mode: Skip (seed harvesting moved to executor-plane)
     // ═══════════════════════════════════════════════════════════════════════
-    if (recoveryAttempt === 0) {
+    if (recoveryAttempt === 0 && authVerified) {
       console.log(`[HARVESTER] 🌟 Attempting SEED ACCOUNT FALLBACK (search may be failing)...`);
       try {
         const seedOpportunities = await realTwitterDiscovery.harvestFromSeedAccounts(8);
@@ -877,6 +897,8 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
       } catch (seedError: any) {
         console.error(`[HARVESTER] ⚠️ Seed fallback failed:`, seedError.message);
       }
+    } else if (recoveryAttempt === 0 && !authVerified) {
+      console.log(`[HARVESTER] ⏭️  Skipping seed account fallback (not authenticated - seed harvesting moved to executor-plane)`);
     }
     
     if (recoveryAttempt < MAX_RECOVERY_ATTEMPTS) {          

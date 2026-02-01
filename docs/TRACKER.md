@@ -1,59 +1,52 @@
-# xBOT Project Tracker
+# P1 End-to-End Tracker
 
-**Last Updated:** 2026-01-29  
-**Overall Progress:** TBD (computed by status-report.ts)
+**Mission:** Get 1 Reply V2 successfully posted (reply URL) with DB evidence + proof doc.
 
 ## Status Legend
+- ⏳ PLANNED: Task identified, not started
+- 🔨 BUILT: Code/script exists, not verified
+- ✅ PROVEN: Verified with evidence (logs/SQL)
+- ❌ BLOCKED: Cannot proceed (requires manual action or fix)
 
-- **PLANNED**: Task identified, not started
-- **BUILT**: Code implemented, not proven
-- **PROVEN**: Working with proof doc in `docs/proofs/...`
-- **BROKEN**: Previously working, now broken
+## Phase 0 - Prep/Deploy
+- [✅] Git clean and current commit verified
+- [✅] Railway deployment started
+- [⏳] Confirm serene-cat running deployed commit
 
-## Infrastructure Lane
+## Phase 1 - Auth + Session Health Gate
+- [✅] **ARCHITECTURAL CHANGE:** Executor owns authenticated browsing
+  - **Railway (control-plane):** Runs public discovery WITHOUT auth requirement
+  - **Executor (executor-plane):** Must be authenticated (fail-closed for posting)
+  - **Auth source of truth:** Executor Chrome profile (local_chrome_profile)
+- [✅] Session built from `.x_cookies.env` (auth_token YES, ct0 YES)
+- [✅] Session pushed to Railway
+- [⚠️] Railway auth diagnostic: `classification=challenge_wall` (not a blocker - public discovery works)
 
-### Auth & Session Management
-- [ ] **BUILT** Session sync Mac → Railway
-  - Proof: `docs/proofs/auth/SESSION_SYNC.md`
-- [ ] **BUILT** Auth freshness check (fail-closed)
-  - Proof: `docs/proofs/auth/AUTH_FAIL_CLOSED.md`
-- [ ] **BUILT** Executor safety (headless, stoppable)
-  - Proof: `docs/proofs/infra/EXECUTOR_SAFETY.md`
+## Phase 2 - Harvest + Candidate Supply
+- [✅] **PROVEN:** Public discovery works without Railway auth
+  - **Evidence:** `public_search_health_low: 1 opportunity` found
+  - **Harvester changes:** Allows public discovery when `logged_in=false`
+  - **Seed harvesting:** Skipped on Railway (moved to executor-plane)
+- [⏳] Run full harvest cycle on Railway (verify public_search_* increases)
+- [⏳] Record counts in daily status
 
-### Database & Migrations
-- [x] **PROVEN** Accessibility status tracking
-  - Proof: `docs/proofs/p1-reply-v2-first-post/MIGRATION_APPLIED_PROOF.md`
-- [x] **PROVEN** Forbidden authors table
-  - Proof: `docs/proofs/p1-reply-v2-first-post/PUBLIC_DISCOVERY_LANE_IMPLEMENTED.md`
+## Phase 3 - Planner Plan-Only
+- [⏳] Run planner with REPLY_V2_PLAN_ONLY=true
+- [⏳] Verify P1_PROBE_SUMMARY ok >= 1
 
-## Reply V2 Lane
+## Phase 4 - Readiness Gate
+- [⏳] Run check-p1-ready script
+- [⏳] Verify no blockers
 
-### Discovery
-- [ ] **BUILT** Public-only discovery lane
-  - Proof: `docs/proofs/p1-reply-v2-first-post/RAILWAY_PUBLIC_DISCOVERY_FIX.md` (pending)
-- [ ] **BUILT** Seed list fallback
-  - Proof: `docs/proofs/p1-reply-v2-first-post/RAILWAY_PUBLIC_DISCOVERY_FIX.md` (pending)
-- [ ] **BUILT** Empty result classifier
-  - Proof: `docs/proofs/p1-reply-v2-first-post/RAILWAY_PUBLIC_DISCOVERY_FIX.md` (pending)
+## Phase 5 - Create Real Decisions + Post
+- [⏳] Run planner without PLAN_ONLY
+- [⏳] Verify decisions exist
+- [⏳] Start executor (if not running)
+- [⏳] Verify claim->post outcome
+- [⏳] Capture reply URL
 
-### Scheduling & Execution
-- [x] **PROVEN** Accessibility filtering upstream
-  - Proof: `docs/proofs/p1-reply-v2-first-post/MIGRATION_APPLIED_PROOF.md`
-- [x] **PROVEN** P1 volume increase (20 attempts)
-  - Proof: `docs/proofs/p1-reply-v2-first-post/MIGRATION_APPLIED_PROOF.md`
-- [ ] **BUILT** P1 readiness check
-  - Proof: `docs/proofs/p1-reply-v2-first-post/P1_READINESS_CHECK.md` (pending)
-
-### P1 Completion
-- [ ] **PLANNED** First successful Reply V2 post
-  - Proof: `docs/proofs/p1-reply-v2-first-post/FIRST_POST_PROOF.md` (pending)
-
-## Metrics & Learning Lane
-
-- [ ] **PLANNED** Engagement tracking
-- [ ] **PLANNED** Learning system integration
-
-## Autonomy Lane
-
-- [ ] **PLANNED** Self-healing harvest cycles
-- [ ] **PLANNED** Adaptive discovery strategies
+## Phase 6 - Reporting
+- [⏳] Update SYSTEM_STATUS.md
+- [⏳] Update TRACKER.md
+- [⏳] Create daily status snapshot
+- [⏳] Create P1_FIRST_REPLY_URL.md proof doc

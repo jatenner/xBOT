@@ -22,12 +22,20 @@ async function main() {
   
   const blockers: string[] = [];
   
-  // 1. Check auth freshness
+  // 1. Check auth freshness (executor-only blocker)
   console.log('1. Checking auth freshness...');
+  const executionMode = process.env.EXECUTION_MODE || 'control';
+  const isExecutorMode = executionMode === 'executor' && process.env.RUNNER_MODE === 'true';
+  
   const authBlocked = await isAuthBlocked();
   if (authBlocked.blocked) {
-    blockers.push(`Auth invalid: ${authBlocked.reason}`);
-    console.log(`   ❌ BLOCKED: ${authBlocked.reason}`);
+    if (isExecutorMode) {
+      blockers.push(`Executor auth invalid: ${authBlocked.reason}`);
+      console.log(`   ❌ BLOCKED: ${authBlocked.reason}`);
+    } else {
+      console.log(`   ⚠️ WARNING: Railway not authenticated (${authBlocked.reason}) - public discovery only`);
+      console.log(`   ✅ Not a blocker (Railway can run public discovery without auth)`);
+    }
   } else {
     console.log('   ✅ Auth valid');
   }

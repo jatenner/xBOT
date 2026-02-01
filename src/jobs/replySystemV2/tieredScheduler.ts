@@ -141,9 +141,12 @@ async function logOutcome(supabase: any, schedulerRunId: string, outcome: Outcom
  * Attempt to post ONE reply from queue
  */
 export async function attemptScheduledReply(): Promise<SchedulerResult> {
-  // 🎯 FAIL-CLOSED: Check auth freshness in P1 mode
-  const p1Mode = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
-  if (p1Mode) {
+  // 🎯 AUTH CHECK: Only block executor, not Railway (Railway can run public discovery)
+  const executionMode = process.env.EXECUTION_MODE || 'control';
+  const isExecutorMode = executionMode === 'executor' && process.env.RUNNER_MODE === 'true';
+  
+  if (isExecutorMode) {
+    // Executor mode: Must be authenticated (fail-closed)
     try {
       const { isAuthBlocked } = await import('../../utils/authFreshnessCheck');
       const blockStatus = await isAuthBlocked();
@@ -151,13 +154,13 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         const { getSupabaseClient } = await import('../../db/index');
         const supabase = getSupabaseClient();
         await supabase.from('system_events').insert({
-          event_type: 'scheduler_auth_blocked_p1',
+          event_type: 'scheduler_auth_blocked_executor',
           severity: 'error',
-          message: `Scheduler blocked in P1 mode: auth invalid - ${blockStatus.reason}`,
-          event_data: { reason: blockStatus.reason },
+          message: `Scheduler blocked in executor mode: auth invalid - ${blockStatus.reason}`,
+          event_data: { reason: blockStatus.reason, execution_mode: executionMode },
           created_at: new Date().toISOString(),
         });
-        console.error(`[SCHEDULER] 🚫 BLOCKED: Auth invalid in P1 mode - ${blockStatus.reason}`);
+        console.error(`[SCHEDULER] 🚫 BLOCKED: Executor auth invalid - ${blockStatus.reason}`);
         return {
           success: false,
           decisionCreated: false,
@@ -168,6 +171,17 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     } catch (authErr: any) {
       console.warn(`[SCHEDULER] ⚠️ Auth check failed: ${authErr.message}`);
       // Continue anyway (fail-open for safety)
+    }
+  } else {
+    // Railway mode: Check auth but don't block (public discovery works without auth)
+    try {
+      const { isAuthBlocked } = await import('../../utils/authFreshnessCheck');
+      const blockStatus = await isAuthBlocked();
+      if (blockStatus.blocked) {
+        console.warn(`[SCHEDULER] ⚠️ Railway not authenticated (${blockStatus.reason}) - continuing with public discovery only`);
+      }
+    } catch (authErr: any) {
+      // Ignore auth check errors in Railway mode
     }
   }
   const supabase = getSupabaseClient();
