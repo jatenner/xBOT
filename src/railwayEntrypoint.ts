@@ -42,6 +42,10 @@ function startHealthServer(): void {
   const executionMode = process.env.EXECUTION_MODE || 'control'; // Default to control (fail-closed)
   const runnerMode = process.env.RUNNER_MODE === 'true';
   
+  // 🔒 AUTH SOURCE LOGGING: Log auth source at startup
+  const authSource = executionMode === 'control' ? 'railway_cookie_blob' : 'local_chrome_profile';
+  console.log(`[AUTH_SOURCE] mode=${executionMode} source=${authSource}`);
+  
   // Determine jobs_enabled status (will be set later in background init)
   const jobsEnabled = 'pending'; // Will be updated after role resolution
   

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
+import { getExecutionMode, isExecutor } from '../infra/executionMode';
 
 export interface SessionLoadResult {
   ok: boolean;
@@ -26,9 +27,31 @@ export class SessionLoader {
    * Main session loading function with robust validation
    */
   static load(): SessionLoadResult {
+    const executionMode = getExecutionMode();
+    const isExecutorMode = isExecutor();
     const sessionB64 = process.env.TWITTER_SESSION_B64?.trim();
     const { resolveSessionPath } = require('./sessionPathResolver');
     const canonicalPath = resolveSessionPath();
+    
+    // 🔒 EXECUTOR GUARDRAIL: Refuse TWITTER_SESSION_B64 in executor mode
+    if (isExecutorMode && sessionB64) {
+      console.error(`[SESSION_LOADER] ❌ FATAL: TWITTER_SESSION_B64 is set but EXECUTION_MODE=executor`);
+      console.error(`[SESSION_LOADER] 🔐 Executor must use local Chrome profile only, not TWITTER_SESSION_B64`);
+      console.error(`[SESSION_LOADER] 💡 Unset TWITTER_SESSION_B64 in .env or LaunchAgent plist`);
+      throw new Error('TWITTER_SESSION_B64 must not be set in executor mode - use local Chrome profile only');
+    }
+    
+    // 🔒 CONTROL-PLANE GUARDRAIL: Require TWITTER_SESSION_B64 in control mode
+    if (executionMode === 'control' && !sessionB64) {
+      console.error(`[SESSION_LOADER] ❌ FATAL: TWITTER_SESSION_B64 is required but not set (EXECUTION_MODE=control)`);
+      console.error(`[SESSION_LOADER] 🔐 Railway control-plane requires TWITTER_SESSION_B64 for authentication`);
+      console.error(`[SESSION_LOADER] 💡 Push session: RAILWAY_SERVICE=<svc> TWITTER_SESSION_PATH=./twitter_session.json pnpm tsx scripts/ops/push-twitter-session-to-railway.ts`);
+      throw new Error('TWITTER_SESSION_B64 is required in control mode (Railway)');
+    }
+    
+    // Log auth source
+    const authSource = isExecutorMode ? 'local_chrome_profile' : 'railway_cookie_blob';
+    console.log(`[AUTH_SOURCE] mode=${executionMode} source=${authSource}`);
     
     // Calculate fingerprint (first 12 chars of SHA256)
     const hasB64 = !!sessionB64;
@@ -48,7 +71,7 @@ export class SessionLoader {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    // Try to load from environment variable first
+    // Try to load from environment variable first (control-plane only)
     if (sessionB64 && sessionB64.length > 0) {
       const envResult = this.loadFromEnv(sessionB64, canonicalPath);
       if (envResult.ok) {
@@ -58,7 +81,7 @@ export class SessionLoader {
       // If env failed, try existing file (don't overwrite good file with bad env)
     }
 
-    // Try to load from existing file
+    // Try to load from existing file (fallback for control-plane, primary for executor)
     const fileResult = this.loadFromFile(canonicalPath);
     this.lastResult = fileResult;
     return fileResult;

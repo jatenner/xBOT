@@ -1,12 +1,40 @@
 # Operations: Auth Management
 
-**Last Updated:** 2026-01-29
+**Last Updated:** 2026-02-01
 
 ## Overview
 
-xBOT uses two auth contexts:
-1. **Mac Chrome Profile** (executor): Persistent browser profile on Mac
-2. **TWITTER_SESSION_B64** (Railway): Base64-encoded session for Railway workers
+xBOT uses two auth contexts with strict separation:
+1. **Railway (control-plane):** Uses `TWITTER_SESSION_B64` environment variable
+2. **Executor (Mac Runner):** Uses ONLY local Chrome profile (must NOT use `TWITTER_SESSION_B64`)
+
+## Canonical Auth Flow
+
+### Step 1: Refresh Session (Executor)
+```bash
+# On Mac Runner - reads from local Chrome profile
+pnpm tsx scripts/refresh-x-session.ts
+```
+- Reads from local Chrome profile
+- Saves to `./twitter_session.json`
+
+### Step 2: Push to Railway
+```bash
+RAILWAY_SERVICE=serene-cat TWITTER_SESSION_PATH=./twitter_session.json \
+  pnpm tsx scripts/ops/push-twitter-session-to-railway.ts
+```
+- Reads `twitter_session.json`
+- Base64 encodes
+- Sets `TWITTER_SESSION_B64` on Railway service
+- Verifies session on Railway
+
+### Step 3: Verify
+```bash
+railway run --service serene-cat pnpm exec tsx scripts/ops/run-harvester-single-cycle.ts | grep "\[HARVESTER_AUTH\]"
+```
+- Expected: `[HARVESTER_AUTH] logged_in=true handle=@SignalAndSynapse url=https://x.com/home reason=ok`
+
+**Done.** Session is synced and verified.
 
 ## Session Sync Workflow
 
@@ -157,12 +185,25 @@ console.log(`Auth valid: ${result.valid}, handle: ${result.handle}`);
    grep TWITTER_SESSION_B64 .env
    ```
 
+## Auth Source Guardrails
+
+### Control-Plane (Railway)
+- **Required:** `TWITTER_SESSION_B64` must be set
+- **Fails fast:** Throws error if missing
+- **Logs:** `[AUTH_SOURCE] mode=control source=railway_cookie_blob`
+
+### Executor (Mac Runner)
+- **Required:** Local Chrome profile (`RUNNER_PROFILE_DIR/.chrome-cdp-profile`)
+- **Forbidden:** `TWITTER_SESSION_B64` must NOT be set
+- **Fails fast:** Throws error if `TWITTER_SESSION_B64` is detected
+- **Logs:** `[AUTH_SOURCE] mode=executor source=local_chrome_profile`
+
 ## Expected Behavior
 
 - **Harvester:** Checks auth before each cycle, fails-closed in P1 mode
 - **Scheduler:** Checks auth block status, returns early if blocked
-- **Executor:** Uses persistent Chrome profile (always logged in)
-- **Railway:** Uses TWITTER_SESSION_B64 from env vars
+- **Executor:** Uses persistent Chrome profile ONLY (refuses `TWITTER_SESSION_B64`)
+- **Railway:** Uses `TWITTER_SESSION_B64` from env vars (required)
 
 ## Proof Documents
 
