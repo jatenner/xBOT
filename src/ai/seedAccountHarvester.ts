@@ -1228,6 +1228,7 @@ async function storeOpportunity(
       account_username: 'xBOT_health', // Our account       
       harvest_source: 'seed_account',   
       harvest_source_detail: tweet.author_handle,
+      discovery_source: `seed_account_${username}`, // 🎯 P1: Track discovery source
       target_in_reply_to_tweet_id: tweet.in_reply_to_tweet_id,
       target_conversation_id: tweet.conversation_id,
       selection_reason: 'harvest_v2', // Track that this was harvested

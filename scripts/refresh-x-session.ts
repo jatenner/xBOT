@@ -143,7 +143,36 @@ async function refreshSession(): Promise<void> {
     
     // Wait a bit more to ensure session is fully established
     console.log('⏳ Waiting for session to stabilize...');
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(5000);
+    
+    // Verify auth cookies exist before saving
+    console.log('🔍 Verifying auth cookies...');
+    let authCookiesFound = false;
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    while (!authCookiesFound && attempts < maxAttempts) {
+      const storageState = await context.storageState();
+      const cookies = storageState.cookies || [];
+      const hasAuthToken = cookies.some((c: any) => c.name === 'auth_token' && c.domain && (c.domain.includes('.x.com') || c.domain.includes('.twitter.com')));
+      const hasCt0 = cookies.some((c: any) => c.name === 'ct0' && c.domain && (c.domain.includes('.x.com') || c.domain.includes('.twitter.com')));
+      
+      if (hasAuthToken && hasCt0) {
+        authCookiesFound = true;
+        console.log(`✅ Auth cookies found (auth_token: ${hasAuthToken}, ct0: ${hasCt0})`);
+      } else {
+        attempts++;
+        console.log(`⏳ Waiting for auth cookies... (attempt ${attempts}/${maxAttempts})`);
+        await page.waitForTimeout(2000);
+        // Navigate to home again to trigger cookie refresh
+        await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+        await page.waitForTimeout(2000);
+      }
+    }
+    
+    if (!authCookiesFound) {
+      console.warn('⚠️  Auth cookies not found, but saving session anyway...');
+    }
     
     // Save storage state
     console.log('💾 Saving session state...');
@@ -151,8 +180,12 @@ async function refreshSession(): Promise<void> {
     writeFileSync(SESSION_PATH, JSON.stringify(storageState, null, 2));
     
     const cookieCount = storageState.cookies.length;
+    const authTokenCount = storageState.cookies.filter((c: any) => c.name === 'auth_token').length;
+    const ct0Count = storageState.cookies.filter((c: any) => c.name === 'ct0').length;
     console.log(`✅ Session saved to ${SESSION_PATH}`);
-    console.log(`   Cookies: ${cookieCount}`);
+    console.log(`   Total cookies: ${cookieCount}`);
+    console.log(`   auth_token cookies: ${authTokenCount}`);
+    console.log(`   ct0 cookies: ${ct0Count}`);
     console.log('');
     
     // Instructions for base64 encoding

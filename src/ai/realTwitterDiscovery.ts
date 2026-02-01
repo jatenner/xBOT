@@ -591,7 +591,17 @@ export class RealTwitterDiscovery {
       const querySlug = searchLabel.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
       const debugDir = `/tmp/harvest_debug/${timestamp}_${querySlug}`;
       
-      let debugCounters = {
+      let debugCounters: {
+        dom_tweet_cards_found: number;
+        extracted_tweets_count: number;
+        login_wall_detected: boolean;
+        rate_limit_banner_detected: boolean;
+        captcha_detected: boolean;
+        no_results_message_detected: boolean;
+        page_html_length: number;
+        page_title: string;
+        page_classification?: 'ok_has_tweets' | 'query_empty' | 'login_wall' | 'interstitial_error' | 'selector_drift';
+      } = {
         dom_tweet_cards_found: 0,
         extracted_tweets_count: 0,
         login_wall_detected: false,
@@ -623,33 +633,57 @@ export class RealTwitterDiscovery {
           
           // Check for common blocking indicators
           const pageText = await page.evaluate(() => document.body?.innerText || '');
+          const pageUrl = page.url();
+          const pageTitle = await page.title();
+          
+          // 🎯 EMPTY RESULT CLASSIFIER: Classify page state before extraction
+          let pageClassification: 'ok_has_tweets' | 'query_empty' | 'login_wall' | 'interstitial_error' | 'selector_drift' = 'ok_has_tweets';
           
           // Login wall detection
-          if (pageText.includes('Sign in') && pageText.includes('the conversation') || 
-              pageText.includes('Log in') && pageText.includes('your account')) {
+          if (pageText.includes('Sign in') && (pageText.includes('the conversation') || pageText.includes('Join X')) || 
+              pageText.includes('Log in') && (pageText.includes('your account') || pageText.includes('Join X')) ||
+              pageUrl.includes('/i/flow/login') ||
+              pageTitle.toLowerCase().includes('log in') ||
+              pageTitle.toLowerCase().includes('sign in')) {
             debugCounters.login_wall_detected = true;
+            pageClassification = 'login_wall';
             console.warn(`[HARVEST_DEBUG] ⚠️ LOGIN WALL DETECTED`);
           }
           
           // Rate limit detection
-          if (pageText.includes('Rate limit') || pageText.includes('exceeded') || 
+          else if (pageText.includes('Rate limit') || pageText.includes('exceeded') || 
               pageText.includes('too many requests') || pageText.includes('try again later')) {
             debugCounters.rate_limit_banner_detected = true;
+            pageClassification = 'interstitial_error';
             console.warn(`[HARVEST_DEBUG] ⚠️ RATE LIMIT DETECTED`);
           }
           
           // Captcha detection
-          if (pageText.includes('verify') && pageText.includes('robot') || 
+          else if (pageText.includes('verify') && pageText.includes('robot') || 
               pageText.includes('Captcha') || pageText.includes('challenge')) {
             debugCounters.captcha_detected = true;
+            pageClassification = 'interstitial_error';
             console.warn(`[HARVEST_DEBUG] ⚠️ CAPTCHA DETECTED`);
           }
           
-          // No results message
-          if (pageText.includes('No results for') || pageText.includes("didn't match any")) {
+          // No results message (query empty but authenticated)
+          else if (pageText.includes('No results for') || pageText.includes("didn't match any") ||
+                   pageText.includes("Try searching for something else")) {
             debugCounters.no_results_message_detected = true;
+            pageClassification = 'query_empty';
             console.log(`[HARVEST_DEBUG] ℹ️ No results message shown (query too restrictive)`);
           }
+          
+          // Error/interstitial detection
+          else if (pageText.includes('Something went wrong') || 
+                   pageText.includes('Try again') ||
+                   pageText.includes('error occurred')) {
+            pageClassification = 'interstitial_error';
+            console.warn(`[HARVEST_DEBUG] ⚠️ INTERSTITIAL ERROR DETECTED`);
+          }
+          
+          // Store classification for later use
+          debugCounters.page_classification = pageClassification;
           
           // Count DOM tweet elements BEFORE extraction
           debugCounters.dom_tweet_cards_found = await page.evaluate(() => {
@@ -867,18 +901,60 @@ export class RealTwitterDiscovery {
       console.log(`[HARVEST_DEBUG] 🔢 extracted_tweets_count=${opportunities.length} (from ${debugCounters.dom_tweet_cards_found} DOM cards)`);
       console.log(`[HARVEST_DEBUG] 📁 Debug artifacts saved to: ${debugDir}`);
       
-      // If we found DOM cards but extracted 0, that's a PARSER issue
+      // 🎯 EMPTY RESULT CLASSIFIER: Final classification after extraction
       if (debugCounters.dom_tweet_cards_found > 0 && opportunities.length === 0) {
-        console.warn(`[HARVEST_DEBUG] ⚠️ PARSER_ISSUE: Found ${debugCounters.dom_tweet_cards_found} DOM cards but extracted 0 tweets!`);
+        debugCounters.page_classification = 'selector_drift';
+        console.warn(`[HARVEST_DEBUG] ⚠️ SELECTOR_DRIFT: Found ${debugCounters.dom_tweet_cards_found} DOM cards but extracted 0 tweets!`);
         console.warn(`[HARVEST_DEBUG] ⚠️ Check selectors and filters in page.evaluate()`);
       }
       // If we found 0 DOM cards, that's a LOADING or BLOCKING issue
       else if (debugCounters.dom_tweet_cards_found === 0) {
-        console.warn(`[HARVEST_DEBUG] ⚠️ LOADING_ISSUE: No DOM tweet cards found - page may not have loaded correctly`);
+        // Check if page suggests tweets exist but selectors failed
+        const hasTweetMarkers = await page.evaluate(() => {
+          const bodyText = document.body?.innerText || '';
+          return bodyText.includes('Retweet') || bodyText.includes('Like') || bodyText.includes('Reply');
+        });
+        if (hasTweetMarkers && !debugCounters.page_classification) {
+          debugCounters.page_classification = 'selector_drift';
+          console.warn(`[HARVEST_DEBUG] ⚠️ SELECTOR_DRIFT: Page has tweet markers but selectors found 0 cards`);
+        } else if (!debugCounters.page_classification) {
+          debugCounters.page_classification = 'query_empty';
+          console.warn(`[HARVEST_DEBUG] ⚠️ QUERY_EMPTY: No DOM tweet cards found - query may be too restrictive`);
+        }
         if (debugCounters.login_wall_detected) console.warn(`[HARVEST_DEBUG] ⚠️ Reason: LOGIN_WALL`);
         if (debugCounters.rate_limit_banner_detected) console.warn(`[HARVEST_DEBUG] ⚠️ Reason: RATE_LIMIT`);
         if (debugCounters.captcha_detected) console.warn(`[HARVEST_DEBUG] ⚠️ Reason: CAPTCHA`);
         if (debugCounters.no_results_message_detected) console.warn(`[HARVEST_DEBUG] ⚠️ Reason: NO_RESULTS_FOR_QUERY`);
+      }
+      
+      // Persist classification to system_events
+      if (debugCounters.page_classification && debugCounters.page_classification !== 'ok_has_tweets') {
+        try {
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          await supabase.from('system_events').insert({
+            event_type: 'harvest_empty_result',
+            severity: debugCounters.page_classification === 'login_wall' ? 'error' : 'warning',
+            message: `Harvest empty result: ${searchLabel} - ${debugCounters.page_classification}`,
+            event_data: {
+              search_label: searchLabel,
+              query: queryText,
+              classification: debugCounters.page_classification,
+              dom_cards_found: debugCounters.dom_tweet_cards_found,
+              extracted_count: opportunities.length,
+              counters: debugCounters,
+            },
+            created_at: new Date().toISOString()
+          });
+        } catch (dbErr) {
+          console.warn(`[HARVEST_DEBUG] Failed to log classification:`, dbErr);
+        }
+      }
+      
+      // 🎯 FAIL-CLOSED: If login_wall or interstitial_error, return empty and log blocker
+      if (debugCounters.page_classification === 'login_wall' || debugCounters.page_classification === 'interstitial_error') {
+        console.error(`[REAL_DISCOVERY] 🚫 BLOCKED: ${debugCounters.page_classification} - returning empty results`);
+        return [];
       }
       
       // Update system_events with final counts
@@ -1690,6 +1766,9 @@ export class RealTwitterDiscovery {
             target_quality_score: qualityResult.score,
             target_quality_tier: qualityResult.quality_tier,
             target_quality_reasons: qualityResult.reasons,
+            // 🎯 P1: Discovery source tracking
+            discovery_source: (opp as any).discovery_source || (opp as any).harvest_source || 'unknown',
+            accessibility_status: 'unknown', // Default to unknown, will be updated by scheduler probe
           }, {
             onConflict: 'target_tweet_id'
           })

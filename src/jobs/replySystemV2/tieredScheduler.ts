@@ -141,6 +141,35 @@ async function logOutcome(supabase: any, schedulerRunId: string, outcome: Outcom
  * Attempt to post ONE reply from queue
  */
 export async function attemptScheduledReply(): Promise<SchedulerResult> {
+  // 🎯 FAIL-CLOSED: Check auth freshness in P1 mode
+  const p1Mode = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
+  if (p1Mode) {
+    try {
+      const { isAuthBlocked } = await import('../../utils/authFreshnessCheck');
+      const blockStatus = await isAuthBlocked();
+      if (blockStatus.blocked) {
+        const { getSupabaseClient } = await import('../../db/index');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'scheduler_auth_blocked_p1',
+          severity: 'error',
+          message: `Scheduler blocked in P1 mode: auth invalid - ${blockStatus.reason}`,
+          event_data: { reason: blockStatus.reason },
+          created_at: new Date().toISOString(),
+        });
+        console.error(`[SCHEDULER] 🚫 BLOCKED: Auth invalid in P1 mode - ${blockStatus.reason}`);
+        return {
+          success: false,
+          decisionCreated: false,
+          decisionId: null,
+          reason: `auth_blocked: ${blockStatus.reason}`,
+        };
+      }
+    } catch (authErr: any) {
+      console.warn(`[SCHEDULER] ⚠️ Auth check failed: ${authErr.message}`);
+      // Continue anyway (fail-open for safety)
+    }
+  }
   const supabase = getSupabaseClient();
   const schedulerRunId = `scheduler_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const slotTime = new Date();
@@ -269,7 +298,10 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   const behindSchedule = await checkBehindSchedule();
   
   // 🔒 SOFT PREFLIGHT: Collect multiple candidates and try preflight with bounds
-  const PREFLIGHT_MAX_PER_CYCLE = parseInt(process.env.PREFLIGHT_MAX_PER_CYCLE || '3', 10);
+  // 🎯 P1: Increase attempt volume for P1 proving lane
+  const p1ModeForMaxAttempts = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
+  const defaultMaxAttempts = p1ModeForMaxAttempts ? 20 : 3;
+  const PREFLIGHT_MAX_PER_CYCLE = parseInt(process.env.P1_MAX_PREFLIGHT_ATTEMPTS_PER_TICK || process.env.PREFLIGHT_MAX_PER_CYCLE || String(defaultMaxAttempts), 10);
   // 🔒 CONFIGURABLE TIMEOUT: Scheduler preflight timeout via env var (default 20s for P1, clamped 3-30s)
   // Matches executor runtime_preflight timeout clamp for consistency
   const rawSchedulerTimeout = parseInt(process.env.SCHEDULER_PREFLIGHT_TIMEOUT_MS || '20000', 10);
@@ -286,27 +318,60 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   }
   
   // Collect candidates from all tiers (try tier 1, then 2, then 3 if behind schedule)
+  // 🎯 P1: Collect more candidates for P1 proving lane
   const candidatesToTry: Array<{ candidate: any; tier: number }> = [];
+  const p1Mode = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
+  const maxCandidatesToCollect = p1Mode ? Math.max(PREFLIGHT_MAX_PER_CYCLE, 20) : 3;
   
-  // Try tier 1 first
-  let tier1Candidate = await getNextCandidateFromQueue(1, deniedTweetIds);
-  if (tier1Candidate) {
-    candidatesToTry.push({ candidate: tier1Candidate, tier: 1 });
-  }
-  
-  // Try tier 2
-  let tier2Candidate = await getNextCandidateFromQueue(2, deniedTweetIds);
-  if (tier2Candidate) {
-    candidatesToTry.push({ candidate: tier2Candidate, tier: 2 });
-  }
-  
-  // Try tier 3 only if behind schedule
-  if (behindSchedule) {
-    let tier3Candidate = await getNextCandidateFromQueue(3, deniedTweetIds);
-    if (tier3Candidate) {
-      candidatesToTry.push({ candidate: tier3Candidate, tier: 3 });
+  // Try tier 1 first (collect multiple if P1 mode)
+  if (p1Mode) {
+    // P1: Collect multiple candidates from each tier
+    for (let i = 0; i < Math.min(10, maxCandidatesToCollect); i++) {
+      const candidate = await getNextCandidateFromQueue(1, deniedTweetIds);
+      if (candidate) {
+        candidatesToTry.push({ candidate, tier: 1 });
+      } else {
+        break; // No more tier 1 candidates
+      }
+    }
+  } else {
+    let tier1Candidate = await getNextCandidateFromQueue(1, deniedTweetIds);
+    if (tier1Candidate) {
+      candidatesToTry.push({ candidate: tier1Candidate, tier: 1 });
     }
   }
+  
+  // Try tier 2 (collect multiple if P1 mode and haven't hit max)
+  if (p1Mode && candidatesToTry.length < maxCandidatesToCollect) {
+    for (let i = candidatesToTry.length; i < Math.min(maxCandidatesToCollect, candidatesToTry.length + 10); i++) {
+      const candidate = await getNextCandidateFromQueue(2, deniedTweetIds);
+      if (candidate) {
+        candidatesToTry.push({ candidate, tier: 2 });
+      } else {
+        break;
+      }
+    }
+  } else {
+    let tier2Candidate = await getNextCandidateFromQueue(2, deniedTweetIds);
+    if (tier2Candidate) {
+      candidatesToTry.push({ candidate: tier2Candidate, tier: 2 });
+    }
+  }
+  
+  // Try tier 3 (collect multiple if P1 mode and haven't hit max, or if behind schedule)
+  if ((p1Mode && candidatesToTry.length < maxCandidatesToCollect) || behindSchedule) {
+    const remaining = p1Mode ? maxCandidatesToCollect - candidatesToTry.length : 1;
+    for (let i = 0; i < remaining; i++) {
+      const candidate = await getNextCandidateFromQueue(3, deniedTweetIds);
+      if (candidate) {
+        candidatesToTry.push({ candidate, tier: 3 });
+      } else {
+        break;
+      }
+    }
+  }
+  
+  console.log(`[SCHEDULER] 📊 Collected ${candidatesToTry.length} candidates to try (P1 mode: ${p1Mode}, max attempts: ${PREFLIGHT_MAX_PER_CYCLE})`);
   
   // Preflight tracking
   let candidatesTotal = candidatesToTry.length;
@@ -320,6 +385,16 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   
   // Try preflight on candidates (bounded)
   let selectedCandidate: { candidate: any; tier: number; preflightStatus: string; preflightOk: boolean } | null = null;
+  
+  // 🎯 P1: Track probe results for summary
+  const probeResults = {
+    attempted: 0,
+    ok: 0,
+    forbidden: 0,
+    login_wall: 0,
+    deleted: 0,
+    timeout: 0,
+  };
   
   for (let i = 0; i < Math.min(candidatesToTry.length, PREFLIGHT_MAX_PER_CYCLE); i++) {
     const { candidate: cand, tier: candTier } = candidatesToTry[i];
@@ -348,6 +423,174 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     if (planOnlyMode) {
       preflightAttempted++;
       const preflightStart = Date.now();
+      
+      // 🎯 P1 FAST PROBE: Quick check for login_wall/forbidden before full preflight
+      const p1Mode = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
+      let probePassed = true;
+      
+      if (p1Mode) {
+        try {
+          const probeStart = Date.now();
+          const { UnifiedBrowserPool } = await import('../../browser/UnifiedBrowserPool');
+          const pool = UnifiedBrowserPool.getInstance();
+          
+          const probePage = await pool.withContext('preflight_probe', async (ctx) => {
+            const page = await ctx.newPage();
+            // Block heavy resources for speed
+            await page.route('**/*', (route: any) => {
+              const resourceType = route.request().resourceType();
+              if (['image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
+                route.abort();
+              } else {
+                route.continue();
+              }
+            });
+            return page;
+          }, 1);
+          
+          try {
+            await Promise.race([
+              probePage.goto(`https://x.com/i/status/${cand.candidate_tweet_id}`, {
+                waitUntil: 'domcontentloaded',
+                timeout: 3000 // 3s max for probe
+              }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('PROBE_TIMEOUT')), 3000))
+            ]);
+            
+            await probePage.waitForTimeout(500); // Brief wait
+            
+            // Quick check for login wall/forbidden
+            const hasLoginWall = await probePage.evaluate(() => {
+              const content = document.body.textContent || '';
+              const title = document.title.toLowerCase();
+              return content.includes('Log in') || 
+                     content.includes('Sign in') ||
+                     title.includes('log in') ||
+                     title.includes('sign in') ||
+                     window.location.href.includes('/i/flow/login');
+            }).catch(() => false);
+            
+            const hasForbidden = await probePage.evaluate(() => {
+              const content = document.body.textContent || '';
+              return content.includes('forbidden') ||
+                     content.includes('403') ||
+                     content.includes('protected') ||
+                     content.includes('This account is protected');
+            }).catch(() => false);
+            
+            const probeLatency = Date.now() - probeStart;
+            
+            if (hasLoginWall || hasForbidden) {
+              probePassed = false;
+              const marker = hasLoginWall ? 'login_wall' : 'forbidden';
+              const accessibilityStatus = hasLoginWall ? 'login_wall' : 'forbidden';
+              
+              probeResults.attempted++;
+              if (hasLoginWall) {
+                probeResults.login_wall++;
+              } else {
+                probeResults.forbidden++;
+              }
+              
+              console.log(`[SCHEDULER] 🎯 P1_PROBE: Failed for ${cand.candidate_tweet_id} (${marker}, ${probeLatency}ms)`);
+              
+              // Log candidate source info
+              const { data: oppInfo } = await supabase
+                .from('reply_opportunities')
+                .select('target_username, harvest_source, harvest_source_detail, discovery_source, created_at, tweet_posted_at')
+                .eq('target_tweet_id', cand.candidate_tweet_id)
+                .maybeSingle();
+              
+              console.log(`[SCHEDULER] 📊 Candidate source: tweet_id=${cand.candidate_tweet_id} author=@${oppInfo?.target_username || 'unknown'} harvest_source=${oppInfo?.harvest_source || 'unknown'} discovery=${oppInfo?.discovery_source || 'unknown'}`);
+              
+              // Persist accessibility_status back to reply_opportunities
+              await supabase
+                .from('reply_opportunities')
+                .update({
+                  accessibility_status: accessibilityStatus,
+                  accessibility_checked_at: new Date().toISOString(),
+                  accessibility_reason: `Probe detected ${marker}`,
+                })
+                .eq('target_tweet_id', cand.candidate_tweet_id);
+              
+              // 🎯 P1: Track forbidden authors for future filtering
+              if (oppInfo?.target_username && accessibilityStatus === 'forbidden') {
+                const authorHandle = oppInfo.target_username.toLowerCase();
+                // Check if author already exists
+                const { data: existing } = await supabase
+                  .from('forbidden_authors')
+                  .select('author_handle, failure_count')
+                  .eq('author_handle', authorHandle)
+                  .maybeSingle();
+                
+                if (existing) {
+                  // Update existing record - increment failure count
+                  const newFailureCount = (existing.failure_count || 0) + 1;
+                  const existingReasons = Array.isArray(existing.failure_reasons) ? existing.failure_reasons : [];
+                  const newReasons = [...existingReasons, `Probe detected ${marker}`];
+                  
+                  await supabase
+                    .from('forbidden_authors')
+                    .update({
+                      failure_count: newFailureCount,
+                      last_seen_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                      failure_reasons: newReasons,
+                    })
+                    .eq('author_handle', authorHandle);
+                } else {
+                  // Insert new record
+                  await supabase
+                    .from('forbidden_authors')
+                    .insert({
+                      author_handle: authorHandle,
+                      first_seen_at: new Date().toISOString(),
+                      last_seen_at: new Date().toISOString(),
+                      failure_count: 1,
+                      failure_reasons: [`Probe detected ${marker}`],
+                      accessibility_status: 'forbidden',
+                      created_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                    });
+                }
+              }
+              
+              await cachePreflight(cand.candidate_tweet_id, {
+                status: 'protected',
+                checked_at: new Date().toISOString(),
+                reason: `Probe detected ${marker}`,
+                latency_ms: probeLatency,
+                marker: `probe_${marker}`,
+              });
+            } else {
+              probeResults.attempted++;
+              probeResults.ok++;
+              console.log(`[SCHEDULER] 🎯 P1_PROBE: Passed for ${cand.candidate_tweet_id} (${probeLatency}ms)`);
+              
+              // Mark as ok if probe passes
+              await supabase
+                .from('reply_opportunities')
+                .update({
+                  accessibility_status: 'ok',
+                  accessibility_checked_at: new Date().toISOString(),
+                  accessibility_reason: 'Probe passed',
+                })
+                .eq('target_tweet_id', cand.candidate_tweet_id);
+            }
+          } finally {
+            await pool.releasePage(probePage);
+          }
+        } catch (probeError: any) {
+          // Probe failed (timeout/error) - continue to full preflight
+          console.log(`[SCHEDULER] 🎯 P1_PROBE: Error/timeout for ${cand.candidate_tweet_id}, continuing to full preflight`);
+        }
+      }
+      
+      // Skip full preflight if probe failed
+      if (!probePassed) {
+        // Continue to next candidate (don't break - P1 mode tries up to N candidates)
+        continue; // Try next candidate
+      }
       
       try {
         const { fetchTweetData } = await import('../../gates/contextLockVerifier');
@@ -424,7 +667,12 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
           preflightStatus: 'ok',
           preflightOk: true,
         };
-        break; // Found good candidate
+        // 🎯 P1: In P1 mode, continue trying to find more candidates (up to max attempts)
+        // Only break if not in P1 mode or if we've hit max attempts
+        if (!p1Mode || i >= PREFLIGHT_MAX_PER_CYCLE - 1) {
+          break; // Found good candidate or hit max attempts
+        }
+        // Continue to try more candidates in P1 mode (collect multiple OK candidates)
       } catch (preflightError: any) {
         const preflightLatency = Date.now() - preflightStart;
         const isTimeout = preflightError.message.includes('PREFLIGHT_TIMEOUT');
@@ -503,6 +751,11 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       };
       break;
     }
+  }
+  
+  // 🎯 P1: Emit probe summary if P1 mode
+  if (p1Mode && probeResults.attempted > 0) {
+    console.log(`[SCHEDULER] 🎯 P1_PROBE_SUMMARY: attempted=${probeResults.attempted} ok=${probeResults.ok} forbidden=${probeResults.forbidden} login_wall=${probeResults.login_wall} deleted=${probeResults.deleted} timeout=${probeResults.timeout}`);
   }
   
   // 🔒 STRICT: Only proceed if candidate passed preflight (no soft fallback for inaccessible/deleted)

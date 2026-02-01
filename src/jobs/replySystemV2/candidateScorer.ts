@@ -90,10 +90,20 @@ export async function scoreCandidate(
     filterReasons.push(`insufficient_text_${content?.trim().length || 0}`);
   }
   
+  // 🎯 P1 PROVING LANE: Prefer targets most likely to pass preflight
+  const p1Mode = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
+  const p1MaxAgeMinutes = parseInt(process.env.P1_TARGET_MAX_AGE_MINUTES || '60', 10);
+  
   // 🔒 TASK 2: Momentum + Audience Fit filters (before AI judge to save cost)
   const postedTime = new Date(postedAt).getTime();
   const now = Date.now();
   const ageMinutes = (now - postedTime) / (1000 * 60);
+  
+  // P1: Prefer very fresh tweets (< 60 minutes default)
+  if (p1Mode && ageMinutes > p1MaxAgeMinutes) {
+    passedHardFilters = false;
+    filterReasons.push(`p1_age_limit_${ageMinutes.toFixed(1)}min_max_${p1MaxAgeMinutes}min`);
+  }
   
   // Calculate velocity and reply_rate early
   const likesPerMinute = ageMinutes >= 1 ? likeCount / ageMinutes : likeCount;

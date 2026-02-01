@@ -1048,6 +1048,48 @@ async function main(): Promise<void> {
             }
           } else {
             console.error(`[EXECUTOR_AUTH] ❌ logged_in=false reason=${authResult.reason}`);
+            console.log(`[EXECUTOR_AUTH] 🔄 Attempting session sync from executor profile...`);
+            
+            // Try to sync from executor profile
+            try {
+              const { execSync } = await import('child_process');
+              const syncResult = execSync(
+                'pnpm tsx scripts/ops/sync-twitter-session-from-profile.ts',
+                { encoding: 'utf-8', stdio: 'pipe', env: { ...process.env, RUNNER_MODE: 'true', RUNNER_BROWSER: 'direct' } }
+              );
+              
+              console.log(`[EXECUTOR_AUTH] ✅ Session sync completed`);
+              
+              // Reload session from .env
+              const envPath = path.join(process.cwd(), '.env');
+              if (fs.existsSync(envPath)) {
+                const envContent = fs.readFileSync(envPath, 'utf8');
+                const match = envContent.match(/^TWITTER_SESSION_B64=([^\n\r]+)$/m);
+                if (match) {
+                  process.env.TWITTER_SESSION_B64 = match[1].trim();
+                  console.log(`[EXECUTOR_AUTH] 🔐 Reloaded TWITTER_SESSION_B64 from .env`);
+                }
+              }
+              
+              // Retry auth check
+              const authPage2 = await context.newPage();
+              try {
+                const authResult2 = await checkWhoami(authPage2);
+                if (authResult2.logged_in) {
+                  console.log(`[EXECUTOR_AUTH] ✅ Auth verified after sync: logged_in=true handle=${authResult2.handle || 'unknown'}`);
+                  await authPage2.close();
+                  // Continue execution
+                  return;
+                } else {
+                  console.error(`[EXECUTOR_AUTH] ❌ Auth still failed after sync: reason=${authResult2.reason}`);
+                }
+              } finally {
+                await authPage2.close();
+              }
+            } catch (syncError: any) {
+              console.error(`[EXECUTOR_AUTH] ❌ Session sync failed: ${syncError.message}`);
+            }
+            
             console.error(`[EXECUTOR_AUTH] 🚫 Executor is not logged in - pausing processing`);
             
             // Emit system event for invalid auth
@@ -1475,7 +1517,31 @@ async function main(): Promise<void> {
     }
     
     // Sleep with backoff (check STOP switch every second)
-    const sleepSeconds = backoffSeconds > 0 ? backoffSeconds : TICK_INTERVAL_MS / 1000;
+    // 🎯 P1 NUDGE: If P1 mode and queued decisions exist, check more frequently
+    const p1Mode = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
+    let sleepSeconds = backoffSeconds > 0 ? backoffSeconds : TICK_INTERVAL_MS / 1000;
+    
+    if (p1Mode && (postingReady > 0 || replyReady > 0)) {
+      // Check for queued decisions
+      try {
+        const { getSupabaseClient } = await import('../../src/db/index');
+        const supabase = getSupabaseClient();
+        const { count: queuedCount } = await supabase
+          .from('content_generation_metadata_comprehensive')
+          .select('*', { count: 'exact', head: true })
+          .eq('decision_type', 'reply')
+          .in('pipeline_source', ['reply_v2_planner', 'reply_v2_scheduler'])
+          .eq('status', 'queued');
+        
+        if (queuedCount && queuedCount > 0) {
+          // Reduce sleep to 30s when decisions are queued (P1 mode only)
+          sleepSeconds = 30;
+          console.log(`[EXECUTOR_DAEMON] 🎯 P1_NUDGE: ${queuedCount} queued decisions, reducing sleep to ${sleepSeconds}s`);
+        }
+      } catch (e) {
+        // Ignore errors, use default sleep
+      }
+    }
     console.log(`[EXECUTOR_DAEMON] 💤 Sleeping ${sleepSeconds}s until next tick...`);
     
     // Sleep in 1-second chunks to check STOP switch frequently

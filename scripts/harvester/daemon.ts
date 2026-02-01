@@ -164,11 +164,97 @@ function shouldStop(): boolean {
 }
 
 /**
+ * Verify harvester auth and auto-sync if needed
+ */
+async function verifyAndSyncAuth(): Promise<boolean> {
+  try {
+    log(`[HARVESTER_DAEMON] 🔍 Verifying harvester auth...`);
+    
+    // Quick auth check using whoami
+    const { chromium } = await import('playwright');
+    const { checkWhoami } = await import('../../src/utils/whoamiAuth');
+    
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({
+      storageState: sessionB64 ? JSON.parse(Buffer.from(sessionB64, 'base64').toString('utf-8')) : undefined,
+    });
+    const page = await context.newPage();
+    
+    const whoami = await checkWhoami(page);
+    await page.close();
+    await context.close();
+    await browser.close();
+    
+    if (whoami.logged_in) {
+      log(`[HARVESTER_DAEMON] ✅ Auth verified: logged_in=true, handle=${whoami.handle || 'unknown'}`);
+      return true;
+    }
+    
+    log(`[HARVESTER_DAEMON] ⚠️  Auth failed: logged_in=false, reason=${whoami.reason}`);
+    log(`[HARVESTER_DAEMON] 🔄 Attempting session sync from executor profile...`);
+    
+    // Try to sync from executor profile
+    try {
+      const { execSync } = await import('child_process');
+      const syncResult = execSync(
+        'pnpm tsx scripts/ops/sync-twitter-session-from-profile.ts',
+        { encoding: 'utf-8', stdio: 'pipe', env: { ...process.env, RUNNER_MODE: 'true', RUNNER_BROWSER: 'direct' } }
+      );
+      
+      log(`[HARVESTER_DAEMON] ✅ Session sync completed`);
+      
+      // Reload session from .env
+      const envContent = fs.readFileSync(envPath, 'utf-8');
+      const match = envContent.match(/^TWITTER_SESSION_B64=([^\n\r]+)$/m);
+      if (match) {
+        sessionB64 = match[1].trim();
+        process.env.TWITTER_SESSION_B64 = sessionB64;
+        log(`[HARVESTER_DAEMON] 🔐 Reloaded TWITTER_SESSION_B64 from .env (${sessionB64.length} chars)`);
+      }
+      
+      // Retry auth check
+      const browser2 = await chromium.launch({ headless: true });
+      const context2 = await browser2.newContext({
+        storageState: sessionB64 ? JSON.parse(Buffer.from(sessionB64, 'base64').toString('utf-8')) : undefined,
+      });
+      const page2 = await context2.newPage();
+      const whoami2 = await checkWhoami(page2);
+      await page2.close();
+      await context2.close();
+      await browser2.close();
+      
+      if (whoami2.logged_in) {
+        log(`[HARVESTER_DAEMON] ✅ Auth verified after sync: logged_in=true, handle=${whoami2.handle || 'unknown'}`);
+        return true;
+      }
+      
+      log(`[HARVESTER_DAEMON] ❌ Auth still failed after sync: reason=${whoami2.reason}`);
+      log(`[HARVESTER_DAEMON] ⚠️  Needs manual login - stopping harvest cycle`);
+      return false;
+    } catch (syncError: any) {
+      log(`[HARVESTER_DAEMON] ❌ Session sync failed: ${syncError.message}`);
+      log(`[HARVESTER_DAEMON] ⚠️  Needs manual login - stopping harvest cycle`);
+      return false;
+    }
+  } catch (error: any) {
+    log(`[HARVESTER_DAEMON] ❌ Auth verification failed: ${error.message}`);
+    return false;
+  }
+}
+
+/**
  * Run one harvest cycle
  */
 async function runHarvestCycle(): Promise<boolean> {
   try {
     log(`[HARVESTER_DAEMON] 🔄 Starting harvest cycle...`);
+    
+    // Verify auth before harvesting (with auto-sync)
+    const authOk = await verifyAndSyncAuth();
+    if (!authOk) {
+      log(`[HARVESTER_DAEMON] 🚫 Skipping harvest cycle - auth verification failed`);
+      return false;
+    }
     
     // Ensure HARVESTING_ENABLED is set
     process.env.HARVESTING_ENABLED = 'true';

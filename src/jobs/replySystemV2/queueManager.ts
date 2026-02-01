@@ -98,11 +98,13 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
     
     // 🔧 FIX: Use COALESCE(tweet_posted_at, created_at) for freshness filtering
     // Query all root opportunities first, then filter in memory to handle NULL tweet_posted_at
+    // 🎯 P1: Filter out forbidden/login_wall/deleted opportunities upstream
     let { data: rootOpps } = await supabase
       .from('reply_opportunities')
-      .select('target_tweet_id, target_username, target_tweet_content, tweet_posted_at, created_at, like_count, reply_count, retweet_count, is_root_tweet, target_in_reply_to_tweet_id')
+      .select('target_tweet_id, target_username, target_tweet_content, tweet_posted_at, created_at, like_count, reply_count, retweet_count, is_root_tweet, target_in_reply_to_tweet_id, accessibility_status')
       .eq('replied_to', false)
       .or('is_root_tweet.eq.true,target_in_reply_to_tweet_id.is.null') // 🔧 FIX: Use OR condition for root detection
+      .or('accessibility_status.is.null,accessibility_status.eq.unknown,accessibility_status.eq.ok') // 🎯 P1: Exclude forbidden/login_wall/deleted
       .gte('created_at', twentyFourHoursAgo)
       .order('created_at', { ascending: false }) // Order by created_at (always present)
       .limit(200); // Get more to filter in memory

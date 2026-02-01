@@ -84,6 +84,23 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
         if (!authVerified) {
           console.error(`[HARVESTER_AUTH] ❌ Authentication failed: ${authReason}`);
           console.error(`[HARVESTER_AUTH] ⚠️ Skipping harvest cycle - authentication required`);
+          
+          // 🎯 FAIL-CLOSED: In P1 mode, exit non-zero to prevent harvest
+          const p1Mode = process.env.P1_MODE === 'true';
+          if (p1Mode) {
+            await supabase.from('system_events').insert({
+              event_type: 'harvester_auth_blocked_p1',
+              severity: 'error',
+              message: `Harvester blocked in P1 mode: auth failed - ${authReason}`,
+              event_data: {
+                handle: authHandle,
+                reason: authReason,
+              },
+              created_at: new Date().toISOString(),
+            });
+            process.exit(1); // Fail-closed in P1 mode
+          }
+          
           throw new Error(`Harvester authentication failed: ${authReason}. Ensure TWITTER_SESSION_B64 is set and valid.`);
         }
         
@@ -409,7 +426,7 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   ];
   
   // 🔒 P1 THROUGHPUT: Add lower engagement tier for P1 proving (if enabled)
-  const p1Mode = process.env.P1_TARGET_MAX_AGE_HOURS !== undefined; // P1 mode if freshness window is set
+  const p1Mode = process.env.P1_TARGET_MAX_AGE_HOURS !== undefined || process.env.P1_MODE === 'true'; // P1 mode if freshness window is set or P1_MODE=true
   const tierP1Queries = p1Mode ? [
     { tier: 'P1', label: 'TIER_P1_HEALTH_1K', minLikes: 1000, maxReplies: 150, maxAgeHours: 6, 
       query: `${HEALTH_KEYWORDS} min_faves:1000 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
@@ -417,8 +434,52 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
       query: `(fitness OR workout OR exercise OR gym OR running) min_faves:1000 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
   ] : [];
   
-  // Build query list based on priority (A → B → C → P1, D only if critical)
-  const searchQueries = [...tierAQueries, ...tierBQueries, ...tierCQueries, ...tierP1Queries];
+  // 🎯 P1 PUBLIC-ONLY DISCOVERY LANE: Lower thresholds + seed list fallback
+  // Strategy: Use lower engagement thresholds for P1 proof, remove "verified" keyword (not valid operator)
+  // Fallback to curated seed accounts if search fails
+  const tierPublicQueries = p1Mode ? [
+    { tier: 'PUBLIC', label: 'PUBLIC_HEALTH_LOW', minLikes: 300, maxReplies: 150, maxAgeHours: 12,
+      query: `${HEALTH_KEYWORDS} min_faves:300 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}`,
+      discovery_source: 'public_search_health_low' },
+    { tier: 'PUBLIC', label: 'PUBLIC_FITNESS_LOW', minLikes: 300, maxReplies: 150, maxAgeHours: 12,
+      query: `(fitness OR workout OR exercise OR gym OR running) min_faves:300 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}`,
+      discovery_source: 'public_search_fitness_low' },
+    { tier: 'PUBLIC', label: 'PUBLIC_HEALTH_MED', minLikes: 1000, maxReplies: 200, maxAgeHours: 24,
+      query: `${HEALTH_KEYWORDS} min_faves:1000 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}`,
+      discovery_source: 'public_search_health_med' },
+  ] : [];
+  
+  // 🎯 P1 SEED LIST FALLBACK: Curated public health accounts (if search fails)
+  // These accounts are known to be public and post health content
+  const p1SeedAccounts = p1Mode ? [
+    'peterattiamd', 'foundmyfitness', 'drhyman', 'drjasonfung', 'drgundry', 
+    'drstevenlin', 'drbrianboxer', 'drbengreenfield', 'drjamesdinic', 'drjasonfung',
+    'foundmyfitness', 'hubermanlab', 'drgundry', 'drstevenlin', 'drbrianboxer',
+    'drbengreenfield', 'drjamesdinic', 'drjasonfung', 'drhyman', 'peterattiamd'
+  ] : [];
+  
+  // Build query list based on priority (PUBLIC → A → B → C → P1, D only if critical)
+  // 🎯 P1: Prioritize public-only queries FIRST for accessibility
+  let searchQueries = p1Mode 
+    ? [...tierPublicQueries, ...tierAQueries, ...tierBQueries, ...tierCQueries, ...tierP1Queries]
+    : [...tierAQueries, ...tierBQueries, ...tierCQueries, ...tierP1Queries];
+  
+  // 🎯 P1 SEED LIST FALLBACK: Add seed account queries if public searches fail
+  if (p1Mode && p1SeedAccounts.length > 0) {
+    // Add seed account queries as fallback (will run if pool is low)
+    const seedQueries = p1SeedAccounts.slice(0, 5).map((account, idx) => ({
+      tier: 'PUBLIC_SEED',
+      label: `PUBLIC_SEED_${account}`,
+      minLikes: 200,
+      maxReplies: 100,
+      maxAgeHours: 12,
+      query: `from:${account} min_faves:200 -filter:replies lang:en`,
+      discovery_source: `public_search_seed_${account}`,
+      isSeedQuery: true,
+    }));
+    // Add seed queries to fallback (they'll run if pool is critical)
+    fallbackQueries.push(...seedQueries);
+  }
   const fallbackQueries = tierDFallback;
   
   const testLimitRaw = process.env.HARVESTER_TEST_LIMIT;
@@ -538,13 +599,43 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
         
         // 💾 CRITICAL: Store opportunities in database with tier classification
         try {
+          // 🎯 P1: Filter out known forbidden authors
+          let filteredOpps = rootOnlyOpps;
+          if (p1Mode) {
+            // Get list of forbidden authors
+            const { data: forbiddenAuthors } = await supabase
+              .from('forbidden_authors')
+              .select('author_handle')
+              .in('accessibility_status', ['forbidden', 'login_wall']);
+            
+            const forbiddenSet = new Set((forbiddenAuthors || []).map((a: any) => a.author_handle.toLowerCase()));
+            
+            if (forbiddenSet.size > 0) {
+              const beforeCount = filteredOpps.length;
+              filteredOpps = filteredOpps.filter((opp: any) => {
+                const author = (opp.tweet_author || opp.target_username || '').toLowerCase();
+                if (forbiddenSet.has(author)) {
+                  console.log(`[HARVEST_TIER] SKIP_FORBIDDEN_AUTHOR tweet_id=${opp.tweet_id || opp.target_tweet_id} author=@${opp.tweet_author || opp.target_username}`);
+                  return false;
+                }
+                return true;
+              });
+              const skippedCount = beforeCount - filteredOpps.length;
+              if (skippedCount > 0) {
+                console.log(`[HARVEST_TIER] Filtered ${skippedCount} opportunities from ${forbiddenSet.size} forbidden authors`);
+              }
+            }
+          }
+          
           // Add engagement tier + harvest tier + ensure root fields
-          const opportunitiesWithTiers = rootOnlyOpps.map((opp: any) => ({
+          const discoverySource = (searchQuery as any).discovery_source || `search_${tierLabel.toLowerCase()}_${searchQuery.label.replace(/\s+/g, '_')}`;
+          const opportunitiesWithTiers = filteredOpps.map((opp: any) => ({
             ...opp,
             engagement_tier: classifyEngagementTier(opp.like_count || 0),
             harvest_tier: tierLabel,
             is_root_tweet: true,
-            root_tweet_id: opp.tweet_id || opp.target_tweet_id
+            root_tweet_id: opp.tweet_id || opp.target_tweet_id,
+            discovery_source: discoverySource, // 🎯 P1: Track discovery source (public_search_* for public queries)
           }));
           
           await realTwitterDiscovery.storeOpportunities(opportunitiesWithTiers);
