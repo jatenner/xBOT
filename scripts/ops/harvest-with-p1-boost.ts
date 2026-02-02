@@ -1,12 +1,12 @@
 #!/usr/bin/env tsx
 /**
- * 🌾 Harvest Until Public Ready
+ * 🌾 Harvest With P1 Boost
  * 
- * Runs harvest cycles until we have >=25 public_search_* candidates
- * or after 20 cycles max.
+ * Runs harvest cycles with P1_STORE_ALL_STATUS_URLS=true to boost yield.
+ * Skips AI filtering and stores all extracted status URLs.
  * 
  * Usage:
- *   pnpm exec tsx scripts/ops/harvest-until-public-ready.ts
+ *   pnpm exec tsx scripts/ops/harvest-with-p1-boost.ts
  */
 
 import 'dotenv/config';
@@ -14,32 +14,37 @@ import { getSupabaseClient } from '../../src/db/index';
 
 async function getPublicCount(): Promise<number> {
   const supabase = getSupabaseClient();
-  // Use 3h window to match harvest window (as per requirements)
   const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
   const { count } = await supabase
     .from('reply_opportunities')
     .select('*', { count: 'exact', head: true })
     .like('discovery_source', 'public_search_%')
-    .neq('discovery_source', 'public_search_manual') // Exclude relabeled
+    .neq('discovery_source', 'public_search_manual')
     .eq('replied_to', false)
     .gte('created_at', threeHoursAgo);
   return count || 0;
 }
 
 async function runHarvestCycle(cycleNum: number): Promise<number> {
-  console.log(`\n═══════════════════════════════════════════════════════════`);
-  console.log(`Cycle ${cycleNum}: Running harvest...`);
-  console.log(`═══════════════════════════════════════════════════════════\n`);
+  console.log(`\n[Cycle ${cycleNum}] Running harvest with P1_STORE_ALL_STATUS_URLS=true...`);
   
   const { execSync } = await import('child_process');
   try {
+    // Set P1_STORE_ALL_STATUS_URLS=true
+    process.env.P1_STORE_ALL_STATUS_URLS = 'true';
+    process.env.EXECUTION_MODE = 'control';
+    process.env.HARVESTING_ENABLED = 'true';
+    process.env.P1_MODE = 'true';
+    process.env.P1_TARGET_MAX_AGE_HOURS = '12';
+    
     const output = execSync(
       'pnpm exec tsx scripts/ops/run-harvester-local-prod.ts',
       { 
         cwd: process.cwd(),
         encoding: 'utf-8',
         stdio: 'pipe',
-        maxBuffer: 10 * 1024 * 1024
+        maxBuffer: 10 * 1024 * 1024,
+        env: { ...process.env, P1_STORE_ALL_STATUS_URLS: 'true' }
       }
     );
     
@@ -47,34 +52,37 @@ async function runHarvestCycle(cycleNum: number): Promise<number> {
     const storedMatch = output.match(/stored_public_candidates=(\d+)/);
     const stored = storedMatch ? parseInt(storedMatch[1], 10) : 0;
     
-    // Print key lines (last 30 lines)
-    const lines = output.split('\n').filter(l => l.trim());
-    const keyLines = lines.slice(-30);
-    keyLines.forEach(line => {
-      if (line.includes('[HARVEST]') || line.includes('stored_public_candidates') || line.includes('✅') || line.includes('⚠️')) {
-        console.log(line);
-      }
-    });
+    // Extract PUBLIC_EXTRACT and PUBLIC_STORE logs
+    const extractMatch = output.match(/\[PUBLIC_EXTRACT\] urls_found=(\d+)/);
+    const storeMatch = output.match(/\[PUBLIC_STORE\] attempted=(\d+) stored=(\d+) skipped=(\d+) errors=(\d+)/);
+    
+    if (extractMatch) {
+      console.log(`  [PUBLIC_EXTRACT] urls_found=${extractMatch[1]}`);
+    }
+    if (storeMatch) {
+      console.log(`  [PUBLIC_STORE] attempted=${storeMatch[1]} stored=${storeMatch[2]} skipped=${storeMatch[3]} errors=${storeMatch[4]}`);
+    }
     
     return stored;
   } catch (error: any) {
     const output = (error.stdout || error.stderr || error.message || '').toString();
-    const lines = output.split('\n').filter(l => l.trim());
-    const keyLines = lines.slice(-20);
-    keyLines.forEach(line => {
-      if (line.includes('[HARVEST]') || line.includes('ERROR') || line.includes('error') || line.includes('❌')) {
-        console.log(line);
-      }
-    });
+    const extractMatch = output.match(/\[PUBLIC_EXTRACT\] urls_found=(\d+)/);
+    const storeMatch = output.match(/\[PUBLIC_STORE\] attempted=(\d+) stored=(\d+) skipped=(\d+) errors=(\d+)/);
     
-    // Extract stored count even from error output
+    if (extractMatch) {
+      console.log(`  [PUBLIC_EXTRACT] urls_found=${extractMatch[1]}`);
+    }
+    if (storeMatch) {
+      console.log(`  [PUBLIC_STORE] attempted=${storeMatch[1]} stored=${storeMatch[2]} skipped=${storeMatch[3]} errors=${storeMatch[4]}`);
+    }
+    
     const storedMatch = output.match(/stored_public_candidates=(\d+)/);
     return storedMatch ? parseInt(storedMatch[1], 10) : 0;
   }
 }
 
 async function main() {
-  console.log('🌾 Harvest Until Public Ready');
+  console.log('🌾 Harvest With P1 Boost (P1_STORE_ALL_STATUS_URLS=true)');
   console.log('═══════════════════════════════════════════════════════════\n');
   
   const TARGET_COUNT = 25;
@@ -90,39 +98,53 @@ async function main() {
   
   let cycleNum = 1;
   let totalStored = 0;
+  let totalUrlsFound = 0;
+  let totalStoredSum = 0;
   
   while (currentCount < TARGET_COUNT && cycleNum <= MAX_CYCLES) {
     console.log(`\n[Cycle ${cycleNum}/${MAX_CYCLES}] Current count: ${currentCount}, Target: ${TARGET_COUNT}`);
     
     const stored = await runHarvestCycle(cycleNum);
     totalStored += stored;
+    totalStoredSum += stored;
     
-    // Wait a moment for DB writes
+    // Wait for DB writes
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     // Check new count
     currentCount = await getPublicCount();
-    console.log(`\n[Cycle ${cycleNum}] After harvest: ${currentCount} public candidates (stored this cycle: ${stored})`);
+    console.log(`[Cycle ${cycleNum}] After harvest: ${currentCount} public candidates (stored this cycle: ${stored})`);
     
     if (currentCount >= TARGET_COUNT) {
       console.log(`\n✅ SUCCESS: Reached target (${currentCount} >= ${TARGET_COUNT})`);
       console.log(`   Total stored across cycles: ${totalStored}`);
-      process.exit(0);
+      break;
     }
     
     cycleNum++;
     
-    // Small delay between cycles
+    // Delay between cycles
     if (cycleNum <= MAX_CYCLES) {
       await new Promise(resolve => setTimeout(resolve, 5000));
     }
   }
   
+  const avgStored = cycleNum > 1 ? (totalStoredSum / (cycleNum - 1)).toFixed(1) : '0';
+  
+  console.log(`\n═══════════════════════════════════════════════════════════`);
+  console.log(`📊 Summary:`);
+  console.log(`   Cycles run: ${cycleNum - 1}`);
+  console.log(`   Total stored: ${totalStored}`);
+  console.log(`   Avg stored per cycle: ${avgStored}`);
+  console.log(`   Final strict_count: ${currentCount}`);
+  console.log(`═══════════════════════════════════════════════════════════`);
+  
   if (currentCount < TARGET_COUNT) {
     console.log(`\n⚠️  WARNING: Stopped after ${MAX_CYCLES} cycles`);
     console.log(`   Final count: ${currentCount} (target: ${TARGET_COUNT})`);
-    console.log(`   Total stored: ${totalStored}`);
     process.exit(1);
+  } else {
+    process.exit(0);
   }
 }
 

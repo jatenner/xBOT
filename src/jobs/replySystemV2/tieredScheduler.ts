@@ -408,6 +408,21 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     timeout: 0,
   };
   
+  // 🎯 P1 VERIFIED-ONLY: If no verified candidates, skip probing
+  if (p1Mode && candidatesToTry.length === 0) {
+    console.log(`[SCHEDULER] 🎯 P1_PROBE_SUMMARY: attempted=0 ok=0 reason=no_verified_candidates`);
+    return {
+      success: false,
+      reason: 'no_verified_candidates',
+      scheduler_run_id: schedulerRunId,
+      slot_time: slotTime.toISOString(),
+      preflight_attempted: 0,
+      preflight_ok: 0,
+      decision_created: false,
+      decision_id: null,
+    };
+  }
+  
   for (let i = 0; i < Math.min(candidatesToTry.length, PREFLIGHT_MAX_PER_CYCLE); i++) {
     const { candidate: cand, tier: candTier } = candidatesToTry[i];
     
@@ -436,11 +451,42 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       preflightAttempted++;
       const preflightStart = Date.now();
       
-      // 🎯 P1 FAST PROBE: Quick check for login_wall/forbidden before full preflight
+      // 🎯 P1 VERIFIED-ONLY: Skip Railway probe - candidates already verified by executor
       const p1Mode = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
       let probePassed = true;
       
+      // Check if candidate is already verified ok by executor
       if (p1Mode) {
+        const { data: oppInfo } = await supabase
+          .from('reply_opportunities')
+          .select('accessibility_status')
+          .eq('target_tweet_id', cand.candidate_tweet_id)
+          .maybeSingle();
+        
+        if (oppInfo?.accessibility_status === 'ok') {
+          // Already verified by executor - skip Railway probe
+          console.log(`[SCHEDULER] ✅ VERIFIED_ONLY: Skipping Railway probe for ${cand.candidate_tweet_id} (already verified ok)`);
+          probeResults.attempted++;
+          probeResults.ok++;
+          probePassed = true;
+          // Continue to decision creation (skip Railway probe and full preflight)
+          // Set preflightOk to true so we can proceed
+          selectedCandidate = {
+            candidate: cand,
+            tier: candTier,
+            preflightStatus: 'ok',
+            preflightOk: true,
+          };
+          break; // Found verified candidate, proceed to decision
+        } else {
+          // Not verified yet - skip this candidate (shouldn't happen if queue filter works)
+          console.log(`[SCHEDULER] ⚠️ Candidate ${cand.candidate_tweet_id} not verified ok (status=${oppInfo?.accessibility_status}), skipping`);
+          continue;
+        }
+      }
+      
+      // Non-P1 mode: use Railway probe (old logic)
+      if (!p1Mode) {
         try {
           const probeStart = Date.now();
           const { UnifiedBrowserPool } = await import('../../browser/UnifiedBrowserPool');

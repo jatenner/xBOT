@@ -61,17 +61,14 @@ async function main(): Promise<void> {
   }
   
   console.log('🚀 Launching headed browser...');
-  const browser = await chromium.launch({
+  // Use launchPersistentContext to use the profile directory directly
+  const context = await chromium.launchPersistentContext(BROWSER_USER_DATA_DIR, {
     headless: false, // HEADED for login repair
     channel: 'chrome',
     args: [
-      `--user-data-dir=${BROWSER_USER_DATA_DIR}`,
       '--no-first-run',
       '--no-default-browser-check',
     ],
-  });
-  
-  const context = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     viewport: { width: 1280, height: 720 },
   });
@@ -105,7 +102,6 @@ async function main(): Promise<void> {
   console.log('🧹 Closing browser...');
   await page.close();
   await context.close();
-  await browser.close();
   
   // Remove AUTH_REQUIRED file if it exists
   if (fs.existsSync(AUTH_REQUIRED_PATH)) {

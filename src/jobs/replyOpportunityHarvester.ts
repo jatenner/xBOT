@@ -258,8 +258,11 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   // 🌱 SEED ACCOUNT HARVESTER: Only run if authenticated (requires profile scraping)
   // Railway mode: Skip seed harvesting (moved to executor-plane)
   // Executor mode: Run seed harvesting (has authenticated Chrome profile)
+  // 🎯 P1 MODE: Skip seed harvesting entirely (only use public_search_* queries)
   let seedAccountOpportunities = 0;
-  if (authVerified) {
+  if (p1Mode) {
+    console.log(`[P1_MODE] seed_harvest_skipped=true`);
+  } else if (authVerified) {
     try {
       console.log(`[HARVESTER] 🌱 PRIMARY SOURCE: Seed account harvester`);
       const { harvestSeedAccounts } = await import('../ai/seedAccountHarvester');
@@ -568,13 +571,19 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
         `search_${searchQuery.label}`,
         BrowserPriority.HARVESTING,
         async () => {
-          return await realTwitterDiscovery.findViralTweetsViaSearch(
+          const opps = await realTwitterDiscovery.findViralTweetsViaSearch(
             searchQuery.minLikes,
             searchQuery.maxReplies,
             searchQuery.label,
             searchQuery.maxAgeHours || 24, // Pass age limit, default to 24h
-            searchQuery.query
+            searchQuery.query,
+            0 // retryAttempt
           );
+          // Add discovery_source to all opportunities
+          return opps.map((opp: any) => ({
+            ...opp,
+            discovery_source: (searchQuery as any).discovery_source || `search_${(searchQuery as any).tier?.toLowerCase() || 'x'}_${searchQuery.label.replace(/\s+/g, '_')}`,
+          }));
         }
       );
       
@@ -658,6 +667,16 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
           }));
           
           await realTwitterDiscovery.storeOpportunities(opportunitiesWithTiers);
+          
+          // 🎯 P1 LOGGING: Log stored opportunities count by discovery_source
+          const discoverySourceCounts: Record<string, number> = {};
+          opportunitiesWithTiers.forEach((opp: any) => {
+            const source = opp.discovery_source || 'unknown';
+            discoverySourceCounts[source] = (discoverySourceCounts[source] || 0) + 1;
+          });
+          if (p1Mode) {
+            console.log(`[P1_HARVEST] stored_opportunities=${opportunitiesWithTiers.length} by_source=${JSON.stringify(discoverySourceCounts)}`);
+          }
           
           // Log per-opportunity with [HARVEST_STORE]
           for (const opp of opportunitiesWithTiers.slice(0, 5)) { // Log first 5

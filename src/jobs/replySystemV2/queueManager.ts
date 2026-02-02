@@ -710,6 +710,43 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
   
   const { data: candidates, error } = await query;
   
+  // 🎯 P1 VERIFIED-ONLY FILTER: In P1 mode, ONLY select verified ok candidates
+  if (p1Mode && candidates && candidates.length > 0) {
+    // Join with reply_opportunities to filter by discovery_source AND accessibility_status
+    const candidateIds = candidates.map(c => c.candidate_tweet_id);
+    const { data: opps } = await supabase
+      .from('reply_opportunities')
+      .select('target_tweet_id, discovery_source, accessibility_status')
+      .in('target_tweet_id', candidateIds);
+    
+    // Filter: public_search_* AND accessibility_status='ok'
+    const verifiedOkIds = new Set(
+      (opps || [])
+        .filter(opp => 
+          opp.discovery_source?.startsWith('public_search_') && 
+          opp.discovery_source !== 'public_search_manual' &&
+          opp.accessibility_status === 'ok'
+        )
+        .map(opp => opp.target_tweet_id)
+    );
+    
+    if (verifiedOkIds.size > 0) {
+      const filtered = candidates.filter(c => verifiedOkIds.has(c.candidate_tweet_id));
+      if (filtered.length > 0) {
+        console.log(`[QUEUE_MANAGER] ✅ VERIFIED_ONLY: candidates ${candidates.length} → ${filtered.length} (ok only)`);
+        // Replace candidates array with filtered ones, continue to root_only check
+        candidates.length = 0;
+        candidates.push(...filtered);
+      } else {
+        console.log(`[QUEUE_MANAGER] ✅ VERIFIED_ONLY: No verified ok candidates found (${candidates.length} candidates checked)`);
+        return null;
+      }
+    } else {
+      console.log(`[QUEUE_MANAGER] ✅ VERIFIED_ONLY: No verified ok candidates found (${candidates.length} candidates checked)`);
+      return null;
+    }
+  }
+  
   if (error) {
     console.log(`[QUEUE_MANAGER] ⚠️ Query error for tier ${tier}: ${error.message} (code: ${error.code})`);
     return null;

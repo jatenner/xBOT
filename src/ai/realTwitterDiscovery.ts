@@ -546,16 +546,22 @@ export class RealTwitterDiscovery {
     maxReplies: number,
     searchLabel: string = 'VIRAL',
     maxAgeHours: number = 24,
-    customQuery?: string
+    customQuery?: string,
+    retryAttempt: number = 0
   ): Promise<ReplyOpportunity[]> {
-    console.log(`[REAL_DISCOVERY] 🔍 ${searchLabel} search: ${minLikes}+ likes, <${maxAgeHours}h old (broad - all topics)...`);
+    console.log(`[REAL_DISCOVERY] 🔍 ${searchLabel} search: ${minLikes}+ likes, <${maxAgeHours}h old (broad - all topics)...${retryAttempt > 0 ? ` (retry ${retryAttempt})` : ''}`);
     
+    const p1Mode = process.env.P1_MODE === 'true';
     const pool = UnifiedBrowserPool.getInstance();
-    const page = await pool.acquirePage('search_scrape');
+    // Use fresh page/context for each query to avoid soft throttles
+    const page = await pool.acquirePage(`search_scrape_${Date.now()}`);
     
     try {
       // 🔐 VERIFY AUTHENTICATION (non-blocking - posting works with same session)
       const isAuth = await this.verifyAuth(page);
+      if (p1Mode || process.env.HARVEST_DEBUG !== 'false') {
+        console.log(`[REAL_DISCOVERY] 🔐 auth ok=${isAuth}`);
+      }
       if (!isAuth) {
         console.warn(`[REAL_DISCOVERY] ⚠️ Auth check failed, but proceeding anyway (session valid - posting works)`);
         // Don't return [] - session is valid, auth check may just be timing out
@@ -575,13 +581,40 @@ export class RealTwitterDiscovery {
       const searchUrl = `https://x.com/search?q=${encodedQuery}&src=typed_query&f=live`;
       
       console.log(`[REAL_DISCOVERY] 🌐 Navigating to search: ${searchUrl}`);
-      await page.goto(searchUrl, { 
-        waitUntil: 'domcontentloaded', 
-        timeout: 30000 
-      });
+      try {
+        await page.goto(searchUrl, { 
+          waitUntil: 'domcontentloaded', 
+          timeout: 30000 
+        });
+      } catch (error: any) {
+        if (error.message.includes('Timeout')) {
+          console.warn(`[REAL_DISCOVERY] ⚠️ Navigation timeout - continuing with current state...`);
+        } else {
+          throw error;
+        }
+      }
       
-      // 🕐 GIVE TWITTER TIME TO LOAD   
-      await page.waitForTimeout(5000); // Longer for search results             
+      // 🕐 GIVE TWITTER TIME TO LOAD AND RENDER TWEETS
+      // Wait for either tweet elements or status links to appear
+      try {
+        await Promise.race([
+          page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 }).catch(() => null),
+          page.waitForSelector('a[href*="/status/"]', { timeout: 10000 }).catch(() => null),
+          page.waitForTimeout(10000) // Max wait 10s
+        ]);
+      } catch (e) {
+        // Continue anyway
+      }
+      
+      await page.waitForTimeout(2500); // Initial settle time
+      
+      // Scroll to trigger lazy loading
+      try {
+        await page.evaluate(() => window.scrollBy(0, window.innerHeight));
+        await page.waitForTimeout(1500); // Wait after scroll
+      } catch (e) {
+        // Continue anyway
+      }             
       
       // ═══════════════════════════════════════════════════════════════════════
       // 🔍 HARVEST DEBUG: Save artifacts to diagnose empty results
@@ -734,12 +767,13 @@ export class RealTwitterDiscovery {
       // Extract viral tweets from search results           
       console.log(`[REAL_DISCOVERY] 📊 Page loaded, extracting tweets...`);
       
-      // 🎯 PRIMARY METHOD: Extract status URLs from anchors (robust, works even if selectors fail)
-      // Also scan HTML content directly for status URLs as fallback
+      // 🎯 ROBUST STATUS URL EXTRACTION: Primary method (works even if selectors fail)
+      // Collect status URLs by scanning anchors matching /status/(\d+)
+      // Success criteria: status URLs found (not DOM tweet cards)
       const statusUrls = await page.evaluate(() => {
         const statusIds = new Set<string>();
         
-        // Method 1: Scan all anchors
+        // Method 1: Scan all anchors for public status URLs
         const anchors = Array.from(document.querySelectorAll('a[href*="/status/"]'));
         anchors.forEach(a => {
           const href = a.getAttribute('href') || '';
@@ -769,7 +803,32 @@ export class RealTwitterDiscovery {
         return Array.from(statusIds);
       });
       
-      console.log(`[REAL_DISCOVERY] 🔗 Found ${statusUrls.length} status URLs from anchors/HTML`);
+      console.log(`[REAL_DISCOVERY] 🔗 Found ${statusUrls.length} status URLs from anchors/HTML (success criteria)`);
+      
+      // 🎯 P1 LOGGING: Log DOM cards and status URLs count
+      if (p1Mode || debugEnabled) {
+        console.log(`[REAL_DISCOVERY] 📊 DOM cards found: ${debugCounters.dom_tweet_cards_found || 0}, status URLs: ${statusUrls.length}`);
+      }
+      
+      // 🎯 PUBLIC_EXTRACT instrumentation
+      const isPublicQuery = customQuery && (
+        customQuery.includes('public_search_') || 
+        searchLabel.includes('PUBLIC_') ||
+        customQuery.includes('min_faves:300') || 
+        customQuery.includes('min_faves:1000')
+      );
+      if (isPublicQuery) {
+        console.log(`[PUBLIC_QUERY] label=${searchLabel} attempt=${retryAttempt + 1} urls_found=${statusUrls.length}`);
+      }
+      
+      // 🎯 RETRY LOGIC: If urls_found==0 and retryAttempt < 2, retry with backoff
+      if (statusUrls.length === 0 && retryAttempt < 2 && isPublicQuery) {
+        const backoffMs = retryAttempt === 0 ? 5000 : 15000;
+        console.log(`[PUBLIC_QUERY] urls_found=0, retrying in ${backoffMs}ms...`);
+        await pool.releasePage(page);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        return this.findViralTweetsViaSearch(minLikes, maxReplies, searchLabel, maxAgeHours, customQuery, retryAttempt + 1);
+      }
       
       const opportunities = await page.evaluate(
         (
@@ -929,21 +988,24 @@ export class RealTwitterDiscovery {
           }
         }
         
-        // 🎯 FALLBACK: For status IDs not matched to DOM elements, create minimal entries
-        // (We'll fetch full data later via API or separate scrape)
+        // 🎯 PRIMARY: For status IDs found via URL scanning, create entries even if DOM extraction failed
+        // This ensures we capture all public status URLs, not just ones with matching DOM elements
+        // NOTE: All status IDs collected are from public URLs (already filtered out /i/...)
         for (const statusId of statusIds) {
           if (!processedIds.has(statusId) && results.length < 50) {
-            // Create minimal entry - will be enriched later
+            // Create entries for public status URLs found via anchor scanning
+            // Author will be discovered later via probe or separate scrape
+            // Use placeholder URL format that will be updated when author is known
             results.push({
               tweet_id: statusId,
-              tweet_url: `https://x.com/i/web/status/${statusId}`,
+              tweet_url: `https://x.com/status/${statusId}`, // Public URL format (author will be added later)
               tweet_content: '', // Will be fetched later
               tweet_author: 'unknown',
               author_name: '',
               reply_count: 0,
               like_count: minLikes, // Assume meets threshold
               posted_minutes_ago: 0,
-              tweet_posted_at: new Date().toISOString() // Placeholder
+              tweet_posted_at: new Date().toISOString() // Placeholder - will be updated
             });
           }
         }
@@ -959,14 +1021,40 @@ export class RealTwitterDiscovery {
     
     console.log(`[REAL_DISCOVERY] 📊 Page extraction complete: Found ${opportunities.length} tweets`);
     
+    // 🎯 P1 FALLBACK: If structured extraction returns 0 but status URLs > 0, build candidates from URLs
+    let finalOpportunities = opportunities;
+    if (opportunities.length === 0 && statusUrls.length > 0) {
+      console.log(`[FALLBACK_URLS] used=true count=${statusUrls.length}`);
+      // Build minimal candidates from status URLs
+      finalOpportunities = statusUrls.map((tweetId) => {
+        // Extract tweet ID from status URL if it's a full URL
+        const idMatch = tweetId.match(/(\d{15,20})/);
+        const extractedId = idMatch ? idMatch[1] : tweetId;
+        
+        return {
+          tweet_id: extractedId,
+          tweet_content: '', // Will be empty - we only have the ID
+          tweet_author: 'unknown',
+          like_count: 0, // Unknown without full extraction
+          reply_count: 0,
+          retweet_count: 0,
+          tweet_posted_at: new Date().toISOString(), // Approximate
+          tweet_url: `https://x.com/i/web/status/${extractedId}`,
+          author_name: 'unknown',
+          discovery_source: 'url_fallback'
+        };
+      });
+      console.log(`[FALLBACK_URLS] Built ${finalOpportunities.length} candidates from status URLs`);
+    }
+    
     // Update debug counters with extraction results
     if (debugEnabled) {
-      debugCounters.extracted_tweets_count = opportunities.length;
+      debugCounters.extracted_tweets_count = finalOpportunities.length;
       console.log(`[HARVEST_DEBUG] 🔢 extracted_tweets_count=${opportunities.length} (from ${debugCounters.dom_tweet_cards_found} DOM cards)`);
       console.log(`[HARVEST_DEBUG] 📁 Debug artifacts saved to: ${debugDir}`);
       
       // 🎯 EMPTY RESULT CLASSIFIER: Final classification after extraction
-      if (debugCounters.dom_tweet_cards_found > 0 && opportunities.length === 0) {
+      if (debugCounters.dom_tweet_cards_found > 0 && finalOpportunities.length === 0 && statusUrls.length === 0) {
         debugCounters.page_classification = 'selector_drift';
         console.warn(`[HARVEST_DEBUG] ⚠️ SELECTOR_DRIFT: Found ${debugCounters.dom_tweet_cards_found} DOM cards but extracted 0 tweets!`);
         console.warn(`[HARVEST_DEBUG] ⚠️ Check selectors and filters in page.evaluate()`);
@@ -1025,10 +1113,10 @@ export class RealTwitterDiscovery {
       try {
         const { getSupabaseClient } = await import('../db/index');
         const supabase = getSupabaseClient();
-        await supabase.from('system_events').upsert({
+          await supabase.from('system_events').upsert({
           event_type: 'harvest_debug_final',
-          severity: opportunities.length === 0 ? 'warning' : 'info',
-          message: `Harvest final: ${opportunities.length} extracted from ${searchLabel}`,
+          severity: finalOpportunities.length === 0 ? 'warning' : 'info',
+          message: `Harvest final: ${finalOpportunities.length} extracted from ${searchLabel}`,
           event_data: {
             query: searchLabel,
             counters: debugCounters,
@@ -1040,47 +1128,91 @@ export class RealTwitterDiscovery {
       } catch {}
     }
       
-      console.log(`[REAL_DISCOVERY] ✅ Scraped ${opportunities.length} viral tweets (all topics)`); 
+      console.log(`[REAL_DISCOVERY] ✅ Scraped ${finalOpportunities.length} viral tweets (all topics)`); 
       
-      if (opportunities.length === 0) { 
+      if (finalOpportunities.length === 0) { 
         console.log('[REAL_DISCOVERY] ⚠️ No viral tweets found in search');      
         return [];
+      }
+      
+      // 🎯 P1_STORE_ALL_STATUS_URLS: Skip AI filtering, store all extracted status URLs
+      const p1StoreAll = process.env.P1_STORE_ALL_STATUS_URLS === 'true';
+      const isPublicQueryForStore = customQuery && (
+        customQuery.includes('public_search_') || 
+        searchLabel.includes('PUBLIC_') ||
+        customQuery.includes('min_faves:300') || 
+        customQuery.includes('min_faves:1000')
+      );
+      
+      if (p1StoreAll && isPublicQueryForStore) {
+        console.log(`[REAL_DISCOVERY] 🎯 P1_STORE_ALL: Skipping AI filter, storing all ${finalOpportunities.length} extracted opportunities`);
+        // Deduplicate by tweet_id
+        const seen = new Set<string>();
+        const deduped = finalOpportunities.filter(opp => {
+          const id = String(opp.tweet_id || '');
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+        console.log(`[REAL_DISCOVERY] 🎯 P1_STORE_ALL: Deduplicated ${finalOpportunities.length} → ${deduped.length} opportunities`);
+        return deduped;
       }
       
       // 🧠 AI HEALTH FILTERING (NEW!)
       console.log(`[REAL_DISCOVERY] 🧠 AI filtering for health relevance...`);
       const { healthContentJudge } = await import('./healthContentJudge');
       
-      const judgments = await healthContentJudge.batchJudge(
-        opportunities.map(opp => ({
-          content: opp.tweet_content,
-          author: opp.tweet_author,
-          authorBio: opp.author_name
-        }))
-      );
+      const beforeCount = finalOpportunities.length;
+      let healthOpportunities: any[] = [];
+      let failOpenUsed = false;
       
-      // Filter for health-relevant only (score >= 6)
-      const healthOpportunities = opportunities
-        .map((opp, index) => ({
-          ...opp,
-          health_relevance_score: judgments[index].score,
-          health_category: judgments[index].category,
-          ai_judge_reason: judgments[index].reason
-        }))
-        .filter((opp, index) => judgments[index].isHealthRelevant);
-      
-      console.log(`[REAL_DISCOVERY] ✅ AI filtered: ${healthOpportunities.length}/${opportunities.length} health-relevant (${Math.round(healthOpportunities.length/opportunities.length*100)}%)`);
+      try {
+        const judgments = await healthContentJudge.batchJudge(
+          finalOpportunities.map(opp => ({
+            content: opp.tweet_content,
+            author: opp.tweet_author,
+            authorBio: opp.author_name
+          }))
+        );
+        
+        // Filter for health-relevant only (score >= 6)
+        healthOpportunities = finalOpportunities
+          .map((opp, index) => ({
+            ...opp,
+            health_relevance_score: judgments[index].score,
+            health_category: judgments[index].category,
+            ai_judge_reason: judgments[index].reason
+          }))
+          .filter((opp, index) => judgments[index].isHealthRelevant);
+        
+        console.log(`[REAL_DISCOVERY] ✅ AI filtered: ${healthOpportunities.length}/${opportunities.length} health-relevant (${Math.round(healthOpportunities.length/opportunities.length*100)}%)`);
+      } catch (error: any) {
+        const errorMsg = error.message || String(error);
+        const shortErr = errorMsg.length > 50 ? errorMsg.substring(0, 50) + '...' : errorMsg;
+        
+        if (p1Mode) {
+          console.log(`[P1_FAIL_OPEN] ai_filter_failed=true err=${shortErr}`);
+          console.log(`[P1_FAIL_OPEN] before=${beforeCount} after=${beforeCount} fail_open_used=true`);
+          // Return unfiltered candidates in P1 mode
+          healthOpportunities = finalOpportunities;
+          failOpenUsed = true;
+        } else {
+          // In non-P1 mode, rethrow or return empty
+          console.error(`[REAL_DISCOVERY] ❌ AI filtering failed: ${errorMsg}`);
+          throw error;
+        }
+      }
       
       if (healthOpportunities.length === 0) {
         console.log('[REAL_DISCOVERY] ⚠️ No health-relevant tweets found after AI filtering');
-        opportunities.slice(0, 5).forEach((opp, idx) => {
+        finalOpportunities.slice(0, 5).forEach((opp, idx) => {
           console.log(`[REAL_DISCOVERY] ⚠️ Rejected tweet #${idx + 1}:`, {
             text: opp.tweet_content?.slice(0, 180),
             author: opp.tweet_author,
             likes: opp.like_count
           });
         });
-        const keywordFallback = opportunities
+        const keywordFallback = finalOpportunities
           .map(opp => ({
             ...opp,
             keywordScore: this.getKeywordScore(`${opp.tweet_content} ${opp.tweet_author}`)
@@ -1688,8 +1820,56 @@ export class RealTwitterDiscovery {
       }
     }
     
+    // 🎯 QUALITY FILTER: Filter out forbidden authors and /i/ URLs
+    // Only keep status URLs from public pages (not /i/...)
+    // Skip known protected authors by maintaining forbidden_authors
+    let filteredOpportunities = opportunities.filter(opp => {
+      // Filter 1: Only keep public status URLs (not /i/...)
+      const tweetUrl = String(opp.tweet_url || '');
+      if (tweetUrl.includes('/i/')) {
+        console.log(`[QUALITY_FILTER] 🚫 SKIP_PRIVATE_URL tweet_id=${opp.tweet_id} url=${tweetUrl}`);
+        return false;
+      }
+      return true;
+    });
+    
+    // Filter 2: Skip known forbidden authors
+    const uniqueUsernames = [...new Set(filteredOpportunities.map(opp => opp.tweet_author.toLowerCase().trim()))];
+    const forbiddenAuthorsSet = new Set<string>();
+    
+    if (uniqueUsernames.length > 0) {
+      const { data: forbiddenAuthors } = await supabase
+        .from('forbidden_authors')
+        .select('author_handle')
+        .in('accessibility_status', ['forbidden', 'login_wall']);
+      
+      if (forbiddenAuthors) {
+        forbiddenAuthors.forEach((a: any) => {
+          forbiddenAuthorsSet.add(a.author_handle.toLowerCase());
+        });
+      }
+    }
+    
+    if (forbiddenAuthorsSet.size > 0) {
+      const beforeCount = filteredOpportunities.length;
+      filteredOpportunities = filteredOpportunities.filter(opp => {
+        const author = (opp.tweet_author || '').toLowerCase();
+        if (forbiddenAuthorsSet.has(author)) {
+          console.log(`[QUALITY_FILTER] 🚫 SKIP_FORBIDDEN_AUTHOR tweet_id=${opp.tweet_id} author=@${opp.tweet_author}`);
+          return false;
+        }
+        return true;
+      });
+      const skippedCount = beforeCount - filteredOpportunities.length;
+      if (skippedCount > 0) {
+        console.log(`[QUALITY_FILTER] Filtered ${skippedCount} opportunities from ${forbiddenAuthorsSet.size} forbidden authors`);
+      }
+    }
+    
+    // Update opportunities to filtered list
+    opportunities = filteredOpportunities;
+    
     // 🎯 Phase 3: Look up priority scores for all target usernames
-    const uniqueUsernames = [...new Set(opportunities.map(opp => opp.tweet_author.toLowerCase().trim()))];
     const priorityMap = new Map<string, number>();
     
     if (uniqueUsernames.length > 0) {
@@ -1709,18 +1889,62 @@ export class RealTwitterDiscovery {
     let failCount = 0;
     let boostedCount = 0;
     
+    // 🎯 PUBLIC_STORE instrumentation: Track public_search_* opportunities
+    const publicOpps = opportunities.filter((opp: any) => {
+      const ds = (opp as any).discovery_source || '';
+      return ds.startsWith('public_search_') && ds !== 'public_search_manual';
+    });
+    const publicAttempted = publicOpps.length;
+    
+    // 🎯 PUBLIC_EXTRACT: Log unique URLs found
+    const publicTweetIds = publicOpps.map((opp: any) => String(opp.tweet_id || '')).filter(id => id.length > 0);
+    const publicUrlsUnique = new Set(publicTweetIds).size;
+    
+    // 🎯 PUBLIC_DB_CHECK: Check which tweet_ids already exist
+    let publicAlreadyExists = 0;
+    let publicNewUrls = 0;
+    if (publicTweetIds.length > 0 && publicAttempted > 0) {
+      const { data: existing } = await supabase
+        .from('reply_opportunities')
+        .select('target_tweet_id')
+        .in('target_tweet_id', publicTweetIds);
+      
+      const existingIds = new Set((existing || []).map((r: any) => String(r.target_tweet_id)));
+      publicAlreadyExists = publicTweetIds.filter(id => existingIds.has(id)).length;
+      publicNewUrls = publicTweetIds.length - publicAlreadyExists;
+      
+      console.log(`[PUBLIC_EXTRACT] urls_found=${publicTweetIds.length} urls_unique=${publicUrlsUnique}`);
+      console.log(`[PUBLIC_DB_CHECK] already_exists=${publicAlreadyExists} new_urls=${publicNewUrls}`);
+    }
+    
+    let publicStored = 0;
+    let publicSkipped = 0;
+    let publicSkippedDuplicate = 0;
+    let publicSkippedFilter = 0;
+    let publicErrors = 0;
+    
+    if (publicAttempted > 0) {
+      console.log(`[PUBLIC_STORE] attempted=${publicAttempted} (tracking public_search_* opportunities)`);
+    }
+    
     for (const opp of opportunities) {
       const targetId = String(opp.tweet_id);
+      const isPublic = ((opp as any).discovery_source || '').startsWith('public_search_') && 
+                       (opp as any).discovery_source !== 'public_search_manual';
+      
       if (alreadyRepliedIds.has(targetId)) {
         console.log(`[REAL_DISCOVERY] ⏭️ Skipping ${opp.tweet_id} (already replied)`);
+        if (isPublic) publicSkipped++;
         continue;
       }
       if (reservedOpportunityIds.has(targetId)) {
         console.log(`[REAL_DISCOVERY] ⏭️ Skipping ${opp.tweet_id} (reserved by existing opportunity)`);
+        if (isPublic) publicSkippedDuplicate++;
         continue;
       }
       if (pendingReplyIds.has(targetId)) {
         console.log(`[REAL_DISCOVERY] ⏭️ Skipping ${opp.tweet_id} (reply already queued)`);
+        if (isPublic) publicSkippedDuplicate++;
         continue;
       }
       
@@ -1728,7 +1952,8 @@ export class RealTwitterDiscovery {
       // Reply tweets are NOT original posts and should not be reply targets    
       const tweetContent = String(opp.tweet_content || '').trim();              
       if (tweetContent.startsWith('@')) {                   
-        console.log(`[REAL_DISCOVERY] 🚫 Skipping ${opp.tweet_id} (is a reply tweet, starts with @)`);                  
+        console.log(`[REAL_DISCOVERY] 🚫 Skipping ${opp.tweet_id} (is a reply tweet, starts with @)`);
+        if (isPublic) publicSkipped++;
         continue;
       }
       
@@ -1744,8 +1969,11 @@ export class RealTwitterDiscovery {
         opp.like_count
       );
       
-      if (!qualityResult.pass) {
+      // 🎯 P1_STORE_ALL: Skip quality filter if enabled
+      const p1StoreAll = process.env.P1_STORE_ALL_STATUS_URLS === 'true';
+      if (!p1StoreAll && !qualityResult.pass) {
         console.log(`[QUALITY_FILTER] 🚫 BLOCKED: ${opp.tweet_id} @${opp.tweet_author} - score=${qualityResult.score} reason=${qualityResult.block_reason}`);
+        if (isPublic) publicSkippedFilter++;
         continue;
       }
       
@@ -1783,6 +2011,7 @@ export class RealTwitterDiscovery {
       
       if (isReplyTweet) {
         console.log(`[REAL_DISCOVERY] 🚫 Skipping reply tweet ${opp.tweet_id} (content starts with @ or mentions 'replying to')`);
+        if (isPublic) publicSkipped++;
         continue;
       }
       
@@ -1792,6 +2021,7 @@ export class RealTwitterDiscovery {
       
       if (targetAuthor === ourHandle) {
         console.log(`[REAL_DISCOVERY] 🚫 SKIP_SELF_REPLY: Skipping ${opp.tweet_id} (author @${opp.tweet_author} is our own account)`);
+        if (isPublic) publicSkipped++;
         continue;
       }
         
@@ -1832,16 +2062,28 @@ export class RealTwitterDiscovery {
             target_quality_reasons: qualityResult.reasons,
             // 🎯 P1: Discovery source tracking
             discovery_source: (opp as any).discovery_source || (opp as any).harvest_source || 'unknown',
-            accessibility_status: 'unknown', // Default to unknown, will be updated by scheduler probe
+            // 🎯 P1: Accessibility status (default to unknown, will be probed later)
+            accessibility_status: (opp as any).accessibility_status || 'unknown',
           }, {
             onConflict: 'target_tweet_id'
           })
           .select();
         
         if (error) {
+          const isPublic = ((opp as any).discovery_source || '').startsWith('public_search_') && 
+                           (opp as any).discovery_source !== 'public_search_manual';
           console.error(`[REAL_DISCOVERY] ❌ DB ERROR storing ${opp.tweet_id}:`, error.message, error.details, error.hint);
+          if (isPublic) {
+            publicErrors++;
+            console.error(`[PUBLIC_STORE] ERROR tweet_id=${opp.tweet_id} error="${error.message}"`);
+          }
           failCount++;
         } else {
+          const isPublic = ((opp as any).discovery_source || '').startsWith('public_search_') && 
+                           (opp as any).discovery_source !== 'public_search_manual';
+          if (isPublic) {
+            publicStored++;
+          }
           successCount++;
           console.log(`[REAL_DISCOVERY] ✅ Stored opportunity ${opp.tweet_id} (@${opp.tweet_author}, ${opp.like_count} likes, tier:${(opp as any).tier})`);
         }
@@ -1854,6 +2096,11 @@ export class RealTwitterDiscovery {
     console.log(`[REAL_DISCOVERY] 💾 Storage complete: ${successCount} succeeded, ${failCount} failed`);
     if (boostedCount > 0) {
       console.log(`[REAL_DISCOVERY] 🎯 Phase 3: Boosted ${boostedCount} opportunities based on priority_score`);
+    }
+    
+    // 🎯 PUBLIC_STORE summary
+    if (publicAttempted > 0) {
+      console.log(`[PUBLIC_STORE] attempted=${publicAttempted} stored=${publicStored} skipped_duplicate=${publicSkippedDuplicate} skipped_filter=${publicSkippedFilter} errors=${publicErrors}`);
     }
     
     // Log tier breakdown
