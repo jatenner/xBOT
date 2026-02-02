@@ -449,7 +449,7 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   ];
   
   // 🔒 P1 THROUGHPUT: Add lower engagement tier for P1 proving (if enabled)
-  const p1Mode = process.env.P1_TARGET_MAX_AGE_HOURS !== undefined || process.env.P1_MODE === 'true'; // P1 mode if freshness window is set or P1_MODE=true
+  // Note: p1Mode is already declared above (line 262)
   const tierP1Queries = p1Mode ? [
     { tier: 'P1', label: 'TIER_P1_HEALTH_1K', minLikes: 1000, maxReplies: 150, maxAgeHours: 6, 
       query: `${HEALTH_KEYWORDS} min_faves:1000 -filter:replies lang:en${SPAM_EXCLUSION}${POLITICS_EXCLUSION}` },
