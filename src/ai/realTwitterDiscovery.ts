@@ -1852,6 +1852,20 @@ export class RealTwitterDiscovery {
     const now = Date.now();
     const originalCount = opportunities.length;
     
+    // 🎯 P1 MODE: Compute P1 max age override
+    const p1Mode = process.env.P1_MODE === 'true';
+    const p1MaxAgeHours = p1Mode ? parseInt(process.env.P1_TARGET_MAX_AGE_HOURS || '1', 10) : undefined;
+    const p1MaxAgeMinutes = p1MaxAgeHours !== undefined ? p1MaxAgeHours * 60 : undefined;
+    
+    // Log P1 mode configuration if active
+    if (p1Mode && p1MaxAgeMinutes !== undefined) {
+      const tierDefaultMaxMinutes = 90; // DEFAULT_TIER_D_MAX_AGE
+      console.log(`[P1_FRESHNESS] mode=P1 p1MaxAgeMinutes=${p1MaxAgeMinutes} tierDefaultMaxMinutes=${tierDefaultMaxMinutes}`);
+    }
+    
+    let acceptedCount = 0;
+    let rejectedCount = 0;
+    
     opportunities = opportunities.filter(opp => {
       // Use tweet_posted_at if available, else posted_minutes_ago
       let ageMinutes: number;
@@ -1864,24 +1878,42 @@ export class RealTwitterDiscovery {
       } else {
         // No age info - reject to be safe
         console.log(`[REAL_DISCOVERY] ⏱️ REJECTED tweet ${opp.tweet_id}: no age info`);
+        rejectedCount++;
         return false;
       }
       
       const likeCount = Number(opp.like_count || 0);        
-      const velocity = calculateVelocityForStorage(likeCount, ageMinutes);      
+      const velocity = calculateVelocityForStorage(likeCount, ageMinutes);
       
-      // Use autonomous freshness controller
-      const freshnessResult = checkFreshness(likeCount, ageMinutes, velocity);
+      // Use autonomous freshness controller with P1 override
+      const freshnessResult = checkFreshness(likeCount, ageMinutes, velocity, p1MaxAgeMinutes);
       
-      if (!freshnessResult.pass) {     
+      // 🎯 P1 DEBUG: Log per-tweet decision details
+      const debugEnabled = p1Mode || process.env.HARVEST_DEBUG === 'true';
+      const appliedMaxAgeMinutes = p1MaxAgeMinutes !== undefined && likeCount < 2500 ? p1MaxAgeMinutes : undefined;
+      
+      if (!freshnessResult.pass) {
+        if (debugEnabled) {
+          console.log(`[P1_FRESHNESS] tweet_id=${opp.tweet_id} created_at=${opp.tweet_posted_at || 'unknown'} age_minutes=${Math.round(ageMinutes)} applied_max_age_minutes=${appliedMaxAgeMinutes || 'tier_default'} decision=reject reason=${freshnessResult.reason}`);
+        }
         console.log(`[REAL_DISCOVERY] ⏱️ REJECTED tweet ${opp.tweet_id}: ${freshnessResult.reason} (${Math.round(ageMinutes)}m old, ${Math.round(likeCount/1000)}K likes, velocity=${velocity.toFixed(1)}${freshnessResult.velocity_required ? `, need velocity>=${freshnessResult.velocity_required}` : ''})`);                 
+        rejectedCount++;
         return false;                   
       }
       
+      if (debugEnabled) {
+        console.log(`[P1_FRESHNESS] tweet_id=${opp.tweet_id} created_at=${opp.tweet_posted_at || 'unknown'} age_minutes=${Math.round(ageMinutes)} applied_max_age_minutes=${appliedMaxAgeMinutes || 'tier_default'} decision=accept reason=${freshnessResult.reason}`);
+      }
       console.log(`[REAL_DISCOVERY] ✓ ACCEPTED tweet ${opp.tweet_id}: ${freshnessResult.reason} (${Math.round(ageMinutes)}m old, ${Math.round(likeCount/1000)}K likes, velocity=${velocity.toFixed(1)})`)
-      
+      acceptedCount++;
       return true;
     });
+    
+    // 🎯 P1 DEBUG: Log summary
+    if (p1Mode && p1MaxAgeMinutes !== undefined) {
+      const tierDefaultMaxMinutes = 90;
+      console.log(`[P1_FRESHNESS] summary: accepted=${acceptedCount} rejected=${rejectedCount} p1MaxAgeMinutes=${p1MaxAgeMinutes} tierDefaultMaxMinutes=${tierDefaultMaxMinutes}`);
+    }
     
     if (opportunities.length < originalCount) {
       console.log(`[REAL_DISCOVERY] 🔒 FRESHNESS GATE: Rejected ${originalCount - opportunities.length}/${originalCount} stale tweets (visibility-adjusted)`);

@@ -105,11 +105,14 @@ export function getMinVelocityForRelaxed(tier: 'A' | 'B' | 'C' | 'D'): number {
 /**
  * Check if a tweet passes the freshness gate
  * Returns { pass: boolean, reason: string, velocity_required?: number }
+ * 
+ * @param p1MaxAgeMinutes - Optional P1 mode override for absolute max age (in minutes)
  */
 export function checkFreshness(
   likeCount: number,
   ageMinutes: number,
-  velocity: number
+  velocity: number,
+  p1MaxAgeMinutes?: number
 ): { pass: boolean; reason: string; velocity_required?: number } {
   // 🎯 DYNAMIC MIN_LIKES: Age-based threshold with velocity override
   // min_likes = 25 (age<=30), 75 (age<=90), 150 (age<=180)
@@ -170,6 +173,11 @@ export function checkFreshness(
     defaultMax = DEFAULT_TIER_D_MAX_AGE;
     absoluteMax = ABSOLUTE_TIER_D_MAX;
     currentMax = _state.current_tier_d_max;
+  }
+  
+  // 🎯 P1 MODE OVERRIDE: Override absolute max for tier D when P1 mode is active
+  if (p1MaxAgeMinutes !== undefined && tier === 'D') {
+    absoluteMax = p1MaxAgeMinutes;
   }
   
   // Within default strict limit - always pass
