@@ -1351,6 +1351,11 @@ export class RealTwitterDiscovery {
       console.error(`[REAL_DISCOVERY] ❌ ${searchLabel} search failed:`, error.message);
       return [];
     } finally {
+      try {
+        page.off('console', consoleListener);
+      } catch (e) {
+        // Ignore if listener wasn't attached
+      }
       await pool.releasePage(page);
     }
   }
