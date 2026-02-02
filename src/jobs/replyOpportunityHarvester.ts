@@ -259,6 +259,7 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   // Railway mode: Skip seed harvesting (moved to executor-plane)
   // Executor mode: Run seed harvesting (has authenticated Chrome profile)
   // 🎯 P1 MODE: Skip seed harvesting entirely (only use public_search_* queries)
+  const p1Mode = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
   let seedAccountOpportunities = 0;
   if (p1Mode) {
     console.log(`[P1_MODE] seed_harvest_skipped=true`);
