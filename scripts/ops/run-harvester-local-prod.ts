@@ -20,6 +20,8 @@ async function main() {
   // Ensure we're in public-only mode (no auth required)
   process.env.EXECUTION_MODE = 'control'; // Railway mode = public discovery only
   process.env.HARVESTING_ENABLED = 'true';
+  process.env.P1_MODE = 'true'; // Enable P1 mode to get public_search_* queries
+  process.env.P1_TARGET_MAX_AGE_HOURS = '12'; // Enable P1 queries
   
   try {
     const supabase = getSupabaseClient();

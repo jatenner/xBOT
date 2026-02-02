@@ -735,9 +735,12 @@ export class RealTwitterDiscovery {
       console.log(`[REAL_DISCOVERY] 📊 Page loaded, extracting tweets...`);
       
       // 🎯 PRIMARY METHOD: Extract status URLs from anchors (robust, works even if selectors fail)
+      // Also scan HTML content directly for status URLs as fallback
       const statusUrls = await page.evaluate(() => {
-        const anchors = Array.from(document.querySelectorAll('a[href*="/status/"]'));
         const statusIds = new Set<string>();
+        
+        // Method 1: Scan all anchors
+        const anchors = Array.from(document.querySelectorAll('a[href*="/status/"]'));
         anchors.forEach(a => {
           const href = a.getAttribute('href') || '';
           // Only collect public status URLs (not /i/...)
@@ -748,10 +751,25 @@ export class RealTwitterDiscovery {
             }
           }
         });
+        
+        // Method 2: Scan HTML content for status URLs (fallback if anchors don't work)
+        if (statusIds.size === 0) {
+          const html = document.documentElement.outerHTML;
+          const statusMatches = html.match(/\/status\/(\d{15,20})/g);
+          if (statusMatches) {
+            statusMatches.forEach(match => {
+              const idMatch = match.match(/\/(\d{15,20})/);
+              if (idMatch && idMatch[1] && !match.includes('/i/')) {
+                statusIds.add(idMatch[1]);
+              }
+            });
+          }
+        }
+        
         return Array.from(statusIds);
       });
       
-      console.log(`[REAL_DISCOVERY] 🔗 Found ${statusUrls.length} status URLs from anchors`);
+      console.log(`[REAL_DISCOVERY] 🔗 Found ${statusUrls.length} status URLs from anchors/HTML`);
       
       const opportunities = await page.evaluate(
         (
