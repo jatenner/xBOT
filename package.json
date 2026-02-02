@@ -85,6 +85,8 @@
     "verify:enforcement": "tsx scripts/verify-enforcement.ts",
     "ops:status": "tsx scripts/ops/status.ts",
     "ops:logs": "tsx scripts/ops/logs.ts",
+    "ops:prove:p1-freshness-fixture": "tsx scripts/ops/prove-p1-freshness-fixture.ts",
+    "ops:harvest:backoff:status": "tsx scripts/ops/show-harvest-backoff.ts",
     "status:report": "tsx scripts/ops/status-report.ts",
     "deploy:railway": "railway up --detach",
     "deploy:railway:xbot": "railway up --service xBOT --detach",
