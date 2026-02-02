@@ -556,7 +556,7 @@ export class RealTwitterDiscovery {
     // Use fresh page/context for each query to avoid soft throttles
     const page = await pool.acquirePage(`search_scrape_${Date.now()}`);
     
-    // 🛡️ RATE LIMIT DETECTION: Capture console logs for HTTP-429 detection
+    // 🛡️ RATE LIMIT DETECTION: Capture console logs and response status codes for HTTP-429 detection
     let rateLimitDetected = false;
     const rateLimitCodes: string[] = [];
     const consoleListener = (msg: any) => {
@@ -572,6 +572,15 @@ export class RealTwitterDiscovery {
       }
     };
     page.on('console', consoleListener);
+    
+    // Also check response status codes
+    const responseListener = (response: any) => {
+      if (response.status() === 429) {
+        rateLimitDetected = true;
+        rateLimitCodes.push('429');
+      }
+    };
+    page.on('response', responseListener);
     
     try {
       // 🔐 VERIFY AUTHENTICATION (non-blocking - posting works with same session)
@@ -626,6 +635,17 @@ export class RealTwitterDiscovery {
       await page.waitForTimeout(2500); // Initial settle time
       
       // 🛡️ CHECK FOR RATE LIMIT AFTER NAVIGATION
+      // Also check page content for rate limit indicators
+      const pageContent = await page.content().catch(() => '');
+      if (pageContent.includes('Rate limit') || pageContent.includes('429') || 
+          pageContent.includes('too many requests') || pageContent.includes('try again later')) {
+        rateLimitDetected = true;
+        const codeMatch = pageContent.match(/codes?:\[(\d+)\]/);
+        if (codeMatch) {
+          rateLimitCodes.push(codeMatch[1]);
+        }
+      }
+      
       if (rateLimitDetected) {
         const { record429Hit } = await import('../utils/harvestBackoff');
         record429Hit();
@@ -639,13 +659,14 @@ export class RealTwitterDiscovery {
           event_data: {
             query: queryText,
             url: searchUrl,
-            codes: rateLimitCodes,
+            codes: rateLimitCodes.length > 0 ? rateLimitCodes : ['429'],
             search_label: searchLabel,
           },
           created_at: new Date().toISOString()
         });
         
-        console.log(`[RATE_LIMIT] detected=true; backing_off_minutes=${rateLimitCodes.length > 0 ? '60' : '15'}`);
+        const backoffMinutes = rateLimitCodes.length > 0 && (rateLimitCodes.includes('88') || rateLimitCodes.includes('1003')) ? 60 : 15;
+        console.log(`[RATE_LIMIT] detected=true; backing_off_minutes=${backoffMinutes}`);
         await pool.releasePage(page);
         return [];
       }
@@ -659,6 +680,16 @@ export class RealTwitterDiscovery {
       }
       
       // 🛡️ CHECK FOR RATE LIMIT AFTER SCROLL (more console logs may appear)
+      const pageContentAfterScroll = await page.content().catch(() => '');
+      if (pageContentAfterScroll.includes('Rate limit') || pageContentAfterScroll.includes('429') || 
+          pageContentAfterScroll.includes('too many requests') || pageContentAfterScroll.includes('try again later')) {
+        rateLimitDetected = true;
+        const codeMatch = pageContentAfterScroll.match(/codes?:\[(\d+)\]/);
+        if (codeMatch) {
+          rateLimitCodes.push(codeMatch[1]);
+        }
+      }
+      
       if (rateLimitDetected) {
         const { record429Hit } = await import('../utils/harvestBackoff');
         record429Hit();
@@ -672,13 +703,14 @@ export class RealTwitterDiscovery {
           event_data: {
             query: queryText,
             url: searchUrl,
-            codes: rateLimitCodes,
+            codes: rateLimitCodes.length > 0 ? rateLimitCodes : ['429'],
             search_label: searchLabel,
           },
           created_at: new Date().toISOString()
         });
         
-        console.log(`[RATE_LIMIT] detected=true; backing_off_minutes=${rateLimitCodes.length > 0 ? '60' : '15'}`);
+        const backoffMinutes = rateLimitCodes.length > 0 && (rateLimitCodes.includes('88') || rateLimitCodes.includes('1003')) ? 60 : 15;
+        console.log(`[RATE_LIMIT] detected=true; backing_off_minutes=${backoffMinutes}`);
         await pool.releasePage(page);
         return [];
       }             
@@ -1353,6 +1385,7 @@ export class RealTwitterDiscovery {
     } finally {
       try {
         page.off('console', consoleListener);
+        page.off('response', responseListener);
       } catch (e) {
         // Ignore if listener wasn't attached
       }
