@@ -734,9 +734,28 @@ export class RealTwitterDiscovery {
       // Extract viral tweets from search results           
       console.log(`[REAL_DISCOVERY] 📊 Page loaded, extracting tweets...`);
       
+      // 🎯 PRIMARY METHOD: Extract status URLs from anchors (robust, works even if selectors fail)
+      const statusUrls = await page.evaluate(() => {
+        const anchors = Array.from(document.querySelectorAll('a[href*="/status/"]'));
+        const statusIds = new Set<string>();
+        anchors.forEach(a => {
+          const href = a.getAttribute('href') || '';
+          // Only collect public status URLs (not /i/...)
+          if (href.includes('/status/') && !href.includes('/i/')) {
+            const match = href.match(/\/status\/(\d+)/);
+            if (match && match[1]) {
+              statusIds.add(match[1]);
+            }
+          }
+        });
+        return Array.from(statusIds);
+      });
+      
+      console.log(`[REAL_DISCOVERY] 🔗 Found ${statusUrls.length} status URLs from anchors`);
+      
       const opportunities = await page.evaluate(
         (
-          { maxReplies, maxAgeHours, minLikes }: { maxReplies: number; maxAgeHours: number; minLikes: number }
+          { maxReplies, maxAgeHours, minLikes, statusIds }: { maxReplies: number; maxAgeHours: number; minLikes: number; statusIds: string[] }
         ) => {
         const globalAny: any = globalThis as any;
         if (typeof globalAny.__name !== 'function') {
@@ -749,9 +768,12 @@ export class RealTwitterDiscovery {
         }
         const __name = globalAny.__name as (target: Function, value: string) => Function;
         const results: any[] = [];
-        let tweetElements = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
         
-        // New Twitter UI sometimes wraps tweets in generic article or cell divs
+        // 🎯 PRIMARY: Try to extract data for each status ID found via URLs
+        const statusIdSet = new Set(statusIds);
+        
+        // Also try selectors as fallback
+        let tweetElements = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
         if (tweetElements.length === 0) {
           tweetElements = Array.from(document.querySelectorAll('article[role="article"]'));
         }
@@ -763,7 +785,7 @@ export class RealTwitterDiscovery {
         }
         
         // 🔍 DIAGNOSTIC: Log what we found
-        console.log(`[EXTRACTION] Found ${tweetElements.length} tweet elements on page`);
+        console.log(`[EXTRACTION] Found ${tweetElements.length} tweet elements on page, ${statusIds.length} status URLs`);
         
         const NOW = Date.now();
         const MAX_AGE_MS = maxAgeHours * 60 * 60 * 1000; // Dynamic age limit
@@ -794,13 +816,29 @@ export class RealTwitterDiscovery {
           return score;
         };
         
-        // Extract up to 50 tweets from search results
+        // 🎯 PRIMARY: Process status URLs found via anchor scanning
+        // For each status ID, try to find its tweet element and extract data
+        const processedIds = new Set<string>();
         let skippedNoTimestamp = 0;
         let skippedTooOld = 0;
         let skippedLowEngagement = 0;
         
+        // First, try to match status IDs to tweet elements
         for (let i = 0; i < Math.min(tweetElements.length, 50); i++) {
           const tweet = tweetElements[i];
+          
+          // Get tweet link and ID
+          const linkEl = tweet.querySelector('a[href*="/status/"]');
+          const href = linkEl?.getAttribute('href') || '';
+          const match = href.match(/\/status\/(\d+)/);
+          const tweetId = match ? match[1] : '';
+          
+          // Skip if not in our status URL list (or if we already processed it)
+          if (!tweetId || !statusIdSet.has(tweetId) || processedIds.has(tweetId)) {
+            continue;
+          }
+          
+          processedIds.add(tweetId);
           
           // Get timestamp
           const timeEl = tweet.querySelector('time');
@@ -817,17 +855,11 @@ export class RealTwitterDiscovery {
             continue; // Skip if older than age limit
           }
           
-          const tweetPostedAt = datetime; // Save for later use
+          const tweetPostedAt = datetime;
           
           // Get tweet content
           const contentEl = tweet.querySelector('[data-testid="tweetText"]');
           const content = contentEl?.textContent || '';
-          
-          // Get tweet link and ID
-          const linkEl = tweet.querySelector('a[href*="/status/"]');
-          const href = linkEl?.getAttribute('href') || '';
-          const match = href.match(/\/status\/(\d+)/);
-          const tweetId = match ? match[1] : '';
           
           // Get engagement metrics
           const likeEl = tweet.querySelector('[data-testid="like"]') || 
@@ -850,24 +882,17 @@ export class RealTwitterDiscovery {
           const replyCount = parseEngagement(replyText);
           const postedMinutesAgo = Math.floor(ageMs / 60000);
           
-          // Get author and bio
+          // Get author
           const authorEl = tweet.querySelector('[data-testid="User-Name"]');
           const authorMatch = (authorEl?.textContent || '').match(/@(\w+)/);
           const author = authorMatch ? authorMatch[1] : '';
-          
-          // Try to get account bio from the tweet's author section
-          // Bio isn't always visible in timeline, but we can check author name/handle for health indicators
           const authorName = authorEl?.textContent?.split('@')[0]?.trim() || '';
-          const displayText = `${authorName} ${author}`.toLowerCase();
           
-          // 🔥 NEW STRATEGY: NO HEALTH FILTERING IN BROWSER!
-          // We scrape ALL viral tweets, AI filters for health AFTER
-          
-          // Basic filters only
+          // Basic filters
           const hasContent = content.length > 20;
           const noLinks = !content.includes('bit.ly') && !content.includes('amzn');
           const notTooManyReplies = replyCount < maxReplies;
-          const meetsMinimumEngagement = likeCount >= minLikes; // ✅ FIXED: Use parameter, not hardcoded!
+          const meetsMinimumEngagement = likeCount >= minLikes;
           
           if (hasContent && noLinks && notTooManyReplies && meetsMinimumEngagement && tweetId && author) {
             results.push({
@@ -875,11 +900,32 @@ export class RealTwitterDiscovery {
               tweet_url: `https://x.com/${author}/status/${tweetId}`,
               tweet_content: content,
               tweet_author: author,
-              author_name: authorName, // For AI judging
+              author_name: authorName,
               reply_count: replyCount,
               like_count: likeCount,
               posted_minutes_ago: postedMinutesAgo,
-              tweet_posted_at: tweetPostedAt // ✅ FIXED: Add timestamp
+              tweet_posted_at: tweetPostedAt
+            });
+          } else if (likeCount < minLikes) {
+            skippedLowEngagement++;
+          }
+        }
+        
+        // 🎯 FALLBACK: For status IDs not matched to DOM elements, create minimal entries
+        // (We'll fetch full data later via API or separate scrape)
+        for (const statusId of statusIds) {
+          if (!processedIds.has(statusId) && results.length < 50) {
+            // Create minimal entry - will be enriched later
+            results.push({
+              tweet_id: statusId,
+              tweet_url: `https://x.com/i/web/status/${statusId}`,
+              tweet_content: '', // Will be fetched later
+              tweet_author: 'unknown',
+              author_name: '',
+              reply_count: 0,
+              like_count: minLikes, // Assume meets threshold
+              posted_minutes_ago: 0,
+              tweet_posted_at: new Date().toISOString() // Placeholder
             });
           }
         }
@@ -890,7 +936,7 @@ export class RealTwitterDiscovery {
         
         return results;
       },
-      { maxReplies, maxAgeHours, minLikes }
+      { maxReplies, maxAgeHours, minLikes, statusIds: statusUrls }
       ) as any[];
     
     console.log(`[REAL_DISCOVERY] 📊 Page extraction complete: Found ${opportunities.length} tweets`);
