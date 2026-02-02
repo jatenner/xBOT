@@ -190,6 +190,11 @@ export function checkFreshness(
     return { pass: false, reason: `beyond_absolute_max_tier_${tier}` };
   }
   
+  // 🎯 P1 MODE: If P1 override is active for tier D, bypass velocity checks
+  if (p1MaxAgeMinutes !== undefined && tier === 'D' && ageMinutes <= absoluteMax) {
+    return { pass: true, reason: `p1_override_tier_D_age_${Math.round(ageMinutes)}min` };
+  }
+  
   // Between default and current relaxed limit
   if (ageMinutes <= currentMax) {
     // Require velocity proof for relaxed acceptance
