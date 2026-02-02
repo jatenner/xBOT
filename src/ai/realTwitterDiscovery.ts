@@ -556,28 +556,43 @@ export class RealTwitterDiscovery {
     // Use fresh page/context for each query to avoid soft throttles
     const page = await pool.acquirePage(`search_scrape_${Date.now()}`);
     
-    // 🛡️ RATE LIMIT DETECTION: Capture console logs and response status codes for HTTP-429 detection
+    // 🛡️ RATE LIMIT DETECTION: Only detect explicit HTTP-429 errors from console/network
     let rateLimitDetected = false;
     const rateLimitCodes: string[] = [];
     const consoleListener = (msg: any) => {
       const text = String(msg.text() || '');
-      // Detect HTTP-429 codes: [88], [1003], HTTP-429, etc.
-      if (text.includes('HTTP-429') || text.includes('codes:[88]') || text.includes('codes:[1003]') || 
-          text.includes('429') && (text.includes('ApiError') || text.includes('rate limit'))) {
+      // Only detect explicit HTTP-429 errors with codes (not generic "429" strings)
+      if (text.includes('HTTP-429') && (text.includes('codes:[88]') || text.includes('codes:[1003]'))) {
         rateLimitDetected = true;
         const codeMatch = text.match(/codes?:\[(\d+)\]/);
         if (codeMatch) {
           rateLimitCodes.push(codeMatch[1]);
         }
       }
+      // Also catch explicit rate limit error messages
+      if ((text.includes('rate limit') || text.includes('Rate limit')) && 
+          (text.includes('exceeded') || text.includes('too many requests') || text.includes('429'))) {
+        rateLimitDetected = true;
+        const codeMatch = text.match(/codes?:\[(\d+)\]/);
+        if (codeMatch) {
+          rateLimitCodes.push(codeMatch[1]);
+        } else {
+          rateLimitCodes.push('429');
+        }
+      }
     };
     page.on('console', consoleListener);
     
-    // Also check response status codes
-    const responseListener = (response: any) => {
-      if (response.status() === 429) {
-        rateLimitDetected = true;
-        rateLimitCodes.push('429');
+    // Check response status codes (only actual HTTP 429 responses)
+    const responseListener = async (response: any) => {
+      try {
+        const status = await response.status();
+        if (status === 429) {
+          rateLimitDetected = true;
+          rateLimitCodes.push('429');
+        }
+      } catch (e) {
+        // Ignore errors checking status
       }
     };
     page.on('response', responseListener);
@@ -634,15 +649,32 @@ export class RealTwitterDiscovery {
       
       await page.waitForTimeout(2500); // Initial settle time
       
-      // 🛡️ CHECK FOR RATE LIMIT AFTER NAVIGATION
-      // Also check page content for rate limit indicators
-      const pageContent = await page.content().catch(() => '');
-      if (pageContent.includes('Rate limit') || pageContent.includes('429') || 
-          pageContent.includes('too many requests') || pageContent.includes('try again later')) {
-        rateLimitDetected = true;
-        const codeMatch = pageContent.match(/codes?:\[(\d+)\]/);
-        if (codeMatch) {
-          rateLimitCodes.push(codeMatch[1]);
+      // 🛡️ CHECK FOR RATE LIMIT AFTER PAGE HAS LOADED
+      // Only check for explicit rate limit error messages in page content (not generic "429")
+      // Wait a bit more to ensure page content is fully rendered
+      await page.waitForTimeout(1000);
+      
+      if (!rateLimitDetected) {
+        // Only check page content if we haven't already detected via console/response
+        const pageContent = await page.content().catch(() => '');
+        const pageText = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
+        
+        // Look for explicit rate limit error messages (not just "429" which could be in URLs/IDs)
+        const hasRateLimitMessage = (
+          (pageText.includes('Rate limit exceeded') || pageText.includes('rate limit exceeded')) ||
+          (pageText.includes('Too many requests') || pageText.includes('too many requests')) ||
+          (pageContent.includes('Rate limit exceeded') && pageContent.includes('error')) ||
+          (pageContent.includes('HTTP-429') && pageContent.includes('codes:'))
+        );
+        
+        if (hasRateLimitMessage) {
+          rateLimitDetected = true;
+          const codeMatch = pageContent.match(/codes?:\[(\d+)\]/) || pageText.match(/codes?:\[(\d+)\]/);
+          if (codeMatch) {
+            rateLimitCodes.push(codeMatch[1]);
+          } else {
+            rateLimitCodes.push('429');
+          }
         }
       }
       
@@ -680,13 +712,17 @@ export class RealTwitterDiscovery {
       }
       
       // 🛡️ CHECK FOR RATE LIMIT AFTER SCROLL (more console logs may appear)
-      const pageContentAfterScroll = await page.content().catch(() => '');
-      if (pageContentAfterScroll.includes('Rate limit') || pageContentAfterScroll.includes('429') || 
-          pageContentAfterScroll.includes('too many requests') || pageContentAfterScroll.includes('try again later')) {
-        rateLimitDetected = true;
-        const codeMatch = pageContentAfterScroll.match(/codes?:\[(\d+)\]/);
-        if (codeMatch) {
-          rateLimitCodes.push(codeMatch[1]);
+      // Only check if we haven't already detected a rate limit
+      if (!rateLimitDetected) {
+        const pageTextAfterScroll = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
+        const hasRateLimitMessage = (
+          (pageTextAfterScroll.includes('Rate limit exceeded') || pageTextAfterScroll.includes('rate limit exceeded')) ||
+          (pageTextAfterScroll.includes('Too many requests') || pageTextAfterScroll.includes('too many requests'))
+        );
+        
+        if (hasRateLimitMessage) {
+          rateLimitDetected = true;
+          rateLimitCodes.push('429');
         }
       }
       
