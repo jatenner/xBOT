@@ -481,11 +481,54 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     'drbengreenfield', 'drjamesdinic', 'drjasonfung', 'drhyman', 'peterattiamd'
   ] : [];
   
+  // 🛡️ CHECK HARVEST BACKOFF BEFORE STARTING
+  const { isHarvestBlocked } = await import('../utils/harvestBackoff');
+  const backoffCheck = isHarvestBlocked();
+  if (backoffCheck.blocked) {
+    console.log(`[RATE_LIMIT] blocked_until=${backoffCheck.blockedUntil?.toISOString()}; skipping harvest (${backoffCheck.minutesRemaining} minutes remaining)`);
+    return;
+  }
+  
+  // 🎯 P1 MODE: Limit to ONE public_search query per cycle + 45min minimum delay
+  if (p1Mode) {
+    // Check last run time
+    const { getRunnerProfilePath } = await import('../infra/runnerProfile');
+    const { readFileSync, writeFileSync, existsSync } = await import('fs');
+    const lastRunFile = getRunnerProfilePath('harvest-last-run.json');
+    const MIN_DELAY_MS = 45 * 60 * 1000; // 45 minutes
+    
+    if (existsSync(lastRunFile)) {
+      try {
+        const lastRunData = JSON.parse(readFileSync(lastRunFile, 'utf-8'));
+        const lastRunAt = new Date(lastRunData.last_run_at);
+        const now = new Date();
+        const elapsedMs = now.getTime() - lastRunAt.getTime();
+        
+        if (elapsedMs < MIN_DELAY_MS) {
+          const minutesRemaining = Math.ceil((MIN_DELAY_MS - elapsedMs) / (60 * 1000));
+          console.log(`[P1_MODE] last_run_ago=${Math.floor(elapsedMs / 60000)}min; min_delay=45min; skipping harvest (${minutesRemaining} minutes remaining)`);
+          return;
+        }
+      } catch (e) {
+        // Continue if file is corrupted
+      }
+    }
+    
+    // Record this run
+    writeFileSync(lastRunFile, JSON.stringify({ last_run_at: new Date().toISOString() }, null, 2));
+  }
+  
   // Build query list based on priority (PUBLIC → A → B → C → P1, D only if critical)
   // 🎯 P1: Prioritize public-only queries FIRST for accessibility
+  // 🎯 P1 MODE: Limit to ONE public_search query per cycle
   let searchQueries = p1Mode 
-    ? [...tierPublicQueries, ...tierAQueries, ...tierBQueries, ...tierCQueries, ...tierP1Queries]
+    ? tierPublicQueries.slice(0, 1) // Only first public query in P1 mode
     : [...tierAQueries, ...tierBQueries, ...tierCQueries, ...tierP1Queries];
+  
+  if (p1Mode && searchQueries.length === 0) {
+    console.log(`[P1_MODE] No public_search queries available, skipping harvest`);
+    return;
+  }
   
   // 🎯 P1 SEED LIST FALLBACK: Add seed account queries if public searches fail
   let fallbackQueries = [...tierDFallback];

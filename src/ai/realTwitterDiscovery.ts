@@ -556,6 +556,23 @@ export class RealTwitterDiscovery {
     // Use fresh page/context for each query to avoid soft throttles
     const page = await pool.acquirePage(`search_scrape_${Date.now()}`);
     
+    // 🛡️ RATE LIMIT DETECTION: Capture console logs for HTTP-429 detection
+    let rateLimitDetected = false;
+    const rateLimitCodes: string[] = [];
+    const consoleListener = (msg: any) => {
+      const text = String(msg.text() || '');
+      // Detect HTTP-429 codes: [88], [1003], HTTP-429, etc.
+      if (text.includes('HTTP-429') || text.includes('codes:[88]') || text.includes('codes:[1003]') || 
+          text.includes('429') && (text.includes('ApiError') || text.includes('rate limit'))) {
+        rateLimitDetected = true;
+        const codeMatch = text.match(/codes?:\[(\d+)\]/);
+        if (codeMatch) {
+          rateLimitCodes.push(codeMatch[1]);
+        }
+      }
+    };
+    page.on('console', consoleListener);
+    
     try {
       // 🔐 VERIFY AUTHENTICATION (non-blocking - posting works with same session)
       const isAuth = await this.verifyAuth(page);
@@ -608,12 +625,62 @@ export class RealTwitterDiscovery {
       
       await page.waitForTimeout(2500); // Initial settle time
       
+      // 🛡️ CHECK FOR RATE LIMIT AFTER NAVIGATION
+      if (rateLimitDetected) {
+        const { record429Hit } = await import('../utils/harvestBackoff');
+        record429Hit();
+        
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'HARVEST_RATE_LIMITED',
+          severity: 'error',
+          message: `Harvest rate limited: ${searchLabel}`,
+          event_data: {
+            query: queryText,
+            url: searchUrl,
+            codes: rateLimitCodes,
+            search_label: searchLabel,
+          },
+          created_at: new Date().toISOString()
+        });
+        
+        console.log(`[RATE_LIMIT] detected=true; backing_off_minutes=${rateLimitCodes.length > 0 ? '60' : '15'}`);
+        await pool.releasePage(page);
+        return [];
+      }
+      
       // Scroll to trigger lazy loading
       try {
         await page.evaluate(() => window.scrollBy(0, window.innerHeight));
         await page.waitForTimeout(1500); // Wait after scroll
       } catch (e) {
         // Continue anyway
+      }
+      
+      // 🛡️ CHECK FOR RATE LIMIT AFTER SCROLL (more console logs may appear)
+      if (rateLimitDetected) {
+        const { record429Hit } = await import('../utils/harvestBackoff');
+        record429Hit();
+        
+        const { getSupabaseClient } = await import('../db/index');
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'HARVEST_RATE_LIMITED',
+          severity: 'error',
+          message: `Harvest rate limited: ${searchLabel}`,
+          event_data: {
+            query: queryText,
+            url: searchUrl,
+            codes: rateLimitCodes,
+            search_label: searchLabel,
+          },
+          created_at: new Date().toISOString()
+        });
+        
+        console.log(`[RATE_LIMIT] detected=true; backing_off_minutes=${rateLimitCodes.length > 0 ? '60' : '15'}`);
+        await pool.releasePage(page);
+        return [];
       }             
       
       // ═══════════════════════════════════════════════════════════════════════
