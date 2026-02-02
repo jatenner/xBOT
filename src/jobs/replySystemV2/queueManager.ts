@@ -710,25 +710,30 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
   
   const { data: candidates, error } = await query;
   
-  // 🎯 P1 VERIFIED-ONLY FILTER: In P1 mode, ONLY select verified ok candidates
-  if (p1Mode && candidates && candidates.length > 0) {
-    // Join with reply_opportunities to filter by discovery_source AND accessibility_status
-    const candidateIds = candidates.map(c => c.candidate_tweet_id);
-    const { data: opps } = await supabase
-      .from('reply_opportunities')
-      .select('target_tweet_id, discovery_source, accessibility_status')
-      .in('target_tweet_id', candidateIds);
-    
-    // Filter: public_search_* AND accessibility_status='ok'
-    const verifiedOkIds = new Set(
-      (opps || [])
-        .filter(opp => 
-          opp.discovery_source?.startsWith('public_search_') && 
-          opp.discovery_source !== 'public_search_manual' &&
-          opp.accessibility_status === 'ok'
-        )
-        .map(opp => opp.target_tweet_id)
-    );
+    // 🎯 P1 VERIFIED-ONLY FILTER: In P1 mode, ONLY select verified ok candidates
+    // Exception: public_search_manual allows 'unknown' status (manually seeded, no executor verification needed)
+    if (p1Mode && candidates && candidates.length > 0) {
+      // Join with reply_opportunities to filter by discovery_source AND accessibility_status
+      const candidateIds = candidates.map(c => c.candidate_tweet_id);
+      const { data: opps } = await supabase
+        .from('reply_opportunities')
+        .select('target_tweet_id, discovery_source, accessibility_status')
+        .in('target_tweet_id', candidateIds);
+      
+      // Filter: public_search_* AND (accessibility_status='ok' OR (public_search_manual AND accessibility_status='unknown'))
+      const verifiedOkIds = new Set(
+        (opps || [])
+          .filter(opp => {
+            if (!opp.discovery_source?.startsWith('public_search_')) return false;
+            // Manual seeds don't need executor verification
+            if (opp.discovery_source === 'public_search_manual') {
+              return opp.accessibility_status === 'unknown' || opp.accessibility_status === 'ok';
+            }
+            // Regular public_search_* require 'ok' status
+            return opp.accessibility_status === 'ok';
+          })
+          .map(opp => opp.target_tweet_id)
+      );
     
     if (verifiedOkIds.size > 0) {
       const filtered = candidates.filter(c => verifiedOkIds.has(c.candidate_tweet_id));
