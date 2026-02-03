@@ -13,7 +13,7 @@ import 'dotenv/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import { chromium, BrowserContext, Page } from 'playwright';
-import { ensureRunnerProfileDir, RUNNER_PROFILE_PATHS } from '../../src/infra/runnerProfile';
+import { ensureRunnerProfileDir, RUNNER_PROFILE_PATHS, getRunnerPaths } from '../../src/infra/runnerProfile';
 import { getSupabaseClient } from '../../src/db/index';
 
 const RUNNER_PROFILE_DIR = ensureRunnerProfileDir();
@@ -95,6 +95,7 @@ async function main(): Promise<void> {
   console.log('           🔐 EXECUTOR AUTH READ/WRITE PROOF');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
+  const paths = getRunnerPaths();
   console.log(`📋 Configuration:`);
   console.log(`   RUNNER_PROFILE_DIR: ${paths.runner_profile_dir_raw}`);
   console.log(`   Browser profile: ${BROWSER_USER_DATA_DIR}`);
