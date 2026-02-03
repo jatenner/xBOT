@@ -89,7 +89,7 @@ async function main(): Promise<void> {
   const page = await context.newPage();
   
   console.log('🌐 Navigating to Twitter login...');
-  await page.goto('https://x.com/i/flow/login', { waitUntil: 'networkidle' });
+  await page.goto('https://x.com/i/flow/login', { waitUntil: 'domcontentloaded', timeout: 60000 });
   
   console.log('');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
