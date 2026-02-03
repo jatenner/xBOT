@@ -14,3 +14,4 @@ This file is append-only. Each proof run adds a new row.
 | 2026-01-26T15:13:56.872Z | `control-reply-1769440137594` | `8905bf83-9220-4d3b-b13e-a3ebb9145512` | `2014718451563004351` | N/A | ❌ FAIL | [`control-reply-1769440137594.md`](./control-reply-1769440137594.md) |
 | 2026-01-26T15:23:42.928Z | `control-reply-1769440472369` | `aa05774f-e0fd-494c-8ea1-48e91b8df55a` | `2015580329344446898` | N/A | ⏳ IN PROGRESS | [`control-reply-1769440472369.md`](./control-reply-1769440472369.md) |
 | 2026-01-26T15:24:08.136Z | control-reply-1769440472369 | aa05774f... | N/A | ✅ PASS | https://x.com/Signal_Synapse/status/2015805866801295663 | [Report](./control-reply-1769440472369.md) |
+| 2026-02-03T00:39:05.247Z | `control-reply-1770078965577` | `47d891cf-34d5-49c4-9ca5-eacc03636cfd` | `2017955223415747040` | N/A | ❌ FAIL | [`control-reply-1770078965577.md`](./control-reply-1770078965577.md) |
