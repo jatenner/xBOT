@@ -17,14 +17,27 @@ import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { ensureRunnerProfileDir, RUNNER_PROFILE_PATHS } from '../../src/infra/runnerProfile';
 
 const RUNNER_PROFILE_DIR = ensureRunnerProfileDir();
+const RUNNER_PROFILE_DIR_ABS = path.resolve(process.cwd(), RUNNER_PROFILE_DIR);
 const BROWSER_USER_DATA_DIR = RUNNER_PROFILE_PATHS.chromeProfile();
+const BROWSER_USER_DATA_DIR_ABS = path.resolve(BROWSER_USER_DATA_DIR);
 const AUTH_REQUIRED_PATH = RUNNER_PROFILE_PATHS.authRequired();
+const AUTH_OK_PATH = RUNNER_PROFILE_PATHS.authOk();
 const PIDFILE_PATH = RUNNER_PROFILE_PATHS.pidFile();
 
 async function main(): Promise<void> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           🔐 EXECUTOR AUTH - Login Repair');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  
+  // 🔍 PHASE 1: BOOT logging
+  console.log(`📋 BOOT Environment:`);
+  console.log(`   CWD: ${process.cwd()}`);
+  console.log(`   RUNNER_PROFILE_DIR (raw): ${process.env.RUNNER_PROFILE_DIR || './.runner-profile'}`);
+  console.log(`   RUNNER_PROFILE_DIR (absolute): ${RUNNER_PROFILE_DIR_ABS}`);
+  console.log(`   UserDataDir (absolute): ${BROWSER_USER_DATA_DIR_ABS}`);
+  console.log(`   HEADLESS: false`);
+  console.log(`   EXECUTION_MODE: executor`);
+  console.log('');
   
   console.log(`📋 Configuration:`);
   console.log(`   RUNNER_PROFILE_DIR: ${RUNNER_PROFILE_DIR}`);
@@ -98,6 +111,32 @@ async function main(): Promise<void> {
       resolve();
     });
   });
+  
+  // 🔍 PHASE 2: Verify login before closing and write AUTH_OK marker
+  console.log('🔍 Verifying login before closing...');
+  const { checkWhoami } = await import('../../src/utils/whoamiAuth');
+  const authResult = await checkWhoami(page);
+  
+  if (!authResult.logged_in) {
+    console.error('❌ WARNING: Not logged in after auth session');
+    console.error(`   URL: ${authResult.url}`);
+    console.error(`   Reason: ${authResult.reason}`);
+    console.error('   AUTH_OK marker will NOT be written');
+  } else {
+    console.log(`✅ Login verified: handle=${authResult.handle || 'unknown'}`);
+    
+    // Write AUTH_OK.json marker
+    const authOkData = {
+      timestamp: new Date().toISOString(),
+      handle: authResult.handle,
+      userDataDir: BROWSER_USER_DATA_DIR_ABS,
+      cwd: process.cwd(),
+      url: authResult.url,
+    };
+    
+    fs.writeFileSync(AUTH_OK_PATH, JSON.stringify(authOkData, null, 2), 'utf-8');
+    console.log(`✅ AUTH_OK marker written: ${AUTH_OK_PATH}`);
+  }
   
   console.log('🧹 Closing browser...');
   await page.close();

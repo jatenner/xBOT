@@ -18,3 +18,4 @@ This file is append-only. Each proof run adds a new row.
 | 2026-02-03T00:43:50.525Z | `control-reply-1770079190851` | `01f7b876-dc1c-4612-a886-9cdfd2bbb37b` | `2017955223415747040` | N/A | ⏳ IN PROGRESS | [`control-reply-1770079190851.md`](./control-reply-1770079190851.md) |
 | 2026-02-03T01:11:08.348Z | `control-reply-1770080773016` | `6598be9e-99f9-4b37-90de-866c46f385c4` | `2017955223415747040` | N/A | ⏳ IN PROGRESS | [`control-reply-1770080773016.md`](./control-reply-1770080773016.md) |
 | 2026-02-03T01:16:54.123Z | `control-reply-1770081144585` | `cbddf876-44b4-4ea1-b5ab-04295101a9eb` | `2017955223415747040` | N/A | ⏳ IN PROGRESS | [`control-reply-1770081144585.md`](./control-reply-1770081144585.md) |
+| 2026-02-03T01:26:23.867Z | `control-reply-1770081688551` | `d5795dfb-6999-40f3-bf61-dca79475e93c` | `2017955223415747040` | N/A | ❌ FAIL | [`control-reply-1770081688551.md`](./control-reply-1770081688551.md) |

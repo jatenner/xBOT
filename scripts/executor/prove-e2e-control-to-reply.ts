@@ -1057,6 +1057,30 @@ ${fetchedDataSection}
   }
 }
 
+async function validateAuthPersistence(): Promise<void> {
+  if (process.env.REQUIRE_AUTH_PROOF !== 'true') {
+    return; // Skip if flag not set
+  }
+
+  console.log('📋 Auth Persistence Proof (REQUIRE_AUTH_PROOF=true)...');
+  
+  try {
+    const { execSync } = await import('child_process');
+    execSync('pnpm run executor:prove:auth-persistence', {
+      stdio: 'inherit',
+      encoding: 'utf-8',
+    });
+    console.log('   ✅ Auth persistence proof passed\n');
+  } catch (error: any) {
+    console.error('\n   ❌ FATAL: Auth persistence proof failed');
+    console.error('   Executor authentication is not persistent');
+    console.error('   Fix auth persistence before running proof');
+    console.error('   Run: pnpm run executor:prove:auth-persistence');
+    console.error('   Then: pnpm run executor:auth (if needed)');
+    process.exit(1);
+  }
+}
+
 async function validateOpenAIKey(): Promise<void> {
   if (process.env.VALIDATE_OPENAI !== 'true') {
     return; // Skip if flag not set
@@ -1107,6 +1131,7 @@ async function main(): Promise<void> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
   // Validate OpenAI key if flag is set
+  await validateAuthPersistence();
   await validateOpenAIKey();
   
   // Validate TARGET_TWEET_ID - FAIL FAST

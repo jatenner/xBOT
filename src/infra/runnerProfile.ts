@@ -47,6 +47,7 @@ export const RUNNER_PROFILE_PATHS = {
   pidFile: () => getRunnerProfilePath('executor.pid'),
   stopSwitch: () => getRunnerProfilePath('STOP_EXECUTOR'),
   authRequired: () => getRunnerProfilePath('AUTH_REQUIRED'),
+  authOk: () => getRunnerProfilePath('AUTH_OK.json'),
   executorConfig: () => getRunnerProfilePath('EXECUTOR_CONFIG.json'),
   chromeProfile: () => getRunnerProfilePath('executor-chrome-profile'),
   logs: () => getRunnerProfilePath('executor.log'),

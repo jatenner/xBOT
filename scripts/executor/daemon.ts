@@ -836,6 +836,57 @@ function startHealthWatchdog(): void {
  * Main daemon loop
  */
 async function main(): Promise<void> {
+  // 🔍 PHASE 1: BOOT logging
+  const cwd = process.cwd();
+  const runnerProfileDirRaw = process.env.RUNNER_PROFILE_DIR || './.runner-profile';
+  const runnerProfileDirAbs = path.resolve(cwd, RUNNER_PROFILE_DIR);
+  const userDataDirAbs = path.resolve(BROWSER_USER_DATA_DIR);
+  
+  console.log(`[EXECUTOR_DAEMON] 📋 BOOT Environment:`);
+  console.log(`[EXECUTOR_DAEMON]    CWD: ${cwd}`);
+  console.log(`[EXECUTOR_DAEMON]    RUNNER_PROFILE_DIR (raw): ${runnerProfileDirRaw}`);
+  console.log(`[EXECUTOR_DAEMON]    RUNNER_PROFILE_DIR (absolute): ${runnerProfileDirAbs}`);
+  console.log(`[EXECUTOR_DAEMON]    UserDataDir (absolute): ${userDataDirAbs}`);
+  console.log(`[EXECUTOR_DAEMON]    HEADLESS: ${HEADLESS}`);
+  console.log(`[EXECUTOR_DAEMON]    EXECUTION_MODE: ${EXECUTION_MODE}`);
+  console.log('');
+  
+  // 🔍 PHASE 2: Check AUTH_OK marker at boot
+  const AUTH_OK_PATH = RUNNER_PROFILE_PATHS.authOk();
+  if (!fs.existsSync(AUTH_OK_PATH)) {
+    console.error(`[EXECUTOR_DAEMON] ❌ AUTH_OK marker missing: ${AUTH_OK_PATH}`);
+    console.error(`[EXECUTOR_DAEMON] 🔐 Executor requires authentication - run executor:auth first`);
+    
+    await emitLifecycleEvent('EXECUTOR_AUTH_REQUIRED', {
+      ts: new Date().toISOString(),
+      pid: daemonPid,
+      reason: 'AUTH_OK_marker_missing',
+      authOkPath: AUTH_OK_PATH,
+      userDataDir: userDataDirAbs,
+    });
+    
+    // Write AUTH_REQUIRED file
+    try {
+      fs.writeFileSync(AUTH_REQUIRED_PATH, JSON.stringify({
+        detected_at: new Date().toISOString(),
+        reason: 'AUTH_OK_marker_missing',
+      }, null, 2), 'utf-8');
+    } catch (e) {
+      // Ignore
+    }
+    
+    console.error(`[EXECUTOR_DAEMON] 🔐 Exiting - authentication required`);
+    process.exit(0);
+  } else {
+    try {
+      const authOkContent = fs.readFileSync(AUTH_OK_PATH, 'utf-8');
+      const authOkData = JSON.parse(authOkContent);
+      console.log(`[EXECUTOR_DAEMON] ✅ AUTH_OK marker found: handle=${authOkData.handle || 'unknown'}, timestamp=${authOkData.timestamp}`);
+    } catch (e) {
+      console.warn(`[EXECUTOR_DAEMON] ⚠️  AUTH_OK marker exists but unreadable: ${(e as Error).message}`);
+    }
+  }
+  
   // 🔒 FAIL-FAST: Check for OpenAI API key if RUNNER_MODE is enabled
   const runnerMode = process.env.RUNNER_MODE === 'true';
   if (runnerMode) {
@@ -875,6 +926,57 @@ async function main(): Promise<void> {
   let exitCode = 0;
   let exitReason: 'normal' | 'crash' | 'signal' = 'normal';
   let exitSignal: string | null = null;
+  
+  // 🔍 PHASE 1: BOOT logging
+  const cwd = process.cwd();
+  const runnerProfileDirRaw = process.env.RUNNER_PROFILE_DIR || './.runner-profile';
+  const runnerProfileDirAbs = path.resolve(cwd, RUNNER_PROFILE_DIR);
+  const userDataDirAbs = path.resolve(BROWSER_USER_DATA_DIR);
+  
+  console.log(`[EXECUTOR_DAEMON] 📋 BOOT Environment:`);
+  console.log(`[EXECUTOR_DAEMON]    CWD: ${cwd}`);
+  console.log(`[EXECUTOR_DAEMON]    RUNNER_PROFILE_DIR (raw): ${runnerProfileDirRaw}`);
+  console.log(`[EXECUTOR_DAEMON]    RUNNER_PROFILE_DIR (absolute): ${runnerProfileDirAbs}`);
+  console.log(`[EXECUTOR_DAEMON]    UserDataDir (absolute): ${userDataDirAbs}`);
+  console.log(`[EXECUTOR_DAEMON]    HEADLESS: ${HEADLESS}`);
+  console.log(`[EXECUTOR_DAEMON]    EXECUTION_MODE: ${EXECUTION_MODE}`);
+  console.log('');
+  
+  // 🔍 PHASE 2: Check AUTH_OK marker at boot
+  const AUTH_OK_PATH = RUNNER_PROFILE_PATHS.authOk();
+  if (!fs.existsSync(AUTH_OK_PATH)) {
+    console.error(`[EXECUTOR_DAEMON] ❌ AUTH_OK marker missing: ${AUTH_OK_PATH}`);
+    console.error(`[EXECUTOR_DAEMON] 🔐 Executor requires authentication - run executor:auth first`);
+    
+    await emitLifecycleEvent('EXECUTOR_AUTH_REQUIRED', {
+      ts: new Date().toISOString(),
+      pid: daemonPid,
+      reason: 'AUTH_OK_marker_missing',
+      authOkPath: AUTH_OK_PATH,
+      userDataDir: userDataDirAbs,
+    });
+    
+    // Write AUTH_REQUIRED file
+    try {
+      fs.writeFileSync(AUTH_REQUIRED_PATH, JSON.stringify({
+        detected_at: new Date().toISOString(),
+        reason: 'AUTH_OK_marker_missing',
+      }, null, 2), 'utf-8');
+    } catch (e) {
+      // Ignore
+    }
+    
+    console.error(`[EXECUTOR_DAEMON] 🔐 Exiting - authentication required`);
+    process.exit(0);
+  } else {
+    try {
+      const authOkContent = fs.readFileSync(AUTH_OK_PATH, 'utf-8');
+      const authOkData = JSON.parse(authOkContent);
+      console.log(`[EXECUTOR_DAEMON] ✅ AUTH_OK marker found: handle=${authOkData.handle || 'unknown'}, timestamp=${authOkData.timestamp}`);
+    } catch (e) {
+      console.warn(`[EXECUTOR_DAEMON] ⚠️  AUTH_OK marker exists but unreadable: ${(e as Error).message}`);
+    }
+  }
   
   // 🔧 A) Emit EXECUTOR_DAEMON_BOOT immediately at process start (before any async init)
   await emitLifecycleEvent('EXECUTOR_DAEMON_BOOT', {
