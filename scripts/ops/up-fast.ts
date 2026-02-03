@@ -22,6 +22,7 @@ const REQUIRE_DECISION_PROGRESS = process.env.REQUIRE_DECISION_PROGRESS === 'tru
 const REQUIRE_EXECUTION_PROOF = process.env.REQUIRE_EXECUTION_PROOF === 'true';
 const TARGET_TWEET_ID = process.env.TARGET_TWEET_ID;
 const P1_TARGET_MAX_AGE_HOURS = parseInt(process.env.P1_TARGET_MAX_AGE_HOURS || '168', 10); // Default 7 days
+const COOKIE_AUTH_MODE = process.env.COOKIE_AUTH_MODE === 'true';
 
 const paths = getRunnerPaths();
 const AUTH_OK_PATH = paths.auth_marker_path;
@@ -97,6 +98,7 @@ async function main(): Promise<void> {
   console.log(`   DELAY_MINUTES: ${DELAY_MINUTES}`);
   console.log(`   REQUIRE_DECISION_PROGRESS: ${REQUIRE_DECISION_PROGRESS}`);
   console.log(`   REQUIRE_EXECUTION_PROOF: ${REQUIRE_EXECUTION_PROOF}`);
+  console.log(`   COOKIE_AUTH_MODE: ${COOKIE_AUTH_MODE}`);
   if (REQUIRE_EXECUTION_PROOF) {
     console.log(`   TARGET_TWEET_ID: ${TARGET_TWEET_ID || 'NOT SET (will auto-pick)'}`);
     console.log(`   P1_TARGET_MAX_AGE_HOURS: ${P1_TARGET_MAX_AGE_HOURS}`);
@@ -212,13 +214,40 @@ async function main(): Promise<void> {
     console.error('OPS_UP_FAST=FAIL reason=COOKIE_NOT_PERSISTING');
     if (cookieReport) console.error(`Report: ${cookieReport}`);
     process.exit(1);
+    }
   }
   
   // STEP 4: Auth bring-up
-  logStep('STEP 4: Auth Bring-Up', 'Verifying auth read/write...');
-  try {
-    await runCommand('pnpm run executor:prove:auth-readwrite', 'Auth read/write proof');
-    recordResult('Auth Bring-Up', true);
+  if (COOKIE_AUTH_MODE) {
+    logStep('STEP 4: B64 Auth Bring-Up', 'Verifying B64 auth read/write...');
+    try {
+      await runCommand('pnpm run executor:prove:auth-b64-readwrite', 'B64 auth read/write proof');
+      recordResult('B64 Auth Bring-Up', true);
+    } catch (e: any) {
+      const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'auth', 'ops-up-fast-ledger.jsonl');
+      const ledgerDir = path.dirname(ledgerPath);
+      if (!fs.existsSync(ledgerDir)) {
+        fs.mkdirSync(ledgerDir, { recursive: true });
+      }
+      const ledgerEntry = {
+        timestamp: new Date().toISOString(),
+        passed: false,
+        reason: 'b64_auth_readwrite_failed',
+        soak_minutes: SOAK_MINUTES,
+      };
+      fs.appendFileSync(ledgerPath, JSON.stringify(ledgerEntry) + '\n', 'utf-8');
+      
+      recordResult('B64 Auth Bring-Up', false, `B64 auth read/write failed: ${e.message}`, undefined, undefined, 'pnpm run ops:update:cookies');
+      console.error('\n❌ FATAL: B64 auth bring-up failed');
+      console.error('OPS_UP_FAST=FAIL reason=b64_auth_readwrite_failed');
+      console.error('Next: pnpm run ops:update:cookies');
+      process.exit(1);
+    }
+  } else {
+    logStep('STEP 4: Auth Bring-Up', 'Verifying auth read/write...');
+    try {
+      await runCommand('pnpm run executor:prove:auth-readwrite', 'Auth read/write proof');
+      recordResult('Auth Bring-Up', true);
   } catch (e: any) {
     // Write failure to ledger
     const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'auth', 'ops-up-fast-ledger.jsonl');
@@ -291,6 +320,7 @@ async function main(): Promise<void> {
     }
     
     recordResult('Start Daemon', true);
+    }
   } catch (e: any) {
     // Write failure to ledger
     const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'auth', 'ops-up-fast-ledger.jsonl');
@@ -314,13 +344,14 @@ async function main(): Promise<void> {
   }
   
   // STEP 6: Short soak run
-  logStep('STEP 6: Short Soak Run', `Running ${SOAK_MINUTES}-minute auth persistence proof...`);
-  try {
-    await runCommand(`PROOF_DURATION_MINUTES=${SOAK_MINUTES} pnpm run executor:prove:auth-persistence`, 'Auth persistence proof');
-    
-    // Find latest auth persistence report
-    const reportsDir = path.join(process.cwd(), 'docs', 'proofs', 'auth');
-    const persistenceReport = findLatestReport('auth-persistence', reportsDir);
+  if (COOKIE_AUTH_MODE) {
+    logStep('STEP 6: Short Soak Run', `Running ${SOAK_MINUTES}-minute B64 auth persistence proof...`);
+    try {
+      await runCommand(`PROOF_DURATION_MINUTES=${SOAK_MINUTES} pnpm run executor:prove:auth-b64-persistence`, 'B64 auth persistence proof');
+      
+      // Find latest B64 auth persistence report
+      const reportsDir = path.join(process.cwd(), 'docs', 'proofs', 'auth');
+      const persistenceReport = findLatestReport('b64-auth-persistence', reportsDir);
     
     // Check report for failure classification
     if (persistenceReport && fs.existsSync(persistenceReport)) {
@@ -405,9 +436,39 @@ async function main(): Promise<void> {
       }
     }
     
-    recordResult('Short Soak Run', true, undefined, persistenceReport || undefined);
-    
-    // STEP 7: Execution proof (if required)
+      recordResult('Short Soak Run (B64)', true, undefined, persistenceReport || undefined);
+    } catch (e: any) {
+      const reportsDir = path.join(process.cwd(), 'docs', 'proofs', 'auth');
+      const persistenceReport = findLatestReport('b64-auth-persistence', reportsDir);
+      const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'auth', 'ops-up-fast-ledger.jsonl');
+      const ledgerDir = path.dirname(ledgerPath);
+      if (!fs.existsSync(ledgerDir)) {
+        fs.mkdirSync(ledgerDir, { recursive: true });
+      }
+      const ledgerEntry = {
+        timestamp: new Date().toISOString(),
+        passed: false,
+        reason: 'b64_auth_persistence_failed',
+        soak_minutes: SOAK_MINUTES,
+        report_path: persistenceReport || undefined,
+      };
+      fs.appendFileSync(ledgerPath, JSON.stringify(ledgerEntry) + '\n', 'utf-8');
+      
+      recordResult('Short Soak Run (B64)', false, `B64 auth persistence failed: ${e.message}`, persistenceReport || undefined, undefined, 'pnpm run ops:update:cookies');
+      console.error('\n❌ FATAL: B64 auth persistence proof failed');
+      console.error('OPS_UP_FAST=FAIL reason=b64_auth_persistence_failed');
+      if (persistenceReport) console.error(`Report: ${persistenceReport}`);
+      console.error('Next: pnpm run ops:update:cookies');
+      process.exit(1);
+    }
+  } else {
+    logStep('STEP 6: Short Soak Run', `Running ${SOAK_MINUTES}-minute auth persistence proof...`);
+    try {
+      await runCommand(`PROOF_DURATION_MINUTES=${SOAK_MINUTES} pnpm run executor:prove:auth-persistence`, 'Auth persistence proof');
+      
+      // Find latest auth persistence report
+      const reportsDir = path.join(process.cwd(), 'docs', 'proofs', 'auth');
+      const persistenceReport = findLatestReport('auth-persistence', reportsDir);
     if (REQUIRE_EXECUTION_PROOF) {
       logStep('STEP 7: Execution Proof', 'Running real execution proof...');
       
@@ -640,6 +701,7 @@ LIMIT 1;`;
     if (latestScreenshot) console.error(`Screenshot: ${latestScreenshot}`);
     console.error('Next: pnpm run ops:recover:x-auth');
     process.exit(1);
+    }
   }
   
   // Write to ledger
