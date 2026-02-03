@@ -1123,6 +1123,7 @@ async function validateOpenAIKey(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  const proofStartTime = Date.now();
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           🧪 PROOF LEVEL 4: CONTROL → EXECUTOR → X (REPLY)');
   if (DRY_RUN) {
@@ -1926,6 +1927,30 @@ Tweet fetch failed during proof seeding. The proof requires real tweet content a
     nodeVersion: process.version,
   };
   
+  // Extract failure classification
+  let failureClassification: string | undefined;
+  if (!pass) {
+    if (result.evidence.diagnostic_snapshot?.error_code) {
+      failureClassification = result.evidence.diagnostic_snapshot.error_code;
+    } else if (!result.control_decision_created) {
+      failureClassification = 'CONTROL_DECISION_NOT_CREATED';
+    } else if (!result.decision_queued) {
+      failureClassification = 'DECISION_NOT_QUEUED';
+    } else if (!result.decision_claimed) {
+      failureClassification = 'DECISION_NOT_CLAIMED';
+    } else if (!result.attempt_recorded && !result.success_or_failure_event_present) {
+      failureClassification = 'ATTEMPT_NOT_RECORDED';
+    } else if (!result.success_or_failure_event_present) {
+      failureClassification = 'NO_SUCCESS_OR_FAILURE_EVENT';
+    } else if (result.exactly_one_decision !== 1) {
+      failureClassification = `MULTIPLE_DECISIONS_${result.exactly_one_decision}`;
+    } else if (result.exactly_one_attempt !== 1) {
+      failureClassification = `MULTIPLE_ATTEMPTS_${result.exactly_one_attempt}`;
+    } else {
+      failureClassification = 'UNKNOWN';
+    }
+  }
+  
   const report = `# Control → Executor → X Proof (Reply)
 
 **Date:** ${new Date().toISOString()}  
@@ -2058,6 +2083,52 @@ ${!pass && result.evidence.diagnostic_snapshot?.error_code ? `\n**Failure Code:*
     // DRY_RUN: write to pointer file only
     fs.writeFileSync(reportPath, report, 'utf-8');
     console.log(`📄 Report written: ${reportPath}`);
+  }
+  
+  // Write to execution ledger (only for real execution)
+  if (EXECUTE_REAL_ACTION) {
+    const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'execution', 'execution-ledger.jsonl');
+    const ledgerDir = path.dirname(ledgerPath);
+    if (!fs.existsSync(ledgerDir)) {
+      fs.mkdirSync(ledgerDir, { recursive: true });
+    }
+    
+    // Calculate time to success if available (from start of proof to success event)
+    let timeToSuccessSeconds: number | undefined;
+    if (pass) {
+          const successEvent = result.evidence.event_ids?.[0];
+      if (successEvent) {
+        // Try to get event timestamp from DB
+        try {
+          const supabase = getSupabaseClient();
+          const { data: event } = await supabase
+            .from('system_events')
+            .select('created_at')
+            .eq('id', successEvent)
+            .single();
+          if (event?.created_at) {
+            const successTime = new Date(event.created_at).getTime();
+            timeToSuccessSeconds = Math.floor((successTime - proofStartTime) / 1000);
+          }
+        } catch (e) {
+          // Ignore - timing not critical
+        }
+      }
+    }
+    
+    const ledgerEntry = {
+      ts: new Date().toISOString(),
+      proof_type: 'e2e-control-reply' as const,
+      target_tweet_id: result.target_tweet_id,
+      decision_id: result.decision_id,
+      passed: pass,
+      failure_classification: failureClassification,
+      report_path: reportPath,
+      reply_url: result.result_url || undefined,
+      time_to_success_seconds: timeToSuccessSeconds,
+    };
+    
+    fs.appendFileSync(ledgerPath, JSON.stringify(ledgerEntry) + '\n', 'utf-8');
   }
   
   if (!pass) {

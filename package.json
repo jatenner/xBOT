@@ -106,6 +106,8 @@
     "ops:recover:x-auth": "tsx scripts/ops/recover-x-auth.ts",
     "ops:auth:status": "tsx scripts/ops/auth-status.ts",
     "ops:auth:metrics": "tsx scripts/ops/auth-metrics.ts",
+    "ops:execution:metrics": "tsx scripts/ops/execution-metrics.ts",
+    "ops:execution:status": "tsx scripts/ops/execution-status.ts",
     "ops:up:fast": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/ops/up-fast.ts",
     "harvester:daemon": "HARVESTING_ENABLED=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/harvester/daemon.ts",
     "executor:prove:15m": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-15m.ts",
