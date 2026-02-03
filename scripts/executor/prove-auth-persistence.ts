@@ -32,6 +32,13 @@ interface TickRecord {
   handle: string | null;
 }
 
+interface FailureFingerprint {
+  reason: string;
+  url: string;
+  minute: number;
+  screenshot_path: string | null;
+}
+
 interface ProofResult {
   ticks: TickRecord[];
   minutes_ok: number;
@@ -39,6 +46,7 @@ interface ProofResult {
   fail_rate: number;
   passed: boolean;
   first_failure_tick: TickRecord | null;
+  failure_fingerprints: FailureFingerprint[];
   authOkData?: any;
 }
 
@@ -49,7 +57,20 @@ async function checkLoggedInRobust(page: Page): Promise<{ logged_in: boolean; re
     
     const finalUrl = page.url();
     
-    // Check for login redirect
+    // 🔍 CLASSIFICATION: Check for challenge URLs first
+    if (finalUrl.includes('/account/access') || 
+        finalUrl.includes('/i/flow/challenge') ||
+        finalUrl.includes('/i/flow/verify') ||
+        finalUrl.includes('/account/verify')) {
+      return {
+        logged_in: false,
+        reason: 'challenge_suspected',
+        handle: null,
+        url: finalUrl,
+      };
+    }
+    
+    // 🔍 CLASSIFICATION: Check for login redirect
     if (finalUrl.includes('/i/flow/login') || finalUrl.includes('/login')) {
       return {
         logged_in: false,
@@ -57,6 +78,48 @@ async function checkLoggedInRobust(page: Page): Promise<{ logged_in: boolean; re
         handle: null,
         url: finalUrl,
       };
+    }
+    
+    // 🔍 CLASSIFICATION: Check for consent wall
+    const consentCheck = await page.evaluate(() => {
+      const bodyText = document.body.textContent || '';
+      const hasConsentWall = 
+        bodyText.includes('Accept all cookies') ||
+        bodyText.includes('Accept cookies') ||
+        bodyText.includes('cookie preferences') ||
+        bodyText.includes('cookie settings') ||
+        !!document.querySelector('[role="dialog"][aria-label*="cookie" i]') ||
+        !!document.querySelector('[data-testid*="cookie" i]') ||
+        !!document.querySelector('button:has-text("Accept")') ||
+        !!document.querySelector('button:has-text("Accept all")');
+      
+      // Check for consent flow URLs
+      const url = window.location.href;
+      const isConsentFlow = url.includes('/i/flow/consent');
+      
+      return {
+        hasConsentWall,
+        isConsentFlow,
+        bodyTextSnippet: bodyText.substring(0, 200),
+      };
+    });
+    
+    if (consentCheck.hasConsentWall || consentCheck.isConsentFlow) {
+      // Check if consent wall is actually blocking (no timeline)
+      const hasTimeline = await page.evaluate(() => {
+        return !!document.querySelector('[data-testid="primaryColumn"]') || 
+               !!document.querySelector('main') ||
+               !!document.querySelector('article[data-testid="tweet"]');
+      });
+      
+      if (!hasTimeline) {
+        return {
+          logged_in: false,
+          reason: 'consent_wall_detected',
+          handle: null,
+          url: finalUrl,
+        };
+      }
     }
     
     // Robust logged-in detection: compose box OR account menu
@@ -210,7 +273,8 @@ async function runAuthPersistenceProof(): Promise<ProofResult> {
   const page = await context.newPage();
   const ticks: TickRecord[] = [];
   let firstFailureTick: TickRecord | null = null;
-  let screenshotTaken = false;
+  const seenFailureReasons = new Set<string>(); // Track unique failure reasons for screenshots
+  const failureFingerprints: FailureFingerprint[] = [];
 
   const startTime = Date.now();
   const endTime = startTime + (PROOF_DURATION_MINUTES * 60 * 1000);
@@ -240,47 +304,64 @@ async function runAuthPersistenceProof(): Promise<ProofResult> {
       const statusIcon = tick.logged_in ? '✅' : '❌';
       console.log(`[${elapsedMinutes}m] ${statusIcon} Tick ${tickNumber}: logged_in=${tick.logged_in}, reason=${tick.reason}, handle=${tick.handle || 'N/A'}`);
       
-      // On first failure: screenshot + emit event
-      if (!tick.logged_in && !firstFailureTick) {
-        firstFailureTick = tick;
+      // 🔍 CLASSIFICATION: Handle failures with screenshots and events
+      if (!tick.logged_in) {
+        // Track first failure
+        if (!firstFailureTick) {
+          firstFailureTick = tick;
+        }
         
-        if (!screenshotTaken) {
-          screenshotTaken = true;
+        // Take screenshot for each unique failure reason (only once per run)
+        if (!seenFailureReasons.has(tick.reason)) {
+          seenFailureReasons.add(tick.reason);
+          
           const reportsDir = path.join(process.cwd(), 'docs', 'proofs', 'auth');
           if (!fs.existsSync(reportsDir)) {
             fs.mkdirSync(reportsDir, { recursive: true });
           }
-          const screenshotPath = path.join(reportsDir, `auth-persistence-fail-${Date.now()}.png`);
+          const screenshotPath = path.join(reportsDir, `auth-persistence-fail-${tick.reason}-${Date.now()}.png`);
+          
+          let screenshotSaved: string | null = null;
           try {
             await page.screenshot({ path: screenshotPath, fullPage: true });
-            console.log(`\n📸 Screenshot saved: ${screenshotPath}`);
+            screenshotSaved = screenshotPath;
+            console.log(`\n📸 Screenshot saved for reason "${tick.reason}": ${screenshotPath}`);
           } catch (e) {
             console.warn(`⚠️  Failed to take screenshot: ${(e as Error).message}`);
           }
-        }
-        
-        // Emit EXECUTOR_AUTH_INVALID event
-        try {
-          const { getSupabaseClient } = await import('../../src/db/index');
-          const supabase = getSupabaseClient();
-          await supabase.from('system_events').insert({
-            event_type: 'EXECUTOR_AUTH_INVALID',
-            severity: 'warning',
-            message: `Auth persistence proof detected login failure`,
-            event_data: {
-              final_url: tick.final_url,
-              reason: tick.reason,
-              runner_profile_dir_abs: RUNNER_PROFILE_DIR_ABS,
-              user_data_dir_abs: BROWSER_USER_DATA_DIR_ABS,
-              tick_number: tickNumber,
-              elapsed_minutes: elapsedMinutes,
-              timestamp: tick.timestamp,
-            },
-            created_at: new Date().toISOString(),
+          
+          // Store failure fingerprint
+          failureFingerprints.push({
+            reason: tick.reason,
+            url: tick.final_url,
+            minute: elapsedMinutes,
+            screenshot_path: screenshotSaved,
           });
-          console.log(`📊 Emitted EXECUTOR_AUTH_INVALID event`);
-        } catch (e) {
-          console.warn(`⚠️  Failed to emit event: ${(e as Error).message}`);
+          
+          // Emit EXECUTOR_AUTH_FAILURE_CLASSIFIED event
+          try {
+            const { getSupabaseClient } = await import('../../src/db/index');
+            const supabase = getSupabaseClient();
+            await supabase.from('system_events').insert({
+              event_type: 'EXECUTOR_AUTH_FAILURE_CLASSIFIED',
+              severity: 'warning',
+              message: `Auth persistence proof failure classified: ${tick.reason}`,
+              event_data: {
+                reason: tick.reason,
+                final_url: tick.final_url,
+                minute: elapsedMinutes,
+                runner_profile_dir_abs: paths.runner_profile_dir_abs,
+                user_data_dir_abs: paths.user_data_dir_abs,
+                screenshot_path: screenshotSaved,
+                tick_number: tickNumber,
+                timestamp: tick.timestamp,
+              },
+              created_at: new Date().toISOString(),
+            });
+            console.log(`📊 Emitted EXECUTOR_AUTH_FAILURE_CLASSIFIED event (reason: ${tick.reason})`);
+          } catch (e) {
+            console.warn(`⚠️  Failed to emit event: ${(e as Error).message}`);
+          }
         }
       }
       
@@ -318,6 +399,7 @@ async function runAuthPersistenceProof(): Promise<ProofResult> {
     fail_rate: failRate,
     passed,
     first_failure_tick: firstFailureTick,
+    failure_fingerprints,
     authOkData, // Include authOkData from earlier check
   };
 }
@@ -372,6 +454,14 @@ ${result.first_failure_tick ? `
 - **Timestamp:** ${result.first_failure_tick.timestamp}
 - **URL:** ${result.first_failure_tick.final_url}
 - **Reason:** ${result.first_failure_tick.reason}
+` : ''}
+
+${result.failure_fingerprints.length > 0 ? `
+## Failure Fingerprints
+
+| Reason | URL | Minute | Screenshot |
+|--------|-----|--------|------------|
+${result.failure_fingerprints.map(fp => `| ${fp.reason} | ${fp.url.substring(0, 60)}... | ${fp.minute} | ${fp.screenshot_path ? `[View](${fp.screenshot_path})` : 'N/A'} |`).join('\n')}
 ` : ''}
 
 ## Tick Records
@@ -437,11 +527,33 @@ async function main(): Promise<void> {
       console.log(`   URL: ${result.first_failure_tick.final_url}`);
       console.log(`   Reason: ${result.first_failure_tick.reason}`);
     }
+    
+    if (result.failure_fingerprints.length > 0) {
+      console.log(`\n📋 Failure Fingerprints (${result.failure_fingerprints.length} unique reasons):`);
+      result.failure_fingerprints.forEach(fp => {
+        console.log(`   - ${fp.reason}: minute ${fp.minute}, URL: ${fp.url.substring(0, 60)}...`);
+        if (fp.screenshot_path) {
+          console.log(`     Screenshot: ${fp.screenshot_path}`);
+        }
+      });
+    }
+    
     const loginRedirectCount = result.ticks.filter(t => t.reason === 'login_redirect').length;
+    const consentWallCount = result.ticks.filter(t => t.reason === 'consent_wall_detected').length;
+    const challengeCount = result.ticks.filter(t => t.reason === 'challenge_suspected').length;
+    
     if (loginRedirectCount > 0) {
       console.log(`\n❌ Session revocation detected (${loginRedirectCount} login_redirect events)`);
       console.log(`   Recommendation: Option 1 (browser session) unreliable`);
       console.log(`   Mean time to failure: ${result.first_failure_minute !== null ? result.first_failure_minute : 'unknown'} minutes`);
+    }
+    if (consentWallCount > 0) {
+      console.log(`\n⚠️  Consent wall detected (${consentWallCount} events)`);
+      console.log(`   Recommendation: Check consent wall handling`);
+    }
+    if (challengeCount > 0) {
+      console.log(`\n⚠️  Challenge suspected (${challengeCount} events)`);
+      console.log(`   Recommendation: Manual verification may be required`);
     }
   }
 
