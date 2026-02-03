@@ -296,18 +296,29 @@ async function main(): Promise<void> {
     console.log(`[EXECUTOR_PROVE] 📍 Step 5: Typing test text into compose box...`);
     const testText = 'P1 auth probe (no submit)';
     
-    // Wait for compose textarea
+    // Wait for compose textarea (may be contenteditable div)
     const composeTextarea = page.locator('[data-testid="tweetTextarea_0"]').first();
     await composeTextarea.waitFor({ state: 'visible', timeout: 10000 });
     
-    // Type text
-    await composeTextarea.fill(testText);
+    // Click to focus
+    await composeTextarea.click();
+    await page.waitForTimeout(500);
+    
+    // Type text (works for both textarea and contenteditable div)
+    await composeTextarea.type(testText, { delay: 50 });
     await page.waitForTimeout(1000); // Wait for text to be set
     
     // Step 7: Verify text is present and submit button is enabled
     console.log(`[EXECUTOR_PROVE] 📍 Step 6: Verifying text and submit button...`);
     
-    const textareaValue = await composeTextarea.inputValue();
+    // Get text content (works for both textarea and contenteditable)
+    const textareaValue = await composeTextarea.evaluate((el: any) => {
+      if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+        return el.value || '';
+      }
+      return el.textContent || el.innerText || '';
+    });
+    
     if (!textareaValue.includes(testText)) {
       console.error(`[EXECUTOR_PROVE] ❌ FAIL: Text not found in textarea`);
       console.error(`[EXECUTOR_PROVE]   Expected: "${testText}"`);
