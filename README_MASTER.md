@@ -84,7 +84,83 @@ railway logs --service serene-cat --lines 5 | grep "EXECUTION_MODE\|BOOT"
 
 **Success Criteria:** Both services show `EXECUTION_MODE=control` and matching SHA.
 
-### Step 2: Verify Mac Executor Status (30 seconds)
+### Step 2: Cookie Auth Mode (Alternative to Profile Auth)
+
+**Cookie Auth Mode** uses cookies from `TWITTER_SESSION_B64` instead of a persistent Chrome profile. This is useful for:
+- Control-plane (Railway) services that need cookie-based auth
+- Quick cookie refresh workflows
+- Testing cookie lifetime without maintaining a profile
+
+#### How to Refresh Cookies
+
+1. **Export cookies** from your browser (using a cookie export extension or Playwright)
+2. **Save cookies** to `.runner-profile/cookies_input.json` in Playwright format:
+   ```json
+   {
+     "cookies": [
+       {
+         "name": "auth_token",
+         "value": "...",
+         "domain": ".x.com",
+         "path": "/",
+         "expires": -1,
+         "httpOnly": true,
+         "secure": true,
+         "sameSite": "None"
+       }
+     ]
+   }
+   ```
+3. **Run update command:**
+   ```bash
+   pnpm run ops:update:cookies
+   ```
+   This will:
+   - Read cookies from `.runner-profile/cookies_input.json` (or `COOKIE_INPUT_PATH`)
+   - Normalize and duplicate for both `.x.com` and `.twitter.com` domains
+   - Encode to B64 and update `.env.local` with `TWITTER_SESSION_B64`
+   - Verify auth with `executor:prove:auth-b64-readwrite`
+   - Create/update `AUTH_OK.json` marker with `cookie_auth_mode=true`
+
+#### How to Prove Auth Works
+
+**Quick proof (read/write access):**
+```bash
+TWITTER_SESSION_B64=<b64> pnpm run executor:prove:auth-b64-readwrite
+```
+
+**Persistence proof (measure cookie lifetime):**
+```bash
+PROOF_DURATION_MINUTES=30 TWITTER_SESSION_B64=<b64> pnpm run executor:prove:auth-b64-persistence
+```
+
+**What PASS means:**
+- ✅ No login redirects for full duration
+- ✅ No challenge URLs detected
+- ✅ Logged-in state verified every 60 seconds
+- ✅ Report written to `docs/proofs/auth/b64-auth-persistence-<ts>.md`
+
+**What FAIL means:**
+- ❌ Login redirect detected → cookies expired/invalid
+- ❌ Challenge detected → X.com verification required (manual intervention)
+- ❌ Consent wall → should be auto-dismissed, but may need retry
+- Check report for failure fingerprint and screenshot
+
+#### How to Bring System Up (Cookie Auth Mode)
+
+```bash
+COOKIE_AUTH_MODE=true SOAK_MINUTES=20 pnpm run ops:up:fast
+```
+
+This will:
+1. ✅ Preflight: OpenAI drift/validation
+2. ✅ Run `executor:prove:auth-b64-readwrite` (verify cookies work)
+3. ✅ Run `executor:prove:auth-b64-persistence` for `SOAK_MINUTES` (measure lifetime)
+4. ✅ Output: `OPS_UP_FAST=PASS minutes_ok=<n>` or `OPS_UP_FAST=FAIL reason=<classification>`
+
+**Note:** Cookie auth mode skips daemon start (executor uses profile auth). Use this for control-plane verification only.
+
+### Step 3: Verify Mac Executor Status (30 seconds)
 
 ```bash
 # Check executor status
@@ -1718,117 +1794,6 @@ We must build:
 - style variation
 - evidence-based claims (avoid hallucination)
 - "human-like" pacing constraints (even if high volume, avoid robotic intervals)
-
----
-
-## Cookie Auth Mode
-
-**Purpose:** Alternative authentication workflow using B64 cookie injection instead of persistent Chrome profile. Useful for measuring cookie lifetime and fast cookie refresh without manual browser interaction.
-
-### How to Refresh Cookies
-
-**Step 1: Export cookies from browser**
-- Open Chrome DevTools (F12) on x.com
-- Run in console:
-  ```javascript
-  copy(JSON.stringify(document.cookie.split("; ").map(c => {
-    const [name, ...v] = c.split("=");
-    return { name, value: v.join("="), domain: ".x.com", path: "/", secure: true, sameSite: "None" };
-  })))
-  ```
-- Paste into `.runner-profile/cookies_input.json`
-
-**Step 2: Update cookies**
-```bash
-pnpm run ops:update:cookies
-```
-
-This will:
-- Read cookies from `.runner-profile/cookies_input.json` (or `COOKIE_INPUT_PATH`)
-- Normalize to Playwright format
-- Encode to B64 and update `.env.local` (and `.env` if exists)
-- Run `executor:prove:auth-b64-readwrite` to verify
-- Create/update `AUTH_OK.json` marker with `cookie_auth_mode=true`
-
-**On Success:** Cookies are updated and verified.  
-**On Failure:** Prints reason + report/screenshot paths, exits non-zero.
-
-### How to Prove Auth Works
-
-**Quick read/write proof:**
-```bash
-TWITTER_SESSION_B64=<b64> pnpm run executor:prove:auth-b64-readwrite
-```
-
-**Persistence proof (measures cookie lifetime):**
-```bash
-PROOF_DURATION_MINUTES=30 TWITTER_SESSION_B64=<b64> pnpm run executor:prove:auth-b64-persistence
-```
-
-**What PASS means:**
-- ✅ No login redirect for full duration
-- ✅ No challenge_suspected events
-- ✅ Logged-in state verified every 60 seconds
-- ✅ Report written to `docs/proofs/auth/b64-auth-persistence-<ts>.md`
-
-**What FAIL means:**
-- ❌ Login redirect detected → cookies expired/revoked
-- ❌ Challenge suspected → X.com verification required (manual intervention)
-- ❌ Consent wall blocking → may need dismissal logic
-- Check report for failure fingerprints and screenshot paths
-
-### How to Bring System Up
-
-**Full bring-up with cookie auth:**
-```bash
-COOKIE_AUTH_MODE=true pnpm run ops:up:fast
-```
-
-**What this does:**
-1. Preflight: OpenAI drift/validation
-2. B64 auth read/write proof
-3. B64 auth persistence proof (SOAK_MINUTES, default 20)
-4. **Skips:** Cookie persistence checks (not applicable for B64 mode)
-5. **Skips:** Daemon start (daemon uses persistent profile, not B64)
-
-**Output:**
-- `OPS_UP_FAST=PASS minutes_ok=<n>` if all proofs pass
-- `OPS_UP_FAST=FAIL reason=<classification> report=<path>` if any proof fails
-
-**What to do on FAIL:**
-- `reason=b64_auth_readwrite_failed` → Run `pnpm run ops:update:cookies` to refresh cookies
-- `reason=b64_auth_persistence_failed` → Check report for failure classification:
-  - `login_redirect` → Cookies expired, refresh with `pnpm run ops:update:cookies`
-  - `challenge_suspected` → Manual verification required (X.com challenge)
-  - `consent_wall_detected` → May need consent dismissal logic
-
-### Cookie Format
-
-**Expected format (Playwright cookie array JSON):**
-```json
-[
-  {
-    "name": "auth_token",
-    "value": "...",
-    "domain": ".x.com",
-    "path": "/",
-    "expires": 1234567890,
-    "httpOnly": true,
-    "secure": true,
-    "sameSite": "None"
-  }
-]
-```
-
-**Or session object format:**
-```json
-{
-  "cookies": [
-    { "name": "auth_token", "value": "...", "domain": ".x.com", ... }
-  ],
-  "origins": []
-}
-```
 
 ---
 
