@@ -1355,6 +1355,42 @@ async function main(): Promise<void> {
           if (context && page) {
             const authPage = await context.newPage();
             try {
+              await authPage.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
+              await authPage.waitForTimeout(2000);
+              
+              // 🔍 BUCKET B: Dismiss consent wall if present
+              const { detectConsentWall, acceptConsentWall } = await import('../../src/playwright/twitterSession');
+              const consentDetection = await detectConsentWall(authPage);
+              
+              if (consentDetection.detected && consentDetection.wallType === 'consent') {
+                console.log(`[EXECUTOR_AUTH_PREFLIGHT] 🚧 Consent wall detected during backoff recheck, attempting dismissal...`);
+                const consentResult = await acceptConsentWall(authPage, 2);
+                if (consentResult.cleared) {
+                  console.log(`[EXECUTOR_AUTH_PREFLIGHT] ✅ Consent dismissed (attempts: ${consentResult.attempts})`);
+                  await authPage.waitForTimeout(2000);
+                }
+              }
+              
+              // 🔍 BUCKET C: Check for challenge
+              const currentUrl = authPage.url();
+              if (currentUrl.includes('/account/access') || 
+                  currentUrl.includes('/i/flow/challenge') ||
+                  currentUrl.includes('/i/flow/verify') ||
+                  currentUrl.includes('/account/verify')) {
+                console.error(`[EXECUTOR_AUTH_PREFLIGHT] ❌ Challenge still present: ${currentUrl}`);
+                authPreflightBackoffUntil = Date.now() + AUTH_PREFLIGHT_BACKOFF_MS;
+                await emitLifecycleEvent('EXECUTOR_AUTH_CHALLENGE_DETECTED', {
+                  ts: new Date().toISOString(),
+                  pid: daemonPid,
+                  reason: 'challenge_suspected_after_backoff',
+                  url: currentUrl,
+                  runner_profile_dir_abs: paths.runner_profile_dir_abs,
+                  user_data_dir_abs: paths.user_data_dir_abs,
+                });
+                await new Promise(resolve => setTimeout(resolve, 60000));
+                continue;
+              }
+              
               const { checkWhoami } = await import('../../src/utils/whoamiAuth');
               const authResult = await checkWhoami(authPage);
               
