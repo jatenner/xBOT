@@ -1260,6 +1260,25 @@ Tweet fetch failed during proof seeding. The proof requires real tweet content a
     console.error(`\n📄 FAIL report written: ${reportPath}`);
     console.error(`📄 INDEX.md row appended`);
     
+    // Write to execution ledger
+    if (EXECUTE_REAL_ACTION) {
+      const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'execution', 'execution-ledger.jsonl');
+      const ledgerDir = path.dirname(ledgerPath);
+      if (!fs.existsSync(ledgerDir)) {
+        fs.mkdirSync(ledgerDir, { recursive: true });
+      }
+      const ledgerEntry = {
+        ts: new Date().toISOString(),
+        proof_type: 'e2e-control-reply' as const,
+        target_tweet_id: targetTweetId,
+        decision_id: 'N/A',
+        passed: false,
+        failure_classification: errorCode,
+        report_path: reportPath,
+      };
+      fs.appendFileSync(ledgerPath, JSON.stringify(ledgerEntry) + '\n', 'utf-8');
+    }
+    
     process.exit(1);
   }
   
@@ -2170,7 +2189,31 @@ ${!pass && result.evidence.diagnostic_snapshot?.error_code ? `\n**Failure Code:*
   }
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error('❌ Fatal error:', error);
+  
+  // Write to execution ledger on fatal error
+  if (EXECUTE_REAL_ACTION) {
+    try {
+      const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'execution', 'execution-ledger.jsonl');
+      const ledgerDir = path.dirname(ledgerPath);
+      if (!fs.existsSync(ledgerDir)) {
+        fs.mkdirSync(ledgerDir, { recursive: true });
+      }
+      const ledgerEntry = {
+        ts: new Date().toISOString(),
+        proof_type: 'e2e-control-reply' as const,
+        target_tweet_id: process.env.TARGET_TWEET_ID || undefined,
+        decision_id: proofState.decisionId || undefined,
+        passed: false,
+        failure_classification: 'FATAL_ERROR',
+        report_path: proofState.reportPath || undefined,
+      };
+      fs.appendFileSync(ledgerPath, JSON.stringify(ledgerEntry) + '\n', 'utf-8');
+    } catch (e) {
+      // Ignore ledger write failures
+    }
+  }
+  
   process.exit(1);
 });

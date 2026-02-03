@@ -1882,7 +1882,30 @@ ${result.evidence.claim_event_count !== undefined ? `\n**Claim Event Count:** ${
   }
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error('❌ Fatal error:', error);
+  
+  // Write to execution ledger on fatal error
+  if (EXECUTE_REAL_ACTION) {
+    try {
+      const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'execution', 'execution-ledger.jsonl');
+      const ledgerDir = path.dirname(ledgerPath);
+      if (!fs.existsSync(ledgerDir)) {
+        fs.mkdirSync(ledgerDir, { recursive: true });
+      }
+      const ledgerEntry = {
+        ts: new Date().toISOString(),
+        proof_type: 'e2e-control-post' as const,
+        decision_id: proofState.decisionId || undefined,
+        passed: false,
+        failure_classification: 'FATAL_ERROR',
+        report_path: proofState.reportPath || undefined,
+      };
+      fs.appendFileSync(ledgerPath, JSON.stringify(ledgerEntry) + '\n', 'utf-8');
+    } catch (e) {
+      // Ignore ledger write failures
+    }
+  }
+  
   process.exit(1);
 });
