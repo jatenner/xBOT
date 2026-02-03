@@ -6,6 +6,7 @@
  * 
  * Usage:
  *   SOAK_MINUTES=20 DELAY_MINUTES=5 pnpm run ops:up:fast
+ *   REQUIRE_EXECUTION_PROOF=true TARGET_TWEET_ID=1234567890123456789 pnpm run ops:up:fast
  */
 
 import 'dotenv/config';
@@ -17,6 +18,8 @@ import { getRunnerPaths } from '../../src/infra/runnerProfile';
 const SOAK_MINUTES = parseInt(process.env.SOAK_MINUTES || '20', 10);
 const DELAY_MINUTES = parseInt(process.env.DELAY_MINUTES || '5', 10);
 const REQUIRE_DECISION_PROGRESS = process.env.REQUIRE_DECISION_PROGRESS === 'true';
+const REQUIRE_EXECUTION_PROOF = process.env.REQUIRE_EXECUTION_PROOF === 'true';
+const TARGET_TWEET_ID = process.env.TARGET_TWEET_ID;
 
 const paths = getRunnerPaths();
 const AUTH_OK_PATH = paths.auth_marker_path;
@@ -72,7 +75,7 @@ async function runCommand(command: string, description: string, allowFailure: bo
 function findLatestReport(pattern: string, dir: string): string | null {
   if (!fs.existsSync(dir)) return null;
   const files = fs.readdirSync(dir)
-    .filter(f => f.includes(pattern))
+    .filter(f => f.includes(pattern) && (f.endsWith('.md') || f.endsWith('.jsonl')))
     .map(f => ({
       name: f,
       path: path.join(dir, f),
@@ -91,6 +94,10 @@ async function main(): Promise<void> {
   console.log(`   SOAK_MINUTES: ${SOAK_MINUTES}`);
   console.log(`   DELAY_MINUTES: ${DELAY_MINUTES}`);
   console.log(`   REQUIRE_DECISION_PROGRESS: ${REQUIRE_DECISION_PROGRESS}`);
+  console.log(`   REQUIRE_EXECUTION_PROOF: ${REQUIRE_EXECUTION_PROOF}`);
+  if (REQUIRE_EXECUTION_PROOF) {
+    console.log(`   TARGET_TWEET_ID: ${TARGET_TWEET_ID || 'NOT SET (required)'}`);
+  }
   console.log(`   runner_profile_dir_abs: ${paths.runner_profile_dir_abs}`);
   console.log('');
   
@@ -396,6 +403,110 @@ async function main(): Promise<void> {
     }
     
     recordResult('Short Soak Run', true, undefined, persistenceReport || undefined);
+    
+    // STEP 7: Execution proof (if required)
+    if (REQUIRE_EXECUTION_PROOF) {
+      logStep('STEP 7: Execution Proof', 'Running real execution proof...');
+      
+      if (!TARGET_TWEET_ID) {
+        recordResult('Execution Proof', false, 'TARGET_TWEET_ID not provided', undefined, undefined, 'Set TARGET_TWEET_ID environment variable');
+        console.error('\n❌ FATAL: REQUIRE_EXECUTION_PROOF=true but TARGET_TWEET_ID not set');
+        console.error('OPS_UP_FAST=FAIL reason=EXECUTION_PROOF_FAILED classification=TARGET_TWEET_ID_MISSING');
+        process.exit(1);
+      }
+      
+      try {
+        console.log(`\n📋 Running execution proof with TARGET_TWEET_ID=${TARGET_TWEET_ID}...`);
+        await runCommand(
+          `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=${TARGET_TWEET_ID} pnpm run executor:prove:e2e-control-reply`,
+          'Execution proof (e2e-control-reply)'
+        );
+        
+        // Find latest execution report
+        const executionReportsDir = path.join(process.cwd(), 'docs', 'proofs', 'control-reply');
+        const executionReport = findLatestReport('control-reply-', executionReportsDir);
+        
+        // Check ledger for this run
+        const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'execution', 'execution-ledger.jsonl');
+        let executionClassification: string | undefined;
+        if (fs.existsSync(ledgerPath)) {
+          try {
+            const lines = fs.readFileSync(ledgerPath, 'utf-8')
+              .split('\n')
+              .filter(line => line.trim().length > 0);
+            if (lines.length > 0) {
+              const lastEntry = JSON.parse(lines[lines.length - 1]);
+              if (lastEntry.proof_type === 'e2e-control-reply' && lastEntry.target_tweet_id === TARGET_TWEET_ID) {
+                if (lastEntry.passed) {
+                  recordResult('Execution Proof', true, undefined, executionReport || undefined);
+                  console.log('\n✅ Execution proof PASSED');
+                  console.log(`   Reply URL: ${lastEntry.reply_url || 'N/A'}`);
+                  console.log(`   Report: ${executionReport || 'N/A'}`);
+                } else {
+                  executionClassification = lastEntry.failure_classification || 'UNKNOWN';
+                  recordResult('Execution Proof', false, executionClassification, executionReport || undefined, undefined, 'Check execution report for details');
+                  console.error('\n❌ Execution proof FAILED');
+                  console.error(`   Classification: ${executionClassification}`);
+                  console.error(`   Report: ${executionReport || 'N/A'}`);
+                  console.error('OPS_UP_FAST=FAIL reason=EXECUTION_PROOF_FAILED');
+                  if (executionClassification) {
+                    console.error(`classification=${executionClassification}`);
+                  }
+                  if (executionReport) {
+                    console.error(`report=${executionReport}`);
+                  }
+                  process.exit(1);
+                }
+              }
+            }
+          } catch (e) {
+            // Ignore ledger read errors
+          }
+        }
+        
+        // If ledger check didn't confirm pass, assume failure
+        if (executionClassification === undefined) {
+          recordResult('Execution Proof', false, 'UNKNOWN', executionReport || undefined, undefined, 'Check execution report for details');
+          console.error('\n❌ Execution proof result unclear');
+          console.error('OPS_UP_FAST=FAIL reason=EXECUTION_PROOF_FAILED classification=UNKNOWN');
+          if (executionReport) {
+            console.error(`report=${executionReport}`);
+          }
+          process.exit(1);
+        }
+      } catch (e: any) {
+        const executionReportsDir = path.join(process.cwd(), 'docs', 'proofs', 'control-reply');
+        const executionReport = findLatestReport('control-reply-', executionReportsDir);
+        
+        // Try to get classification from ledger
+        let executionClassification = 'UNKNOWN';
+        const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'execution', 'execution-ledger.jsonl');
+        if (fs.existsSync(ledgerPath)) {
+          try {
+            const lines = fs.readFileSync(ledgerPath, 'utf-8')
+              .split('\n')
+              .filter(line => line.trim().length > 0);
+            if (lines.length > 0) {
+              const lastEntry = JSON.parse(lines[lines.length - 1]);
+              if (lastEntry.proof_type === 'e2e-control-reply' && lastEntry.target_tweet_id === TARGET_TWEET_ID) {
+                executionClassification = lastEntry.failure_classification || 'UNKNOWN';
+              }
+            }
+          } catch (e) {
+            // Ignore
+          }
+        }
+        
+        recordResult('Execution Proof', false, executionClassification, executionReport || undefined, undefined, 'Check execution report for details');
+        console.error('\n❌ FATAL: Execution proof failed');
+        console.error('OPS_UP_FAST=FAIL reason=EXECUTION_PROOF_FAILED');
+        console.error(`classification=${executionClassification}`);
+        if (executionReport) {
+          console.error(`report=${executionReport}`);
+        }
+        process.exit(1);
+      }
+    }
   } catch (e: any) {
     const reportsDir = path.join(process.cwd(), 'docs', 'proofs', 'auth');
     const persistenceReport = findLatestReport('auth-persistence', reportsDir);
@@ -485,6 +596,9 @@ async function main(): Promise<void> {
   // SUCCESS
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           ✅ ALL STEPS PASSED');
+  if (REQUIRE_EXECUTION_PROOF) {
+    console.log('           (Execution verified)');
+  }
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
   console.log('📊 Summary:');
@@ -494,6 +608,9 @@ async function main(): Promise<void> {
   });
   
   console.log('\n✅ OPS_UP_FAST=PASS');
+  if (REQUIRE_EXECUTION_PROOF) {
+    console.log('   Execution verified: Real reply proof passed');
+  }
   process.exit(0);
 }
 
