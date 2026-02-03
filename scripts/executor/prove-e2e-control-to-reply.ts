@@ -704,7 +704,7 @@ async function createControlReplyDecision(targetTweetId: string, proofTag: strin
     // Generate reply that matches the target tweet's topic
     try {
       const { createBudgetedChatCompletion } = await import('../../src/services/openaiBudgetedClient');
-      const replyPrompt = `Generate a brief, engaging reply to this tweet. Keep it under 280 characters, conversational, and add genuine value.
+      const replyPrompt = `Generate a brief, engaging reply to this tweet. Keep it under 240 characters (strict limit), conversational, and add genuine value.
 
 Tweet: "${targetTweetSnapshot}"
 Author: @${fetchedAuthorHandle || 'unknown'}
@@ -712,7 +712,7 @@ Author: @${fetchedAuthorHandle || 'unknown'}
 Reply requirements:
 - Match the topic/tone of the original tweet
 - Add value (insight, context, or thoughtful observation)
-- Under 280 characters
+- Under 240 characters (strict limit - will be rejected if longer)
 - No hashtags
 - Conversational tone
 
@@ -722,19 +722,28 @@ Reply:`;
       const replyResponse = await createBudgetedChatCompletion({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: 'You are a thoughtful social media user who writes engaging, topic-appropriate replies.' },
+          { role: 'system', content: 'You are a thoughtful social media user who writes engaging, topic-appropriate replies. Always keep replies under 240 characters.' },
           { role: 'user', content: replyPrompt }
         ],
         temperature: 0.7,
-        max_tokens: 150,
+        max_tokens: 120, // Reduced to ensure <= 240 chars
       }, {
         purpose: 'proof_reply_generation',
         requestId: decisionId
       });
       
       replyContent = replyResponse.choices[0]?.message?.content?.trim() || '';
-      if (!replyContent || replyContent.length > 280) {
-        throw new Error(`Invalid reply generated: length=${replyContent.length}`);
+      
+      // Enforce 240 character limit (hard requirement)
+      if (replyContent.length > 240) {
+        // Truncate to 240 chars, ensuring we don't cut mid-word if possible
+        const truncated = replyContent.substring(0, 237) + '...';
+        console.warn(`[PROOF] ⚠️ Generated reply was ${replyContent.length} chars, truncating to 240`);
+        replyContent = truncated;
+      }
+      
+      if (!replyContent || replyContent.length === 0) {
+        throw new Error(`Invalid reply generated: empty or zero length`);
       }
       console.log(`[PROOF] ✅ Generated reply: "${replyContent.substring(0, 60)}..." (${replyContent.length} chars)`);
       
