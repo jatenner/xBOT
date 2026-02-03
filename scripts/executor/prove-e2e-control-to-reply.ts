@@ -1054,15 +1054,35 @@ async function validateOpenAIKey(): Promise<void> {
   }
 
   console.log('📋 OpenAI Key Validation (VALIDATE_OPENAI=true)...');
+  
+  // Step 1: Check for drift between local and Railway
+  console.log('   Step 1: Checking for key drift...');
+  try {
+    const { execSync } = await import('child_process');
+    execSync('pnpm run ops:check:openai-drift', {
+      stdio: 'inherit',
+      encoding: 'utf-8',
+    });
+    console.log('   ✅ No key drift detected\n');
+  } catch (error: any) {
+    console.error('\n   ❌ FATAL: OpenAI key drift detected');
+    console.error('   Local and Railway keys do not match');
+    console.error('   Fix key drift before running proof');
+    console.error('   Run: pnpm run ops:check:openai-drift');
+    process.exit(1);
+  }
+  
+  // Step 2: Validate key works
+  console.log('   Step 2: Validating key works...');
   try {
     const { execSync } = await import('child_process');
     execSync('pnpm run ops:validate:openai', {
       stdio: 'inherit',
       encoding: 'utf-8',
     });
-    console.log('✅ OpenAI key validation passed\n');
+    console.log('   ✅ OpenAI key validation passed\n');
   } catch (error: any) {
-    console.error('\n❌ FATAL: OpenAI key validation failed');
+    console.error('\n   ❌ FATAL: OpenAI key validation failed');
     console.error('   Fix the API key before running proof');
     console.error('   Run: pnpm run ops:validate:openai');
     process.exit(1);
