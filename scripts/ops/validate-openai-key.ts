@@ -12,9 +12,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { createBudgetedChatCompletion } from '../../src/services/openaiBudgetedClient';
 
 // Load .env.local first (preferred), then .env (same pattern as daemon)
+// MUST load before importing openaiBudgetedClient (it initializes singleton)
 const envLocalPath = path.join(process.cwd(), '.env.local');
 const envPath = path.join(process.cwd(), '.env');
 
@@ -23,6 +23,9 @@ if (fs.existsSync(envLocalPath)) {
 } else if (fs.existsSync(envPath)) {
   require('dotenv').config({ path: envPath });
 }
+
+// Import after dotenv is loaded
+import { createBudgetedChatCompletion } from '../../src/services/openaiBudgetedClient';
 
 /**
  * Mask API key for logging (show first 6 chars + last 4 chars)

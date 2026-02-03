@@ -9,7 +9,6 @@
  *   pnpm run ops:fingerprint:openai
  */
 
-import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -22,6 +21,8 @@ if (fs.existsSync(envLocalPath)) {
 } else if (fs.existsSync(envPath)) {
   require('dotenv').config({ path: envPath });
 }
+
+import * as crypto from 'crypto';
 
 /**
  * Mask API key for logging (show first 6 chars + last 4 chars)
