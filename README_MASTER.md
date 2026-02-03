@@ -130,21 +130,36 @@ TWITTER_SESSION_B64=<b64> pnpm run executor:prove:auth-b64-readwrite
 ```
 
 **Persistence proof (measure cookie lifetime):**
+
+**Recommended (lightweight checks + periodic reload):**
 ```bash
-PROOF_DURATION_MINUTES=30 TWITTER_SESSION_B64=<b64> pnpm run executor:prove:auth-b64-persistence
+PROOF_DURATION_MINUTES=30 TICK_SECONDS=60 RELOAD_INTERVAL_MINUTES=7 HUMAN_JITTER=true pnpm run executor:prove:auth-b64-persistence
 ```
+
+**Baseline (navigates every tick):**
+```bash
+PROOF_DURATION_MINUTES=30 pnpm run executor:prove:auth-b64-persistence
+```
+
+**Environment Variables:**
+- `PROOF_DURATION_MINUTES` - Test duration (default: 30)
+- `TICK_SECONDS` - Check interval for lightweight DOM checks (default: 60)
+- `RELOAD_INTERVAL_MINUTES` - Full page reload interval with jitter (default: 7)
+- `HUMAN_JITTER` - Enable ±20% jitter on reload timing (default: false)
 
 **What PASS means:**
 - ✅ No login redirects for full duration
 - ✅ No challenge URLs detected
-- ✅ Logged-in state verified every 60 seconds
+- ✅ Logged-in state verified (lightweight checks + periodic reloads)
 - ✅ Report written to `docs/proofs/auth/b64-auth-persistence-<ts>.md`
+- ✅ Forensics show cookies stable throughout
 
 **What FAIL means:**
 - ❌ Login redirect detected → cookies expired/invalid
 - ❌ Challenge detected → X.com verification required (manual intervention)
 - ❌ Consent wall → should be auto-dismissed, but may need retry
-- Check report for failure fingerprint and screenshot
+- ❌ Unknown failure → check forensics snapshot for cookie state
+- Check report for failure fingerprint, screenshot, and forensics comparison
 
 #### How to Bring System Up (Cookie Auth Mode)
 
@@ -165,24 +180,38 @@ This will:
 **Two-gate proof sequence** for comprehensive cookie auth verification:
 
 **Gate 1: 60-Minute Persistence Proof**
+
+**Recommended Command (with lightweight checks + periodic reload):**
+```bash
+PROOF_DURATION_MINUTES=60 TICK_SECONDS=60 RELOAD_INTERVAL_MINUTES=7 HUMAN_JITTER=true pnpm run executor:prove:auth-b64-persistence
+```
+
+**What This Does:**
+- ✅ Keeps page open between checks (avoids pattern detection)
+- ✅ Lightweight DOM checks every `TICK_SECONDS` (default 60s)
+- ✅ Only reloads/navigates every `RELOAD_INTERVAL_MINUTES` (default 7 min) with ±20% jitter
+- ✅ Reduces navigation frequency from every tick to every 5-10 minutes
+
+**Alternative (baseline, navigates every tick):**
 ```bash
 PROOF_DURATION_MINUTES=60 pnpm run executor:prove:auth-b64-persistence
 ```
 
 **What PASS means:**
-- ✅ Auth persisted for full 60 minutes
+- ✅ Auth persisted for full duration
 - ✅ No login redirects detected
 - ✅ No challenge URLs detected
-- ✅ Logged-in state verified every 60 seconds
+- ✅ Logged-in state verified (lightweight checks + periodic reloads)
 - ✅ Report written to `docs/proofs/auth/b64-auth-persistence-<ts>.md`
 
 **What FAIL means:**
 - ❌ Login redirect detected → cookies expired/invalid
 - ❌ Challenge detected → X.com verification required (manual intervention)
 - ❌ Consent wall → check report for details
-- **Action:** Check report for failure classification, screenshot paths, and exact failure minute
+- ❌ Unknown failure → check forensics snapshot for cookie state
+- **Action:** Check report for failure classification, screenshot paths, forensics snapshot, and exact failure minute
 
-**If Gate 1 FAILS:** Stop here. Check the persistence report for failure classification and screenshot paths. Cookies may need to be refreshed.
+**If Gate 1 FAILS:** Stop here. Check the persistence report for failure classification, screenshot paths, and forensics comparison. Cookies may need to be refreshed or strategy adjusted.
 
 **Gate 2: System Bring-Up with Execution Proof** (only if Gate 1 PASSES)
 ```bash
@@ -272,8 +301,34 @@ tsx scripts/ops/analyze-auth-persistence-root-cause.ts
 **Next Action if FAIL:**
 Based on determination in `AUTH_PERSISTENCE_ROOT_CAUSE.md`:
 1. If EXPIRY/ROTATION: Implement cookie refresh or migrate to storageState
-2. If REVOCATION_BY_PATTERN: Adjust daemon cadence to 180s+ with jitter
+2. If REVOCATION_BY_PATTERN: Use lightweight checks + periodic reload strategy (see Recommended Cadence below)
 3. If COOKIE_ONLY_INSUFFICIENT: Migrate to Playwright storageState or persistent userDataDir
+
+**Recommended Cadence Settings:**
+
+For long-running autonomy (≥60 min persistence), use lightweight checks with periodic reloads:
+
+- **Tick Interval (`TICK_SECONDS`):** 60-300 seconds
+  - Lightweight DOM checks without navigation
+  - Verifies logged-in state using existing page DOM
+  
+- **Reload Interval (`RELOAD_INTERVAL_MINUTES`):** 7-10 minutes with jitter
+  - Full page reload/navigation only when needed
+  - ±20% jitter applied when `HUMAN_JITTER=true`
+  - Reduces pattern detection from frequent navigation
+
+- **Strategy:** Keep page open between reloads, use lightweight checks for frequent verification
+
+**Example (Recommended):**
+```bash
+PROOF_DURATION_MINUTES=60 TICK_SECONDS=180 RELOAD_INTERVAL_MINUTES=7 HUMAN_JITTER=true pnpm run executor:prove:auth-b64-persistence
+```
+
+**Why This Works:**
+- Avoids pattern detection from frequent `/home` navigation
+- Lightweight checks are fast and don't trigger navigation events
+- Periodic reloads refresh page state without being too aggressive
+- Jitter makes timing less predictable (more human-like)
 
 ### Step 3: Verify Mac Executor Status (30 seconds)
 
