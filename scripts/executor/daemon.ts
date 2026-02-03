@@ -838,6 +838,11 @@ function startHealthWatchdog(): void {
 async function main(): Promise<void> {
   const daemonPid = process.pid;
   
+  // 🔍 PHASE 2: Auth preflight state (must be accessible in main loop)
+  let authPreflightPassed = false;
+  let authPreflightBackoffUntil: number | null = null;
+  const AUTH_PREFLIGHT_BACKOFF_MS = 6 * 60 * 60 * 1000; // 6 hours
+  
   // 🔍 PHASE 1: BOOT logging
   const cwd = process.cwd();
   const runnerProfileDirRaw = process.env.RUNNER_PROFILE_DIR || './.runner-profile';
@@ -1065,11 +1070,7 @@ async function main(): Promise<void> {
       phase: 'browser_ready',
     });
     
-    // 🔍 PHASE 2: Auth preflight before claiming decisions
-    let authPreflightPassed = false;
-    let authPreflightBackoffUntil: number | null = null;
-    const AUTH_PREFLIGHT_BACKOFF_MS = 6 * 60 * 60 * 1000; // 6 hours
-    
+    // 🔍 PHASE 2: Auth preflight before claiming decisions (runs once at startup)
     try {
       if (context && page) {
         const authPage = await context.newPage();
