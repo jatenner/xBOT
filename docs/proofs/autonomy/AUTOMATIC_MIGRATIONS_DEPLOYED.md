@@ -72,12 +72,13 @@ Implemented automatic database migration system using DATABASE_URL with CLI runn
 
 **Migration:** `20260203_rate_controller_schema.sql`
 
-**Applied via:** `scripts/db/apply-rate-controller-migration.ts` (workaround script)
+**Applied via:** `pnpm run db:migrate` (standard migration runner)
 
-**Reason for Workaround:**
-- `content_metadata` is a VIEW, not a TABLE
-- Underlying table: `content_generation_metadata_comprehensive`
-- Migration alters underlying table, then view can be updated separately
+**Migration Files:**
+1. `20260203_rate_controller_schema.sql` - Adds columns to underlying table and creates weight tables
+2. `20260203_update_content_metadata_view.sql` - Updates view to include new columns
+
+**Note:** `scripts/db/apply-rate-controller-migration.ts` is historical rescue script (no longer needed)
 
 **Applied Changes:**
 - ✅ Added `prompt_version` column to `content_generation_metadata_comprehensive`
@@ -92,9 +93,9 @@ Implemented automatic database migration system using DATABASE_URL with CLI runn
 - ✅ Recorded in `schema_migrations` table
 
 **View Update:**
-- ⚠️ `content_metadata` view needs manual update to include new columns
-- Columns exist in underlying table and are accessible via direct queries
-- View update can be done via separate migration if needed
+- ✅ `content_metadata` view updated via `20260203_update_content_metadata_view.sql`
+- View now includes: `prompt_version`, `strategy_id`, `hour_bucket`, `outcome_score`
+- All columns accessible via standard `.from('content_metadata')` queries
 
 ## Verification Results
 

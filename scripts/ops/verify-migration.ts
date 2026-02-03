@@ -41,15 +41,27 @@ async function main() {
       }
     }
 
-    // Check columns
-    console.log('\n📊 Checking content_metadata columns:');
+    // Check columns (check underlying table since view may not be updated yet)
+    console.log('\n📊 Checking content_generation_metadata_comprehensive columns:');
     const requiredColumns = ['prompt_version', 'strategy_id', 'hour_bucket', 'outcome_score'];
     for (const column of requiredColumns) {
       try {
-        await client.query(`SELECT ${column} FROM content_metadata LIMIT 1`);
-        console.log(`  ✅ ${column}: exists`);
+        await client.query(`SELECT ${column} FROM content_generation_metadata_comprehensive LIMIT 1`);
+        console.log(`  ✅ ${column}: exists in underlying table`);
       } catch (e: any) {
         console.log(`  ❌ ${column}: ${e.message}`);
+        allPassed = false;
+      }
+    }
+    
+    // Check if view has columns (required - view should be updated)
+    console.log('\n📊 Checking content_metadata view columns:');
+    for (const column of requiredColumns) {
+      try {
+        await client.query(`SELECT ${column} FROM content_metadata LIMIT 1`);
+        console.log(`  ✅ ${column}: exists in view`);
+      } catch (e: any) {
+        console.log(`  ❌ ${column}: not in view - view needs update`);
         allPassed = false;
       }
     }

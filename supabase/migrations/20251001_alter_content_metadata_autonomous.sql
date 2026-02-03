@@ -24,17 +24,17 @@ ALTER TABLE content_metadata
   ADD COLUMN IF NOT EXISTS skip_reason TEXT,
   ADD COLUMN IF NOT EXISTS error_message TEXT;
 
--- Create indexes for new columns
+-- Create indexes for new columns (on underlying table, content_metadata is a VIEW)
 CREATE INDEX IF NOT EXISTS idx_content_status_scheduled 
-  ON content_metadata (status, scheduled_at);
+  ON content_generation_metadata_comprehensive (status, scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_content_generation_source 
-  ON content_metadata (generation_source);
+  ON content_generation_metadata_comprehensive (generation_source);
 CREATE INDEX IF NOT EXISTS idx_content_decision_type 
-  ON content_metadata (decision_type);
+  ON content_generation_metadata_comprehensive (decision_type);
 CREATE INDEX IF NOT EXISTS idx_content_decision_id 
-  ON content_metadata (decision_id);
+  ON content_generation_metadata_comprehensive (decision_id);
 CREATE INDEX IF NOT EXISTS idx_content_angle 
-  ON content_metadata (angle) WHERE angle IS NOT NULL;
+  ON content_generation_metadata_comprehensive (angle) WHERE angle IS NOT NULL;
 
 -- Create posted_decisions table
 CREATE TABLE IF NOT EXISTS posted_decisions (

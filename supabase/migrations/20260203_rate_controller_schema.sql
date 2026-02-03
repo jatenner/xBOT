@@ -9,17 +9,27 @@
 
 BEGIN;
 
--- Add columns to content_metadata for rate controller tracking
-ALTER TABLE content_metadata
+-- Add columns to content_generation_metadata_comprehensive (content_metadata is a VIEW)
+ALTER TABLE content_generation_metadata_comprehensive
   ADD COLUMN IF NOT EXISTS prompt_version TEXT,
   ADD COLUMN IF NOT EXISTS strategy_id TEXT,
-  ADD COLUMN IF NOT EXISTS hour_bucket INTEGER CHECK (hour_bucket >= 0 AND hour_bucket <= 23),
+  ADD COLUMN IF NOT EXISTS hour_bucket INTEGER,
   ADD COLUMN IF NOT EXISTS outcome_score NUMERIC DEFAULT 0;
 
--- Add index for hour_bucket queries
-CREATE INDEX IF NOT EXISTS idx_content_metadata_hour_bucket ON content_metadata(hour_bucket) WHERE hour_bucket IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_content_metadata_strategy_id ON content_metadata(strategy_id) WHERE strategy_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_content_metadata_prompt_version ON content_metadata(prompt_version) WHERE prompt_version IS NOT NULL;
+-- Add CHECK constraint separately (PostgreSQL doesn't support inline CHECK in ADD COLUMN)
+ALTER TABLE content_generation_metadata_comprehensive
+  DROP CONSTRAINT IF EXISTS content_generation_metadata_comprehensive_hour_bucket_check;
+ALTER TABLE content_generation_metadata_comprehensive
+  ADD CONSTRAINT content_generation_metadata_comprehensive_hour_bucket_check 
+  CHECK (hour_bucket IS NULL OR (hour_bucket >= 0 AND hour_bucket <= 23));
+
+-- Add indexes on underlying table (content_metadata is a VIEW)
+CREATE INDEX IF NOT EXISTS idx_content_generation_metadata_comprehensive_hour_bucket 
+  ON content_generation_metadata_comprehensive(hour_bucket) WHERE hour_bucket IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_content_generation_metadata_comprehensive_strategy_id 
+  ON content_generation_metadata_comprehensive(strategy_id) WHERE strategy_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_content_generation_metadata_comprehensive_prompt_version 
+  ON content_generation_metadata_comprehensive(prompt_version) WHERE prompt_version IS NOT NULL;
 
 -- Create rate_controller_state table for hourly targets and mode
 CREATE TABLE IF NOT EXISTS rate_controller_state (
@@ -71,11 +81,11 @@ CREATE TABLE IF NOT EXISTS prompt_version_weights (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Add comments
-COMMENT ON COLUMN content_metadata.prompt_version IS 'Prompt/template version identifier for learning';
-COMMENT ON COLUMN content_metadata.strategy_id IS 'Strategy identifier (e.g., "baseline", "high_topic_fit")';
-COMMENT ON COLUMN content_metadata.hour_bucket IS 'Hour of day (0-23) when posted (America/New_York timezone)';
-COMMENT ON COLUMN content_metadata.outcome_score IS 'Computed outcome score (likes + retweets*2 + replies*3 + bookmarks*0.5) / max(1, impressions)';
+-- Add comments (on underlying table, view comments added in separate migration)
+COMMENT ON COLUMN content_generation_metadata_comprehensive.prompt_version IS 'Prompt/template version identifier for learning';
+COMMENT ON COLUMN content_generation_metadata_comprehensive.strategy_id IS 'Strategy identifier (e.g., "baseline", "high_topic_fit")';
+COMMENT ON COLUMN content_generation_metadata_comprehensive.hour_bucket IS 'Hour of day (0-23) when posted (America/New_York timezone)';
+COMMENT ON COLUMN content_generation_metadata_comprehensive.outcome_score IS 'Computed outcome score (likes + retweets*2 + replies*3 + bookmarks*0.5) / max(1, impressions)';
 COMMENT ON TABLE rate_controller_state IS 'Hourly rate controller targets and execution state';
 COMMENT ON TABLE strategy_weights IS 'Learned weights for strategy selection';
 COMMENT ON TABLE hour_weights IS 'Learned weights for hour-of-day optimization';
