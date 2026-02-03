@@ -556,34 +556,12 @@ export class RealTwitterDiscovery {
     // Use fresh page/context for each query to avoid soft throttles
     const page = await pool.acquirePage(`search_scrape_${Date.now()}`);
     
-    // 🛡️ RATE LIMIT DETECTION: Only detect explicit HTTP-429 errors from console/network
+    // 🛡️ RATE LIMIT DETECTION FIX: Only detect AFTER extraction logging
+    // Do NOT check console logs or responses before extraction - they may contain false positives
     let rateLimitDetected = false;
     const rateLimitCodes: string[] = [];
-    const consoleListener = (msg: any) => {
-      const text = String(msg.text() || '');
-      // Only detect explicit HTTP-429 errors with codes (not generic "429" strings)
-      if (text.includes('HTTP-429') && (text.includes('codes:[88]') || text.includes('codes:[1003]'))) {
-        rateLimitDetected = true;
-        const codeMatch = text.match(/codes?:\[(\d+)\]/);
-        if (codeMatch) {
-          rateLimitCodes.push(codeMatch[1]);
-        }
-      }
-      // Also catch explicit rate limit error messages
-      if ((text.includes('rate limit') || text.includes('Rate limit')) && 
-          (text.includes('exceeded') || text.includes('too many requests') || text.includes('429'))) {
-        rateLimitDetected = true;
-        const codeMatch = text.match(/codes?:\[(\d+)\]/);
-        if (codeMatch) {
-          rateLimitCodes.push(codeMatch[1]);
-        } else {
-          rateLimitCodes.push('429');
-        }
-      }
-    };
-    page.on('console', consoleListener);
     
-    // Check response status codes (only actual HTTP 429 responses)
+    // Set up response listener to capture HTTP 429 status codes (only actual responses)
     const responseListener = async (response: any) => {
       try {
         const status = await response.status();
@@ -635,31 +613,57 @@ export class RealTwitterDiscovery {
         }
       }
       
-      // 🕐 GIVE TWITTER TIME TO LOAD AND RENDER TWEETS
-      // Wait for either tweet elements or status links to appear
-      try {
-        await Promise.race([
-          page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 }).catch(() => null),
-          page.waitForSelector('a[href*="/status/"]', { timeout: 10000 }).catch(() => null),
-          page.waitForTimeout(10000) // Max wait 10s
-        ]);
-      } catch (e) {
-        // Continue anyway
-      }
+      // 🎯 P1 PROOF BEHAVIOR: Wait 8-12 seconds AFTER page load before extraction
+      const waitTime = 8000 + Math.random() * 4000; // 8-12 seconds
+      console.log(`[REAL_DISCOVERY] ⏱️  Waiting ${Math.floor(waitTime / 1000)}s after page load (P1 proof behavior)...`);
+      await page.waitForTimeout(waitTime);
       
-      await page.waitForTimeout(2500); // Initial settle time
+      const finalUrl = page.url();
+      const title = await page.title();
       
-      // 🛡️ CHECK FOR RATE LIMIT AFTER PAGE HAS LOADED
-      // Only check for explicit rate limit error messages in page content (not generic "429")
-      // Wait a bit more to ensure page content is fully rendered
-      await page.waitForTimeout(1000);
+      // 🎯 P1 PROOF BEHAVIOR: Log domTweetCards, statusUrls, title, finalUrl BEFORE extraction
+      const extraction = await page.evaluate(() => {
+        // Find tweet cards
+        const tweetCards = Array.from(document.querySelectorAll('[data-testid="tweet"]'));
+        
+        // Find status links
+        const statusLinks = Array.from(document.querySelectorAll('a[href*="/status/"]'))
+          .map((link: any) => link.href)
+          .filter((href: string) => href.includes('/status/'));
+        
+        // Extract unique tweet IDs
+        const tweetIds = new Set<string>();
+        statusLinks.forEach((href: string) => {
+          const match = href.match(/\/status\/(\d+)/);
+          if (match && match[1]) {
+            tweetIds.add(match[1]);
+          }
+        });
+        
+        return {
+          domTweetCards: tweetCards.length,
+          statusUrls: Array.from(tweetIds),
+        };
+      });
       
+      console.log(`[REAL_DISCOVERY] 📊 Page loaded - domTweetCards: ${extraction.domTweetCards}, statusUrls: ${extraction.statusUrls.length}`);
+      console.log(`[REAL_DISCOVERY] 📊 Final URL: ${finalUrl}`);
+      console.log(`[REAL_DISCOVERY] 📊 Page title: ${title}`);
+      
+      // 🛡️ RATE LIMIT DETECTION FIX: Only check AFTER extraction logging, and only for explicit 429 or error messages
+      // Do NOT check console logs or generic "429" strings before extraction
+      // Only treat rate limit as true if:
+      //   - response status is exactly 429 OR
+      //   - page content contains explicit strings like "Too Many Requests" or "Rate limit exceeded"
       if (!rateLimitDetected) {
-        // Only check page content if we haven't already detected via console/response
+        // Check response status codes (only actual HTTP 429 responses)
+        // This was already set up in responseListener above, so rateLimitDetected should be set if we got a 429
+        
+        // Also check page content for explicit rate limit messages (not generic "429")
         const pageContent = await page.content().catch(() => '');
         const pageText = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
         
-        // Look for explicit rate limit error messages (not just "429" which could be in URLs/IDs)
+        // Only look for explicit rate limit error messages (not just "429" which could be in URLs/IDs)
         const hasRateLimitMessage = (
           (pageText.includes('Rate limit exceeded') || pageText.includes('rate limit exceeded')) ||
           (pageText.includes('Too many requests') || pageText.includes('too many requests')) ||
@@ -678,54 +682,7 @@ export class RealTwitterDiscovery {
         }
       }
       
-      if (rateLimitDetected) {
-        const { record429Hit } = await import('../utils/harvestBackoff');
-        record429Hit();
-        
-        const { getSupabaseClient } = await import('../db/index');
-        const supabase = getSupabaseClient();
-        await supabase.from('system_events').insert({
-          event_type: 'HARVEST_RATE_LIMITED',
-          severity: 'error',
-          message: `Harvest rate limited: ${searchLabel}`,
-          event_data: {
-            query: queryText,
-            url: searchUrl,
-            codes: rateLimitCodes.length > 0 ? rateLimitCodes : ['429'],
-            search_label: searchLabel,
-          },
-          created_at: new Date().toISOString()
-        });
-        
-        const backoffMinutes = rateLimitCodes.length > 0 && (rateLimitCodes.includes('88') || rateLimitCodes.includes('1003')) ? 60 : 15;
-        console.log(`[RATE_LIMIT] detected=true; backing_off_minutes=${backoffMinutes}`);
-        await pool.releasePage(page);
-        return [];
-      }
-      
-      // Scroll to trigger lazy loading
-      try {
-        await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-        await page.waitForTimeout(1500); // Wait after scroll
-      } catch (e) {
-        // Continue anyway
-      }
-      
-      // 🛡️ CHECK FOR RATE LIMIT AFTER SCROLL (more console logs may appear)
-      // Only check if we haven't already detected a rate limit
-      if (!rateLimitDetected) {
-        const pageTextAfterScroll = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
-        const hasRateLimitMessage = (
-          (pageTextAfterScroll.includes('Rate limit exceeded') || pageTextAfterScroll.includes('rate limit exceeded')) ||
-          (pageTextAfterScroll.includes('Too many requests') || pageTextAfterScroll.includes('too many requests'))
-        );
-        
-        if (hasRateLimitMessage) {
-          rateLimitDetected = true;
-          rateLimitCodes.push('429');
-        }
-      }
-      
+      // 🛡️ Only trigger backoff if rate limit is confirmed (response 429 or explicit error message)
       if (rateLimitDetected) {
         const { record429Hit } = await import('../utils/harvestBackoff');
         record429Hit();
@@ -902,47 +859,14 @@ export class RealTwitterDiscovery {
       // Extract viral tweets from search results           
       console.log(`[REAL_DISCOVERY] 📊 Page loaded, extracting tweets...`);
       
-      // 🎯 ROBUST STATUS URL EXTRACTION: Primary method (works even if selectors fail)
-      // Collect status URLs by scanning anchors matching /status/(\d+)
-      // Success criteria: status URLs found (not DOM tweet cards)
-      const statusUrls = await page.evaluate(() => {
-        const statusIds = new Set<string>();
-        
-        // Method 1: Scan all anchors for public status URLs
-        const anchors = Array.from(document.querySelectorAll('a[href*="/status/"]'));
-        anchors.forEach(a => {
-          const href = a.getAttribute('href') || '';
-          // Only collect public status URLs (not /i/...)
-          if (href.includes('/status/') && !href.includes('/i/')) {
-            const match = href.match(/\/status\/(\d+)/);
-            if (match && match[1]) {
-              statusIds.add(match[1]);
-            }
-          }
-        });
-        
-        // Method 2: Scan HTML content for status URLs (fallback if anchors don't work)
-        if (statusIds.size === 0) {
-          const html = document.documentElement.outerHTML;
-          const statusMatches = html.match(/\/status\/(\d{15,20})/g);
-          if (statusMatches) {
-            statusMatches.forEach(match => {
-              const idMatch = match.match(/\/(\d{15,20})/);
-              if (idMatch && idMatch[1] && !match.includes('/i/')) {
-                statusIds.add(idMatch[1]);
-              }
-            });
-          }
-        }
-        
-        return Array.from(statusIds);
-      });
+      // 🎯 P1 PROOF BEHAVIOR: Use statusUrls already extracted above
+      const statusUrls = extraction.statusUrls;
       
-      console.log(`[REAL_DISCOVERY] 🔗 Found ${statusUrls.length} status URLs from anchors/HTML (success criteria)`);
+      console.log(`[REAL_DISCOVERY] 🔗 Found ${statusUrls.length} status URLs (from initial extraction)`);
       
-      // 🎯 P1 LOGGING: Log DOM cards and status URLs count
+      // 🎯 P1 LOGGING: Log DOM cards and status URLs count (already logged above)
       if (p1Mode || debugEnabled) {
-        console.log(`[REAL_DISCOVERY] 📊 DOM cards found: ${debugCounters.dom_tweet_cards_found || 0}, status URLs: ${statusUrls.length}`);
+        console.log(`[REAL_DISCOVERY] 📊 DOM cards found: ${extraction.domTweetCards}, status URLs: ${statusUrls.length}`);
       }
       
       // 🎯 PUBLIC_EXTRACT instrumentation
@@ -1185,7 +1109,16 @@ export class RealTwitterDiscovery {
     // Update debug counters with extraction results
     if (debugEnabled) {
       debugCounters.extracted_tweets_count = finalOpportunities.length;
-      console.log(`[HARVEST_DEBUG] 🔢 extracted_tweets_count=${opportunities.length} (from ${debugCounters.dom_tweet_cards_found} DOM cards)`);
+      
+      // 🎯 P1 PROOF BEHAVIOR: Log extraction path
+      const extractionPath = opportunities.length > 0 ? 'structured' : (statusUrls.length > 0 ? 'fallback_urls' : 'none');
+      if (p1Mode) {
+        console.log(`[REAL_DISCOVERY] 📊 Extraction path: ${extractionPath}`);
+        console.log(`[REAL_DISCOVERY] 📊 Structured extraction: ${opportunities.length} tweets`);
+        console.log(`[REAL_DISCOVERY] 📊 Status URLs available: ${statusUrls.length}`);
+      }
+      
+      console.log(`[HARVEST_DEBUG] 🔢 extracted_tweets_count=${finalOpportunities.length} (from ${debugCounters.dom_tweet_cards_found} DOM cards, path=${extractionPath})`);
       console.log(`[HARVEST_DEBUG] 📁 Debug artifacts saved to: ${debugDir}`);
       
       // 🎯 EMPTY RESULT CLASSIFIER: Final classification after extraction
@@ -2269,6 +2202,12 @@ export class RealTwitterDiscovery {
     console.log(`[REAL_DISCOVERY] 💾 Storage complete: ${successCount} succeeded, ${failCount} failed`);
     if (boostedCount > 0) {
       console.log(`[REAL_DISCOVERY] 🎯 Phase 3: Boosted ${boostedCount} opportunities based on priority_score`);
+    }
+    
+    // 🎯 P1 PROOF BEHAVIOR: Print inserted row count in P1_MODE
+    const p1Mode = process.env.P1_MODE === 'true';
+    if (p1Mode) {
+      console.log(`[P1_STORE] inserted_rows=${successCount} failed=${failCount}`);
     }
     
     // 🎯 PUBLIC_STORE summary
