@@ -105,6 +105,8 @@
     "executor:prove:auth-b64-persistence": "tsx scripts/executor/prove-auth-b64-persistence.ts",
     "executor:prove:cookie-persist": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-cookie-persist.ts",
     "ops:update:cookies": "tsx scripts/ops/update-cookies-from-file.ts",
+    "ops:test:cookie-auth": "tsx scripts/ops/extract-cookies-and-test.ts",
+    "ops:test:profile-auth": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/ops/test-profile-auth-comprehensive.ts",
     "ops:collect:auth-evidence": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/ops/collect-auth-evidence.ts",
     "ops:recover:x-auth": "tsx scripts/ops/recover-x-auth.ts",
     "ops:auth:status": "tsx scripts/ops/auth-status.ts",
