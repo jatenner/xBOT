@@ -836,6 +836,8 @@ function startHealthWatchdog(): void {
  * Main daemon loop
  */
 async function main(): Promise<void> {
+  const daemonPid = process.pid;
+  
   // 🔍 PHASE 1: BOOT logging
   const cwd = process.cwd();
   const runnerProfileDirRaw = process.env.RUNNER_PROFILE_DIR || './.runner-profile';
@@ -922,7 +924,6 @@ async function main(): Promise<void> {
       console.log('[EXECUTOR_DAEMON] ✅ OPENAI_API_KEY present (prefix: sk-)');
     }
   }
-  const daemonPid = process.pid;
   let exitCode = 0;
   let exitReason: 'normal' | 'crash' | 'signal' = 'normal';
   let exitSignal: string | null = null;
