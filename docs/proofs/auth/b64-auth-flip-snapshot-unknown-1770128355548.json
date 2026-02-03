@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-02-03T14:19:15.546Z",
+  "minute": 0,
+  "final_url": "https://x.com/home",
+  "logged_in": false,
+  "reason": "unknown",
+  "cookie_count_x_com": 18,
+  "cookie_count_twitter_com": 18,
+  "has_auth_token": true,
+  "has_ct0": true,
+  "has_twid": true,
+  "has_cf_clearance": true,
+  "auth_token_expiry": -1,
+  "ct0_expiry": -1,
+  "twid_expiry": 1801664354,
+  "cf_clearance_expiry": -1,
+  "localStorage_keys_count": 1,
+  "sessionStorage_keys_count": 0,
+  "indexeddb_exists": false,
+  "indexeddb_count": 1
+}
