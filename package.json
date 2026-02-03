@@ -99,6 +99,7 @@
     "runner:reply-queue-once": "tsx scripts/runner/reply-queue-once.ts",
     "executor:daemon": "EXECUTION_MODE=executor RUNNER_MODE=true HEADLESS=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/daemon.ts",
     "executor:auth": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/auth.ts",
+    "executor:prove:auth-readwrite": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-auth-readwrite.ts",
     "harvester:daemon": "HARVESTING_ENABLED=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/harvester/daemon.ts",
     "executor:prove:15m": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-15m.ts",
     "executor:prove:5m": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-5m.ts",

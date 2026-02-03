@@ -152,8 +152,31 @@ export async function acceptConsentWall(page: Page, maxAttempts: number = 3): Pr
     return document.querySelectorAll('article[data-testid="tweet"]').length;
   });
   
-  const strategies = [
-    // Strategy 1: Direct button text matches (most reliable)
+  const currentUrl = page.url();
+  const initialUrl = currentUrl;
+  
+  // C1: Page-level click strategies (prioritize getByRole)
+  const pageStrategies = [
+    { name: 'getByRole button accept/agree/allow/continue/ok', fn: async () => {
+      try {
+        const button = page.getByRole('button', { name: /accept|agree|allow|continue|ok/i }).first();
+        if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await button.click({ timeout: 2000 });
+          return true;
+        }
+      } catch {}
+      return false;
+    }},
+    { name: 'getByRole link accept/agree/allow/continue/ok', fn: async () => {
+      try {
+        const link = page.getByRole('link', { name: /accept|agree|allow|continue|ok/i }).first();
+        if (await link.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await link.click({ timeout: 2000 });
+          return true;
+        }
+      } catch {}
+      return false;
+    }},
     { name: 'getByText Accept all cookies', fn: async () => {
       try {
         const button = page.getByText('Accept all cookies', { exact: false }).first();
@@ -174,10 +197,13 @@ export async function acceptConsentWall(page: Page, maxAttempts: number = 3): Pr
       } catch {}
       return false;
     }},
-    { name: 'getByText Accept', fn: async () => {
+  ];
+  
+  // C3: Fallback CSS selectors
+  const fallbackStrategies = [
+    { name: 'CSS button:has-text("Accept")', fn: async () => {
       try {
-        // More specific: look for Accept button in dialog/modal context
-        const button = page.locator('[role="dialog"] button, [data-testid*="cookie"] button, button').filter({ hasText: /^Accept$/i }).first();
+        const button = page.locator('button:has-text("Accept")').first();
         if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
           await button.click({ timeout: 2000 });
           return true;
@@ -185,9 +211,9 @@ export async function acceptConsentWall(page: Page, maxAttempts: number = 3): Pr
       } catch {}
       return false;
     }},
-    { name: 'getByRole button accept', fn: async () => {
+    { name: 'CSS button:has-text("Agree")', fn: async () => {
       try {
-        const button = page.getByRole('button', { name: /accept/i }).first();
+        const button = page.locator('button:has-text("Agree")').first();
         if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
           await button.click({ timeout: 2000 });
           return true;
@@ -195,66 +221,69 @@ export async function acceptConsentWall(page: Page, maxAttempts: number = 3): Pr
       } catch {}
       return false;
     }},
-    { name: 'locator button filter accept', fn: async () => {
+    { name: 'CSS div[role="button"]:has-text("Accept")', fn: async () => {
       try {
-        const button = page.locator('button').filter({ hasText: /accept/i }).first();
+        const button = page.locator('div[role="button"]:has-text("Accept")').first();
         if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
           await button.click({ timeout: 2000 });
           return true;
         }
-      } catch {}
-      return false;
-    }},
-    // Strategy 2: Iframe handling
-    { name: 'iframe accept button', fn: async () => {
-      try {
-        const iframes = await page.locator('iframe').all();
-        for (const iframe of iframes) {
-          try {
-            const frame = await iframe.contentFrame();
-            if (frame) {
-              const button = frame.getByText(/accept/i).first();
-              if (await button.isVisible({ timeout: 1000 }).catch(() => false)) {
-                await button.click({ timeout: 1000 });
-                return true;
-              }
-            }
-          } catch (e) {
-            // Try next iframe
-          }
-        }
-      } catch {}
-      return false;
-    }},
-    // Strategy 3: Keyboard navigation (less reliable)
-    { name: 'keyboard TAB+ENTER', fn: async () => {
-      try {
-        await page.keyboard.press('Tab');
-        await page.waitForTimeout(500);
-        await page.keyboard.press('Tab');
-        await page.waitForTimeout(500);
-        const focused = await page.evaluate(() => {
-          const active = document.activeElement;
-          return active?.textContent?.toLowerCase().includes('accept') || false;
-        });
-        if (focused) {
-          await page.keyboard.press('Enter');
-          return true;
-        }
-      } catch {}
-      return false;
-    }},
-    // Strategy 4: Escape key (last resort, often doesn't work)
-    { name: 'escape key', fn: async () => {
-      try {
-        await page.keyboard.press('Escape');
-        await page.waitForTimeout(1000);
-        // Don't return true - escape might not actually accept, just check containers
-        return false; // Let container check determine success
       } catch {}
       return false;
     }},
   ];
+  
+  // C2: Frame-level click helper
+  const tryFrameClick = async (frame: any, strategyName: string): Promise<boolean> => {
+    try {
+      const button = frame.getByRole('button', { name: /accept|agree|allow|continue|ok/i }).first();
+      if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await button.click({ timeout: 2000 });
+        return true;
+      }
+    } catch {}
+    try {
+      const link = frame.getByRole('link', { name: /accept|agree|allow|continue|ok/i }).first();
+      if (await link.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await link.click({ timeout: 2000 });
+        return true;
+      }
+    } catch {}
+    return false;
+  };
+  
+  // Success detection: wait for consent wall to disappear OR logged-in selectors OR URL change
+  const waitForSuccess = async (timeoutMs: number = 10000): Promise<boolean> => {
+    try {
+      await Promise.race([
+        // Option 1: Consent wall selector disappears
+        page.waitForFunction(
+          () => {
+            const overlays = document.querySelectorAll('[role="dialog"], [data-testid*="cookie"], [aria-label*="cookie"]');
+            return overlays.length === 0;
+          },
+          { timeout: timeoutMs }
+        ),
+        // Option 2: Logged-in selectors appear
+        Promise.all([
+          page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: timeoutMs }).catch(() => null),
+          page.waitForSelector('[data-testid="SideNav_AccountSwitcher_Button"]', { timeout: timeoutMs }).catch(() => null),
+        ]).then(() => true),
+        // Option 3: URL changes away from consent domain/path
+        page.waitForFunction(
+          (initial) => {
+            const current = window.location.href;
+            return !current.includes('/i/flow/consent') && current !== initial;
+          },
+          { timeout: timeoutMs },
+          initialUrl
+        ),
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
+  };
   
   let attempts = 0;
   let matchedSelector: string | null = null;
@@ -262,40 +291,116 @@ export async function acceptConsentWall(page: Page, maxAttempts: number = 3): Pr
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     attempts++;
     
-    for (const strategy of strategies) {
+    // C1: Try page-level clicks first
+    for (const strategy of pageStrategies) {
       try {
         const clicked = await strategy.fn();
         if (clicked) {
           matchedSelector = strategy.name;
           console.log(`[CONSENT_WALL] 🍪 Clicked consent button via: ${strategy.name} (attempt ${attempts})`);
           
-          // Wait for overlay to be detached
-          await page.waitForFunction(
-            () => {
-              const overlays = document.querySelectorAll('[role="dialog"], [data-testid*="cookie"], [aria-label*="cookie"]');
-              return overlays.length === 0;
-            },
-            { timeout: 5000 }
-          ).catch(() => {
-            // Overlay might not have role attributes, continue anyway
-          });
+          // Wait for success indicators
+          const success = await waitForSuccess(10000);
+          if (success) {
+            await page.waitForTimeout(2000); // Additional wait for page to settle
+            
+            // Verify containers increased OR logged-in selectors present
+            const containersAfter = await page.evaluate(() => {
+              return document.querySelectorAll('article[data-testid="tweet"]').length;
+            });
+            const hasLoggedInSelectors = await page.evaluate(() => {
+              return !!(document.querySelector('[data-testid="tweetTextarea_0"]') || 
+                       document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]'));
+            });
+            
+            if (containersAfter > containersBefore || hasLoggedInSelectors) {
+              console.log(`[CONSENT_WALL] ✅ Consent cleared: ${containersBefore} -> ${containersAfter} containers, logged_in=${hasLoggedInSelectors}`);
+              return {
+                detected: true,
+                cleared: true,
+                attempts,
+                matchedSelector,
+                wallType: 'consent',
+              };
+            }
+          }
+        }
+      } catch (e) {
+        // Try next strategy
+      }
+    }
+    
+    // C2: Try frame-level clicks
+    try {
+      const frames = page.frames();
+      for (const frame of frames) {
+        if (frame === page.mainFrame()) continue; // Skip main frame (already tried)
+        try {
+          const clicked = await tryFrameClick(frame, `frame_${frame.url()}`);
+          if (clicked) {
+            matchedSelector = `frame_click_${frame.url()}`;
+            console.log(`[CONSENT_WALL] 🍪 Clicked consent button in frame: ${frame.url()} (attempt ${attempts})`);
+            
+            const success = await waitForSuccess(10000);
+            if (success) {
+              await page.waitForTimeout(2000);
+              const containersAfter = await page.evaluate(() => {
+                return document.querySelectorAll('article[data-testid="tweet"]').length;
+              });
+              const hasLoggedInSelectors = await page.evaluate(() => {
+                return !!(document.querySelector('[data-testid="tweetTextarea_0"]') || 
+                         document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]'));
+              });
+              
+              if (containersAfter > containersBefore || hasLoggedInSelectors) {
+                console.log(`[CONSENT_WALL] ✅ Consent cleared via frame: ${containersBefore} -> ${containersAfter} containers`);
+                return {
+                  detected: true,
+                  cleared: true,
+                  attempts,
+                  matchedSelector,
+                  wallType: 'consent',
+                };
+              }
+            }
+          }
+        } catch (e) {
+          // Try next frame
+        }
+      }
+    } catch (e) {
+      // Continue to fallback
+    }
+    
+    // C3: Try fallback CSS selectors
+    for (const strategy of fallbackStrategies) {
+      try {
+        const clicked = await strategy.fn();
+        if (clicked) {
+          matchedSelector = strategy.name;
+          console.log(`[CONSENT_WALL] 🍪 Clicked consent button via: ${strategy.name} (attempt ${attempts})`);
           
-          await page.waitForTimeout(2000); // Additional wait
-          
-          // Verify containers increased
-          const containersAfter = await page.evaluate(() => {
-            return document.querySelectorAll('article[data-testid="tweet"]').length;
-          });
-          
-          if (containersAfter > containersBefore) {
-            console.log(`[CONSENT_WALL] ✅ Consent cleared: ${containersBefore} -> ${containersAfter} containers`);
-            return {
-              detected: true,
-              cleared: true,
-              attempts,
-              matchedSelector,
-              wallType: 'consent',
-            };
+          const success = await waitForSuccess(10000);
+          if (success) {
+            await page.waitForTimeout(2000);
+            const containersAfter = await page.evaluate(() => {
+              return document.querySelectorAll('article[data-testid="tweet"]').length;
+            });
+            const hasLoggedInSelectors = await page.evaluate(() => {
+              return !!(document.querySelector('[data-testid="tweetTextarea_0"]') || 
+                       document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]'));
+            });
+            
+            if (containersAfter > containersBefore || hasLoggedInSelectors) {
+              console.log(`[CONSENT_WALL] ✅ Consent cleared via fallback: ${containersBefore} -> ${containersAfter} containers`);
+              return {
+                detected: true,
+                cleared: true,
+                attempts,
+                matchedSelector,
+                wallType: 'consent',
+              };
+            }
           }
         }
       } catch (e) {
