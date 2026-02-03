@@ -1048,6 +1048,27 @@ ${fetchedDataSection}
   }
 }
 
+async function validateOpenAIKey(): Promise<void> {
+  if (process.env.VALIDATE_OPENAI !== 'true') {
+    return; // Skip if flag not set
+  }
+
+  console.log('📋 OpenAI Key Validation (VALIDATE_OPENAI=true)...');
+  try {
+    const { execSync } = await import('child_process');
+    execSync('pnpm run ops:validate:openai', {
+      stdio: 'inherit',
+      encoding: 'utf-8',
+    });
+    console.log('✅ OpenAI key validation passed\n');
+  } catch (error: any) {
+    console.error('\n❌ FATAL: OpenAI key validation failed');
+    console.error('   Fix the API key before running proof');
+    console.error('   Run: pnpm run ops:validate:openai');
+    process.exit(1);
+  }
+}
+
 async function main(): Promise<void> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('           🧪 PROOF LEVEL 4: CONTROL → EXECUTOR → X (REPLY)');
@@ -1055,6 +1076,9 @@ async function main(): Promise<void> {
     console.log('                    [DRY_RUN MODE - NO REPLYING]');
   }
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  
+  // Validate OpenAI key if flag is set
+  await validateOpenAIKey();
   
   // Validate TARGET_TWEET_ID - FAIL FAST
   const targetTweetId = validateTargetTweetId();
