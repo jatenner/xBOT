@@ -256,6 +256,8 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
             const tweetIdNumeric = /^\d{15,}$/.test(opp.target_tweet_id);
             const notDeleted = opp.accessibility_status !== 'deleted';
             
+            // Bypass applies to: hard filters (root, parody, spam, text length) AND age limits
+            // Only skip if deleted or invalid tweet ID
             if (tweetIdNumeric && notDeleted) {
               finalPassedHardFilters = true;
               finalFilterReason = `p1_manual_bypass: ${score.filter_reason}`;
@@ -269,6 +271,7 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
                     reason: `P1 manual seed bypass: original_reason=${score.filter_reason}`,
                     discovery_source: opp.discovery_source,
                     accessibility_status: opp.accessibility_status,
+                    original_filter_reason: score.filter_reason,
                   },
                 });
               } catch {
@@ -276,6 +279,8 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
               }
               
               console.log(`[ROOT_EVAL] 🎯 P1_MANUAL_BYPASS: Allowing ${opp.target_tweet_id} (original_reason=${score.filter_reason})`);
+            } else {
+              console.log(`[ROOT_EVAL] ⚠️ P1_MANUAL_BYPASS skipped for ${opp.target_tweet_id}: tweetIdNumeric=${tweetIdNumeric} notDeleted=${notDeleted}`);
             }
           }
           
