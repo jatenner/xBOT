@@ -52,3 +52,42 @@ export const RUNNER_PROFILE_PATHS = {
   chromeProfile: () => getRunnerProfilePath('executor-chrome-profile'),
   logs: () => getRunnerProfilePath('executor.log'),
 } as const;
+
+/**
+ * 🔍 PHASE 1: Shared runner paths helper
+ * 
+ * Computes and returns all runner-related paths for consistent use across
+ * auth/proof/daemon commands. Logs paths on every run.
+ */
+export interface RunnerPaths {
+  runner_profile_dir_raw: string;
+  runner_profile_dir_abs: string;
+  user_data_dir_abs: string;
+  auth_marker_path: string;
+  cwd: string;
+}
+
+export function getRunnerPaths(): RunnerPaths {
+  const cwd = process.cwd();
+  const runnerProfileDirRaw = process.env.RUNNER_PROFILE_DIR || './.runner-profile';
+  const runnerProfileDirAbs = resolveRunnerProfileDir();
+  const userDataDirAbs = path.resolve(RUNNER_PROFILE_PATHS.chromeProfile());
+  const authMarkerPath = RUNNER_PROFILE_PATHS.authOk();
+  
+  // Log paths on every run
+  console.log(`[RUNNER_PATHS] 📋 Computed paths:`);
+  console.log(`[RUNNER_PATHS]    CWD: ${cwd}`);
+  console.log(`[RUNNER_PATHS]    RUNNER_PROFILE_DIR (raw): ${runnerProfileDirRaw}`);
+  console.log(`[RUNNER_PATHS]    runner_profile_dir_abs: ${runnerProfileDirAbs}`);
+  console.log(`[RUNNER_PATHS]    user_data_dir_abs: ${userDataDirAbs}`);
+  console.log(`[RUNNER_PATHS]    auth_marker_path: ${authMarkerPath}`);
+  console.log('');
+  
+  return {
+    runner_profile_dir_raw: runnerProfileDirRaw,
+    runner_profile_dir_abs: runnerProfileDirAbs,
+    user_data_dir_abs: userDataDirAbs,
+    auth_marker_path: authMarkerPath,
+    cwd,
+  };
+}

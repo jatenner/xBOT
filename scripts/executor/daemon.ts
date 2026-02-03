@@ -843,23 +843,17 @@ async function main(): Promise<void> {
   let authPreflightBackoffUntil: number | null = null;
   const AUTH_PREFLIGHT_BACKOFF_MS = 6 * 60 * 60 * 1000; // 6 hours
   
-  // 🔍 PHASE 1: BOOT logging
-  const cwd = process.cwd();
-  const runnerProfileDirRaw = process.env.RUNNER_PROFILE_DIR || './.runner-profile';
-  const runnerProfileDirAbs = path.resolve(cwd, RUNNER_PROFILE_DIR);
-  const userDataDirAbs = path.resolve(BROWSER_USER_DATA_DIR);
+  // 🔍 PHASE 1: Use shared runner paths helper
+  const { getRunnerPaths } = await import('../../src/infra/runnerProfile');
+  const paths = getRunnerPaths();
   
   console.log(`[EXECUTOR_DAEMON] 📋 BOOT Environment:`);
-  console.log(`[EXECUTOR_DAEMON]    CWD: ${cwd}`);
-  console.log(`[EXECUTOR_DAEMON]    RUNNER_PROFILE_DIR (raw): ${runnerProfileDirRaw}`);
-  console.log(`[EXECUTOR_DAEMON]    RUNNER_PROFILE_DIR (absolute): ${runnerProfileDirAbs}`);
-  console.log(`[EXECUTOR_DAEMON]    UserDataDir (absolute): ${userDataDirAbs}`);
   console.log(`[EXECUTOR_DAEMON]    HEADLESS: ${HEADLESS}`);
   console.log(`[EXECUTOR_DAEMON]    EXECUTION_MODE: ${EXECUTION_MODE}`);
   console.log('');
   
   // 🔍 PHASE 2: Check AUTH_OK marker at boot
-  const AUTH_OK_PATH = RUNNER_PROFILE_PATHS.authOk();
+  const AUTH_OK_PATH = paths.auth_marker_path;
   if (!fs.existsSync(AUTH_OK_PATH)) {
     console.error(`[EXECUTOR_DAEMON] ❌ AUTH_OK marker missing: ${AUTH_OK_PATH}`);
     console.error(`[EXECUTOR_DAEMON] 🔐 Executor requires authentication - run executor:auth first`);
@@ -869,7 +863,8 @@ async function main(): Promise<void> {
       pid: daemonPid,
       reason: 'AUTH_OK_marker_missing',
       authOkPath: AUTH_OK_PATH,
-      userDataDir: userDataDirAbs,
+      runner_profile_dir_abs: paths.runner_profile_dir_abs,
+      user_data_dir_abs: paths.user_data_dir_abs,
     });
     
     // Write AUTH_REQUIRED file
@@ -888,6 +883,21 @@ async function main(): Promise<void> {
     try {
       const authOkContent = fs.readFileSync(AUTH_OK_PATH, 'utf-8');
       const authOkData = JSON.parse(authOkContent);
+      
+      // Check profile mismatch
+      if (authOkData.user_data_dir_abs && authOkData.user_data_dir_abs !== paths.user_data_dir_abs) {
+        console.error(`[EXECUTOR_DAEMON] ❌ Profile mismatch: AUTH_OK says ${authOkData.user_data_dir_abs}, current is ${paths.user_data_dir_abs}`);
+        console.error(`[EXECUTOR_DAEMON] 🔐 Rerun executor:auth to fix profile mismatch`);
+        await emitLifecycleEvent('EXECUTOR_AUTH_REQUIRED', {
+          ts: new Date().toISOString(),
+          pid: daemonPid,
+          reason: 'profile_mismatch',
+          authOkUserDataDir: authOkData.user_data_dir_abs,
+          currentUserDataDir: paths.user_data_dir_abs,
+        });
+        process.exit(0);
+      }
+      
       console.log(`[EXECUTOR_DAEMON] ✅ AUTH_OK marker found: handle=${authOkData.handle || 'unknown'}, timestamp=${authOkData.timestamp}`);
     } catch (e) {
       console.warn(`[EXECUTOR_DAEMON] ⚠️  AUTH_OK marker exists but unreadable: ${(e as Error).message}`);
@@ -1040,6 +1050,8 @@ async function main(): Promise<void> {
               reason: 'auth_preflight_failed',
               url: authResult.url,
               handle: authResult.handle,
+              runner_profile_dir_abs: paths.runner_profile_dir_abs,
+              user_data_dir_abs: paths.user_data_dir_abs,
             });
             
             // Set backoff until 6 hours from now
@@ -1321,6 +1333,8 @@ async function main(): Promise<void> {
               ts: new Date().toISOString(),
               tick_id: tickId,
               remaining_minutes: remainingMinutes,
+              runner_profile_dir_abs: paths.runner_profile_dir_abs,
+              user_data_dir_abs: paths.user_data_dir_abs,
             },
             created_at: new Date().toISOString(),
           });
@@ -1355,6 +1369,8 @@ async function main(): Promise<void> {
                   pid: daemonPid,
                   reason: 'auth_preflight_failed_after_backoff',
                   url: authResult.url,
+                  runner_profile_dir_abs: paths.runner_profile_dir_abs,
+                  user_data_dir_abs: paths.user_data_dir_abs,
                 });
                 await new Promise(resolve => setTimeout(resolve, 60000));
                 continue;

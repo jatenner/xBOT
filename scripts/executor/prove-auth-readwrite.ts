@@ -95,23 +95,8 @@ async function main(): Promise<void> {
   console.log('           🔐 EXECUTOR AUTH READ/WRITE PROOF');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
-  // 🔍 PHASE 1: BOOT logging
-  const cwd = process.cwd();
-  const runnerProfileDirRaw = process.env.RUNNER_PROFILE_DIR || './.runner-profile';
-  const runnerProfileDirAbs = path.resolve(cwd, RUNNER_PROFILE_DIR);
-  const userDataDirAbs = path.resolve(BROWSER_USER_DATA_DIR);
-  
-  console.log(`📋 BOOT Environment:`);
-  console.log(`   CWD: ${cwd}`);
-  console.log(`   RUNNER_PROFILE_DIR (raw): ${runnerProfileDirRaw}`);
-  console.log(`   RUNNER_PROFILE_DIR (absolute): ${runnerProfileDirAbs}`);
-  console.log(`   UserDataDir (absolute): ${userDataDirAbs}`);
-  console.log(`   HEADLESS: true`);
-  console.log(`   EXECUTION_MODE: executor`);
-  console.log('');
-  
   console.log(`📋 Configuration:`);
-  console.log(`   RUNNER_PROFILE_DIR: ${RUNNER_PROFILE_DIR}`);
+  console.log(`   RUNNER_PROFILE_DIR: ${paths.runner_profile_dir_raw}`);
   console.log(`   Browser profile: ${BROWSER_USER_DATA_DIR}`);
   console.log(`   Mode: HEADLESS (proof only, no submit)\n`);
   

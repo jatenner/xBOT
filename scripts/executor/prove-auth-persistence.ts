@@ -14,14 +14,11 @@ import 'dotenv/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import { chromium, BrowserContext, Page } from 'playwright';
-import { ensureRunnerProfileDir, RUNNER_PROFILE_PATHS } from '../../src/infra/runnerProfile';
-import { checkWhoami } from '../../src/utils/whoamiAuth';
+import { getRunnerPaths } from '../../src/infra/runnerProfile';
 
-const RUNNER_PROFILE_DIR = ensureRunnerProfileDir();
-const RUNNER_PROFILE_DIR_ABS = path.resolve(process.cwd(), RUNNER_PROFILE_DIR);
-const BROWSER_USER_DATA_DIR = RUNNER_PROFILE_PATHS.chromeProfile();
-const BROWSER_USER_DATA_DIR_ABS = path.resolve(BROWSER_USER_DATA_DIR);
-const AUTH_OK_PATH = RUNNER_PROFILE_PATHS.authOk();
+const paths = getRunnerPaths();
+const BROWSER_USER_DATA_DIR_ABS = paths.user_data_dir_abs;
+const AUTH_OK_PATH = paths.auth_marker_path;
 
 const PROOF_DURATION_MINUTES = parseInt(process.env.PROOF_DURATION_MINUTES || '30', 10);
 const TICK_INTERVAL_SECONDS = 60;
@@ -139,9 +136,10 @@ async function runAuthPersistenceProof(): Promise<ProofResult> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   console.log(`📋 Configuration:`);
-  console.log(`   RUNNER_PROFILE_DIR: ${RUNNER_PROFILE_DIR}`);
-  console.log(`   RUNNER_PROFILE_DIR_ABS: ${RUNNER_PROFILE_DIR_ABS}`);
-  console.log(`   UserDataDir: ${BROWSER_USER_DATA_DIR_ABS}`);
+  console.log(`   RUNNER_PROFILE_DIR: ${paths.runner_profile_dir_raw}`);
+  console.log(`   runner_profile_dir_abs: ${paths.runner_profile_dir_abs}`);
+  console.log(`   user_data_dir_abs: ${paths.user_data_dir_abs}`);
+  console.log(`   auth_marker_path: ${paths.auth_marker_path}`);
   console.log(`   Duration: ${PROOF_DURATION_MINUTES} minutes`);
   console.log(`   Tick Interval: ${TICK_INTERVAL_SECONDS} seconds`);
   console.log('');
@@ -149,8 +147,44 @@ async function runAuthPersistenceProof(): Promise<ProofResult> {
   // Check AUTH_OK marker
   if (!fs.existsSync(AUTH_OK_PATH)) {
     console.error(`❌ AUTH_OK marker missing: ${AUTH_OK_PATH}`);
-    console.error(`   Run executor:auth first to create authentication`);
-    process.exit(1);
+    console.error(`\n📋 Required command:`);
+    console.error(`   pnpm run executor:auth`);
+    console.error(`\n   This will open a browser for manual login repair.`);
+    process.exit(2); // Exit code 2 = blocked
+  }
+  
+  // Check profile mismatch
+  let authOkData: any = null;
+  try {
+    const content = fs.readFileSync(AUTH_OK_PATH, 'utf-8');
+    authOkData = JSON.parse(content);
+    
+    if (authOkData.user_data_dir_abs && authOkData.user_data_dir_abs !== paths.user_data_dir_abs) {
+      console.error(`❌ Profile mismatch detected!`);
+      console.error(`   AUTH_OK.json says: ${authOkData.user_data_dir_abs}`);
+      console.error(`   Current process: ${paths.user_data_dir_abs}`);
+      console.error(`\n📋 Required command:`);
+      console.error(`   pnpm run executor:auth`);
+      console.error(`\n   Profile paths do not match - rerun executor:auth to fix.`);
+      process.exit(1);
+    }
+    
+    if (authOkData.runner_profile_dir_abs && authOkData.runner_profile_dir_abs !== paths.runner_profile_dir_abs) {
+      console.error(`❌ Profile directory mismatch detected!`);
+      console.error(`   AUTH_OK.json says: ${authOkData.runner_profile_dir_abs}`);
+      console.error(`   Current process: ${paths.runner_profile_dir_abs}`);
+      console.error(`\n📋 Required command:`);
+      console.error(`   pnpm run executor:auth`);
+      console.error(`\n   Profile directory paths do not match - rerun executor:auth to fix.`);
+      process.exit(1);
+    }
+    
+    console.log(`✅ AUTH_OK marker found: handle=${authOkData.handle || 'unknown'}, timestamp=${authOkData.timestamp}`);
+  } catch (e) {
+    console.error(`❌ AUTH_OK marker exists but unreadable: ${(e as Error).message}`);
+    console.error(`\n📋 Required command:`);
+    console.error(`   pnpm run executor:auth`);
+    process.exit(2);
   }
 
   let authOkData: any = null;
@@ -310,18 +344,20 @@ async function writeReport(result: ProofResult, authOkData: any): Promise<string
 
 ## Environment
 
-- **CWD:** \`${process.cwd()}\`
-- **RUNNER_PROFILE_DIR:** \`${RUNNER_PROFILE_DIR}\`
-- **RUNNER_PROFILE_DIR_ABS:** \`${RUNNER_PROFILE_DIR_ABS}\`
-- **UserDataDir:** \`${BROWSER_USER_DATA_DIR_ABS}\`
+- **CWD:** \`${paths.cwd}\`
+- **RUNNER_PROFILE_DIR (raw):** \`${paths.runner_profile_dir_raw}\`
+- **runner_profile_dir_abs:** \`${paths.runner_profile_dir_abs}\`
+- **user_data_dir_abs:** \`${paths.user_data_dir_abs}\`
+- **auth_marker_path:** \`${paths.auth_marker_path}\`
 
 ## AUTH_OK Marker
 
 ${authOkData ? `
 - **Handle:** ${authOkData.handle || 'N/A'}
 - **Timestamp:** ${authOkData.timestamp}
-- **UserDataDir:** \`${authOkData.userDataDir}\`
-- **CWD:** \`${authOkData.cwd}\`
+- **runner_profile_dir_abs:** \`${authOkData.runner_profile_dir_abs || 'N/A'}\`
+- **user_data_dir_abs:** \`${authOkData.user_data_dir_abs || 'N/A'}\`
+- **last_success_url:** ${authOkData.last_success_url || 'N/A'}
 ` : '**Missing**'}
 
 ## Summary
