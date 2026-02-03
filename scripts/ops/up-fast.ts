@@ -288,7 +288,46 @@ async function main(): Promise<void> {
           nextCommand = 'pnpm run executor:auth (manual verification required)';
         }
         
-        recordResult('Short Soak Run', false, bucket, persistenceReport, screenshotPath, nextCommand);
+        // Write failure to ledger before exiting
+    const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'auth', 'ops-up-fast-ledger.jsonl');
+    const ledgerDir = path.dirname(ledgerPath);
+    if (!fs.existsSync(ledgerDir)) {
+      fs.mkdirSync(ledgerDir, { recursive: true });
+    }
+    
+    let minutesOk: number | undefined;
+    let firstFailureMinute: number | null | undefined;
+    
+    if (persistenceReport && fs.existsSync(persistenceReport)) {
+      try {
+        const content = fs.readFileSync(persistenceReport, 'utf-8');
+        const minutesOkMatch = content.match(/- \*\*Minutes OK:\*\* (\d+)/);
+        minutesOk = minutesOkMatch ? parseInt(minutesOkMatch[1], 10) : undefined;
+        
+        const firstFailureMatch = content.match(/- \*\*First Failure Minute:\*\* (\d+|N\/A)/);
+        firstFailureMinute = firstFailureMatch && firstFailureMatch[1] !== 'N/A' 
+          ? parseInt(firstFailureMatch[1], 10) 
+          : null;
+      } catch (e) {
+        // Ignore
+      }
+    }
+    
+    const ledgerEntry = {
+      timestamp: new Date().toISOString(),
+      passed: false,
+      reason: bucket,
+      soak_minutes: SOAK_MINUTES,
+      minutes_ok: minutesOk,
+      first_failure_minute: firstFailureMinute,
+      failure_reason: bucket,
+      report_path: persistenceReport || undefined,
+      screenshot_path: screenshotPath || undefined,
+    };
+    
+    fs.appendFileSync(ledgerPath, JSON.stringify(ledgerEntry) + '\n', 'utf-8');
+    
+    recordResult('Short Soak Run', false, bucket, persistenceReport, screenshotPath, nextCommand);
         console.error(`\n❌ Soak run failed: ${bucket}`);
         console.error(`   ${message}`);
         if (screenshotPath) console.error(`   Screenshot: ${screenshotPath}`);
@@ -309,6 +348,27 @@ async function main(): Promise<void> {
       : [];
     const latestScreenshot = screenshots.length > 0 ? screenshots[screenshots.length - 1] : undefined;
     
+    // Write failure to ledger
+    const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'auth', 'ops-up-fast-ledger.jsonl');
+    const ledgerDir = path.dirname(ledgerPath);
+    if (!fs.existsSync(ledgerDir)) {
+      fs.mkdirSync(ledgerDir, { recursive: true });
+    }
+    
+    const ledgerEntry = {
+      timestamp: new Date().toISOString(),
+      passed: false,
+      reason: 'soak_failed',
+      soak_minutes: SOAK_MINUTES,
+      minutes_ok: undefined,
+      first_failure_minute: undefined,
+      failure_reason: 'soak_failed',
+      report_path: persistenceReport || undefined,
+      screenshot_path: latestScreenshot || undefined,
+    };
+    
+    fs.appendFileSync(ledgerPath, JSON.stringify(ledgerEntry) + '\n', 'utf-8');
+    
     recordResult('Short Soak Run', false, `Soak run failed: ${e.message}`, persistenceReport || undefined, latestScreenshot, 'pnpm run ops:recover:x-auth');
     console.error('\n❌ FATAL: Soak run failed');
     console.error('OPS_UP_FAST=FAIL reason=soak_failed');
@@ -317,6 +377,53 @@ async function main(): Promise<void> {
     console.error('Next: pnpm run ops:recover:x-auth');
     process.exit(1);
   }
+  
+  // Write to ledger
+  const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'auth', 'ops-up-fast-ledger.jsonl');
+  const reportsDir = path.join(process.cwd(), 'docs', 'proofs', 'auth');
+  
+  // Find latest auth persistence report for metrics
+  const persistenceReport = findLatestReport('auth-persistence', reportsDir);
+  let minutesOk: number | undefined;
+  let firstFailureMinute: number | null | undefined;
+  let failureReason: string | undefined;
+  
+  if (persistenceReport && fs.existsSync(persistenceReport)) {
+    try {
+      const content = fs.readFileSync(persistenceReport, 'utf-8');
+      const minutesOkMatch = content.match(/- \*\*Minutes OK:\*\* (\d+)/);
+      minutesOk = minutesOkMatch ? parseInt(minutesOkMatch[1], 10) : undefined;
+      
+      const firstFailureMatch = content.match(/- \*\*First Failure Minute:\*\* (\d+|N\/A)/);
+      firstFailureMinute = firstFailureMatch && firstFailureMatch[1] !== 'N/A' 
+        ? parseInt(firstFailureMatch[1], 10) 
+        : null;
+      
+      const fingerprintMatch = content.match(/\| (.+?) \| (.+?) \| (\d+) \|/);
+      failureReason = fingerprintMatch ? fingerprintMatch[1] : undefined;
+    } catch (e) {
+      // Ignore
+    }
+  }
+  
+  const ledgerEntry = {
+    timestamp: new Date().toISOString(),
+    passed: true,
+    soak_minutes: SOAK_MINUTES,
+    minutes_ok: minutesOk,
+    first_failure_minute: firstFailureMinute,
+    failure_reason: failureReason,
+    report_path: persistenceReport || undefined,
+  };
+  
+  // Ensure ledger directory exists
+  const ledgerDir = path.dirname(ledgerPath);
+  if (!fs.existsSync(ledgerDir)) {
+    fs.mkdirSync(ledgerDir, { recursive: true });
+  }
+  
+  // Append to ledger
+  fs.appendFileSync(ledgerPath, JSON.stringify(ledgerEntry) + '\n', 'utf-8');
   
   // SUCCESS
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
