@@ -102,6 +102,8 @@
     "executor:prove:auth-readwrite": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-auth-readwrite.ts",
     "executor:prove:auth-persistence": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-auth-persistence.ts",
     "ops:collect:auth-evidence": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/ops/collect-auth-evidence.ts",
+    "ops:recover:x-auth": "tsx scripts/ops/recover-x-auth.ts",
+    "ops:auth:status": "tsx scripts/ops/auth-status.ts",
     "harvester:daemon": "HARVESTING_ENABLED=true RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/harvester/daemon.ts",
     "executor:prove:15m": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-15m.ts",
     "executor:prove:5m": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/executor/prove-5m.ts",

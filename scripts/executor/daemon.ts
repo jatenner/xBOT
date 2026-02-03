@@ -1065,6 +1065,46 @@ async function main(): Promise<void> {
       phase: 'browser_ready',
     });
     
+    // 🔍 PHASE 2: Auth preflight before claiming decisions
+    let authPreflightPassed = false;
+    let authPreflightBackoffUntil: number | null = null;
+    const AUTH_PREFLIGHT_BACKOFF_MS = 6 * 60 * 60 * 1000; // 6 hours
+    
+    try {
+      if (context && page) {
+        const authPage = await context.newPage();
+        try {
+          const { checkWhoami } = await import('../../src/utils/whoamiAuth');
+          const authResult = await checkWhoami(authPage);
+          
+          if (authResult.logged_in) {
+            authPreflightPassed = true;
+            console.log(`[EXECUTOR_AUTH_PREFLIGHT] ✅ Auth preflight passed: logged_in=true handle=${authResult.handle || 'unknown'}`);
+          } else {
+            console.error(`[EXECUTOR_AUTH_PREFLIGHT] ❌ Auth preflight failed: logged_in=false reason=${authResult.reason}`);
+            
+            // Emit EXECUTOR_AUTH_REQUIRED
+            await emitLifecycleEvent('EXECUTOR_AUTH_REQUIRED', {
+              ts: new Date().toISOString(),
+              pid: daemonPid,
+              reason: 'auth_preflight_failed',
+              url: authResult.url,
+              handle: authResult.handle,
+            });
+            
+            // Set backoff until 6 hours from now
+            authPreflightBackoffUntil = Date.now() + AUTH_PREFLIGHT_BACKOFF_MS;
+            console.error(`[EXECUTOR_AUTH_PREFLIGHT] ⏸️  Entering ${AUTH_PREFLIGHT_BACKOFF_MS / 1000 / 60} minute backoff - will not claim decisions`);
+          }
+        } finally {
+          await authPage.close();
+        }
+      }
+    } catch (e: any) {
+      console.error(`[EXECUTOR_AUTH_PREFLIGHT] ❌ Auth preflight error: ${e.message}`);
+      authPreflightBackoffUntil = Date.now() + AUTH_PREFLIGHT_BACKOFF_MS;
+    }
+    
     // Phase 5A.1: Emit EXECUTOR_HEALTH_READY
     await emitLifecycleEvent('EXECUTOR_HEALTH_READY', {
       ts: new Date().toISOString(),
@@ -1311,6 +1351,83 @@ async function main(): Promise<void> {
     replyReady = 0;
     replyAttempts = 0;
     lastError = undefined;
+    
+    // 🔍 PHASE 2: Check auth preflight backoff before claiming decisions
+    if (authPreflightBackoffUntil !== null) {
+      const now = Date.now();
+      if (now < authPreflightBackoffUntil) {
+        const remainingMinutes = Math.ceil((authPreflightBackoffUntil - now) / 1000 / 60);
+        console.log(`[EXECUTOR_AUTH_PREFLIGHT] ⏸️  Auth preflight backoff active: ${remainingMinutes} minutes remaining - skipping decision claims`);
+        
+        // Emit tick event showing blocked
+        try {
+          const { getSupabaseClient } = await import('../../src/db/index');
+          const supabase = getSupabaseClient();
+          await supabase.from('system_events').insert({
+            event_type: 'EXECUTOR_AUTH_PREFLIGHT_BLOCKED',
+            severity: 'warning',
+            message: `Auth preflight backoff active - not claiming decisions`,
+            event_data: {
+              ts: new Date().toISOString(),
+              tick_id: tickId,
+              remaining_minutes: remainingMinutes,
+            },
+            created_at: new Date().toISOString(),
+          });
+        } catch (e) {
+          // Ignore
+        }
+        
+        // Sleep 60s and continue (don't claim decisions)
+        await new Promise(resolve => setTimeout(resolve, 60000));
+        continue;
+      } else {
+        // Backoff expired - re-run auth preflight
+        console.log(`[EXECUTOR_AUTH_PREFLIGHT] 🔄 Backoff expired - re-running auth preflight...`);
+        authPreflightBackoffUntil = null;
+        authPreflightPassed = false;
+        
+        try {
+          if (context && page) {
+            const authPage = await context.newPage();
+            try {
+              const { checkWhoami } = await import('../../src/utils/whoamiAuth');
+              const authResult = await checkWhoami(authPage);
+              
+              if (authResult.logged_in) {
+                authPreflightPassed = true;
+                console.log(`[EXECUTOR_AUTH_PREFLIGHT] ✅ Auth preflight passed after backoff: logged_in=true handle=${authResult.handle || 'unknown'}`);
+              } else {
+                console.error(`[EXECUTOR_AUTH_PREFLIGHT] ❌ Auth preflight still failed: logged_in=false reason=${authResult.reason}`);
+                authPreflightBackoffUntil = Date.now() + AUTH_PREFLIGHT_BACKOFF_MS;
+                await emitLifecycleEvent('EXECUTOR_AUTH_REQUIRED', {
+                  ts: new Date().toISOString(),
+                  pid: daemonPid,
+                  reason: 'auth_preflight_failed_after_backoff',
+                  url: authResult.url,
+                });
+                await new Promise(resolve => setTimeout(resolve, 60000));
+                continue;
+              }
+            } finally {
+              await authPage.close();
+            }
+          }
+        } catch (e: any) {
+          console.error(`[EXECUTOR_AUTH_PREFLIGHT] ❌ Auth preflight error: ${e.message}`);
+          authPreflightBackoffUntil = Date.now() + AUTH_PREFLIGHT_BACKOFF_MS;
+          await new Promise(resolve => setTimeout(resolve, 60000));
+          continue;
+        }
+      }
+    }
+    
+    // 🔍 PHASE 2: Only claim decisions if auth preflight passed
+    if (!authPreflightPassed) {
+      console.log(`[EXECUTOR_AUTH_PREFLIGHT] ⏸️  Auth preflight not passed - skipping decision claims`);
+      await new Promise(resolve => setTimeout(resolve, 60000));
+      continue;
+    }
     
     try {
       // Enforce page cap
