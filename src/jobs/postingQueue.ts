@@ -422,9 +422,6 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
     console.log(`[SUBSTANCE_GATE] pass=true question=${hasQuestion} action=${hasActionWord} specific=${hasSpecificTerm}`);
   }
   
-  guardResults.substance_gate = { pass: true, hasQuestion, hasActionWord, hasSpecificTerm };        
-  console.log(`[SUBSTANCE_GATE] pass=true question=${hasQuestion} action=${hasActionWord} specific=${hasSpecificTerm}`);
-  
   // ═══════════════════════════════════════════════════════════════════════════
   // 9) SPECIFICITY GATE - Reply must reference target tweet content (minimal)
   // ═══════════════════════════════════════════════════════════════════════════
