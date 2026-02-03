@@ -16,12 +16,15 @@ import { getSupabaseClient } from '../../src/db/index';
 import { generateReplyContent } from '../../src/ai/replyGeneratorAdapter';
 import { strategicReplySystem } from '../../src/growth/strategicReplySystem';
 import { checkReplyQuality } from '../../src/gates/ReplyQualityGate';
+import { isCanaryEligibleTweet } from '../../src/utils/canaryEligibility';
+import { UnifiedBrowserPool } from '../../src/browser/UnifiedBrowserPool';
 import * as path from 'path';
 import * as fs from 'fs';
 
 const REPLIES_ENABLED = process.env.REPLIES_ENABLED === 'true';
 const REPLIES_DRY_RUN = process.env.REPLIES_DRY_RUN !== 'false'; // Default true
 const MAX_REPLIES_PER_RUN = parseInt(process.env.MAX_REPLIES_PER_RUN || '1', 10);
+const CANARY_MODE = process.env.CANARY_MODE === 'true';
 
 interface DryRunResult {
   mode: 'dry_run';
@@ -47,7 +50,8 @@ async function main(): Promise<void> {
   console.log(`[REPLY_DRY_RUN] Configuration:`);
   console.log(`   REPLIES_ENABLED: ${REPLIES_ENABLED}`);
   console.log(`   REPLIES_DRY_RUN: ${REPLIES_DRY_RUN}`);
-  console.log(`   MAX_REPLIES_PER_RUN: ${MAX_REPLIES_PER_RUN}\n`);
+  console.log(`   MAX_REPLIES_PER_RUN: ${MAX_REPLIES_PER_RUN}`);
+  console.log(`   CANARY_MODE: ${CANARY_MODE}\n`);
   
   const supabase = getSupabaseClient();
   const result: DryRunResult = {
@@ -129,8 +133,47 @@ async function main(): Promise<void> {
   
   console.log(`[REPLY_DRY_RUN] 📋 ${candidates.length} candidates after deduplication\n`);
   
-  for (let i = 0; i < Math.min(candidates.length, MAX_REPLIES_PER_RUN); i++) {
-    const opp = candidates[i];
+  // 🔒 CANARY_MODE: Filter for canary-eligible candidates
+  let canaryCandidates = candidates;
+  if (CANARY_MODE) {
+    console.log(`[REPLY_DRY_RUN] 🔒 CANARY_MODE: Checking eligibility for ${candidates.length} candidates...`);
+    const pool = UnifiedBrowserPool.getInstance();
+    const page = await pool.acquirePage('canary_eligibility_check');
+    
+    const eligibleCandidates = [];
+    for (const opp of candidates) {
+      const tweetId = opp.tweet_id || opp.target_tweet_id || '';
+      const authorHandle = opp.tweet_author || opp.author_handle || opp.target_username || '';
+      const discoverySource = opp.discovery_source || null;
+      
+      if (!tweetId) continue;
+      
+      try {
+        const eligibility = await isCanaryEligibleTweet(page, tweetId, discoverySource, authorHandle);
+        if (eligibility.eligible) {
+          eligibleCandidates.push({ ...opp, canaryEligible: true, eligibility });
+          console.log(`[REPLY_DRY_RUN]   ✅ Eligible: ${tweetId} (@${authorHandle})`);
+        } else {
+          console.log(`[REPLY_DRY_RUN]   ⏭️  Not eligible: ${tweetId} (${eligibility.reason})`);
+        }
+      } catch (error: any) {
+        console.log(`[REPLY_DRY_RUN]   ⚠️  Eligibility check failed: ${tweetId} (${error.message})`);
+      }
+    }
+    
+    await pool.releasePage(page);
+    canaryCandidates = eligibleCandidates;
+    console.log(`[REPLY_DRY_RUN] 📊 ${canaryCandidates.length} canary-eligible candidates\n`);
+    
+    if (canaryCandidates.length === 0) {
+      console.log(`[REPLY_DRY_RUN] ⚠️  No canary-eligible candidates found`);
+      console.log(JSON.stringify(result));
+      process.exit(0);
+    }
+  }
+  
+  for (let i = 0; i < Math.min(canaryCandidates.length, MAX_REPLIES_PER_RUN); i++) {
+    const opp = canaryCandidates[i];
     result.candidates_evaluated++;
     
     // Map fields (schema uses tweet_author, not author_handle)
@@ -138,7 +181,7 @@ async function main(): Promise<void> {
     const tweetContent = opp.tweet_content || opp.target_tweet_content || '';
     const tweetId = opp.tweet_id || opp.target_tweet_id || '';
     
-    console.log(`[REPLY_DRY_RUN] 🎯 Processing candidate ${i + 1}/${Math.min(candidates.length, MAX_REPLIES_PER_RUN)}`);
+    console.log(`[REPLY_DRY_RUN] 🎯 Processing candidate ${i + 1}/${Math.min(canaryCandidates.length, MAX_REPLIES_PER_RUN)}`);
     console.log(`   Tweet ID: ${tweetId}`);
     console.log(`   Author: @${authorHandle}`);
     console.log(`   Likes: ${opp.like_count || 0}`);
@@ -224,6 +267,12 @@ async function main(): Promise<void> {
       
       // Store draft in content_metadata
       const decisionId = uuidv4();
+      const features: Record<string, any> = {};
+      if (CANARY_MODE && (opp as any).canaryEligible) {
+        features.canary_eligible = true;
+        features.canary_eligibility_reason = (opp as any).eligibility?.reason || 'verified';
+      }
+      
       const { error: insertError } = await supabase
         .from('content_metadata')
         .insert({
@@ -235,6 +284,7 @@ async function main(): Promise<void> {
           status: 'draft', // Draft status (not 'queued' or 'posted')
           quality_score: qualityCheck.score || 0.7,
           generator_name: generatorUsed,
+          features: Object.keys(features).length > 0 ? features : undefined,
           created_at: new Date().toISOString(),
         });
       

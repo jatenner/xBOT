@@ -19,6 +19,7 @@ import * as fs from 'fs';
 
 const REPLIES_ENABLED = process.env.REPLIES_ENABLED === 'true';
 const REPLIES_DRY_RUN = process.env.REPLIES_DRY_RUN !== 'false'; // Default true
+const CANARY_MODE = process.env.CANARY_MODE !== 'false'; // Default true for this script
 
 interface CanaryPostResult {
   mode: 'canary_post';
@@ -48,7 +49,8 @@ async function main(): Promise<void> {
   
   console.log(`[REPLY_CANARY] Configuration:`);
   console.log(`   REPLIES_ENABLED: ${REPLIES_ENABLED}`);
-  console.log(`   REPLIES_DRY_RUN: ${REPLIES_DRY_RUN}\n`);
+  console.log(`   REPLIES_DRY_RUN: ${REPLIES_DRY_RUN}`);
+  console.log(`   CANARY_MODE: ${CANARY_MODE}\n`);
   
   const supabase = getSupabaseClient();
   const result: CanaryPostResult = {
@@ -62,14 +64,20 @@ async function main(): Promise<void> {
     screenshot_path: null,
   };
   
-  // Load one approved draft (or generate then post if design prefers)
-  const { data: drafts, error: draftError } = await supabase
+  // Load one approved draft (canary-eligible if CANARY_MODE)
+  let draftQuery = supabase
     .from('content_metadata')
     .select('*')
     .eq('decision_type', 'reply')
     .eq('status', 'draft')
-    .order('created_at', { ascending: false })
-    .limit(1);
+    .order('created_at', { ascending: false });
+  
+  if (CANARY_MODE) {
+    // Only select drafts with canary_eligible=true
+    draftQuery = draftQuery.eq('features->canary_eligible', true);
+  }
+  
+  const { data: drafts, error: draftError } = await draftQuery.limit(1);
   
   if (draftError) {
     result.error = `Failed to load drafts: ${draftError.message}`;

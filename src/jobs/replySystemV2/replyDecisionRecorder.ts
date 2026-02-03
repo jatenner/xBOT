@@ -550,11 +550,50 @@ export async function shouldAllowReply(ancestry: ReplyAncestry, context?: { cons
     }
   }
   
-  // 🔒 FAIL-CLOSED: Must have OK status
+  // 🔒 FAIL-CLOSED: Must have OK status (unless CANARY_MODE)
+  const canaryMode = process.env.CANARY_MODE === 'true';
+  
   if (ancestry.status !== 'OK') {
     const statusReason = ancestry.status === 'UNCERTAIN' 
       ? 'ANCESTRY_UNCERTAIN_FAIL_CLOSED'
       : 'ANCESTRY_ERROR_FAIL_CLOSED';
+    
+    // 🎯 CANARY_MODE: Skip uncertain candidates instead of blocking
+    if (ancestry.status === 'UNCERTAIN' && canaryMode) {
+      const decisionId = context?.decision_id;
+      const tweetId = context?.tweet_id;
+      
+      // Mark opportunity as uncertain and skip
+      if (tweetId) {
+        const { getSupabaseClient } = await import('../../db/index');
+        const supabase = getSupabaseClient();
+        
+        // Update opportunity with ancestry_status
+        await supabase
+          .from('reply_opportunities')
+          .update({ ancestry_status: 'uncertain' })
+          .eq('tweet_id', tweetId);
+        
+        // Log structured event
+        await supabase.from('system_events').insert({
+          event_type: 'ANCESTRY_SKIP_UNCERTAIN',
+          metadata: {
+            tweet_id: tweetId,
+            decision_id: decisionId,
+            ancestry_method: ancestry.method,
+            ancestry_signals: ancestry.signals,
+          },
+        });
+      }
+      
+      console.log(`[REPLY_DECISION] ⏭️  CANARY_MODE: Skipping uncertain candidate (tweet_id=${tweetId})`);
+      return {
+        allow: false,
+        reason: 'ANCESTRY_UNCERTAIN_SKIP',
+        deny_reason_code: 'ANCESTRY_UNCERTAIN',
+        deny_reason_detail: 'Ancestry uncertain - skipped in canary mode',
+      };
+    }
     
     // 🎯 FAIL-OPEN: Allow UNCERTAIN if we have evidence it's a root tweet
     if (ancestry.status === 'UNCERTAIN') {

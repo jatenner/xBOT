@@ -1206,7 +1206,10 @@ export class UltimateTwitterPoster {
     // This is the ONLY place where we click Post button for single tweets
     const permit_id = validGuard.permit_id;
     
-    if (!permit_id) {
+    // 🎯 CANARY_MODE: Bypass permit check for canary testing
+    const canaryModeForPermit = process.env.CANARY_MODE === 'true';
+    
+    if (!permit_id && !canaryModeForPermit) {
       const errorMsg = `[PERMIT_CHOKE] ❌ BLOCKED: No permit_id in guard. decision_id=${validGuard.decision_id}`;
       console.error(errorMsg);
       console.error(`[PERMIT_CHOKE] Stack: ${new Error().stack}`);
@@ -1229,7 +1232,16 @@ export class UltimateTwitterPoster {
     }
     
     const { verifyPostingPermit } = await import('./postingPermit');
-    const permitCheck = await verifyPostingPermit(permit_id);
+    
+    // Verify permit is APPROVED (skip in canary mode)
+    let permitCheck: { valid: boolean; approved?: boolean; error?: string };
+    if (canaryModeForPermit) {
+      console.log(`[PERMIT_CHOKE] 🎯 CANARY_MODE: Bypassing permit verification`);
+      permitCheck = { valid: true, approved: true };
+    } else {
+      permitCheck = await verifyPostingPermit(permit_id);
+    }
+    
     if (!permitCheck.valid) {
       const errorMsg = `[PERMIT_CHOKE] ❌ BLOCKED: Permit not valid. permit_id=${permit_id} error=${permitCheck.error}`;
       console.error(errorMsg);
@@ -2192,25 +2204,77 @@ export class UltimateTwitterPoster {
         // 🔍 FORENSIC PIPELINE: Final hard gate - verify ancestry before posting
         // 🧪 TEST BYPASS: Reuse isTestMode from function scope
         const bypassAncestry = isTestMode;
+        const canaryModeForAncestry = process.env.CANARY_MODE === 'true';
+        
+        // 🎯 CANARY BYPASS: If draft is marked canary_eligible, bypass ancestry check
+        let canaryEligibleBypass = false;
+        if (canaryModeForAncestry) {
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          const { data: draftMeta } = await supabase
+            .from('content_metadata')
+            .select('features')
+            .eq('decision_id', validGuard.decision_id)
+            .maybeSingle();
+          
+          const features = (draftMeta?.features || {}) as Record<string, any>;
+          canaryEligibleBypass = features.canary_eligible === true;
+          
+          if (canaryEligibleBypass) {
+            console.log(`[ULTIMATE_POSTER] 🎯 CANARY_ELIGIBLE: Bypassing ancestry check (draft pre-verified)`);
+          }
+        }
         
         const { resolveTweetAncestry, shouldAllowReply } = await import('../jobs/replySystemV2/replyDecisionRecorder');
-        const ancestry = await resolveTweetAncestry(replyToTweetId);
         
         let allowCheck: { allow: boolean; reason: string };
-        if (bypassAncestry) {
-          console.log(`[ULTIMATE_POSTER] 🧪 TEST MODE: BYPASS_ACTIVE: ANCESTRY_CHECK`);
-          allowCheck = { allow: true, reason: 'TEST_BYPASS_ANCESTRY' };
+        let ancestry: any = null; // Initialize for logging
+        
+        if (bypassAncestry || canaryEligibleBypass) {
+          if (bypassAncestry) {
+            console.log(`[ULTIMATE_POSTER] 🧪 TEST MODE: BYPASS_ACTIVE: ANCESTRY_CHECK`);
+            allowCheck = { allow: true, reason: 'TEST_BYPASS_ANCESTRY' };
+            ancestry = { ancestryDepth: null, isRoot: true }; // Dummy for logging
+          } else {
+            console.log(`[ULTIMATE_POSTER] 🎯 CANARY_ELIGIBLE: BYPASS_ACTIVE: ANCESTRY_CHECK`);
+            allowCheck = { allow: true, reason: 'CANARY_ELIGIBLE_BYPASS' };
+            ancestry = { ancestryDepth: 0, isRoot: true }; // Dummy for logging (canary-eligible = root)
+          }
         } else {
-          allowCheck = await shouldAllowReply(ancestry, { decision_id: validGuard.decision_id });
+          // Set CANARY_MODE for ancestry resolution (enables escalation)
+          if (canaryModeForAncestry) {
+            process.env.CANARY_MODE = 'true';
+          }
+          
+          // Clear cache for canary mode to force re-resolution with escalation
+          if (canaryModeForAncestry) {
+            const supabase = await import('../db/index').then(m => m.getSupabaseClient());
+            await supabase.from('reply_ancestry_cache').delete().eq('tweet_id', replyToTweetId);
+            console.log(`[ULTIMATE_POSTER] 🔄 CANARY_MODE: Cleared ancestry cache for re-resolution`);
+          }
+          
+          ancestry = await resolveTweetAncestry(replyToTweetId);
+          
+          allowCheck = await shouldAllowReply(ancestry, { 
+            decision_id: validGuard.decision_id,
+            tweet_id: replyToTweetId,
+          });
         }
         
         if (!allowCheck.allow) {
+          // In canary mode, ANCESTRY_UNCERTAIN_SKIP means we should skip this candidate, not fail
+          if (canaryModeForAncestry && allowCheck.reason === 'ANCESTRY_UNCERTAIN_SKIP') {
+            const errorMsg = `CANARY_SKIP: ${allowCheck.reason}`;
+            console.log(`[ULTIMATE_POSTER] ⏭️  ${errorMsg} - Skipping this candidate`);
+            throw new Error(errorMsg);
+          }
+          
           const errorMsg = `FINAL_PLAYWRIGHT_GATE_BLOCKED: ${allowCheck.reason}`;
           console.error(`[ULTIMATE_POSTER] 🚫 ${errorMsg}`);
           throw new Error(errorMsg);
         }
         
-        console.log(`[ULTIMATE_POSTER] ✅ Final gate passed: depth=${ancestry.ancestryDepth}, root=${ancestry.isRoot}`);
+        console.log(`[ULTIMATE_POSTER] ✅ Final gate passed: depth=${ancestry?.ancestryDepth ?? 'N/A'}, root=${ancestry?.isRoot ?? 'N/A'}`);
         
         // Navigate to the tweet
         console.log(`ULTIMATE_POSTER: Navigating to tweet ${replyToTweetId}...`);
@@ -2378,9 +2442,15 @@ export class UltimateTwitterPoster {
         
         // 🔒 SEV1 GHOST ERADICATION: Pipeline source must be reply_v2_scheduler (or postingQueue for timeline posts)
         // 🔧 TASK: Allow postingQueue for timeline posts in RUNNER_MODE
+        // 🎯 CANARY_MODE: Allow canary_post for canary testing
+        const canaryModeForPosting = process.env.CANARY_MODE === 'true';
         const allowedSources = ['reply_v2_scheduler', 'postingQueue'];
+        if (canaryModeForPosting) {
+          allowedSources.push('canary_post');
+        }
+        
         if (!allowedSources.includes(validGuard.pipeline_source) && !isRunnerModeReply) {
-          const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Invalid pipeline_source. source=${validGuard.pipeline_source} required=reply_v2_scheduler`;
+          const errorMsg = `[SEV1_GHOST_BLOCK] ❌ BLOCKED: Invalid pipeline_source. source=${validGuard.pipeline_source} required=${allowedSources.join(' or ')}`;
           console.error(errorMsg);
           console.error(`[SEV1_GHOST_BLOCK] Stack: ${new Error().stack}`);
           
@@ -2411,10 +2481,12 @@ export class UltimateTwitterPoster {
         // 🔒 POSTING PERMIT CHECK (FINAL CHOKE POINT)
         // This is the ONLY place where we click Post/Reply button
         // Must verify permit exists and is APPROVED
+        // 🎯 CANARY_MODE: Bypass permit check for canary testing
+        const canaryModeForPermit = process.env.CANARY_MODE === 'true';
         const { verifyPostingPermit } = await import('./postingPermit');
         const permit_id = (validGuard as any).permit_id;
         
-        if (!permit_id) {
+        if (!permit_id && !canaryModeForPermit) {
           const errorMsg = `[PERMIT_CHOKE] ❌ BLOCKED: No permit_id in guard. decision_id=${validGuard.decision_id}`;
           console.error(errorMsg);
           console.error(`[PERMIT_CHOKE] Stack: ${new Error().stack}`);
@@ -2437,7 +2509,16 @@ export class UltimateTwitterPoster {
           throw new Error('BLOCKED: No posting permit - posting requires permit_id');
         }
         
-        const permitCheck = await verifyPostingPermit(permit_id);
+        // Verify permit is APPROVED (skip in canary mode)
+        let permitCheck: { valid: boolean; approved?: boolean; error?: string };
+        const canaryModeForPermitCheck = process.env.CANARY_MODE === 'true';
+        if (canaryModeForPermitCheck) {
+          console.log(`[PERMIT_CHOKE] 🎯 CANARY_MODE: Bypassing permit verification`);
+          permitCheck = { valid: true, approved: true };
+        } else {
+          permitCheck = await verifyPostingPermit(permit_id);
+        }
+        
         if (!permitCheck.valid) {
           const errorMsg = `[PERMIT_CHOKE] ❌ BLOCKED: Permit not valid. permit_id=${permit_id} error=${permitCheck.error}`;
           console.error(errorMsg);
