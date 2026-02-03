@@ -160,6 +160,69 @@ This will:
 
 **Note:** Cookie auth mode skips daemon start (executor uses profile auth). Use this for control-plane verification only.
 
+#### Gate Proofs (Cookie Auth)
+
+**Two-gate proof sequence** for comprehensive cookie auth verification:
+
+**Gate 1: 60-Minute Persistence Proof**
+```bash
+PROOF_DURATION_MINUTES=60 pnpm run executor:prove:auth-b64-persistence
+```
+
+**What PASS means:**
+- ✅ Auth persisted for full 60 minutes
+- ✅ No login redirects detected
+- ✅ No challenge URLs detected
+- ✅ Logged-in state verified every 60 seconds
+- ✅ Report written to `docs/proofs/auth/b64-auth-persistence-<ts>.md`
+
+**What FAIL means:**
+- ❌ Login redirect detected → cookies expired/invalid
+- ❌ Challenge detected → X.com verification required (manual intervention)
+- ❌ Consent wall → check report for details
+- **Action:** Check report for failure classification, screenshot paths, and exact failure minute
+
+**If Gate 1 FAILS:** Stop here. Check the persistence report for failure classification and screenshot paths. Cookies may need to be refreshed.
+
+**Gate 2: System Bring-Up with Execution Proof** (only if Gate 1 PASSES)
+```bash
+COOKIE_AUTH_MODE=true REQUIRE_EXECUTION_PROOF=true SOAK_MINUTES=20 pnpm run ops:up:fast
+```
+
+**What PASS means:**
+- ✅ All preflight checks passed (OpenAI drift/validation)
+- ✅ B64 auth readwrite proof passed
+- ✅ B64 auth persistence proof passed (20 minutes)
+- ✅ Execution proof passed (real reply posted)
+- ✅ Reply URL available in execution ledger
+- ✅ Output: `OPS_UP_FAST=PASS minutes_ok=<n>`
+
+**What FAIL means:**
+- ❌ Preflight failed → check OpenAI key sync
+- ❌ Auth readwrite failed → cookies invalid
+- ❌ Auth persistence failed → cookies expired during soak
+- ❌ Execution proof failed → check execution ledger for classification
+- **Action:** Check execution ledger (`docs/proofs/execution/execution-ledger.jsonl`) for latest entry with failure classification and report path
+
+**Execution Ledger Entry Format:**
+- `ts` - Timestamp
+- `proof_type` - "e2e-control-reply" or "e2e-control-post"
+- `target_tweet_id` - Tweet ID used for proof
+- `decision_id` - Decision UUID
+- `passed` - true/false
+- `failure_classification` - Classification if failed
+- `reply_url` - Reply URL if successful (for replies)
+- `tweet_url` - Tweet URL if successful (for posts)
+- `time_to_success_seconds` - Time to complete
+- `report_path` - Path to proof report
+
+**Quick Gate Proofs Command:**
+```bash
+pnpm run ops:gate:proofs
+```
+
+This runs both gates sequentially and reports final verdict with artifacts.
+
 ### Step 3: Verify Mac Executor Status (30 seconds)
 
 ```bash

@@ -108,6 +108,8 @@
     "ops:test:cookie-auth": "tsx scripts/ops/extract-cookies-and-test.ts",
     "ops:test:profile-auth": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/ops/test-profile-auth-comprehensive.ts",
     "ops:test:b64-auth": "tsx scripts/ops/test-b64-auth-comprehensive.ts",
+    "ops:gate:proofs": "tsx scripts/ops/run-gate-proofs.ts",
+    "ops:gate:status": "tsx scripts/ops/check-gate-proofs-status.ts",
     "ops:collect:auth-evidence": "RUNNER_PROFILE_DIR=./.runner-profile tsx scripts/ops/collect-auth-evidence.ts",
     "ops:recover:x-auth": "tsx scripts/ops/recover-x-auth.ts",
     "ops:auth:status": "tsx scripts/ops/auth-status.ts",
