@@ -573,10 +573,13 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     console.warn('[HARVESTER] ⚠️ DEGRADED MODE: Reduced search count for stability');
   }
   
-  const searchLimit = poolWasCritical ? maxCriticalSearches : maxSearchesPerRun;
-  if (queriesToRun.length > searchLimit) {
-    console.log(`[HARVESTER] ⏳ Limiting to ${searchLimit} searches this cycle (remaining will run next loop)`);
-    queriesToRun = queriesToRun.slice(0, searchLimit);
+  // 🎯 P1 MODE: Skip searchLimit logic (already limited to 1 query above)
+  if (!p1Mode) {
+    const searchLimit = poolWasCritical ? maxCriticalSearches : maxSearchesPerRun;
+    if (queriesToRun.length > searchLimit) {
+      console.log(`[HARVESTER] ⏳ Limiting to ${searchLimit} searches this cycle (remaining will run next loop)`);
+      queriesToRun = queriesToRun.slice(0, searchLimit);
+    }
   }
   if (poolWasCritical) {
     console.warn('[HARVESTER] 🚨 CRITICAL MODE: Pool is dangerously low, running extended discovery cycle');
