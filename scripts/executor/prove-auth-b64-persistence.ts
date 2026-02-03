@@ -19,6 +19,7 @@ import { getSupabaseClient } from '../../src/db/index';
 const PROOF_DURATION_MINUTES = parseInt(process.env.PROOF_DURATION_MINUTES || '30', 10);
 const TICK_INTERVAL_SECONDS = parseInt(process.env.TICK_SECONDS || '60', 10);
 const HUMAN_JITTER = process.env.HUMAN_JITTER === 'true';
+const RELOAD_INTERVAL_MINUTES = parseInt(process.env.RELOAD_INTERVAL_MINUTES || '7', 10); // Reload every 7 min with jitter
 
 // Create temp profile dir per run
 const TEMP_PROFILE_BASE = path.join(process.cwd(), '.tmp', 'b64-auth-proofs');
@@ -236,8 +237,96 @@ async function captureForensics(page: Page, context: BrowserContext, minute: num
   }
 }
 
-async function checkLoggedInRobust(page: Page, context: BrowserContext, minute: number): Promise<{ logged_in: boolean; reason: string; handle: string | null; url: string; redirect_chain?: string[] }> {
+/**
+ * Lightweight check without navigation (for frequent ticks)
+ */
+async function checkLoggedInLightweight(page: Page): Promise<{ logged_in: boolean; reason: string; handle: string | null; url: string }> {
   try {
+    const currentUrl = page.url();
+    
+    // Check URL for redirects without navigating
+    if (currentUrl.includes('/i/flow/login') || currentUrl.includes('/login')) {
+      return {
+        logged_in: false,
+        reason: 'login_redirect',
+        handle: null,
+        url: currentUrl,
+      };
+    }
+    
+    if (currentUrl.includes('/account/access') || 
+        currentUrl.includes('/i/flow/challenge') ||
+        currentUrl.includes('/i/flow/verify') ||
+        currentUrl.includes('/account/verify')) {
+      return {
+        logged_in: false,
+        reason: 'challenge_suspected',
+        handle: null,
+        url: currentUrl,
+      };
+    }
+    
+    // Lightweight DOM check (no navigation)
+    const loggedInCheck = await page.evaluate(() => {
+      // Check for compose box
+      const composeBox = document.querySelector('[data-testid="tweetTextarea_0"]') ||
+                         document.querySelector('[contenteditable="true"][data-testid*="tweet"]');
+      
+      // Check for account menu
+      const accountMenu = document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]') ||
+                          document.querySelector('[data-testid="AppTabBar_Profile_Link"]');
+      
+      // Check for home timeline
+      const timeline = document.querySelector('[data-testid="primaryColumn"]') ||
+                       document.querySelector('[aria-label="Home timeline"]');
+      
+      // Try to extract handle from page
+      let handle: string | null = null;
+      const handleMatch = window.location.href.match(/x\.com\/([^\/\?]+)/);
+      if (handleMatch && handleMatch[1] && handleMatch[1] !== 'home' && handleMatch[1] !== 'i') {
+        handle = handleMatch[1];
+      }
+      
+      return {
+        logged_in: !!(composeBox || accountMenu || timeline),
+        handle: handle,
+      };
+    });
+    
+    if (loggedInCheck.logged_in) {
+      return {
+        logged_in: true,
+        reason: 'ok',
+        handle: loggedInCheck.handle,
+        url: currentUrl,
+      };
+    }
+    
+    return {
+      logged_in: false,
+      reason: 'unknown',
+      handle: null,
+      url: currentUrl,
+    };
+    
+  } catch (error: any) {
+    return {
+      logged_in: false,
+      reason: 'unknown',
+      handle: null,
+      url: page.url(),
+    };
+  }
+}
+
+async function checkLoggedInRobust(page: Page, context: BrowserContext, minute: number, forceReload: boolean = false): Promise<{ logged_in: boolean; reason: string; handle: string | null; url: string; redirect_chain?: string[] }> {
+  try {
+    // If not forcing reload and page is already on /home, do lightweight check
+    if (!forceReload && page.url().includes('x.com/home')) {
+      return await checkLoggedInLightweight(page);
+    }
+    
+    // Otherwise, navigate/reload
     const urlBeforeGoto = page.url();
     const redirectChain: string[] = [urlBeforeGoto];
     
@@ -422,13 +511,38 @@ async function runAuthB64PersistenceProof(): Promise<ProofResult> {
     const startTime = Date.now();
     const endTime = startTime + (PROOF_DURATION_MINUTES * 60 * 1000);
     let minute = 0;
+    let lastReloadTime = startTime;
     
     console.log(`[B64_AUTH_PROOF] ⏱️  Starting ${PROOF_DURATION_MINUTES}-minute persistence proof...`);
-    console.log(`[B64_AUTH_PROOF]   Ticking every ${TICK_INTERVAL_SECONDS} seconds\n`);
+    console.log(`[B64_AUTH_PROOF]   Ticking every ${TICK_INTERVAL_SECONDS} seconds`);
+    console.log(`[B64_AUTH_PROOF]   Reloading every ${RELOAD_INTERVAL_MINUTES} minutes (with jitter)\n`);
+    
+    // Initial navigation
+    await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(2000);
     
     while (Date.now() < endTime) {
-      const checkResult = await checkLoggedInRobust(page, context, Math.floor((Date.now() - startTime) / 60000));
       const currentMinute = Math.floor((Date.now() - startTime) / 60000);
+      const timeSinceLastReload = (Date.now() - lastReloadTime) / 60000;
+      
+      // Determine if we should reload (every RELOAD_INTERVAL_MINUTES with jitter)
+      let shouldReload = false;
+      if (timeSinceLastReload >= RELOAD_INTERVAL_MINUTES) {
+        // Add jitter: ±20% of reload interval
+        const jitterMinutes = RELOAD_INTERVAL_MINUTES * 0.2;
+        const jitter = (Math.random() * 2 - 1) * jitterMinutes; // -20% to +20%
+        const reloadThreshold = RELOAD_INTERVAL_MINUTES + jitter;
+        
+        if (timeSinceLastReload >= reloadThreshold) {
+          shouldReload = true;
+          lastReloadTime = Date.now();
+        }
+      }
+      
+      // Use lightweight check if not reloading, robust check if reloading
+      const checkResult = shouldReload
+        ? await checkLoggedInRobust(page, context, currentMinute, true)
+        : await checkLoggedInLightweight(page);
       
       // Capture forensics snapshot on every tick
       const forensics = await captureForensics(page, context, currentMinute, checkResult.url, checkResult.logged_in, checkResult.reason);
@@ -447,7 +561,8 @@ async function runAuthB64PersistenceProof(): Promise<ProofResult> {
       
       const status = checkResult.logged_in ? '✅' : '❌';
       const forensicsSummary = `cookies:${forensics.cookie_count_x_com + forensics.cookie_count_twitter_com} auth_token:${forensics.has_auth_token} ct0:${forensics.has_ct0}`;
-      console.log(`[B64_AUTH_PROOF] [${currentMinute}m] ${status} ${checkResult.reason} | ${forensicsSummary} | ${checkResult.url.substring(0, 50)}...`);
+      const reloadIndicator = shouldReload ? ' 🔄' : '';
+      console.log(`[B64_AUTH_PROOF] [${currentMinute}m] ${status} ${checkResult.reason}${reloadIndicator} | ${forensicsSummary} | ${checkResult.url.substring(0, 50)}...`);
       
       // Handle failures
       if (!checkResult.logged_in) {
@@ -600,6 +715,8 @@ async function writeReport(result: ProofResult): Promise<string> {
 **Generated:** ${new Date().toISOString()}
 **Duration:** ${PROOF_DURATION_MINUTES} minutes
 **Tick Interval:** ${TICK_INTERVAL_SECONDS} seconds
+**Reload Interval:** ${RELOAD_INTERVAL_MINUTES} minutes (with jitter)
+**Strategy:** Lightweight checks between reloads (keeps page open)
 
 ## Status
 
