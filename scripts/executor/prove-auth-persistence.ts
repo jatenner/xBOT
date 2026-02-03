@@ -39,6 +39,7 @@ interface ProofResult {
   fail_rate: number;
   passed: boolean;
   first_failure_tick: TickRecord | null;
+  authOkData?: any;
 }
 
 async function checkLoggedInRobust(page: Page): Promise<{ logged_in: boolean; reason: string; handle: string | null; url: string }> {
@@ -186,16 +187,10 @@ async function runAuthPersistenceProof(): Promise<ProofResult> {
     console.error(`   pnpm run executor:auth`);
     process.exit(2);
   }
-
-  let authOkData: any = null;
-  try {
-    const content = fs.readFileSync(AUTH_OK_PATH, 'utf-8');
-    authOkData = JSON.parse(content);
-    console.log(`✅ AUTH_OK marker found: handle=${authOkData.handle || 'unknown'}, timestamp=${authOkData.timestamp}`);
-  } catch (e) {
-    console.warn(`⚠️  AUTH_OK marker exists but unreadable: ${(e as Error).message}`);
-  }
-
+  
+  // Store authOkData for report
+  const storedAuthOkData = authOkData;
+  
   // Use EXACT same config as daemon
   console.log(`\n🚀 Launching browser with daemon config...`);
   const context = await chromium.launchPersistentContext(BROWSER_USER_DATA_DIR_ABS, {
@@ -323,6 +318,7 @@ async function runAuthPersistenceProof(): Promise<ProofResult> {
     fail_rate: failRate,
     passed,
     first_failure_tick: firstFailureTick,
+    authOkData, // Include authOkData from earlier check
   };
 }
 
