@@ -488,11 +488,12 @@ async function runAuthB64PersistenceProof(): Promise<ProofResult> {
           }
           
           // Write forensics snapshot JSON (safe, no secrets)
+          const snapshot = {
+            ...forensics,
+            redirect_chain: checkResult.redirect_chain,
+          };
+          
           try {
-            const snapshot = {
-              ...forensics,
-              redirect_chain: checkResult.redirect_chain,
-            };
             fs.writeFileSync(forensicsSnapshotPath, JSON.stringify(snapshot, null, 2), 'utf-8');
             console.log(`[B64_AUTH_PROOF] 🔍 Forensics snapshot saved: ${forensicsSnapshotPath}`);
           } catch (e) {
