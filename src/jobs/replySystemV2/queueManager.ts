@@ -246,6 +246,39 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
             `root_opp_bridge_${Date.now()}`
           );
           
+          // 🎯 P1 MANUAL BYPASS: Allow public_search_manual targets to pass hard filters in P1 mode
+          let finalPassedHardFilters = score.passed_hard_filters;
+          let finalFilterReason = score.filter_reason;
+          const p1Mode = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
+          
+          if (!finalPassedHardFilters && p1Mode && opp.discovery_source === 'public_search_manual') {
+            // Validate tweet ID (must be numeric >=15 digits)
+            const tweetIdNumeric = /^\d{15,}$/.test(opp.target_tweet_id);
+            const notDeleted = opp.accessibility_status !== 'deleted';
+            
+            if (tweetIdNumeric && notDeleted) {
+              finalPassedHardFilters = true;
+              finalFilterReason = `p1_manual_bypass: ${score.filter_reason}`;
+              
+              // Emit event
+              try {
+                await supabase.from('system_events').insert({
+                  event_type: 'P1_MANUAL_HARDFILTER_BYPASS_USED',
+                  event_data: {
+                    tweet_id: opp.target_tweet_id,
+                    reason: `P1 manual seed bypass: original_reason=${score.filter_reason}`,
+                    discovery_source: opp.discovery_source,
+                    accessibility_status: opp.accessibility_status,
+                  },
+                });
+              } catch {
+                // Non-blocking
+              }
+              
+              console.log(`[ROOT_EVAL] 🎯 P1_MANUAL_BYPASS: Allowing ${opp.target_tweet_id} (original_reason=${score.filter_reason})`);
+            }
+          }
+          
           // Insert evaluation with idempotency (ON CONFLICT DO NOTHING)
           const { error: insertError } = await supabase
             .from('candidate_evaluations')
@@ -266,11 +299,11 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
               recency_score: score.recency_score,
               author_signal_score: score.author_signal_score,
               overall_score: score.overall_score,
-              passed_hard_filters: score.passed_hard_filters,
-              filter_reason: score.filter_reason,
+              passed_hard_filters: finalPassedHardFilters,
+              filter_reason: finalFilterReason,
               predicted_24h_views: score.predicted_24h_views,
               predicted_tier: score.predicted_tier,
-              status: score.passed_hard_filters ? 'evaluated' : 'blocked',
+              status: finalPassedHardFilters ? 'evaluated' : 'blocked',
               ai_judge_decision: score.judge_decision ? {
                 relevance: score.judge_decision.relevance,
                 replyability: score.judge_decision.replyability,
