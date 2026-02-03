@@ -120,31 +120,50 @@ async function main(): Promise<void> {
   // STEP 3: Cookie persistence proof (before auth)
   logStep('STEP 3: Cookie Persistence Proof', 'Checking cookie persistence...');
   try {
-    // Run full cookie persistence check (before auth, after auth, delayed)
-    // This requires AUTH_OK to exist, so we check first
+    // Before auth phase (always run if AUTH_OK doesn't exist)
     if (!fs.existsSync(AUTH_OK_PATH)) {
-      // Before auth phase
       console.log('\n📋 Phase: BEFORE_AUTH');
       await runCommand('BEFORE_AUTH=true pnpm run executor:prove:cookie-persist', 'Cookie check before auth');
-      
-      // Auth step (required for after_auth)
-      console.log('\n📋 Phase: Auth (operator action required)');
-      console.log('⚠️  If browser opens, complete login manually, then press ENTER in terminal');
-      await runCommand('pnpm run executor:auth', 'Executor auth');
     } else {
       console.log('✅ AUTH_OK marker exists - skipping before_auth phase');
     }
     
-    // After auth and delayed check (full run)
-    console.log(`\n📋 Phase: Full check (after auth + ${DELAY_MINUTES} min delay)...`);
-    await runCommand(`DELAY_MINUTES=${DELAY_MINUTES} pnpm run executor:prove:cookie-persist`, 'Full cookie persistence check');
+    // Auth step (required for after_auth) - only if AUTH_OK doesn't exist
+    if (!fs.existsSync(AUTH_OK_PATH)) {
+      console.log('\n📋 Phase: Auth (operator action required)');
+      console.log('⚠️  If browser opens, complete login manually, then press ENTER in terminal');
+      await runCommand('pnpm run executor:auth', 'Executor auth');
+    }
+    
+    // Verify AUTH_OK exists now
+    if (!fs.existsSync(AUTH_OK_PATH)) {
+      throw new Error('AUTH_OK marker not created after executor:auth');
+    }
+    
+    // After auth phase
+    console.log('\n📋 Phase: AFTER_AUTH');
+    await runCommand('AFTER_AUTH=true pnpm run executor:prove:cookie-persist', 'Cookie check after auth');
+    
+    // Delayed check
+    console.log(`\n📋 Phase: Delayed check (waiting ${DELAY_MINUTES} minutes)...`);
+    await new Promise(resolve => setTimeout(resolve, DELAY_MINUTES * 60 * 1000));
+    await runCommand(`DELAY_MINUTES=${DELAY_MINUTES} pnpm run executor:prove:cookie-persist`, 'Cookie check delayed');
+    
+    // Run full check to get analysis (compares all phases)
+    console.log('\n📋 Phase: Full analysis check...');
+    const fullCheckResult = await runCommand(`DELAY_MINUTES=${DELAY_MINUTES} pnpm run executor:prove:cookie-persist`, 'Full cookie persistence check', true);
+    
+    if (!fullCheckResult.success) {
+      // Check exit code - cookie-persist exits 1 if cookies didn't increase/persist
+      const reportsDir = path.join(process.cwd(), 'docs', 'proofs', 'auth');
+      const cookieReport = findLatestReport('cookie-persistence', reportsDir);
+      throw new Error('Cookies did not increase after auth or did not persist after delay');
+    }
     
     // Find latest cookie persist report
     const reportsDir = path.join(process.cwd(), 'docs', 'proofs', 'auth');
     const cookieReport = findLatestReport('cookie-persistence', reportsDir);
     
-    // Verify cookies increased and persisted by checking the full run output
-    // The full run should have compared before/after/delayed and reported analysis
     recordResult('Cookie Persistence', true, undefined, cookieReport || undefined);
   } catch (e: any) {
     const reportsDir = path.join(process.cwd(), 'docs', 'proofs', 'auth');
