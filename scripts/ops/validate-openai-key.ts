@@ -10,8 +10,19 @@
  *   P1_MODE=true pnpm run ops:validate:openai
  */
 
-import 'dotenv/config';
+import * as fs from 'fs';
+import * as path from 'path';
 import { createBudgetedChatCompletion } from '../../src/services/openaiBudgetedClient';
+
+// Load .env.local first (preferred), then .env (same pattern as daemon)
+const envLocalPath = path.join(process.cwd(), '.env.local');
+const envPath = path.join(process.cwd(), '.env');
+
+if (fs.existsSync(envLocalPath)) {
+  require('dotenv').config({ path: envLocalPath });
+} else if (fs.existsSync(envPath)) {
+  require('dotenv').config({ path: envPath });
+}
 
 /**
  * Mask API key for logging (show first 6 chars + last 4 chars)
