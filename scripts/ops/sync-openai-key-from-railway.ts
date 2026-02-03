@@ -51,9 +51,9 @@ function updateEnvLocal(apiKey: string, envLocalPath: string): void {
   const updatedLines: string[] = [];
 
   for (const line of lines) {
-    // Check if this is the OPENAI_API_KEY line
-    if (line.match(/^\s*OPENAI_API_KEY\s*=/)) {
-      // Replace existing line
+    // Check if this is the OPENAI_API_KEY line (including commented out)
+    if (line.match(/^\s*#?\s*OPENAI_API_KEY\s*=/)) {
+      // Replace existing line (uncomment if needed)
       updatedLines.push(`OPENAI_API_KEY=${apiKey.trim()}`);
       keyLineFound = true;
     } else {
@@ -106,17 +106,28 @@ async function main() {
   console.log(`   ✅ Length: ${trimmedKey.length} chars`);
   console.log();
 
-  // Step 2: Update .env.local
-  console.log('📋 Step 2: Updating .env.local...');
+  // Step 2: Update both .env.local and .env (dotenv/config loads .env first)
+  console.log('📋 Step 2: Updating environment files...');
   const repoRoot = process.cwd();
   const envLocalPath = path.join(repoRoot, '.env.local');
+  const envPath = path.join(repoRoot, '.env');
 
   try {
+    // Update .env.local (preferred for local development)
     updateEnvLocal(trimmedKey, envLocalPath);
     console.log(`   ✅ Updated: ${envLocalPath}`);
+    
+    // Also update .env (dotenv/config loads this first, so it must match)
+    if (fs.existsSync(envPath)) {
+      updateEnvLocal(trimmedKey, envPath);
+      console.log(`   ✅ Updated: ${envPath}`);
+    } else {
+      console.log(`   ⚠️  .env not found (only .env.local updated)`);
+    }
+    
     console.log(`   ✅ Key written: ${masked}`);
   } catch (error: any) {
-    console.error(`   ❌ Failed to update .env.local: ${error.message}`);
+    console.error(`   ❌ Failed to update environment files: ${error.message}`);
     process.exit(1);
   }
   console.log();
