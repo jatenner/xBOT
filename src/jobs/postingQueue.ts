@@ -7672,6 +7672,14 @@ export async function markDecisionPosted(
           .eq('decision_id', decisionId)
           .single();
         
+        // 🎯 RATE CONTROLLER: Add metadata fields
+        const { getHourBucketET, extractPromptVersion, extractStrategyId } = await import('../rateController/metadataHelpers');
+        const { data: decisionData } = await supabase
+          .from('content_metadata')
+          .select('*')
+          .eq('decision_id', decisionId)
+          .single();
+        
         const updateData: any = {
           status: 'posted',
           tweet_id: tweetId, // 🔥 CRITICAL: Save tweet ID for metrics scraping!
@@ -7681,6 +7689,10 @@ export async function markDecisionPosted(
           pipeline_source: existingRow?.pipeline_source || 'postingQueue',
           build_sha: existingRow?.build_sha || getBuildSHA(),
           job_run_id: existingRow?.job_run_id || `markPosted_${Date.now()}`,
+          // 🎯 RATE CONTROLLER: Add metadata
+          hour_bucket: getHourBucketET(),
+          prompt_version: decisionData ? extractPromptVersion(decisionData) : 'v1',
+          strategy_id: decisionData ? extractStrategyId(decisionData) : 'baseline',
         };
         
         // 🔥 THREAD TRUTH FIX: Always save thread_tweet_ids when we have multiple IDs

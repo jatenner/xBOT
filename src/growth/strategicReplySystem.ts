@@ -148,7 +148,7 @@ Generate a VALUE-ADDING reply that:
 2. Explains a mechanism
 3. Provides actionable insight
 4. Builds on their point (doesn't repeat)
-5. 150-220 characters
+5. 150-250 characters (must be ≤280)
 
 Output as JSON:
 {

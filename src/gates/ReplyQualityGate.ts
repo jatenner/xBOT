@@ -35,15 +35,18 @@ export function checkReplyQuality(
     issues.push('Contains JSON artifacts ({ } [ ])');
   }
   
-  // Check 2: Length ≤ 220 chars (stricter than Twitter's 280 for replies)
-  if (replyText.length > 220) {
-    issues.push(`Too long (${replyText.length} chars, max 220)`);
+  // Check 2: Length ≤ 280 chars (Twitter's limit for replies)
+  if (replyText.length > 280) {
+    issues.push(`Too long (${replyText.length} chars, max 280)`);
   }
   
-  // Check 3: Keyword overlap with parent
+  // Check 3: Keyword overlap with parent (relaxed for health topics)
   const overlapScore = calculateKeywordOverlap(replyText, parentText);
-  if (overlapScore < 0.1) {
-    issues.push(`Low keyword overlap (${(overlapScore * 100).toFixed(1)}%, min 10%)`);
+  // Lower threshold if reply contains health keywords (may be adding health context to non-health tweet)
+  const hasHealthKeywords = /(health|wellness|fitness|nutrition|sleep|exercise|metabolism|protein|vitamin|supplement|research|study)/i.test(replyText);
+  const minOverlap = hasHealthKeywords ? 0.05 : 0.1; // 5% if health-related, 10% otherwise
+  if (overlapScore < minOverlap) {
+    issues.push(`Low keyword overlap (${(overlapScore * 100).toFixed(1)}%, min ${(minOverlap * 100).toFixed(0)}%)`);
   }
   
   // Check 4: NO THREAD MARKERS (CRITICAL - replies should never look like threads)

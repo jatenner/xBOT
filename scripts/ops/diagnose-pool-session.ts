@@ -56,7 +56,8 @@ async function main() {
   
   console.log(`   ✅ Navigation complete`);
   console.log(`   Final URL: ${finalUrl}`);
-  console.log(`   Page title: ${title}\n`);
+  console.log(`   Page title: ${title}`);
+  console.log(`   Navigation final URL (should not be /i/flow/login): ${finalUrl.includes('/i/flow/login') ? 'FAIL' : 'PASS'}\n`);
 
   // STEP 4: Check DOM markers
   console.log('STEP 4 — DOM Markers Check\n');
@@ -135,13 +136,13 @@ async function main() {
   });
   
   console.log(`\n   Critical cookies domain check:`);
-  console.log(`     auth_token on .x.com: ${!!authTokenXCom}`);
-  console.log(`     auth_token on x.com: ${!!authTokenXComNoDot}`);
-  console.log(`     auth_token on .twitter.com: ${!!authTokenTwitterCom}`);
-  console.log(`     ct0 on .x.com: ${!!ct0XCom}`);
-  console.log(`     ct0 on x.com: ${!!ct0XComNoDot}`);
-  console.log(`     ct0 on .twitter.com: ${!!ct0TwitterCom}`);
-  console.log(`\n   Critical cookies counts per domain:`);
+  console.log(`     auth_token on .x.com: ${!!authTokenXCom ? 'YES' : 'NO'}`);
+  console.log(`     auth_token on x.com: ${!!authTokenXComNoDot ? 'YES' : 'NO'}`);
+  console.log(`     auth_token on .twitter.com: ${!!authTokenTwitterCom ? 'YES' : 'NO'}`);
+  console.log(`     ct0 on .x.com: ${!!ct0XCom ? 'YES' : 'NO'}`);
+  console.log(`     ct0 on x.com: ${!!ct0XComNoDot ? 'YES' : 'NO'}`);
+  console.log(`     ct0 on .twitter.com: ${!!ct0TwitterCom ? 'YES' : 'NO'}`);
+  console.log(`\n   [DEBUG] Critical cookies counts per domain:`);
   console.log(`     auth_token: ${JSON.stringify(authTokenCounts)}`);
   console.log(`     ct0: ${JSON.stringify(ct0Counts)}`);
 

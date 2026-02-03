@@ -258,20 +258,57 @@ export class JobManager {
     const MINUTE = 60 * 1000;
     const SECOND = 1000;
     
-    // 🔥 CRITICAL: Posting queue - runs every 5 min, NO delay (highest priority)
+    // 🎯 RATE CONTROLLER: Hourly tick replaces 5-min posting queue
+    // Posting/replies now scheduled within hourly tick with jitter
     if (flags.postingEnabled) {
+      // 🔒 SCHEMA PREFLIGHT: Run on boot
+      (async () => {
+        try {
+          const { runSchemaPreflight } = await import('../rateController/schemaPreflight');
+          const preflight = await runSchemaPreflight();
+          if (!preflight.passed) {
+            console.error(`[JOB_MANAGER] ❌ Schema preflight failed on boot - SAFE_MODE activated`);
+            console.error(`[JOB_MANAGER] Missing: ${preflight.missing.join(', ')}`);
+            console.error(`[JOB_MANAGER] 🛡️ Hourly tick will be disabled until schema is applied`);
+          }
+        } catch (e: any) {
+          console.error(`[JOB_MANAGER] ⚠️ Schema preflight check failed: ${e.message}`);
+        }
+      })();
+
       this.scheduleStaggeredJob(
-        'posting',
+        'hourly_tick',
         async () => {
-          await this.safeExecute('posting', async () => {
-            await processPostingQueue();
+          await this.safeExecute('hourly_tick', async () => {
+            const { hourlyTickJob } = await import('./hourlyTickJob');
+            await hourlyTickJob();
             this.stats.postingRuns++;
             this.stats.lastPostingTime = new Date();
           });
         },
-        5 * MINUTE,
-        0 // NO DELAY - start immediately
+        60 * MINUTE, // Every hour
+        0 // Start immediately
       );
+      
+      // Keep legacy posting queue as fallback (disabled by default via env)
+      // Can be re-enabled for testing: ENABLE_LEGACY_POSTING_QUEUE=true
+      if (process.env.ENABLE_LEGACY_POSTING_QUEUE === 'true') {
+        console.log('[JOB_MANAGER] ⚠️ Legacy 5-min posting queue enabled (testing mode)');
+        this.scheduleStaggeredJob(
+          'posting',
+          async () => {
+            await this.safeExecute('posting', async () => {
+              await processPostingQueue();
+              this.stats.postingRuns++;
+              this.stats.lastPostingTime = new Date();
+            });
+          },
+          5 * MINUTE,
+          0
+        );
+      } else {
+        console.log('[JOB_MANAGER] ✅ Rate controller hourly tick enabled (legacy 5-min queue disabled)');
+      }
     }
 
     // Plan job - every 2 hours, with restart protection
@@ -438,23 +475,29 @@ export class JobManager {
       2 * MINUTE  // Start after 2 minutes
     );
 
-    // ⏰ Reply System V2 - scheduled posting (configurable via REPLY_V2_TICK_SECONDS)
-    const REPLY_V2_TICK_SECONDS = parseInt(process.env.REPLY_V2_TICK_SECONDS || '900', 10); // Default: 15 min
-    const REPLY_V2_TICK_MS = REPLY_V2_TICK_SECONDS * 1000;
-    this.scheduleStaggeredJob(
-      'reply_v2_scheduler',
-      async () => {
-        await this.safeExecute('reply_v2_scheduler', async () => {
-          const { attemptScheduledReply } = await import('./replySystemV2/tieredScheduler');
-          const result = await attemptScheduledReply();
-          if (!result.posted) {
-            console.log(`[REPLY_V2_SCHEDULER] ⚠️ No reply posted: ${result.reason}`);
-          }
-        });
-      },
-      REPLY_V2_TICK_MS, // Configurable via REPLY_V2_TICK_SECONDS (default: 15 min = 4 replies/hour)
-      3 * MINUTE   // Start after 3 minutes
-    );
+    // ⏰ Reply System V2 - scheduled posting (DISABLED - now handled by hourly tick)
+    // Replies are now scheduled within hourly tick with jitter spacing
+    if (process.env.ENABLE_LEGACY_REPLY_SCHEDULER === 'true') {
+      console.log('[JOB_MANAGER] ⚠️ Legacy reply_v2_scheduler enabled (testing mode)');
+      const REPLY_V2_TICK_SECONDS = parseInt(process.env.REPLY_V2_TICK_SECONDS || '900', 10); // Default: 15 min
+      const REPLY_V2_TICK_MS = REPLY_V2_TICK_SECONDS * 1000;
+      this.scheduleStaggeredJob(
+        'reply_v2_scheduler',
+        async () => {
+          await this.safeExecute('reply_v2_scheduler', async () => {
+            const { attemptScheduledReply } = await import('./replySystemV2/tieredScheduler');
+            const result = await attemptScheduledReply();
+            if (!result.posted) {
+              console.log(`[REPLY_V2_SCHEDULER] ⚠️ No reply posted: ${result.reason}`);
+            }
+          });
+        },
+        REPLY_V2_TICK_MS,
+        3 * MINUTE
+      );
+    } else {
+      console.log('[JOB_MANAGER] ✅ Reply scheduling handled by hourly tick (legacy reply_v2_scheduler disabled)');
+    }
 
     // 📊 Reply System V2 - performance tracking every 30 minutes
     this.scheduleStaggeredJob(
@@ -484,6 +527,19 @@ export class JobManager {
       },
       60 * MINUTE, // Every hour
       5 * MINUTE   // Start after 5 minutes
+    );
+
+    // 🧠 Learning loop - daily (updates outcome scores and strategy/hour weights)
+    this.scheduleStaggeredJob(
+      'learning_loop',
+      async () => {
+        await this.safeExecute('learning_loop', async () => {
+          const { learningLoopJob } = await import('./learningLoopJob');
+          await learningLoopJob();
+        });
+      },
+      24 * 60 * MINUTE, // Every 24 hours
+      60 * MINUTE // Start after 1 hour
     );
 
     // 📊 Reply System V2 - daily summary report + control plane adjustment

@@ -481,11 +481,20 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     'drbengreenfield', 'drjamesdinic', 'drjasonfung', 'drhyman', 'peterattiamd'
   ] : [];
   
-  // 🛡️ CHECK HARVEST BACKOFF BEFORE STARTING
-  const { isHarvestBlocked } = await import('../utils/harvestBackoff');
-  const backoffCheck = isHarvestBlocked();
+  // 🛡️ CHECK HARVEST BACKOFF BEFORE STARTING (Supabase-backed)
+  const { isBlocked } = await import('../utils/backoffStore');
+  const { getBudgets, useSearchBudget } = await import('../utils/budgetStore');
+  const backoffCheck = await isBlocked('harvest_search');
   if (backoffCheck.blocked) {
-    console.log(`[RATE_LIMIT] blocked_until=${backoffCheck.blockedUntil?.toISOString()}; skipping harvest (${backoffCheck.minutesRemaining} minutes remaining)`);
+    console.log(`[BACKOFF_STORE] blocked_until=${backoffCheck.blockedUntil?.toISOString()}; skipping search harvest (${backoffCheck.minutesRemaining} minutes remaining)`);
+    return;
+  }
+  
+  // Check search budget
+  const budgets = await getBudgets();
+  if (budgets.searchRemaining < 1) {
+    console.log(`[BUDGET_STORE] Insufficient search budget: ${budgets.searchRemaining} < 1 (used: ${budgets.searchUsed}/${process.env.DAILY_SEARCH_BUDGET || '1'})`);
+    console.log(`[BUDGET_STORE] Skipping search harvest (budget exhausted)`);
     return;
   }
   
@@ -520,6 +529,13 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   
   // Build query list based on priority (PUBLIC → A → B → C → P1, D only if critical)
   // 🎯 P1: Prioritize public-only queries FIRST for accessibility
+  // Use search budget before running queries
+  const budgetUsed = await useSearchBudget(1);
+  if (!budgetUsed) {
+    console.log(`[BUDGET_STORE] Search budget exhausted, skipping search harvest`);
+    return;
+  }
+  
   // 🎯 P1 MODE: Limit to ONE public_search query per cycle
   let searchQueries = p1Mode 
     ? tierPublicQueries.slice(0, 1) // Only first public query in P1 mode
