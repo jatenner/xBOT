@@ -24,8 +24,8 @@ if (fs.existsSync(envLocalPath)) {
   require('dotenv').config({ path: envPath });
 }
 
-// Import after dotenv is loaded
-import { createBudgetedChatCompletion } from '../../src/services/openaiBudgetedClient';
+// Don't import openaiBudgetedClient at top level - it initializes singleton
+// Import dynamically in testApiKey() after env is loaded
 
 /**
  * Mask API key for logging (show first 6 chars + last 4 chars)
@@ -105,6 +105,9 @@ async function testApiKey(): Promise<{
   errorMessage?: string;
   method: string;
 }> {
+  // Dynamically import after env is loaded to avoid singleton initialization issues
+  const { createBudgetedChatCompletion } = await import('../../src/services/openaiBudgetedClient');
+  
   try {
     // Use the same client wrapper used in production
     const response = await createBudgetedChatCompletion({
