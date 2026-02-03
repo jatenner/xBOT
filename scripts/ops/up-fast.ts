@@ -14,12 +14,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { getRunnerPaths } from '../../src/infra/runnerProfile';
+import { getSupabaseClient } from '../../src/db/index';
 
 const SOAK_MINUTES = parseInt(process.env.SOAK_MINUTES || '20', 10);
 const DELAY_MINUTES = parseInt(process.env.DELAY_MINUTES || '5', 10);
 const REQUIRE_DECISION_PROGRESS = process.env.REQUIRE_DECISION_PROGRESS === 'true';
 const REQUIRE_EXECUTION_PROOF = process.env.REQUIRE_EXECUTION_PROOF === 'true';
 const TARGET_TWEET_ID = process.env.TARGET_TWEET_ID;
+const P1_TARGET_MAX_AGE_HOURS = parseInt(process.env.P1_TARGET_MAX_AGE_HOURS || '168', 10); // Default 7 days
 
 const paths = getRunnerPaths();
 const AUTH_OK_PATH = paths.auth_marker_path;
@@ -96,7 +98,8 @@ async function main(): Promise<void> {
   console.log(`   REQUIRE_DECISION_PROGRESS: ${REQUIRE_DECISION_PROGRESS}`);
   console.log(`   REQUIRE_EXECUTION_PROOF: ${REQUIRE_EXECUTION_PROOF}`);
   if (REQUIRE_EXECUTION_PROOF) {
-    console.log(`   TARGET_TWEET_ID: ${TARGET_TWEET_ID || 'NOT SET (required)'}`);
+    console.log(`   TARGET_TWEET_ID: ${TARGET_TWEET_ID || 'NOT SET (will auto-pick)'}`);
+    console.log(`   P1_TARGET_MAX_AGE_HOURS: ${P1_TARGET_MAX_AGE_HOURS}`);
   }
   console.log(`   runner_profile_dir_abs: ${paths.runner_profile_dir_abs}`);
   console.log('');
@@ -408,15 +411,93 @@ async function main(): Promise<void> {
     if (REQUIRE_EXECUTION_PROOF) {
       logStep('STEP 7: Execution Proof', 'Running real execution proof...');
       
-      if (!TARGET_TWEET_ID) {
-        recordResult('Execution Proof', false, 'TARGET_TWEET_ID not provided', undefined, undefined, 'Set TARGET_TWEET_ID environment variable');
-        console.error('\n❌ FATAL: REQUIRE_EXECUTION_PROOF=true but TARGET_TWEET_ID not set');
-        console.error('OPS_UP_FAST=FAIL reason=EXECUTION_PROOF_FAILED classification=TARGET_TWEET_ID_MISSING');
-        process.exit(1);
+      // Auto-pick target if TARGET_TWEET_ID not provided
+      let targetTweetId = TARGET_TWEET_ID;
+      if (!targetTweetId) {
+        console.log(`\n📋 TARGET_TWEET_ID not provided - auto-picking eligible target...`);
+        console.log(`   Max age: ${P1_TARGET_MAX_AGE_HOURS} hours`);
+        
+        try {
+          const supabase = getSupabaseClient();
+          const maxAgeCutoff = new Date(Date.now() - P1_TARGET_MAX_AGE_HOURS * 60 * 60 * 1000).toISOString();
+          
+          // Query for best eligible reply opportunity
+          const { data: opportunities, error } = await supabase
+            .from('reply_opportunities')
+            .select('target_tweet_id, discovery_source, created_at')
+            .eq('passed_hard_filters', true)
+            .in('accessibility_status', ['ok', 'unknown'])
+            .gte('created_at', maxAgeCutoff)
+            .like('discovery_source', 'public_search_%')
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          const sqlQuery = `SELECT target_tweet_id, discovery_source, created_at
+FROM reply_opportunities
+WHERE passed_hard_filters = true
+  AND accessibility_status IN ('ok', 'unknown')
+  AND created_at >= '${maxAgeCutoff}'
+  AND discovery_source LIKE 'public_search_%'
+ORDER BY created_at DESC
+LIMIT 1;`;
+          
+          if (error) {
+            throw new Error(`Database query failed: ${error.message}`);
+          }
+          
+          if (!opportunities || opportunities.length === 0) {
+            // Try without discovery_source filter
+            const { data: fallbackOpportunities, error: fallbackError } = await supabase
+              .from('reply_opportunities')
+              .select('target_tweet_id, discovery_source, created_at')
+              .eq('passed_hard_filters', true)
+              .in('accessibility_status', ['ok', 'unknown'])
+              .gte('created_at', maxAgeCutoff)
+              .order('created_at', { ascending: false })
+              .limit(1);
+            
+            const fallbackSqlQuery = `SELECT target_tweet_id, discovery_source, created_at
+FROM reply_opportunities
+WHERE passed_hard_filters = true
+  AND accessibility_status IN ('ok', 'unknown')
+  AND created_at >= '${maxAgeCutoff}'
+ORDER BY created_at DESC
+LIMIT 1;`;
+            
+            if (fallbackError) {
+              throw new Error(`Fallback database query failed: ${fallbackError.message}`);
+            }
+            
+            if (!fallbackOpportunities || fallbackOpportunities.length === 0) {
+              recordResult('Execution Proof', false, 'NO_ELIGIBLE_TARGETS', undefined, undefined, 'Seed reply_opportunities or set TARGET_TWEET_ID manually');
+              console.error('\n❌ FATAL: No eligible targets found');
+              console.error('OPS_UP_FAST=FAIL reason=EXECUTION_PROOF_FAILED classification=NO_ELIGIBLE_TARGETS');
+              console.error('\n📋 SQL Query Used:');
+              console.error(sqlQuery);
+              console.error('\n📋 Fallback SQL Query Used:');
+              console.error(fallbackSqlQuery);
+              process.exit(1);
+            }
+            
+            targetTweetId = fallbackOpportunities[0].target_tweet_id;
+            console.log(`✅ Auto-selected target: ${targetTweetId} (discovery_source: ${fallbackOpportunities[0].discovery_source})`);
+          } else {
+            targetTweetId = opportunities[0].target_tweet_id;
+            console.log(`✅ Auto-selected target: ${targetTweetId} (discovery_source: ${opportunities[0].discovery_source})`);
+          }
+        } catch (e: any) {
+          recordResult('Execution Proof', false, 'TARGET_PICK_FAILED', undefined, undefined, 'Set TARGET_TWEET_ID manually or fix database connection');
+          console.error('\n❌ FATAL: Failed to auto-pick target');
+          console.error(`   Error: ${e.message}`);
+          console.error('OPS_UP_FAST=FAIL reason=EXECUTION_PROOF_FAILED classification=TARGET_PICK_FAILED');
+          process.exit(1);
+        }
+      } else {
+        console.log(`📋 Using provided TARGET_TWEET_ID: ${targetTweetId}`);
       }
       
       try {
-        console.log(`\n📋 Running execution proof with TARGET_TWEET_ID=${TARGET_TWEET_ID}...`);
+        console.log(`\n📋 Running execution proof with TARGET_TWEET_ID=${targetTweetId}...`);
         
         // Get ledger state before running proof
         const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'execution', 'execution-ledger.jsonl');
@@ -426,7 +507,7 @@ async function main(): Promise<void> {
         
         // Run the proof (will throw if it fails)
         await runCommand(
-          `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=${TARGET_TWEET_ID} pnpm run executor:prove:e2e-control-reply`,
+          `EXECUTE_REAL_ACTION=true TARGET_TWEET_ID=${targetTweetId} pnpm run executor:prove:e2e-control-reply`,
           'Execution proof (e2e-control-reply)'
         );
         
@@ -451,7 +532,7 @@ async function main(): Promise<void> {
             // Find the new entry (after our before count)
             if (lines.length > ledgerBeforeLines.length) {
               const lastEntry = JSON.parse(lines[lines.length - 1]);
-              if (lastEntry.proof_type === 'e2e-control-reply' && lastEntry.target_tweet_id === TARGET_TWEET_ID) {
+              if (lastEntry.proof_type === 'e2e-control-reply' && lastEntry.target_tweet_id === targetTweetId) {
                 executionPassed = lastEntry.passed === true;
                 executionClassification = lastEntry.failure_classification;
                 replyUrl = lastEntry.reply_url;
@@ -503,7 +584,7 @@ async function main(): Promise<void> {
               .filter(line => line.trim().length > 0);
             if (lines.length > 0) {
               const lastEntry = JSON.parse(lines[lines.length - 1]);
-              if (lastEntry.proof_type === 'e2e-control-reply' && lastEntry.target_tweet_id === TARGET_TWEET_ID) {
+              if (lastEntry.proof_type === 'e2e-control-reply' && lastEntry.target_tweet_id === targetTweetId) {
                 executionClassification = lastEntry.failure_classification || 'UNKNOWN';
               }
             }
