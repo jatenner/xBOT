@@ -5,8 +5,8 @@
 > If a new AI agent reads only ONE document, it should be this one.
 >
 > **Version:** v2 (enforcement-grade, incident-hardened)  
-> **Last Verified:** 2026-01-24  
-> **Critical Fixes:** a89a4c31 (executor stop/status/proof), 0c52898e (README_MASTER.md creation)
+> **Last Verified:** 2026-02-03  
+> **Critical Fixes:** a89a4c31 (executor stop/status/proof), 0c52898e (README_MASTER.md creation), 1acec41e (automatic migrations + view-safe schema)
 >
 > **📊 Operational Status:** See [`docs/SYSTEM_STATUS.md`](docs/SYSTEM_STATUS.md) for single source of truth on what's proven, unproven, and how to verify each component.
 
@@ -47,6 +47,7 @@
 **Verified Commit SHAs:**
 - `a89a4c31` - Emergency fix: executor stop command, status enhancements, LaunchAgent plist fixes, fail-fast guard, 5-minute proof test
 - `0c52898e` - Documentation: README_MASTER.md creation, TOC/README pointers
+- `1acec41e` - Automatic migrations + view-safe schema: DB migrations run on worker boot, content_metadata view properly maintained
 
 **Critical Fixes Applied:**
 - LaunchAgent plist: `RUNNER_BROWSER=cdp` removed, `HEADLESS=true` enforced
@@ -54,6 +55,8 @@
 - Comprehensive stop command: `pnpm run executor:stop` kills all executor processes
 - Enhanced status command: `pnpm run ops:executor:status` shows full executor state
 - 5-minute proof test: `pnpm run executor:prove:5m` with hard assertions
+- Automatic migrations: DB migrations run automatically on worker boot (xBOT service only), guarded by advisory lock, fail-fast on error
+- View-safe schema: `content_metadata` is a VIEW backed by `content_generation_metadata_comprehensive`; all ALTER TABLE operations must target underlying table, view must be recreated when adding columns
 
 **Scripts Verified:**
 - `executor:stop` → `scripts/executor/stop.ts` ✅
@@ -1309,6 +1312,20 @@ We implemented `EXECUTION_MODE` to enforce this split.
    - Emits system_events for every tick and block reason.
 
 2) **Database (Supabase Postgres)**
+
+**Migrations:**
+- Migrations are automatic on worker boot (xBOT service only)
+- Runner: `scripts/db/apply-migrations.ts` with advisory lock protection
+- Commands: `pnpm run db:migrate` (apply), `pnpm run db:verify` (verify)
+- Fail-fast: Worker exits if migrations fail (Railway deployment shows error)
+- Migration files: `supabase/migrations/*.sql` (lexicographically sorted)
+
+**Schema Truth:**
+- `content_metadata` is a VIEW, not a TABLE
+- Underlying table: `content_generation_metadata_comprehensive`
+- **Rule:** All `ALTER TABLE` operations must target `content_generation_metadata_comprehensive`
+- **Rule:** When adding columns, recreate view via separate migration to include new columns
+- **Enforcement:** Migration runner detects view/table mismatches and fails appropriately
    Stores:
    - planned content decisions (queued)
    - posting attempts + outcomes

@@ -12,7 +12,7 @@
 
 import 'dotenv/config';
 import { getSupabaseClient } from '../../src/db/index';
-import { UltimateTwitterPoster } from '../../src/posting/UltimateTwitterPoster';
+import { UltimateTwitterPoster, createPostingGuard } from '../../src/posting/UltimateTwitterPoster';
 import { UnifiedBrowserPool } from '../../src/browser/UnifiedBrowserPool';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -122,12 +122,12 @@ async function main(): Promise<void> {
   try {
     const poster = new UltimateTwitterPoster(page);
     
-    // Create posting guard
-    const guard = {
-      decision_id: draft.decision_id,
+    // Create posting guard using factory function
+    const guard = createPostingGuard({
+      decision_id: draft.decision_id || '',
       pipeline_source: 'canary_post',
       job_run_id: `canary-${Date.now()}`,
-    };
+    });
     
     console.log(`[REPLY_CANARY] 🚀 Posting reply...\n`);
     
