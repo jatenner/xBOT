@@ -101,7 +101,7 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
     // 🎯 P1: Filter out forbidden/login_wall/deleted opportunities upstream
     let { data: rootOpps } = await supabase
       .from('reply_opportunities')
-      .select('target_tweet_id, target_username, target_tweet_content, tweet_posted_at, created_at, like_count, reply_count, retweet_count, is_root_tweet, target_in_reply_to_tweet_id, accessibility_status, discovery_source')
+      .select('target_tweet_id, target_username, target_tweet_content, tweet_posted_at, created_at, like_count, reply_count, retweet_count, is_root_tweet, target_in_reply_to_tweet_id, accessibility_status')
       .eq('replied_to', false)
       .or('is_root_tweet.eq.true,target_in_reply_to_tweet_id.is.null') // 🔧 FIX: Use OR condition for root detection
       .or('accessibility_status.is.null,accessibility_status.eq.unknown,accessibility_status.eq.ok') // 🎯 P1: Exclude forbidden/login_wall/deleted
@@ -235,6 +235,13 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
           // Score the opportunity
           // 🔧 FIX: Use COALESCE(tweet_posted_at, created_at) for scoring
           const effectivePostedAt = opp.tweet_posted_at || opp.created_at || new Date().toISOString();
+          
+          // Set DISCOVERY_SOURCE env var for P1 manual bypass detection
+          const originalDiscoverySource = process.env.DISCOVERY_SOURCE;
+          if (opp.discovery_source === 'public_search_manual') {
+            process.env.DISCOVERY_SOURCE = 'public_search_manual';
+          }
+          
           const score = await scoreCandidate(
             opp.target_tweet_id,
             opp.target_username || 'unknown',
@@ -246,42 +253,11 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
             `root_opp_bridge_${Date.now()}`
           );
           
-          // 🎯 P1 MANUAL BYPASS: Allow public_search_manual targets to pass hard filters in P1 mode
-          let finalPassedHardFilters = score.passed_hard_filters;
-          let finalFilterReason = score.filter_reason;
-          const p1Mode = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
-          
-          if (!finalPassedHardFilters && p1Mode && opp.discovery_source === 'public_search_manual') {
-            // Validate tweet ID (must be numeric >=15 digits)
-            const tweetIdNumeric = /^\d{15,}$/.test(opp.target_tweet_id);
-            const notDeleted = opp.accessibility_status !== 'deleted';
-            
-            // Bypass applies to: hard filters (root, parody, spam, text length) AND age limits
-            // Only skip if deleted or invalid tweet ID
-            if (tweetIdNumeric && notDeleted) {
-              finalPassedHardFilters = true;
-              finalFilterReason = `p1_manual_bypass: ${score.filter_reason}`;
-              
-              // Emit event
-              try {
-                await supabase.from('system_events').insert({
-                  event_type: 'P1_MANUAL_HARDFILTER_BYPASS_USED',
-                  event_data: {
-                    tweet_id: opp.target_tweet_id,
-                    reason: `P1 manual seed bypass: original_reason=${score.filter_reason}`,
-                    discovery_source: opp.discovery_source,
-                    accessibility_status: opp.accessibility_status,
-                    original_filter_reason: score.filter_reason,
-                  },
-                });
-              } catch {
-                // Non-blocking
-              }
-              
-              console.log(`[ROOT_EVAL] 🎯 P1_MANUAL_BYPASS: Allowing ${opp.target_tweet_id} (original_reason=${score.filter_reason})`);
-            } else {
-              console.log(`[ROOT_EVAL] ⚠️ P1_MANUAL_BYPASS skipped for ${opp.target_tweet_id}: tweetIdNumeric=${tweetIdNumeric} notDeleted=${notDeleted}`);
-            }
+          // Restore original env var
+          if (originalDiscoverySource !== undefined) {
+            process.env.DISCOVERY_SOURCE = originalDiscoverySource;
+          } else {
+            delete process.env.DISCOVERY_SOURCE;
           }
           
           // Insert evaluation with idempotency (ON CONFLICT DO NOTHING)
@@ -304,11 +280,11 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
               recency_score: score.recency_score,
               author_signal_score: score.author_signal_score,
               overall_score: score.overall_score,
-              passed_hard_filters: finalPassedHardFilters,
-              filter_reason: finalFilterReason,
+              passed_hard_filters: score.passed_hard_filters,
+              filter_reason: score.filter_reason,
               predicted_24h_views: score.predicted_24h_views,
               predicted_tier: score.predicted_tier,
-              status: finalPassedHardFilters ? 'evaluated' : 'blocked',
+              status: score.passed_hard_filters ? 'evaluated' : 'blocked',
               ai_judge_decision: score.judge_decision ? {
                 relevance: score.judge_decision.relevance,
                 replyability: score.judge_decision.replyability,
