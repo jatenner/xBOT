@@ -1030,14 +1030,56 @@ async function main(): Promise<void> {
     });
     
     // 🔍 PHASE 2: Auth preflight before claiming decisions (runs once at startup)
+    // Includes consent wall dismissal (same as auth-readwrite proof)
     try {
       if (context && page) {
         const authPage = await context.newPage();
         try {
+          // Navigate to home to check auth state
+          await authPage.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 30000 });
+          await authPage.waitForTimeout(2000);
+          
+          // 🔍 BUCKET B: Dismiss consent wall if present (same logic as auth-readwrite)
+          const { detectConsentWall, acceptConsentWall } = await import('../../src/playwright/twitterSession');
+          const consentDetection = await detectConsentWall(authPage);
+          
+          if (consentDetection.detected && consentDetection.wallType === 'consent') {
+            console.log(`[EXECUTOR_AUTH_PREFLIGHT] 🚧 Consent wall detected, attempting dismissal...`);
+            const consentResult = await acceptConsentWall(authPage, 2);
+            
+            if (consentResult.cleared) {
+              console.log(`[EXECUTOR_AUTH_PREFLIGHT] ✅ Consent dismissed (attempts: ${consentResult.attempts})`);
+              // Wait for page to settle after consent dismissal
+              await authPage.waitForTimeout(2000);
+            } else {
+              console.warn(`[EXECUTOR_AUTH_PREFLIGHT] ⚠️  Consent dismissal failed (attempts: ${consentResult.attempts})`);
+              // Continue with auth check - consent may not be blocking
+            }
+          }
+          
+          // Check auth state after consent handling
           const { checkWhoami } = await import('../../src/utils/whoamiAuth');
           const authResult = await checkWhoami(authPage);
           
-          if (authResult.logged_in) {
+          // 🔍 BUCKET C: Check for challenge_suspected
+          const currentUrl = authPage.url();
+          if (currentUrl.includes('/account/access') || 
+              currentUrl.includes('/i/flow/challenge') ||
+              currentUrl.includes('/i/flow/verify') ||
+              currentUrl.includes('/account/verify')) {
+            console.error(`[EXECUTOR_AUTH_PREFLIGHT] ❌ Challenge suspected: ${currentUrl}`);
+            await emitLifecycleEvent('EXECUTOR_AUTH_CHALLENGE_DETECTED', {
+              ts: new Date().toISOString(),
+              pid: daemonPid,
+              reason: 'challenge_suspected',
+              url: currentUrl,
+              runner_profile_dir_abs: paths.runner_profile_dir_abs,
+              user_data_dir_abs: paths.user_data_dir_abs,
+            });
+            authPreflightBackoffUntil = Date.now() + AUTH_PREFLIGHT_BACKOFF_MS;
+            console.error(`[EXECUTOR_AUTH_PREFLIGHT] ⏸️  Entering ${AUTH_PREFLIGHT_BACKOFF_MS / 1000 / 60} minute backoff - manual verification required`);
+            // Fail-closed: challenges require operator intervention
+          } else if (authResult.logged_in) {
             authPreflightPassed = true;
             console.log(`[EXECUTOR_AUTH_PREFLIGHT] ✅ Auth preflight passed: logged_in=true handle=${authResult.handle || 'unknown'}`);
           } else {
