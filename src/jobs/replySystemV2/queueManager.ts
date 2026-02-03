@@ -101,7 +101,7 @@ export async function refreshCandidateQueue(runStartedAt?: string): Promise<{
     // 🎯 P1: Filter out forbidden/login_wall/deleted opportunities upstream
     let { data: rootOpps } = await supabase
       .from('reply_opportunities')
-      .select('target_tweet_id, target_username, target_tweet_content, tweet_posted_at, created_at, like_count, reply_count, retweet_count, is_root_tweet, target_in_reply_to_tweet_id, accessibility_status')
+      .select('target_tweet_id, target_username, target_tweet_content, tweet_posted_at, created_at, like_count, reply_count, retweet_count, is_root_tweet, target_in_reply_to_tweet_id, accessibility_status, discovery_source')
       .eq('replied_to', false)
       .or('is_root_tweet.eq.true,target_in_reply_to_tweet_id.is.null') // 🔧 FIX: Use OR condition for root detection
       .or('accessibility_status.is.null,accessibility_status.eq.unknown,accessibility_status.eq.ok') // 🎯 P1: Exclude forbidden/login_wall/deleted
