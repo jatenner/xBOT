@@ -219,31 +219,35 @@ function expandDomains(cookie: CookieEntry): CookieEntry[] {
     domains.add('.twitter.com');
     domains.add(base.replace(/\.twitter\.com$/, '.x.com'));
     domains.add('.x.com');
-    // For critical cookies, also add x.com (without dot)
+    // For critical cookies, ensure both .x.com and x.com exist
     if (isCriticalCookie) {
-      domains.add('x.com');
+      domains.add('.x.com'); // Ensure .x.com (with dot)
+      domains.add('x.com');  // Also x.com (without dot)
     }
   } else if (base.endsWith('.x.com')) {
     domains.add('.x.com');
     domains.add(base.replace(/\.x\.com$/, '.twitter.com'));
     domains.add('.twitter.com');
-    // For critical cookies, also add x.com (without dot)
+    // For critical cookies, ensure both .x.com and x.com exist
     if (isCriticalCookie) {
-      domains.add('x.com');
+      domains.add('.x.com'); // Ensure .x.com (with dot)
+      domains.add('x.com');  // Also x.com (without dot)
     }
   } else if (base.includes('twitter.com')) {
     domains.add('.twitter.com');
     domains.add('.x.com');
-    // For critical cookies, also add x.com (without dot)
+    // For critical cookies, ensure both .x.com and x.com exist
     if (isCriticalCookie) {
-      domains.add('x.com');
+      domains.add('.x.com'); // Ensure .x.com (with dot)
+      domains.add('x.com');  // Also x.com (without dot)
     }
   } else if (base.includes('x.com')) {
     domains.add('.twitter.com');
     domains.add('.x.com');
-    // For critical cookies, also add x.com (without dot)
+    // For critical cookies, ensure both .x.com and x.com exist
     if (isCriticalCookie) {
-      domains.add('x.com');
+      domains.add('.x.com'); // Ensure .x.com (with dot)
+      domains.add('x.com');  // Also x.com (without dot)
     }
   } else {
     // For critical cookies on unknown domains, ensure .x.com and x.com exist
@@ -256,10 +260,11 @@ function expandDomains(cookie: CookieEntry): CookieEntry[] {
 
   const variants: CookieEntry[] = [];
   for (const domain of domains) {
-    // Format domain (adds dot if missing, but preserve x.com as-is for critical cookies)
+    // For critical cookies, preserve both .x.com and x.com as-is
+    // For others, format domain (adds dot if missing)
     let formatted: string;
-    if (isCriticalCookie && domain === 'x.com') {
-      formatted = 'x.com'; // Keep x.com without dot for critical cookies
+    if (isCriticalCookie && (domain === 'x.com' || domain === '.x.com')) {
+      formatted = domain; // Keep as-is for critical cookies (.x.com or x.com)
     } else {
       formatted = formatDomain(domain);
     }
