@@ -2205,8 +2205,8 @@ export class RealTwitterDiscovery {
     }
     
     // 🎯 P1 PROOF BEHAVIOR: Print inserted row count in P1_MODE
-    const p1Mode = process.env.P1_MODE === 'true';
-    if (p1Mode) {
+    const p1ModeStore = process.env.P1_MODE === 'true';
+    if (p1ModeStore) {
       console.log(`[P1_STORE] inserted_rows=${successCount} failed=${failCount}`);
     }
     

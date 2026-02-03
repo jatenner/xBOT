@@ -548,11 +548,17 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
     fallbackQueries.push(...seedQueries);
   }
   
-  const testLimitRaw = process.env.HARVESTER_TEST_LIMIT;
-  const testLimit = testLimitRaw ? Math.max(1, Math.min(searchQueries.length, parseInt(testLimitRaw, 10) || 1)) : searchQueries.length;
-  let queriesToRun = searchQueries.slice(0, testLimit);
-  if (poolSize < MIN_POOL_SIZE) {
-    queriesToRun.push(...fallbackQueries);
+  // 🎯 P1 MODE: EXACTLY ONE public_search query, NO fallbacks
+  if (p1Mode) {
+    queriesToRun = searchQueries.slice(0, 1); // Only first query
+    console.log(`[P1_MODE] Running EXACTLY ONE query: ${queriesToRun[0]?.label || 'none'}`);
+  } else {
+    const testLimitRaw = process.env.HARVESTER_TEST_LIMIT;
+    const testLimit = testLimitRaw ? Math.max(1, Math.min(searchQueries.length, parseInt(testLimitRaw, 10) || 1)) : searchQueries.length;
+    queriesToRun = searchQueries.slice(0, testLimit);
+    if (poolSize < MIN_POOL_SIZE) {
+      queriesToRun.push(...fallbackQueries);
+    }
   }
   // 🔧 PERMANENT FIX #1: Support degraded mode operation
   const isDegradedMode = process.env.HARVESTER_DEGRADED_MODE === 'true';
