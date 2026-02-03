@@ -111,6 +111,20 @@ async function main(): Promise<void> {
     await runCommand('pnpm run ops:validate:openai', 'Validate OpenAI key');
     recordResult('Preflight', true);
   } catch (e: any) {
+    // Write failure to ledger
+    const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'auth', 'ops-up-fast-ledger.jsonl');
+    const ledgerDir = path.dirname(ledgerPath);
+    if (!fs.existsSync(ledgerDir)) {
+      fs.mkdirSync(ledgerDir, { recursive: true });
+    }
+    const ledgerEntry = {
+      timestamp: new Date().toISOString(),
+      passed: false,
+      reason: 'preflight_failed',
+      soak_minutes: SOAK_MINUTES,
+    };
+    fs.appendFileSync(ledgerPath, JSON.stringify(ledgerEntry) + '\n', 'utf-8');
+    
     recordResult('Preflight', false, `Preflight failed: ${e.message}`, undefined, undefined, 'pnpm run ops:sync:openai-key-from-railway:xbot');
     console.error('\n❌ FATAL: Preflight failed - cannot proceed');
     console.error('OPS_UP_FAST=FAIL reason=preflight_failed');
@@ -166,8 +180,23 @@ async function main(): Promise<void> {
     
     recordResult('Cookie Persistence', true, undefined, cookieReport || undefined);
   } catch (e: any) {
+    // Write failure to ledger
+    const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'auth', 'ops-up-fast-ledger.jsonl');
+    const ledgerDir = path.dirname(ledgerPath);
+    if (!fs.existsSync(ledgerDir)) {
+      fs.mkdirSync(ledgerDir, { recursive: true });
+    }
     const reportsDir = path.join(process.cwd(), 'docs', 'proofs', 'auth');
     const cookieReport = findLatestReport('cookie-persistence', reportsDir);
+    const ledgerEntry = {
+      timestamp: new Date().toISOString(),
+      passed: false,
+      reason: 'COOKIE_NOT_PERSISTING',
+      soak_minutes: SOAK_MINUTES,
+      report_path: cookieReport || undefined,
+    };
+    fs.appendFileSync(ledgerPath, JSON.stringify(ledgerEntry) + '\n', 'utf-8');
+    
     recordResult('Cookie Persistence', false, 'COOKIE_NOT_PERSISTING', cookieReport || undefined, undefined, 'pnpm run executor:auth');
     console.error('\n❌ FATAL: Cookie persistence proof failed');
     console.error('OPS_UP_FAST=FAIL reason=COOKIE_NOT_PERSISTING');
@@ -181,6 +210,20 @@ async function main(): Promise<void> {
     await runCommand('pnpm run executor:prove:auth-readwrite', 'Auth read/write proof');
     recordResult('Auth Bring-Up', true);
   } catch (e: any) {
+    // Write failure to ledger
+    const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'auth', 'ops-up-fast-ledger.jsonl');
+    const ledgerDir = path.dirname(ledgerPath);
+    if (!fs.existsSync(ledgerDir)) {
+      fs.mkdirSync(ledgerDir, { recursive: true });
+    }
+    const ledgerEntry = {
+      timestamp: new Date().toISOString(),
+      passed: false,
+      reason: 'auth_readwrite_failed',
+      soak_minutes: SOAK_MINUTES,
+    };
+    fs.appendFileSync(ledgerPath, JSON.stringify(ledgerEntry) + '\n', 'utf-8');
+    
     recordResult('Auth Bring-Up', false, `Auth read/write failed: ${e.message}`, undefined, undefined, 'pnpm run executor:auth');
     console.error('\n❌ FATAL: Auth bring-up failed');
     console.error('OPS_UP_FAST=FAIL reason=auth_readwrite_failed');
@@ -239,6 +282,20 @@ async function main(): Promise<void> {
     
     recordResult('Start Daemon', true);
   } catch (e: any) {
+    // Write failure to ledger
+    const ledgerPath = path.join(process.cwd(), 'docs', 'proofs', 'auth', 'ops-up-fast-ledger.jsonl');
+    const ledgerDir = path.dirname(ledgerPath);
+    if (!fs.existsSync(ledgerDir)) {
+      fs.mkdirSync(ledgerDir, { recursive: true });
+    }
+    const ledgerEntry = {
+      timestamp: new Date().toISOString(),
+      passed: false,
+      reason: 'daemon_start_failed',
+      soak_minutes: SOAK_MINUTES,
+    };
+    fs.appendFileSync(ledgerPath, JSON.stringify(ledgerEntry) + '\n', 'utf-8');
+    
     recordResult('Start Daemon', false, `Daemon start/verify failed: ${e.message}`, undefined, undefined, 'pnpm run executor:stop && pnpm run executor:start');
     console.error('\n❌ FATAL: Daemon start failed');
     console.error('OPS_UP_FAST=FAIL reason=daemon_start_failed');
