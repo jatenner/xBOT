@@ -208,6 +208,10 @@ function formatDomain(domain?: string): string {
 function expandDomains(cookie: CookieEntry): CookieEntry[] {
   const domains = new Set<string>();
   const base = cookie.domain;
+  const cookieName = cookie.name.toLowerCase();
+  
+  // Critical cookies (auth_token, ct0) must exist on both .x.com and x.com
+  const isCriticalCookie = cookieName === 'auth_token' || cookieName === 'ct0';
 
   domains.add(base);
 
@@ -215,22 +219,55 @@ function expandDomains(cookie: CookieEntry): CookieEntry[] {
     domains.add('.twitter.com');
     domains.add(base.replace(/\.twitter\.com$/, '.x.com'));
     domains.add('.x.com');
+    // For critical cookies, also add x.com (without dot)
+    if (isCriticalCookie) {
+      domains.add('x.com');
+    }
   } else if (base.endsWith('.x.com')) {
     domains.add('.x.com');
     domains.add(base.replace(/\.x\.com$/, '.twitter.com'));
     domains.add('.twitter.com');
+    // For critical cookies, also add x.com (without dot)
+    if (isCriticalCookie) {
+      domains.add('x.com');
+    }
   } else if (base.includes('twitter.com')) {
     domains.add('.twitter.com');
     domains.add('.x.com');
+    // For critical cookies, also add x.com (without dot)
+    if (isCriticalCookie) {
+      domains.add('x.com');
+    }
   } else if (base.includes('x.com')) {
     domains.add('.twitter.com');
     domains.add('.x.com');
+    // For critical cookies, also add x.com (without dot)
+    if (isCriticalCookie) {
+      domains.add('x.com');
+    }
+  } else {
+    // For critical cookies on unknown domains, ensure .x.com and x.com exist
+    if (isCriticalCookie) {
+      domains.add('.x.com');
+      domains.add('x.com');
+      domains.add('.twitter.com');
+    }
   }
 
   const variants: CookieEntry[] = [];
   for (const domain of domains) {
-    const formatted = formatDomain(domain);
-    variants.push({ ...cookie, domain: formatted });
+    // Format domain (adds dot if missing, but preserve x.com as-is for critical cookies)
+    let formatted: string;
+    if (isCriticalCookie && domain === 'x.com') {
+      formatted = 'x.com'; // Keep x.com without dot for critical cookies
+    } else {
+      formatted = formatDomain(domain);
+    }
+    // Clone cookie with new domain, preserving all other fields
+    variants.push({ 
+      ...cookie, 
+      domain: formatted 
+    });
   }
 
   return variants;

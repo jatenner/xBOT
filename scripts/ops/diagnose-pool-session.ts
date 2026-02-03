@@ -116,15 +116,34 @@ async function main() {
   
   // Check if auth_token/ct0 exist for both domains
   const authTokenXCom = cookies.find(c => c.name.toLowerCase() === 'auth_token' && c.domain === '.x.com');
+  const authTokenXComNoDot = cookies.find(c => c.name.toLowerCase() === 'auth_token' && c.domain === 'x.com');
   const authTokenTwitterCom = cookies.find(c => c.name.toLowerCase() === 'auth_token' && c.domain === '.twitter.com');
   const ct0XCom = cookies.find(c => c.name.toLowerCase() === 'ct0' && c.domain === '.x.com');
+  const ct0XComNoDot = cookies.find(c => c.name.toLowerCase() === 'ct0' && c.domain === 'x.com');
   const ct0TwitterCom = cookies.find(c => c.name.toLowerCase() === 'ct0' && c.domain === '.twitter.com');
+  
+  // Count auth_token/ct0 per domain
+  const authTokenCounts: Record<string, number> = {};
+  const ct0Counts: Record<string, number> = {};
+  cookies.forEach(c => {
+    if (c.name.toLowerCase() === 'auth_token') {
+      authTokenCounts[c.domain] = (authTokenCounts[c.domain] || 0) + 1;
+    }
+    if (c.name.toLowerCase() === 'ct0') {
+      ct0Counts[c.domain] = (ct0Counts[c.domain] || 0) + 1;
+    }
+  });
   
   console.log(`\n   Critical cookies domain check:`);
   console.log(`     auth_token on .x.com: ${!!authTokenXCom}`);
+  console.log(`     auth_token on x.com: ${!!authTokenXComNoDot}`);
   console.log(`     auth_token on .twitter.com: ${!!authTokenTwitterCom}`);
   console.log(`     ct0 on .x.com: ${!!ct0XCom}`);
+  console.log(`     ct0 on x.com: ${!!ct0XComNoDot}`);
   console.log(`     ct0 on .twitter.com: ${!!ct0TwitterCom}`);
+  console.log(`\n   Critical cookies counts per domain:`);
+  console.log(`     auth_token: ${JSON.stringify(authTokenCounts)}`);
+  console.log(`     ct0: ${JSON.stringify(ct0Counts)}`);
 
   // STEP 6: Check storageState path
   console.log('\nSTEP 6 — StorageState Path Check\n');
