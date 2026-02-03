@@ -509,19 +509,23 @@ async function runAuthB64PersistenceProof(): Promise<ProofResult> {
           });
           
           // Emit event
-          const supabase = getSupabaseClient();
-          await supabase.from('system_events').insert({
-            event_type: 'EXECUTOR_B64_AUTH_FAILURE_CLASSIFIED',
-            event_data: {
-              reason: checkResult.reason,
-              final_url: checkResult.url,
-              minute: currentMinute,
-              temp_profile_dir: TEMP_PROFILE_DIR,
-              screenshot_path: screenshotSaved ? screenshotPath : null,
-              forensics_snapshot_path: fs.existsSync(forensicsSnapshotPath) ? forensicsSnapshotPath : null,
-              forensics: snapshot,
-            },
-          }).catch(() => {}); // Don't fail on event write
+          try {
+            const supabase = getSupabaseClient();
+            await supabase.from('system_events').insert({
+              event_type: 'EXECUTOR_B64_AUTH_FAILURE_CLASSIFIED',
+              event_data: {
+                reason: checkResult.reason,
+                final_url: checkResult.url,
+                minute: currentMinute,
+                temp_profile_dir: TEMP_PROFILE_DIR,
+                screenshot_path: screenshotSaved ? screenshotPath : null,
+                forensics_snapshot_path: fs.existsSync(forensicsSnapshotPath) ? forensicsSnapshotPath : null,
+                forensics: snapshot,
+              },
+            });
+          } catch (e) {
+            // Don't fail on event write
+          }
         }
       }
       
