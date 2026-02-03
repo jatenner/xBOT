@@ -209,13 +209,41 @@ async function checkPlannerOutput(supabase: any): Promise<{
   
   let decisions: any[] = [];
   try {
-    const { data } = await supabase
+    // Query basic columns first
+    const { data, error } = await supabase
       .from('content_metadata')
-      .select('pipeline_source, status, decision_type, created_at')
+      .select('status, decision_type, created_at')
       .gte('created_at', twentyFourHoursAgo);
-    decisions = data || [];
+    
+    if (error) {
+      // Table might not exist or query failed
+      decisions = [];
+    } else {
+      decisions = data || [];
+      
+      // Try to fetch pipeline_source separately if column exists
+      try {
+        const { data: withSource } = await supabase
+          .from('content_metadata')
+          .select('pipeline_source')
+          .gte('created_at', twentyFourHoursAgo)
+          .limit(1);
+        
+        if (withSource && withSource.length > 0 && withSource[0].pipeline_source !== undefined) {
+          // Column exists, fetch it for all decisions
+          const { data: fullData } = await supabase
+            .from('content_metadata')
+            .select('pipeline_source, status, decision_type, created_at')
+            .gte('created_at', twentyFourHoursAgo);
+          decisions = fullData || [];
+        }
+      } catch {
+        // pipeline_source column doesn't exist, use basic data
+      }
+    }
   } catch (e) {
     // Table might not exist
+    decisions = [];
   }
   
   const byPipelineSource: Record<string, number> = {};
@@ -420,17 +448,21 @@ async function checkLearning(supabase: any): Promise<{
   // Strategy attribution coverage
   let strategyCoverage = 0;
   try {
-    const { data: decisions } = await supabase
+    const { data: decisions, error } = await supabase
       .from('content_metadata')
       .select('strategy_id')
       .limit(1000);
     
-    if (decisions && decisions.length > 0) {
+    if (error && error.message.includes('strategy_id')) {
+      // Column doesn't exist, coverage is 0
+      strategyCoverage = 0;
+    } else if (decisions && decisions.length > 0) {
       const withStrategy = decisions.filter((d: any) => d.strategy_id).length;
       strategyCoverage = (withStrategy / decisions.length) * 100;
     }
   } catch (e) {
-    // Table might not exist
+    // Table might not exist or column missing
+    strategyCoverage = 0;
   }
   
   return {
