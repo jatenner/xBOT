@@ -223,6 +223,58 @@ pnpm run ops:gate:proofs
 
 This runs both gates sequentially and reports final verdict with artifacts.
 
+#### Auth Persistence (Cookie Mode) — Current Status
+
+**Latest Findings (2026-02-03):**
+
+Auth persistence investigation is in progress with forensics instrumentation added to capture root cause of auth flips around ~29 minutes.
+
+**How to Run Persistence Matrix:**
+
+```bash
+# Run controlled matrix (A: 60s, B: 180s+jitter, C: 300s+jitter)
+pnpm run ops:auth:persistence:matrix
+```
+
+This runs 3 variants back-to-back (stops on first PASS):
+- **Variant A:** 60s ticks, no jitter (baseline)
+- **Variant B:** 180s ticks, ±20% jitter (human-ish)
+- **Variant C:** 300s ticks, ±20% jitter (more human)
+
+**Artifacts:**
+- Reports: `docs/proofs/auth/b64-auth-persistence-<ts>.md`
+- Forensics snapshots: `docs/proofs/auth/b64-auth-flip-snapshot-<reason>-<ts>.json`
+- Screenshots: `docs/proofs/auth/b64-auth-persistence-fail-<reason>-<ts>.png`
+- Matrix results: `docs/proofs/auth/auth-persistence-matrix.jsonl`
+- Root cause analysis: `docs/proofs/auth/AUTH_PERSISTENCE_ROOT_CAUSE.md` (generated after matrix)
+
+**What PASS Means:**
+- ✅ Auth persisted for full 60 minutes
+- ✅ No login_redirect events
+- ✅ No challenge_suspected events
+- ✅ Forensics show cookies stable throughout
+
+**What FAIL Means:**
+- ❌ Check `AUTH_PERSISTENCE_ROOT_CAUSE.md` for determination:
+  - **EXPIRY/ROTATION:** Cookies expired/rotated → implement refresh strategy
+  - **REVOCATION_BY_PATTERN:** Pattern detection → adjust cadence/jitter, stop aggressive polling
+  - **COOKIE_ONLY_INSUFFICIENT:** Cookies present but auth fails → migrate to storageState/persistent profile
+
+**Status Commands:**
+```bash
+# Check latest persistence report
+pnpm run ops:gate:status
+
+# Analyze matrix results and generate root cause
+tsx scripts/ops/analyze-auth-persistence-root-cause.ts
+```
+
+**Next Action if FAIL:**
+Based on determination in `AUTH_PERSISTENCE_ROOT_CAUSE.md`:
+1. If EXPIRY/ROTATION: Implement cookie refresh or migrate to storageState
+2. If REVOCATION_BY_PATTERN: Adjust daemon cadence to 180s+ with jitter
+3. If COOKIE_ONLY_INSUFFICIENT: Migrate to Playwright storageState or persistent userDataDir
+
 ### Step 3: Verify Mac Executor Status (30 seconds)
 
 ```bash
