@@ -234,6 +234,23 @@ export async function startWorker() {
   // Step 1: Probe database connectivity (fail fast if unreachable)
   await probeDatabase();
   
+  // 🔧 MIGRATIONS: Run migrations BEFORE starting jobs (fail-fast on error)
+  console.log('[WORKER] 🔧 Running database migrations...');
+  try {
+    const { execSync } = await import('child_process');
+    const result = execSync('pnpm run db:migrate', {
+      stdio: 'inherit',
+      env: process.env,
+    });
+    console.log('[WORKER] ✅ Migrations completed successfully');
+  } catch (error: any) {
+    console.error('[WORKER] ❌ Migration failed - exiting (fail-fast)');
+    console.error('[WORKER] Error:', error.message);
+    if (error.stdout) console.error('[WORKER] stdout:', error.stdout.toString());
+    if (error.stderr) console.error('[WORKER] stderr:', error.stderr.toString());
+    process.exit(1); // Fail-fast so Railway shows deployment failure
+  }
+  
   // 🔒 AUTO-PROBE: Check and run probe automatically (no env flag needed)
   try {
     const { checkAndRunAutoProbe } = await import('./replySystemV2/autoProbe');
