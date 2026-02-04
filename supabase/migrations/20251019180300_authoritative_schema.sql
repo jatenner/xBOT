@@ -29,10 +29,13 @@ BEGIN
         AND table_name = 'content_metadata' 
         AND column_name = 'generated_at'
       ) THEN
-        EXECUTE 'ALTER TABLE content_metadata DROP COLUMN generated_at';
+        EXECUTE 'ALTER TABLE public.content_metadata DROP COLUMN IF EXISTS generated_at';
       END IF;
-    EXCEPTION WHEN OTHERS THEN
-      RAISE NOTICE 'Could not drop generated_at: %', SQLERRM;
+    EXCEPTION 
+      WHEN SQLSTATE '42809' THEN
+        RAISE NOTICE 'Skipping DROP COLUMN generated_at: relation is a view/materialized view';
+      WHEN OTHERS THEN
+        RAISE NOTICE 'Could not drop generated_at: %', SQLERRM;
     END;
     
     -- Remove decision_timestamp (use created_at instead)
@@ -43,10 +46,13 @@ BEGIN
         AND table_name = 'content_metadata' 
         AND column_name = 'decision_timestamp'
       ) THEN
-        EXECUTE 'ALTER TABLE content_metadata DROP COLUMN decision_timestamp';
+        EXECUTE 'ALTER TABLE public.content_metadata DROP COLUMN decision_timestamp';
       END IF;
-    EXCEPTION WHEN OTHERS THEN
-      RAISE NOTICE 'Could not drop decision_timestamp: %', SQLERRM;
+    EXCEPTION 
+      WHEN SQLSTATE '42809' THEN
+        RAISE NOTICE 'Skipping DROP COLUMN decision_timestamp: relation is a view/materialized view';
+      WHEN OTHERS THEN
+        RAISE NOTICE 'Could not drop decision_timestamp: %', SQLERRM;
     END;
     
     -- Remove thread_parts (use thread_tweets instead)
@@ -57,10 +63,13 @@ BEGIN
         AND table_name = 'content_metadata' 
         AND column_name = 'thread_parts'
       ) THEN
-        EXECUTE 'ALTER TABLE content_metadata DROP COLUMN thread_parts';
+        EXECUTE 'ALTER TABLE public.content_metadata DROP COLUMN IF EXISTS thread_parts';
       END IF;
-    EXCEPTION WHEN OTHERS THEN
-      RAISE NOTICE 'Could not drop thread_parts: %', SQLERRM;
+    EXCEPTION 
+      WHEN SQLSTATE '42809' THEN
+        RAISE NOTICE 'Skipping DROP COLUMN thread_parts: relation is a view/materialized view';
+      WHEN OTHERS THEN
+        RAISE NOTICE 'Could not drop thread_parts: %', SQLERRM;
     END;
   ELSE
     RAISE NOTICE 'Skipping column drops: content_metadata is not a base table (likely a view)';
@@ -81,41 +90,69 @@ BEGIN
     AND c.relkind = 'r'
   ) THEN
     -- Core columns
-    IF NOT EXISTS (
-      SELECT 1 FROM information_schema.columns 
-      WHERE table_schema = 'public'
-      AND table_name = 'content_metadata' 
-      AND column_name = 'id'
-    ) THEN
-      ALTER TABLE content_metadata ADD COLUMN id BIGSERIAL PRIMARY KEY;
-    END IF;
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public'
+        AND table_name = 'content_metadata' 
+        AND column_name = 'id'
+      ) THEN
+        EXECUTE 'ALTER TABLE public.content_metadata ADD COLUMN id BIGSERIAL PRIMARY KEY';
+      END IF;
+    EXCEPTION 
+      WHEN SQLSTATE '42809' THEN
+        RAISE NOTICE 'Skipping ADD COLUMN id: relation is a view/materialized view';
+      WHEN OTHERS THEN
+        RAISE NOTICE 'Could not add id column: %', SQLERRM;
+    END;
     
-    IF NOT EXISTS (
-      SELECT 1 FROM information_schema.columns 
-      WHERE table_schema = 'public'
-      AND table_name = 'content_metadata' 
-      AND column_name = 'decision_id'
-    ) THEN
-      ALTER TABLE content_metadata ADD COLUMN decision_id UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE;
-    END IF;
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public'
+        AND table_name = 'content_metadata' 
+        AND column_name = 'decision_id'
+      ) THEN
+        EXECUTE 'ALTER TABLE public.content_metadata ADD COLUMN decision_id UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE';
+      END IF;
+    EXCEPTION 
+      WHEN SQLSTATE '42809' THEN
+        RAISE NOTICE 'Skipping ADD COLUMN decision_id: relation is a view/materialized view';
+      WHEN OTHERS THEN
+        RAISE NOTICE 'Could not add decision_id column: %', SQLERRM;
+    END;
     
-    IF NOT EXISTS (
-      SELECT 1 FROM information_schema.columns 
-      WHERE table_schema = 'public'
-      AND table_name = 'content_metadata' 
-      AND column_name = 'created_at'
-    ) THEN
-      ALTER TABLE content_metadata ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-    END IF;
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public'
+        AND table_name = 'content_metadata' 
+        AND column_name = 'created_at'
+      ) THEN
+        EXECUTE 'ALTER TABLE public.content_metadata ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()';
+      END IF;
+    EXCEPTION 
+      WHEN SQLSTATE '42809' THEN
+        RAISE NOTICE 'Skipping ADD COLUMN created_at: relation is a view/materialized view';
+      WHEN OTHERS THEN
+        RAISE NOTICE 'Could not add created_at column: %', SQLERRM;
+    END;
     
-    IF NOT EXISTS (
-      SELECT 1 FROM information_schema.columns 
-      WHERE table_schema = 'public'
-      AND table_name = 'content_metadata' 
-      AND column_name = 'updated_at'
-    ) THEN
-      ALTER TABLE content_metadata ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-    END IF;
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public'
+        AND table_name = 'content_metadata' 
+        AND column_name = 'updated_at'
+      ) THEN
+        EXECUTE 'ALTER TABLE public.content_metadata ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()';
+      END IF;
+    EXCEPTION 
+      WHEN SQLSTATE '42809' THEN
+        RAISE NOTICE 'Skipping ADD COLUMN updated_at: relation is a view/materialized view';
+      WHEN OTHERS THEN
+        RAISE NOTICE 'Could not add updated_at column: %', SQLERRM;
+    END;
   ELSE
     RAISE NOTICE 'Skipping column additions: content_metadata is not a base table (likely a view)';
   END IF;
@@ -134,7 +171,7 @@ BEGIN
   ) THEN
     BEGIN
       EXECUTE 'CREATE INDEX IF NOT EXISTS idx_content_metadata_status_scheduled 
-        ON content_metadata(status, scheduled_at) WHERE status = ''queued''';
+        ON public.content_metadata(status, scheduled_at) WHERE status = ''queued''';
     EXCEPTION WHEN OTHERS THEN
       RAISE NOTICE 'Could not create status_scheduled index: %', SQLERRM;
     END;
@@ -148,7 +185,7 @@ BEGIN
     
     BEGIN
       EXECUTE 'CREATE INDEX IF NOT EXISTS idx_content_metadata_created_at 
-        ON content_metadata(created_at DESC)';
+        ON public.content_metadata(created_at DESC)';
     EXCEPTION WHEN OTHERS THEN
       RAISE NOTICE 'Could not create created_at index: %', SQLERRM;
     END;
@@ -200,7 +237,7 @@ BEGIN
     -- Create index on the table
     BEGIN
       EXECUTE 'CREATE INDEX IF NOT EXISTS idx_posted_decisions_created_at 
-        ON posted_decisions(created_at DESC)';
+        ON public.posted_decisions(created_at DESC)';
     EXCEPTION WHEN OTHERS THEN
       RAISE NOTICE 'Could not create index on posted_decisions: %', SQLERRM;
     END;
@@ -261,11 +298,11 @@ BEGIN
     ) THEN
       -- Add foreign key constraint
       BEGIN
-        ALTER TABLE outcomes
+        EXECUTE 'ALTER TABLE public.outcomes
           ADD CONSTRAINT fk_outcomes_posted_decisions
           FOREIGN KEY (decision_id)
-          REFERENCES posted_decisions(decision_id)
-          ON DELETE CASCADE;
+          REFERENCES public.posted_decisions(decision_id)
+          ON DELETE CASCADE';
         
         RAISE NOTICE '✅ Added foreign key: outcomes.decision_id → posted_decisions.decision_id';
       EXCEPTION 
@@ -369,15 +406,62 @@ GRANT SELECT ON content_with_outcomes TO anon, authenticated;
 -- 5. DOCUMENTATION
 -- =====================================================================================
 
-COMMENT ON TABLE content_metadata IS 'Content queue - content waiting to be posted';
-COMMENT ON TABLE posted_decisions IS 'Posted content - successfully published tweets';
-COMMENT ON TABLE outcomes IS 'Performance metrics - scraped engagement data';
-COMMENT ON VIEW content_with_outcomes IS 'Convenience view joining posted_decisions with outcomes for easy querying';
-
-COMMENT ON COLUMN content_metadata.created_at IS 'When content was generated (use this instead of decision_timestamp or generated_at)';
-COMMENT ON COLUMN posted_decisions.decision_id IS 'Links to content_metadata.decision_id';
-COMMENT ON COLUMN outcomes.decision_id IS 'Links to posted_decisions.decision_id (foreign key enforced)';
-COMMENT ON COLUMN outcomes.collected_pass IS '0=placeholder, 1=T+1h metrics, 2=T+24h final metrics';
+-- Comments (only if relations exist and are appropriate type)
+DO $$
+BEGIN
+  -- Comment on content_metadata (works for both tables and views)
+  BEGIN
+    EXECUTE 'COMMENT ON TABLE public.content_metadata IS ''Content queue - content waiting to be posted''';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not add comment to content_metadata: %', SQLERRM;
+  END;
+  
+  -- Comment on posted_decisions (works for both tables and views)
+  BEGIN
+    EXECUTE 'COMMENT ON TABLE public.posted_decisions IS ''Posted content - successfully published tweets''';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not add comment to posted_decisions: %', SQLERRM;
+  END;
+  
+  -- Comment on outcomes (should be a table)
+  BEGIN
+    EXECUTE 'COMMENT ON TABLE public.outcomes IS ''Performance metrics - scraped engagement data''';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not add comment to outcomes: %', SQLERRM;
+  END;
+  
+  -- Comment on view
+  BEGIN
+    EXECUTE 'COMMENT ON VIEW public.content_with_outcomes IS ''Convenience view joining posted_decisions with outcomes for easy querying''';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not add comment to content_with_outcomes: %', SQLERRM;
+  END;
+  
+  -- Column comments
+  BEGIN
+    EXECUTE 'COMMENT ON COLUMN public.content_metadata.created_at IS ''When content was generated (use this instead of decision_timestamp or generated_at)''';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not add comment to content_metadata.created_at: %', SQLERRM;
+  END;
+  
+  BEGIN
+    EXECUTE 'COMMENT ON COLUMN public.posted_decisions.decision_id IS ''Links to content_metadata.decision_id''';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not add comment to posted_decisions.decision_id: %', SQLERRM;
+  END;
+  
+  BEGIN
+    EXECUTE 'COMMENT ON COLUMN public.outcomes.decision_id IS ''Links to posted_decisions.decision_id (foreign key enforced)''';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not add comment to outcomes.decision_id: %', SQLERRM;
+  END;
+  
+  BEGIN
+    EXECUTE 'COMMENT ON COLUMN public.outcomes.collected_pass IS ''0=placeholder, 1=T+1h metrics, 2=T+24h final metrics''';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not add comment to outcomes.collected_pass: %', SQLERRM;
+  END;
+END $$;
 
 -- =====================================================================================
 -- Summary of changes:

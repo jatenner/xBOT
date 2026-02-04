@@ -78,8 +78,13 @@ async function applyMigration(
   const checksum = computeChecksum(filePath);
   
   // If migration contains DO $$ blocks or CREATE FUNCTION with $$, execute as single statement to avoid splitting issues
-  const hasDoBlocks = sql.includes('DO $$') || /DO\s+\$[^$]+\$/i.test(sql);
+  const hasDoBlocks = sql.includes('DO $$') || /DO\s+\$[^$]+\$/i.test(sql) || sql.includes('DO $');
   const hasCreateFunction = /CREATE\s+(OR\s+REPLACE\s+)?FUNCTION.*?\$\$/is.test(sql);
+  
+  // Debug log for DO block detection (no secrets)
+  if (hasDoBlocks) {
+    console.log(`   ℹ️  Migration contains DO blocks - executing as single statement`);
+  }
   
   // Check if migration already has BEGIN/COMMIT (but not inside DO $$ blocks)
   // If DO blocks exist, don't treat as transaction wrapper
