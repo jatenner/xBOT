@@ -115,42 +115,8 @@ $$ LANGUAGE plpgsql;
 -- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 -- Top violators (last 7 days)
-COMMENT ON MATERIALIZED VIEW generator_quality_metrics IS 
-'Pre-computed quality metrics per generator. Refresh with: SELECT refresh_generator_quality_metrics();
-
-Example queries:
-
--- Top violators (last 7 days)
-SELECT 
-  generator_name,
-  COUNT(*) as violations,
-  COUNT(*) FILTER (WHERE severity = ''critical'') as critical
-FROM content_violations
-WHERE created_at >= NOW() - INTERVAL ''7 days''
-GROUP BY generator_name
-ORDER BY violations DESC
-LIMIT 10;
-
--- First-person violations by generator
-SELECT 
-  generator_name,
-  COUNT(*) as first_person_violations,
-  ARRAY_AGG(DISTINCT detected_phrase) as common_phrases
-FROM content_violations
-WHERE violation_type = ''first_person''
-  AND created_at >= NOW() - INTERVAL ''30 days''
-GROUP BY generator_name
-ORDER BY first_person_violations DESC;
-
--- Improvement over time
-SELECT 
-  DATE_TRUNC(''day'', created_at) as day,
-  COUNT(*) as violations
-FROM content_violations
-WHERE created_at >= NOW() - INTERVAL ''30 days''
-GROUP BY day
-ORDER BY day DESC;
-';
+-- Note: Refresh this materialized view with: SELECT refresh_generator_quality_metrics();
+COMMENT ON MATERIALIZED VIEW generator_quality_metrics IS 'Pre-computed quality metrics per generator. Refresh periodically with refresh_generator_quality_metrics() function.';
 
 -- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 -- Enable Row Level Security (RLS)
