@@ -201,17 +201,17 @@ export class JobManager {
     log({ op: 'job_manager_start', mode: 'staggered' });
     
     const envEnableReplies = process.env.ENABLE_REPLIES;
-    const repliesEnabled = envEnableReplies !== 'false';
+    const repliesEnabled = envEnableReplies === 'true';
 
     // 🚨 CRITICAL: Check reply system environment variable
-    // Default: enabled unless explicitly disabled
+    // Default: DISABLED unless explicitly enabled
     if (!repliesEnabled) {
       console.warn('═══════════════════════════════════════════════════════');
       console.warn('⚠️  JOB_MANAGER: Reply system is DISABLED');
-      console.warn('   Reason: ENABLE_REPLIES environment variable set to "false"');
+      console.warn('   Reason: ENABLE_REPLIES not set to "true" (defaults to disabled)');
       console.warn('');
       console.warn('   To enable replies:');
-      console.warn('   1. Remove ENABLE_REPLIES or set ENABLE_REPLIES=true in your environment');
+      console.warn('   1. Set ENABLE_REPLIES=true in your environment');
       console.warn('');
       console.warn('   Impact: 6 reply-related jobs will NOT run:');
       console.warn('   • mega_viral_harvester (finds viral tweets)');
@@ -222,8 +222,7 @@ export class JobManager {
       console.warn('   • reply_conversion_tracking (tracks follower attribution)');
       console.warn('═══════════════════════════════════════════════════════');
     } else {
-      if (envEnableReplies === undefined) {
-        console.log('✅ JOB_MANAGER: Reply system ENABLED (default). Set ENABLE_REPLIES=false to disable.');
+      console.log('✅ JOB_MANAGER: Reply system ENABLED (ENABLE_REPLIES=true).');
       } else {
         console.log('✅ JOB_MANAGER: Reply system ENABLED (ENABLE_REPLIES=true)');
       }

@@ -607,10 +607,10 @@ async function generateRealReplies(): Promise<void> {
     console.warn(`[REPLY_JOB] ⚠️ Opportunity pool below dynamic threshold (${poolCount} < ${HARVESTER_TRIGGER_THRESHOLD})`);
 
     if (sinceLastTrigger >= HARVESTER_COOLDOWN_MS || poolCount < HARVESTER_CRITICAL_THRESHOLD) {
-      // 🚫 HARVESTING_ENABLED CHECK: Skip harvesting if disabled (Railway split architecture)
-      const harvestingEnabled = process.env.HARVESTING_ENABLED !== 'false';
+      // 🚫 HARVESTING_ENABLED CHECK: Default OFF - only allow if explicitly 'true'
+      const harvestingEnabled = process.env.HARVESTING_ENABLED === 'true';
       if (!harvestingEnabled) {
-        console.log(`[REPLY_JOB] [HARVEST] disabled_by_env HARVESTING_ENABLED=false (harvesting runs locally, not on Railway)`);
+        console.log(`[REPLY_JOB] [HARVEST] disabled_by_env HARVESTING_ENABLED not set to 'true' (harvesting disabled by default)`);
         console.log(`[REPLY_JOB] ⚠️ Pool below threshold but harvesting disabled - proceeding with available opportunities`);
       } else {
         console.log(`[REPLY_JOB] 🚨 Triggering harvesters (cooldown ${Math.max(0, cooldownRemaining)}ms remaining, critical=${poolCount < HARVESTER_CRITICAL_THRESHOLD})`);

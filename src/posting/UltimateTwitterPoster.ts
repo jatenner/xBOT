@@ -102,10 +102,10 @@ function verifyPostingGuard(
     return { valid: false, error: 'REPLIES_ENABLED=false - Reply posting disabled at killswitch' };
   }
   
-  // POSTING_ENABLED=false blocks ALL posting (tweets and replies)
-  if (process.env.POSTING_ENABLED === 'false') {
-    console.warn(`[KILLSWITCH] 🛑 POSTING_ENABLED=false - Blocking ${operation}`);
-    return { valid: false, error: 'POSTING_ENABLED=false - All posting disabled at killswitch' };
+  // POSTING_ENABLED: Default OFF - only allow if explicitly 'true'
+  if (process.env.POSTING_ENABLED !== 'true') {
+    console.warn(`[KILLSWITCH] 🛑 POSTING_ENABLED not set to 'true' - Blocking ${operation}`);
+    return { valid: false, error: 'POSTING_ENABLED must be explicitly set to "true" to enable posting' };
   }
   
   // DRAIN_QUEUE=true also blocks posting (posts should be marked skipped upstream)
