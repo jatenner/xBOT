@@ -6,23 +6,36 @@
 
 BEGIN;
 
--- Add missing columns to content_metadata
-ALTER TABLE content_metadata
-  ADD COLUMN IF NOT EXISTS decision_id UUID DEFAULT gen_random_uuid() UNIQUE,
-  ADD COLUMN IF NOT EXISTS decision_type TEXT DEFAULT 'single' CHECK (decision_type IN ('single', 'thread', 'reply')),
-  ADD COLUMN IF NOT EXISTS bandit_arm TEXT,
-  ADD COLUMN IF NOT EXISTS timing_arm TEXT,
-  ADD COLUMN IF NOT EXISTS predicted_er NUMERIC(5,4),
-  ADD COLUMN IF NOT EXISTS generation_source TEXT DEFAULT 'real' CHECK (generation_source IN ('real', 'synthetic')),
-  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'queued' CHECK (status IN ('queued', 'posted', 'skipped', 'failed')),
-  ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ DEFAULT NOW(),
-  ADD COLUMN IF NOT EXISTS angle TEXT,
-  ADD COLUMN IF NOT EXISTS content_hash TEXT,
-  ADD COLUMN IF NOT EXISTS features JSONB,
-  ADD COLUMN IF NOT EXISTS target_tweet_id TEXT,
-  ADD COLUMN IF NOT EXISTS target_username TEXT,
-  ADD COLUMN IF NOT EXISTS skip_reason TEXT,
-  ADD COLUMN IF NOT EXISTS error_message TEXT;
+-- Add missing columns to content_metadata (skip if content_metadata is a view)
+-- Note: If content_metadata is a view, columns should be added to underlying table instead
+-- This migration assumes content_metadata is a table or will be handled by later migrations
+DO $$
+BEGIN
+  -- Only alter if content_metadata is a table, not a view
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables 
+    WHERE table_schema = 'public' 
+    AND table_name = 'content_metadata'
+    AND table_type = 'BASE TABLE'
+  ) THEN
+    ALTER TABLE content_metadata
+      ADD COLUMN IF NOT EXISTS decision_id UUID DEFAULT gen_random_uuid() UNIQUE,
+      ADD COLUMN IF NOT EXISTS decision_type TEXT DEFAULT 'single' CHECK (decision_type IN ('single', 'thread', 'reply')),
+      ADD COLUMN IF NOT EXISTS bandit_arm TEXT,
+      ADD COLUMN IF NOT EXISTS timing_arm TEXT,
+      ADD COLUMN IF NOT EXISTS predicted_er NUMERIC(5,4),
+      ADD COLUMN IF NOT EXISTS generation_source TEXT DEFAULT 'real' CHECK (generation_source IN ('real', 'synthetic')),
+      ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'queued' CHECK (status IN ('queued', 'posted', 'skipped', 'failed')),
+      ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ DEFAULT NOW(),
+      ADD COLUMN IF NOT EXISTS angle TEXT,
+      ADD COLUMN IF NOT EXISTS content_hash TEXT,
+      ADD COLUMN IF NOT EXISTS features JSONB,
+      ADD COLUMN IF NOT EXISTS target_tweet_id TEXT,
+      ADD COLUMN IF NOT EXISTS target_username TEXT,
+      ADD COLUMN IF NOT EXISTS skip_reason TEXT,
+      ADD COLUMN IF NOT EXISTS error_message TEXT;
+  END IF;
+END $$;
 
 -- Create indexes for new columns (on underlying table, content_metadata is a VIEW)
 CREATE INDEX IF NOT EXISTS idx_content_status_scheduled 
@@ -36,7 +49,10 @@ CREATE INDEX IF NOT EXISTS idx_content_decision_id
 CREATE INDEX IF NOT EXISTS idx_content_angle 
   ON content_generation_metadata_comprehensive (angle) WHERE angle IS NOT NULL;
 
--- Create posted_decisions table
+-- Drop posted_decisions view if it exists (before creating table)
+DROP VIEW IF EXISTS posted_decisions CASCADE;
+
+-- Create posted_decisions table (only if it doesn't exist)
 CREATE TABLE IF NOT EXISTS posted_decisions (
   id BIGSERIAL PRIMARY KEY,
   decision_id UUID NOT NULL,
@@ -50,12 +66,9 @@ CREATE TABLE IF NOT EXISTS posted_decisions (
   posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_posted_decisions_tweet_id 
-  ON posted_decisions (tweet_id);
-CREATE INDEX IF NOT EXISTS idx_posted_decisions_decision_id 
-  ON posted_decisions (decision_id);
-CREATE INDEX IF NOT EXISTS idx_posted_decisions_posted_at 
-  ON posted_decisions (posted_at DESC);
+-- Create indexes only if posted_decisions is a table (not a view)
+-- Skip index creation if relation is a view (will be handled by later migrations)
+-- Note: If posted_decisions is still a view after DROP VIEW, indexes will be skipped
 
 -- Create/update outcomes table
 CREATE TABLE IF NOT EXISTS outcomes (
