@@ -77,8 +77,41 @@ async function applyMigration(
   const sql = fs.readFileSync(filePath, 'utf-8');
   const checksum = computeChecksum(filePath);
   
-  // Check if migration already has BEGIN/COMMIT
-  const hasTransaction = sql.toUpperCase().includes('BEGIN') && sql.toUpperCase().includes('COMMIT');
+  // If migration contains DO $$ blocks, execute as single statement to avoid splitting issues
+  const hasDoBlocks = sql.includes('DO $$') || /DO\s+\$[^$]+\$/i.test(sql);
+  
+  // Check if migration already has BEGIN/COMMIT (but not inside DO $$ blocks)
+  // If DO blocks exist, don't treat as transaction wrapper
+  let hasTransaction = false;
+  if (!hasDoBlocks) {
+    const doBlockRegex = /DO\s+\$[^$]*\$[^$]*\$/gis;
+    const sqlWithoutDoBlocks = sql.replace(doBlockRegex, '');
+    hasTransaction = sqlWithoutDoBlocks.toUpperCase().includes('BEGIN') && sqlWithoutDoBlocks.toUpperCase().includes('COMMIT');
+  }
+  
+  // If DO blocks exist, execute as single statement
+  if (hasDoBlocks) {
+    try {
+      await client.query(sql);
+    } catch (error: any) {
+      const hasIfExists = sql.toUpperCase().includes('IF EXISTS') || sql.toUpperCase().includes('IF NOT EXISTS');
+      if (hasIfExists && error.message.includes('does not exist')) {
+        console.log(`   ℹ️  Skipped (object does not exist)`);
+      } else {
+        throw error;
+      }
+    }
+    
+    await client.query(`
+      INSERT INTO schema_migrations (filename, checksum, applied_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (filename) 
+      DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = NOW()
+    `, [filename, checksum]);
+    
+    console.log(`✅ Migration applied: ${filename}`);
+    return;
+  }
   
   if (hasTransaction) {
     // Migration has its own transaction - need to handle errors carefully
@@ -219,11 +252,40 @@ async function applyMigration(
     }
   } else {
     // No transaction in migration - execute statements individually (safer for IF EXISTS)
-    // Split SQL into statements
+    // If migration contains DO $$ blocks, execute as single statement to avoid splitting issues
+    if (sql.includes('DO $$') || sql.includes('DO $')) {
+      // Execute entire migration as one statement (PostgreSQL handles multiple statements)
+      try {
+        await client.query(sql);
+      } catch (error: any) {
+        // If statement has IF EXISTS/IF NOT EXISTS, some errors are expected
+        const hasIfExists = sql.toUpperCase().includes('IF EXISTS') || sql.toUpperCase().includes('IF NOT EXISTS');
+        if (hasIfExists && error.message.includes('does not exist')) {
+          console.log(`   ℹ️  Skipped (object does not exist)`);
+        } else {
+          throw error;
+        }
+      }
+      
+      // Record migration
+      await client.query(`
+        INSERT INTO schema_migrations (filename, checksum, applied_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (filename) 
+        DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = NOW()
+      `, [filename, checksum]);
+      
+      console.log(`✅ Migration applied: ${filename}`);
+      return;
+    }
+    
+    // Split SQL into statements (for migrations without DO blocks)
     const statements = sql
       .split(';')
       .map(s => s.trim())
       .filter(s => s.length > 0 && !s.startsWith('--'));
+    
+    const filteredStatements = statements;
     
     // Execute all statements (each in its own implicit transaction for DDL)
     for (const stmt of statements) {

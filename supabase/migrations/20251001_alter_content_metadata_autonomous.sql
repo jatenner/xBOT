@@ -3,20 +3,16 @@
 -- Purpose: Add missing columns to existing content_metadata table
 -- Date: 2025-10-01
 -- =====================================================================================
-
-BEGIN;
+-- Note: No BEGIN/COMMIT wrapper to avoid DO $$ block splitting issues
 
 -- Add missing columns to content_metadata (skip if content_metadata is a view)
--- Note: If content_metadata is a view, columns should be added to underlying table instead
--- This migration assumes content_metadata is a table or will be handled by later migrations
+-- Use pg_class.relkind to check if it's a table ('r') vs view ('v')
 DO $$
 BEGIN
-  -- Only alter if content_metadata is a table, not a view
   IF EXISTS (
-    SELECT 1 FROM information_schema.tables 
-    WHERE table_schema = 'public' 
-    AND table_name = 'content_metadata'
-    AND table_type = 'BASE TABLE'
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE c.relname='content_metadata' AND c.relkind='r' AND n.nspname='public'
   ) THEN
     ALTER TABLE content_metadata
       ADD COLUMN IF NOT EXISTS decision_id UUID DEFAULT gen_random_uuid() UNIQUE,
@@ -50,25 +46,54 @@ CREATE INDEX IF NOT EXISTS idx_content_angle
   ON content_generation_metadata_comprehensive (angle) WHERE angle IS NOT NULL;
 
 -- Drop posted_decisions view if it exists (before creating table)
-DROP VIEW IF EXISTS posted_decisions CASCADE;
+-- Use DO block to check relkind and drop view only if it's a view
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE c.relname='posted_decisions' AND c.relkind='v' AND n.nspname='public'
+  ) THEN
+    DROP VIEW posted_decisions CASCADE;
+  END IF;
+END $$;
 
--- Create posted_decisions table (only if it doesn't exist)
-CREATE TABLE IF NOT EXISTS posted_decisions (
-  id BIGSERIAL PRIMARY KEY,
-  decision_id UUID NOT NULL,
-  decision_type TEXT NOT NULL,
-  bandit_arm TEXT,
-  timing_arm TEXT,
-  generation_source TEXT NOT NULL,
-  tweet_id TEXT NOT NULL,
-  target_tweet_id TEXT,
-  content TEXT,
-  posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- Create posted_decisions table (only if it doesn't exist and not already a table)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE c.relname='posted_decisions' AND c.relkind='r' AND n.nspname='public'
+  ) THEN
+    CREATE TABLE posted_decisions (
+      id BIGSERIAL PRIMARY KEY,
+      decision_id UUID NOT NULL,
+      decision_type TEXT NOT NULL,
+      bandit_arm TEXT,
+      timing_arm TEXT,
+      generation_source TEXT NOT NULL,
+      tweet_id TEXT NOT NULL,
+      target_tweet_id TEXT,
+      content TEXT,
+      posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  END IF;
+END $$;
 
 -- Create indexes only if posted_decisions is a table (not a view)
--- Skip index creation if relation is a view (will be handled by later migrations)
--- Note: If posted_decisions is still a view after DROP VIEW, indexes will be skipped
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE c.relname='posted_decisions' AND c.relkind='r' AND n.nspname='public'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_posted_decisions_tweet_id ON posted_decisions (tweet_id);
+    CREATE INDEX IF NOT EXISTS idx_posted_decisions_decision_id ON posted_decisions (decision_id);
+    CREATE INDEX IF NOT EXISTS idx_posted_decisions_posted_at ON posted_decisions (posted_at DESC);
+  END IF;
+END $$;
 
 -- Create/update outcomes table
 CREATE TABLE IF NOT EXISTS outcomes (
@@ -130,10 +155,18 @@ CREATE INDEX IF NOT EXISTS idx_api_usage_status
 CREATE INDEX IF NOT EXISTS idx_api_usage_kind 
   ON api_usage (kind, created_at DESC);
 
--- Add comments
-COMMENT ON COLUMN content_metadata.generation_source IS 'real=LLM generated, synthetic=shadow mode fallback';
-COMMENT ON COLUMN content_metadata.status IS 'queued→posted/skipped/failed workflow';
+-- Add comments (skip if content_metadata is a view)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE c.relname='content_metadata' AND c.relkind='r' AND n.nspname='public'
+  ) THEN
+    COMMENT ON COLUMN content_metadata.generation_source IS 'real=LLM generated, synthetic=shadow mode fallback';
+    COMMENT ON COLUMN content_metadata.status IS 'queued→posted/skipped/failed workflow';
+  END IF;
+END $$;
+
 COMMENT ON COLUMN outcomes.simulated IS 'false=real X metrics, true=synthetic shadow data';
 COMMENT ON COLUMN outcomes.er_calculated IS 'Engagement rate: (likes+retweets+replies)/impressions';
-
-COMMIT;
