@@ -80,6 +80,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Drop trigger if exists (idempotency)
+DROP TRIGGER IF EXISTS update_comprehensive_metrics_timestamp ON comprehensive_metrics;
+
 CREATE TRIGGER update_comprehensive_metrics_timestamp
 BEFORE UPDATE ON comprehensive_metrics
 FOR EACH ROW
