@@ -74,41 +74,93 @@ CREATE INDEX IF NOT EXISTS idx_outcomes_profile_clicks ON outcomes(profile_click
 CREATE INDEX IF NOT EXISTS idx_outcomes_engagement_rate ON outcomes(engagement_rate) WHERE engagement_rate IS NOT NULL;
 
 -- Create a view for enhanced metrics analysis
-CREATE OR REPLACE VIEW enhanced_metrics_summary AS
-SELECT 
-  o.decision_id,
-  o.tweet_id,
-  o.collected_at,
-  -- Core Metrics
-  o.likes,
-  o.retweets,
-  o.quote_tweets,
-  o.replies,
-  o.impressions,
-  o.bookmarks,
-  -- Conversion Funnel
-  o.profile_clicks,
-  o.followers_gained,
-  -- Performance Indicators
-  o.first_hour_engagement,
-  o.engagement_rate,
-  o.virality_coefficient,
-  o.conversion_rate,
-  -- Generator Attribution
-  cm.generator_name,
-  cm.generator_confidence,
-  cm.experiment_arm,
-  -- Calculated Total Engagement
-  (COALESCE(o.likes, 0) + COALESCE(o.retweets, 0) + COALESCE(o.quote_tweets, 0) + 
-   COALESCE(o.replies, 0) + COALESCE(o.bookmarks, 0)) as total_engagement,
-  -- Profile Click Through Rate
-  CASE 
-    WHEN o.impressions > 0 THEN (o.profile_clicks::numeric / o.impressions::numeric)
-    ELSE NULL 
-  END as profile_ctr
-FROM outcomes o
-LEFT JOIN content_metadata cm ON cm.decision_id::text = o.decision_id::text
-WHERE o.simulated = false;
+-- Use DO block to check if generator_confidence column exists before creating view
+DO $$
+BEGIN
+  -- Check if generator_confidence column exists on content_metadata
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'content_metadata'
+    AND column_name = 'generator_confidence'
+  ) THEN
+    -- Column exists - create view with generator_confidence
+    EXECUTE '
+    CREATE OR REPLACE VIEW enhanced_metrics_summary AS
+    SELECT 
+      o.decision_id,
+      o.tweet_id,
+      o.collected_at,
+      -- Core Metrics
+      o.likes,
+      o.retweets,
+      o.quote_tweets,
+      o.replies,
+      o.impressions,
+      o.bookmarks,
+      -- Conversion Funnel
+      o.profile_clicks,
+      o.followers_gained,
+      -- Performance Indicators
+      o.first_hour_engagement,
+      o.engagement_rate,
+      o.virality_coefficient,
+      o.conversion_rate,
+      -- Generator Attribution
+      cm.generator_name,
+      cm.generator_confidence,
+      cm.experiment_arm,
+      -- Calculated Total Engagement
+      (COALESCE(o.likes, 0) + COALESCE(o.retweets, 0) + COALESCE(o.quote_tweets, 0) + 
+       COALESCE(o.replies, 0) + COALESCE(o.bookmarks, 0)) as total_engagement,
+      -- Profile Click Through Rate
+      CASE 
+        WHEN o.impressions > 0 THEN (o.profile_clicks::numeric / o.impressions::numeric)
+        ELSE NULL 
+      END as profile_ctr
+    FROM outcomes o
+    LEFT JOIN content_metadata cm ON cm.decision_id::text = o.decision_id::text
+    WHERE o.simulated = false';
+  ELSE
+    -- Column does not exist - create view without generator_confidence
+    EXECUTE '
+    CREATE OR REPLACE VIEW enhanced_metrics_summary AS
+    SELECT 
+      o.decision_id,
+      o.tweet_id,
+      o.collected_at,
+      -- Core Metrics
+      o.likes,
+      o.retweets,
+      o.quote_tweets,
+      o.replies,
+      o.impressions,
+      o.bookmarks,
+      -- Conversion Funnel
+      o.profile_clicks,
+      o.followers_gained,
+      -- Performance Indicators
+      o.first_hour_engagement,
+      o.engagement_rate,
+      o.virality_coefficient,
+      o.conversion_rate,
+      -- Generator Attribution
+      cm.generator_name,
+      NULL::numeric as generator_confidence,
+      cm.experiment_arm,
+      -- Calculated Total Engagement
+      (COALESCE(o.likes, 0) + COALESCE(o.retweets, 0) + COALESCE(o.quote_tweets, 0) + 
+       COALESCE(o.replies, 0) + COALESCE(o.bookmarks, 0)) as total_engagement,
+      -- Profile Click Through Rate
+      CASE 
+        WHEN o.impressions > 0 THEN (o.profile_clicks::numeric / o.impressions::numeric)
+        ELSE NULL 
+      END as profile_ctr
+    FROM outcomes o
+    LEFT JOIN content_metadata cm ON cm.decision_id::text = o.decision_id::text
+    WHERE o.simulated = false';
+  END IF;
+END $$;
 
 -- Add comment for documentation
 COMMENT ON VIEW enhanced_metrics_summary IS 'Comprehensive view of all metrics including new quote tweets, profile clicks, and calculated performance indicators for autonomous learning system';
