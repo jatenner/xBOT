@@ -77,13 +77,15 @@ async function applyMigration(
   const sql = fs.readFileSync(filePath, 'utf-8');
   const checksum = computeChecksum(filePath);
   
-  // If migration contains DO $$ blocks or CREATE FUNCTION with $$, execute as single statement to avoid splitting issues
+  // If migration contains ANY dollar-quoting (DO $$, CREATE FUNCTION $$, etc), execute as single statement
+  // This prevents semicolon-splitting from breaking dollar-quoted blocks
   const hasDoBlocks = sql.includes('DO $$') || /DO\s+\$[^$]+\$/i.test(sql) || sql.includes('DO $');
   const hasCreateFunction = /CREATE\s+(OR\s+REPLACE\s+)?FUNCTION.*?\$\$/is.test(sql);
+  const hasDollarQuoting = sql.includes('$$') || /\$[^$]+\$/i.test(sql);
   
   // Debug log for DO block detection (no secrets)
-  if (hasDoBlocks) {
-    console.log(`   ℹ️  Migration contains DO blocks - executing as single statement`);
+  if (hasDoBlocks || hasCreateFunction || hasDollarQuoting) {
+    console.log(`   ℹ️  Migration contains dollar-quoted blocks - executing as single statement`);
   }
   
   // Check if migration already has BEGIN/COMMIT (but not inside DO $$ blocks)
@@ -95,8 +97,8 @@ async function applyMigration(
     hasTransaction = sqlWithoutDoBlocks.toUpperCase().includes('BEGIN') && sqlWithoutDoBlocks.toUpperCase().includes('COMMIT');
   }
   
-  // If DO blocks or CREATE FUNCTION exist, execute as single statement
-  if (hasDoBlocks || hasCreateFunction) {
+  // If DO blocks, CREATE FUNCTION, or any dollar-quoting exists, execute as single statement
+  if (hasDoBlocks || hasCreateFunction || hasDollarQuoting) {
     try {
       await client.query(sql);
     } catch (error: any) {
@@ -104,9 +106,13 @@ async function applyMigration(
       console.error(`❌ Migration failed: ${error.message}`);
       console.error(`   File: ${filename}`);
       console.error(`   Error code: ${error.code || 'N/A'}`);
+      console.error(`   SQLSTATE: ${error.code || 'N/A'}`);
       console.error(`   Detail: ${error.detail || 'N/A'}`);
       console.error(`   Hint: ${error.hint || 'N/A'}`);
       console.error(`   Position: ${error.position || 'N/A'}`);
+      // Show first ~200 chars of SQL for context
+      const sqlPreview = sql.substring(0, 200).replace(/\n/g, ' ');
+      console.error(`   SQL preview: ${sqlPreview}...`);
       const hasIfExists = sql.toUpperCase().includes('IF EXISTS') || sql.toUpperCase().includes('IF NOT EXISTS');
       if (hasIfExists && error.message.includes('does not exist')) {
         console.log(`   ℹ️  Skipped (object does not exist)`);

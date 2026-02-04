@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 require('dotenv').config({ path: '.env.control' });
-const { getSupabaseClient } = require('../../src/db/index');
+const { getSupabaseClient } = require('../src/db/index');
 
 async function main() {
   const supabase = getSupabaseClient();

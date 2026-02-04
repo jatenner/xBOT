@@ -80,10 +80,23 @@ async function main() {
       allPassed = false;
     }
 
-    // Check schema_migrations for latest migration
+    // Check ramp columns in rate_controller_state
+    console.log('\n📊 Checking rate_controller_state ramp columns:');
+    const rampColumns = ['ramp_reason', 'hours_since_start', 'has_24h_stability', 'success_rate_6h'];
+    for (const column of rampColumns) {
+      try {
+        await client.query(`SELECT ${column} FROM rate_controller_state LIMIT 1`);
+        console.log(`  ✅ ${column}: exists`);
+      } catch (e: any) {
+        console.log(`  ❌ ${column}: ${e.message}`);
+        allPassed = false;
+      }
+    }
+
+    // Check schema_migrations for latest migrations
     console.log('\n📊 Checking schema_migrations:');
     try {
-      const { rows } = await client.query(`
+      const { rows: rateControllerRows } = await client.query(`
         SELECT filename, applied_at, checksum 
         FROM schema_migrations 
         WHERE filename = '20260203_rate_controller_schema.sql'
@@ -91,12 +104,27 @@ async function main() {
         LIMIT 1
       `);
       
-      if (rows.length > 0) {
-        console.log(`  ✅ 20260203_rate_controller_schema.sql: applied at ${rows[0].applied_at}`);
-        console.log(`     Checksum: ${rows[0].checksum.substring(0, 16)}...`);
+      if (rateControllerRows.length > 0) {
+        console.log(`  ✅ 20260203_rate_controller_schema.sql: applied at ${rateControllerRows[0].applied_at}`);
+        console.log(`     Checksum: ${rateControllerRows[0].checksum.substring(0, 16)}...`);
       } else {
         console.log(`  ❌ 20260203_rate_controller_schema.sql: not found in schema_migrations`);
         allPassed = false;
+      }
+      
+      const { rows: rampRows } = await client.query(`
+        SELECT filename, applied_at, checksum 
+        FROM schema_migrations 
+        WHERE filename = '20260203_add_ramp_columns.sql'
+        ORDER BY applied_at DESC 
+        LIMIT 1
+      `);
+      
+      if (rampRows.length > 0) {
+        console.log(`  ✅ 20260203_add_ramp_columns.sql: applied at ${rampRows[0].applied_at}`);
+        console.log(`     Checksum: ${rampRows[0].checksum.substring(0, 16)}...`);
+      } else {
+        console.log(`  ⚠️  20260203_add_ramp_columns.sql: not found (will be applied on next migration run)`);
       }
     } catch (e: any) {
       console.log(`  ⚠️  schema_migrations check failed: ${e.message}`);

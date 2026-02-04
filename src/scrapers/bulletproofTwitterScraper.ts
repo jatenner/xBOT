@@ -108,6 +108,26 @@ const SELECTORS = {
 
 export class BulletproofTwitterScraper {
   private static instance: BulletproofTwitterScraper;
+  
+  /**
+   * 🔒 SAFE NAVIGATION: Central navigation wrapper with consent wall handling
+   * All navigation should go through this method
+   */
+  private async safeNavigate(
+    page: Page,
+    url: string,
+    options: { operation?: string; waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit'; timeout?: number } = {}
+  ): Promise<void> {
+    const { operation = 'scraper_navigation', waitUntil = 'domcontentloaded', timeout = 30000 } = options;
+    
+    // Use centralized safeGoto wrapper (emits SAFE_GOTO_* events)
+    const { safeGoto } = await import('../utils/safeGoto');
+    const result = await safeGoto(page, url, { operation, waitUntil, timeout });
+    
+    if (!result.success || result.consentWallBlocked) {
+      throw new Error(`INFRA_BLOCK_CONSENT_WALL: Navigation failed at ${url}`);
+    }
+  }
   private artifactsDir = path.resolve(process.cwd(), 'artifacts', 'scraping');
 
   private constructor() {
@@ -485,7 +505,7 @@ export class BulletproofTwitterScraper {
       console.log('    🔥 [WARMUP] Warming session with natural browsing...');
       
       // Visit home briefly
-      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await this.safeNavigate(page, 'https://x.com/home', { operation: 'warmup_home' });
       await this.sleep(2000 + Math.random() * 1000);
       
       // Scroll naturally
@@ -493,7 +513,7 @@ export class BulletproofTwitterScraper {
       await this.sleep(1500 + Math.random() * 500);
       
       // Visit profile
-      await page.goto('https://x.com/Signal_Synapse', { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await this.safeNavigate(page, 'https://x.com/Signal_Synapse', { operation: 'warmup_profile' });
       await this.sleep(1500 + Math.random() * 500);
       
       // Mark as warmed
@@ -1418,10 +1438,7 @@ export class BulletproofTwitterScraper {
       
       console.log(`    🔄 RELOAD: Navigating to ${tweetUrl}${shouldUseAnalytics ? ' (analytics)' : ''}`);
       
-      await page.goto(tweetUrl, {
-        waitUntil: 'domcontentloaded',
-        timeout: 30000
-      });
+      await this.safeNavigate(page, tweetUrl, { operation: 'scrape_tweet' });
       
       // Wait for tweet element to load
       try {
@@ -1593,9 +1610,9 @@ export class BulletproofTwitterScraper {
 
     try {
       // Navigate to profile
-      await page.goto(`https://twitter.com/${profileUsername}`, {
+      await this.safeNavigate(page, `https://twitter.com/${profileUsername}`, {
+        operation: 'scrape_profile',
         waitUntil: 'networkidle',
-        timeout: 30000
       });
 
       await page.waitForTimeout(2000);

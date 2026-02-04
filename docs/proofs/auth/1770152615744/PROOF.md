@@ -30,14 +30,8 @@
 ## Verdict
 
 ✅ **PASS**: No login redirect
-✅ **PASS**: auth_token present on .x.com
-✅ **PASS**: ct0 present on .x.com
-⚠️ **WARNING**: No tweet cards found in search (may be timing/selector issue, but auth is verified)
+✅ **PASS**: auth_token present
+✅ **PASS**: ct0 present
+❌ **FAIL**: No tweet cards found
 
-**Overall**: ✅ **AUTH VERIFIED** (search extraction may need selector update, but authentication is working)
-
-## Acceptance Criteria Check
-
-- ✅ Evidence shows auth_token present on .x.com
-- ✅ No redirect to /i/flow/login
-- ⚠️ Search page loads but returns 0 tweet cards (selector may need update, but auth is confirmed)
+**Overall**: ❌ FAILED

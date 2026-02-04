@@ -243,6 +243,7 @@ export async function startWorker() {
   const migrationsEnabled = process.env.RUN_MIGRATIONS_ENABLED === 'true';
   if (migrationsEnabled) {
     console.log('[WORKER] 🔧 Running database migrations...');
+    console.log('[MIGRATIONS] RUN_MIGRATIONS_ENABLED=true - executing migrations');
     try {
       const { execSync } = await import('child_process');
       const result = execSync('pnpm run db:migrate', {
@@ -258,6 +259,7 @@ export async function startWorker() {
       process.exit(1); // Fail-fast so Railway shows deployment failure
     }
   } else {
+    console.log('[MIGRATIONS] skipped (RUN_MIGRATIONS_ENABLED not set to true)');
     console.log('[WORKER] ⏭️  Migrations skipped (RUN_MIGRATIONS_ENABLED not set to true)');
   }
   

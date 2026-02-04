@@ -118,3 +118,8 @@ data/
 # local secrets
 .x_cookies.env
 twitter_session.json
+
+# Runtime secrets directory (cookie/storage exports)
+runtime/secrets/
+*.cookies.json
+*.storage.json

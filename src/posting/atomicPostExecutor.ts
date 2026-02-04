@@ -572,14 +572,6 @@ export async function executeAuthorizedPost(
     throw new Error(`DB update blocked: Invalid tweet_id: ${validation.error}`);
   }
 
-  // 🎯 RATE CONTROLLER: Add metadata fields
-  const { getHourBucketET, extractPromptVersion, extractStrategyId } = await import('../rateController/metadataHelpers');
-  const { data: decisionData } = await supabase
-    .from('content_metadata')
-    .select('*')
-    .eq('decision_id', decision_id)
-    .single();
-  
   // Update DB row to status='posted' with tweet_id
   // Note: tweet_url column does NOT exist in content_generation_metadata_comprehensive schema
   const { error: updateError } = await supabase
@@ -589,10 +581,6 @@ export async function executeAuthorizedPost(
       tweet_id: String(postResult.tweetId), // 🔒 TASK: Ensure string (no Number coercion)
       posted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      // 🎯 RATE CONTROLLER: Add metadata
-      hour_bucket: getHourBucketET(),
-      prompt_version: decisionData ? extractPromptVersion(decisionData) : 'v1',
-      strategy_id: decisionData ? extractStrategyId(decisionData) : 'baseline',
     })
     .eq('decision_id', decision_id);
   

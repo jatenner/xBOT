@@ -1,0 +1,211 @@
+/**
+ * 🔒 CONSENT WALL HANDLER
+ * 
+ * Deterministic, one-attempt consent wall dismissal.
+ * Called immediately after every navigation to prevent blocking.
+ */
+
+import { Page } from 'playwright';
+import { detectConsentWall, acceptConsentWall } from '../playwright/twitterSession';
+import { getSupabaseClient } from '../db/index';
+import * as fs from 'fs';
+import * as path from 'path';
+
+export interface ConsentWallHandleResult {
+  handled: boolean;
+  cleared: boolean;
+  detected: boolean;
+  dismissed: boolean;
+  blocked: boolean;
+  classified: 'INFRA_BLOCK_CONSENT_WALL' | 'none';
+  attempts: number;
+  variant?: string; // Selector/path fingerprint
+  screenshotPath?: string;
+  htmlSnippet?: string;
+}
+
+/**
+ * Handle consent wall with one deterministic attempt
+ * 
+ * If consent wall detected and not cleared:
+ * - Returns classified as INFRA_BLOCK_CONSENT_WALL
+ * - Saves screenshot + HTML artifact
+ * - Logs structured event
+ * - Does NOT count as candidate skip
+ */
+export async function handleConsentWall(page: Page, context?: { url?: string; operation?: string }): Promise<ConsentWallHandleResult> {
+  const url = context?.url || page.url();
+  const operation = context?.operation || 'unknown';
+  
+  try {
+    // Detect consent wall
+    const detection = await detectConsentWall(page);
+    
+    if (!detection.detected || detection.wallType !== 'consent') {
+      return {
+        handled: false,
+        cleared: false,
+        detected: false,
+        dismissed: false,
+        blocked: false,
+        classified: 'none',
+        attempts: 0,
+      };
+    }
+    
+    console.log(`[CONSENT_WALL] 🚧 Consent wall detected at ${url} (operation: ${operation}), attempting dismissal (1 attempt)...`);
+    
+    // Extract variant fingerprint from detection
+    const variant = detection.variant || 'unknown';
+    
+    // Log detection event
+    try {
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'CONSENT_WALL_DETECTED',
+        severity: 'info',
+        message: `Consent wall detected at ${url}`,
+        event_data: {
+          url,
+          operation,
+          wall_type: detection.wallType,
+          variant,
+        },
+        created_at: new Date().toISOString(),
+      });
+    } catch (logError) {
+      // Non-blocking
+    }
+    
+    // One attempt only (deterministic)
+    const result = await acceptConsentWall(page, 1);
+    
+    if (result.cleared) {
+      console.log(`[CONSENT_WALL] ✅ Consent wall cleared (attempts: ${result.attempts})`);
+      
+      // Log dismissal success
+      try {
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'CONSENT_WALL_DISMISSED',
+          severity: 'info',
+          message: `Consent wall dismissed at ${url}`,
+          event_data: {
+            url,
+            operation,
+            attempts: result.attempts,
+            matched_selector: result.matchedSelector,
+            variant: result.matchedSelector || variant,
+            dismissed: true,
+          },
+          created_at: new Date().toISOString(),
+        });
+      } catch (logError) {
+        // Non-blocking
+      }
+      
+      return {
+        handled: true,
+        cleared: true,
+        detected: true,
+        dismissed: true,
+        blocked: false,
+        classified: 'none',
+        attempts: result.attempts,
+        variant: result.matchedSelector || variant,
+      };
+    } else {
+      // Not cleared - save artifacts and classify as INFRA_BLOCK
+      console.log(`[CONSENT_WALL] ⚠️ Consent wall not cleared after 1 attempt - saving artifacts and classifying as INFRA_BLOCK`);
+      
+      let screenshotPath: string | undefined;
+      let htmlSnippet: string | undefined;
+      
+      try {
+        // Save screenshot
+        const artifactsDir = path.join(process.cwd(), 'artifacts');
+        if (!fs.existsSync(artifactsDir)) {
+          fs.mkdirSync(artifactsDir, { recursive: true });
+        }
+        const timestamp = Date.now();
+        screenshotPath = path.join(artifactsDir, `consent_wall_blocked_${timestamp}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log(`[CONSENT_WALL] 📸 Screenshot saved: ${screenshotPath}`);
+        
+        // Save HTML snippet
+        htmlSnippet = await page.evaluate(() => {
+          const body = document.body;
+          return body ? body.innerHTML.substring(0, 2000) : '';
+        });
+      } catch (artifactError: any) {
+        console.warn(`[CONSENT_WALL] ⚠️ Failed to save artifacts: ${artifactError.message}`);
+      }
+      
+      // Log blocked event with artifacts
+      try {
+        const supabase = getSupabaseClient();
+        await supabase.from('system_events').insert({
+          event_type: 'CONSENT_WALL_BLOCKED',
+          severity: 'warning',
+          message: `Consent wall not cleared at ${url} - classified as INFRA_BLOCK`,
+          event_data: {
+            url,
+            operation,
+            attempts: 1,
+            variant,
+            blocked: true,
+            screenshot_path: screenshotPath,
+            html_snippet_preview: htmlSnippet?.substring(0, 500),
+          },
+          created_at: new Date().toISOString(),
+        });
+      } catch (logError) {
+        // Non-blocking
+      }
+      
+      return {
+        handled: true,
+        cleared: false,
+        detected: true,
+        dismissed: false,
+        blocked: true,
+        classified: 'INFRA_BLOCK_CONSENT_WALL',
+        attempts: 1,
+        variant,
+        screenshotPath,
+        htmlSnippet,
+      };
+    }
+  } catch (error: any) {
+    console.error(`[CONSENT_WALL] ❌ Error handling consent wall: ${error.message}`);
+    
+    // Log error event
+    try {
+      const supabase = getSupabaseClient();
+      await supabase.from('system_events').insert({
+        event_type: 'CONSENT_WALL_ERROR',
+        severity: 'error',
+        message: `Error handling consent wall at ${url}: ${error.message}`,
+        event_data: {
+          url,
+          operation,
+          error: error.message,
+        },
+        created_at: new Date().toISOString(),
+      });
+    } catch (logError) {
+      // Non-blocking
+    }
+    
+    return {
+      handled: true,
+      cleared: false,
+      detected: false,
+      dismissed: false,
+      blocked: true,
+      classified: 'INFRA_BLOCK_CONSENT_WALL',
+      attempts: 1,
+      variant: 'error',
+    };
+  }
+}

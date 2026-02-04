@@ -586,28 +586,6 @@ export class RealTwitterDiscovery {
         // Don't return [] - session is valid, auth check may just be timing out
       }
 
-      // ═══════════════════════════════════════════════════════════════════════
-      // 🔬 SESSION PARITY PROBE: Check auth state after storageState load
-      // ═══════════════════════════════════════════════════════════════════════
-      const parityTimestamp = Date.now();
-      const context = page.context();
-      
-      // Probe 1: After verifyAuth (already navigated to x.com/home)
-      const homeFinalUrl = page.url();
-      const homeTitle = await page.title();
-      const homeCookies = await context.cookies('https://x.com');
-      const homeCookieCount = homeCookies.length;
-      
-      const homeAuthToken = homeCookies.find(c => c.name.toLowerCase() === 'auth_token' && c.domain === '.x.com');
-      const homeCt0 = homeCookies.find(c => c.name.toLowerCase() === 'ct0' && c.domain === '.x.com');
-      
-      console.log(`[PARITY_PROBE] 🔬 Session parity probe (after storageState load):`);
-      console.log(`[PARITY_PROBE]   Home finalUrl: ${homeFinalUrl}`);
-      console.log(`[PARITY_PROBE]   Home title: ${homeTitle}`);
-      console.log(`[PARITY_PROBE]   Home cookie count: ${homeCookieCount}`);
-      console.log(`[PARITY_PROBE]   auth_token on .x.com: ${homeAuthToken ? 'YES' : 'NO'}`);
-      console.log(`[PARITY_PROBE]   ct0 on .x.com: ${homeCt0 ? 'YES' : 'NO'}`);
-
       // Build Twitter search URL with filters
       // min_faves:{minLikes} filters for tweets with minimum likes
       // -filter:replies excludes reply tweets (get original content)
@@ -672,41 +650,6 @@ export class RealTwitterDiscovery {
       console.log(`[REAL_DISCOVERY] 📊 Final URL: ${finalUrl}`);
       console.log(`[REAL_DISCOVERY] 📊 Page title: ${title}`);
       
-      // ═══════════════════════════════════════════════════════════════════════
-      // 🔬 SESSION PARITY PROBE: After search navigation
-      // ═══════════════════════════════════════════════════════════════════════
-      console.log(`[PARITY_PROBE] 🔬 Session parity probe (after search navigation):`);
-      console.log(`[PARITY_PROBE]   Search finalUrl: ${finalUrl}`);
-      console.log(`[PARITY_PROBE]   Search title: ${title}`);
-      console.log(`[PARITY_PROBE]   domTweetCards: ${extraction.domTweetCards}`);
-      console.log(`[PARITY_PROBE]   statusUrls: ${extraction.statusUrls.length}`);
-      
-      // Save screenshot + HTML to docs/proofs/harvest/harvest-parity-<ts>.{png,html}
-      try {
-        const fs = await import('fs');
-        const path = await import('path');
-        const proofDir = path.join(process.cwd(), 'docs', 'proofs', 'harvest');
-        const proofFile = `harvest-parity-${parityTimestamp}`;
-        const proofPngPath = path.join(proofDir, `${proofFile}.png`);
-        const proofHtmlPath = path.join(proofDir, `${proofFile}.html`);
-        
-        // Ensure directory exists
-        if (!fs.existsSync(proofDir)) {
-          fs.mkdirSync(proofDir, { recursive: true });
-        }
-        
-        // Save screenshot
-        await page.screenshot({ path: proofPngPath, fullPage: false });
-        console.log(`[PARITY_PROBE]   Screenshot saved: ${proofPngPath}`);
-        
-        // Save HTML
-        const htmlContent = await page.content();
-        fs.writeFileSync(proofHtmlPath, htmlContent, 'utf8');
-        console.log(`[PARITY_PROBE]   HTML saved: ${proofHtmlPath}`);
-      } catch (proofError: any) {
-        console.warn(`[PARITY_PROBE]   ⚠️ Failed to save proof artifacts: ${proofError.message}`);
-      }
-      
       // 🛡️ RATE LIMIT DETECTION FIX: Only check AFTER extraction logging, and only for explicit 429 or error messages
       // Do NOT check console logs or generic "429" strings before extraction
       // Only treat rate limit as true if:
@@ -741,8 +684,8 @@ export class RealTwitterDiscovery {
       
       // 🛡️ Only trigger backoff if rate limit is confirmed (response 429 or explicit error message)
       if (rateLimitDetected) {
-        const { set429 } = await import('../utils/backoffStore');
-        await set429('harvest_search');
+        const { record429Hit } = await import('../utils/harvestBackoff');
+        record429Hit();
         
         const { getSupabaseClient } = await import('../db/index');
         const supabase = getSupabaseClient();
@@ -759,7 +702,8 @@ export class RealTwitterDiscovery {
           created_at: new Date().toISOString()
         });
         
-        console.log(`[BACKOFF_STORE] 429 detected; backoff set in database`);
+        const backoffMinutes = rateLimitCodes.length > 0 && (rateLimitCodes.includes('88') || rateLimitCodes.includes('1003')) ? 60 : 15;
+        console.log(`[RATE_LIMIT] detected=true; backing_off_minutes=${backoffMinutes}`);
         await pool.releasePage(page);
         return [];
       }             

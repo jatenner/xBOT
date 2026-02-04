@@ -2278,12 +2278,21 @@ export class UltimateTwitterPoster {
         
         // Navigate to the tweet
         console.log(`ULTIMATE_POSTER: Navigating to tweet ${replyToTweetId}...`);
-        await this.page.goto(`https://x.com/i/status/${replyToTweetId}`, { 
+        const tweetUrl = `https://x.com/i/status/${replyToTweetId}`;
+        await this.page.goto(tweetUrl, { 
           waitUntil: 'domcontentloaded',
           timeout: 30000 
         });
 
         await this.page.waitForTimeout(2000);
+        
+        // 🔒 CONSENT WALL: Handle immediately after navigation
+        const { handleConsentWall } = await import('../utils/handleConsentWall');
+        const consentResult = await handleConsentWall(this.page, { url: tweetUrl, operation: 'reply_post' });
+        if (consentResult.classified === 'INFRA_BLOCK_CONSENT_WALL') {
+          throw new Error(`INFRA_BLOCK_CONSENT_WALL: Consent wall not cleared after navigation`);
+        }
+        
         telemetry.mark('navigation_complete');
 
         // Check authentication

@@ -113,30 +113,32 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
         throw new Error(`ANCESTRY_NAV_TIMEOUT: ${navError.message}`);
       }
       
-      await page.waitForTimeout(3000); // Let page settle
+      await page.waitForTimeout(2000); // Let page settle
       
-      // 🎯 PART C: Stage 3 - Detect consent wall
-      currentStage = 'detect_consent_wall';
+      // 🔒 CONSENT WALL: Handle immediately after navigation (one attempt)
+      currentStage = 'handle_consent_wall';
       stageStartTime = Date.now();
       try {
-        const { detectConsentWall } = await import('../playwright/twitterSession');
-        const consentResult = await detectConsentWall(page);
+        const { handleConsentWall } = await import('./handleConsentWall');
+        const consentResult = await handleConsentWall(page, { url: tweetUrl, operation: `ancestry_resolve_${decisionId || 'unknown'}` });
         stageTimings[currentStage] = Date.now() - stageStartTime;
         
-        if (consentResult.detected && !consentResult.cleared) {
-          stageError = `consent_wall_detected: variant=${consentResult.variant || 'unknown'}`;
-          console.warn(`[ANCESTRY_TRACE] stage=${currentStage} decision_id=${decisionId} duration_ms=${stageTimings[currentStage]} consent_wall=true variant=${consentResult.variant}`);
-          throw new Error(`CONSENT_WALL: ${consentResult.variant || 'unknown'}`);
+        if (consentResult.classified === 'INFRA_BLOCK_CONSENT_WALL') {
+          stageError = `consent_wall_not_cleared: attempts=${consentResult.attempts}`;
+          console.warn(`[ANCESTRY_TRACE] stage=${currentStage} decision_id=${decisionId} duration_ms=${stageTimings[currentStage]} consent_wall_blocked=true`);
+          throw new Error(`INFRA_BLOCK_CONSENT_WALL: Consent wall not cleared after navigation`);
         }
-        console.log(`[ANCESTRY_TRACE] stage=${currentStage} decision_id=${decisionId} duration_ms=${stageTimings[currentStage]} consent_wall=false`);
+        console.log(`[ANCESTRY_TRACE] stage=${currentStage} decision_id=${decisionId} duration_ms=${stageTimings[currentStage]} consent_wall_handled=${consentResult.cleared}`);
       } catch (consentError: any) {
-        if (consentError.message.includes('CONSENT_WALL')) {
-          // Re-throw as CONSENT_WALL (will be mapped correctly)
+        if (consentError.message.includes('INFRA_BLOCK_CONSENT_WALL')) {
+          // Re-throw as INFRA_BLOCK (will be classified correctly)
           throw consentError;
         }
-        // Other errors in consent detection are non-fatal, continue
-        console.warn(`[ANCESTRY_TRACE] stage=${currentStage} decision_id=${decisionId} consent_check_error=${consentError.message}`);
+        // Other errors in consent handling are non-fatal, continue
+        console.warn(`[ANCESTRY_TRACE] stage=${currentStage} decision_id=${decisionId} consent_handle_error=${consentError.message}`);
       }
+      
+      await page.waitForTimeout(1000); // Additional settle after consent handling
       
       resolutionAttempted = true;
       

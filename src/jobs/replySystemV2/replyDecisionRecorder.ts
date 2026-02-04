@@ -840,8 +840,8 @@ export async function shouldAllowReply(ancestry: ReplyAncestry, context?: { cons
         denyReasonCode = 'ANCESTRY_PARSE_TIMEOUT';
       } else if (errorMsg.includes('ANCESTRY_QUEUE_TIMEOUT') || errorLower.includes('queue_timeout')) {
         denyReasonCode = 'ANCESTRY_QUEUE_TIMEOUT';
-      } else if (errorMsg.includes('CONSENT_WALL') || errorLower.includes('consent_wall')) {
-        denyReasonCode = 'CONSENT_WALL';
+      } else if (errorMsg.includes('INFRA_BLOCK_CONSENT_WALL') || errorMsg.includes('CONSENT_WALL') || errorLower.includes('consent_wall')) {
+        denyReasonCode = 'INFRA_BLOCK_CONSENT_WALL'; // Always use INFRA_BLOCK_CONSENT_WALL taxonomy
       } else if (errorLower.includes('skipped') || errorLower.includes('overload')) {
         denyReasonCode = 'ANCESTRY_SKIPPED_OVERLOAD';
         // JSON should already be extracted in PRIORITY 1 above
