@@ -125,6 +125,7 @@ COMMENT ON MATERIALIZED VIEW generator_quality_metrics IS 'Pre-computed quality 
 ALTER TABLE content_violations ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Allow full access to authenticated users (service role)
+DROP POLICY IF EXISTS "Allow service role full access" ON content_violations;
 CREATE POLICY "Allow service role full access"
   ON content_violations
   FOR ALL
