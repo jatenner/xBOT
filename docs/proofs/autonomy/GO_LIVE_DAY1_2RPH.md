@@ -102,14 +102,12 @@ MAX_REPLIES_PER_HOUR=2 DRY_RUN=false railway run pnpm exec tsx scripts/ops/prove
     "hour_start": "2026-02-04T02:00:00Z",
     "mode": "WARMUP",
     "target_replies_this_hour": 2,
-    "executed_replies": 2,
-    "ramp_reason": "warmup_ramp_hour_3_stable",
-    "hours_since_start": 3,
-    "has_24h_stability": false,
-    "success_rate_6h": 0.85
+    "executed_replies": 2
   }
 }
 ```
+
+**Note:** Ramp columns (`ramp_reason`, `hours_since_start`, etc.) will be populated after migration `20260203_add_ramp_columns.sql` is applied.
 
 ### Acceptance Criteria
 
@@ -276,14 +274,16 @@ railway logs --service xBOT --follow | grep HOURLY_TICK
   "mode": "WARMUP",
   "target_replies_this_hour": 2,
   "executed_replies": 2,
-  "ramp_reason": "warmup_ramp_hour_3_stable",
-  "hours_since_start": 3,
-  "has_24h_stability": false,
-  "success_rate_6h": 0.85,
   "risk_score": 0.0,
   "yield_score": 0.5
 }
 ```
+
+**Note:** After migration `20260203_add_ramp_columns.sql` is applied, additional columns will be available:
+- `ramp_reason`: Reason for current ramp level
+- `hours_since_start`: Hours since first execution
+- `has_24h_stability`: Whether 24h stability criteria met
+- `success_rate_6h`: Success rate over last 6 hours
 
 ## Next Steps
 
