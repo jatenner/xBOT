@@ -213,6 +213,11 @@ export async function startWorker() {
   // This function only starts the job manager
   
   console.log('========================================');
+  // 🔒 RUNTIME SHA: Print git SHA at boot
+  const runtimeSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+  console.log(`[WORKER] 🚀 BOOT: runtime_sha=${runtimeSha}`);
+  console.log(`[WORKER] 🚀 BOOT: RAILWAY_GIT_COMMIT_SHA=${process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT_SET'}`);
+  
   console.log('RAILWAY WORKER: Starting Job Manager');
   console.log('========================================\n');
   
@@ -234,21 +239,26 @@ export async function startWorker() {
   // Step 1: Probe database connectivity (fail fast if unreachable)
   await probeDatabase();
   
-  // 🔧 MIGRATIONS: Run migrations BEFORE starting jobs (fail-fast on error)
-  console.log('[WORKER] 🔧 Running database migrations...');
-  try {
-    const { execSync } = await import('child_process');
-    const result = execSync('pnpm run db:migrate', {
-      stdio: 'inherit',
-      env: process.env,
-    });
-    console.log('[WORKER] ✅ Migrations completed successfully');
-  } catch (error: any) {
-    console.error('[WORKER] ❌ Migration failed - exiting (fail-fast)');
-    console.error('[WORKER] Error:', error.message);
-    if (error.stdout) console.error('[WORKER] stdout:', error.stdout.toString());
-    if (error.stderr) console.error('[WORKER] stderr:', error.stderr.toString());
-    process.exit(1); // Fail-fast so Railway shows deployment failure
+  // 🔧 MIGRATIONS: Run migrations BEFORE starting jobs (only if enabled)
+  const migrationsEnabled = process.env.RUN_MIGRATIONS_ENABLED === 'true';
+  if (migrationsEnabled) {
+    console.log('[WORKER] 🔧 Running database migrations...');
+    try {
+      const { execSync } = await import('child_process');
+      const result = execSync('pnpm run db:migrate', {
+        stdio: 'inherit',
+        env: process.env,
+      });
+      console.log('[WORKER] ✅ Migrations completed successfully');
+    } catch (error: any) {
+      console.error('[WORKER] ❌ Migration failed - exiting (fail-fast)');
+      console.error('[WORKER] Error:', error.message);
+      if (error.stdout) console.error('[WORKER] stdout:', error.stdout.toString());
+      if (error.stderr) console.error('[WORKER] stderr:', error.stderr.toString());
+      process.exit(1); // Fail-fast so Railway shows deployment failure
+    }
+  } else {
+    console.log('[WORKER] ⏭️  Migrations skipped (RUN_MIGRATIONS_ENABLED not set to true)');
   }
   
   // 🔒 AUTO-PROBE: Check and run probe automatically (no env flag needed)

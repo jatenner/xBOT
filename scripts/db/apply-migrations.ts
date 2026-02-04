@@ -94,6 +94,13 @@ async function applyMigration(
     try {
       await client.query(sql);
     } catch (error: any) {
+      // Log the REAL first error with full context
+      console.error(`❌ Migration failed: ${error.message}`);
+      console.error(`   File: ${filename}`);
+      console.error(`   Error code: ${error.code || 'N/A'}`);
+      console.error(`   Detail: ${error.detail || 'N/A'}`);
+      console.error(`   Hint: ${error.hint || 'N/A'}`);
+      console.error(`   Position: ${error.position || 'N/A'}`);
       const hasIfExists = sql.toUpperCase().includes('IF EXISTS') || sql.toUpperCase().includes('IF NOT EXISTS');
       if (hasIfExists && error.message.includes('does not exist')) {
         console.log(`   ℹ️  Skipped (object does not exist)`);
@@ -123,9 +130,12 @@ async function applyMigration(
     
     let inTransaction = false;
     let transactionStarted = false;
+    let firstError: any = null;
+    let firstErrorStmtIndex = -1;
     
     try {
-      for (const stmt of statements) {
+      for (let i = 0; i < statements.length; i++) {
+        const stmt = statements[i];
         if (stmt.trim().length === 0) continue;
         
         const upperStmt = stmt.toUpperCase().trim();
@@ -151,13 +161,33 @@ async function applyMigration(
         try {
           await client.query(stmt);
         } catch (error: any) {
+          // Capture FIRST error with full context
+          if (!firstError) {
+            firstError = error;
+            firstErrorStmtIndex = i;
+            console.error(`❌ Migration failed at statement ${i + 1}/${statements.length}`);
+            console.error(`   File: ${filename}`);
+            console.error(`   Statement preview: ${stmt.substring(0, 200)}...`);
+            console.error(`   Error: ${error.message}`);
+            console.error(`   Error code: ${error.code || 'N/A'}`);
+            console.error(`   Detail: ${error.detail || 'N/A'}`);
+            console.error(`   Hint: ${error.hint || 'N/A'}`);
+          }
+          
+          // If transaction is aborted, stop immediately and rollback
+          if (error.message.includes('aborted') && inTransaction) {
+            console.error(`   ⚠️  Transaction aborted - stopping execution`);
+            await client.query('ROLLBACK');
+            inTransaction = false;
+            // Throw the FIRST error, not the abort error
+            throw firstError || error;
+          }
+          
           // If statement has IF EXISTS/IF NOT EXISTS, some errors are expected
           const hasIfExists = upperStmt.includes('IF EXISTS') || upperStmt.includes('IF NOT EXISTS');
           if (hasIfExists && (error.message.includes('does not exist') || error.message.includes('already exists'))) {
             // Expected - object already exists or doesn't exist, which is fine with IF EXISTS
             console.log(`   ℹ️  Skipped (expected): ${stmt.substring(0, 60)}...`);
-            // If in transaction, we need to continue - but transaction might be aborted
-            // Try to continue anyway
             continue;
           }
           // COMMENT ON statements can fail if object doesn't exist - that's OK
@@ -165,15 +195,8 @@ async function applyMigration(
             console.log(`   ℹ️  Comment skipped (object does not exist): ${stmt.substring(0, 60)}...`);
             continue;
           }
-          // If transaction is aborted, we can't continue
-          if (error.message.includes('aborted') && inTransaction) {
-            await client.query('ROLLBACK');
-            inTransaction = false;
-            // Re-execute migration without transaction wrapper (safer for idempotent migrations)
-            console.log(`   ⚠️  Transaction aborted, retrying without transaction wrapper...`);
-            // Fall through to non-transaction path
-            break;
-          }
+          
+          // For other errors, throw immediately (don't continue in aborted transaction)
           throw error;
         }
       }
@@ -203,52 +226,8 @@ async function applyMigration(
         }
       }
       
-      // If error is about transaction being aborted, try executing without transaction
-      if (error.message.includes('aborted') && hasTransaction) {
-        console.log(`   ⚠️  Transaction failed, retrying statements individually...`);
-        // Retry without transaction wrapper
-        const retryStatements = statements.filter(s => {
-          const upper = s.toUpperCase().trim();
-          return upper !== 'BEGIN' && upper !== 'COMMIT';
-        });
-        
-        for (const stmt of retryStatements) {
-          if (stmt.trim().length === 0) continue;
-          try {
-            await client.query(stmt);
-          } catch (retryError: any) {
-            const upperStmt = stmt.toUpperCase();
-            const hasIfExists = upperStmt.includes('IF EXISTS') || upperStmt.includes('IF NOT EXISTS');
-            if (hasIfExists && (retryError.message.includes('does not exist') || retryError.message.includes('already exists'))) {
-              console.log(`   ℹ️  Skipped (expected): ${stmt.substring(0, 60)}...`);
-              continue;
-            }
-            if (upperStmt.startsWith('COMMENT') && retryError.message.includes('does not exist')) {
-              console.log(`   ℹ️  Comment skipped: ${stmt.substring(0, 60)}...`);
-              continue;
-            }
-            // If it's a constraint violation that's OK (object already exists)
-            if (retryError.message.includes('already exists') || retryError.message.includes('duplicate')) {
-              console.log(`   ℹ️  Skipped (already exists): ${stmt.substring(0, 60)}...`);
-              continue;
-            }
-            throw retryError;
-          }
-        }
-        
-        // Record migration after retry
-        await client.query(`
-          INSERT INTO schema_migrations (filename, checksum, applied_at)
-          VALUES ($1, $2, NOW())
-          ON CONFLICT (filename) 
-          DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = NOW()
-        `, [filename, checksum]);
-        
-        console.log(`✅ Migration applied (retry): ${filename}`);
-        return;
-      }
-      
-      throw error;
+      // Throw the FIRST error if we captured one, otherwise throw current error
+      throw firstError || error;
     }
   } else {
     // No transaction in migration - execute statements individually (safer for IF EXISTS)
@@ -341,19 +320,39 @@ async function main() {
     await client.connect();
     console.log('✅ Connected to database');
     
-    // Acquire advisory lock (prevents concurrent runs)
+    // Acquire advisory lock with retry/backoff (prevents concurrent runs)
     console.log('🔒 Acquiring advisory lock...');
-    const lockResult = await client.query(
-      `SELECT pg_try_advisory_lock($1) as acquired`,
-      [ADVISORY_LOCK_ID]
-    );
+    const maxRetries = 24; // 24 retries * 5s = 120s max wait
+    const baseDelayMs = 5000; // 5 seconds base delay
+    let lockAcquired = false;
+    let lockResult: any = null;
     
-    if (!lockResult.rows[0].acquired) {
-      console.error('❌ Could not acquire advisory lock - another migration may be running');
-      process.exit(1);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      lockResult = await client.query(
+        `SELECT pg_try_advisory_lock($1) as acquired`,
+        [ADVISORY_LOCK_ID]
+      );
+      
+      if (lockResult.rows[0].acquired) {
+        lockAcquired = true;
+        console.log(`✅ Advisory lock acquired (attempt ${attempt}/${maxRetries})`);
+        break;
+      }
+      
+      if (attempt < maxRetries) {
+        // Exponential backoff with jitter
+        const jitter = Math.random() * 1000; // 0-1s jitter
+        const delayMs = baseDelayMs + jitter;
+        console.log(`⏳ Lock unavailable (attempt ${attempt}/${maxRetries}), retrying in ${Math.round(delayMs / 1000)}s...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
     }
     
-    console.log('✅ Advisory lock acquired');
+    if (!lockAcquired) {
+      console.error(`❌ Could not acquire advisory lock after ${maxRetries} attempts (120s timeout)`);
+      console.error('   Another migration may be running, or previous migration did not release lock');
+      process.exit(1);
+    }
     
     try {
       // Ensure migrations table exists
@@ -409,9 +408,18 @@ async function main() {
       }
       
     } finally {
-      // Release advisory lock
-      await client.query(`SELECT pg_advisory_unlock($1)`, [ADVISORY_LOCK_ID]);
-      console.log('🔓 Advisory lock released');
+      // Release advisory lock (always, even on error)
+      try {
+        const unlockResult = await client.query(`SELECT pg_advisory_unlock($1) as released`, [ADVISORY_LOCK_ID]);
+        if (unlockResult.rows[0].released) {
+          console.log('🔓 Advisory lock released');
+        } else {
+          console.warn('⚠️  Advisory lock was not held (may have been released already)');
+        }
+      } catch (unlockError: any) {
+        console.error(`⚠️  Failed to release advisory lock: ${unlockError.message}`);
+        // Don't throw - lock may have been released or connection may be closed
+      }
     }
     
   } catch (error: any) {
@@ -419,7 +427,12 @@ async function main() {
     console.error(error.stack);
     process.exit(1);
   } finally {
-    await client.end();
+    // Ensure connection is closed
+    try {
+      await client.end();
+    } catch (closeError) {
+      // Ignore close errors
+    }
   }
 }
 
