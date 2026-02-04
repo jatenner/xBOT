@@ -77,20 +77,21 @@ async function applyMigration(
   const sql = fs.readFileSync(filePath, 'utf-8');
   const checksum = computeChecksum(filePath);
   
-  // If migration contains DO $$ blocks, execute as single statement to avoid splitting issues
+  // If migration contains DO $$ blocks or CREATE FUNCTION with $$, execute as single statement to avoid splitting issues
   const hasDoBlocks = sql.includes('DO $$') || /DO\s+\$[^$]+\$/i.test(sql);
+  const hasCreateFunction = /CREATE\s+(OR\s+REPLACE\s+)?FUNCTION.*?\$\$/is.test(sql);
   
   // Check if migration already has BEGIN/COMMIT (but not inside DO $$ blocks)
   // If DO blocks exist, don't treat as transaction wrapper
   let hasTransaction = false;
-  if (!hasDoBlocks) {
+  if (!hasDoBlocks && !hasCreateFunction) {
     const doBlockRegex = /DO\s+\$[^$]*\$[^$]*\$/gis;
     const sqlWithoutDoBlocks = sql.replace(doBlockRegex, '');
     hasTransaction = sqlWithoutDoBlocks.toUpperCase().includes('BEGIN') && sqlWithoutDoBlocks.toUpperCase().includes('COMMIT');
   }
   
-  // If DO blocks exist, execute as single statement
-  if (hasDoBlocks) {
+  // If DO blocks or CREATE FUNCTION exist, execute as single statement
+  if (hasDoBlocks || hasCreateFunction) {
     try {
       await client.query(sql);
     } catch (error: any) {
