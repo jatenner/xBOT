@@ -280,8 +280,8 @@ export class JobManager {
         'hourly_tick',
         async () => {
           await this.safeExecute('hourly_tick', async () => {
-            const { hourlyTickJob } = await import('./hourlyTickJob');
-            await hourlyTickJob();
+            const { executeHourlyTick } = await import('../rateController/hourlyTick');
+            await executeHourlyTick();
             this.stats.postingRuns++;
             this.stats.lastPostingTime = new Date();
           });
