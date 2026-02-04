@@ -16,8 +16,6 @@
 --
 -- =====================================================================================
 
-BEGIN;
-
 -- =====================================================================================
 -- 1. ADD GENERATION_METADATA TO CONTENT_METADATA
 -- =====================================================================================
@@ -25,23 +23,60 @@ BEGIN;
 -- CRITICAL for learning what actually works
 
 DO $$ 
+DECLARE
+  is_table BOOLEAN;
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_name = 'content_metadata' 
-    AND column_name = 'generation_metadata'
-  ) THEN
-    ALTER TABLE content_metadata 
-    ADD COLUMN generation_metadata JSONB;
-    
-    COMMENT ON COLUMN content_metadata.generation_metadata IS 
-      'Stores content_type_id, content_type_name, viral_formula, hook_used for learning';
+  -- Check if content_metadata is a base table (not a view)
+  SELECT EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relname = 'content_metadata'
+    AND n.nspname = current_schema()
+    AND c.relkind = 'r'
+  ) INTO is_table;
+  
+  IF is_table THEN
+    -- Only add column if it doesn't exist
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = current_schema()
+      AND table_name = 'content_metadata' 
+      AND column_name = 'generation_metadata'
+    ) THEN
+      EXECUTE 'ALTER TABLE content_metadata ADD COLUMN generation_metadata JSONB';
+      
+      EXECUTE 'COMMENT ON COLUMN content_metadata.generation_metadata IS ''Stores content_type_id, content_type_name, viral_formula, hook_used for learning''';
+    END IF;
+  ELSE
+    RAISE NOTICE 'Skipping ALTER TABLE content_metadata: relation is a view or does not exist';
   END IF;
 END $$;
 
--- Index for querying generation metadata
-CREATE INDEX IF NOT EXISTS idx_content_metadata_generation_metadata_gin 
-  ON content_metadata USING GIN (generation_metadata);
+-- Index for querying generation metadata (only if content_metadata is a table)
+DO $$
+DECLARE
+  is_table BOOLEAN;
+BEGIN
+  -- Check if content_metadata is a base table
+  SELECT EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relname = 'content_metadata'
+    AND n.nspname = current_schema()
+    AND c.relkind = 'r'
+  ) INTO is_table;
+  
+  IF is_table THEN
+    BEGIN
+      EXECUTE 'CREATE INDEX IF NOT EXISTS idx_content_metadata_generation_metadata_gin ON content_metadata USING GIN (generation_metadata)';
+    EXCEPTION WHEN OTHERS THEN
+      -- Index might already exist or other error - log and continue
+      RAISE NOTICE 'Could not create index on content_metadata: %', SQLERRM;
+    END;
+  ELSE
+    RAISE NOTICE 'Skipping CREATE INDEX on content_metadata: relation is a view or does not exist';
+  END IF;
+END $$;
 
 -- =====================================================================================
 -- 2. TIME-SERIES PERFORMANCE TRACKING
@@ -496,8 +531,6 @@ ORDER BY cm.posted_at DESC;
 
 COMMENT ON VIEW latest_post_performance IS 
   'Quick view of recent posts with comprehensive performance data';
-
-COMMIT;
 
 -- =====================================================================================
 -- MIGRATION COMPLETE ✅
