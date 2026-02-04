@@ -222,10 +222,8 @@ export class JobManager {
       console.warn('   • reply_conversion_tracking (tracks follower attribution)');
       console.warn('═══════════════════════════════════════════════════════');
     } else {
-      console.log('✅ JOB_MANAGER: Reply system ENABLED (ENABLE_REPLIES=true).');
-      } else {
-        console.log('✅ JOB_MANAGER: Reply system ENABLED (ENABLE_REPLIES=true)');
-      }
+      console.log('✅ JOB_MANAGER: Reply system ENABLED (ENABLE_REPLIES=true)');
+    }
       
       // Check if discovered_accounts table is empty on startup
     // If empty, trigger account discovery IMMEDIATELY so reply system can work
