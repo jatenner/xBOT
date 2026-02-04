@@ -161,6 +161,9 @@ export class JobManager {
     
     // Schedule first run after initial delay
     console.log(`🕒 JOB_MANAGER: Scheduling ${name} - initial delay: ${Math.round(initialDelayMs / 1000)}s, interval: ${Math.round(intervalMs / 60000)}min`);
+    if (name === 'hourly_tick') {
+      console.log(`[SCHEDULE_STAGGERED_JOB] 📅 hourly_tick registered: initial_delay=${Math.round(initialDelayMs / 1000)}s, interval=${Math.round(intervalMs / 60000)}min`);
+    }
     const initialTimer = setTimeout(async () => {
       try {
         console.log(`🕒 JOB_MANAGER: ${name} initial timer fired - executing job...`);
@@ -260,6 +263,7 @@ export class JobManager {
     
     // 🎯 RATE CONTROLLER: Hourly tick replaces 5-min posting queue
     // Posting/replies now scheduled within hourly tick with jitter
+    console.log(`[JOB_MANAGER] 🔍 Checking postingEnabled flag: mode=${flags.mode}, live=${flags.live}, postingEnabled=${flags.postingEnabled}`);
     if (flags.postingEnabled) {
       // 🔒 SCHEMA PREFLIGHT: Run on boot
       (async () => {
@@ -276,6 +280,7 @@ export class JobManager {
         }
       })();
 
+      console.log('[JOB_MANAGER] 📅 Scheduling hourly_tick job (cadence: every 60 minutes, initial delay: 0s)');
       this.scheduleStaggeredJob(
         'hourly_tick',
         async () => {
@@ -289,6 +294,7 @@ export class JobManager {
         60 * MINUTE, // Every hour
         0 // Start immediately
       );
+      console.log('[JOB_MANAGER] ✅ hourly_tick job scheduled successfully');
       
       // Keep legacy posting queue as fallback (disabled by default via env)
       // Can be re-enabled for testing: ENABLE_LEGACY_POSTING_QUEUE=true
@@ -309,6 +315,9 @@ export class JobManager {
       } else {
         console.log('[JOB_MANAGER] ✅ Rate controller hourly tick enabled (legacy 5-min queue disabled)');
       }
+    } else {
+      console.warn('[JOB_MANAGER] ⚠️  Posting disabled - hourly_tick will NOT be scheduled');
+      console.warn(`[JOB_MANAGER]    Reason: flags.postingEnabled=${flags.postingEnabled} (mode=${flags.mode}, live=${flags.live}, DISABLE_POSTING=${process.env.DISABLE_POSTING})`);
     }
 
     // Plan job - every 2 hours, with restart protection
@@ -1368,6 +1377,18 @@ export class JobManager {
    * FAIL-FAST: If MODE=live and posting job doesn't register, exit with error
    */
   public async startJobs(): Promise<void> {
+    // 🔍 BOOT SHA LOGGING: Print runtime SHA for deploy verification
+    const shaSources = [
+      process.env.APP_COMMIT_SHA,
+      process.env.DEPLOY_SHA,
+      process.env.GIT_SHA,
+      process.env.RAILWAY_GIT_COMMIT_SHA,
+      process.env.VERCEL_GIT_COMMIT_SHA,
+    ].filter(Boolean);
+    const runtimeSha = shaSources[0] || 'unknown';
+    const shaDisplay = runtimeSha.length >= 8 ? runtimeSha.substring(0, 8) : runtimeSha;
+    console.log(`[JOB_MANAGER_BOOT] 🚀 Starting job manager (SHA: ${shaDisplay})`);
+    
     console.log('🕒 JOB_MANAGER: startJobs() called');
     console.log(`🕒 JOB_MANAGER: process.env.JOBS_AUTOSTART = "${process.env.JOBS_AUTOSTART}"`);
     console.log(`🕒 JOB_MANAGER: process.env.JOBS_AUTOSTART === 'true' = ${process.env.JOBS_AUTOSTART === 'true'}`);

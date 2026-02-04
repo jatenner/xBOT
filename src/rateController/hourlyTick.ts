@@ -26,7 +26,8 @@ function addJitter(baseMinutes: number): number {
  * Execute hourly tick
  */
 export async function executeHourlyTick(): Promise<void> {
-  console.log('[HOURLY_TICK] 🕐 Starting hourly tick...');
+  const startTime = Date.now();
+  console.log('[HOURLY_TICK_START] 🕐 Starting hourly tick execution...');
 
   // 🔒 SCHEMA PREFLIGHT: Check schema before execution
   const { runSchemaPreflight, isSafeMode } = await import('./schemaPreflight');
@@ -157,5 +158,7 @@ export async function executeHourlyTick(): Promise<void> {
     })
     .eq('hour_start', hourStart.toISOString());
 
-  console.log('[HOURLY_TICK] ✅ Hourly tick complete');
+  const durationMs = Date.now() - startTime;
+  const durationSec = (durationMs / 1000).toFixed(1);
+  console.log(`[HOURLY_TICK_DONE] ✅ Hourly tick complete (duration: ${durationSec}s, executed: replies=${executedReplies}, posts=${executedPosts})`);
 }
