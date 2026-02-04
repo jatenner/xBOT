@@ -717,12 +717,75 @@ export async function getNextCandidateFromQueue(tier?: number, deniedTweetIds?: 
   // 🎯 P1: Prefer public_search_* candidates when available
   const p1Mode = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
   
+  // 🎯 CANARY LANE: Prefer canary-eligible candidates (profile harvest or marked canary-eligible)
+  // Get more candidates to filter by canary eligibility
   query = query
     .order('predicted_tier', { ascending: true }) // Tier 1 first
     .order('overall_score', { ascending: false }) // Then by score
-    .limit(p1Mode ? 50 : 10); // Get more candidates in P1 mode to filter by discovery_source
+    .limit(p1Mode ? 50 : 20); // Get more candidates to filter by discovery_source/canary eligibility
   
   const { data: candidates, error } = await query;
+  
+  // 🎯 CANARY LANE: Filter and prioritize canary-eligible candidates
+  if (candidates && candidates.length > 0) {
+    const candidateIds = candidates.map(c => c.candidate_tweet_id);
+    
+    // Check opportunities for canary eligibility markers
+    const { data: opps } = await supabase
+      .from('reply_opportunities')
+      .select('target_tweet_id, discovery_source, ancestry_status')
+      .in('target_tweet_id', candidateIds);
+    
+    // Check drafts for canary_eligible flag
+    const { data: drafts } = await supabase
+      .from('content_metadata')
+      .select('target_tweet_id, features')
+      .in('target_tweet_id', candidateIds)
+      .eq('decision_type', 'reply')
+      .eq('status', 'draft');
+    
+    const canaryEligibleIds = new Set<string>();
+    const profileHarvestIds = new Set<string>();
+    
+    // Mark profile harvest opportunities as canary-eligible
+    (opps || []).forEach(opp => {
+      if (opp.discovery_source === 'profile') {
+        canaryEligibleIds.add(opp.target_tweet_id);
+        profileHarvestIds.add(opp.target_tweet_id);
+      }
+    });
+    
+    // Mark drafts with canary_eligible=true as canary-eligible
+    (drafts || []).forEach(draft => {
+      const features = (draft.features || {}) as Record<string, any>;
+      if (features.canary_eligible === true) {
+        canaryEligibleIds.add(draft.target_tweet_id);
+      }
+    });
+    
+    if (canaryEligibleIds.size > 0) {
+      // Separate canary-eligible from others
+      const canaryCandidates = candidates.filter(c => canaryEligibleIds.has(c.candidate_tweet_id));
+      const otherCandidates = candidates.filter(c => !canaryEligibleIds.has(c.candidate_tweet_id));
+      
+      // Prefer canary-eligible: put them first, sorted by tier/score
+      const sortedCanary = canaryCandidates.sort((a, b) => {
+        if (a.predicted_tier !== b.predicted_tier) return a.predicted_tier - b.predicted_tier;
+        return b.overall_score - a.overall_score;
+      });
+      
+      const sortedOthers = otherCandidates.sort((a, b) => {
+        if (a.predicted_tier !== b.predicted_tier) return a.predicted_tier - b.predicted_tier;
+        return b.overall_score - a.overall_score;
+      });
+      
+      // Replace candidates array with canary-first ordering
+      candidates.length = 0;
+      candidates.push(...sortedCanary, ...sortedOthers);
+      
+      console.log(`[QUEUE_MANAGER] 🎯 CANARY_LANE: ${canaryEligibleIds.size} canary-eligible candidates prioritized (${profileHarvestIds.size} from profile harvest)`);
+    }
+  }
   
     // 🎯 P1 VERIFIED-ONLY FILTER: In P1 mode, ONLY select verified ok candidates
     // Exception: public_search_manual allows 'unknown' status (manually seeded, no executor verification needed)

@@ -170,25 +170,110 @@ export async function computeRateTargets(): Promise<RateControllerOutput> {
     mode = 'GROWTH';
   }
 
-  // 6. Calculate targets based on mode
+  // 🎯 RAMP SCHEDULE: Calculate hours since first execution and stability metrics
+  const { data: firstState } = await supabase
+    .from('rate_controller_state')
+    .select('hour_start')
+    .order('hour_start', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  
+  const hoursSinceStart = firstState?.hour_start 
+    ? Math.floor((Date.now() - new Date(firstState.hour_start).getTime()) / (1000 * 60 * 60))
+    : 0;
+  
+  // Check 24h stability: no 429s, no auth failures in last 24h
+  const ramp24HoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const { count: recent429s } = await supabase
+    .from('system_events')
+    .select('*', { count: 'exact', head: true })
+    .eq('event_type', 'rate_limit_429')
+    .gte('created_at', ramp24HoursAgo.toISOString());
+  
+  const { count: authFailures } = await supabase
+    .from('system_events')
+    .select('*', { count: 'exact', head: true })
+    .in('event_type', ['login_wall_detected', 'auth_freshness_failed'])
+    .gte('created_at', ramp24HoursAgo.toISOString());
+  
+  const has24hStability = (recent429s || 0) === 0 && (authFailures || 0) === 0;
+  
+  // Calculate success rate (last 6 hours)
+  const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+  const { data: recentExecutions } = await supabase
+    .from('rate_controller_state')
+    .select('executed_replies, target_replies_this_hour')
+    .gte('hour_start', sixHoursAgo.toISOString())
+    .order('hour_start', { ascending: false })
+    .limit(6);
+  
+  const totalAttempted = (recentExecutions || []).reduce((sum, r) => sum + (r.target_replies_this_hour || 0), 0);
+  const totalExecuted = (recentExecutions || []).reduce((sum, r) => sum + (r.executed_replies || 0), 0);
+  const successRate = totalAttempted > 0 ? totalExecuted / totalAttempted : 1.0;
+  
+  // 6. Calculate targets based on mode and ramp schedule
   let targetReplies = 0;
   let targetPosts = 0;
   let allowSearch = true;
+  let rampReason = '';
 
   if (mode === 'COOLDOWN') {
     // Minimal activity
     targetReplies = 0;
     targetPosts = 0;
     allowSearch = false;
+    rampReason = 'cooldown_mode';
   } else if (mode === 'WARMUP') {
-    // Conservative: 1 reply/hour, 0.5 posts/hour (every 2 hours)
-    targetReplies = isPeak ? 1 : Math.floor(1 * OFF_PEAK_REDUCTION);
+    // 🎯 RAMP SCHEDULE: 1→2 replies/hour over first 6 hours if stable
+    const baseReplies = 1;
+    let rampReplies = baseReplies;
+    
+    // First 6 hours: allow up to 2 replies/hour if zero 429s and success rate > 50%
+    if (hoursSinceStart < 6) {
+      const hasZero429s = (recent429s || 0) === 0;
+      if (hasZero429s && successRate > 0.5) {
+        // Ramp: hour 0-2 = 1, hour 3-5 = 2
+        rampReplies = hoursSinceStart >= 3 ? 2 : 1;
+        rampReason = `warmup_ramp_hour_${hoursSinceStart}_stable`;
+      } else {
+        rampReplies = 1;
+        rampReason = `warmup_hour_${hoursSinceStart}_conservative`;
+      }
+    } else {
+      rampReplies = 1;
+      rampReason = 'warmup_beyond_6h';
+    }
+    
+    targetReplies = isPeak ? rampReplies : Math.floor(rampReplies * OFF_PEAK_REDUCTION);
     targetPosts = 0; // Start with 0, ramp up after warmup period
     allowSearch = budgets.searchRemaining > 0 && !backoffCheck.blocked;
   } else if (mode === 'GROWTH') {
-    // Ramp toward caps
+    // 🎯 RAMP SCHEDULE: 1→2→3→4 replies/hour over 24 hours if stable
+    let rampReplies = 2; // Default GROWTH target
+    
+    if (has24hStability) {
+      // Full ramp: 1→2→3→4 over 24 hours
+      if (hoursSinceStart < 6) {
+        rampReplies = hoursSinceStart >= 3 ? 2 : 1;
+        rampReason = `growth_ramp_hour_${hoursSinceStart}_early`;
+      } else if (hoursSinceStart < 12) {
+        rampReplies = 2;
+        rampReason = `growth_ramp_hour_${hoursSinceStart}_mid`;
+      } else if (hoursSinceStart < 18) {
+        rampReplies = 3;
+        rampReason = `growth_ramp_hour_${hoursSinceStart}_late`;
+      } else {
+        rampReplies = 4;
+        rampReason = `growth_ramp_hour_${hoursSinceStart}_full`;
+      }
+    } else {
+      // Conservative ramp if not fully stable
+      rampReplies = Math.min(2, 1 + Math.floor(hoursSinceStart / 6));
+      rampReason = `growth_ramp_hour_${hoursSinceStart}_conservative`;
+    }
+    
     const peakMultiplier = isPeak ? 1 : OFF_PEAK_REDUCTION;
-    targetReplies = Math.min(MAX_REPLIES_PER_HOUR, Math.floor(2 * peakMultiplier));
+    targetReplies = Math.min(MAX_REPLIES_PER_HOUR, Math.floor(rampReplies * peakMultiplier));
     targetPosts = isPeak && riskScore < 0.1 ? PEAK_BURST_POSTS_PER_HOUR : MAX_POSTS_PER_HOUR;
     allowSearch = budgets.searchRemaining > 0 && !backoffCheck.blocked;
   }
@@ -201,7 +286,7 @@ export async function computeRateTargets(): Promise<RateControllerOutput> {
     targetPosts = Math.floor(targetPosts * ratio);
   }
 
-  // 8. Store state
+  // 9. Store state
   const hourStart = new Date();
   hourStart.setMinutes(0, 0, 0);
 
@@ -217,6 +302,10 @@ export async function computeRateTargets(): Promise<RateControllerOutput> {
       yield_score: yieldScore,
       budgets_remaining: { nav: budgets.navRemaining, search: budgets.searchRemaining },
       blocked_until: backoffCheck.blockedUntil?.toISOString() || null,
+      ramp_reason: rampReason,
+      hours_since_start: hoursSinceStart,
+      has_24h_stability: has24hStability,
+      success_rate_6h: successRate,
       updated_at: new Date().toISOString(),
     }, {
       onConflict: 'hour_start',

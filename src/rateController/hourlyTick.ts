@@ -53,28 +53,53 @@ export async function executeHourlyTick(): Promise<void> {
   let executedReplies = 0;
   let executedPosts = 0;
 
-  // 2. Execute replies with jitter spacing (execute immediately with delays)
+  // 2. Execute replies with retry loop until targets met or pool exhausted
   if (targets.target_replies_this_hour > 0) {
     const replyInterval = 60 / targets.target_replies_this_hour; // Minutes between replies
-    for (let i = 0; i < targets.target_replies_this_hour; i++) {
-      const delayMinutes = addJitter(i * replyInterval);
-      // Wait for delay before executing
-      if (delayMinutes > 0) {
+    let attempts = 0;
+    const maxAttempts = targets.target_replies_this_hour * 3; // Allow up to 3x attempts to account for skips
+    const skipReasons: Record<string, number> = {};
+    
+    while (executedReplies < targets.target_replies_this_hour && attempts < maxAttempts) {
+      attempts++;
+      const delayMinutes = addJitter((executedReplies * replyInterval));
+      
+      // Wait for delay before executing (only if we've posted at least one)
+      if (executedReplies > 0 && delayMinutes > 0) {
         await new Promise(resolve => setTimeout(resolve, delayMinutes * 60 * 1000));
       }
       
       try {
-        console.log(`[HOURLY_TICK] 💬 Executing reply ${i + 1}/${targets.target_replies_this_hour} (delay: ${delayMinutes.toFixed(1)}min)`);
+        console.log(`[HOURLY_TICK] 💬 Attempt ${attempts}: Executing reply (target: ${targets.target_replies_this_hour}, posted: ${executedReplies})`);
         const result = await attemptScheduledReply();
+        
         if (result.posted) {
           executedReplies++;
-          console.log(`[HOURLY_TICK] ✅ Reply ${i + 1} posted successfully`);
+          console.log(`[HOURLY_TICK] ✅ Reply ${executedReplies}/${targets.target_replies_this_hour} posted successfully`);
         } else {
-          console.log(`[HOURLY_TICK] ⚠️ Reply ${i + 1} skipped: ${result.reason}`);
+          const reason = result.reason || 'unknown';
+          skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+          console.log(`[HOURLY_TICK] ⚠️ Reply attempt ${attempts} skipped: ${reason} (continuing to next candidate)`);
+          
+          // Check if we should stop (no more candidates likely)
+          if (reason.includes('no_candidates') || reason.includes('queue_empty')) {
+            console.log(`[HOURLY_TICK] 🛑 No more candidates available, stopping retry loop`);
+            break;
+          }
         }
       } catch (error: any) {
-        console.error(`[HOURLY_TICK] ❌ Reply ${i + 1} failed: ${error.message}`);
+        console.error(`[HOURLY_TICK] ❌ Reply attempt ${attempts} failed: ${error.message}`);
+        
+        // Check for backoff/risk triggers
+        if (error.message.includes('429') || error.message.includes('rate_limit') || error.message.includes('COOLDOWN')) {
+          console.log(`[HOURLY_TICK] 🛑 Risk trigger detected, stopping retry loop`);
+          break;
+        }
       }
+    }
+    
+    if (executedReplies < targets.target_replies_this_hour) {
+      console.log(`[HOURLY_TICK] ⚠️ Only posted ${executedReplies}/${targets.target_replies_this_hour} replies (attempts: ${attempts}, skips: ${JSON.stringify(skipReasons)})`);
     }
   }
 
