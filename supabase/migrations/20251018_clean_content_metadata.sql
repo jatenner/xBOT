@@ -5,13 +5,36 @@
 -- Author: AI Agent (Post-Audit Fix)
 -- =====================================================================================
 
-BEGIN;
-
--- Drop existing table and all dependencies
-DROP TABLE IF EXISTS content_metadata CASCADE;
+-- Drop existing view or table and all dependencies
+DO $$
+BEGIN
+  -- Check if content_metadata exists as a view
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+    AND c.relname = 'content_metadata'
+    AND c.relkind = 'v'
+  ) THEN
+    DROP VIEW IF EXISTS public.content_metadata CASCADE;
+    RAISE NOTICE 'Dropped content_metadata view';
+  END IF;
+  
+  -- Check if content_metadata exists as a table
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+    AND c.relname = 'content_metadata'
+    AND c.relkind = 'r'
+  ) THEN
+    DROP TABLE IF EXISTS public.content_metadata CASCADE;
+    RAISE NOTICE 'Dropped content_metadata table';
+  END IF;
+END $$;
 
 -- Recreate with clean, unified schema
-CREATE TABLE content_metadata (
+CREATE TABLE IF NOT EXISTS content_metadata (
   -- Primary key (auto-generated)
   id BIGSERIAL PRIMARY KEY,
   
@@ -91,16 +114,29 @@ CREATE TABLE content_metadata (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Create indexes for performance
-CREATE INDEX idx_content_status_scheduled ON content_metadata (status, scheduled_at);
-CREATE INDEX idx_content_decision_id ON content_metadata (decision_id);
-CREATE INDEX idx_content_decision_type ON content_metadata (decision_type);
-CREATE INDEX idx_content_generation_source ON content_metadata (generation_source);
-CREATE INDEX idx_content_tweet_id ON content_metadata (tweet_id) WHERE tweet_id IS NOT NULL;
-CREATE INDEX idx_content_topic_cluster ON content_metadata (topic_cluster) WHERE topic_cluster IS NOT NULL;
-CREATE INDEX idx_content_bandit_arm ON content_metadata (bandit_arm) WHERE bandit_arm IS NOT NULL;
-CREATE INDEX idx_content_created_at ON content_metadata (created_at DESC);
-CREATE INDEX idx_content_posted_at ON content_metadata (posted_at DESC) WHERE posted_at IS NOT NULL;
+-- Create indexes for performance (only if content_metadata is a table)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+    AND c.relname = 'content_metadata'
+    AND c.relkind = 'r'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_content_status_scheduled ON content_metadata (status, scheduled_at);
+    CREATE INDEX IF NOT EXISTS idx_content_decision_id ON content_metadata (decision_id);
+    CREATE INDEX IF NOT EXISTS idx_content_decision_type ON content_metadata (decision_type);
+    CREATE INDEX IF NOT EXISTS idx_content_generation_source ON content_metadata (generation_source);
+    CREATE INDEX IF NOT EXISTS idx_content_tweet_id ON content_metadata (tweet_id) WHERE tweet_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_content_topic_cluster ON content_metadata (topic_cluster) WHERE topic_cluster IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_content_bandit_arm ON content_metadata (bandit_arm) WHERE bandit_arm IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_content_created_at ON content_metadata (created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_content_posted_at ON content_metadata (posted_at DESC) WHERE posted_at IS NOT NULL;
+  ELSE
+    RAISE NOTICE 'Skipping index creation: content_metadata is not a base table';
+  END IF;
+END $$;
 
 -- Create updated_at trigger
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -111,12 +147,25 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
-CREATE TRIGGER update_content_metadata_updated_at
-    BEFORE UPDATE ON content_metadata
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
-COMMIT;
+-- Create trigger (only if content_metadata is a table)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+    AND c.relname = 'content_metadata'
+    AND c.relkind = 'r'
+  ) THEN
+    DROP TRIGGER IF EXISTS update_content_metadata_updated_at ON content_metadata;
+    CREATE TRIGGER update_content_metadata_updated_at
+      BEFORE UPDATE ON content_metadata
+      FOR EACH ROW
+      EXECUTE FUNCTION update_updated_at_column();
+  ELSE
+    RAISE NOTICE 'Skipping trigger creation: content_metadata is not a base table';
+  END IF;
+END $$;
 
 -- =====================================================================================
 -- VERIFICATION
