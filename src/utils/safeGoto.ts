@@ -13,6 +13,8 @@ export interface SafeGotoOptions {
   waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit';
   timeout?: number;
   operation?: string; // Operation name for logging
+  /** When false, handleConsentWall will NOT record wall/trigger cooldown on block (for retry with different URL) */
+  recordWallOnBlock?: boolean;
 }
 
 export interface SafeGotoResult {
@@ -41,6 +43,7 @@ export async function safeGoto(
     waitUntil = 'domcontentloaded',
     timeout = 30000,
     operation = 'unknown',
+    recordWallOnBlock = true,
   } = options;
   
   // Emit SAFE_GOTO_ATTEMPT event
@@ -70,7 +73,7 @@ export async function safeGoto(
     await page.waitForTimeout(2000);
     
     // 🔒 CONSENT WALL: Handle immediately after navigation
-    const consentResult = await handleConsentWall(page, { url, operation });
+    const consentResult = await handleConsentWall(page, { url, operation, recordWallOnBlock });
     
     const success = !consentResult.blocked;
     

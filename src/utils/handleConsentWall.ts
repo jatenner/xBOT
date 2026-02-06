@@ -30,10 +30,10 @@ export interface ConsentWallHandleResult {
  * Handle consent wall with fail-closed + cooldown
  *
  * - If cooldown active: return blocked immediately, no repeated clear attempts
- * - One deterministic attempt only when cooldown inactive
- * - On block: record wall (triggers 30–60min cooldown)
+ * - When cooldown inactive: up to 3 clear attempts (short waits)
+ * - On block: record wall (triggers 30–60min cooldown) unless recordWallOnBlock=false
  */
-export async function handleConsentWall(page: Page, context?: { url?: string; operation?: string }): Promise<ConsentWallHandleResult> {
+export async function handleConsentWall(page: Page, context?: { url?: string; operation?: string; recordWallOnBlock?: boolean }): Promise<ConsentWallHandleResult> {
   const url = context?.url || page.url();
   const operation = context?.operation || 'unknown';
 
@@ -70,7 +70,8 @@ export async function handleConsentWall(page: Page, context?: { url?: string; op
       };
     }
     
-    console.log(`[CONSENT_WALL] 🚧 Consent wall detected at ${url} (operation: ${operation}), attempting dismissal (1 attempt)...`);
+    const maxAttempts = 3;
+    console.log(`[CONSENT_WALL] 🚧 Consent wall detected at ${url} (operation: ${operation}), attempting dismissal (up to ${maxAttempts} attempts)...`);
     
     // Extract variant fingerprint from detection
     const variant = detection.variant || 'unknown';
@@ -94,8 +95,7 @@ export async function handleConsentWall(page: Page, context?: { url?: string; op
       // Non-blocking
     }
     
-    // One attempt only (deterministic)
-    const result = await acceptConsentWall(page, 1);
+    const result = await acceptConsentWall(page, maxAttempts);
     
     if (result.cleared) {
       console.log(`[CONSENT_WALL] ✅ Consent wall cleared (attempts: ${result.attempts})`);
@@ -132,9 +132,14 @@ export async function handleConsentWall(page: Page, context?: { url?: string; op
         variant: result.matchedSelector || variant,
       };
     } else {
-      // Not cleared - record wall (triggers cooldown), save artifacts, fail closed
-      getConsentWallCooldown().recordWall();
-      console.log('[CONSENT_WALL] Consent wall not cleared after 1 attempt - cooldown triggered (30–60min), saving artifacts, fail-closed');
+      // Not cleared - record wall (triggers cooldown) unless caller requested skip (e.g. retry with different URL)
+      const recordWall = context?.recordWallOnBlock !== false;
+      if (recordWall) {
+        getConsentWallCooldown().recordWall();
+        console.log(`[CONSENT_WALL] Consent wall not cleared after ${result.attempts} attempts - cooldown triggered (30–60min), saving artifacts, fail-closed`);
+      } else {
+        console.log(`[CONSENT_WALL] Consent wall not cleared after ${result.attempts} attempts - skipping cooldown (caller will retry)`);
+      }
       
       let screenshotPath: string | undefined;
       let htmlSnippet: string | undefined;

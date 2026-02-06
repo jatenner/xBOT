@@ -27,7 +27,7 @@ function addJitter(baseMinutes: number): number {
  * Run navigation heartbeat once per tick. Returns true if successful.
  * safeGoto emits SAFE_GOTO_ATTEMPT/OK/FAIL; we write nav_heartbeat to db.
  */
-async function runNavHeartbeat(supabase: ReturnType<typeof getSupabaseClient>): Promise<boolean> {
+export async function runNavHeartbeat(supabase: ReturnType<typeof getSupabaseClient>): Promise<boolean> {
   const { getConsentWallCooldown } = await import('../utils/consentWallCooldown');
   if (getConsentWallCooldown().isCooldownActive()) {
     const status = getConsentWallCooldown().getStatus();
@@ -45,14 +45,32 @@ async function runNavHeartbeat(supabase: ReturnType<typeof getSupabaseClient>): 
   }
 
   const startMs = Date.now();
+  const PRIMARY_URL = 'https://x.com/home?lang=en';
+  const FALLBACK_URL = 'https://x.com/home';
+
   try {
     const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
     const { safeGoto } = await import('../utils/safeGoto');
     const pool = UnifiedBrowserPool.getInstance();
 
+    // Use same persistent browser context as other authenticated nav (pool reuses contexts)
     const result = await pool.withContext('nav_heartbeat', async (ctx) => {
       const page = await ctx.newPage();
-      const gotoResult = await safeGoto(page, 'https://x.com/home', { operation: 'nav_heartbeat', timeout: 25000 });
+      // Try primary URL first (often bypasses consent variants)
+      let gotoResult = await safeGoto(page, PRIMARY_URL, {
+        operation: 'nav_heartbeat',
+        timeout: 25000,
+        recordWallOnBlock: false, // Don't trigger cooldown yet - allow fallback
+      });
+      // Fallback to /home if primary hit consent wall
+      if (!gotoResult.success && gotoResult.consentWallBlocked) {
+        console.log(`[NAV_HEARTBEAT] Primary URL hit consent wall, trying fallback ${FALLBACK_URL}`);
+        gotoResult = await safeGoto(page, FALLBACK_URL, {
+          operation: 'nav_heartbeat',
+          timeout: 25000,
+          recordWallOnBlock: true, // Record cooldown if fallback also fails
+        });
+      }
       await page.close();
       return gotoResult;
     }, 5);
