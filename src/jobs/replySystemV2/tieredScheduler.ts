@@ -55,6 +55,8 @@ export interface SchedulerResult {
   tier?: number;
   reason: string;
   behind_schedule: boolean;
+  /** When false, caller should not count this as a consumed reply attempt slot */
+  consumedSlot?: boolean;
 }
 
 // Outcome tracking interface
@@ -162,10 +164,9 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         });
         console.error(`[SCHEDULER] 🚫 BLOCKED: Executor auth invalid - ${blockStatus.reason}`);
         return {
-          success: false,
-          decisionCreated: false,
-          decisionId: null,
+          posted: false,
           reason: `auth_blocked: ${blockStatus.reason}`,
+          behind_schedule: false,
         };
       }
     } catch (authErr: any) {
@@ -184,6 +185,31 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       // Ignore auth check errors in Railway mode
     }
   }
+
+  // 🔒 CONSENT WALL ROUTING: Skip ancestry if cooldown active (do not consume reply slot)
+  const { getConsentWallCooldown } = await import('../../utils/consentWallCooldown');
+  if (getConsentWallCooldown().isCooldownActive()) {
+    const status = getConsentWallCooldown().getStatus();
+    console.log(`[SCHEDULER] SKIP_INFRA_CONSENT_COOLDOWN: cooldown active (${status.remainingSeconds ?? 0}s remaining), skipping ancestry - not consuming reply slot`);
+    try {
+      const { getSupabaseClient } = await import('../../db/index');
+      const s = getSupabaseClient();
+      await s.from('system_events').insert({
+        event_type: 'SKIP_INFRA_CONSENT_COOLDOWN',
+        severity: 'info',
+        message: 'Skipped reply attempt: consent wall cooldown active',
+        event_data: { remaining_seconds: status.remainingSeconds },
+        created_at: new Date().toISOString(),
+      });
+    } catch { /* non-blocking */ }
+    return {
+      posted: false,
+      reason: 'SKIP_INFRA_CONSENT_COOLDOWN',
+      behind_schedule: false,
+      consumedSlot: false,
+    };
+  }
+
   const supabase = getSupabaseClient();
   const schedulerRunId = `scheduler_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const slotTime = new Date();
@@ -301,8 +327,24 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     .in('deny_reason_code', ['ANCESTRY_SKIPPED_OVERLOAD', 'ANCESTRY_ACQUIRE_CONTEXT_TIMEOUT', 'ANCESTRY_TIMEOUT']);
   
   const deniedTweetIds = new Set(recentDenies?.map(d => d.target_tweet_id).filter(Boolean) || []);
+
+  // 🚫 CANDIDATE QUARANTINE: Exclude tweet_ids with SKIP_PREFLIGHT_FORBIDDEN in last 7 days
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: forbiddenEvents } = await supabase
+    .from('system_events')
+    .select('event_data')
+    .eq('event_type', 'SKIP_PREFLIGHT_FORBIDDEN')
+    .gte('created_at', sevenDaysAgo)
+    .limit(500);
+  for (const e of forbiddenEvents || []) {
+    const tid = (e.event_data as Record<string, unknown>)?.tweet_id as string | undefined;
+    if (tid) deniedTweetIds.add(tid);
+  }
+  if (forbiddenEvents && forbiddenEvents.length > 0) {
+    console.log(`[SCHEDULER] 🚫 Excluding ${forbiddenEvents.length} tweet IDs from SKIP_PREFLIGHT_FORBIDDEN (7d quarantine)`);
+  }
   if (deniedTweetIds.size > 0) {
-    console.log(`[SCHEDULER] 🚫 Skipping ${deniedTweetIds.size} tweet IDs with recent DENY decisions (backoff)`);
+    console.log(`[SCHEDULER] 🚫 Skipping ${deniedTweetIds.size} tweet IDs total (DENY backoff + forbidden quarantine)`);
   }
   console.log(`[SCHEDULER] ⏰ Slot time: ${slotTime.toISOString()}`);
   
@@ -412,14 +454,9 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   if (p1Mode && candidatesToTry.length === 0) {
     console.log(`[SCHEDULER] 🎯 P1_PROBE_SUMMARY: attempted=0 ok=0 reason=no_verified_candidates`);
     return {
-      success: false,
+      posted: false,
       reason: 'no_verified_candidates',
-      scheduler_run_id: schedulerRunId,
-      slot_time: slotTime.toISOString(),
-      preflight_attempted: 0,
-      preflight_ok: 0,
-      decision_created: false,
-      decision_id: null,
+      behind_schedule: behindSchedule,
     };
   }
   
@@ -570,6 +607,19 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
                   accessibility_reason: `Probe detected ${marker}`,
                 })
                 .eq('target_tweet_id', cand.candidate_tweet_id);
+
+              // 🚫 CANDIDATE QUARANTINE: Persist SKIP_PREFLIGHT_FORBIDDEN (7-day retry ban)
+              if (accessibilityStatus === 'forbidden') {
+                try {
+                  await supabase.from('system_events').insert({
+                    event_type: 'SKIP_PREFLIGHT_FORBIDDEN',
+                    severity: 'info',
+                    message: `Preflight forbidden: tweet ${cand.candidate_tweet_id} quarantined 7d`,
+                    event_data: { tweet_id: cand.candidate_tweet_id, marker, author: oppInfo?.target_username },
+                    created_at: new Date().toISOString(),
+                  });
+                } catch { /* non-blocking */ }
+              }
               
               // 🎯 P1: Track forbidden authors for future filtering
               if (oppInfo?.target_username && accessibilityStatus === 'forbidden') {

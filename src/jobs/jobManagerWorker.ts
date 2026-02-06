@@ -234,6 +234,14 @@ export async function startWorker() {
   console.log('[BOOT] RUN_REPLY_V2_PROBE_ON_BOOT:', process.env.RUN_REPLY_V2_PROBE_ON_BOOT || 'NOT SET');
   console.log('[BOOT] MODE:', process.env.MODE || 'NOT SET');
   console.log('[BOOT] DATABASE_URL:', process.env.DATABASE_URL ? 'SET (' + process.env.DATABASE_URL.substring(0, 20) + '...)' : 'NOT SET');
+  console.log('[ENV_PROOF] X_ACTIONS_ENABLED=%s MAX_REPLIES_PER_HOUR=%s X_MAX_ACTIONS_PER_DAY=%s POSTS_PER_HOUR=%s MAX_POSTS_PER_HOUR=%s EXECUTION_MODE=%s MODE=%s',
+    process.env.X_ACTIONS_ENABLED || 'false',
+    process.env.MAX_REPLIES_PER_HOUR || 'unset',
+    process.env.X_MAX_ACTIONS_PER_DAY || 'unset',
+    process.env.POSTS_PER_HOUR || 'unset',
+    process.env.MAX_POSTS_PER_HOUR || 'unset',
+    process.env.EXECUTION_MODE || 'unset',
+    process.env.MODE || 'unset');
   console.log('');
   
   // Step 1: Probe database connectivity (fail fast if unreachable)

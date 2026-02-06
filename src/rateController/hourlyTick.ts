@@ -62,7 +62,6 @@ export async function executeHourlyTick(): Promise<void> {
     const skipReasons: Record<string, number> = {};
     
     while (executedReplies < targets.target_replies_this_hour && attempts < maxAttempts) {
-      attempts++;
       const delayMinutes = addJitter((executedReplies * replyInterval));
       
       // Wait for delay before executing (only if we've posted at least one)
@@ -71,8 +70,16 @@ export async function executeHourlyTick(): Promise<void> {
       }
       
       try {
+        attempts++;
         console.log(`[HOURLY_TICK] 💬 Attempt ${attempts}: Executing reply (target: ${targets.target_replies_this_hour}, posted: ${executedReplies})`);
         const result = await attemptScheduledReply();
+
+        // 🔒 CONSENT WALL ROUTING: consumedSlot=false means don't count this as a reply attempt
+        if (result.consumedSlot === false) {
+          attempts--; // Roll back - did not consume a slot
+          console.log(`[HOURLY_TICK] ⚠️ ${result.reason} — not consuming attempt slot`);
+          continue;
+        }
         
         if (result.posted) {
           executedReplies++;
