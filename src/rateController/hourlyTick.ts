@@ -2,12 +2,13 @@
  * ⏰ HOURLY TICK JOB
  * 
  * Runs every hour to:
- * 1. Compute rate targets for current hour
- * 2. Execute replies/posts with jitter spacing
- * 3. Log observability JSON
+ * 1. Nav heartbeat (once per tick)
+ * 2. Compute rate targets
+ * 3. Execute replies (if X_ACTIONS_ENABLED + heartbeat OK) or posts
+ * 4. Log observability JSON
  */
 
-import { computeRateTargets, getCurrentHourTargets } from './rateController';
+import { computeRateTargets } from './rateController';
 import { getSupabaseClient } from '../db/index';
 import { processPostingQueue } from '../jobs/postingQueue';
 import { attemptScheduledReply } from '../jobs/replySystemV2/tieredScheduler';
@@ -20,6 +21,72 @@ const JITTER_MINUTES = 5; // ±5 minutes jitter
 function addJitter(baseMinutes: number): number {
   const jitter = Math.floor(Math.random() * (JITTER_MINUTES * 2 + 1)) - JITTER_MINUTES;
   return baseMinutes + jitter;
+}
+
+/**
+ * Run navigation heartbeat once per tick. Returns true if successful.
+ * safeGoto emits SAFE_GOTO_ATTEMPT/OK/FAIL; we write nav_heartbeat to db.
+ */
+async function runNavHeartbeat(supabase: ReturnType<typeof getSupabaseClient>): Promise<boolean> {
+  const { getConsentWallCooldown } = await import('../utils/consentWallCooldown');
+  if (getConsentWallCooldown().isCooldownActive()) {
+    const status = getConsentWallCooldown().getStatus();
+    console.log(`[NAV_HEARTBEAT] SKIP_HEARTBEAT_CONSENT_COOLDOWN: cooldown active (${status.remainingSeconds ?? 0}s remaining)`);
+    try {
+      await supabase.from('system_events').insert({
+        event_type: 'nav_heartbeat',
+        severity: 'info',
+        message: 'Heartbeat skipped: consent cooldown active',
+        event_data: { success: false, reason: 'SKIP_HEARTBEAT_CONSENT_COOLDOWN', remaining_seconds: status.remainingSeconds },
+        created_at: new Date().toISOString(),
+      });
+    } catch { /* non-blocking */ }
+    return false;
+  }
+
+  const startMs = Date.now();
+  try {
+    const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
+    const { safeGoto } = await import('../utils/safeGoto');
+    const pool = UnifiedBrowserPool.getInstance();
+
+    const result = await pool.withContext('nav_heartbeat', async (ctx) => {
+      const page = await ctx.newPage();
+      const gotoResult = await safeGoto(page, 'https://x.com/home', { operation: 'nav_heartbeat', timeout: 25000 });
+      await page.close();
+      return gotoResult;
+    }, 5);
+
+    const durationMs = Date.now() - startMs;
+    const success = result.success && !result.consentWallBlocked;
+    const reason = success ? 'ok' : (result.consentWallBlocked ? 'consent_wall_blocked' : 'navigation_error');
+
+    console.log(`[NAV_HEARTBEAT] ${success ? '✅' : '❌'} ${success ? 'SAFE_GOTO_OK' : 'SAFE_GOTO_FAIL'} duration_ms=${durationMs} reason=${reason}`);
+
+    await supabase.from('system_events').insert({
+      event_type: 'nav_heartbeat',
+      severity: success ? 'info' : 'warning',
+      message: success ? `Nav heartbeat OK (${durationMs}ms)` : `Nav heartbeat FAIL: ${reason}`,
+      event_data: { success, reason, duration_ms: durationMs },
+      created_at: new Date().toISOString(),
+    });
+
+    return success;
+  } catch (err: unknown) {
+    const durationMs = Date.now() - startMs;
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error(`[NAV_HEARTBEAT] ❌ SAFE_GOTO_FAIL duration_ms=${durationMs} reason=${reason}`);
+
+    await supabase.from('system_events').insert({
+      event_type: 'nav_heartbeat',
+      severity: 'warning',
+      message: `Nav heartbeat FAIL: ${reason}`,
+      event_data: { success: false, reason, duration_ms: durationMs },
+      created_at: new Date().toISOString(),
+    });
+
+    return false;
+  }
 }
 
 /**
@@ -45,23 +112,36 @@ export async function executeHourlyTick(): Promise<void> {
     return;
   }
 
+  const supabase = getSupabaseClient();
+
+  // A) NAV HEARTBEAT (once per tick, no retry)
+  const heartbeatSuccess = await runNavHeartbeat(supabase);
+
   // 1. Compute rate targets
   const targets = await computeRateTargets();
+  console.log(`[HOURLY_TICK] 📊 Targets computed: mode=${targets.mode}, replies=${targets.target_replies_this_hour}, posts=${targets.target_posts_this_hour}, allow_search=${targets.allow_search}`);
 
-  console.log(`[HOURLY_TICK] 📊 Targets: mode=${targets.mode}, replies=${targets.target_replies_this_hour}, posts=${targets.target_posts_this_hour}, allow_search=${targets.allow_search}`);
-
-  const supabase = getSupabaseClient();
   let executedReplies = 0;
   let executedPosts = 0;
 
-  // 2. Execute replies with retry loop until targets met or pool exhausted
-  if (targets.target_replies_this_hour > 0) {
-    const replyInterval = 60 / targets.target_replies_this_hour; // Minutes between replies
-    let attempts = 0;
-    const maxAttempts = targets.target_replies_this_hour * 3; // Allow up to 3x attempts to account for skips
-    const skipReasons: Record<string, number> = {};
+  const xActionsEnabled = process.env.X_ACTIONS_ENABLED === 'true';
+  const maxRepliesThisTick = Math.min(targets.target_replies_this_hour, 1); // C) Post at most 1 reply
+
+  // 2. Execute replies — only if X_ACTIONS_ENABLED + heartbeat OK
+  if (maxRepliesThisTick > 0) {
+    if (!xActionsEnabled) {
+      console.log(`[HOURLY_TICK] ⏭️ Reply loop: skipped (X_ACTIONS_ENABLED=false)`);
+    } else if (!heartbeatSuccess) {
+      console.log(`[HOURLY_TICK] ⏭️ Reply loop: skipped (heartbeat failed this tick)`);
+    } else {
+      console.log(`[HOURLY_TICK] 🔄 Reply loop: entered, target=${maxRepliesThisTick} (candidates from scheduler)`);
+
+      const replyInterval = 60 / Math.max(1, maxRepliesThisTick);
+      let attempts = 0;
+      const maxAttempts = maxRepliesThisTick * 3;
+      const skipReasons: Record<string, number> = {};
     
-    while (executedReplies < targets.target_replies_this_hour && attempts < maxAttempts) {
+    while (executedReplies < maxRepliesThisTick && attempts < maxAttempts) {
       const delayMinutes = addJitter((executedReplies * replyInterval));
       
       // Wait for delay before executing (only if we've posted at least one)
@@ -71,7 +151,7 @@ export async function executeHourlyTick(): Promise<void> {
       
       try {
         attempts++;
-        console.log(`[HOURLY_TICK] 💬 Attempt ${attempts}: Executing reply (target: ${targets.target_replies_this_hour}, posted: ${executedReplies})`);
+        console.log(`[HOURLY_TICK] 💬 Attempt ${attempts}: Executing reply (target: ${maxRepliesThisTick}, posted: ${executedReplies})`);
         const result = await attemptScheduledReply();
 
         // 🔒 CONSENT WALL ROUTING: consumedSlot=false means don't count this as a reply attempt
@@ -83,7 +163,7 @@ export async function executeHourlyTick(): Promise<void> {
         
         if (result.posted) {
           executedReplies++;
-          console.log(`[HOURLY_TICK] ✅ Reply ${executedReplies}/${targets.target_replies_this_hour} posted successfully`);
+          console.log(`[HOURLY_TICK] ✅ Reply ${executedReplies}/${maxRepliesThisTick} posted successfully`);
         } else {
           const reason = result.reason || 'unknown';
           skipReasons[reason] = (skipReasons[reason] || 0) + 1;
@@ -91,7 +171,7 @@ export async function executeHourlyTick(): Promise<void> {
           
           // Check if we should stop (no more candidates likely)
           if (reason.includes('no_candidates') || reason.includes('queue_empty')) {
-            console.log(`[HOURLY_TICK] 🛑 No more candidates available, stopping retry loop`);
+            console.log(`[HOURLY_TICK] 🛑 No candidates: ${reason} — stopping retry loop`);
             break;
           }
         }
@@ -106,9 +186,13 @@ export async function executeHourlyTick(): Promise<void> {
       }
     }
     
-    if (executedReplies < targets.target_replies_this_hour) {
-      console.log(`[HOURLY_TICK] ⚠️ Only posted ${executedReplies}/${targets.target_replies_this_hour} replies (attempts: ${attempts}, skips: ${JSON.stringify(skipReasons)})`);
+    if (executedReplies < maxRepliesThisTick) {
+      const why = Object.keys(skipReasons).length > 0 ? `skips: ${JSON.stringify(skipReasons)}` : 'no candidates passed preflight';
+      console.log(`[HOURLY_TICK] ⚠️ Posted ${executedReplies}/${maxRepliesThisTick} replies (attempts: ${attempts}, ${why})`);
     }
+    }
+  } else {
+    console.log(`[HOURLY_TICK] ⏭️ Reply loop: skipped (target_replies=0)`);
   }
 
   // 3. Execute posts with jitter spacing (execute immediately with delays)
