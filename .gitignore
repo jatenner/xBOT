@@ -46,6 +46,9 @@ playwright/.cache/
 debug*.png
 *.screenshot.png
 
+# X safety crash-loop tracking (runtime state)
+.xbot-restarts.json
+
 # Temporary files
 tmp/
 temp/

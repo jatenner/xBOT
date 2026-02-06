@@ -77,15 +77,14 @@ async function applyMigration(
   const sql = fs.readFileSync(filePath, 'utf-8');
   const checksum = computeChecksum(filePath);
   
-  // If migration contains ANY dollar-quoting (DO $$, CREATE FUNCTION $$, etc), execute as single statement
-  // This prevents semicolon-splitting from breaking dollar-quoted blocks
+  // If migration contains ANY dollar-quoting (DO $$, CREATE FUNCTION $$, $func$, etc), execute as single statement
   const hasDoBlocks = sql.includes('DO $$') || /DO\s+\$[^$]+\$/i.test(sql) || sql.includes('DO $');
-  const hasCreateFunction = /CREATE\s+(OR\s+REPLACE\s+)?FUNCTION.*?\$\$/is.test(sql);
-  const hasDollarQuoting = sql.includes('$$') || /\$[^$]+\$/i.test(sql);
-  
-  // Debug log for DO block detection (no secrets)
-  if (hasDoBlocks || hasCreateFunction || hasDollarQuoting) {
-    console.log(`   ℹ️  Migration contains dollar-quoted blocks - executing as single statement`);
+  const hasCreateFunction = /CREATE\s+(OR\s+REPLACE\s+)?FUNCTION.*?\$\$/is.test(sql) || /CREATE\s+FUNCTION.*\$func\$/is.test(sql);
+  const hasDollarQuoting = sql.includes('$$') || /\$[^$]+\$/i.test(sql) || sql.includes('$func$');
+  const hasDollarQuote = hasDoBlocks || hasCreateFunction || hasDollarQuoting;
+
+  if (hasDollarQuote) {
+    console.log(`[MIGRATIONS] executing as single statement due to dollar-quote/DO detection: ${filename}`);
   }
   
   // Check if migration already has BEGIN/COMMIT (but not inside DO $$ blocks)
@@ -98,21 +97,20 @@ async function applyMigration(
   }
   
   // If DO blocks, CREATE FUNCTION, or any dollar-quoting exists, execute as single statement
-  if (hasDoBlocks || hasCreateFunction || hasDollarQuoting) {
+  if (hasDollarQuote) {
     try {
       await client.query(sql);
     } catch (error: any) {
-      // Log the REAL first error with full context
-      console.error(`❌ Migration failed: ${error.message}`);
-      console.error(`   File: ${filename}`);
-      console.error(`   Error code: ${error.code || 'N/A'}`);
-      console.error(`   SQLSTATE: ${error.code || 'N/A'}`);
-      console.error(`   Detail: ${error.detail || 'N/A'}`);
-      console.error(`   Hint: ${error.hint || 'N/A'}`);
-      console.error(`   Position: ${error.position || 'N/A'}`);
-      // Show first ~200 chars of SQL for context
-      const sqlPreview = sql.substring(0, 200).replace(/\n/g, ' ');
-      console.error(`   SQL preview: ${sqlPreview}...`);
+      // First error visibility: filename, statement index (N/A for single-stmt), 200-char snippet, pg fields
+      const sqlSnippet = sql.substring(0, 200).replace(/\n/g, ' ');
+      console.error(`[MIGRATIONS] Migration failed`);
+      console.error(`[MIGRATIONS] filename: ${filename}`);
+      console.error(`[MIGRATIONS] statement_index: N/A (single statement)`);
+      console.error(`[MIGRATIONS] sql_snippet: ${sqlSnippet}`);
+      console.error(`[MIGRATIONS] pg_code: ${error.code || 'N/A'}`);
+      console.error(`[MIGRATIONS] pg_message: ${error.message || 'N/A'}`);
+      console.error(`[MIGRATIONS] pg_detail: ${error.detail || 'N/A'}`);
+      console.error(`[MIGRATIONS] pg_hint: ${error.hint || 'N/A'}`);
       const hasIfExists = sql.toUpperCase().includes('IF EXISTS') || sql.toUpperCase().includes('IF NOT EXISTS');
       if (hasIfExists && error.message.includes('does not exist')) {
         console.log(`   ℹ️  Skipped (object does not exist)`);
@@ -361,9 +359,14 @@ async function main() {
     }
     
     if (!lockAcquired) {
+      const failFast = process.env.RUN_MIGRATIONS_FAIL_FAST === 'true';
       console.error(`❌ Could not acquire advisory lock after ${maxRetries} attempts (120s timeout)`);
       console.error('   Another migration may be running, or previous migration did not release lock');
-      process.exit(1);
+      if (failFast) {
+        process.exit(1);
+      }
+      console.warn('[MIGRATIONS] Lock unavailable but RUN_MIGRATIONS_FAIL_FAST=false — exiting 0 (skip migrations)');
+      return;
     }
     
     try {
@@ -421,17 +424,17 @@ async function main() {
       
     } finally {
       // Release advisory lock (always, even on error)
-      try {
-        const unlockResult = await client.query(`SELECT pg_advisory_unlock($1) as released`, [ADVISORY_LOCK_ID]);
-        if (unlockResult.rows[0].released) {
-          console.log('🔓 Advisory lock released');
-        } else {
-          console.warn('⚠️  Advisory lock was not held (may have been released already)');
+        try {
+          const unlockResult = await client.query(`SELECT pg_advisory_unlock($1) as released`, [ADVISORY_LOCK_ID]);
+          if (unlockResult.rows[0].released) {
+            console.log('🔓 Advisory lock released');
+          } else {
+            console.warn('⚠️  Advisory lock was not held (may have been released already)');
+          }
+        } catch (unlockError: any) {
+          console.error(`⚠️  Failed to release advisory lock: ${unlockError.message}`);
+          // Best-effort: if transaction aborted, unlock may fail; don't throw
         }
-      } catch (unlockError: any) {
-        console.error(`⚠️  Failed to release advisory lock: ${unlockError.message}`);
-        // Don't throw - lock may have been released or connection may be closed
-      }
     }
     
   } catch (error: any) {

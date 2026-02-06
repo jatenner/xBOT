@@ -7,6 +7,7 @@
  */
 
 import { log } from '../lib/logger';
+import { checkActionGate, recordAction } from '../safety/actionGate';
 import { Page, BrowserContext, Locator } from 'playwright';
 import { existsSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
@@ -96,6 +97,13 @@ function verifyPostingGuard(
   // 🛑 MASTER KILLSWITCHES - ENFORCED AT FINAL CHOKEPOINT
   // ═══════════════════════════════════════════════════════════════════════════
   
+  // X_ACTIONS_ENABLED / ActionGate (warmup, cooldown, pacing)
+  const gateResult = checkActionGate(operation);
+  if (!gateResult.allowed) {
+    console.log(`[X_ACTIONS] disabled — skipping ${operation} (${gateResult.reason || 'ActionGate'})`);
+    return { valid: false, error: gateResult.reason || 'X actions disabled' };
+  }
+
   // REPLIES_ENABLED=false blocks ALL reply posting at this final chokepoint
   if (operation === 'postReply' && process.env.REPLIES_ENABLED === 'false') {
     console.warn(`[KILLSWITCH] 🛑 REPLIES_ENABLED=false - Blocking ${operation}`);
@@ -343,6 +351,7 @@ export class UltimateTwitterPoster {
             // Don't throw - tweet is posted, cleanup is best-effort
           }
           
+          recordAction();
           return { success: true, tweetId: canonical.tweetId, tweetUrl: canonical.tweetUrl };
           
         } catch (error) {
@@ -1378,6 +1387,7 @@ export class UltimateTwitterPoster {
       console.warn(`[ULTIMATE_POSTER] ⚠️ Post-confirmation error (non-critical): ${confirmationError.message}`);
     }
 
+    recordAction();
     return { success: true, tweetId: validatedTweetId, tweetUrl };
   }
 
@@ -2099,6 +2109,7 @@ export class UltimateTwitterPoster {
         if (match) {
           const tweetId = match[1];
           console.log(`ULTIMATE_POSTER: ✅ Real verification successful - tweet ID: ${tweetId}`);
+          recordAction();
           return { success: true, tweetId };
         }
       }
@@ -2663,6 +2674,7 @@ export class UltimateTwitterPoster {
 
         await this.dispose();
 
+        recordAction();
         return {
           success: true,
           tweetId,

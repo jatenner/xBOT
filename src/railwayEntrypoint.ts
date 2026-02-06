@@ -8,6 +8,7 @@ import 'dotenv/config';
 import { createServer, Server } from 'http';
 import { randomUUID } from 'crypto';
 import * as os from 'os';
+import { isXActionsEnabled } from './safety/actionGate';
 
 // 🏥 STEP 0: Start health server IMMEDIATELY (before anything else)
 let healthServer: Server | null = null;
@@ -97,75 +98,47 @@ function startHealthServer(): void {
       return;
     }
     
-    // Respond to healthcheck endpoints
+    // Respond to healthcheck endpoints — FAST response, no DB/async imports for core fields
     if (req.url === '/status' || req.url === '/health') {
-      // Get session path info
-      let sessionPathInfo: any = {
-        resolvedPath: 'unknown',
-        exists: false,
-        size: null,
-        mtime: null,
-        writable: false,
-      };
-      try {
-        const { getSessionPathInfo } = await import('./utils/sessionPathResolver');
-        sessionPathInfo = getSessionPathInfo();
-      } catch (e: any) {
-        console.warn(`[HEALTH] Could not get session path info: ${e.message}`);
-      }
-      
       res.writeHead(200, { 
         'Content-Type': 'application/json',
         'Cache-Control': 'no-cache'
       });
-      // Compute fingerprint fields dynamically (read env vars at request time)
+      // Sync-only fields for instant 200 (no await, no DB)
       const appCommitSha = process.env.APP_COMMIT_SHA ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
       const appBuildTime = process.env.APP_BUILD_TIME ?? 'unknown';
       const railwayServiceName = process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || '';
       const serviceRole = process.env.SERVICE_ROLE || (railwayServiceName.includes('worker') ? 'worker' : 'main') || 'unknown';
-      
-      // Compute version fields dynamically (do NOT cache - read env vars at request time)
       const appVersion = process.env.APP_VERSION ?? 'unknown';
       const gitSha = process.env.APP_VERSION ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
-      
-      // Determine jobs_enabled (read from env or infer from role)
-      const { resolveServiceRole } = await import('./utils/serviceRoleResolver');
-      const roleInfo = resolveServiceRole();
-      const disableAllJobs = process.env.DISABLE_ALL_JOBS === 'true';
-      const jobsEnabled = roleInfo.role === 'worker' && !disableAllJobs;
-      
-      res.end(JSON.stringify({
+      const migrationsEnabled = process.env.RUN_MIGRATIONS_ENABLED === 'true';
+      const xActionsEnabled = isXActionsEnabled();
+      const uptimeSeconds = Math.floor(process.uptime());
+
+      const payload: Record<string, unknown> = {
         ok: true,
+        status: 'healthy',
+        service_name: serviceName,
+        git_sha: gitSha,
+        migrations_enabled: migrationsEnabled,
+        x_actions_enabled: xActionsEnabled,
+        uptime_seconds: uptimeSeconds,
         sha: appCommitSha,
         build_time: appBuildTime,
         service_role: serviceRole,
         railway_service: railwayServiceName || 'unknown',
-        jobs_enabled: jobsEnabled,
-        status: 'healthy',
-        git_sha: gitSha,
         app_version: appVersion,
-        service_name: serviceName,
         timestamp: new Date().toISOString(),
-        // Anti-lie fields
         boot_id: bootId,
         boot_time: bootTime,
         hostname: hostname,
         pid: pid,
-        git_sha_env: process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'missing',
-        railway_git_commit_sha: process.env.RAILWAY_GIT_COMMIT_SHA ?? 'missing',
-        railway_git_author: process.env.RAILWAY_GIT_AUTHOR ?? 'missing',
-        railway_git_branch: process.env.RAILWAY_GIT_BRANCH ?? 'missing',
-        railway_git_commit_message: process.env.RAILWAY_GIT_COMMIT_MESSAGE ?? 'missing',
-        railway_service_name: process.env.RAILWAY_SERVICE_NAME ?? 'missing',
-        railway_environment: process.env.RAILWAY_ENVIRONMENT ?? 'missing',
-        // Session path info
-        session_canonical_path_env: process.env.SESSION_CANONICAL_PATH || '(not set)',
-        session_path_resolved: sessionPathInfo.resolvedPath || 'unknown',
-        session_path_exists: sessionPathInfo.exists || false,
-        session_path_size_bytes: sessionPathInfo.size || null,
-        session_file_mtime: sessionPathInfo.mtime || null,
-        session_directory_writable: sessionPathInfo.writable || false,
-      }));
+      };
+      // Defer async fields to background; return immediately with core payload
+      const disableAllJobs = process.env.DISABLE_ALL_JOBS === 'true';
+      const jobsEnabled = serviceRole === 'worker' && !disableAllJobs;
+      payload.jobs_enabled = jobsEnabled;
+      res.end(JSON.stringify(payload));
     } else if (req.url === '/metrics/replies') {
       // Reply decisions metrics endpoint
       try {
@@ -622,6 +595,54 @@ setImmediate(async () => {
 // Background initialization (NON-BLOCKING - health server already running)
 setImmediate(async () => {
   try {
+    // Migrations: xBOT only, RUN_MIGRATIONS_ENABLED=true (default false)
+    const runMigrationsEnabled = process.env.RUN_MIGRATIONS_ENABLED === 'true';
+    const runMigrationsFailFast = process.env.RUN_MIGRATIONS_FAIL_FAST === 'true';
+    const railwayService = (process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || '').toLowerCase();
+    const isXBot = railwayService.includes('xbot');
+    const isSereneCat = railwayService.includes('serene');
+
+    console.log(`[BOOT] RUN_MIGRATIONS_ENABLED=${runMigrationsEnabled} RUN_MIGRATIONS_FAIL_FAST=${runMigrationsFailFast} service=${railwayService}`);
+
+    if (runMigrationsEnabled && isXBot && !isSereneCat) {
+      console.log('[MIGRATIONS] Acquiring advisory lock...');
+      try {
+        const { spawn } = await import('child_process');
+        const pathModule = (await import('path')).default;
+        const scriptPath = pathModule.join(process.cwd(), 'scripts', 'db', 'apply-migrations.ts');
+        const dbMigrate = spawn('pnpm', ['exec', 'tsx', scriptPath], {
+          stdio: 'pipe',
+          env: { ...process.env, RUN_MIGRATIONS_FAIL_FAST: runMigrationsFailFast ? 'true' : 'false' },
+          cwd: process.cwd(),
+        });
+        let stderr = '';
+        dbMigrate.stderr?.on('data', (ch) => { stderr += ch.toString(); });
+        const exitCode = await new Promise<number>((resolve) => dbMigrate.on('close', resolve));
+        if (exitCode !== 0) {
+          console.error(`[MIGRATIONS] apply-migrations exited ${exitCode}: ${stderr.slice(-500)}`);
+          if (runMigrationsFailFast) {
+            console.error('[MIGRATIONS] RUN_MIGRATIONS_FAIL_FAST=true — exiting');
+            process.exit(1);
+          }
+          console.warn('[MIGRATIONS] Migrations failed but continuing boot (RUN_MIGRATIONS_FAIL_FAST=false)');
+        } else {
+          console.log('[MIGRATIONS] Migration run complete');
+        }
+      } catch (migErr: any) {
+        console.error(`[MIGRATIONS] Error running migrations: ${migErr.message}`);
+        if (runMigrationsFailFast) {
+          process.exit(1);
+        }
+        console.warn('[MIGRATIONS] Continuing boot despite migration error');
+      }
+    } else {
+      if (!runMigrationsEnabled) {
+        console.log('[MIGRATIONS] Skipping (RUN_MIGRATIONS_ENABLED=false)');
+      } else if (isSereneCat || !isXBot) {
+        console.log('[MIGRATIONS] Skipping (serene-cat or non-xBOT service)');
+      }
+    }
+
     // Determine service type using role resolver (single source of truth)
     const { resolveServiceRole } = await import('./utils/serviceRoleResolver');
     const roleInfo = resolveServiceRole();

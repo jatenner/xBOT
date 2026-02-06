@@ -35,10 +35,24 @@ async function main() {
   console.log('[BOOT] starting background init');
   setImmediate(async () => {
     try {
-      // Run database migrations
-      console.log('[BOOT] migrations start');
-      await runMigrationsOnStartup();
-      console.log('[BOOT] migrations complete');
+      // Migrations: RUN_MIGRATIONS_ENABLED (default false) — manual by default
+      const runMigrationsEnabled = process.env.RUN_MIGRATIONS_ENABLED === 'true';
+      const runMigrationsFailFast = process.env.RUN_MIGRATIONS_FAIL_FAST === 'true';
+      if (runMigrationsEnabled) {
+        console.log('[BOOT] migrations start (RUN_MIGRATIONS_ENABLED=true)');
+        try {
+          await runMigrationsOnStartup();
+          console.log('[BOOT] migrations complete');
+        } catch (migErr: any) {
+          console.error('[BOOT] migrations failed:', migErr.message);
+          if (runMigrationsFailFast) {
+            process.exit(1);
+          }
+          console.warn('[BOOT] migrations failed but continuing (RUN_MIGRATIONS_FAIL_FAST=false)');
+        }
+      } else {
+        console.log('[BOOT] skipping migrations (RUN_MIGRATIONS_ENABLED=false)');
+      }
       
       // Validate database schema
       console.log('[BOOT] schema validation start');
