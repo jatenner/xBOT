@@ -276,7 +276,7 @@ export class JobManager {
         }
       })();
 
-      console.log('[JOB_MANAGER] Scheduling hourly_tick job (cadence: every 60 minutes, initial delay: 0s)');
+      console.log('[HOURLY_TICK_SCHEDULE] Scheduled: cadence=60min, initial_delay=0s (postingEnabled=true)');
       this.scheduleStaggeredJob(
         'hourly_tick',
         async () => {
@@ -290,7 +290,7 @@ export class JobManager {
         60 * MINUTE, // Every hour
         0 // Start immediately
       );
-      console.log('[JOB_MANAGER] hourly_tick job scheduled successfully');
+      console.log('[HOURLY_TICK_SCHEDULE] hourly_tick scheduled successfully');
       
       // Keep legacy posting queue as fallback (disabled by default via env)
       // Can be re-enabled for testing: ENABLE_LEGACY_POSTING_QUEUE=true
@@ -312,8 +312,7 @@ export class JobManager {
         console.log('[JOB_MANAGER] Rate controller hourly tick enabled (legacy 5-min queue disabled)');
       }
     } else {
-      console.warn('[JOB_MANAGER] Posting disabled - hourly_tick will NOT be scheduled');
-      console.warn('[JOB_MANAGER] Reason: flags.postingEnabled=' + flags.postingEnabled + ' (mode=' + flags.mode + ', live=' + flags.live + ', DISABLE_POSTING=' + process.env.DISABLE_POSTING + ')');
+      console.log('[HOURLY_TICK_SCHEDULE] Skipped: posting disabled (flags.postingEnabled=' + flags.postingEnabled + ', mode=' + flags.mode + ', DISABLE_POSTING=' + (process.env.DISABLE_POSTING || 'unset') + ')');
     }
 
     // Plan job - every 2 hours, with restart protection

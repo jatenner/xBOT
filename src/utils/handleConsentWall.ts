@@ -1,13 +1,15 @@
 /**
- * 🔒 CONSENT WALL HANDLER
- * 
+ * 🔒 CONSENT WALL HANDLER (FAIL-CLOSED + COOLDOWN)
+ *
  * Deterministic, one-attempt consent wall dismissal.
- * Called immediately after every navigation to prevent blocking.
+ * If cooldown active: fail closed immediately, no clear attempts.
+ * If consent wall detected and not cleared: record wall, trigger 30–60min cooldown.
  */
 
 import { Page } from 'playwright';
 import { detectConsentWall, acceptConsentWall } from '../playwright/twitterSession';
 import { getSupabaseClient } from '../db/index';
+import { getConsentWallCooldown } from './consentWallCooldown';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -25,22 +27,37 @@ export interface ConsentWallHandleResult {
 }
 
 /**
- * Handle consent wall with one deterministic attempt
- * 
- * If consent wall detected and not cleared:
- * - Returns classified as INFRA_BLOCK_CONSENT_WALL
- * - Saves screenshot + HTML artifact
- * - Logs structured event
- * - Does NOT count as candidate skip
+ * Handle consent wall with fail-closed + cooldown
+ *
+ * - If cooldown active: return blocked immediately, no repeated clear attempts
+ * - One deterministic attempt only when cooldown inactive
+ * - On block: record wall (triggers 30–60min cooldown)
  */
 export async function handleConsentWall(page: Page, context?: { url?: string; operation?: string }): Promise<ConsentWallHandleResult> {
   const url = context?.url || page.url();
   const operation = context?.operation || 'unknown';
-  
+
   try {
+    // FAIL-CLOSED: If cooldown active, block immediately without attempting
+    const cooldown = getConsentWallCooldown();
+    if (cooldown.isCooldownActive()) {
+      const status = cooldown.getStatus();
+      console.warn('[CONSENT_WALL] Fail-closed: cooldown active (' + (status.remainingSeconds || 0) + 's remaining), skipping clear attempt');
+      return {
+        handled: true,
+        cleared: false,
+        detected: true,
+        dismissed: false,
+        blocked: true,
+        classified: 'INFRA_BLOCK_CONSENT_WALL',
+        attempts: 0,
+        variant: 'cooldown_active',
+      };
+    }
+
     // Detect consent wall
     const detection = await detectConsentWall(page);
-    
+
     if (!detection.detected || detection.wallType !== 'consent') {
       return {
         handled: false,
@@ -115,8 +132,9 @@ export async function handleConsentWall(page: Page, context?: { url?: string; op
         variant: result.matchedSelector || variant,
       };
     } else {
-      // Not cleared - save artifacts and classify as INFRA_BLOCK
-      console.log(`[CONSENT_WALL] ⚠️ Consent wall not cleared after 1 attempt - saving artifacts and classifying as INFRA_BLOCK`);
+      // Not cleared - record wall (triggers cooldown), save artifacts, fail closed
+      getConsentWallCooldown().recordWall();
+      console.log('[CONSENT_WALL] Consent wall not cleared after 1 attempt - cooldown triggered (30–60min), saving artifacts, fail-closed');
       
       let screenshotPath: string | undefined;
       let htmlSnippet: string | undefined;

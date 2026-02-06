@@ -1,17 +1,17 @@
 /**
- * 🎯 CONSENT WALL COOLDOWN
- * 
+ * 🎯 CONSENT WALL COOLDOWN (FAIL-CLOSED)
+ *
  * Prevents thrashing browser pool when consent walls persist.
- * If >2 consent walls in 10 min, pause feed fetching for 5 min.
+ * First consent wall blocks → trigger 30–60min cooldown. No repeated clear attempts.
  */
 
 class ConsentWallCooldown {
   private recentWalls: number[] = []; // Timestamps of recent consent walls
   private cooldownUntil: number | null = null; // Timestamp when cooldown expires
-  
-  private readonly WALL_THRESHOLD = 2; // Number of walls to trigger cooldown
+
+  private readonly WALL_THRESHOLD = 1; // First wall triggers cooldown (fail-closed)
   private readonly WINDOW_MS = 10 * 60 * 1000; // 10 minutes
-  private readonly COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+  private readonly COOLDOWN_MS = 45 * 60 * 1000; // 45 minutes (30–60min range)
   
   /**
    * Record a consent wall occurrence
