@@ -109,7 +109,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
   const runnerMode = process.env.RUNNER_MODE === 'true';
   if (!runnerMode) {
     const errorMsg = 'RUNNER_MODE not enabled - cannot generate content for PLAN_ONLY decision';
-    console.error(`[PLAN_ONLY_GENERATOR] ❌ ${errorMsg} decision_id=${decisionId}`);
+    console.error('[PLAN_ONLY_GENERATOR] ' + errorMsg + ' decision_id=' + decisionId);
     
     // Log to system_events
     try {
@@ -125,7 +125,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
         created_at: new Date().toISOString(),
       });
     } catch (logError: any) {
-      console.warn(`[PLAN_ONLY_GENERATOR] ⚠️ Failed to log error: ${logError.message}`);
+      console.warn('[PLAN_ONLY_GENERATOR] Failed to log error: ' + logError.message);
     }
     
     return { success: false, error: errorMsg };
@@ -135,7 +135,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
   const openaiApiKey = process.env.OPENAI_API_KEY;
   if (!openaiApiKey || !openaiApiKey.startsWith('sk-')) {
     const errorMsg = 'OPENAI_API_KEY missing or invalid - cannot generate content for PLAN_ONLY decision';
-    console.error(`[PLAN_ONLY_GENERATOR] ❌ ${errorMsg} decision_id=${decisionId}`);
+    console.error('[PLAN_ONLY_GENERATOR] ' + errorMsg + ' decision_id=' + decisionId);
     
     // Log to system_events with specific event type
     try {
@@ -153,7 +153,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
         created_at: new Date().toISOString(),
       });
     } catch (logError: any) {
-      console.warn(`[PLAN_ONLY_GENERATOR] ⚠️ Failed to log error: ${logError.message}`);
+      console.warn('[PLAN_ONLY_GENERATOR] Failed to log error: ' + logError.message);
     }
     
     return { success: false, error: errorMsg };
@@ -169,12 +169,12 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
   
   if (!isPlaceholder) {
     // Content already generated, return success
-    console.log(`[PLAN_ONLY_GENERATOR] ✅ Content already generated for decision_id=${decisionId} (${currentContent.length} chars)`);
+    console.log('[PLAN_ONLY_GENERATOR] Content already generated for decision_id=' + decisionId + ' (' + currentContent.length + ' chars)');
     return { success: true, content: currentContent };
   }
   
   // Generate content
-  console.log(`[PLAN_ONLY_GENERATOR] 🔄 Generating content for PLAN_ONLY decision_id=${decisionId}`);
+  console.log('[PLAN_ONLY_GENERATOR] Generating content for PLAN_ONLY decision_id=' + decisionId);
   
   try {
     const supabase = getSupabaseClient();
@@ -224,9 +224,9 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
     const anchorTokens = extractAnchorTokens(targetTweetContent);
     const requiredPhrases = extractGroundingPhrases(targetTweetContent); // Keep for backward compatibility
     
-    console.log(`[PLAN_ONLY_GENERATOR] 📝 Generating reply using strategy=${strategyId} version=${strategyVersion}`);
-    console.log(`[PLAN_ONLY_GENERATOR] 🔒 Anchor tokens (${anchorTokens.length}): ${anchorTokens.join(', ')}`);
-    console.log(`[PLAN_ONLY_GENERATOR] 🔒 Required grounding phrases (${requiredPhrases.length}): ${requiredPhrases.join(', ')}`);
+    console.log('[PLAN_ONLY_GENERATOR] Generating reply using strategy=' + strategyId + ' version=' + strategyVersion);
+    console.log('[PLAN_ONLY_GENERATOR] Anchor tokens (' + anchorTokens.length + '): ' + anchorTokens.join(', '));
+    console.log('[PLAN_ONLY_GENERATOR] Required grounding phrases (' + requiredPhrases.length + '): ' + requiredPhrases.join(', '));
     
     // Generate reply content with retry logic for grounding enforcement
     let generatedContent: string | null = null;
@@ -287,7 +287,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
       
       if (!candidateContent || candidateContent.trim().length === 0) {
         if (generationAttempt < maxAttempts) {
-          console.log(`[PLAN_ONLY_GENERATOR] ⚠️ Attempt ${generationAttempt}: Generated content is empty, retrying...`);
+          console.log('[PLAN_ONLY_GENERATOR] Attempt ' + generationAttempt + ': Generated content is empty, retrying...');
           continue;
         }
         throw new Error('Generated content is empty');
@@ -330,7 +330,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
               // Re-verify repaired content
               const repairCheck = verifyAnchorTokens(repairedContent, anchorTokens);
               if (repairCheck.passed) {
-                console.log(`[PLAN_ONLY_GENERATOR] ✅ Repair successful: Appended missing anchor "${missingAnchor}", grounding now verified`);
+                console.log('[PLAN_ONLY_GENERATOR] Repair successful: Appended missing anchor "' + missingAnchor + '", grounding now verified');
                 contentToCheck = repairedContent;
                 repairApplied = true;
                 repairSucceeded = true;
@@ -346,7 +346,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
               // Re-verify repaired content
               const repairCheck = verifyGroundingPhrases(repairedContent, requiredPhrases);
               if (repairCheck.passed) {
-                console.log(`[PLAN_ONLY_GENERATOR] ✅ Repair successful: Appended missing phrase "${missingPhrase}", grounding now verified`);
+                console.log('[PLAN_ONLY_GENERATOR] Repair successful: Appended missing phrase "' + missingPhrase + '", grounding now verified');
                 contentToCheck = repairedContent;
                 repairApplied = true;
                 repairSucceeded = true;
@@ -361,7 +361,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
               : `Matched phrases: ${groundingCheck.matchedPhrases?.join(', ') || 'none'}, Missing: ${groundingCheck.missingPhrases?.join(', ') || 'none'}`;
             
             if (generationAttempt < maxAttempts) {
-              console.log(`[PLAN_ONLY_GENERATOR] ⚠️ Attempt ${generationAttempt}: Missing grounding. ${matchedInfo}, retrying generation...`);
+              console.log('[PLAN_ONLY_GENERATOR] Attempt ' + generationAttempt + ': Missing grounding. ' + matchedInfo + ', retrying generation...');
               continue;
             } else {
               // Final attempt - log debug bundle and throw
@@ -402,7 +402,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
                   created_at: new Date().toISOString(),
                 });
               } catch (logError: any) {
-                console.warn(`[PLAN_ONLY_GENERATOR] ⚠️ Failed to log error: ${logError.message}`);
+                console.warn('[PLAN_ONLY_GENERATOR] Failed to log error: ' + logError.message);
               }
               
               throw new Error(errorMsg);
@@ -412,14 +412,13 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
           const matchedInfo = anchorTokens.length >= 2
             ? `Matched ${groundingCheck.matchedAnchors?.length || 0} anchors: ${groundingCheck.matchedAnchors?.join(', ') || 'none'}`
             : `Matched ${groundingCheck.matchedPhrases?.length || 0} phrases: ${groundingCheck.matchedPhrases?.join(', ') || 'none'}`;
-          console.log(`[PLAN_ONLY_GENERATOR] ✅ Grounding verified: ${matchedInfo}`);
+          console.log('[PLAN_ONLY_GENERATOR] Grounding verified: ' + matchedInfo);
         }
         
-        candidateContent = contentToCheck; // Use repaired content if repair was applied
-      }
+      candidateContent = contentToCheck; // Use repaired content if repair was applied
       
       generatedContent = candidateContent;
-      console.log(`[PLAN_ONLY_GENERATOR] ✅ Generated content (attempt ${generationAttempt}): ${generatedContent.length} chars in ${generationElapsed}ms`);
+      console.log('[PLAN_ONLY_GENERATOR] Generated content (attempt ' + generationAttempt + '): ' + generatedContent.length + ' chars in ' + generationElapsed + 'ms');
     }
     
     if (!generatedContent) {
@@ -438,13 +437,13 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
         requiredPhrases
       );
       
-      console.log(`[PLAN_ONLY_GENERATOR] ⚠️ Clamped content from ${originalLength} to ${generatedContent.length} chars (preserved ${requiredPhrases.length} grounding phrases)`);
+      console.log('[PLAN_ONLY_GENERATOR] Clamped content from ' + originalLength + ' to ' + generatedContent.length + ' chars (preserved ' + requiredPhrases.length + ' grounding phrases)');
       
       // Re-verify grounding after clamp (phrases might have been cut off)
       if (requiredPhrases.length > 0) {
         const postClampCheck = verifyGroundingPhrases(generatedContent, requiredPhrases);
         if (!postClampCheck.passed) {
-          console.warn(`[PLAN_ONLY_GENERATOR] ⚠️ Warning: Clamp may have removed required phrases. Matched: ${postClampCheck.matchedPhrases.join(', ') || 'none'}`);
+          console.warn('[PLAN_ONLY_GENERATOR] Warning: Clamp may have removed required phrases. Matched: ' + (postClampCheck.matchedPhrases.join(', ') || 'none'));
           // Don't fail here - clamp is best-effort preservation
         }
       }
@@ -485,7 +484,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
       throw new Error(`Failed to persist generated content: ${updateError.message}`);
     }
     
-    console.log(`[PLAN_ONLY_GENERATOR] ✅ Content persisted to database for decision_id=${decisionId}`);
+    console.log('[PLAN_ONLY_GENERATOR] Content persisted to database for decision_id=' + decisionId);
     
     // Update decision object in-place so subsequent checks use the new content
     decision.content = generatedContent;
@@ -494,7 +493,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
     
   } catch (error: any) {
     const errorMsg = `Generation failed: ${error.message}`;
-    console.error(`[PLAN_ONLY_GENERATOR] ❌ ${errorMsg} decision_id=${decisionId}`);
+    console.error('[PLAN_ONLY_GENERATOR] ' + errorMsg + ' decision_id=' + decisionId);
     
     // Log to system_events
     try {
@@ -511,7 +510,7 @@ export async function ensureReplyContentGeneratedForPlanOnlyDecision(
         created_at: new Date().toISOString(),
       });
     } catch (logError: any) {
-      console.warn(`[PLAN_ONLY_GENERATOR] ⚠️ Failed to log error: ${logError.message}`);
+      console.warn('[PLAN_ONLY_GENERATOR] Failed to log error: ' + logError.message);
     }
     
     return { success: false, error: errorMsg };
@@ -562,7 +561,7 @@ async function logGroundingDebugBundle(
     writeFileSync(debugFile, JSON.stringify(debugBundle, null, 2));
     console.log(`[GROUNDING_DEBUG_BUNDLE] 💾 Saved debug bundle to ${debugFile}`);
   } catch (fileError: any) {
-    console.warn(`[GROUNDING_DEBUG_BUNDLE] ⚠️ Failed to save debug bundle: ${fileError.message}`);
+    console.warn('[GROUNDING_DEBUG_BUNDLE] Failed to save debug bundle: ' + fileError.message);
   }
 }
 

@@ -114,19 +114,19 @@ export class JobManager {
     
     const executeJob = async (phase: 'initial' | 'recurring') => {
       if (isRunning) {
-        console.warn(`⏳ JOB_${name.toUpperCase()}: Previous run still executing, skipping ${phase} trigger`);
+        console.warn('[JOB_' + name.toUpperCase() + '] Previous run still executing, skipping ' + phase + ' trigger');
         await recordJobSkip(name, 'previous_run_in_progress');
         return;
       }
       isRunning = true;
       try {
         await logTimerFired(phase);
-        console.log(`🕒 JOB_${name.toUpperCase()}: Timer fired (${phase}), calling jobFn...`);
+        console.log('[JOB_' + name.toUpperCase() + '] Timer fired (' + phase + '), calling jobFn...');
         await jobFn();
-        console.log(`✅ JOB_${name.toUpperCase()}: Job function completed successfully`);
+        console.log('[JOB_' + name.toUpperCase() + '] Job function completed successfully');
       } catch (error: any) {
-        console.error(`❌ JOB_${name.toUpperCase()}: Job function failed:`, error?.message || String(error));
-        console.error(`❌ JOB_${name.toUpperCase()}: Stack:`, error?.stack);
+        console.error('[JOB_' + name.toUpperCase() + '] Job function failed:', error?.message || String(error));
+        console.error('[JOB_' + name.toUpperCase() + '] Stack:', error?.stack);
         
         // Log to DB for visibility
         try {
@@ -160,35 +160,35 @@ export class JobManager {
     logTimerScheduled().catch(() => {});
     
     // Schedule first run after initial delay
-    console.log(`🕒 JOB_MANAGER: Scheduling ${name} - initial delay: ${Math.round(initialDelayMs / 1000)}s, interval: ${Math.round(intervalMs / 60000)}min`);
+    console.log('[JOB_MANAGER] Scheduling ' + name + ' - initial delay: ' + Math.round(initialDelayMs / 1000) + 's, interval: ' + Math.round(intervalMs / 60000) + 'min');
     if (name === 'hourly_tick') {
-      console.log(`[SCHEDULE_STAGGERED_JOB] 📅 hourly_tick registered: initial_delay=${Math.round(initialDelayMs / 1000)}s, interval=${Math.round(intervalMs / 60000)}min`);
+      console.log('[SCHEDULE_STAGGERED_JOB] hourly_tick registered: initial_delay=' + Math.round(initialDelayMs / 1000) + 's, interval=' + Math.round(intervalMs / 60000) + 'min');
     }
     const initialTimer = setTimeout(async () => {
       try {
-        console.log(`🕒 JOB_MANAGER: ${name} initial timer fired - executing job...`);
+        console.log('[JOB_MANAGER] ' + name + ' initial timer fired - executing job...');
         await executeJob('initial'); // First execution
         
         // Then set up recurring interval
-        console.log(`🕒 JOB_MANAGER: ${name} initial run complete - setting up recurring timer...`);
+        console.log('[JOB_MANAGER] ' + name + ' initial run complete - setting up recurring timer...');
         const recurringTimer = setInterval(async () => {
           try {
             await executeJob('recurring');
           } catch (error) {
-            console.error(`❌ JOB_${name.toUpperCase()}: Recurring execution failed:`, error?.message || String(error));
+            console.error('[JOB_' + name.toUpperCase() + '] Recurring execution failed:', error?.message || String(error));
           }
         }, intervalMs);
         this.timers.set(name, recurringTimer);
-        console.log(`✅ JOB_MANAGER: ${name} recurring timer set (interval: ${Math.round(intervalMs / 60000)}min)`);
+        console.log('[JOB_MANAGER] ' + name + ' recurring timer set (interval: ' + Math.round(intervalMs / 60000) + 'min)');
       } catch (error) {
-        console.error(`❌ JOB_${name.toUpperCase()}: Initial execution failed:`, error?.message || String(error));
-        console.error(`❌ JOB_${name.toUpperCase()}: Stack:`, error?.stack);
+        console.error('[JOB_' + name.toUpperCase() + '] Initial execution failed:', error?.message || String(error));
+        console.error('[JOB_' + name.toUpperCase() + '] Stack:', error?.stack);
       }
     }, initialDelayMs);
     
     // Store initial timer (will be replaced by recurring timer after first run)
     this.timers.set(`${name}_initial`, initialTimer);
-    console.log(`✅ JOB_MANAGER: ${name} initial timer scheduled (fires in ${Math.round(initialDelayMs / 1000)}s)`);
+    console.log('[JOB_MANAGER] ' + name + ' initial timer scheduled (fires in ' + Math.round(initialDelayMs / 1000) + 's)');
   }
 
   /**
@@ -207,7 +207,7 @@ export class JobManager {
     // Default: DISABLED unless explicitly enabled
     if (!repliesEnabled) {
       console.warn('═══════════════════════════════════════════════════════');
-      console.warn('⚠️  JOB_MANAGER: Reply system is DISABLED');
+      console.warn('[JOB_MANAGER] Reply system is DISABLED');
       console.warn('   Reason: ENABLE_REPLIES not set to "true" (defaults to disabled)');
       console.warn('');
       console.warn('   To enable replies:');
@@ -222,7 +222,7 @@ export class JobManager {
       console.warn('   • reply_conversion_tracking (tracks follower attribution)');
       console.warn('═══════════════════════════════════════════════════════');
     } else {
-      console.log('✅ JOB_MANAGER: Reply system ENABLED (ENABLE_REPLIES=true)');
+      console.log('[JOB_MANAGER] Reply system ENABLED (ENABLE_REPLIES=true)');
     }
       
       // Check if discovered_accounts table is empty on startup
@@ -232,26 +232,25 @@ export class JobManager {
       const poolHealth = await getAccountPoolHealth();
       
       if (poolHealth.status === 'critical' && poolHealth.total_accounts === 0) {
-        console.log('[JOB_MANAGER] 🚨 discovered_accounts table is EMPTY - triggering immediate discovery...');
+        console.log('[JOB_MANAGER] discovered_accounts table is EMPTY - triggering immediate discovery...');
         const { runAccountDiscovery } = await import('./accountDiscoveryJob');
         
         // Run in background, don't block startup
         runAccountDiscovery()
           .then(() => {
-            console.log('[JOB_MANAGER] ✅ Initial account discovery completed');
+            console.log('[JOB_MANAGER] Initial account discovery completed');
             this.stats.accountDiscoveryRuns = (this.stats.accountDiscoveryRuns || 0) + 1;
             this.stats.lastAccountDiscoveryTime = new Date();
           })
           .catch((err) => {
-            console.error('[JOB_MANAGER] ❌ Initial account discovery failed:', err.message);
-            console.log('[JOB_MANAGER] 💡 Will retry in 25 minutes on scheduled run');
+            console.error('[JOB_MANAGER] Initial account discovery failed:', err.message);
+            console.log('[JOB_MANAGER] Will retry in 25 minutes on scheduled run');
           });
       } else {
-        console.log(`[JOB_MANAGER] ℹ️ Account pool status: ${poolHealth.status} (${poolHealth.total_accounts} accounts) - reply system ready`);
+        console.log('[JOB_MANAGER] Account pool status: ' + poolHealth.status + ' (' + poolHealth.total_accounts + ' accounts) - reply system ready');
       }
     } catch (error: any) {
-      console.error('[JOB_MANAGER] ⚠️ Failed to check account pool health:', error.message);
-      }
+      console.error('[JOB_MANAGER] Failed to check account pool health:', error.message);
     }
     
     // Define stagger offsets (in seconds) to spread jobs across time
@@ -260,7 +259,7 @@ export class JobManager {
     
     // 🎯 RATE CONTROLLER: Hourly tick replaces 5-min posting queue
     // Posting/replies now scheduled within hourly tick with jitter
-    console.log(`[JOB_MANAGER] 🔍 Checking postingEnabled flag: mode=${flags.mode}, live=${flags.live}, postingEnabled=${flags.postingEnabled}`);
+    console.log('[JOB_MANAGER] Checking postingEnabled flag: mode=' + flags.mode + ', live=' + flags.live + ', postingEnabled=' + flags.postingEnabled);
     if (flags.postingEnabled) {
       // 🔒 SCHEMA PREFLIGHT: Run on boot
       (async () => {
@@ -268,16 +267,16 @@ export class JobManager {
           const { runSchemaPreflight } = await import('../rateController/schemaPreflight');
           const preflight = await runSchemaPreflight();
           if (!preflight.passed) {
-            console.error(`[JOB_MANAGER] ❌ Schema preflight failed on boot - SAFE_MODE activated`);
-            console.error(`[JOB_MANAGER] Missing: ${preflight.missing.join(', ')}`);
-            console.error(`[JOB_MANAGER] 🛡️ Hourly tick will be disabled until schema is applied`);
+            console.error('[JOB_MANAGER] Schema preflight failed on boot - SAFE_MODE activated');
+            console.error('[JOB_MANAGER] Missing: ' + preflight.missing.join(', '));
+            console.error('[JOB_MANAGER] Hourly tick will be disabled until schema is applied');
           }
         } catch (e: any) {
-          console.error(`[JOB_MANAGER] ⚠️ Schema preflight check failed: ${e.message}`);
+          console.error('[JOB_MANAGER] Schema preflight check failed: ' + e.message);
         }
       })();
 
-      console.log('[JOB_MANAGER] 📅 Scheduling hourly_tick job (cadence: every 60 minutes, initial delay: 0s)');
+      console.log('[JOB_MANAGER] Scheduling hourly_tick job (cadence: every 60 minutes, initial delay: 0s)');
       this.scheduleStaggeredJob(
         'hourly_tick',
         async () => {
@@ -291,12 +290,12 @@ export class JobManager {
         60 * MINUTE, // Every hour
         0 // Start immediately
       );
-      console.log('[JOB_MANAGER] ✅ hourly_tick job scheduled successfully');
+      console.log('[JOB_MANAGER] hourly_tick job scheduled successfully');
       
       // Keep legacy posting queue as fallback (disabled by default via env)
       // Can be re-enabled for testing: ENABLE_LEGACY_POSTING_QUEUE=true
       if (process.env.ENABLE_LEGACY_POSTING_QUEUE === 'true') {
-        console.log('[JOB_MANAGER] ⚠️ Legacy 5-min posting queue enabled (testing mode)');
+        console.log('[JOB_MANAGER] Legacy 5-min posting queue enabled (testing mode)');
         this.scheduleStaggeredJob(
           'posting',
           async () => {
@@ -310,11 +309,11 @@ export class JobManager {
           0
         );
       } else {
-        console.log('[JOB_MANAGER] ✅ Rate controller hourly tick enabled (legacy 5-min queue disabled)');
+        console.log('[JOB_MANAGER] Rate controller hourly tick enabled (legacy 5-min queue disabled)');
       }
     } else {
-      console.warn('[JOB_MANAGER] ⚠️  Posting disabled - hourly_tick will NOT be scheduled');
-      console.warn(`[JOB_MANAGER]    Reason: flags.postingEnabled=${flags.postingEnabled} (mode=${flags.mode}, live=${flags.live}, DISABLE_POSTING=${process.env.DISABLE_POSTING})`);
+      console.warn('[JOB_MANAGER] Posting disabled - hourly_tick will NOT be scheduled');
+      console.warn('[JOB_MANAGER] Reason: flags.postingEnabled=' + flags.postingEnabled + ' (mode=' + flags.mode + ', live=' + flags.live + ', DISABLE_POSTING=' + process.env.DISABLE_POSTING + ')');
     }
 
     // Plan job - every 2 hours, with restart protection
@@ -360,18 +359,18 @@ export class JobManager {
           try {
             const { runVelocityTracking } = await import('./velocityTrackerJob');
             await runVelocityTracking();
-            console.log('[JOB_MANAGER] ✅ Follower tracking completed as part of analytics');
+            console.log('[JOB_MANAGER] Follower tracking completed as part of analytics');
           } catch (velocityError: any) {
-            console.warn('[JOB_MANAGER] ⚠️ Follower tracking failed:', velocityError.message);
+            console.warn('[JOB_MANAGER] Follower tracking failed:', velocityError.message);
           }
           
           // NEW: Performance Analytics (engagement tiers, generators, etc.)
           try {
             const { analyticsJob } = await import('./analyticsJob');
             await analyticsJob();
-            console.log('[JOB_MANAGER] ✅ Performance analytics completed');
+            console.log('[JOB_MANAGER] Performance analytics completed');
           } catch (perfError: any) {
-            console.warn('[JOB_MANAGER] ⚠️ Performance analytics failed:', perfError.message);
+            console.warn('[JOB_MANAGER] Performance analytics failed:', perfError.message);
           }
         });
       },
@@ -404,7 +403,7 @@ export class JobManager {
           // 🔒 HARDENING: Default to false if not set (ensure metrics collection is enabled by default)
           const disableMetricsJob = (process.env.DISABLE_METRICS_JOB || 'false').toLowerCase() === 'true';
           if (disableMetricsJob) {
-            console.log('[METRICS_SCRAPER] ⏭️ Skipped (DISABLE_METRICS_JOB=true)');
+            console.log('[METRICS_SCRAPER] Skipped (DISABLE_METRICS_JOB=true)');
             await (await import('./jobHeartbeat')).recordJobSkip('metrics_scraper', 'disabled_via_env');
             return;
           }
@@ -431,7 +430,7 @@ export class JobManager {
           const supabase = getSupabaseClient();
           const { runGhostReconciliation } = await import('./ghostReconciliationJob');
           const result = await runGhostReconciliation();
-          console.log(`[GHOST_RECON] ✅ Completed: checked=${result.checked} ghosts=${result.ghosts_found} inserted=${result.ghosts_inserted}`);
+          console.log('[GHOST_RECON] Completed: checked=' + result.checked + ' ghosts=' + result.ghosts_found + ' inserted=' + result.ghosts_inserted);
           
           // If no ghosts found for 2 hours, switch to hourly schedule
           const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
@@ -442,7 +441,7 @@ export class JobManager {
           
           if ((recentGhosts || 0) === 0) {
             // System stable - can reduce frequency (but keep 15min for now per mandate)
-            console.log('[GHOST_RECON] ✅ No ghosts in last 2h - system stable');
+            console.log('[GHOST_RECON] No ghosts in last 2h - system stable');
           }
         });
       },
@@ -484,7 +483,7 @@ export class JobManager {
     // ⏰ Reply System V2 - scheduled posting (DISABLED - now handled by hourly tick)
     // Replies are now scheduled within hourly tick with jitter spacing
     if (process.env.ENABLE_LEGACY_REPLY_SCHEDULER === 'true') {
-      console.log('[JOB_MANAGER] ⚠️ Legacy reply_v2_scheduler enabled (testing mode)');
+      console.log('[JOB_MANAGER] Legacy reply_v2_scheduler enabled (testing mode)');
       const REPLY_V2_TICK_SECONDS = parseInt(process.env.REPLY_V2_TICK_SECONDS || '900', 10); // Default: 15 min
       const REPLY_V2_TICK_MS = REPLY_V2_TICK_SECONDS * 1000;
       this.scheduleStaggeredJob(
@@ -494,7 +493,7 @@ export class JobManager {
             const { attemptScheduledReply } = await import('./replySystemV2/tieredScheduler');
             const result = await attemptScheduledReply();
             if (!result.posted) {
-              console.log(`[REPLY_V2_SCHEDULER] ⚠️ No reply posted: ${result.reason}`);
+              console.log('[REPLY_V2_SCHEDULER] No reply posted: ' + result.reason);
             }
           });
         },
@@ -502,7 +501,7 @@ export class JobManager {
         3 * MINUTE
       );
     } else {
-      console.log('[JOB_MANAGER] ✅ Reply scheduling handled by hourly tick (legacy reply_v2_scheduler disabled)');
+      console.log('[JOB_MANAGER] Reply scheduling handled by hourly tick (legacy reply_v2_scheduler disabled)');
     }
 
     // 📊 Reply System V2 - performance tracking every 30 minutes
@@ -777,7 +776,7 @@ export class JobManager {
       async () => {
         // 🚨 POSTING PRIORITY: Skip VI scraping if disabled via env flag
         if (process.env.DISABLE_VI_SCRAPE === 'true') {
-          console.log('[PEER_SCRAPER] ⏭️ Skipped (DISABLE_VI_SCRAPE=true)');
+          console.log('[PEER_SCRAPER] Skipped (DISABLE_VI_SCRAPE=true)');
           await (await import('./jobHeartbeat')).recordJobSkip('peer_scraper', 'disabled_via_env');
           return;
         }
@@ -826,7 +825,7 @@ export class JobManager {
       // Strategy: Broad discovery + AI health filtering + mega-viral thresholds
       // Frequency: Configurable via JOBS_HARVEST_INTERVAL_MIN (default: 15 min for production)
       const harvestIntervalMin = config.JOBS_HARVEST_INTERVAL_MIN;
-      console.log(`[JOB_MANAGER] 📋 Scheduling mega_viral_harvester (every ${harvestIntervalMin} min, offset 10min)`);
+      console.log('[JOB_MANAGER] Scheduling mega_viral_harvester (every ' + harvestIntervalMin + ' min, offset 10min)');
       this.scheduleStaggeredJob(
         'mega_viral_harvester',
         async () => {
@@ -835,7 +834,7 @@ export class JobManager {
           const browserHealth = await getBrowserHealth();
           
           if (browserHealth === 'degraded') {
-            console.warn('[JOB_MANAGER] ⚠️ HARVESTER: Browser degraded, running in degraded mode');
+            console.warn('[JOB_MANAGER] HARVESTER: Browser degraded, running in degraded mode');
             // Continue with degraded mode - reduced operations but still functional
             // Set environment variable to signal degraded mode to harvester
             process.env.HARVESTER_DEGRADED_MODE = 'true';
@@ -851,27 +850,27 @@ export class JobManager {
             return;
           }
 
-          console.log('[JOB_MANAGER] 🔥 HARVESTER: Job triggered, attempting to run...');
+          console.log('[JOB_MANAGER] HARVESTER: Job triggered, attempting to run...');
           try {
             await this.safeExecute('mega_viral_harvester', async () => {
-              console.log('[JOB_MANAGER] 🔥 HARVESTER: Importing module...');
+              console.log('[JOB_MANAGER] HARVESTER: Importing module...');
               const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');
-              console.log('[JOB_MANAGER] 🔥 HARVESTER: Module imported, executing...');
+              console.log('[JOB_MANAGER] HARVESTER: Module imported, executing...');
               await replyOpportunityHarvester();
-              console.log('[JOB_MANAGER] 🔥 HARVESTER: Execution complete');
+              console.log('[JOB_MANAGER] HARVESTER: Execution complete');
             });
           } catch (error: any) {
-            console.error('[JOB_MANAGER] 🔥 HARVESTER: FATAL ERROR:', error.message);
-            console.error('[JOB_MANAGER] 🔥 HARVESTER: Stack:', error.stack);
+            console.error('[JOB_MANAGER] HARVESTER: FATAL ERROR:', error.message);
+            console.error('[JOB_MANAGER] HARVESTER: Stack:', error.stack);
             // 🔧 PERMANENT FIX: Don't throw - allow retry on next cycle
             // Log error but don't crash the job scheduler
-            console.warn('[JOB_MANAGER] ⚠️ HARVESTER: Error logged, will retry on next cycle');
+            console.warn('[JOB_MANAGER] HARVESTER: Error logged, will retry on next cycle');
           }
         },
         harvestIntervalMin * MINUTE, // Configurable interval (default: 15 min)
         10 * MINUTE // Start after 10 minutes
       );
-      console.log('[JOB_MANAGER] ✅ mega_viral_harvester scheduled successfully');
+      console.log('[JOB_MANAGER] mega_viral_harvester scheduled successfully');
 
       // 📊 ENGAGEMENT RATE CALCULATOR - every 24 hours, offset 60 min
       // 🔥 NEW: Calculate real engagement rates for discovered accounts
@@ -998,9 +997,9 @@ export class JobManager {
       );
     } else {
       console.warn('═══════════════════════════════════════════════════════');
-      console.warn('⚠️  JOB_MANAGER: Reply jobs DISABLED');
-      console.warn(`   • ENABLE_REPLIES: ${envEnableReplies || 'NOT SET (defaults to true)'}`);
-      console.warn(`   • flags.replyEnabled: ${flags.replyEnabled}`);
+      console.warn('[JOB_MANAGER] Reply jobs DISABLED');
+      console.warn('   ENABLE_REPLIES: ' + (envEnableReplies || 'NOT SET (defaults to true)'));
+      console.warn('   flags.replyEnabled: ' + flags.replyEnabled);
       console.warn('');
       console.warn('   Reply system will NOT function without ENABLE_REPLIES=true');
       console.warn('   See startup warnings above for how to enable.');
@@ -1253,9 +1252,9 @@ export class JobManager {
         5 * MINUTE, // Every 5 minutes
         2 * MINUTE // Offset 2 min
       );
-      console.log('[JOB_MANAGER] ✅ Truth reconciliation job enabled (ENABLE_TRUTH_RECONCILE=true)');
+      console.log('[JOB_MANAGER] Truth reconciliation job enabled (ENABLE_TRUTH_RECONCILE=true)');
     } else {
-      console.log('[JOB_MANAGER] ⏭️ Truth reconciliation job disabled (set ENABLE_TRUTH_RECONCILE=true to enable)');
+      console.log('[JOB_MANAGER] Truth reconciliation job disabled (set ENABLE_TRUTH_RECONCILE=true to enable)');
     }
 
     // 🔒 TRUTH INTEGRITY VERIFICATION JOB - every 15 minutes (optional)
@@ -1272,9 +1271,9 @@ export class JobManager {
         15 * MINUTE, // Every 15 minutes
         10 * MINUTE  // Start after 10 minutes (offset)
       );
-      console.log('[JOB_MANAGER] ✅ Truth integrity verification enabled (ENABLE_TRUTH_INTEGRITY_CHECK=true)');
+      console.log('[JOB_MANAGER] Truth integrity verification enabled (ENABLE_TRUTH_INTEGRITY_CHECK=true)');
     } else {
-      console.log('[JOB_MANAGER] ⏭️ Truth integrity verification disabled (set ENABLE_TRUTH_INTEGRITY_CHECK=true to enable)');
+      console.log('[JOB_MANAGER] Truth integrity verification disabled (set ENABLE_TRUTH_INTEGRITY_CHECK=true to enable)');
     }
     
     // Watchdog - every 5 minutes to enforce SLAs
@@ -1287,7 +1286,7 @@ export class JobManager {
             const { prewarmBrowserJob } = await import('./prewarmBrowserJob');
             await prewarmBrowserJob();
           } catch (prewarmError: any) {
-            console.warn('[JOB_MANAGER] ⚠️ Prewarm failed:', prewarmError.message);
+            console.warn('[JOB_MANAGER] Prewarm failed:', prewarmError.message);
           }
           const { runJobWatchdog } = await import('./jobWatchdog');
           await runJobWatchdog(async (jobTarget) => {
@@ -1363,9 +1362,9 @@ export class JobManager {
       this.printHourlyStatus();
     }, 60 * MINUTE));
 
-    console.log('✅ JOB_MANAGER: All jobs scheduled with staggered timing');
-    console.log('   📊 Jobs spread across 60 minutes to prevent resource collisions');
-    console.log('   🔥 Posting runs every 5 min with NO delay (highest priority)');
+    console.log('[JOB_MANAGER] All jobs scheduled with staggered timing');
+    console.log('[JOB_MANAGER] Jobs spread across 60 minutes to prevent resource collisions');
+    console.log('[JOB_MANAGER] Posting runs every 5 min with NO delay (highest priority)');
     console.log('   ⏰ Other jobs staggered: 2m, 7m, 12m, 15m, 22m, 32m, 35m, 42m, 45m, 52m...');
   }
 
@@ -1384,14 +1383,14 @@ export class JobManager {
     ].filter(Boolean);
     const runtimeSha = shaSources[0] || 'unknown';
     const shaDisplay = runtimeSha.length >= 8 ? runtimeSha.substring(0, 8) : runtimeSha;
-    console.log(`[JOB_MANAGER_BOOT] 🚀 Starting job manager (SHA: ${shaDisplay})`);
+    console.log('[JOB_MANAGER_BOOT] Starting job manager (SHA: ' + shaDisplay + ')');
     
     console.log('🕒 JOB_MANAGER: startJobs() called');
-    console.log(`🕒 JOB_MANAGER: process.env.JOBS_AUTOSTART = "${process.env.JOBS_AUTOSTART}"`);
-    console.log(`🕒 JOB_MANAGER: process.env.JOBS_AUTOSTART === 'true' = ${process.env.JOBS_AUTOSTART === 'true'}`);
+    console.log('[JOB_MANAGER] process.env.JOBS_AUTOSTART = "' + (process.env.JOBS_AUTOSTART || '') + '"');
+    console.log('[JOB_MANAGER] process.env.JOBS_AUTOSTART === \'true\' = ' + (process.env.JOBS_AUTOSTART === 'true'));
     
     if (this.isRunning) {
-      console.log('⚠️ JOB_MANAGER: Jobs already running');
+      console.log('[JOB_MANAGER] Jobs already running');
       return;
     }
 
@@ -1402,8 +1401,8 @@ export class JobManager {
     const config = getConfig();
     const modeFlags = getModeFlags(config);
     
-    console.log(`🕒 JOB_MANAGER: config.JOBS_AUTOSTART = ${config.JOBS_AUTOSTART}`);
-    console.log(`🕒 JOB_MANAGER: modeFlags.enableJobScheduling = ${modeFlags.enableJobScheduling}`);
+    console.log('[JOB_MANAGER] config.JOBS_AUTOSTART = ' + config.JOBS_AUTOSTART);
+    console.log('[JOB_MANAGER] modeFlags.enableJobScheduling = ' + modeFlags.enableJobScheduling);
 
     if (!modeFlags.enableJobScheduling) {
       console.log('🕒 JOB_MANAGER: Job scheduling disabled (JOBS_AUTOSTART=false)');
@@ -1427,20 +1426,20 @@ export class JobManager {
     const USE_STAGGERED = process.env.USE_STAGGERED_SCHEDULING !== 'false'; // Default ON
     
     console.log('🕒 JOB_MANAGER: Starting job timers...');
-    console.log(`   • Mode: ${flags.mode} (live=${flags.live})`);
-    console.log(`   • Scheduling: ${USE_STAGGERED ? 'STAGGERED (optimized)' : 'LEGACY (simultaneous)'}`);
-    console.log(`   • Plan: ${flags.plannerEnabled ? 'ENABLED' : 'DISABLED'}`);
-    console.log(`   • Reply: ${flags.replyEnabled ? 'ENABLED' : 'DISABLED'}`);
-    console.log(`   • Posting: ${flags.postingEnabled ? 'ENABLED' : 'DISABLED'}`);
-    console.log(`   • Learn: ${flags.learnEnabled ? 'ENABLED' : 'DISABLED'}`);
-    console.log(`   • Attribution: ENABLED (every 2h)`);
+    console.log('   Mode: ' + flags.mode + ' (live=' + flags.live + ')');
+    console.log('   Scheduling: ' + (USE_STAGGERED ? 'STAGGERED (optimized)' : 'LEGACY (simultaneous)'));
+    console.log('   Plan: ' + (flags.plannerEnabled ? 'ENABLED' : 'DISABLED'));
+    console.log('   Reply: ' + (flags.replyEnabled ? 'ENABLED' : 'DISABLED'));
+    console.log('   Posting: ' + (flags.postingEnabled ? 'ENABLED' : 'DISABLED'));
+    console.log('   Learn: ' + (flags.learnEnabled ? 'ENABLED' : 'DISABLED'));
+    console.log('   Attribution: ENABLED (every 2h)');
     
     // 🔒 METRICS JOB HARDENING: Log DISABLE_METRICS_JOB status
     const disableMetricsJob = process.env.DISABLE_METRICS_JOB === 'true';
     const metricsJobScheduled = !disableMetricsJob;
-    console.log(`   • Metrics Scraper: ${metricsJobScheduled ? 'ENABLED' : 'DISABLED'} (DISABLE_METRICS_JOB=${process.env.DISABLE_METRICS_JOB || 'false'})`);
+    console.log('   Metrics Scraper: ' + (metricsJobScheduled ? 'ENABLED' : 'DISABLED') + ' (DISABLE_METRICS_JOB=' + (process.env.DISABLE_METRICS_JOB || 'false') + ')');
     if (disableMetricsJob) {
-      console.warn(`   ⚠️  WARNING: Metrics scraper is DISABLED - metrics will not be collected!`);
+      console.warn('   WARNING: Metrics scraper is DISABLED - metrics will not be collected!');
     }
     
     if (USE_STAGGERED) {
@@ -1449,7 +1448,7 @@ export class JobManager {
     }
     
     // LEGACY SCHEDULING (fallback)
-    console.log('⚠️  JOB_MANAGER: Using legacy simultaneous scheduling');
+    console.log('[JOB_MANAGER] Using legacy simultaneous scheduling');
     
     const registered: Record<string, boolean> = {
       plan: false,
@@ -1523,7 +1522,7 @@ export class JobManager {
           // Use real-time learning loop for continuous improvement
           const { getRealTimeLearningLoop } = await import('../intelligence/realTimeLearningLoop');
           await getRealTimeLearningLoop().runLearningCycle();
-          console.log('✅ JOB_MANAGER: Real-time learning cycle completed');
+          console.log('[JOB_MANAGER] Real-time learning cycle completed');
           this.stats.learnRuns++;
           this.stats.lastLearnTime = new Date();
         });
@@ -1538,11 +1537,11 @@ export class JobManager {
         await this.safeExecute('viral_thread', async () => {
           const { runViralThreadJob } = await import('./viralThreadJob');
           await runViralThreadJob();
-          console.log('✅ JOB_MANAGER: Daily viral thread generated');
+          console.log('[JOB_MANAGER] Daily viral thread generated');
         });
       }, viralThreadIntervalMin * 60 * 1000));
       registered.viral_thread = true;
-      console.log(`   • Viral thread: ENABLED (every ${viralThreadIntervalMin / 60} hours)`);
+      console.log('   Viral thread: ENABLED (every ' + (viralThreadIntervalMin / 60) + ' hours)');
     }
     
     // ATTRIBUTION JOB - every 2 hours to update post performance
@@ -1559,7 +1558,7 @@ export class JobManager {
       await this.safeExecute('analytics', async () => {
         const { analyticsCollectorJobV2 } = await import('./analyticsCollectorJobV2');
         await analyticsCollectorJobV2();
-        console.log('✅ JOB_MANAGER: Analytics collection completed');
+        console.log('[JOB_MANAGER] Analytics collection completed');
       });
     }, 30 * 60 * 1000)); // 30 minutes
     registered.analytics = true;
@@ -1569,7 +1568,7 @@ export class JobManager {
       await this.safeExecute('velocity_tracker', async () => {
         const { runVelocityTracking } = await import('./velocityTrackerJob');
         await runVelocityTracking();
-        console.log('✅ JOB_MANAGER: Velocity tracking completed');
+        console.log('[JOB_MANAGER] Velocity tracking completed');
       });
     }, 30 * 60 * 1000)); // 30 minutes
     registered.velocity_tracker = true;
@@ -1588,7 +1587,7 @@ export class JobManager {
       await this.safeExecute('outcomes_real', async () => {
         const { runRealOutcomesJob } = await import('./outcomeWriter');
         await runRealOutcomesJob();
-        console.log('✅ JOB_MANAGER: Real outcomes collection completed');
+        console.log('[JOB_MANAGER] Real outcomes collection completed');
       });
     }, 2 * 60 * 60 * 1000)); // 2 hours
     registered.outcomes_real = true;
@@ -1599,7 +1598,7 @@ export class JobManager {
         const { DataCollectionEngine } = await import('../intelligence/dataCollectionEngine');
         const engine = DataCollectionEngine.getInstance();
         await engine.collectComprehensiveData();
-        console.log('✅ JOB_MANAGER: Data collection engine completed');
+        console.log('[JOB_MANAGER] Data collection engine completed');
       });
     }, 60 * 60 * 1000)); // 1 hour
     registered.data_collection = true;
@@ -1661,27 +1660,27 @@ export class JobManager {
     // Log registration status (EXPLICIT for observability)
     console.log('════════════════════════════════════════════════════════');
     console.log('JOB_MANAGER: Timer Registration Complete');
-    console.log(`  MODE: ${flags.mode}`);
-    console.log(`  Timers registered:`);
-    console.log(`    - plan:            ${registered.plan ? '✅' : '❌'} (every ${config.JOBS_PLAN_INTERVAL_MIN}min)`);
-    console.log(`    - reply:           ${registered.reply ? '✅' : '❌'} (every ${config.JOBS_REPLY_INTERVAL_MIN}min)`);
-    console.log(`    - posting:         ${registered.posting ? '✅' : '❌'} (every ${config.JOBS_POSTING_INTERVAL_MIN}min)`);
-    console.log(`    - learn:           ${registered.learn ? '✅' : '❌'} (every ${config.JOBS_LEARN_INTERVAL_MIN}min)`);
-    console.log(`    - attribution:     ${registered.attribution ? '✅' : '❌'} (every 2h)`);
-    console.log(`    - analytics:       ${registered.analytics ? '✅' : '❌'} (every 30min)`);
-    console.log(`    - outcomes_real:   ${registered.outcomes_real ? '✅' : '❌'} (every 2h)`);
-    console.log(`    - data_collection: ${registered.data_collection ? '✅' : '❌'} (every 1h)`);
-    console.log(`    - ai_orchestration:${registered.ai_orchestration ? '✅' : '❌'} (every 6h) ← AI-DRIVEN!`);
-    console.log(`    - news_scraping:   ${registered.news_scraping ? '✅' : '❌'} (every 1h) ← REAL NEWS!`);
-    console.log(`    - competitive:     ${registered.competitive_analysis ? '✅' : '❌'} (every 24h) ← LEARN FROM WINNERS!`);
-    console.log(`    - metrics_scraper: ${registered.metrics_scraper ? '✅' : '❌'} (every 10min) ← SMART BATCH FIX!`);
-    console.log(`    - enhanced_metrics:${registered.enhanced_metrics ? '✅' : '❌'} (every 30min) ← VELOCITY TRACKING!`);
+    console.log('  MODE: ' + flags.mode);
+    console.log('  Timers registered:');
+    console.log('    - plan:            ' + (registered.plan ? 'YES' : 'NO') + ' (every ' + config.JOBS_PLAN_INTERVAL_MIN + 'min)');
+    console.log('    - reply:           ' + (registered.reply ? 'YES' : 'NO') + ' (every ' + config.JOBS_REPLY_INTERVAL_MIN + 'min)');
+    console.log('    - posting:         ' + (registered.posting ? 'YES' : 'NO') + ' (every ' + config.JOBS_POSTING_INTERVAL_MIN + 'min)');
+    console.log('    - learn:           ' + (registered.learn ? 'YES' : 'NO') + ' (every ' + config.JOBS_LEARN_INTERVAL_MIN + 'min)');
+    console.log('    - attribution:     ' + (registered.attribution ? 'YES' : 'NO') + ' (every 2h)');
+    console.log('    - analytics:       ' + (registered.analytics ? 'YES' : 'NO') + ' (every 30min)');
+    console.log('    - outcomes_real:   ' + (registered.outcomes_real ? 'YES' : 'NO') + ' (every 2h)');
+    console.log('    - data_collection: ' + (registered.data_collection ? 'YES' : 'NO') + ' (every 1h)');
+    console.log('    - ai_orchestration:' + (registered.ai_orchestration ? 'YES' : 'NO') + ' (every 6h)');
+    console.log('    - news_scraping:   ' + (registered.news_scraping ? 'YES' : 'NO') + ' (every 1h)');
+    console.log('    - competitive:     ' + (registered.competitive_analysis ? 'YES' : 'NO') + ' (every 24h)');
+    console.log('    - metrics_scraper: ' + (registered.metrics_scraper ? 'YES' : 'NO') + ' (every 10min)');
+    console.log('    - enhanced_metrics:' + (registered.enhanced_metrics ? 'YES' : 'NO') + ' (every 30min)');
     console.log('════════════════════════════════════════════════════════');
 
     // FAIL-FAST: Posting job MUST be registered in live mode
     if (flags.live && !registered.posting) {
       console.error('════════════════════════════════════════════════════════');
-      console.error('❌ FATAL: Posting job not registered despite MODE=live');
+      console.error('[JOB_MANAGER] FATAL: Posting job not registered despite MODE=live');
       console.error('   This indicates a configuration error.');
       console.error('   Exiting to prevent silent failure...');
       console.error('════════════════════════════════════════════════════════');
@@ -1690,7 +1689,7 @@ export class JobManager {
 
     this.isRunning = true;
     const jobCount = Object.values(registered).filter(Boolean).length;
-    console.log(`✅ JOB_MANAGER: Started ${jobCount} job timers (mode=${flags.mode})`);
+    console.log('[JOB_MANAGER] Started ' + jobCount + ' job timers (mode=' + flags.mode + ')');
 
     // Print hourly status
     this.timers.set('status', setInterval(() => {
@@ -1700,7 +1699,7 @@ export class JobManager {
     // 🔥 NEW: Job watchdog - monitors job execution and auto-restarts stopped jobs
     this.timers.set('watchdog', setInterval(() => {
       this.watchdogCheck().catch(err => {
-        console.error('[JOB_MANAGER] ❌ Watchdog check failed:', err.message);
+        console.error('[JOB_MANAGER] Watchdog check failed:', err.message);
       });
     }, 10 * 60 * 1000)); // Every 10 minutes
   }
@@ -1726,7 +1725,7 @@ export class JobManager {
           .single();
         
         if (!heartbeat) {
-          console.warn(`[WATCHDOG] ⚠️ No heartbeat found for ${jobName} - job may not be running`);
+          console.warn('[WATCHDOG] No heartbeat found for ' + jobName + ' - job may not be running');
           continue;
         }
         
@@ -1739,14 +1738,14 @@ export class JobManager {
           const hoursSinceSuccess = (now.getTime() - lastSuccess.getTime()) / (1000 * 60 * 60);
           
           if (hoursSinceSuccess > 2 && consecutiveFailures >= 3) {
-            console.warn(`[WATCHDOG] 🚨 ${jobName} hasn't succeeded in ${hoursSinceSuccess.toFixed(1)}h (${consecutiveFailures} failures) - triggering now`);
+            console.warn('[WATCHDOG] ' + jobName + ' has not succeeded in ' + hoursSinceSuccess.toFixed(1) + 'h (' + consecutiveFailures + ' failures) - triggering now');
             
             // Trigger job immediately
             await this.runJobNow(jobName as 'plan' | 'posting');
           }
         } else if (lastFailure && consecutiveFailures >= 5) {
           // No success recorded, but many failures - trigger recovery
-          console.warn(`[WATCHDOG] 🚨 ${jobName} has ${consecutiveFailures} consecutive failures - triggering recovery`);
+          console.warn('[WATCHDOG] ' + jobName + ' has ' + consecutiveFailures + ' consecutive failures - triggering recovery');
           await this.runJobNow(jobName as 'plan' | 'posting');
         }
       }
@@ -1763,7 +1762,7 @@ export class JobManager {
           
           // If circuit breaker open for >10 minutes, log warning
           if (timeSinceFailure > 600) {
-            console.warn(`[WATCHDOG] ⚠️ Posting circuit breaker open for ${Math.round(timeSinceFailure/60)}min`);
+            console.warn('[WATCHDOG] Posting circuit breaker open for ' + Math.round(timeSinceFailure/60) + 'min');
             
             // Log to system_events
             await supabase.from('system_events').insert({
@@ -1783,7 +1782,7 @@ export class JobManager {
       }
       
     } catch (error: any) {
-      console.error(`[WATCHDOG] ❌ Watchdog check failed:`, error.message);
+      console.error('[WATCHDOG] Watchdog check failed: ', error.message);
     }
   }
 
@@ -1795,13 +1794,13 @@ export class JobManager {
     
     this.timers.forEach((timer, name) => {
       clearInterval(timer);
-      console.log(`   • Stopped ${name} timer`);
+      console.log('   Stopped ' + name + ' timer');
     });
     
     this.timers.clear();
     this.isRunning = false;
     
-    console.log('✅ JOB_MANAGER: All timers stopped');
+    console.log('[JOB_MANAGER] All timers stopped');
   }
 
   /**
@@ -1839,70 +1838,70 @@ export class JobManager {
       if (isCritical) {
         // For critical jobs, try cleanup if memory is tight but always proceed
         if (memory.status === 'critical' || memory.rssMB > 1600) {
-          console.warn(`🧠 [JOB_${jobName.toUpperCase()}] Memory pressure (${memory.rssMB}MB) - performing emergency cleanup for critical job`);
+          console.warn('[JOB_' + jobName.toUpperCase() + '] Memory pressure (' + memory.rssMB + 'MB) - performing emergency cleanup for critical job');
           const cleanupResult = await MemoryMonitor.emergencyCleanup();
           const afterCleanup = MemoryMonitor.checkMemory();
-          console.log(`🧠 [JOB_${jobName.toUpperCase()}] After cleanup: ${afterCleanup.rssMB}MB (freed ${cleanupResult.freedMB}MB)`);
+          console.log('[JOB_' + jobName.toUpperCase() + '] After cleanup: ' + afterCleanup.rssMB + 'MB (freed ' + cleanupResult.freedMB + 'MB)');
           
           // Only skip if memory is truly exhausted (>1800MB on 2GB Railway Pro limit)
           if (afterCleanup.rssMB > 1800) {
-            console.error(`🧠 [JOB_${jobName.toUpperCase()}] 🚨 Memory exhausted (${afterCleanup.rssMB}MB > 500MB) - CRITICAL JOB BLOCKED`);
+            console.error('[JOB_' + jobName.toUpperCase() + '] Memory exhausted (' + afterCleanup.rssMB + 'MB > 500MB) - CRITICAL JOB BLOCKED');
             await recordJobSkip(jobName, `memory_exhausted_${afterCleanup.rssMB}mb`);
             return;
           }
           
           // Proceed with critical job (cleanup should have helped)
-          console.warn(`🧠 [JOB_${jobName.toUpperCase()}] ⚠️ Memory tight but proceeding (critical job must run)`);
+          console.warn('[JOB_' + jobName.toUpperCase() + '] Memory tight but proceeding (critical job must run)');
         } else if (memory.status === 'warning') {
-          console.warn(`🧠 [JOB_${jobName.toUpperCase()}] Memory warning: ${MemoryMonitor.getStatusMessage()}`);
+          console.warn('[JOB_' + jobName.toUpperCase() + '] Memory warning: ' + MemoryMonitor.getStatusMessage());
         }
       } else {
         // Non-critical jobs: Check memory safety and skip if needed
         const memoryCheck = await isMemorySafeForOperation(100, 400);
         if (!memoryCheck.safe) {
-          console.warn(`🧠 [JOB_${jobName.toUpperCase()}] ⚠️ Low memory (${memoryCheck.currentMB}MB), skipping non-critical job`);
+          console.warn('[JOB_' + jobName.toUpperCase() + '] Low memory (' + memoryCheck.currentMB + 'MB), skipping non-critical job');
           await recordJobSkip(jobName, `low_memory_${memoryCheck.currentMB}MB`);
           return;
         }
         
         // Skip non-critical operations if memory is high (prevents spikes)
         if (memory.rssMB > 1600) {
-          console.warn(`🧠 [JOB_${jobName.toUpperCase()}] Memory high (${memory.rssMB}MB) - skipping non-critical job to prevent spikes`);
+          console.warn('[JOB_' + jobName.toUpperCase() + '] Memory high (' + memory.rssMB + 'MB) - skipping non-critical job to prevent spikes');
           await recordJobSkip(jobName, `memory_high_${memory.rssMB}mb`);
           return;
         }
         
         if (memory.status === 'critical') {
-          console.error(`🧠 [JOB_${jobName.toUpperCase()}] Memory critical (${memory.rssMB}MB) - performing aggressive emergency cleanup`);
+          console.error('[JOB_' + jobName.toUpperCase() + '] Memory critical (' + memory.rssMB + 'MB) - performing aggressive emergency cleanup');
           const cleanupResult = await MemoryMonitor.emergencyCleanup();
           const afterCleanup = MemoryMonitor.checkMemory();
           
           // For non-critical jobs, skip if still critical after cleanup
           if (afterCleanup.status === 'critical') {
-            console.error(`🧠 [JOB_${jobName.toUpperCase()}] Memory still critical after cleanup (${afterCleanup.rssMB}MB) - skipping non-critical job`);
+            console.error('[JOB_' + jobName.toUpperCase() + '] Memory still critical after cleanup (' + afterCleanup.rssMB + 'MB) - skipping non-critical job');
             await recordJobSkip(jobName, `memory_critical_${afterCleanup.rssMB}mb`);
             return;
           }
         } else if (memory.status === 'warning') {
-          console.warn(`🧠 [JOB_${jobName.toUpperCase()}] Memory warning: ${MemoryMonitor.getStatusMessage()}`);
+          console.warn('[JOB_' + jobName.toUpperCase() + '] Memory warning: ' + MemoryMonitor.getStatusMessage());
         }
       }
     } catch (memoryError) {
       // Don't block jobs if memory monitor fails
-      console.warn(`🧠 [JOB_${jobName.toUpperCase()}] Memory check failed:`, memoryError);
+      console.warn('[JOB_' + jobName.toUpperCase() + '] Memory check failed:', memoryError);
     }
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         await recordJobStart(jobName);
         if (attempt > 1) {
-          console.log(`🕒 JOB_${jobName.toUpperCase()}: Starting (attempt ${attempt}/${maxRetries})...`);
+          console.log('[JOB_' + jobName.toUpperCase() + ']: Starting (attempt ' + attempt + '/' + maxRetries + ')...');
         } else {
-          console.log(`🕒 JOB_${jobName.toUpperCase()}: Starting...`);
+          console.log('[JOB_' + jobName.toUpperCase() + ']: Starting...');
         }
         
         await jobFn();
-        console.log(`✅ JOB_${jobName.toUpperCase()}: Completed successfully`);
+        console.log('[JOB_' + jobName.toUpperCase() + ']: Completed successfully');
         await recordJobSuccess(jobName);
         
         // Reset consecutive failure counter on success
@@ -1914,28 +1913,28 @@ export class JobManager {
         
       } catch (error) {
         const errorMsg = error?.message || String(error);
-        console.error(`❌ JOB_${jobName.toUpperCase()}: Attempt ${attempt} failed - ${errorMsg}`);
+        console.error('[JOB_' + jobName.toUpperCase() + '] Attempt ' + attempt + ' failed - ' + errorMsg);
         await recordJobFailure(jobName, errorMsg);
         
         if (attempt < maxRetries) {
           const delay = Math.min(1000 * Math.pow(2, attempt), 30000); // Exponential backoff: 2s, 4s, 8s (max 30s)
-          console.log(`🔄 Retrying in ${delay/1000}s...`);
+          console.log('Retrying in ' + (delay/1000) + 's...');
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           this.stats.errors++;
-          console.error(`❌ JOB_${jobName.toUpperCase()}: All ${maxRetries} attempts failed`);
+          console.error('[JOB_' + jobName.toUpperCase() + '] All ' + maxRetries + ' attempts failed');
           
           if (isCritical) {
             // Track consecutive failures
             const consecutiveFailures = (this.criticalJobFailures.get(jobName) || 0) + 1;
             this.criticalJobFailures.set(jobName, consecutiveFailures);
             
-            console.error(`🚨 CRITICAL: ${jobName.toUpperCase()} job completely failed! System may not post content.`);
-            console.error(`   Consecutive failures: ${consecutiveFailures}`);
+            console.error('CRITICAL: ' + jobName.toUpperCase() + ' job completely failed! System may not post content.');
+            console.error('   Consecutive failures: ' + consecutiveFailures);
             
             // 🔥 PERMANENT FIX: Alert after 3 consecutive failures (reduced from 5)
             if (consecutiveFailures >= 3) {
-              console.error(`🚨 CRITICAL: ${jobName.toUpperCase()} has failed ${consecutiveFailures} times consecutively!`);
+              console.error('CRITICAL: ' + jobName.toUpperCase() + ' has failed ' + consecutiveFailures + ' times consecutively!');
               
               // Log to database
               try {
@@ -1959,11 +1958,11 @@ export class JobManager {
             
             // After 5 consecutive failures, log emergency event
             if (consecutiveFailures >= 5) {
-              console.error(`═══════════════════════════════════════════════════════`);
-              console.error(`🚨 EMERGENCY: ${jobName.toUpperCase()} failed ${consecutiveFailures} times consecutively!`);
-              console.error(`   This indicates a persistent system issue.`);
-              console.error(`   The watchdog will attempt recovery.`);
-              console.error(`═══════════════════════════════════════════════════════`);
+              console.error('═══════════════════════════════════════════════════════');
+              console.error('EMERGENCY: ' + jobName.toUpperCase() + ' failed ' + consecutiveFailures + ' times consecutively!');
+              console.error('   This indicates a persistent system issue.');
+              console.error('   The watchdog will attempt recovery.');
+              console.error('═══════════════════════════════════════════════════════');
               
               // Log to system_events for monitoring
               try {
@@ -1981,7 +1980,7 @@ export class JobManager {
                 });
               } catch (dbError) {
                 // Don't block on DB errors
-                console.error(`⚠️ Failed to log critical job failure to DB:`, dbError);
+                console.error('Failed to log critical job failure to DB:', dbError);
               }
             }
           }
@@ -2011,7 +2010,7 @@ export class JobManager {
         .single();
       
       if (genError || !lastGenerated) {
-        console.warn(`⚠️ HEALTH_CHECK: No content found in database - running plan job...`);
+        console.warn('HEALTH_CHECK: No content found in database - running plan job...');
         await this.runJobNow('plan');
         return;
       }
@@ -2020,8 +2019,8 @@ export class JobManager {
       const hoursSinceLastGen = (now.getTime() - lastGenTime.getTime()) / (1000 * 60 * 60);
       
       if (hoursSinceLastGen > 3) {
-        console.error(`🚨 HEALTH_CHECK: Last content generated ${hoursSinceLastGen.toFixed(1)}h ago (>3h threshold)!`);
-        console.error(`🔧 ATTEMPTING EMERGENCY PLAN RUN...`);
+        console.error('HEALTH_CHECK: Last content generated ' + hoursSinceLastGen.toFixed(1) + 'h ago (>3h threshold)!');
+        console.error('ATTEMPTING EMERGENCY PLAN RUN...');
         await this.runJobNow('plan');
         return; // Exit early after emergency run
       }
@@ -2031,10 +2030,10 @@ export class JobManager {
         const hoursSinceLastPlan = (now.getTime() - this.stats.lastPlanTime.getTime()) / (1000 * 60 * 60);
         
         if (hoursSinceLastPlan > 3) {
-          console.warn(`⚠️ HEALTH_CHECK: Plan job stats show ${hoursSinceLastPlan.toFixed(1)}h since last run (but content exists)`);
+          console.warn('HEALTH_CHECK: Plan job stats show ' + hoursSinceLastPlan.toFixed(1) + 'h since last run (but content exists)');
         }
       } else {
-        console.warn(`⚠️ HEALTH_CHECK: Plan job has never run (according to stats)`);
+        console.warn('HEALTH_CHECK: Plan job has never run (according to stats)');
       }
       
       // Check 3: Does queue have content ready?
@@ -2045,12 +2044,12 @@ export class JobManager {
         .limit(5);
       
       if (queueError) {
-        console.error(`❌ HEALTH_CHECK: Failed to query queue:`, queueError.message);
+        console.error('HEALTH_CHECK: Failed to query queue:', queueError.message);
         return;
       }
       
       if (!queuedContent || queuedContent.length === 0) {
-        console.warn(`⚠️ HEALTH_CHECK: No queued content found! Generating now...`);
+        console.warn('HEALTH_CHECK: No queued content found! Generating now...');
         await this.runJobNow('plan');
         return;
       }
@@ -2064,7 +2063,7 @@ export class JobManager {
         .lt('created_at', thirtyMinAgo.toISOString());
       
       if (stuckPosts && stuckPosts.length > 0) {
-        console.warn(`⚠️ HEALTH_CHECK: Found ${stuckPosts.length} stuck posts (status='posting' >30min) - will be recovered by posting queue`);
+        console.warn('HEALTH_CHECK: Found ' + stuckPosts.length + ' stuck posts (status=posting >30min) - will be recovered by posting queue');
       }
       
       // All checks passed
@@ -2073,7 +2072,7 @@ export class JobManager {
         return scheduled <= new Date(Date.now() + 5 * 60 * 1000); // Within 5min grace
       }).length;
       
-      console.log(`✅ HEALTH_CHECK: Content pipeline healthy (${queuedContent.length} queued, ${readyCount} ready, last gen ${hoursSinceLastGen.toFixed(1)}h ago)`);
+      console.log('HEALTH_CHECK: Content pipeline healthy (' + queuedContent.length + ' queued, ' + readyCount + ' ready, last gen ' + hoursSinceLastGen.toFixed(1) + 'h ago)');
       
       // Check 5: Profile optimization for follower conversion
       try {
@@ -2082,9 +2081,9 @@ export class JobManager {
         const profileAudit = await profileOptimizer.auditProfile();
         
         if (profileAudit.score < 70) {
-          console.warn(`[HEALTH_CHECK] ⚠️ Profile optimization needed: Score ${profileAudit.score}/100`);
-          console.warn(`[HEALTH_CHECK] Issues: ${profileAudit.issues.join(', ')}`);
-          console.warn(`[HEALTH_CHECK] Recommendations: ${profileAudit.recommendations.join('; ')}`);
+          console.warn('[HEALTH_CHECK] Profile optimization needed: Score ' + profileAudit.score + '/100');
+          console.warn('[HEALTH_CHECK] Issues: ' + profileAudit.issues.join(', '));
+          console.warn('[HEALTH_CHECK] Recommendations: ' + profileAudit.recommendations.join('; '));
           
           // Log to system_events for monitoring
           await supabase.from('system_events').insert({
@@ -2099,14 +2098,14 @@ export class JobManager {
             created_at: new Date().toISOString()
           });
         } else {
-          console.log(`[HEALTH_CHECK] ✅ Profile optimized for follower conversion (score: ${profileAudit.score}/100)`);
+          console.log('[HEALTH_CHECK] Profile optimized for follower conversion (score: ' + profileAudit.score + '/100)');
         }
       } catch (profileError: any) {
-        console.warn(`[HEALTH_CHECK] ⚠️ Profile audit failed: ${profileError.message}`);
+        console.warn('[HEALTH_CHECK] Profile audit failed: ' + profileError.message);
       }
       
     } catch (error: any) {
-      console.error(`❌ HEALTH_CHECK: Error during health check:`, error.message);
+      console.error('HEALTH_CHECK: Error during health check:', error.message);
     }
   }
 
@@ -2118,23 +2117,23 @@ export class JobManager {
     const flags = getModeFlags(config);
     
     console.log('💓 HOURLY_HEARTBEAT:');
-    console.log(`   • Mode: ${config.MODE}`);
-    console.log(`   • Jobs running: ${flags.enableJobScheduling}`);
-    console.log(`   • Plan runs: ${this.stats.planRuns}`);
-    console.log(`   • Reply runs: ${this.stats.replyRuns}`);
-    console.log(`   • Posting runs: ${this.stats.postingRuns}`);
-    console.log(`   • Outcome runs: ${this.stats.outcomeRuns}`);
-    console.log(`   • Learn runs: ${this.stats.learnRuns}`);
-    console.log(`   • Errors: ${this.stats.errors}`);
-    console.log(`   • Last plan: ${this.stats.lastPlanTime?.toISOString() || 'never'}`);
-    console.log(`   • Last learn: ${this.stats.lastLearnTime?.toISOString() || 'never'}`);
+    console.log('   Mode: ' + config.MODE);
+    console.log('   Jobs running: ' + flags.enableJobScheduling);
+    console.log('   Plan runs: ' + this.stats.planRuns);
+    console.log('   Reply runs: ' + this.stats.replyRuns);
+    console.log('   Posting runs: ' + this.stats.postingRuns);
+    console.log('   Outcome runs: ' + this.stats.outcomeRuns);
+    console.log('   Learn runs: ' + this.stats.learnRuns);
+    console.log('   Errors: ' + this.stats.errors);
+    console.log('   Last plan: ' + (this.stats.lastPlanTime?.toISOString() || 'never'));
+    console.log('   Last learn: ' + (this.stats.lastLearnTime?.toISOString() || 'never'));
   }
 
   /**
    * Force run a specific job (for testing/manual trigger)
    */
   public async runJobNow(jobName: 'plan' | 'reply' | 'reply_posting' | 'posting' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn' | 'trainPredictor' | 'account_discovery' | 'metrics_scraper' | 'reply_metrics_scraper' | 'mega_viral_harvester' | 'peer_scraper' | 'reply_v2_fetch'): Promise<void> {
-    console.log(`🔄 JOB_MANAGER: Force running ${jobName} job...`);
+    console.log('[JOB_MANAGER] Force running ' + jobName + ' job...');
     
     switch (jobName) {
       case 'plan':
@@ -2207,7 +2206,7 @@ export class JobManager {
           const { trainWeeklyModel, persistCoefficients } = await import('./predictorTrainer');
           const coefficients = await trainWeeklyModel();
           await persistCoefficients(coefficients);
-          console.log(`✅ Predictor ${coefficients.version} trained and persisted`);
+          console.log('[JOB_MANAGER] Predictor ' + coefficients.version + ' trained and persisted');
         });
         break;
       
@@ -2274,11 +2273,11 @@ export class JobManager {
       const lastGeneratedTime = new Date(String(lastGenerated.created_at));
       const hoursSinceLastGeneration = (Date.now() - lastGeneratedTime.getTime()) / (1000 * 60 * 60);
       
-      console.log(`[RESTART_PROTECTION] Last content generated: ${hoursSinceLastGeneration.toFixed(1)}h ago`);
+      console.log('[RESTART_PROTECTION] Last content generated: ' + hoursSinceLastGeneration.toFixed(1) + 'h ago');
       
       // If last generation was >2 hours ago, run immediately
       if (hoursSinceLastGeneration > 2) {
-        console.log('[RESTART_PROTECTION] ⚠️ Gap detected: Running plan job immediately');
+        console.log('[RESTART_PROTECTION] Gap detected: Running plan job immediately');
         return true;
       }
       
