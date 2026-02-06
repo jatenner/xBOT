@@ -11,6 +11,10 @@ export interface BudgetStatus {
   daily_budget_remaining: number;
   hourly_budget_remaining: number;
   budget_exceeded: boolean;
+  /** Rate controller: nav budget (posts+replies) */
+  navRemaining: number;
+  /** Rate controller: search budget */
+  searchRemaining: number;
 }
 
 /**
@@ -29,11 +33,12 @@ export async function getBudgets(): Promise<BudgetStatus> {
       .single();
     
     if (error || !data) {
-      // Default budgets if no data
       return {
         daily_budget_remaining: 100,
         hourly_budget_remaining: 10,
         budget_exceeded: false,
+        navRemaining: 100,
+        searchRemaining: 100,
       };
     }
     
@@ -43,10 +48,13 @@ export async function getBudgets(): Promise<BudgetStatus> {
     const repliesToday = data.replies_today || 0;
     const totalToday = postsToday + repliesToday;
     
+    const nav = Math.max(0, dailyLimit - totalToday);
     return {
-      daily_budget_remaining: Math.max(0, dailyLimit - totalToday),
-      hourly_budget_remaining: hourlyLimit, // Simplified - would need hourly tracking
+      daily_budget_remaining: nav,
+      hourly_budget_remaining: hourlyLimit,
       budget_exceeded: totalToday >= dailyLimit,
+      navRemaining: nav,
+      searchRemaining: Math.max(0, dailyLimit - totalToday),
     };
   } catch (error: any) {
     console.warn(`[BUDGET_STORE] Error getting budgets: ${error.message}`);
@@ -55,6 +63,8 @@ export async function getBudgets(): Promise<BudgetStatus> {
       daily_budget_remaining: 100,
       hourly_budget_remaining: 10,
       budget_exceeded: false,
+      navRemaining: 100,
+      searchRemaining: 100,
     };
   }
 }
