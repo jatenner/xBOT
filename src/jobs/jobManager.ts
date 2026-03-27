@@ -217,6 +217,7 @@ export class JobManager {
       console.warn('   • mega_viral_harvester (finds viral tweets)');
       console.warn('   • reply_posting (generates and posts replies)');
       console.warn('   • reply_metrics_scraper (tracks reply performance)');
+      console.warn('   • reply_performance_snapshot (30m/2h/24h/72h snapshots for learning)');
       console.warn('   • reply_learning (learns from reply success)');
       console.warn('   • engagement_calculator (calculates account engagement)');
       console.warn('   • reply_conversion_tracking (tracks follower attribution)');
@@ -538,8 +539,8 @@ export class JobManager {
       'learning_loop',
       async () => {
         await this.safeExecute('learning_loop', async () => {
-          const { learningLoopJob } = await import('./learningLoopJob');
-          await learningLoopJob();
+          const { runLearningCycle } = await import('./learnJob');
+          await runLearningCycle();
         });
       },
       24 * 60 * MINUTE, // Every 24 hours
@@ -607,6 +608,24 @@ export class JobManager {
       },
       30 * MINUTE, // Every 30 minutes (replies need time to accumulate engagement)
       10 * MINUTE  // Offset 10 minutes (stagger from main metrics scraper)
+    );
+
+    // Reply performance snapshots (30m, 2h, 24h, 72h) — run after reply_metrics_scraper has had a cycle
+    this.scheduleStaggeredJob(
+      'reply_performance_snapshot',
+      async () => {
+        const { shouldRunLowPriority } = await import('../browser/BrowserHealthGate');
+        if (!(await shouldRunLowPriority())) {
+          await (await import('./jobHeartbeat')).recordJobSkip('reply_performance_snapshot', 'browser_degraded');
+          return;
+        }
+        await this.safeExecute('reply_performance_snapshot', async () => {
+          const { runReplyPerformanceSnapshotJob } = await import('./replySystemV2/replyPerformanceSnapshotJob');
+          await runReplyPerformanceSnapshotJob();
+        });
+      },
+      45 * MINUTE, // Every 45 minutes (after scraper has populated content_metadata)
+      25 * MINUTE  // Offset 25 min (stagger after reply_metrics_scraper at 10 min)
     );
 
     // Data collection - every 2 hours, offset 220 min (OPTIMIZED: increased frequency for faster VI analysis)
@@ -1033,6 +1052,22 @@ export class JobManager {
       100 * MINUTE
     );
 
+    // Reply outcome aggregation (account/source learning) - every 2 hours, offset 90 min
+    this.scheduleStaggeredJob(
+      'reply_outcome_aggregation',
+      async () => {
+        await this.safeExecute('reply_outcome_aggregation', async () => {
+          const { aggregateReplyOutcomes } = await import('./replySystemV2/outcomeAggregation');
+          const result = await aggregateReplyOutcomes();
+          if (result.accounts_updated > 0 || result.sources_updated > 0) {
+            console.log(`[JOB_MANAGER] reply_outcome_aggregation: accounts=${result.accounts_updated} sources=${result.sources_updated}`);
+          }
+        });
+      },
+      2 * 60 * MINUTE,
+      90 * MINUTE
+    );
+
     // AI orchestration - every 6 hours, offset 200 min
     this.scheduleStaggeredJob(
       'ai_orchestration',
@@ -1355,6 +1390,337 @@ export class JobManager {
       60 * MINUTE, // Every 60 minutes
       0 * MINUTE   // Start immediately (at hour boundary) - ensures plan ready for current hour
     );
+
+    // =========================================================================
+    // BRAIN SYSTEM v2 — Self-growing Twitter intelligence
+    // Gated by BRAIN_FEEDS_ENABLED env var (default: false)
+    // =========================================================================
+    if (process.env.BRAIN_FEEDS_ENABLED === 'true') {
+      console.log('[JOB_MANAGER] 🧠 Brain feeds ENABLED — registering brain jobs');
+
+      // Brain: Trending scraper — Explore page, no filters (every 10 min)
+      this.scheduleStaggeredJob(
+        'brain_trending',
+        async () => {
+          await this.safeExecute('brain_trending', async () => {
+            const { runTrendingScraper } = await import('../brain/feeds/trendingScraper');
+            await runTrendingScraper();
+          });
+        },
+        10 * MINUTE,
+        30 * 1000 // 30s delay
+      );
+
+      // Brain: Keyword searcher — self-expanding pool (every 10 min)
+      this.scheduleStaggeredJob(
+        'brain_keywords',
+        async () => {
+          await this.safeExecute('brain_keywords', async () => {
+            const { runBroadKeywordSearcher } = await import('../brain/feeds/broadKeywordSearcher');
+            await runBroadKeywordSearcher();
+          });
+        },
+        10 * MINUTE,
+        1 * MINUTE // 60s delay
+      );
+
+      // Brain: Account timeline scraper — staleness-ordered (every 10 min)
+      this.scheduleStaggeredJob(
+        'brain_timelines',
+        async () => {
+          await this.safeExecute('brain_timelines', async () => {
+            const { runAccountTimelineScraper } = await import('../brain/feeds/accountTimelineScraper');
+            await runAccountTimelineScraper();
+          });
+        },
+        10 * MINUTE,
+        2 * MINUTE // 120s delay
+      );
+
+      // Brain: For You scraper — algorithm feed (every 15 min)
+      this.scheduleStaggeredJob(
+        'brain_foryou',
+        async () => {
+          await this.safeExecute('brain_foryou', async () => {
+            const { runForYouScraper } = await import('../brain/feeds/forYouScraper');
+            await runForYouScraper();
+          });
+        },
+        15 * MINUTE,
+        3 * MINUTE // 180s delay
+      );
+
+      // Brain: Viral hunter — specifically hunts mega-viral tweets across all domains (every 20 min)
+      this.scheduleStaggeredJob(
+        'brain_viral_hunter',
+        async () => {
+          await this.safeExecute('brain_viral_hunter', async () => {
+            const { runViralHunter } = await import('../brain/feeds/viralHunter');
+            await runViralHunter();
+          });
+        },
+        20 * MINUTE,
+        4 * MINUTE // 240s delay — staggers after foryou
+      );
+
+      // Brain: Account discovery — auto-expand pool (every 30 min)
+      this.scheduleStaggeredJob(
+        'brain_discover_accounts',
+        async () => {
+          await this.safeExecute('brain_discover_accounts', async () => {
+            const { runAccountDiscovery } = await import('../brain/accountDiscoveryEngine');
+            await runAccountDiscovery();
+          });
+        },
+        30 * MINUTE,
+        4 * MINUTE // 240s delay
+      );
+
+      // Brain: Account tiering — percentile re-tier (every 24h)
+      this.scheduleStaggeredJob(
+        'brain_tier_accounts',
+        async () => {
+          await this.safeExecute('brain_tier_accounts', async () => {
+            const { runAccountTiering } = await import('../brain/accountTiering');
+            await runAccountTiering();
+          });
+        },
+        24 * 60 * MINUTE,
+        5 * MINUTE // 5min delay
+      );
+
+      // Brain: Keyword pool management — expand/prune/reprioritize (every 1h)
+      this.scheduleStaggeredJob(
+        'brain_keyword_pool',
+        async () => {
+          await this.safeExecute('brain_keyword_pool', async () => {
+            const { runKeywordPoolManagement } = await import('../brain/keywordPool');
+            await runKeywordPoolManagement();
+          });
+        },
+        60 * MINUTE,
+        6 * MINUTE // 360s delay
+      );
+
+      // Brain: Stage 2 AI classification — batch classify above-threshold tweets (every 15 min)
+      this.scheduleStaggeredJob(
+        'brain_classify_stage2',
+        async () => {
+          await this.safeExecute('brain_classify_stage2', async () => {
+            const { brainClassifyStage2Job } = await import('../brain/classificationJobs');
+            await brainClassifyStage2Job();
+          });
+        },
+        15 * MINUTE,
+        7 * MINUTE // 420s delay
+      );
+
+      // Brain: Stage 3 re-scrape — track engagement trajectory (every 30 min)
+      this.scheduleStaggeredJob(
+        'brain_rescrape_stage3',
+        async () => {
+          await this.safeExecute('brain_rescrape_stage3', async () => {
+            const { brainRescrapeStage3Job } = await import('../brain/classificationJobs');
+            await brainRescrapeStage3Job();
+          });
+        },
+        30 * MINUTE,
+        8 * MINUTE // 480s delay
+      );
+
+      // Brain: Stage 4 deep analysis — reply trees + amplifiers for viral tweets (every 60 min)
+      this.scheduleStaggeredJob(
+        'brain_deep_stage4',
+        async () => {
+          await this.safeExecute('brain_deep_stage4', async () => {
+            const { brainDeepStage4Job } = await import('../brain/classificationJobs');
+            await brainDeepStage4Job();
+          });
+        },
+        60 * MINUTE,
+        9 * MINUTE // 540s delay
+      );
+
+      // Brain: Self-model update — tracks our account state, phase, expectations (every 30 min)
+      this.scheduleStaggeredJob(
+        'brain_self_model',
+        async () => {
+          await this.safeExecute('brain_self_model', async () => {
+            const { runSelfModelUpdate } = await import('../brain/selfModel');
+            await runSelfModelUpdate();
+          });
+        },
+        30 * MINUTE,
+        10 * MINUTE // 600s delay
+      );
+
+      // Brain: Feedback loop — records expected vs actual, diagnoses failures (every 15 min)
+      this.scheduleStaggeredJob(
+        'brain_feedback',
+        async () => {
+          await this.safeExecute('brain_feedback', async () => {
+            const { runFeedbackLoop } = await import('../brain/feedbackLoop');
+            await runFeedbackLoop();
+          });
+        },
+        15 * MINUTE,
+        11 * MINUTE // 660s delay
+      );
+
+      // Brain: Stagnation detector — detects when strategy is failing and triggers pivots (every 6h)
+      this.scheduleStaggeredJob(
+        'brain_stagnation',
+        async () => {
+          await this.safeExecute('brain_stagnation', async () => {
+            const { runStagnationDetector } = await import('../brain/stagnationDetector');
+            await runStagnationDetector();
+          });
+        },
+        360 * MINUTE, // Every 6 hours
+        15 * MINUTE   // 15min delay
+      );
+
+      // Brain: Analytics engine — pattern scoring, outperformance, trend detection (every 2h)
+      this.scheduleStaggeredJob(
+        'brain_analytics',
+        async () => {
+          await this.safeExecute('brain_analytics', async () => {
+            const { runBrainAnalytics } = await import('../brain/analyticsEngine');
+            await runBrainAnalytics();
+          });
+        },
+        120 * MINUTE,
+        12 * MINUTE // 720s delay
+      );
+    } else {
+      console.log('[JOB_MANAGER] 🧠 Brain feeds DISABLED (set BRAIN_FEEDS_ENABLED=true to enable)');
+    }
+
+    // =========================================================================
+    // GROWTH OBSERVATORY — Account tracking intelligence system
+    // Gated by GROWTH_OBSERVATORY_ENABLED env var (default: false)
+    // =========================================================================
+    if (process.env.GROWTH_OBSERVATORY_ENABLED === 'true') {
+      console.log('[JOB_MANAGER] 🔭 Growth Observatory ENABLED — registering observatory jobs');
+
+      // Observatory: Census scheduler — picks accounts due for follower check (every 5 min)
+      this.scheduleStaggeredJob(
+        'observatory_census_scheduler',
+        async () => {
+          await this.safeExecute('observatory_census_scheduler', async () => {
+            const { runCensusScheduler } = await import('../brain/observatory/censusScheduler');
+            await runCensusScheduler();
+          });
+        },
+        5 * MINUTE,
+        1 * MINUTE
+      );
+
+      // Observatory: Census worker — visits profiles, grabs follower counts (every 2 min)
+      this.scheduleStaggeredJob(
+        'observatory_census_worker',
+        async () => {
+          await this.safeExecute('observatory_census_worker', async () => {
+            const { runCensusWorker } = await import('../brain/observatory/censusWorker');
+            await runCensusWorker();
+          });
+        },
+        2 * MINUTE,
+        2 * MINUTE
+      );
+      // Observatory: Growth detector — compares snapshots, detects acceleration (every 30 min)
+      this.scheduleStaggeredJob(
+        'observatory_growth_detector',
+        async () => {
+          await this.safeExecute('observatory_growth_detector', async () => {
+            const { runGrowthDetector } = await import('../brain/observatory/growthDetector');
+            await runGrowthDetector();
+          });
+        },
+        30 * MINUTE,
+        5 * MINUTE
+      );
+
+      // Observatory: Content archiver — scrapes timelines of growing accounts (every 15 min)
+      this.scheduleStaggeredJob(
+        'observatory_content_archiver',
+        async () => {
+          await this.safeExecute('observatory_content_archiver', async () => {
+            const { runContentArchiver } = await import('../brain/observatory/contentArchiver');
+            await runContentArchiver();
+          });
+        },
+        15 * MINUTE,
+        8 * MINUTE
+      );
+      // Observatory: Account profiler — classifies type, niche, voice (every 60 min)
+      this.scheduleStaggeredJob(
+        'observatory_account_profiler',
+        async () => {
+          await this.safeExecute('observatory_account_profiler', async () => {
+            const { runAccountProfiler } = await import('../brain/observatory/accountProfiler');
+            await runAccountProfiler();
+          });
+        },
+        60 * MINUTE,
+        12 * MINUTE
+      );
+
+      // Observatory: Retrospective analyzer — what did growing accounts change? (every 120 min)
+      this.scheduleStaggeredJob(
+        'observatory_retrospective',
+        async () => {
+          await this.safeExecute('observatory_retrospective', async () => {
+            const { runRetrospectiveAnalyzer } = await import('../brain/observatory/retrospectiveAnalyzer');
+            await runRetrospectiveAnalyzer();
+          });
+        },
+        120 * MINUTE,
+        15 * MINUTE
+      );
+
+      // Observatory: Strategy library builder — aggregates retrospectives into playbooks (every 6h)
+      this.scheduleStaggeredJob(
+        'observatory_strategy_builder',
+        async () => {
+          await this.safeExecute('observatory_strategy_builder', async () => {
+            const { runStrategyLibraryBuilder } = await import('../brain/observatory/strategyLibraryBuilder');
+            await runStrategyLibraryBuilder();
+          });
+        },
+        360 * MINUTE,
+        20 * MINUTE
+      );
+
+      // Observatory: Strategy memory — evaluate completed tests, resurface shelved (every 6h)
+      this.scheduleStaggeredJob(
+        'observatory_strategy_memory',
+        async () => {
+          await this.safeExecute('observatory_strategy_memory', async () => {
+            const { evaluateCompletedTests, resurfaceShelvedStrategies } = await import('../brain/observatory/strategyMemory');
+            await evaluateCompletedTests();
+            await resurfaceShelvedStrategies();
+          });
+        },
+        360 * MINUTE,
+        25 * MINUTE
+      );
+
+      // Observatory: Daily context capture — trending topics (every 60 min)
+      this.scheduleStaggeredJob(
+        'observatory_daily_context',
+        async () => {
+          await this.safeExecute('observatory_daily_context', async () => {
+            const { runDailyContextCapture } = await import('../brain/observatory/dailyContextCapture');
+            await runDailyContextCapture();
+          });
+        },
+        60 * MINUTE,
+        3 * MINUTE
+      );
+    } else {
+      console.log('[JOB_MANAGER] 🔭 Growth Observatory DISABLED (set GROWTH_OBSERVATORY_ENABLED=true to enable)');
+    }
 
     // Status reporting - every hour
     this.timers.set('status', setInterval(() => {
@@ -2131,7 +2497,7 @@ export class JobManager {
   /**
    * Force run a specific job (for testing/manual trigger)
    */
-  public async runJobNow(jobName: 'plan' | 'reply' | 'reply_posting' | 'posting' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn' | 'trainPredictor' | 'account_discovery' | 'metrics_scraper' | 'reply_metrics_scraper' | 'mega_viral_harvester' | 'peer_scraper' | 'reply_v2_fetch'): Promise<void> {
+  public async runJobNow(jobName: 'plan' | 'reply' | 'reply_posting' | 'posting' | 'outcomes' | 'realOutcomes' | 'analyticsCollector' | 'learn' | 'trainPredictor' | 'account_discovery' | 'metrics_scraper' | 'reply_metrics_scraper' | 'reply_performance_snapshot' | 'mega_viral_harvester' | 'peer_scraper' | 'reply_v2_fetch'): Promise<void> {
     console.log('[JOB_MANAGER] Force running ' + jobName + ' job...');
     
     switch (jobName) {
@@ -2222,7 +2588,14 @@ export class JobManager {
           await replyMetricsScraperJob();
         });
         break;
-      
+
+      case 'reply_performance_snapshot':
+        await this.safeExecute('reply_performance_snapshot', async () => {
+          const { runReplyPerformanceSnapshotJob } = await import('./replySystemV2/replyPerformanceSnapshotJob');
+          await runReplyPerformanceSnapshotJob();
+        });
+        break;
+
       case 'mega_viral_harvester':
         await this.safeExecute('mega_viral_harvester', async () => {
           const { replyOpportunityHarvester } = await import('./replyOpportunityHarvester');

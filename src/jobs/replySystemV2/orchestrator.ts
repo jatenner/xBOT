@@ -16,6 +16,8 @@ import { fetchViralWatcherFeed } from './viralWatcherFeed';
 import { fetchDiscoveredAccountsFeed } from './discoveredAccountsFeed';
 import { scoreCandidate } from './candidateScorer';
 import { refreshCandidateQueue } from './queueManager';
+import { ensureReplyOpportunitiesFromFeedTweets } from './feedOpportunitySync';
+import { fetchBrainRecommendedFeed } from './brainRecommendedFeed';
 
 /**
  * Fetch candidates from all feeds and evaluate them
@@ -146,13 +148,26 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   
   console.log(`[ORCHESTRATOR] 🎛️ Using feed weights: ${JSON.stringify(feedWeights)}`);
   
+  const includeDiscovered = process.env.REPLY_V2_DISCOVERED_ACCOUNTS_ENABLED === 'true';
+  const includeBrain = process.env.BRAIN_FEEDS_ENABLED === 'true';
   const sources = [
     { name: 'curated_accounts', fetchFn: fetchCuratedAccountsFeed, weight: feedWeights.curated_accounts || 0.4 },
     { name: 'keyword_search', fetchFn: fetchKeywordFeed, weight: feedWeights.keyword_search || 0.3 },
     { name: 'viral_watcher', fetchFn: fetchViralWatcherFeed, weight: feedWeights.viral_watcher || 0.2 },
-    { name: 'discovered_accounts', fetchFn: fetchDiscoveredAccountsFeed, weight: feedWeights.discovered_accounts || 0.1 }, // 🔒 TASK 3: New source
+    ...(includeDiscovered
+      ? [{ name: 'discovered_accounts' as const, fetchFn: fetchDiscoveredAccountsFeed, weight: feedWeights.discovered_accounts || 0.1 }]
+      : []),
+    ...(includeBrain
+      ? [{ name: 'brain_recommended' as const, fetchFn: fetchBrainRecommendedFeed, weight: (feedWeights as any).brain_recommended || 0.1 }]
+      : []),
   ];
-  
+  if (!includeDiscovered) {
+    console.log('[ORCHESTRATOR] ⚠️ discovered_accounts feed disabled (set REPLY_V2_DISCOVERED_ACCOUNTS_ENABLED=true to enable)');
+  }
+  if (includeBrain) {
+    console.log('[ORCHESTRATOR] 🧠 brain_recommended feed ENABLED');
+  }
+
   // Sort by weight (highest first) for processing order
   sources.sort((a, b) => (b.weight || 0) - (a.weight || 0));
   
@@ -164,6 +179,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   });
   
   const fetchPromise = (async () => {
+    const falloutCounts: Record<string, number> = {};
     for (const source of sources) {
       const sourceStartTime = Date.now();
       console.log(`[ORCHESTRATOR] 📡 Fetching from ${source.name} (weight: ${source.weight.toFixed(2)})...`);
@@ -222,14 +238,27 @@ export async function fetchAndEvaluateCandidates(): Promise<{
           console.warn(`[ORCHESTRATOR] ⚠️ Adaptive throttling check failed: ${e.message}`);
         }
         
-        const tweetsToEvaluate = REPLY_V2_MAX_EVAL_PER_TICK > 0 
-          ? tweets.slice(0, REPLY_V2_MAX_EVAL_PER_TICK)
-          : tweets;
-        
+        // 🚫 Exclude consent-wall placeholder IDs (never real candidates)
+        const validTweets = tweets.filter(t => !(t.tweet_id || '').startsWith('consent_wall_'));
+        if (validTweets.length < tweets.length) {
+          console.log(`[ORCHESTRATOR] 🚫 Filtered ${tweets.length - validTweets.length} consent_wall_* placeholder(s) from ${source.name}`);
+        }
+
+        // 🎯 DISCOVERY FIX: Ensure fresh feed tweets enter reply_opportunities (idempotent upsert)
+        try {
+          await ensureReplyOpportunitiesFromFeedTweets(supabase, validTweets, source.name);
+        } catch (feedOppErr: any) {
+          console.warn(`[ORCHESTRATOR] ⚠️ Feed→opportunity sync failed for ${source.name}: ${feedOppErr?.message || feedOppErr}`);
+        }
+
+        const tweetsToEvaluate = REPLY_V2_MAX_EVAL_PER_TICK > 0
+          ? validTweets.slice(0, REPLY_V2_MAX_EVAL_PER_TICK)
+          : validTweets;
+
         if (tweets.length > tweetsToEvaluate.length) {
           console.log(`[ORCHESTRATOR] 🎯 THROTTLE: Limited ${source.name} from ${tweets.length} to ${tweetsToEvaluate.length} candidates`);
         }
-        
+
         // Evaluate each tweet
         for (const tweet of tweetsToEvaluate) {
           try {
@@ -244,7 +273,22 @@ export async function fetchAndEvaluateCandidates(): Promise<{
               continue; // Skip if already evaluated
             }
             
-            // Score candidate (with feed_run_id for traceability)
+            // Score candidate (with feed_run_id, discovery_bucket, and opp for opportunity_upside proof logs)
+            const tweetWithBucket = tweet as typeof tweet & { discovery_bucket?: 'direct_health' | 'health_adjacent_lifestyle' | 'broad_viral_cultural'; author_follower_count?: number | null };
+            const followers = tweetWithBucket.author_follower_count != null && tweetWithBucket.author_follower_count >= 0 ? tweetWithBucket.author_follower_count : undefined;
+            const account_size_tier = followers != null
+              ? (followers >= 1e6 ? 'mega' : followers >= 100e3 ? 'large' : followers >= 10e3 ? 'medium' : followers >= 1e3 ? 'small' : 'tiny')
+              : undefined;
+            const oppInput = {
+              features: tweetWithBucket.discovery_bucket ? { discovery_bucket: tweetWithBucket.discovery_bucket } : undefined,
+              discovery_source: source.name,
+              like_count: tweet.like_count ?? 0,
+              reply_count: tweet.reply_count ?? 0,
+              retweet_count: tweet.retweet_count ?? 0,
+              target_followers: followers,
+              account_size_tier,
+              tweet_posted_at: tweet.posted_at,
+            };
             const score = await scoreCandidate(
               tweet.tweet_id,
               tweet.author_username,
@@ -253,14 +297,18 @@ export async function fetchAndEvaluateCandidates(): Promise<{
               tweet.like_count || 0,
               tweet.reply_count || 0,
               tweet.retweet_count || 0,
-              feedRunId
+              feedRunId,
+              undefined,
+              oppInput
             );
             
             totalEvaluated++;
             
             // 🎯 ANALYTICS: Record DENY decision for scoring failures
             if (!score.passed_hard_filters) {
-              const { mapFilterReasonToDenyCode } = await import('./denyReasonMapper');
+              const { mapFilterReasonToDenyCode, bucketFilterReasonForFallout } = await import('./denyReasonMapper');
+              const falloutBucket = bucketFilterReasonForFallout(score.filter_reason);
+              falloutCounts[falloutBucket] = (falloutCounts[falloutBucket] ?? 0) + 1;
               const { resolveTweetAncestry, recordReplyDecision } = await import('./replyDecisionRecorder');
               
               // Resolve ancestry for DENY decision (needed for reply_decisions schema)
@@ -330,51 +378,51 @@ export async function fetchAndEvaluateCandidates(): Promise<{
               totalPassed++;
             }
             
-            // Store evaluation (with AI judge decision if available)
-            await supabase
-              .from('candidate_evaluations')
-              .insert({
-                candidate_tweet_id: tweet.tweet_id,
-                candidate_author_username: tweet.author_username,
-                candidate_content: tweet.content,
-                candidate_posted_at: tweet.posted_at,
-                source_id: sourceId,
-                source_type: source.name,
-                source_feed_name: source.name,
-                feed_run_id: feedRunId, // 🆔 Traceability
-                is_root_tweet: score.is_root_tweet,
-                is_parody: score.is_parody,
-                topic_relevance_score: score.topic_relevance_score,
-                spam_score: score.spam_score,
-                velocity_score: score.velocity_score,
-                recency_score: score.recency_score,
-                author_signal_score: score.author_signal_score,
-                overall_score: score.overall_score,
-                passed_hard_filters: score.passed_hard_filters,
-                filter_reason: score.filter_reason,
-                predicted_24h_views: score.predicted_24h_views,
-                predicted_tier: score.predicted_tier,
-                status: score.passed_hard_filters ? 'evaluated' : 'blocked',
-                // AI Judge fields
-                ai_judge_decision: score.judge_decision ? {
-                  relevance: score.judge_decision.relevance,
-                  replyability: score.judge_decision.replyability,
-                  momentum: score.judge_decision.momentum,
-                  audience_fit: score.judge_decision.audience_fit,
-                  spam_risk: score.judge_decision.spam_risk,
-                  expected_views_bucket: score.judge_decision.expected_views_bucket,
-                  decision: score.judge_decision.decision,
-                  reasons: score.judge_decision.reasons
-                } : null,
-                judge_relevance: score.judge_decision?.relevance,
-                judge_replyability: score.judge_decision?.replyability,
-                judge_momentum: score.judge_decision?.momentum,
-                judge_audience_fit: score.judge_decision?.audience_fit,
-                judge_spam_risk: score.judge_decision?.spam_risk,
-                judge_expected_views_bucket: score.judge_decision?.expected_views_bucket,
-                judge_decision: score.judge_decision?.decision,
-                judge_reasons: score.judge_decision?.reasons,
-              });
+            // Store evaluation (with AI judge decision, opportunity_upside_score, health_angle_fit_score)
+            const evalPayload = {
+              candidate_tweet_id: tweet.tweet_id,
+              candidate_author_username: tweet.author_username,
+              candidate_content: tweet.content,
+              candidate_posted_at: tweet.posted_at,
+              source_id: sourceId,
+              source_type: source.name,
+              source_feed_name: source.name,
+              feed_run_id: feedRunId,
+              is_root_tweet: score.is_root_tweet,
+              is_parody: score.is_parody,
+              topic_relevance_score: score.topic_relevance_score,
+              spam_score: score.spam_score,
+              velocity_score: score.velocity_score,
+              recency_score: score.recency_score,
+              author_signal_score: score.author_signal_score,
+              overall_score: score.overall_score,
+              opportunity_upside_score: score.opportunity_upside_score,
+              health_angle_fit_score: score.health_angle_fit_score,
+              passed_hard_filters: score.passed_hard_filters,
+              filter_reason: score.filter_reason,
+              predicted_24h_views: score.predicted_24h_views,
+              predicted_tier: score.predicted_tier,
+              status: score.passed_hard_filters ? 'evaluated' : 'blocked',
+              ai_judge_decision: score.judge_decision ? { relevance: score.judge_decision.relevance, replyability: score.judge_decision.replyability, momentum: score.judge_decision.momentum, audience_fit: score.judge_decision.audience_fit, spam_risk: score.judge_decision.spam_risk, health_angle_fit: score.judge_decision.health_angle_fit, expected_views_bucket: score.judge_decision.expected_views_bucket, decision: score.judge_decision.decision, reasons: score.judge_decision.reasons } : null,
+              judge_relevance: score.judge_decision?.relevance,
+              judge_replyability: score.judge_decision?.replyability,
+              judge_momentum: score.judge_decision?.momentum,
+              judge_audience_fit: score.judge_decision?.audience_fit,
+              judge_spam_risk: score.judge_decision?.spam_risk,
+              judge_expected_views_bucket: score.judge_decision?.expected_views_bucket,
+              judge_decision: score.judge_decision?.decision,
+              judge_reasons: score.judge_decision?.reasons,
+            };
+            const { error: insertErr } = await supabase.from('candidate_evaluations').insert(evalPayload);
+            if (insertErr && (insertErr.message?.includes('health_angle_fit_score') || insertErr.message?.includes('opportunity_upside_score') || insertErr.message?.includes('schema cache') || insertErr.message?.includes('does not exist'))) {
+              const { opportunity_upside_score: _u, health_angle_fit_score: _h, ...fallback } = evalPayload as Record<string, unknown>;
+              const { error: retryErr } = await supabase.from('candidate_evaluations').insert(fallback);
+              if (retryErr) {
+                console.error(`[ORCHESTRATOR] ⚠️ Failed to store evaluation for ${tweet.tweet_id}: ${retryErr.message}`);
+              }
+            } else if (insertErr) {
+              console.error(`[ORCHESTRATOR] ⚠️ Failed to store evaluation for ${tweet.tweet_id}: ${insertErr.message}`);
+            }
             
           } catch (error: any) {
             console.error(`[ORCHESTRATOR] ⚠️ Failed to evaluate ${tweet.tweet_id}: ${error.message}`);
@@ -424,6 +472,11 @@ export async function fetchAndEvaluateCandidates(): Promise<{
       }
     }
     
+    const falloutEntries = Object.entries(falloutCounts).filter(([, n]) => n > 0);
+    if (falloutEntries.length > 0) {
+      console.log(`[REPLY_DISCOVERY] fallout_summary ${falloutEntries.map(([k, v]) => `${k}=${v}`).join(' ')}`);
+    }
+    
     return {
       fetched: totalFetched,
       evaluated: totalEvaluated,
@@ -459,7 +512,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
     };
   } catch (error: any) {
     fetchError = error;
-    // Don't throw - return partial results instead
+    // Don't throw - return partial results instead (must return so caller never gets undefined)
     fetchResult = {
       fetched: totalFetched,
       evaluated: totalEvaluated,
@@ -468,6 +521,7 @@ export async function fetchAndEvaluateCandidates(): Promise<{
       partial_sources: partialSources,
       failed_sources: failedSources,
     };
+    return fetchResult;
   } finally {
     // 🔒 MANDATE 3: ALWAYS log completion/failure in finally block
     const duration = Date.now() - startTime;
@@ -562,17 +616,29 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   }
 }
 
+export interface RunFullCycleResult {
+  fetched_total: number;
+  evaluated_total: number;
+  passed_total: number;
+  queued_total: number;
+}
+
 /**
  * Run full cycle: fetch -> evaluate -> queue refresh + auto-repair
  */
-export async function runFullCycle(): Promise<void> {
+export async function runFullCycle(): Promise<RunFullCycleResult> {
   console.log('[ORCHESTRATOR] 🔄 Running full cycle...');
   
-  // Step 1: Fetch and evaluate
+  // Step 1: Fetch and evaluate (never undefined: catch returns partial result)
   const fetchResult = await fetchAndEvaluateCandidates();
+  const fetched = Number(fetchResult?.fetched ?? 0);
+  const evaluated = Number(fetchResult?.evaluated ?? 0);
+  const passed = Number(fetchResult?.passed_filters ?? 0);
   
   // Step 2: Refresh queue
   const queueResult = await refreshCandidateQueue();
+  const queued = Number(queueResult?.queued ?? 0);
+  const summary = queueResult?.summary ?? null;
   
   // 🔒 TASK 3: Run account discovery periodically (every 6 hours)
   const supabase = getSupabaseClient();
@@ -708,5 +774,39 @@ export async function runFullCycle(): Promise<void> {
     }
   }
   
-  console.log(`[ORCHESTRATOR] ✅ Cycle complete: ${fetchResult.evaluated} evaluated, ${queueResult.queued} queued, queue_size=${queueSize}`);
+  // 🎯 REPLY_CYCLE_SUMMARY: One concise end-of-run log for observability
+  const s = summary;
+  const summaryLine = s
+    ? `[REPLY_CYCLE_SUMMARY] fetched=${fetched} evaluated=${evaluated} passed_filters=${passed} root_confirmed=${s.root_confirmed} rejected_non_root=${s.rejected_non_root} rejected_freshness=${s.rejected_freshness} rejected_judge=${s.rejected_judge}${s.rejected_controlled_live != null ? ` rejected_controlled_live=${s.rejected_controlled_live}` : ''} queued=${s.queued} top_scores=[${(s.top_scores || []).join(',')}] sample_rejects=[${(s.sample_rejects || []).slice(0, 4).join('; ')}]`
+    : `[REPLY_CYCLE_SUMMARY] fetched=${fetched} evaluated=${evaluated} passed_filters=${passed} queued=${queued}`;
+  console.log(summaryLine);
+
+  console.log(`[ORCHESTRATOR] ✅ Cycle complete: ${evaluated} evaluated, ${queued} queued, queue_size=${queueSize}`);
+
+  // 📊 JUDGE EFFICIENCY METRICS: Track call efficiency for budget optimization
+  const judgeCallCount = summary?.judge_calls ?? evaluated; // judge called for each evaluated candidate that passed hard filters
+  const approvalRate = judgeCallCount > 0 ? (passed / judgeCallCount * 100).toFixed(1) : '0.0';
+  const estCostPerCall = 0.0004; // gpt-4o-mini average
+  const estTotalCost = judgeCallCount * estCostPerCall;
+  const costPerApproval = passed > 0 ? (estTotalCost / passed).toFixed(4) : 'n/a';
+  console.log(`[JUDGE_EFFICIENCY] calls=${judgeCallCount} approvals=${passed} rate=${approvalRate}% est_cost=$${estTotalCost.toFixed(4)} cost_per_approval=$${costPerApproval}`);
+
+  try {
+    await supabase.from('system_events').insert({
+      event_type: 'JUDGE_EFFICIENCY_METRICS',
+      severity: 'info',
+      message: `Judge efficiency: ${judgeCallCount} calls, ${passed} approvals (${approvalRate}%), $${estTotalCost.toFixed(4)} est cost`,
+      event_data: {
+        feed_run_id: feedRunId,
+        fetched, evaluated, passed_filters: passed, queued,
+        judge_calls: judgeCallCount,
+        approval_rate: parseFloat(approvalRate),
+        est_cost_usd: estTotalCost,
+        cost_per_approval: passed > 0 ? estTotalCost / passed : null,
+      },
+      created_at: new Date().toISOString(),
+    });
+  } catch { /* non-blocking */ }
+
+  return { fetched_total: fetched, evaluated_total: evaluated, passed_total: passed, queued_total: queued };
 }

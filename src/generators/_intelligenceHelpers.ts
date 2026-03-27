@@ -65,6 +65,14 @@ export interface GrowthIntelligencePackage {
   
   // 🎨 Visual formatting intelligence (learned from high-performing posts - 200+ views)
   visualFormattingInsights?: string; // Learned formatting recommendations from successful posts
+
+  // 🌐 External Twitter intelligence (from peer_posts via twitterInsightAggregator)
+  externalInsights?: {
+    topPerformingTopics: { topic: string; avgEngagement: number; postCount: number; exampleTweet: string }[];
+    topPerformingHooks: { hookType: string; avgEngagement: number; count: number }[];
+    viralExamples: { text: string; authorHandle: string; engagement: number; hookType: string; whyItWorks: string }[];
+    trendShifts: string[];
+  };
 }
 
 // Type alias for generators that accept growth intelligence
@@ -189,6 +197,45 @@ ${intelligence.visualFormattingInsights}
 `;
   }
   
+  // 🌐 External Twitter insights (from peer accounts via twitterInsightAggregator)
+  if (intelligence.externalInsights) {
+    const ext = intelligence.externalInsights;
+    contextString += `🌐 WHAT'S WORKING ON HEALTH TWITTER RIGHT NOW:\n\n`;
+
+    if (ext.topPerformingTopics.length > 0) {
+      contextString += `📊 TOP TOPICS (by engagement among health accounts):\n`;
+      ext.topPerformingTopics.slice(0, 5).forEach((t, i) => {
+        contextString += `  ${i + 1}. "${t.topic}" — ${(t.avgEngagement * 100).toFixed(1)}% normalized ER (${t.postCount} posts)\n`;
+      });
+      contextString += `\n`;
+    }
+
+    if (ext.topPerformingHooks.length > 0) {
+      contextString += `🎣 TOP HOOKS:\n`;
+      ext.topPerformingHooks.slice(0, 5).forEach((h, i) => {
+        contextString += `  ${i + 1}. "${h.hookType}" — ${(h.avgEngagement * 100).toFixed(1)}% ER (${h.count} posts)\n`;
+      });
+      contextString += `\n`;
+    }
+
+    if (ext.viralExamples.length > 0) {
+      contextString += `🔥 VIRAL EXAMPLES (study these patterns):\n`;
+      ext.viralExamples.slice(0, 3).forEach((v, i) => {
+        contextString += `  ${i + 1}. @${v.authorHandle}: "${v.text}"\n`;
+        contextString += `     Hook: ${v.hookType} | ${v.whyItWorks}\n`;
+      });
+      contextString += `\n`;
+    }
+
+    if (ext.trendShifts.length > 0) {
+      contextString += `💡 TREND SHIFTS:\n`;
+      ext.trendShifts.forEach(s => {
+        contextString += `  - ${s}\n`;
+      });
+      contextString += `\n`;
+    }
+  }
+
   // Recent posts (avoid repetition)
   if (intelligence.recentPosts && intelligence.recentPosts.length > 0) {
     contextString += `
@@ -256,7 +303,98 @@ ${patternFeedback}
 NO "we/us/our/I/me/my" - write as objective expert.
 NO emojis (max 1 if absolutely needed).
 `;
-  
+
+  // ─── Brain v2: Phase-calibrated content guidance ───
+  // External brain provides patterns proven at accounts OUR size.
+  try {
+    const { brainQuery } = await import('../brain/brainQuery');
+
+    const gaps = await brainQuery.getContentGaps(3);
+    if (gaps.length > 0) {
+      contextString += `\n🧠 BRAIN: UNTESTED HIGH-POTENTIAL PATTERNS (proven at similar accounts but we haven't tried):\n`;
+      for (const gap of gaps) {
+        contextString += `• ${gap.dimension}: "${gap.value}" — ${(gap.potential_lift).toFixed(1)}x potential lift (${gap.confidence} confidence)\n`;
+      }
+      contextString += `Consider testing one of these in your next post.\n\n`;
+    }
+
+    const health = await brainQuery.getStrategyHealth();
+    if (health && health.decaying.length > 0) {
+      contextString += `⚠️ BRAIN: DECAYING STRATEGIES (used to work, performance dropping):\n`;
+      for (const d of health.decaying.slice(0, 3)) {
+        contextString += `• ${d.dimension}: "${d.strategy}" — 7d: ${d.effectiveness_7d.toFixed(1)} vs 30d: ${d.effectiveness_30d.toFixed(1)}\n`;
+      }
+      contextString += `Avoid these or try a fresh angle on them.\n\n`;
+    }
+
+    const trending = await brainQuery.getTrendingTopics(3);
+    if (trending.length > 0) {
+      contextString += `📈 BRAIN: TRENDING NOW:\n`;
+      for (const t of trending) {
+        contextString += `• "${t.keyword}" — ${t.tweet_count} tweets, avg ${Math.round(t.avg_engagement)} likes\n`;
+      }
+      contextString += `\n`;
+    }
+  } catch {
+    // Brain enrichment is non-fatal
+  }
+
+  // ─── Growth Observatory: What growing accounts at our stage actually do ───
+  try {
+    const { brainQuery } = await import('../brain/brainQuery');
+
+    const playbook = await brainQuery.getGrowthPlaybook();
+    if (playbook.length > 0) {
+      contextString += `\n🔭 GROWTH OBSERVATORY — What accounts at our stage do to grow:\n`;
+
+      for (const strategy of playbook.slice(0, 3)) {
+        const wp = strategy.winning_patterns || {};
+        const diffs = strategy.key_differentiators || {};
+
+        contextString += `\n📋 ${strategy.strategy_name} (${strategy.strategy_category})`;
+        if (strategy.win_rate) contextString += ` — ${(strategy.win_rate * 100).toFixed(0)}% win rate`;
+        if (strategy.sample_size) contextString += `, ${strategy.sample_size} accounts studied`;
+        contextString += `:\n`;
+
+        // Show winning patterns
+        if (wp.reply_ratio) contextString += `  • Reply ratio: ${(wp.reply_ratio * 100).toFixed(0)}%\n`;
+        if (wp.tweets_per_day) contextString += `  • Volume: ${wp.tweets_per_day} tweets/day\n`;
+        if (wp.avg_word_count) contextString += `  • Length: ~${wp.avg_word_count} words/tweet\n`;
+        if (wp.common_targets?.length) contextString += `  • Reply to: @${wp.common_targets.slice(0, 3).join(', @')}\n`;
+
+        // Show key differentiators
+        for (const [, diff] of Object.entries(diffs).slice(0, 2)) {
+          contextString += `  • ${diff}\n`;
+        }
+      }
+      contextString += `\n`;
+    }
+
+    // Show retrospective insights (real growth stories)
+    const insights = await brainQuery.getRetrospectiveInsights();
+    if (insights && insights.length > 0) {
+      contextString += `🔭 REAL GROWTH STORIES from accounts at our stage:\n`;
+      for (const r of insights.slice(0, 2)) {
+        if (r.analysis_summary) {
+          contextString += `  • @${r.username}: ${r.analysis_summary}\n`;
+        }
+      }
+      contextString += `\n`;
+    }
+
+    // Show our experiment status
+    const experiments = await brainQuery.getOurExperiments();
+    if (experiments.active.length > 0) {
+      contextString += `🧪 OUR ACTIVE EXPERIMENTS:\n`;
+      for (const exp of experiments.active.slice(0, 2)) {
+        contextString += `  • Testing "${exp.strategy_name}" (test #${exp.test_number}) — ${exp.verdict}\n`;
+      }
+      contextString += `\n`;
+    }
+  } catch {
+    // Observatory enrichment is non-fatal
+  }
+
   return contextString;
 }
 
