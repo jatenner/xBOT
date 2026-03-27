@@ -1706,6 +1706,19 @@ export class JobManager {
         25 * MINUTE
       );
 
+      // Observatory: Evidence generator — assembles JSONL packages (every 6h)
+      this.scheduleStaggeredJob(
+        'observatory_evidence_generator',
+        async () => {
+          await this.safeExecute('observatory_evidence_generator', async () => {
+            const { runEvidenceGenerator } = await import('../brain/observatory/evidenceGenerator');
+            await runEvidenceGenerator();
+          });
+        },
+        360 * MINUTE,
+        30 * MINUTE
+      );
+
       // Observatory: Daily context capture — trending topics (every 60 min)
       this.scheduleStaggeredJob(
         'observatory_daily_context',

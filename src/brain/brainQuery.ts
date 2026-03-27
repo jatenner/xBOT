@@ -569,6 +569,29 @@ async function getOurExperiments(): Promise<{ active: any[]; shelved: any[]; his
 }
 
 // =============================================================================
+// 11. Evidence Packages — Rich JSONL data for LLM context
+// =============================================================================
+
+/**
+ * Loads relevant evidence packages and formats them for LLM prompt injection.
+ * Purpose: 'strategy' (growth journeys + failed strategies),
+ *          'content' (content patterns + top examples),
+ *          'reply' (content patterns for reply style),
+ *          'analysis' (everything)
+ */
+async function getEvidenceForPrompt(
+  purpose: 'strategy' | 'content' | 'reply' | 'analysis',
+  limit: number = 5,
+): Promise<string> {
+  try {
+    const { getEvidenceForPrompt: loadEvidence } = await import('./observatory/evidenceLoader');
+    return loadEvidence(purpose, limit);
+  } catch {
+    return ''; // Evidence not available yet
+  }
+}
+
+// =============================================================================
 // Export as singleton object
 // =============================================================================
 
@@ -589,4 +612,7 @@ export const brainQuery = {
   getGrowthLeaderboard,
   getRetrospectiveInsights,
   getOurExperiments,
+
+  // Evidence Packages
+  getEvidenceForPrompt,
 };
