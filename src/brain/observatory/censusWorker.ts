@@ -12,12 +12,13 @@
  */
 
 import { getSupabaseClient } from '../../db';
-import { submitTask, submitBatch } from '../feeds/brainBrowserPool';
-import { brainGoto } from '../feeds/brainNavigator';
+import { getBrainPage, brainGoto } from '../feeds/brainNavigator';
+import { extractTweetsFromPage, ingestFeedResults } from '../discoveryEngine';
 import { censusQueue } from './censusScheduler';
 
 const LOG_PREFIX = '[observatory/census-worker]';
-const BATCH_SIZE = 10; // Process 10 accounts per cycle
+const BATCH_SIZE = 20; // Process 20 accounts per cycle (sequential, single browser page)
+const GRAB_TWEETS_PER_CENSUS = 5; // Grab a few tweets while we're on the profile page
 
 export async function runCensusWorker(): Promise<{ checked: number; errors: number }> {
   if (censusQueue.length === 0) {
@@ -31,8 +32,19 @@ export async function runCensusWorker(): Promise<{ checked: number; errors: numb
 
   const supabase = getSupabaseClient();
 
-  // Create tasks for parallel execution
-  const tasks = batch.map(username => async (page: any) => {
+  // Get a single browser page and process accounts sequentially
+  let page: any;
+  try {
+    page = await getBrainPage();
+  } catch (err: any) {
+    console.error(`${LOG_PREFIX} Failed to get browser page: ${err.message}`);
+    // Put accounts back in queue
+    censusQueue.unshift(...batch);
+    return { checked: 0, errors: 0 };
+  }
+
+  for (const username of batch) {
+    const censusAccount = async () => {
     try {
       const profileUrl = `https://x.com/${username}`;
       const nav = await brainGoto(page, profileUrl, 15000);
@@ -100,6 +112,31 @@ export async function runCensusWorker(): Promise<{ checked: number; errors: numb
         // Profile might be private, suspended, or doesn't exist
         errors++;
         return;
+      }
+
+      // While we're on the profile page, grab a few tweets too
+      // This ensures every censused account has at least some content
+      try {
+        const tweets = await extractTweetsFromPage(page, {
+          maxTweets: GRAB_TWEETS_PER_CENSUS,
+          skipReplies: false, // Grab replies too — reply ratio is important data
+        });
+
+        if (tweets.length > 0) {
+          for (const t of tweets) {
+            t.author_username = username;
+            if (!t.author_followers) t.author_followers = metrics.followers;
+          }
+
+          await ingestFeedResults([{
+            source: 'timeline' as any,
+            keyword: 'census_grab',
+            feed_run_id: `census_${Date.now()}`,
+            tweets,
+          }]);
+        }
+      } catch {
+        // Non-fatal — follower count is the priority
       }
 
       // Get previous follower count for delta
@@ -173,14 +210,22 @@ export async function runCensusWorker(): Promise<{ checked: number; errors: numb
       console.error(`${LOG_PREFIX} Error checking @${username}: ${err.message}`);
       errors++;
     }
-  });
+    };
 
-  // Execute all tasks through the browser pool
-  const result = await submitBatch('high', tasks);
+    try {
+      await censusAccount();
+    } catch (err: any) {
+      console.error(`${LOG_PREFIX} Error on @${username}: ${err.message}`);
+      errors++;
+    }
+  }
+
+  // Close the page when done
+  try { await page.close(); } catch {}
 
   if (checked > 0 || errors > 0) {
     console.log(`${LOG_PREFIX} Census: ${checked} checked, ${errors} errors, ${censusQueue.length} remaining in queue`);
   }
 
-  return { checked: result.completed, errors: result.errors };
+  return { checked, errors };
 }

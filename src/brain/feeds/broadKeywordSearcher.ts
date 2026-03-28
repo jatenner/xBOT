@@ -16,8 +16,8 @@ import {
 import { getKeywordsForSearch, updateKeywordAfterSearch } from '../db';
 
 const LOG_PREFIX = '[brain/feed/keyword]';
-const KEYWORDS_PER_RUN = 5;
-const TWEETS_PER_KEYWORD = 25;
+const KEYWORDS_PER_RUN = 8;
+const TWEETS_PER_KEYWORD = 30;
 const DELAY_BETWEEN_KEYWORDS_MS = 1500;
 
 export async function runBroadKeywordSearcher(): Promise<{ tweets_ingested: number; keywords_searched: number }> {

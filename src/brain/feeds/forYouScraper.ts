@@ -14,9 +14,9 @@ import {
 } from '../discoveryEngine';
 
 const LOG_PREFIX = '[brain/feed/foryou]';
-const SCROLL_COUNT = 4;
-const SCROLL_DELAY_MS = 2000;
-const MAX_TWEETS = 80;
+const SCROLL_COUNT = 5;
+const SCROLL_DELAY_MS = 1500;
+const MAX_TWEETS = 120;
 
 export async function runForYouScraper(): Promise<{ tweets_ingested: number }> {
   const feedRunId = `brain_foryou_${Date.now()}`;

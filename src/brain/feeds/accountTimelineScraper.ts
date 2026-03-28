@@ -16,10 +16,10 @@ import {
 import { getAccountsForScraping, updateAccountAfterScrape } from '../db';
 
 const LOG_PREFIX = '[brain/feed/timeline]';
-const ACCOUNTS_PER_RUN = 12;
-const TWEETS_PER_ACCOUNT_DEFAULT = 8;
+const ACCOUNTS_PER_RUN = 20;
+const TWEETS_PER_ACCOUNT_DEFAULT = 15;
 // S/A tier accounts get more tweets scraped — we need their failures too
-const TWEETS_PER_ACCOUNT_HIGH_TIER = 20;
+const TWEETS_PER_ACCOUNT_HIGH_TIER = 30;
 const DELAY_BETWEEN_ACCOUNTS_MS = 1500;
 
 export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: number; accounts_scraped: number }> {

@@ -168,6 +168,82 @@ async function runLearningCycle() {
   if (feedback) stats.totalFeedback += feedback.events_created;
 }
 
+async function runObservatoryCycle() {
+  console.log(`\n--- OBSERVATORY (${elapsed()}) ---`);
+
+  // Census scheduler — picks accounts due for follower check
+  await safeRun('Census scheduler', async () => {
+    const { runCensusScheduler } = await import('../../src/brain/observatory/censusScheduler');
+    return runCensusScheduler();
+  });
+
+  // Census worker — visits profiles, grabs follower counts
+  await safeRun('Census worker', async () => {
+    const { runCensusWorker } = await import('../../src/brain/observatory/censusWorker');
+    return runCensusWorker();
+  });
+
+  // Growth detector — compares snapshots, detects acceleration
+  await safeRun('Growth detector', async () => {
+    const { runGrowthDetector } = await import('../../src/brain/observatory/growthDetector');
+    return runGrowthDetector();
+  });
+
+  // Content archiver — scrapes timelines of growing accounts
+  await safeRun('Content archiver', async () => {
+    const { runContentArchiver } = await import('../../src/brain/observatory/contentArchiver');
+    return runContentArchiver();
+  });
+
+  // Daily context capture — trending topics
+  await safeRun('Daily context', async () => {
+    const { runDailyContextCapture } = await import('../../src/brain/observatory/dailyContextCapture');
+    return runDailyContextCapture();
+  });
+
+  // Observatory DB status
+  try {
+    const { getSupabaseClient } = await import('../../src/db');
+    const s = getSupabaseClient();
+    const [snaps, events, profiles, retros, strategies] = await Promise.all([
+      s.from('brain_account_snapshots').select('id', { count: 'exact', head: true }),
+      s.from('brain_growth_events').select('id', { count: 'exact', head: true }),
+      s.from('brain_account_profiles').select('id', { count: 'exact', head: true }),
+      s.from('brain_retrospective_analyses').select('id', { count: 'exact', head: true }),
+      s.from('brain_strategy_library').select('id', { count: 'exact', head: true }),
+    ]);
+    console.log(`  🔭 Observatory: ${snaps.count ?? 0} snapshots, ${events.count ?? 0} growth events, ${profiles.count ?? 0} profiles, ${retros.count ?? 0} retrospectives, ${strategies.count ?? 0} strategies`);
+  } catch {}
+}
+
+async function runObservatoryHeavyCycle() {
+  console.log(`\n--- OBSERVATORY HEAVY (${elapsed()}) ---`);
+
+  // Account profiler — AI classifies growing accounts
+  await safeRun('Account profiler', async () => {
+    const { runAccountProfiler } = await import('../../src/brain/observatory/accountProfiler');
+    return runAccountProfiler();
+  });
+
+  // Retrospective analyzer — what did growing accounts change?
+  await safeRun('Retrospective analyzer', async () => {
+    const { runRetrospectiveAnalyzer } = await import('../../src/brain/observatory/retrospectiveAnalyzer');
+    return runRetrospectiveAnalyzer();
+  });
+
+  // Strategy library builder
+  await safeRun('Strategy library', async () => {
+    const { runStrategyLibraryBuilder } = await import('../../src/brain/observatory/strategyLibraryBuilder');
+    return runStrategyLibraryBuilder();
+  });
+
+  // Evidence generator
+  await safeRun('Evidence generator', async () => {
+    const { runEvidenceGenerator } = await import('../../src/brain/observatory/evidenceGenerator');
+    return runEvidenceGenerator();
+  });
+}
+
 async function runFullDBStatus() {
   console.log(`\n--- DB STATUS (${elapsed()}) ---`);
   try {
@@ -226,17 +302,20 @@ async function runFullDBStatus() {
 // =============================================================================
 
 async function main() {
-  console.log('🧠 BRAIN LOCAL RUNNER — Starting 3-hour test run');
+  console.log('🧠 BRAIN + OBSERVATORY LOCAL RUNNER');
   console.log('   Press Ctrl+C to stop\n');
   console.log('   Schedule:');
   console.log('   - Discovery: every 10 min (5 feeds)');
+  console.log('   - Observatory: every 10 min (census + growth detection + archiving)');
   console.log('   - Classification: every 15 min (3 stages)');
   console.log('   - Learning: every 30 min (discovery + keyword + self-model + feedback)');
+  console.log('   - Observatory heavy: every 60 min (profiling + retrospectives + strategy)');
   console.log('   - Full status: every 30 min');
   console.log('');
 
   // Run first cycle immediately
   await runDiscoveryCycle();
+  await runObservatoryCycle();
   await runClassificationCycle();
   await runLearningCycle();
   await runFullDBStatus();
@@ -248,6 +327,10 @@ async function main() {
     printStats();
   }, 10 * MINUTE);
 
+  const observatoryInterval = setInterval(async () => {
+    await runObservatoryCycle();
+  }, 10 * MINUTE);
+
   const classifyInterval = setInterval(async () => {
     await runClassificationCycle();
   }, 15 * MINUTE);
@@ -257,6 +340,10 @@ async function main() {
     await runFullDBStatus();
   }, 30 * MINUTE);
 
+  const observatoryHeavyInterval = setInterval(async () => {
+    await runObservatoryHeavyCycle();
+  }, 60 * MINUTE);
+
   // Tiering once per run (not every 30 min)
   setTimeout(async () => {
     console.log('\n--- ACCOUNT TIERING ---');
@@ -264,14 +351,16 @@ async function main() {
       const { runAccountTiering } = await import('../../src/brain/accountTiering');
       return runAccountTiering();
     });
-  }, 60 * MINUTE); // After 1 hour
+  }, 60 * MINUTE);
 
   // Graceful shutdown
   process.on('SIGINT', () => {
     console.log('\n\n🛑 Shutting down brain runner...');
     clearInterval(discoveryInterval);
+    clearInterval(observatoryInterval);
     clearInterval(classifyInterval);
     clearInterval(learningInterval);
+    clearInterval(observatoryHeavyInterval);
     printStats();
     runFullDBStatus().then(() => {
       console.log('\n👋 Brain runner stopped. All data saved to Supabase.');

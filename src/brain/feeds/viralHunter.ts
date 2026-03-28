@@ -60,9 +60,9 @@ const VIRAL_SEARCH_QUERIES = [
 
 // Cursor tracks which query we're on
 let queryRotationIndex = 0;
-const QUERIES_PER_RUN = 3;
-const MAX_TWEETS_PER_QUERY = 30;
-const SCROLL_COUNT = 3;
+const QUERIES_PER_RUN = 5;
+const MAX_TWEETS_PER_QUERY = 40;
+const SCROLL_COUNT = 4;
 
 export async function runViralHunter(): Promise<{ tweets_ingested: number; queries_searched: number }> {
   const feedRunId = `brain_viral_hunter_${Date.now()}`;

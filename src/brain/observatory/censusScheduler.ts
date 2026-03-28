@@ -15,7 +15,7 @@
 import { getSupabaseClient } from '../../db';
 
 const LOG_PREFIX = '[observatory/census-scheduler]';
-const MAX_BATCH_SIZE = 50; // Max accounts to queue per cycle
+const MAX_BATCH_SIZE = 200; // Max accounts to queue per cycle
 
 // In-memory queue that the census worker reads from
 export const censusQueue: string[] = [];

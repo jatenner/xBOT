@@ -40,8 +40,8 @@ const LOG_PREFIX = '[brain/classify]';
 // Stage 2: AI Batch Classification
 // =============================================================================
 
-const STAGE2_BATCH_SIZE = 10; // More per batch = fewer API calls
-const STAGE2_MAX_PER_RUN = 100; // Classify aggressively to keep up with intake
+const STAGE2_BATCH_SIZE = 15; // More per batch = fewer API calls
+const STAGE2_MAX_PER_RUN = 150; // Classify aggressively to keep up with 15K tweets/day
 const STAGE2_MODEL = 'gpt-4o-mini';
 
 const CLASSIFICATION_PROMPT = `You are a Twitter content analyst. Classify each tweet on the following dimensions.

@@ -31,9 +31,9 @@ const ARCHIVE_FREQUENCY_HOURS: Record<string, number> = {
   interesting: 24,
 };
 
-const MAX_ACCOUNTS_PER_RUN = 8;
-const TWEETS_PER_ACCOUNT_DEFAULT = 20;
-const TWEETS_PER_ACCOUNT_EXPLOSIVE = 40;
+const MAX_ACCOUNTS_PER_RUN = 15;
+const TWEETS_PER_ACCOUNT_DEFAULT = 25;
+const TWEETS_PER_ACCOUNT_EXPLOSIVE = 50;
 
 export async function runContentArchiver(): Promise<{
   accounts_archived: number;

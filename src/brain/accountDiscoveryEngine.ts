@@ -17,10 +17,10 @@ import type { AccountDiscoveryMethod } from './types';
 
 const LOG_PREFIX = '[brain/account-discovery]';
 
-const VIRAL_LIKES_THRESHOLD = 100;
-const HIGH_ENGAGEMENT_REPLY_LIKES = 50;
-const BATCH_SIZE = 20;
-const MAX_IMMEDIATE_CENSUS = 10; // Max accounts to census immediately on discovery
+const VIRAL_LIKES_THRESHOLD = 50;  // Lower threshold to discover more accounts
+const HIGH_ENGAGEMENT_REPLY_LIKES = 20;
+const BATCH_SIZE = 50;
+const MAX_IMMEDIATE_CENSUS = 20; // Max accounts to census immediately on discovery
 
 interface DiscoveredAccount {
   username: string;
