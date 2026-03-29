@@ -218,9 +218,10 @@ async function exportFromProfile(): Promise<string> {
  */
 async function manualLoginAssist(): Promise<string> {
   console.log(`[REFRESH_SESSION] 🔐 Manual login mode`);
-  console.log(`[REFRESH_SESSION] 🚀 Launching headed browser...`);
+  console.log(`[REFRESH_SESSION] 🚀 Launching headed browser (isolated profile, won't conflict with open Chrome)...`);
 
-  const profileDir = resolveChromeProfileDir() || path.join(process.cwd(), '.temp-profile');
+  // Always use isolated temp profile for manual mode - avoids ProcessSingleton conflict with open Chrome
+  const profileDir = path.join(process.cwd(), '.temp-profile');
 
   if (!fs.existsSync(profileDir)) {
     fs.mkdirSync(profileDir, { recursive: true });

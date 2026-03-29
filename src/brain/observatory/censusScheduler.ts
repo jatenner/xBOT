@@ -75,6 +75,6 @@ function getCensusFrequency(growthStatus: string | null): number {
     case 'interesting': return 24;
     case 'boring': return 168; // weekly
     case 'unknown':
-    default: return 72; // 3 days for new accounts
+    default: return 24; // Daily for new accounts — need 2nd snapshot ASAP for growth detection
   }
 }

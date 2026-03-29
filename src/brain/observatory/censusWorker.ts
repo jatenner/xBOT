@@ -17,7 +17,7 @@ import { extractTweetsFromPage, ingestFeedResults } from '../discoveryEngine';
 import { censusQueue } from './censusScheduler';
 
 const LOG_PREFIX = '[observatory/census-worker]';
-const BATCH_SIZE = 20; // Process 20 accounts per cycle (sequential, single browser page)
+const BATCH_SIZE = 30; // Process 30 accounts per cycle (sequential, single browser page)
 const GRAB_TWEETS_PER_CENSUS = 5; // Grab a few tweets while we're on the profile page
 
 export async function runCensusWorker(): Promise<{ checked: number; errors: number }> {
@@ -114,16 +114,48 @@ export async function runCensusWorker(): Promise<{ checked: number; errors: numb
         return;
       }
 
-      // While we're on the profile page, grab a few tweets too
-      // This ensures every censused account has at least some content
+      // While we're on the profile page, grab tweets from both tabs
       try {
-        const tweets = await extractTweetsFromPage(page, {
+        // Tab 1: Regular tweets (originals + threads)
+        const originals = await extractTweetsFromPage(page, {
           maxTweets: GRAB_TWEETS_PER_CENSUS,
-          skipReplies: false, // Grab replies too — reply ratio is important data
+          skipReplies: false,
         });
 
-        if (tweets.length > 0) {
-          for (const t of tweets) {
+        // Tab 2: Navigate to "Tweets & replies" tab to get reply data
+        var replyTweets: any[] = [];
+        try {
+          const replyNav = await brainGoto(page, `https://x.com/${username}/with_replies`, 10000);
+          if (replyNav.success) {
+            try {
+              await page.waitForSelector('article[data-testid="tweet"]', { timeout: 5000 });
+            } catch {}
+
+            replyTweets = await extractTweetsFromPage(page, {
+              maxTweets: GRAB_TWEETS_PER_CENSUS,
+              skipReplies: false,
+            });
+
+            // Tag reply tweets — on the with_replies page, tweets that aren't
+            // from this user are parent tweets (context), and tweets FROM this user
+            // that appear after a parent tweet are replies
+            for (const t of replyTweets) {
+              if (t.author_username && t.author_username.toLowerCase() === username.toLowerCase()) {
+                // Could be a reply or original — check content for @mentions at start
+                if (t.content && t.content.startsWith('@')) {
+                  (t as any).tweet_type = 'reply';
+                }
+              }
+            }
+          }
+        } catch {
+          // Non-fatal — originals tab data is still good
+        }
+
+        // Combine and ingest
+        const allTweets = [...originals, ...replyTweets];
+        if (allTweets.length > 0) {
+          for (const t of allTweets) {
             t.author_username = username;
             if (!t.author_followers) t.author_followers = metrics.followers;
           }
@@ -132,7 +164,7 @@ export async function runCensusWorker(): Promise<{ checked: number; errors: numb
             source: 'timeline' as any,
             keyword: 'census_grab',
             feed_run_id: `census_${Date.now()}`,
-            tweets,
+            tweets: allTweets,
           }]);
         }
       } catch {
@@ -181,29 +213,19 @@ export async function runCensusWorker(): Promise<{ checked: number; errors: numb
         updateData.ff_ratio = Math.round((metrics.followers / metrics.following) * 100) / 100;
       }
 
+      // Get current snapshot_count to increment
+      const { data: currentAcct } = await supabase
+        .from('brain_accounts')
+        .select('snapshot_count')
+        .eq('username', username)
+        .single();
+
+      updateData.snapshot_count = (currentAcct?.snapshot_count ?? 0) + 1;
+
       await supabase
         .from('brain_accounts')
         .update(updateData)
         .eq('username', username);
-
-      // Increment snapshot count
-      try {
-        await supabase.rpc('increment_brain_account_snapshot_count', { p_username: username });
-      } catch {
-        // RPC may not exist — just increment manually
-        const { data: acct } = await supabase
-          .from('brain_accounts')
-          .select('snapshot_count')
-          .eq('username', username)
-          .single();
-
-        if (acct) {
-          await supabase
-            .from('brain_accounts')
-            .update({ snapshot_count: (acct.snapshot_count ?? 0) + 1 })
-            .eq('username', username);
-        }
-      }
 
       checked++;
     } catch (err: any) {

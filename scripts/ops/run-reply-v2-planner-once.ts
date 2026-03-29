@@ -1,27 +1,54 @@
 #!/usr/bin/env tsx
 /**
  * 🎯 Reply V2 Planner One-Off Runner
- * 
+ *
  * Runs the Reply V2 planner exactly once to create decisions.
- * Designed for Railway execution (PLAN_ONLY mode).
- * 
- * Usage:
+ * - Railway: PLAN_ONLY, control mode, TWITTER_SESSION_B64 (no browser execution on Railway).
+ * - Local audit: EXECUTION_MODE=executor, RUNNER_MODE=true, RUNNER_BROWSER=cdp, local Chrome profile (deterministic discovery/root-eval via CDP).
+ *
+ * Usage (Railway):
  *   railway run --service xBOT pnpm tsx scripts/ops/run-reply-v2-planner-once.ts
+ *
+ * Usage (local deterministic audit – same path as live Mac executor):
+ *   REPLY_V2_AUDIT_LOCAL=true pnpm tsx scripts/ops/run-reply-v2-planner-once.ts
+ *   or: RUNNER_MODE=true RUNNER_BROWSER=cdp pnpm tsx scripts/ops/run-reply-v2-planner-once.ts
+ *   For local audit, TWITTER_SESSION_B64 must be unset (auth from local Chrome profile only).
  */
 
 import 'dotenv/config';
+import { logExecutionContext } from '../../src/infra/executionMode';
 import { attemptScheduledReply } from '../../src/jobs/replySystemV2/tieredScheduler';
 import { getSupabaseClient } from '../../src/db/index';
+
+// Resolve execution path before main() so env is correct for all imports that read it
+const runnerModeAtEntry = process.env.RUNNER_MODE;
+const auditLocalEnv = process.env.REPLY_V2_AUDIT_LOCAL === 'true';
+const isLocalAudit = auditLocalEnv || runnerModeAtEntry === 'true';
+
+if (isLocalAudit) {
+  process.env.EXECUTION_MODE = 'executor';
+  process.env.RUNNER_MODE = 'true';
+  process.env.RUNNER_BROWSER = 'cdp';
+  process.env.REPLY_V2_PLAN_ONLY = 'true'; // deterministic audit: plan only, no actual post
+  if (process.env.SHADOW_MODE === undefined) {
+    process.env.SHADOW_MODE = 'false';
+  }
+} else {
+  process.env.REPLY_V2_PLAN_ONLY = 'true';
+  process.env.RUNNER_MODE = 'false';
+}
 
 async function main() {
   console.log('🎯 Reply V2 Planner One-Off Runner');
   console.log('═══════════════════════════════════════════════════════════\n');
-  
-  // Ensure PLAN_ONLY mode (Railway should not execute)
+
+  logExecutionContext('REPLY_V2_AUDIT');
+
   const originalPlanOnly = process.env.REPLY_V2_PLAN_ONLY;
-  process.env.REPLY_V2_PLAN_ONLY = 'true';
-  process.env.RUNNER_MODE = 'false'; // Ensure Railway mode
-  
+  if (!isLocalAudit) {
+    process.env.REPLY_V2_PLAN_ONLY = 'true';
+  }
+
   try {
     console.log('[PLANNER] 🚀 Starting planner cycle...\n');
     
@@ -35,11 +62,26 @@ async function main() {
     const beforeTotal = beforeCount.count || 0;
     console.log(`[PLANNER] 📊 Queued decisions before: ${beforeTotal}`);
     
+    // Local audit: run feed fetch first so reply_opportunities gets fresh tweets (avoids freshness starvation)
+    if (isLocalAudit) {
+      console.log(`[PLANNER] 📡 Local audit: fetching feeds and syncing to reply_opportunities...`);
+      try {
+        const { fetchAndEvaluateCandidates } = await import('../../src/jobs/replySystemV2/orchestrator');
+        const fetchResult = await fetchAndEvaluateCandidates();
+        console.log(`[PLANNER] 📡 Fetch result: fetched=${fetchResult?.fetched ?? 0} evaluated=${fetchResult?.evaluated ?? 0} passed=${fetchResult?.passed_filters ?? 0}`);
+      } catch (fetchErr: any) {
+        console.warn(`[PLANNER] ⚠️ Feed fetch failed (continuing with refresh): ${fetchErr?.message ?? fetchErr}`);
+      }
+    }
+    
     // 🔧 FIX: Refresh queue BEFORE scheduler to ensure ROOT_EVAL bridge runs
     console.log(`[PLANNER] 🔄 Refreshing candidate queue (triggers ROOT_EVAL bridge)...`);
     const { refreshCandidateQueue } = await import('../../src/jobs/replySystemV2/queueManager');
     const queueResult = await refreshCandidateQueue();
-    console.log(`[PLANNER] Queue refresh: evaluated=${queueResult.evaluated} queued=${queueResult.queued} expired=${queueResult.expired}`);
+    const evalCount = queueResult?.evaluated ?? 0;
+    const queuedCount = queueResult?.queued ?? 0;
+    const expiredCount = queueResult?.expired ?? 0;
+    console.log(`[PLANNER] Queue refresh: evaluated=${evalCount} queued=${queuedCount} expired=${expiredCount}`);
     
     const result = await attemptScheduledReply();
     

@@ -90,7 +90,10 @@ async function main() {
   console.log('\n📋 Step 2: Refreshing candidate queue...');
   try {
     const queueResult = await refreshCandidateQueue();
-    console.log(`✅ Queue refresh: evaluated=${queueResult.evaluated} queued=${queueResult.queued} expired=${queueResult.expired}`);
+    const evalCount = queueResult?.evaluated ?? 0;
+    const queuedCount = queueResult?.queued ?? 0;
+    const expiredCount = queueResult?.expired ?? 0;
+    console.log(`✅ Queue refresh: evaluated=${evalCount} queued=${queuedCount} expired=${expiredCount}`);
   } catch (error: any) {
     console.error(`❌ Queue refresh failed: ${error.message}`);
     throw error;

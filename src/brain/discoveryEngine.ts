@@ -351,10 +351,28 @@ export async function extractTweetsFromPage(
           if (!idMatch) continue;
           var tweet_id = idMatch[1];
 
-          if (skipReplies) {
-            var socialCtx = article.querySelector('[data-testid="socialContext"]');
-            if (socialCtx && /Replying to/i.test(socialCtx.textContent || '')) continue;
+          // Detect if this tweet is a reply
+          var is_reply = false;
+          var reply_to_user = null;
+          var socialCtx = article.querySelector('[data-testid="socialContext"]');
+          if (socialCtx && /Replying to/i.test(socialCtx.textContent || '')) {
+            is_reply = true;
+            // Try to extract who they're replying to
+            var replyLink = socialCtx.querySelector('a');
+            if (replyLink) {
+              var rh = replyLink.getAttribute('href') || '';
+              if (rh.match(/^\\/[a-zA-Z0-9_]+$/)) {
+                reply_to_user = rh.replace('/', '');
+              }
+            }
           }
+          // Also check for reply indicator in tweet text area
+          var replyIndicator = article.querySelector('[data-testid="tweet"] [data-testid="socialContext"]');
+          if (!is_reply && replyIndicator && /Replying/i.test(replyIndicator.textContent || '')) {
+            is_reply = true;
+          }
+
+          if (skipReplies && is_reply) continue;
 
           var tweetTextEl = article.querySelector('[data-testid="tweetText"]');
           var content = '';
@@ -381,14 +399,24 @@ export async function extractTweetsFromPage(
             }
           }
 
-          var likeEl = article.querySelector('[data-testid="like"]');
-          var replyEl = article.querySelector('[data-testid="reply"]');
-          var rtEl = article.querySelector('[data-testid="retweet"]');
-
-          function pm(el) {
+          // Parse metrics — try aria-label first (most reliable), then text content
+          function pm(testId) {
+            var el = article.querySelector('[data-testid="' + testId + '"]');
             if (!el) return 0;
-            var txt = (el.textContent || '0').replace(/[^\\d.KkMmBb]/g, '').trim();
-            if (!txt) return 0;
+
+            // Method 1: aria-label on the button or parent group
+            // Twitter puts exact counts in aria-labels like "4523 likes" or "12 replies"
+            var ariaEl = el.closest('button') || el;
+            var aria = ariaEl.getAttribute('aria-label') || '';
+            var ariaMatch = aria.match(/(\\d[\\d,]*)/);
+            if (ariaMatch) {
+              var n = parseInt(ariaMatch[1].replace(/,/g, ''), 10);
+              if (n > 0) return n;
+            }
+
+            // Method 2: text content with K/M/B suffix
+            var txt = (el.textContent || '').replace(/[^\\d.KkMmBb,]/g, '').trim();
+            if (!txt || txt === '0' || txt === '') return 0;
             var num = parseFloat(txt.replace(/,/g, ''));
             var upper = txt.toUpperCase();
             if (upper.endsWith('K')) num = parseFloat(txt) * 1e3;
@@ -397,9 +425,35 @@ export async function extractTweetsFromPage(
             return Number.isFinite(num) ? Math.round(num) : 0;
           }
 
-          var likes = pm(likeEl);
-          var replies_count = pm(replyEl);
-          var retweets = pm(rtEl);
+          var likes = pm('like');
+          var replies_count = pm('reply');
+          var retweets = pm('retweet');
+
+          // Try to get bookmarks too
+          var bookmarks = 0;
+          var bookmarkEl = article.querySelector('[data-testid="bookmark"]');
+          if (bookmarkEl) {
+            var bAria = (bookmarkEl.closest('button') || bookmarkEl).getAttribute('aria-label') || '';
+            var bMatch = bAria.match(/(\\d[\\d,]*)/);
+            if (bMatch) bookmarks = parseInt(bMatch[1].replace(/,/g, ''), 10) || 0;
+          }
+
+          // Also try the group aria-label which has all metrics
+          // Twitter puts "X replies, Y reposts, Z likes, W bookmarks" on the action group
+          if (likes === 0 && retweets === 0) {
+            var actionGroup = article.querySelector('[role="group"]');
+            if (actionGroup) {
+              var groupAria = actionGroup.getAttribute('aria-label') || '';
+              var likesMatch = groupAria.match(/(\\d[\\d,]*)\\s*like/i);
+              var retweetsMatch = groupAria.match(/(\\d[\\d,]*)\\s*repost/i);
+              var repliesMatch = groupAria.match(/(\\d[\\d,]*)\\s*repl/i);
+              var bookmarksMatch = groupAria.match(/(\\d[\\d,]*)\\s*bookmark/i);
+              if (likesMatch) likes = parseInt(likesMatch[1].replace(/,/g, ''), 10) || 0;
+              if (retweetsMatch) retweets = parseInt(retweetsMatch[1].replace(/,/g, ''), 10) || 0;
+              if (repliesMatch) replies_count = parseInt(repliesMatch[1].replace(/,/g, ''), 10) || 0;
+              if (bookmarksMatch) bookmarks = parseInt(bookmarksMatch[1].replace(/,/g, ''), 10) || 0;
+            }
+          }
 
           var timeEl = article.querySelector('time');
           var posted_at = timeEl ? timeEl.getAttribute('datetime') : null;
@@ -425,9 +479,11 @@ export async function extractTweetsFromPage(
             retweets: retweets,
             replies: replies_count,
             views: 0,
-            bookmarks: 0,
+            bookmarks: bookmarks,
             quotes: 0,
-            author_followers: author_followers
+            author_followers: author_followers,
+            tweet_type: is_reply ? 'reply' : 'original',
+            reply_to_user: reply_to_user
           });
         }
         return results;

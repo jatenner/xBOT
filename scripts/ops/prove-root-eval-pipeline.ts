@@ -34,7 +34,10 @@ async function main() {
   // Step 2: Run ROOT_EVAL bridge
   console.log(`\n2️⃣ Running ROOT_EVAL bridge...`);
   const bridgeResult = await refreshCandidateQueue();
-  console.log(`   Result: evaluated=${bridgeResult.evaluated} queued=${bridgeResult.queued} expired=${bridgeResult.expired}`);
+  const evalCount = bridgeResult?.evaluated ?? 0;
+  const queuedCount = bridgeResult?.queued ?? 0;
+  const expiredCount = bridgeResult?.expired ?? 0;
+  console.log(`   Result: evaluated=${evalCount} queued=${queuedCount} expired=${expiredCount}`);
   
   // Step 3: Check root evaluations
   const rootTweetIds = rootOpps?.map(o => o.target_tweet_id) || [];
