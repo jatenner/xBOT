@@ -4,6 +4,7 @@
  */
 
 import { getConfig } from '../config/config';
+import { logLearningState } from '../utils/learningStateLogger';
 
 export interface LearningStats {
   sampleSize: number;
@@ -23,6 +24,12 @@ export async function runLearningCycle(): Promise<LearningStats> {
     const trainingData = await collectTrainingData();
     
     // Check if we have sufficient data for training
+    const learningMode = trainingData.length === 0 ? 'insufficient_data'
+      : trainingData.length < 2 ? 'insufficient_data'
+      : 'real_data';
+    console.log(`[LEARNING_STATE] system=learn_job mode=${learningMode} samples=${trainingData.length} min_required=2`);
+    logLearningState('learn_job', learningMode, trainingData.length, 2);
+
     if (trainingData.length === 0) {
       console.log('[LEARN_JOB] ⚠️ Training skipped: insufficient samples (need real outcomes in LIVE mode)');
       return {
@@ -34,8 +41,22 @@ export async function runLearningCycle(): Promise<LearningStats> {
       };
     }
     
+    // 1.5 Growth action logs: aggregate efficiency signals and influence bandits
+    const growthSignals = await collectGrowthActionSignals();
+    if (growthSignals.armEfficiency.size > 0 || growthSignals.timingEfficiency.size > 0 || growthSignals.tierConversion.size > 0) {
+      growthSignals.armEfficiency.forEach((agg, arm) => {
+        console.log(`[LEARNING_SIGNAL] arm=${arm} efficiency=${agg.avgEfficiency?.toFixed(4) ?? 'n/a'} samples=${agg.samples}`);
+      });
+      growthSignals.timingEfficiency.forEach((agg, hour) => {
+        console.log(`[LEARNING_SIGNAL] hour=${hour} timing_efficiency=${agg.avgEfficiency?.toFixed(4) ?? 'n/a'} samples=${agg.samples}`);
+      });
+      growthSignals.tierConversion.forEach((agg, tier) => {
+        console.log(`[LEARNING_SIGNAL] account_size_tier=${tier} conversion_rate=${agg.avgRate?.toFixed(6) ?? 'n/a'} samples=${agg.samples}`);
+      });
+    }
+
     // 2. Update bandit arms (Thompson sampling for content/reply, UCB for timing)
-    const banditStats = await updateBanditArms(trainingData);
+    const banditStats = await updateBanditArms(trainingData, growthSignals);
     
     // 3. Update predictors (ridge/logit regression)
     const predictorStats = await updatePredictors(trainingData);
@@ -53,7 +74,87 @@ export async function runLearningCycle(): Promise<LearningStats> {
     
     // Log one-line summary
     console.log(`[LEARN_JOB] ✅ LEARN_RUN sample=${stats.sampleSize}, arms_trained=${stats.armsUpdated}, explore_ratio=${stats.exploreRatio.toFixed(3)}, coeffs_updated=${predictorStats.version}`);
-    
+
+    // 🎯 ARCHETYPE LEARNING: Aggregate reply archetype performance
+    try {
+      const { aggregateArchetypePerformance } = await import('../learning/archetypeLearning');
+      await aggregateArchetypePerformance();
+    } catch (archetypeErr: any) {
+      console.warn(`[LEARN_JOB] ⚠️ Archetype aggregation failed (non-fatal): ${archetypeErr.message}`);
+    }
+
+    // 🧠 GROWTH INTELLIGENCE: Compute multi-dimensional performance snapshot
+    try {
+      const { runGrowthIntelligence } = await import('../intelligence/growthIntelligence');
+      await runGrowthIntelligence();
+    } catch (growthErr: any) {
+      console.warn(`[LEARN_JOB] ⚠️ Growth intelligence failed (non-fatal): ${growthErr.message}`);
+    }
+
+    // 🧠 TIMELINE INTELLIGENCE: Evaluate account strategy and posting mix
+    try {
+      const { runTimelineIntelligence } = await import('../intelligence/timelineIntelligence');
+      await runTimelineIntelligence();
+    } catch (timelineErr: any) {
+      console.warn(`[LEARN_JOB] ⚠️ Timeline intelligence failed (non-fatal): ${timelineErr.message}`);
+    }
+
+    // 🧠 STRATEGY LEARNER: Update strategy_state from all learning signals
+    // This is the brain that closes the loop — breakout detection, volume ramp, content/discovery preferences
+    try {
+      const { updateStrategy } = await import('../strategy/strategyLearner');
+      const { getLatestGrowthSnapshot } = await import('../intelligence/growthIntelligence');
+      const gi = await getLatestGrowthSnapshot();
+      const strategyResult = await updateStrategy({ growthSnapshot: gi });
+      console.log(`[LEARN_JOB] 🧠 Strategy updated: gen=${strategyResult.generation} changes=${strategyResult.changes.length} breakouts=${strategyResult.breakout_count}`);
+    } catch (strategyErr: any) {
+      console.warn(`[LEARN_JOB] ⚠️ Strategy learner failed (non-fatal): ${strategyErr.message}`);
+    }
+
+    // 📊 OPPORTUNITY LOG BACKFILL: Fill in actual_reward for past decisions
+    try {
+      const supabase = getSupabaseClient();
+      // Find opportunity_log entries missing actual_reward that have outcomes
+      const { data: unfilled } = await supabase
+        .from('opportunity_log')
+        .select('id, decision_id, tick_at')
+        .is('actual_reward', null)
+        .not('decision_id', 'is', null)
+        .order('tick_at', { ascending: false })
+        .limit(50);
+
+      if (unfilled && unfilled.length > 0) {
+        let backfilled = 0;
+        for (const entry of unfilled) {
+          // Check if this decision has outcomes
+          const { data: outcome } = await supabase
+            .from('outcomes')
+            .select('impressions, likes, retweets, replies, followers_gained')
+            .eq('decision_id', entry.decision_id)
+            .order('collected_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (outcome && (outcome.impressions || outcome.likes)) {
+            const reward = ((outcome.likes || 0) + (outcome.retweets || 0) * 2 + (outcome.replies || 0) * 3 + (outcome.followers_gained || 0) * 10) / Math.max(1, Math.sqrt(outcome.impressions || 1));
+            await supabase
+              .from('opportunity_log')
+              .update({
+                actual_reward: Math.round(reward * 100) / 100,
+                actual_followers_gained: outcome.followers_gained || 0,
+              })
+              .eq('id', entry.id);
+            backfilled++;
+          }
+        }
+        if (backfilled > 0) {
+          console.log(`[LEARN_JOB] 📊 Opportunity log backfill: ${backfilled}/${unfilled.length} entries updated with actual rewards`);
+        }
+      }
+    } catch (backfillErr: any) {
+      console.warn(`[LEARN_JOB] ⚠️ Opportunity backfill failed (non-fatal): ${backfillErr.message}`);
+    }
+
     return stats;
   } catch (error) {
     console.error('[LEARN_JOB] ❌ Learning cycle failed:', error.message);
@@ -64,12 +165,52 @@ export async function runLearningCycle(): Promise<LearningStats> {
 async function collectTrainingData(config?: any): Promise<any[]> {
   if (!config) config = getConfig();
   
+  const controlledDecisionId = process.env.CONTROLLED_DECISION_ID?.trim();
+  if (controlledDecisionId) {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    const { data: outcome, error } = await supabase
+      .from('outcomes')
+      .select('*')
+      .eq('decision_id', controlledDecisionId)
+      .maybeSingle();
+    if (error || !outcome) {
+      console.log('[LEARN_JOB] ⚠️ Controlled: no outcome found for decision_id=' + controlledDecisionId);
+      return [];
+    }
+    const impressions = outcome.impressions ?? outcome.views ?? 0;
+    const likes = outcome.likes ?? 0;
+    const collectedAt = outcome.collected_at;
+    const actual_er =
+      outcome.engagement_rate != null
+        ? Number(outcome.engagement_rate)
+        : impressions > 0
+          ? ((likes + (outcome.retweets || 0) + (outcome.replies || 0)) / impressions)
+          : 0;
+    const trainingSample = {
+      decision_id: outcome.decision_id,
+      content_type: 'educational',
+      timing_slot: collectedAt ? new Date(collectedAt).getHours() : new Date().getHours(),
+      quality_score: 0.8,
+      predicted_er: actual_er * 0.95,
+      actual_er,
+      actual_impressions: impressions,
+      actual_likes: likes,
+      actual_retweets: outcome.retweets || 0,
+      actual_replies: outcome.replies || 0,
+      simulated: outcome.simulated ?? false,
+      hours_old: collectedAt ? (Date.now() - new Date(collectedAt).getTime()) / (1000 * 60 * 60) : 0,
+    };
+    console.log('[LEARN_JOB] 📋 Controlled: using 1 outcome for decision_id=' + controlledDecisionId);
+    return [trainingSample];
+  }
+
   console.log('[LEARN_JOB] 📊 Collecting training data from decisions and outcomes...');
   
   try {
     // ✅ MEMORY OPTIMIZATION: Check memory before loading data
     const { isMemorySafeForOperation, paginatedQuery, clearArrays } = await import('../utils/memoryOptimization');
-    const memoryCheck = await isMemorySafeForOperation(50, 400);
+    const memoryCheck = await isMemorySafeForOperation(50, 1400);
     if (!memoryCheck.safe) {
       console.warn(`[LEARN_JOB] ⚠️ Low memory (${memoryCheck.currentMB}MB), reducing training data size`);
       // Continue with smaller dataset
@@ -98,17 +239,17 @@ async function collectTrainingData(config?: any): Promise<any[]> {
     if (error || !outcomes || outcomes.length === 0) {
       // In LIVE mode, never use mock data - only train on real outcomes
       if (config.MODE === 'live') {
-        console.log('[LEARN_JOB] ⚠️ Training skipped: insufficient real outcomes (need 5)');
+        console.log('[LEARN_JOB] ⚠️ Training skipped: insufficient real outcomes (need 2)');
         return [];
       }
-      
+
       console.log('[LEARN_JOB] ℹ️ No outcomes data found, using mock training data');
       return getMockTrainingData();
     }
-    
-    // In LIVE mode, require at least 5 real outcomes
-    if (config.MODE === 'live' && outcomes.length < 5) {
-      console.log(`[LEARN_JOB] ⚠️ Training skipped: insufficient real outcomes (have ${outcomes.length}, need 5)`);
+
+    // In LIVE mode, require at least 2 real outcomes
+    if (config.MODE === 'live' && outcomes.length < 2) {
+      console.log(`[LEARN_JOB] ⚠️ Training skipped: insufficient real outcomes (have ${outcomes.length}, need 2)`);
       return [];
     }
     
@@ -262,13 +403,86 @@ function getMockTrainingData(): any[] {
   return mockTrainingData;
 }
 
-async function updateBanditArms(trainingData: any[]): Promise<{ armsUpdated: number }> {
+export interface GrowthActionSignals {
+  armEfficiency: Map<string, { avgEfficiency: number | null; samples: number }>;
+  timingEfficiency: Map<number, { avgEfficiency: number | null; samples: number }>;
+  tierConversion: Map<string, { avgRate: number | null; samples: number }>;
+}
+
+async function collectGrowthActionSignals(): Promise<GrowthActionSignals> {
+  const armEfficiency = new Map<string, { avgEfficiency: number | null; samples: number }>();
+  const timingEfficiency = new Map<number, { avgEfficiency: number | null; samples: number }>();
+  const tierConversion = new Map<string, { avgRate: number | null; samples: number }>();
+
+  try {
+    const { getSupabaseClient } = await import('../db/index');
+    const supabase = getSupabaseClient();
+    const seventyTwoHoursAgo = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+
+    const { data: rows, error } = await supabase
+      .from('growth_action_logs')
+      .select('arm_name, post_time_hour, account_size_tier, reply_efficiency, timing_efficiency, conversion_rate')
+      .not('impressions', 'is', null)
+      .gte('executed_at', seventyTwoHoursAgo);
+
+    if (error || !rows || rows.length === 0) return { armEfficiency, timingEfficiency, tierConversion };
+
+    for (const r of rows) {
+      const arm = (r as any).arm_name ?? 'unknown';
+      if (!armEfficiency.has(arm)) armEfficiency.set(arm, { avgEfficiency: null, samples: 0 });
+      const ae = armEfficiency.get(arm)!;
+      ae.samples++;
+      const eff = (r as any).reply_efficiency != null ? Number((r as any).reply_efficiency) : null;
+      if (eff != null) ae.avgEfficiency = ae.avgEfficiency == null ? eff : (ae.avgEfficiency * (ae.samples - 1) + eff) / ae.samples;
+
+      const hour = (r as any).post_time_hour;
+      if (hour != null && typeof hour === 'number') {
+        if (!timingEfficiency.has(hour)) timingEfficiency.set(hour, { avgEfficiency: null, samples: 0 });
+        const te = timingEfficiency.get(hour)!;
+        te.samples++;
+        const teff = (r as any).timing_efficiency != null ? Number((r as any).timing_efficiency) : null;
+        if (teff != null) te.avgEfficiency = te.avgEfficiency == null ? teff : (te.avgEfficiency * (te.samples - 1) + teff) / te.samples;
+      }
+
+      const tier = (r as any).account_size_tier ?? 'unknown';
+      if (!tierConversion.has(tier)) tierConversion.set(tier, { avgRate: null, samples: 0 });
+      const tc = tierConversion.get(tier)!;
+      tc.samples++;
+      const cr = (r as any).conversion_rate != null ? Number((r as any).conversion_rate) : null;
+      if (cr != null) tc.avgRate = tc.avgRate == null ? cr : (tc.avgRate * (tc.samples - 1) + cr) / tc.samples;
+    }
+  } catch (e: any) {
+    console.warn('[LEARN_JOB] Growth action signals collection failed (non-blocking):', e?.message);
+  }
+  return { armEfficiency, timingEfficiency, tierConversion };
+}
+
+async function updateBanditArms(trainingData: any[], growthSignals?: GrowthActionSignals): Promise<{ armsUpdated: number }> {
   console.log('[LEARN_JOB] 🎰 Updating bandit arms with new rewards...');
-  
+
+  const signals = growthSignals ?? { armEfficiency: new Map(), timingEfficiency: new Map(), tierConversion: new Map() };
+  const armBonusSuccess = new Map<string, number>();
+  const armBonusFailure = new Map<string, number>();
+  if (signals.armEfficiency.size > 0) {
+    const efficiencies = [...signals.armEfficiency.entries()]
+      .map(([, v]) => v.avgEfficiency)
+      .filter((e): e is number => e != null);
+    const median = efficiencies.length > 0
+      ? [...efficiencies].sort((a, b) => a - b)[Math.floor(efficiencies.length / 2)]
+      : null;
+    signals.armEfficiency.forEach((agg, arm) => {
+      if (agg.avgEfficiency != null && median != null && agg.samples >= 1) {
+        const key = arm === 'unknown' ? 'educational' : arm;
+        if (agg.avgEfficiency >= median) armBonusSuccess.set(key, (armBonusSuccess.get(key) ?? 0) + 1);
+        else armBonusFailure.set(key, (armBonusFailure.get(key) ?? 0) + 1);
+      }
+    });
+  }
+
   // Group by content type and timing for arm updates
-  const contentArms = new Map();
+  const contentArms = new Map<string, { successes: number; failures: number; totalReward: number; samples: number }>();
   const timingArms = new Map();
-  
+
   trainingData.forEach(sample => {
     // Content bandit arms (Thompson sampling)
     if (!contentArms.has(sample.content_type)) {
@@ -301,7 +515,16 @@ async function updateBanditArms(trainingData: any[]): Promise<{ armsUpdated: num
     timingArm.samples += 1;
     timingArm.avgReward = timingArm.totalReward / timingArm.samples;
   });
-  
+
+  armBonusSuccess.forEach((count, key) => {
+    if (!contentArms.has(key)) contentArms.set(key, { successes: 0, failures: 0, totalReward: 0, samples: 0 });
+    contentArms.get(key)!.successes += count;
+  });
+  armBonusFailure.forEach((count, key) => {
+    if (!contentArms.has(key)) contentArms.set(key, { successes: 0, failures: 0, totalReward: 0, samples: 0 });
+    contentArms.get(key)!.failures += count;
+  });
+
   // Log arm updates
   console.log('[LEARN_JOB] 📈 Content arms updated:');
   contentArms.forEach((arm, contentType) => {
@@ -315,61 +538,66 @@ async function updateBanditArms(trainingData: any[]): Promise<{ armsUpdated: num
   });
   
   // 🔥 FIX: Store arm updates in database (bandit_arms table)
+  // Supports current schema (arm_name, scope) and legacy schema (arm_key, attempts)
   try {
     const { getSupabaseClient } = await import('../db/index');
     const supabase = getSupabaseClient();
-    
-    // Store content arms
+
+    const upsertArm = async (
+      armName: string,
+      scope: 'content' | 'timing',
+      successes: number,
+      failures: number,
+      alpha: number,
+      beta: number
+    ): Promise<boolean> => {
+      const payload: Record<string, unknown> = {
+        arm_name: armName,
+        scope,
+        successes,
+        failures,
+        alpha,
+        beta,
+        last_updated: new Date().toISOString(),
+      };
+      // Some DB schemas have arm_id NOT NULL (e.g. arm_id TEXT PRIMARY KEY); supply it for insert.
+      payload.arm_id = armName;
+      let result = await supabase.from('bandit_arms').upsert(payload, { onConflict: 'arm_name' });
+      if (result.error && (result.error.message?.includes('arm_name') || result.error.message?.includes('scope'))) {
+        const legacyPayload = {
+          arm_key: armName,
+          successes,
+          attempts: successes + failures,
+          alpha,
+          beta,
+          last_updated: new Date().toISOString(),
+        };
+        result = await supabase.from('bandit_arms').upsert(legacyPayload, { onConflict: 'arm_key' });
+      }
+      if (result.error) {
+        console.warn(`[LEARN_JOB] ⚠️ Failed to store bandit arm ${armName}:`, result.error.message);
+        return false;
+      }
+      return true;
+    };
+
+    let stored = 0;
     for (const [contentType, arm] of contentArms.entries()) {
       const armName = `content_${contentType}`;
       const alpha = arm.successes + 1;
       const beta = arm.failures + 1;
-      
-      const { error } = await supabase
-        .from('bandit_arms')
-        .upsert({
-          arm_name: armName,
-          scope: 'content',
-          successes: arm.successes,
-          failures: arm.failures,
-          alpha: alpha,
-          beta: beta,
-          last_updated: new Date().toISOString()
-        }, {
-          onConflict: 'arm_name'
-        });
-      if (error) {
-        console.warn(`[LEARN_JOB] ⚠️ Failed to store bandit arm ${armName}:`, error.message);
-      }
+      if (await upsertArm(armName, 'content', arm.successes, arm.failures, alpha, beta)) stored++;
     }
-    
-    // Store timing arms
     for (const [slot, arm] of timingArms.entries()) {
       const armName = `timing_${slot}`;
-      // For timing arms, convert avg reward to successes/failures estimate
       const totalAttempts = arm.samples;
       const estimatedSuccesses = Math.round(arm.avgReward > 0.03 ? totalAttempts * 0.6 : totalAttempts * 0.4);
       const estimatedFailures = totalAttempts - estimatedSuccesses;
-      
-      const { error } = await supabase
-        .from('bandit_arms')
-        .upsert({
-          arm_name: armName,
-          scope: 'timing',
-          successes: estimatedSuccesses,
-          failures: estimatedFailures,
-          alpha: estimatedSuccesses + 1,
-          beta: estimatedFailures + 1,
-          last_updated: new Date().toISOString()
-        }, {
-          onConflict: 'arm_name'
-        });
-      if (error) {
-        console.warn(`[LEARN_JOB] ⚠️ Failed to store bandit arm ${armName}:`, error.message);
-      }
+      const alpha = estimatedSuccesses + 1;
+      const beta = estimatedFailures + 1;
+      if (await upsertArm(armName, 'timing', estimatedSuccesses, estimatedFailures, alpha, beta)) stored++;
     }
-    
-    console.log(`[LEARN_JOB] 💾 Stored ${contentArms.size + timingArms.size} bandit arms to database`);
+    console.log(`[LEARN_JOB] 💾 Stored ${stored}/${contentArms.size + timingArms.size} bandit arms to database`);
   } catch (error) {
     console.warn(`[LEARN_JOB] ⚠️ Failed to persist bandit arms:`, error.message);
   }
@@ -381,8 +609,8 @@ async function updateBanditArms(trainingData: any[]): Promise<{ armsUpdated: num
 async function updatePredictors(trainingData: any[]): Promise<{ updated: boolean; version: string }> {
   console.log('[LEARN_JOB] 🔮 Training predictive models...');
   
-  if (trainingData.length < 10) {
-    console.log(`[LEARN_JOB] ⚠️ Insufficient data for predictor training (need 10+ samples, have ${trainingData.length})`);
+  if (trainingData.length < 5) {
+    console.log(`[LEARN_JOB] ⚠️ Insufficient data for predictor training (need 5+ samples, have ${trainingData.length})`);
     return { updated: false, version: 'none' };
   }
 

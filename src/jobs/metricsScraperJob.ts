@@ -10,12 +10,15 @@ import { getSupabaseClient } from '../db';
 import { BulletproofTwitterScraper } from '../scrapers/bulletproofTwitterScraper';
 import { ScrapingOrchestrator } from '../metrics/scrapingOrchestrator';
 import { validatePostsForScraping, validateTweetIdForScraping } from './metricsScraperValidation';
-import { 
-  calculateV2ObjectiveMetrics, 
+import {
+  calculateV2ObjectiveMetrics,
   extractContentStructureTypes,
   type FollowerAttributionData,
-  type EngagementMetrics 
+  type EngagementMetrics
 } from '../utils/v2ObjectiveScoreCalculator';
+import { logScrapeAudit } from '../utils/scrapeAuditLogger';
+import { recordAction, updateOutcomes } from '../strategy/growthLedgerWriter';
+import { scheduleCheckpoints } from '../strategy/checkpointScraper';
 
 const parseMetricValue = (value: unknown): number | null => {
   if (value === null || value === undefined) {
@@ -52,7 +55,7 @@ export async function metricsScraperJob(): Promise<void> {
   // ✅ MEMORY OPTIMIZATION: Check memory before starting
   try {
     const { isMemorySafeForOperation } = await import('../utils/memoryOptimization');
-    const memoryCheck = await isMemorySafeForOperation(100, 400);
+    const memoryCheck = await isMemorySafeForOperation(100, 1400);
     if (!memoryCheck.safe) {
       console.warn(`[METRICS_JOB] ⚠️ Low memory (${memoryCheck.currentMB}MB), skipping this run`);
       log({ op: 'metrics_scraper_skipped', reason: 'low_memory', memoryMB: memoryCheck.currentMB });
@@ -75,50 +78,87 @@ export async function metricsScraperJob(): Promise<void> {
   const executeJob = async () => {
   try {
     const supabase = getSupabaseClient();
-    
-    // PRIORITY 1: Posts missing metrics (last 7 days) - scrape aggressively
-    // 🔥 FIX: Focus on posts that actually need scraping (missing metrics)
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const { data: missingMetricsPosts, error: missingError } = await supabase
-      .from('content_metadata')
-      .select('decision_id, tweet_id, posted_at')
-      .eq('status', 'posted')
-      .not('tweet_id', 'is', null)
-      .in('decision_type', ['single', 'thread'])  // Only posts, not replies
-      .gte('posted_at', sevenDaysAgo.toISOString())
-      .or('actual_impressions.is.null,actual_impressions.eq.0')  // Missing metrics
-      .order('posted_at', { ascending: false })
-      .limit(15); // 🔥 INCREASED: Process more posts per run to clear backlog
-    
-    // PRIORITY 2: Recent posts that might need refresh (last 24h, even if they have metrics)
-    // This ensures fresh metrics for recent posts
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const { data: recentPosts, error: recentError } = await supabase
-      .from('content_metadata')
-      .select('decision_id, tweet_id, posted_at')
-      .eq('status', 'posted')
-      .not('tweet_id', 'is', null)
-      .in('decision_type', ['single', 'thread'])
-      .gte('posted_at', oneDayAgo.toISOString())
-      .order('posted_at', { ascending: false })
-      .limit(5); // Refresh recent posts even if they have metrics
-    
-    // PRIORITY 3: Historical tweets (7-30 days old) - scrape less frequently
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const { data: historicalPosts, error: historicalError } = await supabase
-      .from('content_metadata')
-      .select('decision_id, tweet_id, posted_at')
-      .eq('status', 'posted')
-      .not('tweet_id', 'is', null)
-      .in('decision_type', ['single', 'thread'])
-      .lt('posted_at', sevenDaysAgo.toISOString())
-      .gte('posted_at', thirtyDaysAgo.toISOString())
-      .or('actual_impressions.is.null,actual_impressions.eq.0')  // Only missing metrics
-      .order('posted_at', { ascending: false })
-      .limit(3); // Historical tweets with missing metrics
-    
-    // Combine: prioritize missing metrics, then recent refreshes, then historical
-    const allPostsRaw = [...(missingMetricsPosts || []), ...(recentPosts || []), ...(historicalPosts || [])];
+
+    let allPostsRaw: any[];
+    let postsError: any = null;
+
+    const controlledDecisionId = process.env.CONTROLLED_DECISION_ID?.trim();
+    const controlledTweetId = process.env.CONTROLLED_TWEET_ID?.trim();
+
+    let missingCount = 0;
+    let recentCount = 0;
+    let historicalCount = 0;
+
+    if (controlledDecisionId || controlledTweetId) {
+      // Use base table so controlled proof works when content_metadata view is out of sync
+      let query = supabase
+        .from('content_generation_metadata_comprehensive')
+        .select('decision_id, tweet_id, posted_at, metrics_scrape_attempts, metrics_last_scrape_at')
+        .eq('status', 'posted')
+        .not('tweet_id', 'is', null)
+        .in('decision_type', ['single', 'thread', 'reply']);
+      if (controlledDecisionId) query = query.eq('decision_id', controlledDecisionId);
+      else query = query.eq('tweet_id', controlledTweetId!);
+      const { data: controlledRow, error: controlledErr } = await query.maybeSingle();
+      if (controlledErr) {
+        console.error('[METRICS_JOB] ❌ Controlled fetch failed:', controlledErr.message);
+        return;
+      }
+      if (!controlledRow) {
+        console.log('[METRICS_JOB] ℹ️ No post found for CONTROLLED_DECISION_ID/CONTROLLED_TWEET_ID');
+        return;
+      }
+      allPostsRaw = [controlledRow];
+    } else {
+      // 🔒 Only scrape tweets posted after RAMP_START_DATE to avoid visiting suspended account pages
+      const rampStart = process.env.RAMP_START_DATE || '2026-03-23T00:00:00Z';
+
+      // PRIORITY 1: Posts missing metrics (last 7 days) - scrape aggressively
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const { data: missingMetricsPosts, error: missingError } = await supabase
+        .from('content_generation_metadata_comprehensive')
+        .select('decision_id, tweet_id, posted_at, metrics_scrape_attempts, metrics_last_scrape_at')
+        .eq('status', 'posted')
+        .not('tweet_id', 'is', null)
+        .in('decision_type', ['single', 'thread', 'reply'])
+        .gte('posted_at', rampStart)
+        .gte('posted_at', sevenDaysAgo.toISOString())
+        .or('actual_impressions.is.null,actual_impressions.eq.0')
+        .order('posted_at', { ascending: false })
+        .limit(15);
+
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const { data: recentPosts, error: recentError } = await supabase
+        .from('content_generation_metadata_comprehensive')
+        .select('decision_id, tweet_id, posted_at, metrics_scrape_attempts, metrics_last_scrape_at')
+        .eq('status', 'posted')
+        .not('tweet_id', 'is', null)
+        .in('decision_type', ['single', 'thread', 'reply'])
+        .gte('posted_at', rampStart)
+        .gte('posted_at', oneDayAgo.toISOString())
+        .order('posted_at', { ascending: false })
+        .limit(5);
+
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const { data: historicalPosts, error: historicalError } = await supabase
+        .from('content_generation_metadata_comprehensive')
+        .select('decision_id, tweet_id, posted_at, metrics_scrape_attempts, metrics_last_scrape_at')
+        .eq('status', 'posted')
+        .not('tweet_id', 'is', null)
+        .in('decision_type', ['single', 'thread', 'reply'])
+        .gte('posted_at', rampStart)
+        .lt('posted_at', sevenDaysAgo.toISOString())
+        .gte('posted_at', thirtyDaysAgo.toISOString())
+        .or('actual_impressions.is.null,actual_impressions.eq.0')
+        .order('posted_at', { ascending: false })
+        .limit(3);
+
+      allPostsRaw = [...(missingMetricsPosts || []), ...(recentPosts || []), ...(historicalPosts || [])];
+      postsError = missingError || recentError || historicalError;
+      missingCount = missingMetricsPosts?.length || 0;
+      recentCount = recentPosts?.length || 0;
+      historicalCount = historicalPosts?.length || 0;
+    }
     
     // 🔒 VALIDATION: Filter out posts with invalid tweet IDs before processing
     const validatedPostIds = new Set<string>();
@@ -142,8 +182,6 @@ export async function metricsScraperJob(): Promise<void> {
       return true;
     });
     
-    const postsError = missingError || recentError || historicalError;
-    
     if (postsError) {
       console.error('[METRICS_JOB] ❌ Failed to fetch posts:', postsError.message);
       return;
@@ -154,9 +192,6 @@ export async function metricsScraperJob(): Promise<void> {
       return;
     }
     
-    const missingCount = missingMetricsPosts?.length || 0;
-    const recentCount = recentPosts?.length || 0;
-    const historicalCount = historicalPosts?.length || 0;
     console.log(`[METRICS_JOB] 📊 Found ${posts.length} posts to check (${missingCount} missing metrics, ${recentCount} recent refresh, ${historicalCount} historical)`);
     
     let updated = 0;
@@ -172,8 +207,25 @@ export async function metricsScraperJob(): Promise<void> {
     // 🚀 OPTIMIZATION: Filter posts that need scraping BEFORE acquiring browser
     const postsToScrape = [];
     
+    const MAX_SCRAPE_ATTEMPTS = 10;
+
     for (const post of posts) {
       try {
+        // 🔄 RETRY BACKOFF: Skip posts that have exhausted retry attempts or are in backoff window
+        const attempts = (post as any).metrics_scrape_attempts || 0;
+        if (attempts >= MAX_SCRAPE_ATTEMPTS) {
+          skipped++;
+          continue; // Give up after max attempts
+        }
+        if (attempts > 0 && (post as any).metrics_last_scrape_at) {
+          const backoffMs = attempts * 10 * 60 * 1000; // attempts * 10 minutes
+          const lastAttempt = new Date(String((post as any).metrics_last_scrape_at)).getTime();
+          if (Date.now() - lastAttempt < backoffMs) {
+            skipped++;
+            continue; // Too soon to retry
+          }
+        }
+
         // Check if we collected metrics recently (skip if collected in last 30 minutes for efficiency)
         // But ALWAYS scrape if actual_impressions is null/0 (missing metrics)
         const { data: contentMeta } = await supabase
@@ -242,9 +294,10 @@ export async function metricsScraperJob(): Promise<void> {
     // 🔒 RAILWAY GATE: Playwright scraping only runs on Mac Runner
     if (process.env.RUNNER_MODE !== 'true') {
       console.log('[METRICS_SCRAPER] ⏭️  Skipping Playwright scraping on Railway (RUNNER_MODE not set)');
+      console.log('[METRICS_SCRAPER] proof_run executor=false reason=RUNNER_MODE_not_set selected_eligible=' + postsToProcess.length + ' updated=0');
       return; // Skip silently - metrics can be fetched via API if needed
     }
-    
+    console.log('[METRICS_SCRAPER] proof_run executor=true RUNNER_MODE=true selected_eligible=' + postsToProcess.length);
     await withBrowserLock('metrics_batch', BrowserPriority.METRICS, async () => {
       // Use UnifiedBrowserPool (same as working discovery system)
       const { UnifiedBrowserPool } = await import('../browser/UnifiedBrowserPool');
@@ -258,7 +311,9 @@ export async function metricsScraperJob(): Promise<void> {
         for (const post of postsToProcess) {
           try {
             console.log(`[METRICS_JOB] 🔍 Scraping ${post.tweet_id} (${updated + failed + 1}/${postsToProcess.length})...`);
-            
+
+            const scrapeStartMs = Date.now();
+
             // Use the shared page from the batch session
             // PHASE 4: Use orchestrator (includes validation, quality tracking, caching)
             const postedAt = new Date(String(post.posted_at));  // ✅ FIXED: Use posted_at, not created_at
@@ -310,7 +365,29 @@ export async function metricsScraperJob(): Promise<void> {
             
             if (!result.success) {
               const errorMessage = result.error || lastError || 'unknown_error';
-              console.warn(`[METRICS_JOB] ⚠️ Scraping failed for ${post.tweet_id}: ${errorMessage}`);
+              const currentAttempts = ((post as any).metrics_scrape_attempts || 0) + 1;
+              console.warn(`[METRICS_JOB] ⚠️ Scraping failed for ${post.tweet_id} (attempt ${currentAttempts}/${MAX_SCRAPE_ATTEMPTS}): ${errorMessage}`);
+              // Audit trail: record failed scrape attempt
+              logScrapeAudit({
+                tweet_id: String(post.tweet_id),
+                decision_id: post.decision_id,
+                collection_phase: 'scheduled_job',
+                collection_status: 'failed',
+                error_message: errorMessage,
+                duration_ms: Date.now() - scrapeStartMs,
+              });
+              // 🔄 RETRY TRACKING: Record failure for backoff
+              try {
+                await supabase
+                  .from('content_generation_metadata_comprehensive')
+                  .update({
+                    metrics_scrape_attempts: currentAttempts,
+                    metrics_last_scrape_at: new Date().toISOString(),
+                  })
+                  .eq('decision_id', post.decision_id);
+              } catch (retryErr: any) {
+                console.warn(`[METRICS_JOB] ⚠️ Failed to record scrape attempt: ${retryErr.message}`);
+              }
               scrapeFailedCount++;
               failed++;
               continue;
@@ -368,6 +445,15 @@ export async function metricsScraperJob(): Promise<void> {
                       console.error(`[METRICS_JOB] ⚠️ SKIPPING metrics update - content mismatch!`);
                       console.error(`[METRICS_JOB] 💡 This indicates the tweet_id in database is WRONG!`);
                       console.error(`[METRICS_JOB] 💡 Manual investigation required - tweet_id may belong to different post`);
+                      // Audit trail: record content mismatch
+                      logScrapeAudit({
+                        tweet_id: String(post.tweet_id),
+                        decision_id: post.decision_id,
+                        collection_phase: 'scheduled_job',
+                        collection_status: 'content_mismatch',
+                        error_message: `similarity: ${(verification.similarity * 100).toFixed(1)}%`,
+                        duration_ms: Date.now() - scrapeStartMs,
+                      });
                       verificationFailedCount++;
                       failed++;
                       continue; // Skip this tweet - don't store wrong metrics
@@ -617,7 +703,10 @@ export async function metricsScraperJob(): Promise<void> {
               followers_before: followersBefore,
               followers_after: followers24hAfter || followers48hAfter || followers2hAfter,
               collected_at: new Date().toISOString(),
-              data_source: 'orchestrator_v2',
+              data_source: 'playwright_scraper',
+              collection_status: 'success',
+              confidence: result.validationResult?.confidence ?? null,
+              metric_age_hours: hoursSincePostScrape,
               simulated: false,
               // 🎯 v2 FIELDS:
               followers_gained_weighted: v2Metrics.followers_gained_weighted,
@@ -635,6 +724,24 @@ export async function metricsScraperJob(): Promise<void> {
             console.log(`[METRICS_JOB]   - cta_type: ${v2Metrics.cta_type || 'null'}`);
             console.log(`[METRICS_JOB]   - structure_type: ${v2Metrics.structure_type || 'null'}`);
             
+            // Backfill content features if not already present
+            try {
+              const { extractContentFeatures } = require('../utils/contentFeatureExtractor');
+              const postContent = String(post.content || '');
+              if (postContent.length > 0) {
+                const existingFeatures = (post as any).features || {};
+                if (!existingFeatures.content_features) {
+                  const contentFeatures = extractContentFeatures(postContent);
+                  await supabase.from('content_metadata')
+                    .update({ features: { ...existingFeatures, content_features: contentFeatures } })
+                    .eq('decision_id', post.decision_id);
+                  console.log(`[METRICS_JOB] 📊 Backfilled content features for ${post.tweet_id} (${contentFeatures.word_count} words, numbers=${contentFeatures.has_numbers})`);
+                }
+              }
+            } catch (cfErr: any) {
+              // Non-critical
+            }
+
             const { data: outcomeData, error: outcomeError } = await supabase.from('outcomes').upsert(
               outcomesPayload,
               { onConflict: 'decision_id' }
@@ -648,8 +755,86 @@ export async function metricsScraperJob(): Promise<void> {
               continue;
             } else {
               console.log(`[METRICS_JOB] ✅ Outcomes written successfully for ${post.tweet_id}`);
+              // Audit trail: record successful scrape
+              logScrapeAudit({
+                tweet_id: String(post.tweet_id),
+                decision_id: post.decision_id,
+                collection_phase: 'scheduled_job',
+                collection_status: 'success',
+                confidence: result.validationResult?.confidence ?? null,
+                parsed_values: { likes: likesValue, retweets: retweetsValue, replies: repliesValue, views: viewsValue, bookmarks: bookmarksValue },
+                duration_ms: Date.now() - scrapeStartMs,
+              });
             }
-            
+
+            // 📊 GROWTH LEDGER: Record action + outcomes for unified learning
+            try {
+              // Fetch content metadata for action signals
+              const { data: actionMeta } = await supabase
+                .from('content_metadata')
+                .select('decision_type, content, features, target_username, target_tweet_id, posted_at')
+                .eq('decision_id', post.decision_id)
+                .single();
+
+              if (actionMeta) {
+                const features = actionMeta.features as any;
+                // Upsert: creates ledger entry if missing, updates outcomes if exists
+                await recordAction({
+                  action_type: actionMeta.decision_type as 'reply' | 'single' | 'thread',
+                  decision_id: post.decision_id,
+                  tweet_id: post.tweet_id,
+                  topic: features?.topic || features?.raw_topic,
+                  format_type: features?.format_type || features?.structural_type,
+                  hook_type: features?.hook_type,
+                  archetype: features?.reply_archetype,
+                  content_length: actionMeta.content?.length,
+                  target_username: actionMeta.target_username,
+                  discovery_source: features?.discovery_source || features?.discovery_bucket,
+                  discovery_keyword: features?.discovery_keyword,
+                  posted_at: new Date(actionMeta.posted_at),
+                  target_age_minutes: features?.target_age_minutes,
+                });
+                await updateOutcomes(
+                  { decision_id: post.decision_id },
+                  {
+                    views: viewsValue,
+                    likes: likesValue,
+                    replies: repliesValue,
+                    retweets: retweetsValue,
+                    bookmarks: bookmarksValue,
+                    engagement_rate: engagementRate ?? undefined,
+                    followers_gained: followersGained,
+                  }
+                );
+              }
+            } catch (ledgerErr: any) {
+              console.warn(`[METRICS_JOB] ⚠️ Growth ledger write failed (non-fatal): ${ledgerErr.message}`);
+            }
+
+            // 🧪 CONTENT EXPERIMENT: Update experiment outcome with scraped metrics
+            try {
+              const { updateExperimentOutcome } = await import('../intelligence/contentExperimentEngine');
+              await updateExperimentOutcome(post.decision_id, {
+                views: viewsValue || 0,
+                engagement_rate: engagementRate || 0,
+                followers_gained: followersGained || 0,
+              });
+            } catch { /* non-fatal */ }
+
+            // 📊 CHECKPOINT SCHEDULING: Ensure this post has scrape checkpoints
+            // Only schedule if this is the first time we're scraping (no existing checkpoints)
+            try {
+              const { count: existingCheckpoints } = await supabase
+                .from('scrape_checkpoints')
+                .select('*', { count: 'exact', head: true })
+                .eq('tweet_id', post.tweet_id);
+              if (!existingCheckpoints || existingCheckpoints === 0) {
+                await scheduleCheckpoints(post.decision_id, String(post.tweet_id), postedAt);
+              }
+            } catch (cpErr: any) {
+              // Non-fatal
+            }
+
             // CRITICAL: Also update learning_posts table (used by 30+ learning systems!)
             const { error: learningError } = await supabase.from('learning_posts').upsert({
               tweet_id: post.tweet_id,
@@ -699,24 +884,25 @@ export async function metricsScraperJob(): Promise<void> {
               // But log comprehensively so we can debug the root cause
             }
             
-            // 🔥 CRITICAL FIX: Update content_metadata table (used by dashboard!)
-            // Dashboard reads actual_impressions, actual_likes, actual_retweets from content_metadata
-            // Note: engagementRate already calculated above for v2 metrics
-            
+            // 🔥 CRITICAL: Update base table (content_metadata may be a VIEW in some envs)
+            // Dashboard reads actual_* from content_metadata; view reflects content_generation_metadata_comprehensive
+            // Writing to base table ensures metrics persist whether content_metadata is table or view
             const { error: contentMetadataError } = await supabase
-              .from('content_metadata')
+              .from('content_generation_metadata_comprehensive')
               .update({
                 actual_impressions: viewsNullable,  // Dashboard shows this as "VIEWS"
                 actual_likes: likesValue,           // Dashboard shows this as "LIKES"
                 actual_retweets: retweetsValue,     // Used for viral score
                 actual_replies: repliesValue,       // Used for engagement rate
                 actual_engagement_rate: engagementRate,     // Dashboard shows this as "ER"
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
+                metrics_scrape_attempts: 0,         // Reset retry counter on success
+                metrics_last_scrape_at: new Date().toISOString()
               })
               .eq('decision_id', post.decision_id);  // Match by decision_id (UUID)
             
             if (contentMetadataError) {
-              console.error(`[METRICS_JOB] ❌ CRITICAL: Failed to update content_metadata for ${post.tweet_id}:`, contentMetadataError.message);
+              console.error(`[METRICS_JOB] ❌ CRITICAL: Failed to update content_generation_metadata_comprehensive for ${post.tweet_id}:`, contentMetadataError.message);
               // This is critical - dashboard won't show metrics without this!
               failed++;
               continue;
@@ -724,24 +910,24 @@ export async function metricsScraperJob(): Promise<void> {
               console.log(`[METRICS_JOB] ✅ Dashboard data updated: ${viewsValue} views, ${likesValue} likes`);
             }
             
-            // 🔍 VERIFICATION LOOP: Ensure data actually reached dashboard
+            // 🔍 VERIFICATION LOOP: Ensure data actually reached base table (dashboard reads via content_metadata view/table)
             try {
               const { data: verification, error: verifyError } = await supabase
-                .from('content_metadata')
+                .from('content_generation_metadata_comprehensive')
                 .select('actual_impressions, actual_likes, actual_retweets')
                 .eq('decision_id', post.decision_id)
                 .single();
               
               if (verifyError || !verification) {
-                console.error(`[METRICS_JOB] ❌ VERIFICATION: Failed to read back from content_metadata for ${post.tweet_id}`);
+                console.error(`[METRICS_JOB] ❌ VERIFICATION: Failed to read back from content_generation_metadata_comprehensive for ${post.tweet_id}`);
                 console.error(`[METRICS_JOB] 💡 Sync write succeeded but read failed - possible database issue`);
               } else if (verification.actual_impressions === null && viewsValue > 0) {
                 console.error(`[METRICS_JOB] ❌ VERIFICATION: Data NOT in dashboard for ${post.tweet_id}`);
                 console.error(`[METRICS_JOB] 💡 Expected ${viewsValue} views, got NULL - retrying sync...`);
                 
-                // AUTO-FIX: Retry sync one more time
+                // AUTO-FIX: Retry sync one more time (write to base table)
                 const { error: retryError } = await supabase
-                  .from('content_metadata')
+                  .from('content_generation_metadata_comprehensive')
                   .update({
                     actual_impressions: viewsValue,
                     actual_likes: likesValue,
@@ -873,6 +1059,7 @@ export async function metricsScraperJob(): Promise<void> {
     });
     
     console.log(`[METRICS_JOB] ✅ Metrics collection complete: ${updated} updated, ${skipped} skipped, ${failed} failed`);
+    console.log('[METRICS_SCRAPER] proof_run executor=true selected_eligible=' + postsToProcess.length + ' updated=' + updated + ' failed=' + failed + (updated === 0 && postsToProcess.length > 0 ? ' reason=see_logs_above' : ''));
     console.log(`[METRICS_JOB][SUMMARY]`, {
       totalProcessed: posts.length,
       updated,

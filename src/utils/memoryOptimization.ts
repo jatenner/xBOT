@@ -125,13 +125,15 @@ export class LRUCache<K, V> {
  */
 export async function isMemorySafeForOperation(
   operationMemoryMB: number = 50,
-  thresholdMB: number = 400
+  thresholdMB: number = 1400
 ): Promise<{ safe: boolean; currentMB: number; availableMB: number }> {
   try {
     const { MemoryMonitor } = await import('./memoryMonitor');
     const memory = MemoryMonitor.checkMemory();
-    
-    const availableMB = 512 - memory.rssMB; // Railway limit is 512MB
+
+    // Match MemoryMonitor thresholds (2GB Railway Pro plan)
+    const MEMORY_LIMIT_MB = 2048;
+    const availableMB = MEMORY_LIMIT_MB - memory.rssMB;
     const safe = memory.rssMB + operationMemoryMB < thresholdMB;
     
     return {
@@ -142,7 +144,7 @@ export async function isMemorySafeForOperation(
   } catch (error) {
     // If memory check fails, assume safe (don't block operations)
     console.warn('[MEMORY_OPT] Memory check failed, assuming safe:', error);
-    return { safe: true, currentMB: 0, availableMB: 512 };
+    return { safe: true, currentMB: 0, availableMB: 2048 };
   }
 }
 
@@ -171,7 +173,7 @@ export async function paginatedQuery<T>(
   } = options;
   
   // Check memory before starting
-  const memoryCheck = await isMemorySafeForOperation(batchSize * 2, 400);
+  const memoryCheck = await isMemorySafeForOperation(batchSize * 2, 1400);
   if (!memoryCheck.safe) {
     console.warn(`[MEMORY_OPT] ⚠️ Low memory (${memoryCheck.currentMB}MB), reducing batch size from ${batchSize} to ${Math.floor(batchSize / 2)}`);
     // Reduce batch size if memory is tight
@@ -233,7 +235,7 @@ export async function paginatedQuery<T>(
     
     // Periodic memory check - if memory gets tight, stop early
     if (batchCount % 5 === 0) {
-      const periodicCheck = await isMemorySafeForOperation(50, 450);
+      const periodicCheck = await isMemorySafeForOperation(50, 1400);
       if (!periodicCheck.safe) {
         console.warn(`[MEMORY_OPT] ⚠️ Memory getting tight (${periodicCheck.currentMB}MB), stopping pagination early`);
         break;
@@ -283,7 +285,7 @@ export async function* memoryAwareBatchProcessor<T>(
     
     if (currentBatch.length >= batchSize) {
       // Check memory before yielding
-      const memoryCheck = await isMemorySafeForOperation(50, 400);
+      const memoryCheck = await isMemorySafeForOperation(50, 1400);
       if (!memoryCheck.safe) {
         console.warn(`[MEMORY_OPT] ⚠️ Memory pressure (${memoryCheck.currentMB}MB), yielding batch early`);
         yield currentBatch;

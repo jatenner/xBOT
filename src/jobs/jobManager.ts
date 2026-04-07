@@ -425,6 +425,7 @@ export class JobManager {
     this.scheduleStaggeredJob(
       'ghost_recon',
       async () => {
+        if (process.env.SHADOW_MODE === 'true' || process.env.MODE === 'shadow') { return; }
         await this.safeExecute('ghost_recon', async () => {
           const { getSupabaseClient } = await import('../db/index');
           const supabase = getSupabaseClient();
@@ -467,6 +468,7 @@ export class JobManager {
     this.scheduleStaggeredJob(
       'reply_v2_fetch',
       async () => {
+        if (process.env.SHADOW_MODE === 'true' || process.env.MODE === 'shadow') { return; }
         console.log('[JOB_MANAGER] 🎼 reply_v2_fetch job timer fired - calling safeExecute...');
         await this.safeExecute('reply_v2_fetch', async () => {
           console.log('[JOB_MANAGER] 🎼 reply_v2_fetch safeExecute started - importing orchestrator...');
@@ -508,6 +510,7 @@ export class JobManager {
     this.scheduleStaggeredJob(
       'reply_v2_performance',
       async () => {
+        if (process.env.SHADOW_MODE === 'true' || process.env.MODE === 'shadow') { return; }
         await this.safeExecute('reply_v2_performance', async () => {
           const { updatePerformanceMetrics } = await import('./replySystemV2/performanceTracker');
           await updatePerformanceMetrics();
@@ -596,6 +599,7 @@ export class JobManager {
     this.scheduleStaggeredJob(
       'reply_metrics_scraper',
       async () => {
+          if (process.env.SHADOW_MODE === 'true' || process.env.MODE === 'shadow') { return; }
           const { shouldRunLowPriority } = await import('../browser/BrowserHealthGate');
           if (!(await shouldRunLowPriority())) {
             await (await import('./jobHeartbeat')).recordJobSkip('reply_metrics_scraper', 'browser_degraded');
@@ -1336,6 +1340,7 @@ export class JobManager {
     this.scheduleStaggeredJob(
       'thread_canary',
       async () => {
+        if (process.env.SHADOW_MODE === 'true' || process.env.MODE === 'shadow') { return; }
         await this.safeExecute('thread_canary', async () => {
           const { runThreadCanary } = await import('./threadCanaryJob');
           await runThreadCanary();
@@ -1730,6 +1735,122 @@ export class JobManager {
         },
         60 * MINUTE,
         3 * MINUTE
+      );
+      // Observatory: Search seeder — discover accounts via Twitter search (every 15 min)
+      this.scheduleStaggeredJob(
+        'observatory_search_seeder',
+        async () => {
+          await this.safeExecute('observatory_search_seeder', async () => {
+            const { runSearchSeeder } = await import('../brain/observatory/searchSeeder');
+            await runSearchSeeder();
+          });
+        },
+        15 * MINUTE,
+        5 * MINUTE
+      );
+
+      // Observatory: Profile hop seeder — discover accounts from following/followers lists (every 10 min)
+      this.scheduleStaggeredJob(
+        'observatory_profile_hop_seeder',
+        async () => {
+          await this.safeExecute('observatory_profile_hop_seeder', async () => {
+            const { runProfileHopSeeder } = await import('../brain/observatory/profileHopSeeder');
+            await runProfileHopSeeder();
+          });
+        },
+        10 * MINUTE,
+        7 * MINUTE
+      );
+
+      // Observatory: Niche diversity tracker — coverage matrix + auto-campaigns (every 60 min)
+      this.scheduleStaggeredJob(
+        'observatory_niche_diversity',
+        async () => {
+          await this.safeExecute('observatory_niche_diversity', async () => {
+            const { runNicheDiversityTracker } = await import('../brain/observatory/nicheDiversityTracker');
+            await runNicheDiversityTracker();
+          });
+        },
+        60 * MINUTE,
+        35 * MINUTE
+      );
+
+      // Observatory: Follower range backfill — one-time (runs once then no-ops)
+      this.scheduleStaggeredJob(
+        'observatory_range_backfill',
+        async () => {
+          await this.safeExecute('observatory_range_backfill', async () => {
+            const { runFollowerRangeBackfill } = await import('../brain/observatory/followerRangeBackfill');
+            await runFollowerRangeBackfill();
+          });
+        },
+        24 * 60 * MINUTE, // Run daily (backfill catches any new accounts without range)
+        2 * MINUTE         // Run soon after boot to backfill existing data
+      );
+
+      // Observatory: Range strategy builder — playbooks by follower range (every 6h)
+      this.scheduleStaggeredJob(
+        'observatory_range_strategy_builder',
+        async () => {
+          await this.safeExecute('observatory_range_strategy_builder', async () => {
+            const { runRangeStrategyBuilder } = await import('../brain/observatory/rangeStrategyBuilder');
+            await runRangeStrategyBuilder();
+          });
+        },
+        360 * MINUTE,
+        22 * MINUTE
+      );
+
+      // Observatory: Growth path analyzer — cross-range transitions (every 12h)
+      this.scheduleStaggeredJob(
+        'observatory_growth_path_analyzer',
+        async () => {
+          await this.safeExecute('observatory_growth_path_analyzer', async () => {
+            const { runGrowthPathAnalyzer } = await import('../brain/observatory/growthPathAnalyzer');
+            await runGrowthPathAnalyzer();
+          });
+        },
+        720 * MINUTE,
+        40 * MINUTE
+      );
+
+      // Observatory: Reply context enricher — backfill reply delay + target followers (every 15 min)
+      this.scheduleStaggeredJob(
+        'observatory_reply_enricher',
+        async () => {
+          await this.safeExecute('observatory_reply_enricher', async () => {
+            const { runReplyContextEnricher } = await import('../brain/observatory/replyContextEnricher');
+            await runReplyContextEnricher();
+          });
+        },
+        15 * MINUTE,
+        8 * MINUTE
+      );
+
+      // Observatory: Behavioral analyzer — reply timing, targeting, mix intelligence (every 2h)
+      this.scheduleStaggeredJob(
+        'observatory_behavioral_analyzer',
+        async () => {
+          await this.safeExecute('observatory_behavioral_analyzer', async () => {
+            const { runBehavioralAnalyzer } = await import('../brain/observatory/behavioralAnalyzer');
+            await runBehavioralAnalyzer();
+          });
+        },
+        120 * MINUTE,
+        45 * MINUTE
+      );
+
+      // Observatory: Behavioral hypothesis engine — generate + validate hypotheses (every 2h, after analyzer)
+      this.scheduleStaggeredJob(
+        'observatory_behavioral_hypotheses',
+        async () => {
+          await this.safeExecute('observatory_behavioral_hypotheses', async () => {
+            const { runBehavioralHypothesisEngine } = await import('../brain/observatory/behavioralHypothesisEngine');
+            await runBehavioralHypothesisEngine();
+          });
+        },
+        120 * MINUTE,
+        50 * MINUTE // 5 min after behavioral analyzer
       );
     } else {
       console.log('[JOB_MANAGER] 🔭 Growth Observatory DISABLED (set GROWTH_OBSERVATORY_ENABLED=true to enable)');
@@ -2235,7 +2356,7 @@ export class JobManager {
         }
       } else {
         // Non-critical jobs: Check memory safety and skip if needed
-        const memoryCheck = await isMemorySafeForOperation(100, 400);
+        const memoryCheck = await isMemorySafeForOperation(100, 1400);
         if (!memoryCheck.safe) {
           console.warn('[JOB_' + jobName.toUpperCase() + '] Low memory (' + memoryCheck.currentMB + 'MB), skipping non-critical job');
           await recordJobSkip(jobName, `low_memory_${memoryCheck.currentMB}MB`);

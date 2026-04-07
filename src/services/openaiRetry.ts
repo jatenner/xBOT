@@ -50,7 +50,15 @@ export async function withExponentialBackoff<T>(
     } catch (error: any) {
       lastError = error;
 
-      // Check if it's a retryable error (429 or 5xx)
+      // Quota exhaustion (billing dead) is NOT retryable — fail immediately
+      if (isQuotaError(error)) {
+        console.error(
+          `[OPENAI_RETRY] 🚫 Quota exhausted for ${context} — skipping (not retryable, check billing)`
+        );
+        throw error;
+      }
+
+      // Check if it's a retryable error (429 rate limit or 5xx)
       if (isRetryableError(error)) {
         const errorType = is429Error(error) ? '429 rate limit' : '5xx server error';
         console.warn(
@@ -85,24 +93,39 @@ function isRetryableError(error: any): boolean {
 }
 
 /**
- * Check if error is a 429 rate limit error
+ * Check if error is a quota/billing exhaustion error (NOT retryable — needs billing fix)
+ */
+function isQuotaError(error: any): boolean {
+  if (!error) return false;
+  if (error.type === 'insufficient_quota') return true;
+  if (error.code === 'insufficient_quota') return true;
+  const message = (error.message || '').toLowerCase();
+  return (
+    message.includes('insufficient_quota') ||
+    message.includes('exceeded your current quota') ||
+    message.includes('check your plan and billing')
+  );
+}
+
+/**
+ * Check if error is a 429 rate limit error (temporary, retryable)
  */
 function is429Error(error: any): boolean {
   if (!error) return false;
+  // Quota errors look like 429 but are NOT retryable
+  if (isQuotaError(error)) return false;
 
   // Check OpenAI SDK error structure
   if (error.status === 429) return true;
   if (error.statusCode === 429) return true;
   if (error.code === 'rate_limit_exceeded') return true;
-  if (error.type === 'insufficient_quota') return true;
 
   // Check error message
   const message = (error.message || '').toLowerCase();
   return (
     message.includes('rate limit') ||
     message.includes('429') ||
-    message.includes('too many requests') ||
-    message.includes('insufficient_quota')
+    message.includes('too many requests')
   );
 }
 

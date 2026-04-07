@@ -16,10 +16,12 @@ import {
 import { getAccountsForScraping, updateAccountAfterScrape } from '../db';
 
 const LOG_PREFIX = '[brain/feed/timeline]';
-const ACCOUNTS_PER_RUN = 20;
+const ACCOUNTS_PER_RUN = 50;
 const TWEETS_PER_ACCOUNT_DEFAULT = 15;
-// S/A tier accounts get more tweets scraped — we need their failures too
 const TWEETS_PER_ACCOUNT_HIGH_TIER = 30;
+const TWEETS_PER_ACCOUNT_LOW_TIER = 5;
+// Growing accounts get deep scraping — we need their FULL recent activity
+const TWEETS_PER_ACCOUNT_GROWING = 100;
 const DELAY_BETWEEN_ACCOUNTS_MS = 1500;
 
 export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: number; accounts_scraped: number }> {
@@ -63,23 +65,36 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
           // Extract follower count from profile
           const followerCount = await extractFollowerCount(page);
 
-          // S/A tier accounts: scrape more tweets to capture wins AND failures
+          // Growth-aware tweet depth: growing accounts get DEEP scraping
+          const isGrowing = (account as any).growth_status === 'hot' || (account as any).growth_status === 'explosive';
           const isHighTier = account.tier === 'S' || account.tier === 'A';
-          const tweetsToFetch = isHighTier ? TWEETS_PER_ACCOUNT_HIGH_TIER : TWEETS_PER_ACCOUNT_DEFAULT;
+          const isLowTier = account.tier === 'C' || account.tier === 'dormant';
+          const tweetsToFetch = isGrowing
+            ? TWEETS_PER_ACCOUNT_GROWING
+            : isHighTier
+              ? TWEETS_PER_ACCOUNT_HIGH_TIER
+              : isLowTier
+                ? TWEETS_PER_ACCOUNT_LOW_TIER
+                : TWEETS_PER_ACCOUNT_DEFAULT;
 
-          // Scroll more for high-tier accounts to load more tweets
-          if (isHighTier) {
-            for (let s = 0; s < 3; s++) {
-              await page.evaluate(() => window.scrollBy(0, 1200));
-              await page.waitForTimeout(1500);
-            }
+          // Scroll to load tweets — growing accounts need many scrolls for 100+ tweets
+          const scrollCount = isGrowing ? 12 : isHighTier ? 3 : 0;
+          for (let s = 0; s < scrollCount; s++) {
+            await page.evaluate(() => window.scrollBy(0, 1200));
+            await page.waitForTimeout(1500);
           }
 
           // Extract tweets from timeline
+          // ALWAYS capture replies for growing accounts — reply strategy is critical behavioral data
+          // Skip replies only for non-growing C/dormant accounts
           const tweets = await extractTweetsFromPage(page, {
             maxTweets: tweetsToFetch,
-            skipReplies: true,
+            skipReplies: isLowTier && !isGrowing,
           });
+
+          if (isGrowing) {
+            console.log(`${LOG_PREFIX} 🔥 GROWING @${username} (${(account as any).growth_status}): deep scrape ${tweets.length} tweets`);
+          }
 
           // Enrich tweets with profile data
           for (const tweet of tweets) {

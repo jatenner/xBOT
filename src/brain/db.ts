@@ -35,6 +35,26 @@ export async function upsertBrainTweets(tweets: Partial<BrainTweet>[]): Promise<
     .select('tweet_id');
 
   if (error) {
+    // Schema cache miss: strip columns PostgREST doesn't know about yet and retry
+    if (error.message?.includes('schema cache')) {
+      const NEW_COLUMNS = ['reply_to_username', 'reply_delay_minutes', 'reply_target_followers'];
+      const stripped = tweets.map(t => {
+        const clean = { ...t };
+        for (const col of NEW_COLUMNS) delete (clean as any)[col];
+        return clean;
+      });
+      const { data: retryData, error: retryErr } = await supabase()
+        .from('brain_tweets')
+        .upsert(stripped, { onConflict: 'tweet_id', ignoreDuplicates: false })
+        .select('tweet_id');
+
+      if (retryErr) {
+        console.error('[brain/db] upsertBrainTweets retry error:', retryErr.message);
+        return 0;
+      }
+      return retryData?.length ?? 0;
+    }
+
     console.error('[brain/db] upsertBrainTweets error:', error.message);
     return 0;
   }
@@ -188,19 +208,37 @@ export async function upsertBrainAccounts(accounts: Partial<BrainAccount>[]): Pr
   return data?.length ?? 0;
 }
 
-export async function getAccountsForScraping(limit: number = 8): Promise<Pick<BrainAccount, 'username' | 'tier' | 'last_scraped_at' | 'scrape_priority'>[]> {
-  const { data, error } = await supabase()
+export async function getAccountsForScraping(limit: number = 8): Promise<(Pick<BrainAccount, 'username' | 'tier' | 'last_scraped_at' | 'scrape_priority'> & { growth_status?: string })[]> {
+  // Priority 1: Growing accounts (hot/explosive) — scrape these FIRST and DEEPLY
+  const { data: growing } = await supabase()
     .from('brain_accounts')
-    .select('username, tier, last_scraped_at, scrape_priority')
+    .select('username, tier, last_scraped_at, scrape_priority, growth_status')
     .eq('is_active', true)
+    .in('growth_status', ['hot', 'explosive'])
     .order('last_scraped_at', { ascending: true, nullsFirst: true })
-    .limit(limit);
+    .limit(Math.min(10, limit));
 
-  if (error) {
-    console.error('[brain/db] getAccountsForScraping error:', error.message);
-    return [];
+  // Priority 2: Fill remaining slots with stalest accounts
+  const growingUsernames = (growing ?? []).map((a: any) => a.username);
+  const remaining = limit - growingUsernames.length;
+
+  let stale: any[] = [];
+  if (remaining > 0) {
+    const { data } = await supabase()
+      .from('brain_accounts')
+      .select('username, tier, last_scraped_at, scrape_priority, growth_status')
+      .eq('is_active', true)
+      .order('last_scraped_at', { ascending: true, nullsFirst: true })
+      .limit(remaining + growingUsernames.length);
+
+    stale = (data ?? []).filter((a: any) => !growingUsernames.includes(a.username)).slice(0, remaining);
   }
-  return data ?? [];
+
+  const result = [...(growing ?? []), ...stale];
+  if ((growing ?? []).length > 0) {
+    console.log(`[brain/db] Scraping priority: ${(growing ?? []).length} growing (hot/explosive) + ${stale.length} stale`);
+  }
+  return result;
 }
 
 export async function getAccountsByTier(tier: AccountTier, limit: number = 100): Promise<Pick<BrainAccount, 'username' | 'followers_count' | 'avg_engagement_rate_30d' | 'tier_score'>[]> {
@@ -572,10 +610,10 @@ export async function getGrowingAccounts(minStatus: string = 'interesting'): Pro
   return data ?? [];
 }
 
-export async function getPendingGrowthEvents(limit: number = 10): Promise<{ id: string; username: string; detected_at: string; followers_at_detection: number; growth_rate_after: number }[]> {
+export async function getPendingGrowthEvents(limit: number = 10): Promise<{ id: string; username: string; detected_at: string; followers_at_detection: number; growth_rate_after: number; follower_range_at_detection: string | null }[]> {
   const { data, error } = await supabase()
     .from('brain_growth_events')
-    .select('id, username, detected_at, followers_at_detection, growth_rate_after')
+    .select('id, username, detected_at, followers_at_detection, growth_rate_after, follower_range_at_detection')
     .eq('retrospective_status', 'pending')
     .order('detected_at', { ascending: false })
     .limit(limit);
