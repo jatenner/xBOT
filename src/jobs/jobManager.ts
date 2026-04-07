@@ -1320,7 +1320,10 @@ export class JobManager {
       async () => {
         await this.safeExecute('job_watchdog', async () => {
           // Opportunistically prewarm the browser first in case launches are failing
-          try {
+          // Skip in shadow mode — brain has its own browser, UnifiedBrowserPool not needed
+          if (process.env.SHADOW_MODE === 'true' || process.env.MODE === 'shadow') {
+            // no-op
+          } else try {
             const { prewarmBrowserJob } = await import('./prewarmBrowserJob');
             await prewarmBrowserJob();
           } catch (prewarmError: any) {
