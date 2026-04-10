@@ -23,7 +23,7 @@ export async function generateAnalyticsDashboard(): Promise<string> {
     const hoursElapsed = now.getHours() + (now.getMinutes() / 60);
     
     const postsPerHourGoal = parseInt(process.env.MAX_POSTS_PER_HOUR || '2');
-    const repliesPerHourGoal = parseInt(process.env.REPLIES_PER_HOUR || '4');
+    const repliesPerHourGoal = parseInt(process.env.REPLIES_PER_HOUR || '6');
     const expectedPosts = Math.floor(hoursElapsed * postsPerHourGoal);
     const expectedReplies = Math.floor(hoursElapsed * repliesPerHourGoal);
     

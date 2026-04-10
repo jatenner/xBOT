@@ -66,7 +66,7 @@ export async function generateShadowPlan(): Promise<ShadowPlan> {
   
   // Get current configured limits
   const currentPostsPerHour = parseInt(process.env.MAX_POSTS_PER_HOUR || '2', 10);
-  const currentRepliesPerHour = parseInt(process.env.REPLIES_PER_HOUR || '4', 10);
+  const currentRepliesPerHour = parseInt(process.env.REPLIES_PER_HOUR || '6', 10);
   
   // Get safe envelope from env
   const minPostsPerHour = parseInt(process.env.SHADOW_MIN_POSTS_PER_HOUR || '1', 10);
@@ -198,7 +198,7 @@ export async function generateShadowPlan(): Promise<ShadowPlan> {
         reason_summary: explanation,
         previous_targets: {
           posts: parseInt(process.env.MAX_POSTS_PER_HOUR || '2', 10),
-          replies: parseInt(process.env.REPLIES_PER_HOUR || '4', 10),
+          replies: parseInt(process.env.REPLIES_PER_HOUR || '6', 10),
         },
         new_targets: {
           posts: finalPostsRec,
@@ -700,7 +700,7 @@ function buildExplanation(
   
   // Change explanation
   const currentPosts = parseInt(process.env.MAX_POSTS_PER_HOUR || '2', 10);
-  const currentReplies = parseInt(process.env.REPLIES_PER_HOUR || '4', 10);
+  const currentReplies = parseInt(process.env.REPLIES_PER_HOUR || '6', 10);
   
   if (postsRec > currentPosts) {
     parts.push(`Increasing posts: ${currentPosts} → ${postsRec} (reward improving, engagement positive)`);

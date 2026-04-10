@@ -12,6 +12,7 @@ import { computeRateTargets } from './rateController';
 import { getSupabaseClient } from '../db/index';
 import { processPostingQueue } from '../jobs/postingQueue';
 import { attemptScheduledReply } from '../jobs/replySystemV2/tieredScheduler';
+import { getStrategy, pickNextAction, type TickContext } from '../strategy/adaptiveStrategy';
 
 const JITTER_MINUTES = 5; // ±5 minutes jitter
 
@@ -135,115 +136,134 @@ export async function executeHourlyTick(): Promise<void> {
   // A) NAV HEARTBEAT (once per tick, no retry)
   const heartbeatSuccess = await runNavHeartbeat(supabase);
 
-  // 1. Compute rate targets
+  // 1. Compute rate targets (still used for safety/COOLDOWN mode detection)
   const targets = await computeRateTargets();
-  console.log(`[HOURLY_TICK] 📊 Targets computed: mode=${targets.mode}, replies=${targets.target_replies_this_hour}, posts=${targets.target_posts_this_hour}, allow_search=${targets.allow_search}`);
+  console.log(`[HOURLY_TICK] 📊 Rate controller: mode=${targets.mode}, risk=${targets.risk_score}, yield=${targets.yield_score}`);
+
+  // 🛑 SAFETY: If rate controller says COOLDOWN, skip everything
+  if (targets.mode === 'COOLDOWN') {
+    console.log(`[HOURLY_TICK] 🛑 COOLDOWN mode — skipping all actions this tick`);
+    const hourStart = new Date();
+    hourStart.setMinutes(0, 0, 0);
+    console.log(`[HOURLY_TICK] 📊 ${JSON.stringify({ timestamp: hourStart.toISOString(), mode: 'COOLDOWN', executed: { replies: 0, posts: 0 } })}`);
+    return;
+  }
 
   let executedReplies = 0;
   let executedPosts = 0;
-
   const xActionsEnabled = process.env.X_ACTIONS_ENABLED === 'true';
-  const maxRepliesThisTick = Math.min(targets.target_replies_this_hour, 1); // C) Post at most 1 reply
 
-  // 2. Execute replies — only if X_ACTIONS_ENABLED + heartbeat OK
-  if (maxRepliesThisTick > 0) {
-    if (!xActionsEnabled) {
-      console.log(`[HOURLY_TICK] ⏭️ Reply loop: skipped (X_ACTIONS_ENABLED=false)`);
-    } else if (!heartbeatSuccess) {
-      console.log(`[HOURLY_TICK] ⏭️ Reply loop: skipped (heartbeat failed this tick)`);
-    } else {
-      console.log(`[HOURLY_TICK] 🔄 Reply loop: entered, target=${maxRepliesThisTick} (candidates from scheduler)`);
+  // 2. 🧠 ADAPTIVE STRATEGY: Ask "what should I do?" for each action slot
+  const strategy = await getStrategy();
+  console.log(`[HOURLY_TICK] 🧠 Strategy loaded: gen=${strategy.generation} targets={replies=${strategy.target_replies_per_day}/day, singles=${strategy.target_singles_per_day}/day, threads=${strategy.target_threads_per_day}/day}`);
 
-      const replyInterval = 60 / Math.max(1, maxRepliesThisTick);
-      let attempts = 0;
-      const maxAttempts = maxRepliesThisTick * 3;
-      const skipReasons: Record<string, number> = {};
-    
-    while (executedReplies < maxRepliesThisTick && attempts < maxAttempts) {
-      const delayMinutes = addJitter((executedReplies * replyInterval));
-      
-      // Wait for delay before executing (only if we've posted at least one)
-      if (executedReplies > 0 && delayMinutes > 0) {
-        await new Promise(resolve => setTimeout(resolve, delayMinutes * 60 * 1000));
+  // Gather context for strategy decisions
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayISO = todayStart.toISOString();
+
+  // Count today's actions
+  const { count: repliesToday } = await supabase
+    .from('content_metadata').select('*', { count: 'exact', head: true })
+    .eq('status', 'posted').eq('decision_type', 'reply').gte('posted_at', todayISO);
+  const { count: singlesToday } = await supabase
+    .from('content_metadata').select('*', { count: 'exact', head: true })
+    .eq('status', 'posted').eq('decision_type', 'single').gte('posted_at', todayISO);
+  const { count: threadsToday } = await supabase
+    .from('content_metadata').select('*', { count: 'exact', head: true })
+    .eq('status', 'posted').eq('decision_type', 'thread').gte('posted_at', todayISO);
+
+  // Get last action timestamps for pacing
+  const { data: lastReply } = await supabase
+    .from('content_metadata').select('posted_at')
+    .eq('status', 'posted').eq('decision_type', 'reply')
+    .order('posted_at', { ascending: false }).limit(1).maybeSingle();
+  const { data: lastPost } = await supabase
+    .from('content_metadata').select('posted_at')
+    .eq('status', 'posted').in('decision_type', ['single', 'thread'])
+    .order('posted_at', { ascending: false }).limit(1).maybeSingle();
+
+  const minutesSinceLastReply = lastReply?.posted_at
+    ? (Date.now() - new Date(lastReply.posted_at).getTime()) / (1000 * 60) : 999;
+  const minutesSinceLastPost = lastPost?.posted_at
+    ? (Date.now() - new Date(lastPost.posted_at).getTime()) / (1000 * 60) : 999;
+
+  // Check candidate/content availability
+  const { count: replyCandidates } = await supabase
+    .from('reply_candidate_queue').select('*', { count: 'exact', head: true });
+  const { count: queuedContent } = await supabase
+    .from('content_metadata').select('*', { count: 'exact', head: true })
+    .eq('status', 'queued').in('decision_type', ['single', 'thread']);
+
+  const tickContext: TickContext = {
+    replies_today: repliesToday || 0,
+    singles_today: singlesToday || 0,
+    threads_today: threadsToday || 0,
+    minutes_since_last_reply: minutesSinceLastReply,
+    minutes_since_last_post: minutesSinceLastPost,
+    reply_candidates_available: replyCandidates || 0,
+    queued_content_available: queuedContent || 0,
+    safety_ok: !targets.blocked_until,
+    x_actions_enabled: xActionsEnabled,
+    heartbeat_ok: heartbeatSuccess,
+    current_hour_utc: new Date().getUTCHours(),
+  };
+
+  // 3. Pick the best action RIGHT NOW
+  const decision = await pickNextAction(strategy, tickContext);
+
+  // 4. Execute the chosen action
+  if (decision.action === 'wait') {
+    console.log(`[HOURLY_TICK] ⏸️ Strategy says WAIT: ${decision.reason}`);
+  } else if (decision.action === 'reply') {
+    console.log(`[HOURLY_TICK] 💬 Strategy says REPLY (score=${decision.score.toFixed(2)})`);
+    try {
+      const result = await attemptScheduledReply();
+      if (result.consumedSlot === false) {
+        console.log(`[HOURLY_TICK] ⚠️ ${result.reason} — slot not consumed`);
+      } else if (result.posted) {
+        executedReplies++;
+        console.log(`[HOURLY_TICK] ✅ Reply posted successfully`);
+      } else {
+        console.log(`[HOURLY_TICK] ⚠️ Reply skipped: ${result.reason}`);
       }
-      
-      try {
-        attempts++;
-        console.log(`[HOURLY_TICK] 💬 Attempt ${attempts}: Executing reply (target: ${maxRepliesThisTick}, posted: ${executedReplies})`);
-        const result = await attemptScheduledReply();
-
-        // 🔒 CONSENT WALL ROUTING: consumedSlot=false means don't count this as a reply attempt
-        if (result.consumedSlot === false) {
-          attempts--; // Roll back - did not consume a slot
-          console.log(`[HOURLY_TICK] ⚠️ ${result.reason} — not consuming attempt slot`);
-          continue;
-        }
-        
-        if (result.posted) {
-          executedReplies++;
-          console.log(`[HOURLY_TICK] ✅ Reply ${executedReplies}/${maxRepliesThisTick} posted successfully`);
-        } else {
-          const reason = result.reason || 'unknown';
-          skipReasons[reason] = (skipReasons[reason] || 0) + 1;
-          console.log(`[HOURLY_TICK] ⚠️ Reply attempt ${attempts} skipped: ${reason} (continuing to next candidate)`);
-          
-          // Check if we should stop (no more candidates likely)
-          if (reason.includes('no_candidates') || reason.includes('queue_empty')) {
-            console.log(`[HOURLY_TICK] 🛑 No candidates: ${reason} — stopping retry loop`);
-            break;
-          }
-        }
-      } catch (error: any) {
-        console.error(`[HOURLY_TICK] ❌ Reply attempt ${attempts} failed: ${error.message}`);
-        
-        // Check for backoff/risk triggers
-        if (error.message.includes('429') || error.message.includes('rate_limit') || error.message.includes('COOLDOWN')) {
-          console.log(`[HOURLY_TICK] 🛑 Risk trigger detected, stopping retry loop`);
-          break;
-        }
-      }
+    } catch (error: any) {
+      console.error(`[HOURLY_TICK] ❌ Reply failed: ${error.message}`);
     }
-    
-    if (executedReplies < maxRepliesThisTick) {
-      const why = Object.keys(skipReasons).length > 0 ? `skips: ${JSON.stringify(skipReasons)}` : 'no candidates passed preflight';
-      console.log(`[HOURLY_TICK] ⚠️ Posted ${executedReplies}/${maxRepliesThisTick} replies (attempts: ${attempts}, ${why})`);
+  } else if (decision.action === 'single' || decision.action === 'thread') {
+    console.log(`[HOURLY_TICK] 📝 Strategy says ${decision.action.toUpperCase()} (score=${decision.score.toFixed(2)})`);
+    try {
+      await processPostingQueue();
+      executedPosts++;
+      console.log(`[HOURLY_TICK] ✅ Post processed successfully`);
+    } catch (error: any) {
+      console.error(`[HOURLY_TICK] ❌ Post failed: ${error.message}`);
     }
-    }
-  } else {
-    console.log(`[HOURLY_TICK] ⏭️ Reply loop: skipped (target_replies=0)`);
   }
 
-  // 3. Execute posts with jitter spacing (execute immediately with delays)
-  if (targets.target_posts_this_hour > 0) {
-    const postInterval = 60 / targets.target_posts_this_hour; // Minutes between posts
-    for (let i = 0; i < targets.target_posts_this_hour; i++) {
-      const delayMinutes = addJitter(i * postInterval);
-      // Wait for delay before executing
-      if (delayMinutes > 0) {
-        await new Promise(resolve => setTimeout(resolve, delayMinutes * 60 * 1000));
-      }
-      
-      try {
-        console.log(`[HOURLY_TICK] 📝 Executing post ${i + 1}/${targets.target_posts_this_hour} (delay: ${delayMinutes.toFixed(1)}min)`);
-        await processPostingQueue();
-        executedPosts++;
-        console.log(`[HOURLY_TICK] ✅ Post ${i + 1} processed`);
-      } catch (error: any) {
-        console.error(`[HOURLY_TICK] ❌ Post ${i + 1} failed: ${error.message}`);
-      }
-    }
-  }
-
-  // 4. Log observability JSON
+  // 5. Log observability JSON
   const hourStart = new Date();
   hourStart.setMinutes(0, 0, 0);
 
   const logLine = JSON.stringify({
     timestamp: hourStart.toISOString(),
     mode: targets.mode,
-    targets: {
-      replies: targets.target_replies_this_hour,
-      posts: targets.target_posts_this_hour,
+    strategy: {
+      action: decision.action,
+      score: decision.score,
+      scores: decision.scores,
+      generation: strategy.generation,
+      targets_per_day: {
+        replies: strategy.target_replies_per_day,
+        singles: strategy.target_singles_per_day,
+        threads: strategy.target_threads_per_day,
+      },
+    },
+    today: {
+      replies: repliesToday || 0,
+      singles: singlesToday || 0,
+      threads: threadsToday || 0,
     },
     executed: {
       replies: executedReplies,
@@ -251,8 +271,6 @@ export async function executeHourlyTick(): Promise<void> {
     },
     risk: targets.risk_score,
     yield: targets.yield_score,
-    budgets_remaining: targets.budgets_remaining,
-    blocked_until: targets.blocked_until?.toISOString() || null,
   });
 
   console.log(`[HOURLY_TICK] 📊 ${logLine}`);

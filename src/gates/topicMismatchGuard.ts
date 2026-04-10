@@ -10,7 +10,7 @@ const TECH_KEYWORDS = [
   'machine learning', 'neural network', 'cryptocurrency', 'blockchain',
   'ai model', 'llm', 'chatgpt', 'github', 'javascript', 'python', 'npm',
   'programming', 'developer', 'cybertruck', 'starlink', 'spacex', 'elon musk',
-  'nvidia', 'amd', 'intel', 'microsoft', 'google', 'apple', 'meta'
+  'nvidia', 'amd', 'intel', 'microsoft', 'google', 'apple', 'meta ai', 'meta platforms', 'metaverse'
 ];
 
 const POLITICS_KEYWORDS = [
@@ -43,10 +43,15 @@ const NON_HEALTH_KEYWORDS = [
 
 const HEALTH_KEYWORDS = [
   'turmeric', 'cortisol', 'gut', 'magnesium', 'vitamin', 'supplement',
-  'probiotic', 'inflammation', 'metabolism', 'hormone', 'microbiome',
+  'probiotic', 'inflammation', 'metabolism', 'metabolic', 'hormone', 'microbiome',
   'nutrition', 'diet', 'wellness', 'symptom', 'disease', 'digestive',
   'antioxidant', 'protein', 'omega', 'fasting', 'calorie', 'exercise',
-  'sleep', 'stress', 'anxiety', 'hydration', 'immune', 'energy', 'fatigue'
+  'sleep', 'stress', 'anxiety', 'hydration', 'immune', 'energy', 'fatigue',
+  'psychiatry', 'ketogenic', 'keto', 'mental illness', 'mental health',
+  'clinical trial', 'therapy', 'treatment', 'health', 'medical', 'medicine',
+  'cardiovascular', 'insulin', 'blood pressure', 'cholesterol', 'obesity',
+  'diabetes', 'cancer', 'longevity', 'aging', 'recovery', 'chronic',
+  'autoimmune', 'neuroscience', 'brain health', 'cognitive'
 ];
 
 export interface TopicCheckResult {

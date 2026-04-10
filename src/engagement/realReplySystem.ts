@@ -1,6 +1,7 @@
 /**
  * 🎯 REAL REPLY SYSTEM - MAXIMUM ENGAGEMENT
  * Actually finds and replies to tweets for growth
+ * 🛡️ SHADOW_MODE: All writes MUST pass actionGate
  */
 
 import { Page } from 'playwright';
@@ -125,6 +126,20 @@ export class RealReplySystem {
    * 🚀 EXECUTE REPLY WITH BROWSER
    */
   async executeReply(target: ReplyTarget, replyContent: string): Promise<ReplyResult> {
+    // 🛡️ GLOBAL WRITE GATE: MUST pass through actionGate (SHADOW_MODE blocks)
+    const { checkActionGate } = await import('../safety/actionGate');
+    const gateResult = checkActionGate('postReply');
+    if (!gateResult.allowed) {
+      console.log(`[REAL_REPLY_SYSTEM] Blocked by actionGate: ${gateResult.reason || 'write disabled'}`);
+      return {
+        success: false,
+        target,
+        reply_content: replyContent,
+        engagement_potential: 0,
+        error: gateResult.reason || 'Write disabled by actionGate'
+      };
+    }
+
     console.log(`🚀 EXECUTING_REPLY: To @${target.username}`);
 
     try {

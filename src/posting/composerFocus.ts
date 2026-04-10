@@ -7,9 +7,9 @@ import { log } from '../lib/logger';
 import { Page } from 'playwright';
 
 // Configuration with defaults
-const PLAYWRIGHT_FOCUS_RETRIES = 4;
-const PLAYWRIGHT_FOCUS_TIMEOUT_MS = 12000;
-const PLAYWRIGHT_REPLY_TIMEOUT_MS = 12000;
+const PLAYWRIGHT_FOCUS_RETRIES = 2; // Reduced from 4: reply icon click + fallback is enough (was wasting 120s on 4 attempts)
+const PLAYWRIGHT_FOCUS_TIMEOUT_MS = 8000; // Reduced from 12s: selector found in <1s, hang is in evaluate()
+const PLAYWRIGHT_REPLY_TIMEOUT_MS = 8000; // Reduced from 12s
 const PLAYWRIGHT_COMPOSER_STRICT = true;
 
 // Comprehensive selector sets - UPDATED FOR CURRENT X INTERFACE
@@ -81,32 +81,45 @@ export async function ensureComposerFocused(
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       console.log(`🎯 COMPOSER_FOCUS: Attempt ${attempt + 1}/${retries} (${mode} mode)`);
-      
-      await dismissComposerMask(page);
-      
-      // Try primary strategy based on mode
-      if (mode === 'reply') {
-        const replyResult = await tryReplyFlow(page, timeoutMs);
-        if (replyResult.success) return { ...replyResult, retryCount: attempt };
-      }
-      
-      const focusResult = await tryComposerSelectors(page, timeoutMs);
-      if (focusResult.success) return { ...focusResult, retryCount: attempt };
-      
-      // Fallback strategies
-      const keyboardResult = await tryKeyboardShortcut(page, timeoutMs);
-      if (keyboardResult.success) return { ...keyboardResult, retryCount: attempt };
-      
-      const resetResult = await tryPageReset(page, timeoutMs);
-      if (resetResult.success) return { ...resetResult, retryCount: attempt };
-      
-      lastError = focusResult.error || 'Unknown focus error';
-      
+
+      // Wrap each attempt in a 12s timeout to prevent hangs (reduced from 30s — selector found in <1s)
+      const PER_ATTEMPT_TIMEOUT = 12_000;
+      const attemptResult = await Promise.race([
+        (async () => {
+          await dismissComposerMask(page);
+
+          // Try primary strategy based on mode
+          if (mode === 'reply') {
+            const replyResult = await tryReplyFlow(page, timeoutMs);
+            if (replyResult.success) return { ...replyResult, retryCount: attempt };
+          }
+
+          const focusResult = await tryComposerSelectors(page, timeoutMs);
+          if (focusResult.success) return { ...focusResult, retryCount: attempt };
+
+          // Fallback strategies
+          const keyboardResult = await tryKeyboardShortcut(page, timeoutMs);
+          if (keyboardResult.success) return { ...keyboardResult, retryCount: attempt };
+
+          const resetResult = await tryPageReset(page, timeoutMs);
+          if (resetResult.success) return { ...resetResult, retryCount: attempt };
+
+          return { success: false as const, error: focusResult.error || 'Unknown focus error' };
+        })(),
+        new Promise<{ success: false; error: string }>((resolve) =>
+          setTimeout(() => resolve({ success: false, error: `Attempt ${attempt + 1} timed out after ${PER_ATTEMPT_TIMEOUT}ms` }), PER_ATTEMPT_TIMEOUT)
+        ),
+      ]);
+
+      if (attemptResult.success) return attemptResult as ComposerFocusResult;
+      lastError = attemptResult.error || 'Unknown focus error';
+      console.log(`🔄 COMPOSER_FOCUS: Attempt ${attempt + 1} result: ${lastError}`);
+
     } catch (error: any) {
       lastError = error.message;
       console.log(`🔄 COMPOSER_FOCUS: Attempt ${attempt + 1} failed:`, error.message);
     }
-    
+
     // Wait between retries
     if (attempt < retries - 1) {
       await page.waitForTimeout(1000 * (attempt + 1));
@@ -218,7 +231,9 @@ async function tryReplyFlow(page: Page, timeoutMs: number): Promise<ComposerFocu
       const replyBtn = await page.locator(selector).first();
       await replyBtn.waitFor({ state: 'visible', timeout: PLAYWRIGHT_REPLY_TIMEOUT_MS }).catch(() => undefined);
       await replyBtn.click({ delay: 50 }).catch(() => undefined);
-      await page.waitForTimeout(750);
+      // 226 mitigation: varied pause so composer open isn't always 750ms (1000–1400ms)
+      const composerOpenPauseMs = 1000 + Math.floor(Math.random() * 401);
+      await page.waitForTimeout(composerOpenPauseMs);
       
       // Now try to find the composer that opened
       const composerResult = await tryComposerSelectors(page, timeoutMs);

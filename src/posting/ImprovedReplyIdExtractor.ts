@@ -16,8 +16,33 @@ import { Page, Response } from 'playwright';
 export interface ExtractionResult {
   success: boolean;
   tweetId?: string;
-  strategy?: 'network' | 'url' | 'profile' | 'fallback';
+  strategy?: 'network' | 'url' | 'profile' | 'fallback' | 'dom_same_page' | 'strong_evidence_placeholder';
   error?: string;
+  /** True when composer dismissed and/or reply visible in DOM but ID not resolved */
+  strongEvidence?: boolean;
+  /** True when tweetId is a placeholder (reply posted but ID extraction failed) */
+  provisionalId?: boolean;
+  /** True when CreateTweet response had errors with code 226 (X automation/spam block) - do not retry or use provisional */
+  xError226?: boolean;
+  /** CreateTweet errors payload when xError226 is true (for diagnostics) */
+  createTweetErrors?: any[];
+}
+
+/** Shared attempt context: when terminalPostFailure is set, abort extraction and retries. */
+export interface ReplyAttemptContext {
+  terminalPostFailure: string | null;
+}
+
+export interface ExtractReplyIdOptions {
+  /** Skip profile/conversation (no navigation) to avoid 429/consent on retries */
+  skipNavigationStrategies?: boolean;
+  /** First ~60 chars of reply text to match our reply in DOM */
+  replyTextSnippet?: string;
+  maxWaitMs?: number;
+  /** When set, 226 sets this and extraction aborts immediately */
+  attemptContext?: ReplyAttemptContext;
+  /** When set, 226 sets terminal226=true so timeout layer never overwrites 226 */
+  terminal226Ref?: { terminal226: boolean };
 }
 
 export class ImprovedReplyIdExtractor {
@@ -25,6 +50,9 @@ export class ImprovedReplyIdExtractor {
   private static capturedTweetId: string | null = null;
   private static pendingResponse?: Promise<string | null>;
   private static responseListener?: (response: Response) => Promise<void>;
+  /** Set when CreateTweet response has error code 226 (automation/spam block). Cleared at start of each extractReplyId. */
+  private static lastCreateTweetError226 = false;
+  private static lastCreateTweetErrorPayload: any[] | null = null;
 
   /**
    * Extract reply tweet ID with multiple fallback strategies
@@ -37,14 +65,33 @@ export class ImprovedReplyIdExtractor {
   static async extractReplyId(
     page: Page,
     parentTweetId: string,
-    maxWaitMs: number = 10000
+    maxWaitMs: number = 10000,
+    options?: ExtractReplyIdOptions
   ): Promise<ExtractionResult> {
-    console.log(`[ID_EXTRACTOR] 🔍 Starting extraction for reply to ${parentTweetId}`);
-    
+    const effectiveWait = options?.maxWaitMs ?? maxWaitMs;
+    const skipNav = options?.skipNavigationStrategies === true;
+    const replySnippet = options?.replyTextSnippet;
+    const ctx = options?.attemptContext;
+    if (ctx?.terminalPostFailure === 'POST_BLOCKED_BY_X_226') {
+      return this.return226Failure(ctx);
+    }
+    this.lastCreateTweetError226 = false;
+    this.lastCreateTweetErrorPayload = null;
+    console.log(`[ID_EXTRACTOR] 🔍 Starting extraction for reply to ${parentTweetId} (skipNav=${skipNav})`);
+
     const startTime = Date.now();
+    const check226 = (): ExtractionResult | null => {
+      if (ctx?.terminalPostFailure === 'POST_BLOCKED_BY_X_226' || this.lastCreateTweetError226) {
+        console.log('[ID_EXTRACTOR] skipping extraction due to confirmed X error 226');
+        return this.return226Failure(ctx);
+      }
+      return null;
+    };
 
     try {
-      const awaitedId = await this.waitForCreateTweetResponse(page, maxWaitMs);
+      const awaitedId = await this.waitForCreateTweetResponse(page, effectiveWait, ctx, options?.terminal226Ref);
+      const early = check226();
+      if (early) return early;
       if (awaitedId) {
         this.teardownListener(page);
         const elapsed = Date.now() - startTime;
@@ -56,11 +103,15 @@ export class ImprovedReplyIdExtractor {
         };
       }
     } catch (error: any) {
+      const early = check226();
+      if (early) return early;
       console.warn('[ID_EXTRACTOR] ⚠️ CreateTweet wait failed:', error.message);
     }
 
-    // Strategy 1: Network capture (most reliable - setup before posting!)
-    const idFromNetwork = await this.tryNetworkCapture(page, maxWaitMs);
+    // Strategy 1: Network capture (aborts as soon as 226 is set)
+    const idFromNetwork = await this.tryNetworkCapture(page, effectiveWait, ctx, options?.terminal226Ref);
+    const afterNet = check226();
+    if (afterNet) return afterNet;
     if (idFromNetwork) {
       this.teardownListener(page);
       const elapsed = Date.now() - startTime;
@@ -72,8 +123,37 @@ export class ImprovedReplyIdExtractor {
       };
     }
 
-    // Strategy 2: URL parsing
-    const idFromUrl = await this.tryUrlParse(page, parentTweetId);
+    // Strategy 2: DOM same page (no navigation - avoids 429)
+    let r = check226(); if (r) return r;
+    let idFromDom: string | null = null;
+    try {
+      idFromDom = await this.tryDomSamePage(page, parentTweetId, replySnippet, ctx);
+    } catch (e: any) {
+      r = check226(); if (r) return r;
+      console.warn('[ID_EXTRACTOR] DOM same-page error (secondary):', e?.message);
+    }
+    r = check226(); if (r) return r;
+    if (idFromDom) {
+      this.teardownListener(page);
+      const elapsed = Date.now() - startTime;
+      console.log(`[ID_EXTRACTOR] ✅ DOM same-page strategy succeeded in ${elapsed}ms: ${idFromDom}`);
+      return {
+        success: true,
+        tweetId: idFromDom,
+        strategy: 'dom_same_page'
+      };
+    }
+
+    // Strategy 3: URL parsing
+    r = check226(); if (r) return r;
+    let idFromUrl: string | null = null;
+    try {
+      idFromUrl = await this.tryUrlParse(page, parentTweetId);
+    } catch (e: any) {
+      r = check226(); if (r) return r;
+      console.warn('[ID_EXTRACTOR] URL parse error (secondary):', e?.message);
+    }
+    r = check226(); if (r) return r;
     if (idFromUrl) {
       const elapsed = Date.now() - startTime;
       console.log(`[ID_EXTRACTOR] ✅ URL strategy succeeded in ${elapsed}ms: ${idFromUrl}`);
@@ -84,44 +164,213 @@ export class ImprovedReplyIdExtractor {
       };
     }
 
-    // Strategy 3: Profile scraping (fallback - timeline view)
-    const idFromProfile = await this.tryProfileScrape(page, parentTweetId, maxWaitMs);
-    if (idFromProfile) {
-      const elapsed = Date.now() - startTime;
-      console.log(`[ID_EXTRACTOR] ✅ Profile strategy succeeded in ${elapsed}ms: ${idFromProfile}`);
-      return {
-        success: true,
-        tweetId: idFromProfile,
-        strategy: 'profile'
-      };
+    if (!skipNav) {
+      r = check226(); if (r) return r;
+      // Strategy 4: Profile scraping (navigates - can hit 429)
+      let idFromProfile: string | null = null;
+      try {
+        idFromProfile = await this.tryProfileScrape(page, parentTweetId, effectiveWait);
+      } catch (e: any) {
+        r = check226(); if (r) return r;
+        console.warn('[ID_EXTRACTOR] Profile scrape error (secondary):', e?.message);
+      }
+      r = check226(); if (r) return r;
+      if (idFromProfile) {
+        const elapsed = Date.now() - startTime;
+        console.log(`[ID_EXTRACTOR] ✅ Profile strategy succeeded in ${elapsed}ms: ${idFromProfile}`);
+        return {
+          success: true,
+          tweetId: idFromProfile,
+          strategy: 'profile'
+        };
+      }
+
+      // Strategy 5: Conversation scrape (navigates - can hit 429)
+      r = check226(); if (r) return r;
+      let idFromConversation: string | null = null;
+      try {
+        idFromConversation = await this.tryConversationScrape(page, parentTweetId);
+      } catch (e: any) {
+        r = check226(); if (r) return r;
+        console.warn('[ID_EXTRACTOR] Conversation scrape error (secondary):', e?.message);
+      }
+      r = check226(); if (r) return r;
+      if (idFromConversation) {
+        const elapsed = Date.now() - startTime;
+        console.log(`[ID_EXTRACTOR] ✅ Conversation strategy succeeded in ${elapsed}ms: ${idFromConversation}`);
+        return {
+          success: true,
+          tweetId: idFromConversation,
+          strategy: 'fallback'
+        };
+      }
+    } else {
+      console.log('[ID_EXTRACTOR] ⏭️ Skipping profile/conversation (skipNavigationStrategies=true)');
     }
 
-    // Strategy 4: Conversation scrape (direct parent thread)
-    const idFromConversation = await this.tryConversationScrape(page, parentTweetId);
-    if (idFromConversation) {
-      const elapsed = Date.now() - startTime;
-      console.log(`[ID_EXTRACTOR] ✅ Conversation strategy succeeded in ${elapsed}ms: ${idFromConversation}`);
-      return {
-        success: true,
-        tweetId: idFromConversation,
-        strategy: 'fallback'
-      };
-    }
-
+    r = check226(); if (r) return r;
     const elapsed = Date.now() - startTime;
-    console.error(`[ID_EXTRACTOR] ❌ All strategies failed after ${elapsed}ms`);
-    
+    let strongEvidence = false;
+    let domIdOnCheck: string | null = null;
+    try {
+      const ev = await this.checkStrongSuccessEvidenceWithId(page, parentTweetId, replySnippet);
+      strongEvidence = ev.strong;
+      domIdOnCheck = ev.idFromDom;
+    } catch (e: any) {
+      r = check226(); if (r) return r;
+      console.warn('[ID_EXTRACTOR] checkStrongSuccessEvidence error (secondary):', e?.message);
+    }
+    if (domIdOnCheck) {
+      console.log(`[ID_EXTRACTOR] ✅ Recovered ID from strong-evidence check: ${domIdOnCheck}`);
+      return {
+        success: true,
+        tweetId: domIdOnCheck,
+        strategy: 'dom_same_page',
+      };
+    }
+    console.error(`[ID_EXTRACTOR] ❌ All strategies failed after ${elapsed}ms strongEvidence=${strongEvidence}`);
+
+    if (this.lastCreateTweetError226) {
+      console.log('[ID_EXTRACTOR] skipping extraction due to confirmed X error 226');
+      return this.return226Failure(ctx);
+    }
+    if (strongEvidence) {
+      const placeholderId = `posted_strong_evidence_${parentTweetId}_${Date.now()}`;
+      console.log(`[ID_EXTRACTOR] 📌 Strong evidence: returning provisional success with placeholder id (no retries)`);
+      return {
+        success: true,
+        tweetId: placeholderId,
+        strategy: 'strong_evidence_placeholder',
+        strongEvidence: true,
+        provisionalId: true,
+      };
+    }
+
     return {
       success: false,
-      error: 'All extraction strategies failed'
+      error: 'All extraction strategies failed',
+      strongEvidence: false,
+    };
+  }
+
+  private static return226Failure(ctx?: ReplyAttemptContext | null): ExtractionResult {
+    if (ctx) ctx.terminalPostFailure = 'POST_BLOCKED_BY_X_226';
+    return {
+      success: false,
+      error: 'POST_BLOCKED_BY_X_226',
+      xError226: true,
+      createTweetErrors: this.lastCreateTweetErrorPayload ?? undefined,
     };
   }
 
   /**
-   * Setup network listener BEFORE posting
-   * Must be called before clicking the post button
+   * Strategy: Extract reply ID from current page DOM (no navigation).
+   * Multiple passes with increasing wait to catch late-rendered reply.
    */
-  static setupNetworkListener(page: Page): void {
+  private static async tryDomSamePage(
+    page: Page,
+    parentTweetId: string,
+    replyTextSnippet?: string,
+    _ctx?: ReplyAttemptContext | null
+  ): Promise<string | null> {
+    console.log('[ID_EXTRACTOR] 📄 Strategy: DOM same page (no navigation)...');
+    const passes = [2500, 4000, 2000];
+    for (let i = 0; i < passes.length; i++) {
+      try {
+        await page.waitForTimeout(passes[i]);
+        const id = await page.evaluate(({ parentId, snippet }: { parentId: string; snippet?: string }) => {
+          const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+          const candidates: { id: string; hasSnippet: boolean }[] = [];
+          for (const el of articles) {
+            const link = el.querySelector('a[href*="/status/"]');
+            const href = link?.getAttribute('href');
+            if (!href) continue;
+            const m = href.match(/\/status\/(\d{18,20})/);
+            if (!m || m[1] === parentId) continue;
+            const text = el.textContent || '';
+            candidates.push({ id: m[1], hasSnippet: !snippet || text.includes(snippet.slice(0, 40)) });
+          }
+          if (candidates.length === 0) return null;
+          const withSnippet = candidates.find(c => c.hasSnippet);
+          return (withSnippet || candidates[0]).id;
+        }, { parentId: parentTweetId, snippet: replyTextSnippet || '' });
+        if (id) return id;
+      } catch (error: any) {
+        console.log('[ID_EXTRACTOR] DOM same-page pass error:', error?.message);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Check for strong evidence that the reply was posted (composer dismissed and/or our reply in DOM).
+   * Also attempts to recover the reply tweet ID from the DOM when snippet matches.
+   * Used to avoid retries that hit 429/consent when post likely succeeded.
+   */
+  static async checkStrongSuccessEvidence(
+    page: Page,
+    parentTweetId: string,
+    replyTextSnippet?: string
+  ): Promise<boolean> {
+    const { strong } = await this.checkStrongSuccessEvidenceWithId(page, parentTweetId, replyTextSnippet);
+    return strong;
+  }
+
+  /**
+   * Strong evidence check that can also return the reply ID if found in DOM (snippet match).
+   */
+  static async checkStrongSuccessEvidenceWithId(
+    page: Page,
+    parentTweetId: string,
+    replyTextSnippet?: string
+  ): Promise<{ strong: boolean; idFromDom: string | null }> {
+    try {
+      await page.waitForTimeout(1500);
+      const composerGone = await page.locator('[data-testid="tweetTextarea_0"], [data-testid="tweetButtonInline"]').first().isVisible().then(v => !v).catch(() => true);
+      const domResult = await page.evaluate(({ parentId, snippet }: { parentId: string; snippet?: string }) => {
+        const articles = document.querySelectorAll('article[data-testid="tweet"]');
+        let idFromDom: string | null = null;
+        let hasNewReply = false;
+        for (const el of articles) {
+          const link = el.querySelector('a[href*="/status/"]');
+          const href = link?.getAttribute('href');
+          if (!href) continue;
+          const m = href.match(/\/status\/(\d{18,20})/);
+          if (!m || m[1] === parentId) continue;
+          const text = el.textContent || '';
+          const matchesSnippet = !snippet || text.includes(snippet.slice(0, 30));
+          if (matchesSnippet) {
+            idFromDom = m[1];
+            hasNewReply = true;
+            break;
+          }
+          hasNewReply = true;
+        }
+        return { idFromDom, hasNewReply };
+      }, { parentId: parentTweetId, snippet: replyTextSnippet || '' });
+
+      const urlChanged = await page.evaluate(({ parentId }: { parentId: string }) => {
+        const u = window.location.href;
+        const match = u.match(/\/status\/(\d{18,20})/);
+        return match && match[1] !== parentId;
+      }, { parentId: parentTweetId }).catch(() => false);
+
+      const strong = composerGone && (domResult.hasNewReply || urlChanged);
+      return { strong, idFromDom: domResult.idFromDom };
+    } catch {
+      return { strong: false, idFromDom: null };
+    }
+  }
+
+  /**
+   * Setup network listener BEFORE posting.
+   * Must be called before clicking the post button.
+   * When CreateTweet returns 226, sets lastCreateTweetError226, attemptContext.terminalPostFailure, and terminal226Ref.terminal226 so extraction and timeout abort immediately.
+   */
+  static setupNetworkListener(
+    page: Page,
+    ref?: { attemptContext?: ReplyAttemptContext; terminal226Ref?: { terminal226: boolean } }
+  ): void {
     if (this.responseListener) {
       page.off('response', this.responseListener);
       this.responseListener = undefined;
@@ -136,19 +385,30 @@ export class ImprovedReplyIdExtractor {
         const url = response.url();
 
         // Twitter's CreateTweet endpoint
-        if (url.includes('CreateTweet') || url.includes('graphql') && url.includes('/CreateTweet')) {
+        if (url.includes('CreateTweet') || (url.includes('graphql') && url.includes('/CreateTweet'))) {
           console.log('[ID_EXTRACTOR] 📡 Intercepted CreateTweet response');
-          
+
           try {
             const json = await response.json();
-            const tweetId = this.parseTweetIdFromResponse(json);
-            
+            const { getCreateTweetError226 } = await import('./tweetIdValidator');
+            const err226 = getCreateTweetError226(json);
+            if (err226?.is226) {
+              this.lastCreateTweetError226 = true;
+              this.lastCreateTweetErrorPayload = err226.errors;
+              if (ref?.attemptContext) ref.attemptContext.terminalPostFailure = 'POST_BLOCKED_BY_X_226';
+              if (ref?.terminal226Ref) ref.terminal226Ref.terminal226 = true;
+              console.log('[CREATE_TWEET_ERROR] code=226 automation/spam block; errors count=', err226.errors.length);
+            }
+            let tweetId = this.parseTweetIdFromResponse(json);
+            if (!tweetId) {
+              const { extractTweetIdFromCreateTweetResponse } = await import('./tweetIdValidator');
+              tweetId = extractTweetIdFromCreateTweetResponse(json);
+            }
             if (tweetId) {
               console.log('[ID_EXTRACTOR] 🎯 Captured tweet ID from network:', tweetId);
               this.capturedTweetId = tweetId;
             }
           } catch (e) {
-            // Response might not be JSON
             console.log('[ID_EXTRACTOR] ⚠️ Failed to parse CreateTweet response');
           }
         }
@@ -177,27 +437,39 @@ export class ImprovedReplyIdExtractor {
    */
   private static async tryNetworkCapture(
     page: Page,
-    maxWaitMs: number
+    maxWaitMs: number,
+    ctx?: ReplyAttemptContext | null,
+    terminal226Ref?: { terminal226: boolean }
   ): Promise<string | null> {
     console.log('[ID_EXTRACTOR] 📡 Strategy 1: Network capture...');
 
-    // Wait for captured ID (with timeout)
     const startTime = Date.now();
     while (Date.now() - startTime < maxWaitMs) {
+      if (this.lastCreateTweetError226 || ctx?.terminalPostFailure === 'POST_BLOCKED_BY_X_226') {
+        this.teardownListener(page);
+        return null;
+      }
       if (this.capturedTweetId) {
         const id = this.capturedTweetId;
-        this.capturedTweetId = null; // Reset for next reply
+        this.capturedTweetId = null;
         this.teardownListener(page);
         return id;
       }
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
+    if (this.lastCreateTweetError226 || ctx?.terminalPostFailure === 'POST_BLOCKED_BY_X_226') {
+      this.teardownListener(page);
+      return null;
+    }
     console.log('[ID_EXTRACTOR] ⏱️ Network capture timeout');
 
-    // Final attempt: wait directly for the CreateTweet response before giving up
     const remainingMs = Math.max(500, maxWaitMs - (Date.now() - startTime));
-    const waitResult = await this.waitForCreateTweetResponse(page, remainingMs);
+    const waitResult = await this.waitForCreateTweetResponse(page, remainingMs, ctx, terminal226Ref);
+    if (this.lastCreateTweetError226 || ctx?.terminalPostFailure === 'POST_BLOCKED_BY_X_226') {
+      this.teardownListener(page);
+      return null;
+    }
     if (waitResult) {
       this.capturedTweetId = null;
       this.teardownListener(page);
@@ -439,9 +711,13 @@ export class ImprovedReplyIdExtractor {
     }
   }
 
-  private static async waitForCreateTweetResponse(page: Page, maxWaitMs: number): Promise<string | null> {
+  private static async waitForCreateTweetResponse(
+    page: Page,
+    maxWaitMs: number,
+    ctx?: ReplyAttemptContext | null,
+    terminal226Ref?: { terminal226: boolean }
+  ): Promise<string | null> {
     try {
-      // If we already have a pending promise from setup, use it first
       if (this.pendingResponse) {
         const existing = await Promise.race([
           this.pendingResponse,
@@ -456,7 +732,21 @@ export class ImprovedReplyIdExtractor {
       );
       const json = await response.json().catch(() => null);
       if (!json) return null;
-      return this.parseTweetIdFromResponse(json);
+      const { getCreateTweetError226 } = await import('./tweetIdValidator');
+      const err226 = getCreateTweetError226(json);
+      if (err226?.is226) {
+        this.lastCreateTweetError226 = true;
+        this.lastCreateTweetErrorPayload = err226.errors;
+        if (ctx) ctx.terminalPostFailure = 'POST_BLOCKED_BY_X_226';
+        if (terminal226Ref) terminal226Ref.terminal226 = true;
+        console.log('[CREATE_TWEET_ERROR] code=226 automation/spam block; errors count=', err226.errors.length);
+      }
+      let id = this.parseTweetIdFromResponse(json);
+      if (!id) {
+        const { extractTweetIdFromCreateTweetResponse } = await import('./tweetIdValidator');
+        id = extractTweetIdFromCreateTweetResponse(json);
+      }
+      return id;
     } catch {
       return null;
     }
@@ -470,7 +760,12 @@ export class ImprovedReplyIdExtractor {
       );
       const json = await response.json().catch(() => null);
       if (!json) return null;
-      return this.parseTweetIdFromResponse(json);
+      let id = this.parseTweetIdFromResponse(json);
+      if (!id) {
+        const { extractTweetIdFromCreateTweetResponse } = await import('./tweetIdValidator');
+        id = extractTweetIdFromCreateTweetResponse(json);
+      }
+      return id;
     } catch {
       return null;
     }

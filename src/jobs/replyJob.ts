@@ -1667,13 +1667,13 @@ async function generateRealReplies(): Promise<void> {
         rootTweetId: opp.root_tweet_id,
         rootTweetUrl: opp.tweet_url,
         rootTweetAuthor: opp.target?.username || null,
-        rootTweetContent: opp.tweet_content,
+        rootTweetContent: (opp as any).target_tweet_content ?? opp.tweet_content,
         isRootTweet: true,
         shouldSkip: false
       };
     } else {
       // Fall back to live resolution
-      resolved = await resolveReplyCandidate(tweetId, opp.tweet_content);
+      resolved = await resolveReplyCandidate(tweetId, (opp as any).target_tweet_content ?? opp.tweet_content);
       if (!resolved) {
         rootDiagCounters.could_not_resolve++;
         console.log(`[REPLY_JOB] 🚫 Skipped candidate ${tweetId} (could not resolve or should skip)`);
@@ -1721,7 +1721,7 @@ async function generateRealReplies(): Promise<void> {
       resolved_via_root: !resolved.isRootTweet,
       // Use ROOT tweet content for context
       tweet_url: resolved.rootTweetUrl,
-      tweet_content: resolved.rootTweetContent || opp.tweet_content,
+      tweet_content: resolved.rootTweetContent || ((opp as any).target_tweet_content ?? opp.tweet_content),
       target: {
         ...opp.target,
         // Update author if different
@@ -1795,7 +1795,12 @@ async function generateRealReplies(): Promise<void> {
         engagement_velocity: 'high' as const
       },
       tweet_url: opportunity.tweet_url || '',
-      tweet_content: opportunity.tweet_content || '', // ✅ FIX: Pass actual tweet content to AI!
+      tweet_content: (() => {
+        const text = ((opportunity as any).target_tweet_content ?? opportunity.tweet_content) || '';
+        const source = (opportunity as any).target_tweet_content != null ? 'target_tweet_content' : 'tweet_content (fallback)';
+        if (text && source) console.log(`[REPLY_JOB] reply opportunity content field used: ${source}`);
+        return text;
+      })(), // ✅ FIX: Pass actual tweet content to AI! (target_tweet_content preferred; tweet_content may not exist in schema)
       estimated_reach: opportunity.estimated_followers || 0,
       reply_angle: opportunity.reply_strategy
     };
@@ -2337,7 +2342,7 @@ Reply (follow the strategy requirements above):`;
       const { checkReplyTargetGuard } = await import('../gates/replyTargetGuard');
       const targetCheck = checkReplyTargetGuard(
         reply.target_tweet_id,
-        opportunity.tweet_content || '',
+        ((opportunity as any).target_tweet_content ?? opportunity.tweet_content) || '',
         opportunity.tweet_posted_at || null,
         opportunity.is_reply_tweet || null
       );

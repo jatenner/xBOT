@@ -2,9 +2,10 @@
  * 🔧 RAILWAY WORKER SERVICE
  * Dedicated worker process that ONLY runs jobManager
  * Worker-first architecture for reliable job scheduling
+ *
+ * Env is loaded once by railwayEntrypoint before this module is imported; do not load dotenv here.
  */
 
-import 'dotenv/config';
 import { getSupabaseClient } from '../db/index';
 // Health server is started by railwayEntrypoint.ts, no need to import here
 
@@ -290,6 +291,8 @@ export async function startWorker() {
     
     await jobManager.startJobs();
     
+    // Structured log for launch-proof: one line greppable as success evidence
+    console.log('[LAUNCH_GATE] railway_runtime=ready worker_started=1 jobs_started=1');
     console.log('[WORKER] ✅ Job Manager started successfully');
     console.log('[WORKER] 🕒 Jobs are now running. Worker will stay alive to keep jobs active.');
     console.log('[WORKER] 📊 Watchdog will write reports every 5 minutes');

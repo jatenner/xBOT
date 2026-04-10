@@ -30,7 +30,7 @@ export async function generatePostingMonitorDashboard(): Promise<string> {
 
     // Hourly targets: 2 posts/hour, 4 replies/hour
     const postsPerHourGoal = parseInt(process.env.MAX_POSTS_PER_HOUR || '2');
-    const repliesPerHourGoal = parseInt(process.env.REPLIES_PER_HOUR || '4');
+    const repliesPerHourGoal = parseInt(process.env.REPLIES_PER_HOUR || '6');
     
     const singlePosts = (todayPosts || []).filter((p: any) => p.decision_type === 'single');
     const replyPosts = (todayPosts || []).filter((p: any) => p.decision_type === 'reply');

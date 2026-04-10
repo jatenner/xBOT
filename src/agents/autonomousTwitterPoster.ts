@@ -88,6 +88,19 @@ export class AutonomousTwitterPoster {
     try {
       console.log('🚀 Creating and posting autonomous content...');
 
+      // 🛡️ GLOBAL WRITE GATE: MUST pass through actionGate (SHADOW_MODE, X_ACTIONS_ENABLED, etc.)
+      const { checkActionGate } = await import('../safety/actionGate');
+      const gateResult = checkActionGate('postTweet');
+      if (!gateResult.allowed) {
+        console.log(`[AUTONOMOUS_POSTER] Blocked by actionGate: ${gateResult.reason || 'write disabled'}`);
+        return {
+          success: false,
+          content: '',
+          method: 'failed',
+          error: gateResult.reason || 'Write disabled by actionGate'
+        };
+      }
+
       // Check if posting is enabled
       const postingEnabled = await this.isPostingEnabled();
       if (!postingEnabled && !options.forcePost) {
@@ -1234,14 +1247,17 @@ export class AutonomousTwitterPoster {
     try {
       console.log('🎭 POST_START');
       
-      // Use persistent storage path that survives Railway restarts
-      const sessionPath = process.env.RAILWAY_ENVIRONMENT === 'production' 
-        ? '/app/data/twitter-session.json'  // Persistent volume in Railway
-        : '/tmp/twitter-auth.json';         // Local development
-      
-      // Ensure directory exists for persistent storage
-      if (process.env.RAILWAY_ENVIRONMENT === 'production') {
-        const sessionDir = require('path').dirname(sessionPath);
+      // Use persistent storage path (RUNNER_MODE: repo-local only, never /app/data)
+      const sessionPath = (process.env.RUNNER_MODE === 'true' || process.env.RUNNER_MODE === '1')
+        ? (await import('../utils/sessionPathResolver')).resolveSessionPath()
+        : process.env.RAILWAY_ENVIRONMENT === 'production'
+          ? '/app/data/twitter-session.json'
+          : '/tmp/twitter-auth.json';
+
+      // Ensure directory exists (never mkdir /app/data when RUNNER_MODE)
+      const sessionDir = require('path').dirname(sessionPath);
+      const isRunnerMode = process.env.RUNNER_MODE === 'true' || process.env.RUNNER_MODE === '1';
+      if (!(isRunnerMode && sessionDir === '/app/data')) {
         try {
           require('fs').mkdirSync(sessionDir, { recursive: true });
         } catch (dirError) {

@@ -13,6 +13,10 @@ const HEALTH_HASHTAGS = [
 ];
 
 export async function executeStrategicLikes(): Promise<void> {
+  if (process.env.SHADOW_MODE !== 'false') {
+    console.log('[SHADOW_MODE] Skipping strategic likes - read-only mode');
+    return;
+  }
   console.log('❤️ STRATEGIC_LIKES: Engaging with viral health content...');
   
   try {

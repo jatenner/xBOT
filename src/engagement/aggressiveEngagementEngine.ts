@@ -332,6 +332,10 @@ export class AggressiveEngagementEngine {
    * 🚀 POST REPLY TO TWITTER
    */
   public async postReply(page: Page, target: EngagementTarget, reply: GeneratedReply): Promise<boolean> {
+    if (process.env.SHADOW_MODE !== 'false') {
+      console.log('[SHADOW_MODE] Skipping aggressive engagement reply - read-only mode');
+      return false;
+    }
     try {
       console.log(`💬 POSTING_REPLY: Engaging with @${target.username}...`);
       

@@ -160,7 +160,7 @@ async function generateRealContent(): Promise<void> {
           break;
         }
 
-        const { validateContentSubstance } = await import('../validators/substanceValidator');
+        const { validateContentSubstance, validateBlandness } = await import('../validators/substanceValidator');
         const substanceCheck = validateContentSubstance(content.text);
 
         if (!substanceCheck.isValid) {
@@ -175,6 +175,70 @@ async function generateRealContent(): Promise<void> {
           break;
         }
         console.log(`[SUBSTANCE] ✅ Post ${slot + 1} passed substance check (score: ${substanceCheck.score}/100)`);
+
+        const blandnessCheck = validateBlandness(content.text);
+        if (blandnessCheck.isBland) {
+          console.log(`[QUALITY_GATE] ⛔ Post ${slot + 1} REJECTED (attempt ${attempt}): ${blandnessCheck.reason}`);
+          if (attempt < MAX_GENERATION_RETRIES) {
+            console.log(`[QUALITY_GATE] 🔁 Retrying post ${slot + 1} (bland/generic)`);
+            await sleep(GENERATION_RETRY_BACKOFF_MS * attempt);
+            continue;
+          }
+          console.log(`[QUALITY_GATE] ⛔ Exhausted retries for post ${slot + 1} due to blandness`);
+          break;
+        }
+
+        // ─── Originality check: reject content too similar to recent posts ───
+        try {
+          const sbOriginality = getSupabaseClient();
+          const contentText = Array.isArray(content.text) ? content.text.join(' ') : content.text;
+          const newWords = new Set(
+            contentText.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3)
+          );
+
+          if (newWords.size > 0) {
+            const { data: recentPosts } = await sbOriginality
+              .from('content_generation_metadata_comprehensive')
+              .select('content_text')
+              .order('created_at', { ascending: false })
+              .limit(20);
+
+            if (recentPosts && recentPosts.length > 0) {
+              let maxOverlap = 0;
+              for (const past of recentPosts) {
+                const pastText = past.content_text;
+                if (!pastText) continue;
+                const pastWords = new Set(
+                  pastText.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3)
+                );
+                if (pastWords.size === 0) continue;
+
+                // Jaccard similarity
+                let intersection = 0;
+                for (const w of newWords) {
+                  if (pastWords.has(w)) intersection++;
+                }
+                const union = newWords.size + pastWords.size - intersection;
+                const similarity = union > 0 ? intersection / union : 0;
+                if (similarity > maxOverlap) maxOverlap = similarity;
+              }
+
+              if (maxOverlap > 0.7) {
+                console.log(`[ORIGINALITY] ⛔ Post ${slot + 1} REJECTED (attempt ${attempt}): Jaccard overlap ${maxOverlap.toFixed(2)} > 0.7 (too similar to recent post)`);
+                if (attempt < MAX_GENERATION_RETRIES) {
+                  console.log(`[ORIGINALITY] 🔁 Retrying post ${slot + 1} (low novelty)`);
+                  await sleep(GENERATION_RETRY_BACKOFF_MS * attempt);
+                  continue;
+                }
+                console.log(`[ORIGINALITY] ⛔ Exhausted retries for post ${slot + 1} due to low originality`);
+                break;
+              }
+              console.log(`[ORIGINALITY] ✅ Post ${slot + 1} passed originality check (max overlap: ${maxOverlap.toFixed(2)})`);
+            }
+          }
+        } catch (origErr: any) {
+          console.warn(`[ORIGINALITY] ⚠️ Originality check failed (non-fatal): ${origErr?.message}`);
+        }
 
         const gateResult = await runGateChain(content.text, content.decision_id);
         if (!gateResult.passed) {
@@ -377,9 +441,20 @@ async function callDedicatedGenerator(generatorName: string, context: any) {
     // Note: intelligence parameter is optional - generators work without it
     // We pass topic directly, generators will use their specialized prompts
     
-    // ✅ THREADS ENABLED: 15% thread rate = ~3-4 threads per day out of 24 posts (1/hour)
-    const selectedFormat = Math.random() < 0.40 ? 'thread' : 'single';
-    console.log(`[SYSTEM_B] 📊 Format selected: ${selectedFormat} (target: 40% threads = ~2-3/day for 6-8 posts/day)`);
+    // Format selection: use strategy weights from learned strategy_state
+    // Falls back to 80/20 single/thread if strategy can't be loaded
+    let threadRatio = 0.2; // default: 20% threads
+    try {
+      const { getSupabaseClient } = await import('../db');
+      const sb = getSupabaseClient();
+      const { data: strat } = await sb.from('strategy_state').select('single_weight, thread_weight, target_singles_per_day, target_threads_per_day').eq('id', 1).single();
+      if (strat) {
+        const totalTarget = (strat.target_singles_per_day || 3) + (strat.target_threads_per_day || 1);
+        threadRatio = totalTarget > 0 ? (strat.target_threads_per_day || 1) / totalTarget : 0.2;
+      }
+    } catch { /* use default */ }
+    const selectedFormat = Math.random() < threadRatio ? 'thread' : 'single';
+    console.log(`[SYSTEM_B] 📊 Format selected: ${selectedFormat} (thread_ratio=${(threadRatio * 100).toFixed(0)}% — from strategy_state)`);
     
     const result = await generateFn({
       topic,
@@ -444,6 +519,7 @@ async function generateContentWithLLM() {
     selectContentSlot, 
     getSlotConfig
   } = contentSlotModule;
+  type ContentSlotType = import('../utils/contentSlotManager').ContentSlotType;
   
   // Get recent content slots for diversity
   const supabase = getSupabaseClient();
@@ -459,55 +535,95 @@ async function generateContentWithLLM() {
     .filter((slot): slot is string => slot !== null && typeof slot === 'string') as any;
   
   const availableSlots = getContentSlotsForToday();
-  // 🎯 Phase 5A: selectContentSlot is now async (returns Promise) when policy is enabled
-  const selectedSlot = await selectContentSlot(availableSlots, recentSlotTypes.length > 0 ? recentSlotTypes : undefined);
+  // 🎯 LEARNING: Prefer slot from bandit_arms (learnJob) when available
+  const { getLearningBiasedSlot } = await import('../learning/planLearningSignals');
+  const learningSlotResult = await getLearningBiasedSlot(availableSlots);
+  let selectedSlot: ContentSlotType;
+  if (learningSlotResult?.slot && availableSlots.includes(learningSlotResult.slot as ContentSlotType)) {
+    selectedSlot = learningSlotResult.slot as ContentSlotType;
+    console.log(`[PLAN_LEARNING] Using learning-biased slot: ${selectedSlot} (${learningSlotResult.reason}, arm=${learningSlotResult.arm_used || 'n/a'})`);
+  } else {
+    // 🎯 Phase 5A: selectContentSlot is now async (returns Promise) when policy is enabled
+    selectedSlot = await selectContentSlot(availableSlots, recentSlotTypes.length > 0 ? recentSlotTypes : undefined);
+  }
   const slotConfig = getSlotConfig(selectedSlot);
   
   console.log(`\n📅 CONTENT SLOT: ${selectedSlot}`);
   console.log(`   Description: ${slotConfig.description}`);
   console.log(`   Available today: ${availableSlots.join(', ')}`);
   
+  // ═══════════════════════════════════════════════════════════
+  // 🧪 CONTENT EXPERIMENT ENGINE: Get strategy recommendation
+  // ═══════════════════════════════════════════════════════════
+  let experimentStrategy: any = null;
+  try {
+    const { recommendNextStrategy } = await import('../intelligence/contentExperimentEngine');
+    experimentStrategy = await recommendNextStrategy();
+    console.log(`[PLAN_JOB] Experiment strategy: ${experimentStrategy.recommended_angle} + ${experimentStrategy.recommended_tone} + ${experimentStrategy.recommended_format} (${experimentStrategy.is_exploration ? 'EXPLORE' : 'EXPLOIT'}, confidence=${experimentStrategy.confidence.toFixed(2)})`);
+  } catch (e: any) {
+    console.warn(`[PLAN_JOB] Experiment engine failed (non-fatal): ${e.message}`);
+  }
+
   // STEP 1: Generate TOPIC (avoiding last 10)
-  // 🎯 TRENDING TOPIC INTEGRATION: 35% of posts use trending topics from harvester
-  const useTrendingTopic = Math.random() < 0.35; // 35% chance
-  
+  // 🎯 TRENDING HEALTH ANGLE: 50% chance to use a health angle derived from trending topics
+  // 🎯 TRENDING TOPIC INTEGRATION: 35% of remaining posts use raw trending topics from harvester
+
   let dynamicTopic;
   let topic: string;
-  
-  if (useTrendingTopic) {
-    console.log('[PLAN_JOB] 🔥 Using trending topic from harvester data...');
-    try {
-      const { trendingTopicExtractor } = await import('../intelligence/trendingTopicExtractor');
-      const trendingTopic = await trendingTopicExtractor.getTopTrendingTopic();
-      
-      if (trendingTopic) {
-        console.log(`[PLAN_JOB] 📈 Trending topic: "${trendingTopic}"`);
-        // Use trending topic but still generate dynamic topic structure
-        const topicGenerator = getDynamicTopicGenerator();
-        dynamicTopic = await topicGenerator.generateTopic({
-          preferTrending: true,
-          recentTopics: [] // Will be populated by generator
-        });
-        // Override topic with trending one
-        topic = trendingTopic;
-        dynamicTopic.topic = trendingTopic;
-        dynamicTopic.viral_potential = Math.min(0.95, (dynamicTopic.viral_potential || 0.7) + 0.15); // Boost viral potential
-      } else {
-        console.log('[PLAN_JOB] ⚠️ No trending topics available, falling back to regular generation');
+  let usedTrendingAngle = false;
+
+  // First: try trending health angles (health angle on a trending topic)
+  try {
+    const { findTrendingHealthAngles } = await import('../intelligence/trendingHealthAngler');
+    const angles = await findTrendingHealthAngles();
+    if (angles.length > 0 && Math.random() < 0.5 && angles[0].confidence > 0.6) {
+      topic = angles[0].health_angle;
+      usedTrendingAngle = true;
+      const topicGenerator = getDynamicTopicGenerator();
+      dynamicTopic = await topicGenerator.generateTopic({ preferTrending: true, recentTopics: [] });
+      dynamicTopic.topic = topic;
+      dynamicTopic.viral_potential = Math.min(0.95, (dynamicTopic.viral_potential || 0.7) + 0.2);
+      console.log(`[PLAN_JOB] Using trending angle: "${angles[0].trending_topic}" -> "${angles[0].health_angle}" (confidence: ${angles[0].confidence.toFixed(2)})`);
+    }
+  } catch { /* non-fatal */ }
+
+  // Fallback: raw trending topic from harvester (35% chance)
+  if (!usedTrendingAngle) {
+    const useTrendingTopic = Math.random() < 0.35;
+
+    if (useTrendingTopic) {
+      console.log('[PLAN_JOB] Using trending topic from harvester data...');
+      try {
+        const { trendingTopicExtractor } = await import('../intelligence/trendingTopicExtractor');
+        const trendingTopic = await trendingTopicExtractor.getTopTrendingTopic();
+
+        if (trendingTopic) {
+          console.log(`[PLAN_JOB] Trending topic: "${trendingTopic}"`);
+          const topicGenerator = getDynamicTopicGenerator();
+          dynamicTopic = await topicGenerator.generateTopic({
+            preferTrending: true,
+            recentTopics: []
+          });
+          topic = trendingTopic;
+          dynamicTopic.topic = trendingTopic;
+          dynamicTopic.viral_potential = Math.min(0.95, (dynamicTopic.viral_potential || 0.7) + 0.15);
+        } else {
+          console.log('[PLAN_JOB] No trending topics available, falling back to regular generation');
+          const topicGenerator = getDynamicTopicGenerator();
+          dynamicTopic = await topicGenerator.generateTopic();
+          topic = dynamicTopic.topic;
+        }
+      } catch (error: any) {
+        console.warn(`[PLAN_JOB] Trending topic extraction failed: ${error.message}, using regular generation`);
         const topicGenerator = getDynamicTopicGenerator();
         dynamicTopic = await topicGenerator.generateTopic();
         topic = dynamicTopic.topic;
       }
-    } catch (error: any) {
-      console.warn(`[PLAN_JOB] ⚠️ Trending topic extraction failed: ${error.message}, using regular generation`);
+    } else {
       const topicGenerator = getDynamicTopicGenerator();
       dynamicTopic = await topicGenerator.generateTopic();
       topic = dynamicTopic.topic;
     }
-  } else {
-    const topicGenerator = getDynamicTopicGenerator();
-    dynamicTopic = await topicGenerator.generateTopic();
-    topic = dynamicTopic.topic; // Extract just the topic string
   }
   
   console.log(`\n🎯 TOPIC: "${topic}"`);
@@ -540,13 +656,27 @@ async function generateContentWithLLM() {
   
   console.log(`\n🎤 TONE: "${tone}"`);
   
-  // STEP 4: Match GENERATOR (weighted by slot preferences + weight maps)
+  // STEP 4: Match GENERATOR (weighted by slot preferences + weight maps + learning)
   const generatorMatcher = getGeneratorMatcher();
   // 🎯 v2 UPGRADE: matchGenerator is now async (uses weight maps)
   let matchedGenerator = await generatorMatcher.matchGenerator(angle, tone);
   
-  // 🎯 v2: If slot has preferred generators, bias selection (30% chance to override)
+  // 🎯 LEARNING: Prefer top-performing generators (F/1K) when they align with slot
+  const { getLearningBiasedGenerators } = await import('../learning/planLearningSignals');
+  const learningGens = await getLearningBiasedGenerators(5, 3);
   const preferredGenerators = slotConfig.preferredGenerators || [];
+  if (learningGens.preferredGenerators.length > 0 && preferredGenerators.length > 0) {
+    const overlap = learningGens.preferredGenerators.filter((g: string) =>
+      preferredGenerators.some((p: string) => p.toLowerCase() === g.toLowerCase())
+    );
+    if (overlap.length > 0 && Math.random() < 0.4) {
+      const chosen = overlap[Math.floor(Math.random() * overlap.length)];
+      matchedGenerator = chosen as any;
+      console.log(`[PLAN_LEARNING] generator_favored=${chosen} reason=${learningGens.reason} (top performer + slot match)`);
+    }
+  }
+  
+  // 🎯 v2: If slot has preferred generators, bias selection (30% chance to override)
   if (preferredGenerators.length > 0 && Math.random() < 0.3) {
     // 30% chance to use slot-preferred generator
     const slotGenerator = preferredGenerators[Math.floor(Math.random() * preferredGenerators.length)];
@@ -752,7 +882,25 @@ async function generateContentWithLLM() {
     console.warn('[GROWTH_INTEL] ⚠️ Intelligence unavailable:', error.message);
     growthIntelligence = undefined;
   }
-  
+
+  // 🧪 CONTENT EXPERIMENT: Inject strategy guidance into growth intelligence
+  if (experimentStrategy) {
+    try {
+      const strategyGuidance = `\nCONTENT STRATEGY FOR THIS POST:\n- Topic approach: ${experimentStrategy.recommended_topic_source}\n- Angle: ${experimentStrategy.recommended_angle}\n- Tone: ${experimentStrategy.recommended_tone}\n- Format: ${experimentStrategy.recommended_format}\n- ${experimentStrategy.reasoning}\nFollow this strategy for this specific post.`;
+
+      if (growthIntelligence) {
+        if (growthIntelligence.visualFormattingInsights) {
+          growthIntelligence.visualFormattingInsights = `${growthIntelligence.visualFormattingInsights}\n\n${strategyGuidance}`;
+        } else {
+          growthIntelligence.visualFormattingInsights = strategyGuidance;
+        }
+      } else {
+        growthIntelligence = { visualFormattingInsights: strategyGuidance } as any;
+      }
+      console.log('[PLAN_JOB] Experiment strategy injected into growth intelligence');
+    } catch { /* non-fatal */ }
+  }
+
   // STEP 6: Call dedicated generator (SYSTEM B - Specialized prompts!)
   console.log(`[CONTENT_GEN] 🎭 Calling dedicated ${matchedGenerator} generator...`);
   
@@ -1148,7 +1296,8 @@ THREAD-SPECIFIC RULES:
     tone_is_singular: contentData.tone_is_singular !== false,
     tone_cluster: contentData.tone_cluster || null,
     structural_type: contentData.structural_type || null,
-    vi_insights: viInsights // ✅ NEW: Store VI insights for visual enhancement
+    vi_insights: viInsights, // ✅ NEW: Store VI insights for visual enhancement
+    _experimentStrategy: experimentStrategy, // 🧪 Carry experiment tags through to queueContent
   };
 }
 
@@ -1178,7 +1327,10 @@ async function formatAndQueueContent(content: any): Promise<void> {
     // Format each tweet in thread
     const formattedTweets: string[] = [];
     let visualApproach: string | null = null;
-    
+    const rawThread = content.text as string[];
+    if (rawThread.length) {
+      console.log(`[PLAN_JOB] raw tweet[0] (before visual format): ${rawThread[0].slice(0, 80)}${rawThread[0].length > 80 ? '...' : ''}`);
+    }
     for (let i = 0; i < content.text.length; i++) {
       console.log(`[PLAN_JOB]   📝 Formatting thread tweet ${i + 1}/${content.text.length}...`);
       
@@ -1220,27 +1372,54 @@ async function formatAndQueueContent(content: any): Promise<void> {
     // Update content with formatted tweets
     content.text = formattedTweets;
     content.visual_format = visualApproach || 'thread_formatted';
-    
+    if (formattedTweets.length) {
+      console.log(`[PLAN_JOB] final tweet[0] (after visual format): ${formattedTweets[0].slice(0, 80)}${formattedTweets[0].length > 80 ? '...' : ''}`);
+      const differs = rawThread[0]?.trim() !== formattedTweets[0].trim();
+      console.log(`[PLAN_JOB] final differs from raw: ${differs ? 'yes' : 'no'}`);
+    }
     console.log(`[PLAN_JOB] ✅ Thread formatted (${formattedTweets.length} tweets) with emoji indicator`);
     
   } else {
     // Format single tweet
+    const rawTweet = typeof content.text === 'string' ? content.text : String(content.text ?? '');
+    console.log(`[PLAN_JOB] raw tweet (before visual format): ${rawTweet.slice(0, 120)}${rawTweet.length > 120 ? '...' : ''}`);
     const formatResult = await formatContentForTwitter({
-      content: content.text,
+      content: rawTweet,
       generator: String(content.generator_used || 'unknown'),
       topic: String(content.raw_topic || 'health'),
       angle: String(content.angle || 'informative'),
       tone: String(content.tone || 'educational'),
       formatStrategy: String(content.format_strategy || 'single')
     });
-    
-    // Update content with formatted version
-    content.text = formatResult.formatted;
+    const finalTweet = formatResult.formatted;
+    content.text = finalTweet;
     content.visual_format = formatResult.visualApproach;
-    
-    console.log(`[PLAN_JOB] ✅ Single tweet formatted: ${formatResult.visualApproach}`);
+    const materiallyDiffers = finalTweet.trim() !== rawTweet.trim() && (finalTweet.length - rawTweet.length) ** 2 > 100;
+    console.log(`[PLAN_JOB] final tweet (after visual format): ${finalTweet.slice(0, 120)}${finalTweet.length > 120 ? '...' : ''}`);
+    console.log(`[PLAN_JOB] final differs from raw: ${materiallyDiffers ? 'yes' : 'no'} (visual approach: ${formatResult.visualApproach})`);
   }
   
+  // ── Output enforcer: hard constraints on content ──
+  try {
+    const { enforceContentConstraints } = await import('../intelligence/outputEnforcer');
+    const enforcement = await enforceContentConstraints(
+      Array.isArray(content.text) ? content.text.join(' ') : content.text,
+      content._experimentStrategy ?? null,
+      null // tickAdvice not needed for content, experiment strategy is enough
+    );
+    if (!enforcement.approved) {
+      console.log(`[CONTENT_ENFORCER] Violations: ${enforcement.violations.join(', ')}. Suggestions: ${enforcement.suggestions.join(', ')}`);
+      // If thread at bootstrap, convert to single by taking first segment
+      if (enforcement.violations.some((v: string) => v.includes('thread'))) {
+        if (Array.isArray(content.text) && content.text.length > 1) {
+          content.text = content.text[0]; // Take just the first tweet
+          content.format = 'single';
+          console.log('[CONTENT_ENFORCER] Converted thread → single (bootstrap stage)');
+        }
+      }
+    }
+  } catch { /* non-fatal */ }
+
   // Now queue the FORMATTED content
   await queueContent(content);
 }
@@ -1344,6 +1523,15 @@ async function queueContent(content: any): Promise<void> {
     bandit_arm: content.style || 'varied',
     timing_arm: `slot_${content.timing_slot}`,
     thread_parts: Array.isArray(content.text) ? content.text : null,
+
+    // 📊 Content features for learning
+    features: (() => {
+      try {
+        const { extractContentFeatures } = require('../intelligence/contentFeatureExtractor');
+        const contentText = Array.isArray(content.text) ? content.text.join(' ') : content.text;
+        return { content_features: extractContentFeatures(contentText) };
+      } catch { return {}; }
+    })(),
     
     // 🧪 Phase 4: Experiment metadata (only include if experiments enabled)
     // Note: These columns may not exist in schema if experiments migration not applied
@@ -1386,8 +1574,22 @@ async function queueContent(content: any): Promise<void> {
   log({ op: 'queue_content', decision_id: content.decision_id, decision_type: insertPayload.decision_type, thread_parts: insertPayload.thread_parts?.length });
   
   // 🔥 CRITICAL FIX: Insert into TABLE, not VIEW
-  const { data, error} = await supabase.from('content_generation_metadata_comprehensive').insert([insertPayload]);
-  
+  let result = await supabase.from('content_generation_metadata_comprehensive').insert([insertPayload]);
+  let error = result.error;
+
+  // If schema lacks optional columns (tone, format_strategy, raw_topic, visual_format), retry without them
+  if (error?.message && /column.*does not exist|undefined column/i.test(error.message)) {
+    console.warn(`[PLAN_JOB] ⚠️ Insert failed (missing columns?), retrying without optional metadata: ${error.message}`);
+    console.log(`[PLAN_JOB] content_metadata persistence: compatibility mode (optional columns omitted)`);
+    const safePayload = { ...insertPayload };
+    delete safePayload.raw_topic;
+    delete safePayload.tone;
+    delete safePayload.format_strategy;
+    delete safePayload.visual_format;
+    result = await supabase.from('content_generation_metadata_comprehensive').insert([safePayload]);
+    error = result.error;
+  }
+
   if (error) {
     log({ op: 'queue_content', outcome: 'error', error: error.message, decision_id: content.decision_id });
     console.error(`[PLAN_JOB] ❌ Failed to queue content:`, error);
@@ -1395,7 +1597,24 @@ async function queueContent(content: any): Promise<void> {
   }
   
   log({ op: 'queue_content', outcome: 'success', decision_id: content.decision_id });
+  console.log(`[PLAN_JOB] content_metadata persistence path: content_generation_metadata_comprehensive`);
   console.log(`[PLAN_JOB] 💾 Content queued in database: ${content.decision_id}`);
+
+  // 🧪 CONTENT EXPERIMENT: Record experiment tags for this decision
+  if (content._experimentStrategy) {
+    try {
+      const { recordExperiment } = await import('../intelligence/contentExperimentEngine');
+      const expStrategy = content._experimentStrategy;
+      await recordExperiment({
+        experiment_id: content.decision_id,
+        topic_source: expStrategy.recommended_topic_source,
+        angle: expStrategy.recommended_angle,
+        tone: expStrategy.recommended_tone,
+        format: expStrategy.recommended_format,
+        created_at: new Date().toISOString(),
+      });
+    } catch { /* non-fatal */ }
+  }
 }
 
 async function runGateChain(text: string, decision_id: string) {
@@ -1577,7 +1796,28 @@ function buildSystemPrompt(performanceData: any): string {
   const hasData = performanceData.sampleSize > 0;
   const isHighPerformance = performanceData.avgEngagement > 0.05;
   
-  return `You are an AI-driven health content strategist with unlimited creative freedom. Your decisions are guided by data, not restrictions.
+  return `You are @Neurix5 — a real person obsessed with neuroscience, health, and how the body actually works. You tweet like you're texting a smart friend, not writing a research paper.
+
+VOICE RULES (CRITICAL — break these and the tweet fails):
+- NEVER start with "Surprising fact:", "Did you know", "Fun fact:", or "Studies show"
+- NEVER sound like a health textbook or AI assistant
+- Write like you're sharing something wild you just learned
+- Use casual language. Contractions. Incomplete sentences sometimes.
+- Have OPINIONS. "This is insane", "Nobody talks about this", "I was wrong about X"
+- Be specific but conversational: "200mg magnesium glycinate before bed" not "magnesium supplementation"
+- Sound like a person, not a brand. Imperfect grammar is fine.
+
+GOOD examples:
+- "your body literally eats its own damaged cells while you sleep. it's called autophagy and it peaks around hour 16 of fasting"
+- "hot take: most people don't need a multivitamin. they need to fix their sleep"
+- "the gut-brain axis is wild. 90% of serotonin is made in your gut, not your brain"
+
+BAD examples (NEVER write like this):
+- "Surprising fact: Eating DARK CHOCOLATE (70% cocoa) can enhance mood by boosting serotonin levels"
+- "Did you know 70% of participants experience fatigue post high-sugar snacks?"
+- "A study published in the Journal of X found that..."
+
+Your audience doesn't follow you yet. They discover you through replies and trending takes. Give them a reason to click your profile and hit follow.
 
 ${hasData ? `🧠 AI PERFORMANCE INTELLIGENCE:
 - TOP PERFORMERS (double down on these): ${performanceData.topTopics.join(', ')}
@@ -1586,9 +1826,9 @@ ${hasData ? `🧠 AI PERFORMANCE INTELLIGENCE:
 - Data confidence: ${performanceData.sampleSize} posts analyzed
 
 🎯 AI STRATEGY DIRECTIVE:
-${isHighPerformance ? 
-  '- You are WINNING! Lean heavily into your top-performing topics while exploring adjacent areas' : 
-  '- GROWTH MODE: Experiment aggressively with new angles, topics, and formats to find what resonates'}` : 
+${isHighPerformance ?
+  '- You are WINNING! Lean heavily into your top-performing topics while exploring adjacent areas' :
+  '- GROWTH MODE: Experiment aggressively with new angles, topics, and formats to find what resonates'}` :
 `🚀 AI BOOTSTRAP MODE:
 - No performance data yet - you have COMPLETE CREATIVE FREEDOM
 - Test diverse topics to build your intelligence database
@@ -1600,6 +1840,7 @@ ${isHighPerformance ?
 - UNLIMITED hook diversity - never repeat patterns, always surprise
 - UNLIMITED creativity - break rules, challenge assumptions, be contrarian
 - ZERO restrictions on health topics - cover everything from metabolism to mental health
+- FIND THE ANGLE: Tech launch? What it means for circadian biology. Election stress? The cortisol cascade. Sports record? The physiology behind peak performance.
 
 🧬 VIRAL GROWTH ALGORITHM:
 - Create content that makes people think "I NEED to follow this account"
@@ -1614,8 +1855,9 @@ ${isHighPerformance ?
 - Evidence-based but accessible
 - Strategic emoji use (1-2 max, only if they add value)
 - Vary sentence structure and length for rhythm
+- Sound like a curious person who found something fascinating, not a brand posting content
 
-The AI has spoken. Create content that GROWS followers.`;
+Create content that GROWS followers.`;
 }
 
 function buildDynamicPrompt(performanceData: any, style: string, dayOfWeek: string, month: string): string {

@@ -532,6 +532,7 @@ export async function replyOpportunityHarvester(recoveryAttempt = 0): Promise<vo
   
   // 🎯 P1 SEED LIST FALLBACK: Add seed account queries if public searches fail
   let fallbackQueries = [...tierDFallback];
+  let queriesToRun: typeof searchQueries = [];
   if (p1Mode && p1SeedAccounts.length > 0) {
     // Add seed account queries as fallback (will run if pool is low)
     const seedQueries = p1SeedAccounts.slice(0, 5).map((account, idx) => ({

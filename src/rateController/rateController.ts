@@ -41,8 +41,8 @@ interface RecentFailure {
   occurred_at: Date;
 }
 
-const MAX_REPLIES_PER_HOUR = 4;
-const MAX_POSTS_PER_HOUR = 1;
+const MAX_REPLIES_PER_HOUR = 6;
+const MAX_POSTS_PER_HOUR = 2;
 const PEAK_BURST_POSTS_PER_HOUR = 2; // Only if safe
 
 // Active hours (America/New_York timezone)

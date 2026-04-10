@@ -46,7 +46,7 @@ export async function createPostingPermit(params: {
   // 🔒 TASK 4: Check for existing APPROVED permit first (reuse instead of duplicate)
   const { data: existingPermit } = await supabase
     .from('post_attempts')
-    .select('permit_id, status, actual_tweet_id')
+    .select('permit_id, status, actual_tweet_id, expires_at')
     .eq('decision_id', params.decision_id)
     .eq('status', 'APPROVED')
     .order('created_at', { ascending: false })
@@ -57,6 +57,10 @@ export async function createPostingPermit(params: {
     // If permit already used (has tweet_id), don't reuse
     if (existingPermit.actual_tweet_id) {
       console.log(`[POSTING_PERMIT] ⚠️ Existing permit ${existingPermit.permit_id} already used (has tweet_id)`);
+      // Continue to create new permit below
+    } else if (!existingPermit.expires_at || new Date(existingPermit.expires_at) < new Date()) {
+      console.log(`[POSTING_PERMIT] ⚠️ Existing permit ${existingPermit.permit_id} expired or missing expires_at; creating fresh permit`);
+      await supabase.from('post_attempts').update({ status: 'EXPIRED' }).eq('permit_id', existingPermit.permit_id);
       // Continue to create new permit below
     } else {
       console.log(`[POSTING_PERMIT] ♻️ Reusing existing APPROVED permit: ${existingPermit.permit_id} for decision_id=${params.decision_id}`);
@@ -96,14 +100,16 @@ export async function createPostingPermit(params: {
         console.log(`[POSTING_PERMIT] ⚠️ Duplicate permit detected, attempting to reuse existing...`);
         const { data: existingPermitRetry } = await supabase
           .from('post_attempts')
-          .select('permit_id, status, actual_tweet_id')
+          .select('permit_id, status, actual_tweet_id, expires_at')
           .eq('decision_id', params.decision_id)
           .eq('status', 'APPROVED')
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
         
-        if (existingPermitRetry && !existingPermitRetry.actual_tweet_id) {
+        const notUsed = existingPermitRetry && !existingPermitRetry.actual_tweet_id;
+        const notExpired = existingPermitRetry?.expires_at && new Date(existingPermitRetry.expires_at) >= new Date();
+        if (existingPermitRetry && notUsed && notExpired) {
           console.log(`[POSTING_PERMIT] ♻️ Reusing existing APPROVED permit after duplicate error: ${existingPermitRetry.permit_id}`);
           return {
             permit_id: existingPermitRetry.permit_id,

@@ -74,20 +74,12 @@ export async function formatContentForTwitter(context: VisualFormatContext): Pro
     console.log(`  • Overall recent: ${intelligence.overallRecent.length} formats`);
   } catch (error: any) {
     console.warn('[VISUAL_FORMATTER] ⚠️ Intelligence unavailable, using basic variety');
-    // Fallback to simple recent formats query
-    const supabase = getSupabaseClient();
-    const { data: recentFormats } = await supabase
-      .from('content_metadata')
-      .select('visual_format')
-      .not('visual_format', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(10);
-    
+    // Do not query content_metadata.visual_format — column may not exist in this env
     intelligence = {
       contextualHistory: { recentFormats: [], totalUses: 0, variety: 0 },
       momentumSignals: [],
       contextualInsights: [],
-      overallRecent: (recentFormats || []).map(f => String(f.visual_format))
+      overallRecent: []
     };
   }
   
@@ -177,6 +169,12 @@ Format it for Twitter with AGGRESSIVE spacing variety!`;
     }
     
     let formatted = parsed.formatted.trim();
+
+    // CRITICAL: Reject when LLM puts meta-explanation in "formatted" instead of actual tweet
+    if (looksLikeMetaExplanation(formatted)) {
+      console.warn('[VISUAL_FORMATTER] ⚠️ Formatter returned meta-explanation instead of tweet, using original');
+      return fallbackToOriginal(content, 'formatter returned meta-explanation instead of tweet');
+    }
     
     // CRITICAL: Remove markdown formatting that Twitter doesn't support
     formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '$1'); // Remove **bold**
@@ -314,6 +312,16 @@ Format it for Twitter with AGGRESSIVE spacing variety!`;
 /**
  * Fallback when AI formatting fails
  */
+/** Detect if text is a meta-explanation of formatting (e.g. "I used a spacious format...") not the tweet itself */
+function looksLikeMetaExplanation(text: string): boolean {
+  const t = text.trim();
+  if (t.length > 220) return false;
+  const metaStarts = [/^I used\b/i, /^I applied\b/i, /^I chose\b/i, /^I added\b/i, /^I opted\b/i, /^I went with\b/i, /^spacious format\b/i, /^compact format\b/i, /^multiple line breaks\b/i];
+  if (metaStarts.some(r => r.test(t))) return true;
+  if ((t.includes('line break') || t.includes('line breaks')) && (t.includes('format') || t.includes('spacing'))) return true;
+  return false;
+}
+
 function fallbackToOriginal(content: string, reason: string): VisualFormatResult {
   console.log(`[VISUAL_FORMATTER] 🔄 Using original content: ${reason}`);
   return {

@@ -38,6 +38,9 @@ async function findFirst(page: Page, selectors: string[], timeout = 15000) {
 }
 
 export async function postOriginal(page: Page, text: string) {
+  if (process.env.SHADOW_MODE !== 'false') {
+    throw new Error('[SHADOW_MODE] Blocked postOriginal - read-only mode');
+  }
   await page.bringToFront();
   await page.goto('https://x.com/compose/tweet', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(300);
@@ -63,6 +66,9 @@ export async function postOriginal(page: Page, text: string) {
 }
 
 export async function postReplyToTweet(page: Page, tweetUrl: string, text: string) {
+  if (process.env.SHADOW_MODE !== 'false') {
+    throw new Error('[SHADOW_MODE] Blocked postReplyToTweet - read-only mode');
+  }
   await page.bringToFront();
   await page.goto(tweetUrl, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(400);

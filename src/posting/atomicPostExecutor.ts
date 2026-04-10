@@ -30,6 +30,7 @@ interface PostAttemptMetadata {
   semantic_similarity?: number;
   target_username?: string; // 🔒 For self-reply guard
   proof_tag?: string; // For proof script observability
+  template_id?: string | null; // For 226 learning
 }
 
 interface ExecutePostResult {
@@ -38,6 +39,15 @@ interface ExecutePostResult {
   tweet_url?: string;
   error?: string;
   prewrite_failed?: boolean;
+  /** PROOF_SUBMIT_MODE=dry: submit readiness verified, no tweet posted */
+  dry_run_ready?: boolean;
+}
+
+/** Shared ref so timeout never overwrites 226: when CreateTweet returns 226, poster sets terminal226 true; timeout checks this before rejecting. */
+export interface Terminal226Ref {
+  terminal226: boolean;
+  decisionId?: string;
+  targetTweetId?: string;
 }
 
 /**
@@ -462,12 +472,20 @@ export async function executeAuthorizedPost(
   
   // Timeout: 4 minutes for single posts, 6 minutes for threads/replies
   const POST_TIMEOUT_MS = options.isReply ? 240000 : 240000; // 4 minutes
+  const terminal226Ref: Terminal226Ref | undefined = options.isReply && options.replyToTweetId
+    ? { terminal226: false, decisionId: decision_id, targetTweetId: metadata.target_tweet_id }
+    : undefined;
+
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => {
+      if (terminal226Ref?.terminal226) {
+        reject(new Error('POST_BLOCKED_BY_X_226'));
+        return;
+      }
       reject(new Error(`Posting timeout after ${POST_TIMEOUT_MS/1000}s`));
     }, POST_TIMEOUT_MS);
   });
-  
+
   let postResult;
   try {
       // Add permit_id to guard before calling poster
@@ -475,31 +493,52 @@ export async function executeAuthorizedPost(
         ...guard,
         permit_id,
       };
-      
+
       // Add decision_id and proof_tag to guard for logging
       const guardWithLogging = {
         ...guardWithPermit,
         decision_id: decision_id,
         proof_tag: (metadata as any).proof_tag || null,
       };
-      
+
       const postingPromise = options.isReply && options.replyToTweetId
-      ? poster.postReply(metadata.content, options.replyToTweetId, guardWithLogging as any)
+      ? poster.postReply(metadata.content, options.replyToTweetId, guardWithLogging as any, terminal226Ref)
       : poster.postTweet(metadata.content, guardWithLogging as any);
-    
-    // Race posting against timeout
+
+    // Race posting against timeout (226 ref ensures timeout never overwrites 226)
     postResult = await Promise.race([postingPromise, timeoutPromise]);
   } catch (error: any) {
     console.error(`[ATOMIC_POST] ❌ POSTING EXCEPTION: ${error.message}`);
-    
+
     // Mark permit as failed
     await markPermitFailed(permit_id, error.message);
-    
+
+    const is226 = error.message?.includes('POST_BLOCKED_BY_X_226') || error.xError226 === true;
+    const cooldownApplied = is226 && metadata.target_tweet_id;
+    if (is226) {
+      console.log(`[POST_FINAL_REASON] POST_BLOCKED_BY_X_226 decision_id=${decision_id} target_tweet_id=${metadata.target_tweet_id ?? 'null'} cooldown_applied=${!!cooldownApplied}`);
+    }
     const isTimeout = error.message.includes('timeout');
-    const skipReason = isTimeout 
-      ? 'posting_timeout' 
-      : `posting_exception: ${error.message.substring(0, 200)}`;
-    
+    const skipReason = is226
+      ? 'POSTING_FAILED_X_226_AUTOMATION_OR_SPAM_BLOCK'
+      : isTimeout
+        ? 'posting_timeout'
+        : `posting_exception: ${error.message.substring(0, 200)}`;
+
+    if (is226) {
+      try {
+        const { record226AndApplyCooldowns, recordReply226State } = await import('../services/x226Cooldown');
+        await record226AndApplyCooldowns({
+          decision_id,
+          target_tweet_id: metadata.target_tweet_id ?? null,
+          target_username: (metadata as any).target_username ?? null,
+          template_id: (metadata as any).template_id ?? null,
+          pipeline_source: metadata.pipeline_source ?? null,
+        });
+        if (options.isReply) await recordReply226State();
+      } catch (e) { /* non-blocking */ }
+    }
+
     // Update DB row to status='failed'
     await supabase
       .from('content_generation_metadata_comprehensive')
@@ -509,28 +548,54 @@ export async function executeAuthorizedPost(
         updated_at: new Date().toISOString(),
       })
       .eq('decision_id', decision_id);
-    
-    // Log failure event
+
+    const eventData: Record<string, any> = {
+      decision_id,
+      decision_type,
+      permit_id,
+      error: error.message,
+      is_timeout: isTimeout,
+      ...(is226 ? {
+        outcome_reason: 'POSTING_FAILED_X_226_AUTOMATION_OR_SPAM_BLOCK',
+        create_tweet_errors: error.createTweetErrors ?? null,
+        response_top_keys: null,
+        has_data_create_tweet: null,
+        parent_tweet_id: metadata.target_tweet_id ?? null,
+        target_username: (metadata as any).target_username ?? null,
+        reply_text_length: metadata.content?.length ?? 0,
+        pipeline_source: metadata.pipeline_source ?? null,
+        template_id: (metadata as any).template_id ?? null,
+      } : {}),
+    };
+
+    // Log failure event (structured diagnostics for 226)
     await supabase.from('system_events').insert({
-      event_type: 'posting_attempt_failed',
+      event_type: is226 ? 'CREATE_TWEET_226_BLOCKED' : 'posting_attempt_failed',
       severity: 'warning',
-      message: `Posting failed: ${error.message}`,
-      event_data: {
-        decision_id,
-        decision_type,
-        permit_id,
-        error: error.message,
-        is_timeout: isTimeout,
-      },
+      message: is226 ? `Post blocked by X error 226 (automation/spam): decision_id=${decision_id} target=${metadata.target_tweet_id}` : `Posting failed: ${error.message}`,
+      event_data: eventData,
       created_at: new Date().toISOString(),
     });
-    
+
     return {
       success: false,
       error: error.message,
     };
   }
   
+  if (postResult.dryRunReady) {
+    console.log('[ATOMIC_POST] DRY_RUN_TERMINAL_SUCCESS');
+    console.log(`[ATOMIC_POST] PROOF_DRY_RUN_READY: Submit readiness verified (no tweet posted)`);
+    await supabase.from('system_events').insert({
+      event_type: 'PROOF_DRY_RUN_READY',
+      severity: 'info',
+      message: `Proof dry run: submit readiness verified for decision_id=${decision_id}`,
+      event_data: { decision_id, proof_tag: metadata.proof_tag ?? null },
+      created_at: new Date().toISOString(),
+    });
+    return { success: true, dry_run_ready: true };
+  }
+
   if (!postResult.success || !postResult.tweetId) {
     console.error(`[ATOMIC_POST] ❌ POSTING FAILED: ${postResult.error || 'No tweetId returned'}`);
     
@@ -563,13 +628,19 @@ export async function executeAuthorizedPost(
   // ═══════════════════════════════════════════════════════════════════════════
   console.log(`[ATOMIC_POST] 💾 UPDATE: Marking DB row as posted...`);
   
-  // 🔒 TASK: Validate tweet_id before updating DB
-  const { assertValidTweetId } = await import('./tweetIdValidator');
-  const validation = assertValidTweetId(postResult.tweetId);
+  // 🔒 TASK: Validate tweet_id before updating DB (replies may use provisional placeholder when ID extraction failed but strong evidence)
+  const isReply = (metadata as any).decision_type === 'reply' || options.isReply === true;
+  const { assertValidTweetIdOrProvisionalReply } = await import('./tweetIdValidator');
+  const validation = assertValidTweetIdOrProvisionalReply(postResult.tweetId, isReply);
   if (!validation.valid) {
-    console.error(`[ATOMIC_POST] ❌ DB UPDATE BLOCKED: Invalid tweet_id: ${validation.error}`);
+    const { assertValidTweetId } = await import('./tweetIdValidator');
+    const strict = assertValidTweetId(postResult.tweetId);
+    console.error(`[ATOMIC_POST] ❌ DB UPDATE BLOCKED: Invalid tweet_id: ${strict.error}`);
     console.error(`[ATOMIC_POST]   tweet_id=${postResult.tweetId} decision_id=${decision_id}`);
-    throw new Error(`DB update blocked: Invalid tweet_id: ${validation.error}`);
+    throw new Error(`DB update blocked: Invalid tweet_id: ${strict.error}`);
+  }
+  if ((validation as any).provisional) {
+    console.log(`[ATOMIC_POST] 📌 Provisional reply ID (strong evidence, ID extraction failed): ${postResult.tweetId}`);
   }
 
   // Update DB row to status='posted' with tweet_id
@@ -603,8 +674,24 @@ export async function executeAuthorizedPost(
     });
   } else {
     console.log(`[ATOMIC_POST] ✅ UPDATE SUCCESS: DB row updated with tweet_id`);
+
+    // Extract and store content features for learning (non-blocking)
+    try {
+      const { extractContentFeatures } = await import('../utils/contentFeatureExtractor');
+      const features = extractContentFeatures(metadata.content || '');
+      await supabase
+        .from('content_generation_metadata_comprehensive')
+        .update({
+          content_features: features,
+          features: features, // also store in JSONB features column as fallback
+        })
+        .eq('decision_id', decision_id);
+      console.log(`[ATOMIC_POST] 📊 Content features extracted (${features.word_count} words, ${features.char_count} chars)`);
+    } catch (featureErr: any) {
+      console.warn(`[ATOMIC_POST] ⚠️ Content feature extraction failed (non-fatal): ${featureErr.message}`);
+    }
   }
-  
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 🔧 TASK: Write POST_SUCCESS immediately after tweet_id capture (independent of page lifecycle)
   // ═══════════════════════════════════════════════════════════════════════════
@@ -625,15 +712,17 @@ export async function executeAuthorizedPost(
     const isReply = (decisionData?.decision_type || decision_type) === 'reply';
     const eventType = isReply ? 'REPLY_SUCCESS' : 'POST_SUCCESS';
     
-    // 🔒 TASK: Validate tweet_id before writing success event
-    const { assertValidTweetId } = await import('./tweetIdValidator');
-    const validation = assertValidTweetId(postResult.tweetId);
-    if (!validation.valid) {
-      console.error(`[ATOMIC_POST] ❌ ${eventType} BLOCKED: Invalid tweet_id: ${validation.error}`);
+    // 🔒 TASK: Validate tweet_id before writing success event (provisional allowed for replies)
+    const { assertValidTweetIdOrProvisionalReply } = await import('./tweetIdValidator');
+    const eventValidation = assertValidTweetIdOrProvisionalReply(postResult.tweetId, isReply);
+    if (!eventValidation.valid) {
+      const { assertValidTweetId } = await import('./tweetIdValidator');
+      const strict = assertValidTweetId(postResult.tweetId);
+      console.error(`[ATOMIC_POST] ❌ ${eventType} BLOCKED: Invalid tweet_id: ${strict.error}`);
       console.error(`[ATOMIC_POST]   tweet_id=${postResult.tweetId} decision_id=${decision_id}`);
-      // Do NOT write success event with invalid tweet_id
-      throw new Error(`${eventType} blocked: Invalid tweet_id: ${validation.error}`);
+      throw new Error(`${eventType} blocked: Invalid tweet_id: ${strict.error}`);
     }
+    const idProvisional = (eventValidation as any).provisional === true;
 
     // 🔒 REPLY TRUTH PIPELINE: Idempotent insert (check by decision_id AND tweet_id)
     // This prevents duplicates on retries while allowing same decision_id with different tweet_ids
@@ -652,6 +741,10 @@ export async function executeAuthorizedPost(
         ? `Reply posted successfully: decision_id=${decision_id} tweet_id=${postResult.tweetId}`
         : `Content posted successfully: decision_id=${decision_id} tweet_id=${postResult.tweetId}`;
 
+      const accountHandle = process.env.PROOF_EXPECTED_ACCOUNT?.trim() || process.env.TWITTER_USERNAME?.trim() || 'unknown';
+      const eventTweetUrl = process.env.PROOF_MODE === 'true' && process.env.PROOF_EXPECTED_ACCOUNT
+        ? `https://x.com/${accountHandle.replace(/^@/, '')}/status/${postResult.tweetId}`
+        : finalTweetUrl;
       const { error: postSuccessError } = await supabase.from('system_events').insert({
         event_type: eventType,
         severity: 'info',
@@ -659,10 +752,14 @@ export async function executeAuthorizedPost(
         event_data: {
           decision_id: decision_id,
           tweet_id: String(postResult.tweetId), // 🔒 TASK: Ensure string (no Number coercion)
-          tweet_url: finalTweetUrl,
+          ...(isReply ? { posted_reply_tweet_id: String(postResult.tweetId) } : {}), // Reply proof: same as tweet_id
+          tweet_url: eventTweetUrl,
           decision_type: decisionData?.decision_type || decision_type || 'unknown',
           app_version: appVersion,
           posted_at: new Date().toISOString(),
+          account_handle: accountHandle.replace(/^@/, '').toLowerCase(),
+          ...(metadata.proof_tag ? { proof_tag: metadata.proof_tag } : {}),
+          ...(idProvisional ? { id_provisional: true } : {}),
           // Reply-specific fields
           ...(isReply && metadata.target_tweet_id ? { target_tweet_id: metadata.target_tweet_id } : {}),
           ...(isReply && metadata.root_tweet_id ? { root_tweet_id: metadata.root_tweet_id } : {}),
@@ -697,6 +794,21 @@ export async function executeAuthorizedPost(
       await enqueuePerformanceSnapshots(decision_id, postResult.tweetId, new Date());
     } catch (telemetryError: any) {
       console.warn(`[ATOMIC_POST] ⚠️ Failed to enqueue performance snapshots: ${telemetryError.message}`);
+    }
+
+    // 📊 GROWTH_ACTION_LOG: Log for single/thread only (reply path logs in postingQueue)
+    if (!isReply) {
+      try {
+        const { logGrowthAction } = await import('../jobs/growthActionLogger');
+        await logGrowthAction(supabase, {
+          decision_id,
+          action_type: decision_type === 'thread' ? 'thread' : 'post',
+          posted_tweet_id: postResult.tweetId,
+          executed_at: new Date().toISOString(),
+        });
+      } catch (gaErr: any) {
+        console.warn(`[ATOMIC_POST] ⚠️ Growth action log failed (non-blocking): ${gaErr?.message ?? gaErr}`);
+      }
     }
   } catch (postSuccessError: any) {
     // 🔧 TASK: Wrap in try/catch so cleanup errors don't prevent DB writes

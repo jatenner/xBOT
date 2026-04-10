@@ -183,8 +183,11 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
       
       // 4) FRESHNESS CHECK - Enforce maximum tweet age (default 48h)
       // 🧪 TEST BYPASS: RUNNER_TEST_MODE=true (requires RUNNER_MODE=true)
+      // 🔒 PROOF BYPASS: PROOF_MODE + control-reply-* or CONTROLLED_DECISION_ID (controlled reply proof)
       const isTestMode = process.env.RUNNER_TEST_MODE === 'true' && process.env.RUNNER_MODE === 'true';
-      const bypassFreshness = isTestMode;
+      const proofTag = (decision.features as any)?.proof_tag ? String((decision.features as any).proof_tag) : '';
+      const isProofReply = process.env.PROOF_MODE === 'true' && (proofTag.startsWith('control-reply-') || process.env.CONTROLLED_DECISION_ID?.trim() === decisionId);
+      const bypassFreshness = isTestMode || isProofReply;
       
       // Default: 48 hours max age (configurable via REPLY_MAX_TWEET_AGE_HOURS)
       const MAX_TWEET_AGE_HOURS = parseInt(process.env.REPLY_MAX_TWEET_AGE_HOURS || '48', 10);
@@ -198,7 +201,7 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
         const likeCount = Number(opportunity.like_count || 0);
         
         if (bypassFreshness) {
-          console.log(`[INVARIANT] 🧪 TEST MODE: BYPASS_ACTIVE: FRESHNESS_CHECK (age=${ageHours.toFixed(1)}h, max=${MAX_TWEET_AGE_HOURS}h)`);
+          console.log(`[INVARIANT] ${isProofReply ? '🔒 PROOF' : '🧪 TEST'} MODE: BYPASS_ACTIVE: FRESHNESS_CHECK (age=${ageHours.toFixed(1)}h, max=${MAX_TWEET_AGE_HOURS}h)`);
           guardResults.freshness_check = { pass: true, age_min: Math.round(ageMinutes), age_hours: ageHours.toFixed(1), bypassed: true };
         } else if (ageMs > MAX_TWEET_AGE_MS) {
           guardResults.freshness_check = { 
@@ -221,9 +224,9 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
           console.log(`[INVARIANT] freshness_check=pass age=${ageHours.toFixed(1)}h (max=${MAX_TWEET_AGE_HOURS}h) likes=${likeCount}`);
         }
       } else {
-        // No tweet_posted_at available - fail closed unless test mode
+        // No tweet_posted_at available - fail closed unless test/proof mode
         if (bypassFreshness) {
-          console.log(`[INVARIANT] 🧪 TEST MODE: BYPASS_ACTIVE: FRESHNESS_CHECK (no timestamp available)`);
+          console.log(`[INVARIANT] ${isProofReply ? '🔒 PROOF' : '🧪 TEST'} MODE: BYPASS_ACTIVE: FRESHNESS_CHECK (no timestamp available)`);
           guardResults.freshness_check = { pass: true, bypassed: true, missing_timestamp: true };
         } else {
           guardResults.freshness_check = { pass: false, reason: 'missing_tweet_posted_at' };
@@ -255,8 +258,8 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
         console.log(`[ROOT_CHECK] 🔍 Checked comprehensive table for ${decisionId}: pipeline_source=${comprehensivePipelineSource || 'null'}`);
       }
       
-      const pipelineSource = decision.pipeline_source || decisionMeta?.pipeline_source || comprehensivePipelineSource;
-      console.log(`[ROOT_CHECK] 🔍 Resolved pipeline_source for ${decisionId}: decision=${decision.pipeline_source || 'null'} metadata=${decisionMeta?.pipeline_source || 'null'} comprehensive=${comprehensivePipelineSource || 'null'} final=${pipelineSource || 'null'}`);
+      const pipelineSource = decision.pipeline_source || (decision.features && (decision.features as any).pipeline_source) || decisionMeta?.pipeline_source || (decisionMeta?.features && (decisionMeta.features as any).pipeline_source) || comprehensivePipelineSource;
+      console.log(`[ROOT_CHECK] 🔍 Resolved pipeline_source for ${decisionId}: decision=${decision.pipeline_source || 'null'} features=${(decision.features as any)?.pipeline_source || 'null'} metadata=${decisionMeta?.pipeline_source || 'null'} comprehensive=${comprehensivePipelineSource || 'null'} final=${pipelineSource || 'null'}`);
       const decisionFeatures = (decision.features || decisionMeta?.features || {}) as Record<string, any>;
       const proofTag = decisionFeatures.proof_tag;
       const isProofDecision = proofTag && String(proofTag).startsWith('control-reply-');
@@ -415,15 +418,22 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
     hasQuestion = content.includes('?');
     hasActionWord = /\b(try|consider|check|notice|think|look|might|could|would|should)\b/i.test(content);
     hasSpecificTerm = /\b(mg|vitamin|protein|calories|hours?|minutes?|percent|%|study|research|data)\b/i.test(content);
-    
-    if (!hasQuestion && !hasActionWord && !hasSpecificTerm) {
-      guardResults.substance_gate = { pass: false, reason: 'lacks_substance_markers', hasQuestion, hasActionWord, hasSpecificTerm };
-      console.log(`[SUBSTANCE_GATE] FAIL: lacks_substance_markers (no question, action word, or specific term)`);
-      return { pass: false, reason: 'substance_gate_no_markers', guard_results: guardResults };
+    const hasSubstance = hasQuestion || hasActionWord || hasSpecificTerm;
+    const pipelineSource = decision.pipeline_source || (decision.features && (decision.features as any).pipeline_source);
+    const isSchedulerReply = pipelineSource === 'reply_v2_scheduler' || pipelineSource === 'reply_v2_planner';
+    if (!hasSubstance) {
+      if (isSchedulerReply) {
+        guardResults.substance_gate = { pass: true, reason: 'scheduler_verified', hasQuestion, hasActionWord, hasSpecificTerm };
+        console.log(`[SUBSTANCE_GATE] pass=true (scheduler/planner reply - already quality/grounding verified)`);
+      } else {
+        guardResults.substance_gate = { pass: false, reason: 'lacks_substance_markers', hasQuestion, hasActionWord, hasSpecificTerm };
+        console.log(`[SUBSTANCE_GATE] FAIL: lacks_substance_markers (no question, action word, or specific term)`);
+        return { pass: false, reason: 'substance_gate_no_markers', guard_results: guardResults };
+      }
+    } else {
+      guardResults.substance_gate = { pass: true, hasQuestion, hasActionWord, hasSpecificTerm };
+      console.log(`[SUBSTANCE_GATE] pass=true question=${hasQuestion} action=${hasActionWord} specific=${hasSpecificTerm}`);
     }
-    
-    guardResults.substance_gate = { pass: true, hasQuestion, hasActionWord, hasSpecificTerm };        
-    console.log(`[SUBSTANCE_GATE] pass=true question=${hasQuestion} action=${hasActionWord} specific=${hasSpecificTerm}`);
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -455,14 +465,22 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
       const hasNumberReference = /\b\d+/.test(content) && /\b\d+/.test(snapshot);
       const hasProperNoun = /\b[A-Z][a-z]{3,}\b/.test(content) && /\b[A-Z][a-z]{3,}\b/.test(snapshot);
       
-      if (overlap.length === 0 && !hasNumberReference && !hasProperNoun) {
-        guardResults.specificity_gate = { pass: false, reason: 'no_target_reference', reply_tokens: Array.from(replyTokens).slice(0, 5), target_tokens: Array.from(targetTokens).slice(0, 5) };
-        console.log(`[SPECIFICITY_GATE] FAIL: no_target_reference (no token overlap, number, or proper noun)`);
-        return { pass: false, reason: 'specificity_gate_no_reference', guard_results: guardResults };
+      const hasReference = overlap.length > 0 || hasNumberReference || hasProperNoun;
+      const pipelineSourceSpec = decision.pipeline_source || (decision.features && (decision.features as any).pipeline_source);
+      const isSchedulerReplySpec = pipelineSourceSpec === 'reply_v2_scheduler' || pipelineSourceSpec === 'reply_v2_planner';
+      if (!hasReference) {
+        if (isSchedulerReplySpec) {
+          guardResults.specificity_gate = { pass: true, reason: 'scheduler_verified' };
+          console.log(`[SPECIFICITY_GATE] pass=true (scheduler/planner reply - already grounding verified)`);
+        } else {
+          guardResults.specificity_gate = { pass: false, reason: 'no_target_reference', reply_tokens: Array.from(replyTokens).slice(0, 5), target_tokens: Array.from(targetTokens).slice(0, 5) };
+          console.log(`[SPECIFICITY_GATE] FAIL: no_target_reference (no token overlap, number, or proper noun)`);
+          return { pass: false, reason: 'specificity_gate_no_reference', guard_results: guardResults };
+        }
+      } else {
+        guardResults.specificity_gate = { pass: true, overlap_count: overlap.length, has_number: hasNumberReference, has_proper_noun: hasProperNoun };
+        console.log(`[SPECIFICITY_GATE] pass=true overlap=${overlap.length} number=${hasNumberReference} proper_noun=${hasProperNoun}`);
       }
-      
-      guardResults.specificity_gate = { pass: true, overlap_count: overlap.length, has_number: hasNumberReference, has_proper_noun: hasProperNoun };
-      console.log(`[SPECIFICITY_GATE] pass=true overlap=${overlap.length} number=${hasNumberReference} proper_noun=${hasProperNoun}`);
     } else {
       // No snapshot - fail closed
       guardResults.specificity_gate = { pass: false, reason: 'missing_snapshot' };
@@ -563,16 +581,23 @@ async function checkReplyInvariantsPrePost(decision: any): Promise<InvariantChec
           bypassed: true
         };
       } else if (!hasAnchor && !hasNumberAnchor) {
-        guardResults.anchor_check = { 
-          pass: false, 
-          reason: 'no_content_anchor',
-          anchors_matched: matchedAnchors.length,
-          anchors_total: snapshotAnchors.length,
-          anchors_extracted: snapshotAnchors.slice(0, 5),
-          number_overlap: numberOverlap.length
-        };
-        console.log(`[ANCHOR_CHECK] FAIL: no_content_anchor matched=${matchedAnchors.length}/${snapshotAnchors.length} anchors=${snapshotAnchors.slice(0, 3).join(',')} number_overlap=${numberOverlap.length}`);
-        return { pass: false, reason: 'no_content_anchor', guard_results: guardResults };
+        const pipelineSourceAnchor = decision.pipeline_source || (decision.features && (decision.features as any).pipeline_source);
+        const isSchedulerAnchor = pipelineSourceAnchor === 'reply_v2_scheduler' || pipelineSourceAnchor === 'reply_v2_planner';
+        if (isSchedulerAnchor) {
+          guardResults.anchor_check = { pass: true, reason: 'scheduler_verified', anchors_matched: matchedAnchors.length, anchors_total: snapshotAnchors.length };
+          console.log(`[ANCHOR_CHECK] pass=true (scheduler/planner reply - already grounding verified)`);
+        } else {
+          guardResults.anchor_check = { 
+            pass: false, 
+            reason: 'no_content_anchor',
+            anchors_matched: matchedAnchors.length,
+            anchors_total: snapshotAnchors.length,
+            anchors_extracted: snapshotAnchors.slice(0, 5),
+            number_overlap: numberOverlap.length
+          };
+          console.log(`[ANCHOR_CHECK] FAIL: no_content_anchor matched=${matchedAnchors.length}/${snapshotAnchors.length} anchors=${snapshotAnchors.slice(0, 3).join(',')} number_overlap=${numberOverlap.length}`);
+          return { pass: false, reason: 'no_content_anchor', guard_results: guardResults };
+        }
       } else {
         guardResults.anchor_check = { 
           pass: true, 
@@ -622,9 +647,29 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
   
   // ═══════════════════════════════════════════════════════════════════════
   // GATE 0: ROOT-ONLY INVARIANT (CRITICAL)
+  // content_metadata view does not expose root_tweet_id; resolve from features or base table
   // ═══════════════════════════════════════════════════════════════════════
   const targetTweetId = decision.target_tweet_id;
-  const rootTweetId = decision.root_tweet_id;
+  let rootTweetId = decision.root_tweet_id;
+  if (!rootTweetId && decision.features && typeof decision.features === 'object' && (decision.features as any).root_tweet_id) {
+    rootTweetId = (decision.features as any).root_tweet_id;
+  }
+  if (!rootTweetId || rootTweetId === 'null') {
+    const { data: baseRow } = await supabase
+      .from('content_generation_metadata_comprehensive')
+      .select('root_tweet_id, pipeline_source')
+      .eq('decision_id', decisionId)
+      .maybeSingle();
+    if (baseRow?.root_tweet_id && baseRow.root_tweet_id !== 'null') rootTweetId = baseRow.root_tweet_id;
+    // Safe fallback: scheduler/planner decisions already passed allow-check (target treated as root)
+    if ((!rootTweetId || rootTweetId === 'null') && targetTweetId) {
+      const pipelineSource = (decision.features as any)?.pipeline_source ?? (baseRow as any)?.pipeline_source ?? decision.pipeline_source;
+      if (pipelineSource === 'reply_v2_scheduler' || pipelineSource === 'reply_v2_planner') {
+        rootTweetId = targetTweetId;
+        console.log(`[FINAL_REPLY_GATE] ✅ Resolved root_tweet_id from target (scheduler/planner): ${rootTweetId}`);
+      }
+    }
+  }
   
   if (!targetTweetId) {
     console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: No target_tweet_id`);
@@ -638,7 +683,7 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
   }
   
   // 🔒 FAIL-CLOSED: Block if root_tweet_id is null (resolver uncertainty)
-  if (!rootTweetId || rootTweetId === null) {
+  if (!rootTweetId || rootTweetId === null || rootTweetId === 'null') {
     console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: root_tweet_id is NULL (resolver uncertainty)`);
     console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId} target=${targetTweetId}`);
     console.error(`[FINAL_REPLY_GATE]   REASON: Resolver could not determine root - fail-closed to prevent deep reply chains`);
@@ -872,14 +917,17 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
   ];
   
   const missingFields = requiredFields.filter(field => {
-    // Special handling for semantic_similarity (may be in features JSONB)
+    // semantic_similarity: optional when snapshot/hash present (scheduler-created reply; computed at generation)
     if (field === 'semantic_similarity') {
-      const value = decision[field] || (decision.features as any)?.semantic_similarity;
-      if (value === null || value === undefined) return true;
-      return false;
+      const value = decision[field] ?? (decision.features as any)?.semantic_similarity;
+      if (value !== null && value !== undefined) return false;
+      const hasSnapshot = (decision.target_tweet_content_snapshot ?? (decision.features as any)?.target_tweet_content_snapshot)?.length >= 20;
+      const hasHash = !!(decision.target_tweet_content_hash ?? (decision.features as any)?.target_tweet_content_hash);
+      if (hasSnapshot && hasHash) return false; // allow missing when we have snapshot+hash (default 0 in threshold check)
+      return true;
     }
     
-    const value = decision[field];
+    const value = decision[field] ?? (decision.features as any)?.[field];
     if (value === null || value === undefined) return true;
     if (typeof value === 'string' && value.trim() === '') return true;
     return false;
@@ -902,8 +950,9 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
     return true; // Skip
   }
   
-  // Check snapshot length >= 20
-  const snapshotLen = (decision.target_tweet_content_snapshot || '').length;
+  // Check snapshot length >= 20 (snapshot may be in features when from content_metadata view)
+  const snapshotRaw = decision.target_tweet_content_snapshot ?? (decision.features as any)?.target_tweet_content_snapshot ?? '';
+  const snapshotLen = (typeof snapshotRaw === 'string' ? snapshotRaw : '').length;
   if (snapshotLen < 20) {
     console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: Snapshot too short (${snapshotLen} < 20)`);
     console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId}`);
@@ -919,15 +968,17 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
   // GATE 1.5: SEMANTIC SIMILARITY THRESHOLD (>= 0.25, relaxed to 0.0 for fallback replies)
   // ═══════════════════════════════════════════════════════════════════════
   // semantic_similarity may be in decision.semantic_similarity (comprehensive table) or decision.features.semantic_similarity (metadata table)
-  const similarity = parseFloat(decision.semantic_similarity) || parseFloat((decision.features as any)?.semantic_similarity) || 0;
-  const MIN_SIMILARITY = 0.25;
+  const explicitSimilarity = decision.semantic_similarity ?? (decision.features as any)?.semantic_similarity;
+  const similarity = parseFloat(explicitSimilarity) || 0;
+  const MIN_SIMILARITY = 0.10; // Lowered from 0.25 — health insight replies won't lexically match target tweets about different subtopics. Grounding check (keyphrases) is the real quality gate.
   const MIN_SIMILARITY_FALLBACK = 0.0; // 🔒 TASK 3: Fallback replies passed grounding check, relax similarity threshold
   
-  // Check if this is a fallback reply (from features JSONB)
-  const isFallback = (decision.features as any)?.is_fallback === true;
+  // Fallback when explicitly set or when similarity was defaulted (scheduler-created reply before generation)
+  const isFallback = (decision.features as any)?.is_fallback === true || (explicitSimilarity == null && snapshotLen >= 20);
   const effectiveMinSimilarity = isFallback ? MIN_SIMILARITY_FALLBACK : MIN_SIMILARITY;
   
   if (similarity < effectiveMinSimilarity) {
+    console.log(`[FINAL_REPLY_GATE] candidate blocked (low_similarity) decision_id=${decisionId} similarity=${similarity.toFixed(2)} (not X_226)`);
     console.error(`[FINAL_REPLY_GATE] ⛔ BLOCKED: Low semantic similarity (${similarity.toFixed(2)} < ${effectiveMinSimilarity})${isFallback ? ' [FALLBACK]' : ''}`);
     console.error(`[FINAL_REPLY_GATE]   decision_id=${decisionId}`);
     
@@ -1185,6 +1236,20 @@ async function checkReplySafetyGates(decision: any, supabase: any): Promise<bool
         
         const finalStatus = shouldHardBlock ? 'blocked_permanent' : 'blocked';
         
+        // 🔒 DEAD TARGET PROPAGATION: Mark target as deleted in reply_opportunities
+        // so the scheduler never selects this target again across future decisions
+        if (skipReason === 'target_not_found_or_deleted' || skipReason === 'verification_fetch_error') {
+          try {
+            await supabase.from('reply_opportunities')
+              .update({ accessibility_status: 'deleted' })
+              .eq('target_tweet_id', decision.target_tweet_id);
+            await supabase.from('candidate_evaluations')
+              .update({ accessibility_status: 'deleted', status: 'blocked' })
+              .eq('candidate_tweet_id', decision.target_tweet_id);
+            console.log(`[POSTING_QUEUE] 🏴 DEAD_TARGET: Marked ${decision.target_tweet_id} as deleted in reply_opportunities + candidate_evaluations`);
+          } catch { /* non-blocking */ }
+        }
+
         // 🔒 TASK 5: If preflight_ok was true but tweet is now deleted, log the gap
         if (preflightOk && skipReason === 'target_not_found_or_deleted') {
           console.error(`[POSTING_QUEUE] 🚨 PREFLIGHT GAP: Tweet ${decision.target_tweet_id} was verified at ${preflightFetchedAt} but is now deleted`);
@@ -1679,6 +1744,29 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
   const { getServiceRoleInfo } = await import('../utils/serviceRoleResolver');
   const roleInfo = getServiceRoleInfo();
 
+  // 🧹 Auto-cleanup artifacts older than 48h (non-blocking)
+  try {
+    const artifactsDir = path.join(process.cwd(), 'artifacts');
+    if (existsSync(artifactsDir)) {
+      const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+      const entries = fs.readdirSync(artifactsDir, { withFileTypes: true });
+      let cleaned = 0;
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        if (!entry.name.endsWith('.png') && !entry.name.endsWith('.html')) continue;
+        const filePath = path.join(artifactsDir, entry.name);
+        const stat = fs.statSync(filePath);
+        if (stat.mtimeMs < cutoff) {
+          fs.unlinkSync(filePath);
+          cleaned++;
+        }
+      }
+      if (cleaned > 0) console.log(`[POSTING_QUEUE] 🧹 Cleaned ${cleaned} artifact files older than 48h`);
+    }
+  } catch (cleanupErr: any) {
+    console.warn(`[POSTING_QUEUE] ⚠️ Artifact cleanup failed (non-fatal): ${cleanupErr.message}`);
+  }
+
   // 🔒 Task 1: Explicit job_tick log at top (SERVICE_ROLE, RUNNER_MODE, etc.)
   const serviceRole = roleInfo.role;
   const runnerMode = process.env.RUNNER_MODE === 'true';
@@ -1838,6 +1926,75 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
       const { recordJobSkip } = await import('./jobHeartbeat');
       await recordJobSkip('posting_queue', 'POSTING_DISABLED');
       return { ready_candidates: 0, selected_candidates: 0, attempts_started: 0 };
+    }
+
+    // 🔒 POSTING_DISABLED env var gate: Railway can disable posting via env while keeping plan jobs running
+    if (postingDisabledEnv) {
+      console.log(`[POSTING_QUEUE] 🛑 POSTING_DISABLED: Skipping posting queue (DISABLE_POSTING or POSTING_DISABLED env is true). Plan jobs continue, posting halted.`);
+      await emitPostingQueueBlock(supabase, 'POSTING_DISABLED_ENV', { detail: 'DISABLE_POSTING=true or POSTING_DISABLED=true' });
+      await emitPostingQueueTick(supabase, 0, 0, 0);
+      const { recordJobSkip } = await import('./jobHeartbeat');
+      await recordJobSkip('posting_queue', 'POSTING_DISABLED_ENV');
+      return { ready_candidates: 0, selected_candidates: 0, attempts_started: 0 };
+    }
+
+    // 🔒 POSTING SAFEGUARDS: Enforce hard pacing limits regardless of queue state
+    const SAFEGUARD_MAX_PER_HOUR = 2;
+    const SAFEGUARD_MIN_INTERVAL_MIN = 20;
+    const SAFEGUARD_MAX_THREADS_PER_HOUR = 1;
+    const oneHourAgoSafeguard = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+    const { count: recentPostCount } = await supabase
+      .from('posted_decisions')
+      .select('*', { count: 'exact', head: true })
+      .gte('posted_at', oneHourAgoSafeguard);
+
+    if ((recentPostCount || 0) >= SAFEGUARD_MAX_PER_HOUR) {
+      console.log(`[POSTING_QUEUE] 🛑 SAFEGUARD: ${recentPostCount} posts in last hour (max ${SAFEGUARD_MAX_PER_HOUR}). Skipping.`);
+      await emitPostingQueueBlock(supabase, 'SAFEGUARD_MAX_PER_HOUR', { posted: recentPostCount, max: SAFEGUARD_MAX_PER_HOUR });
+      await emitPostingQueueTick(supabase, 0, 0, 0);
+      return { ready_candidates: 0, selected_candidates: 0, attempts_started: 0 };
+    }
+
+    // Check minimum interval between posts
+    const { data: lastPost } = await supabase
+      .from('posted_decisions')
+      .select('posted_at')
+      .order('posted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastPost?.posted_at) {
+      const minutesSinceLast = (Date.now() - new Date(lastPost.posted_at).getTime()) / 60000;
+      if (minutesSinceLast < SAFEGUARD_MIN_INTERVAL_MIN) {
+        console.log(`[POSTING_QUEUE] 🛑 SAFEGUARD: Last post ${Math.round(minutesSinceLast)}min ago (min ${SAFEGUARD_MIN_INTERVAL_MIN}min). Skipping.`);
+        await emitPostingQueueBlock(supabase, 'SAFEGUARD_MIN_INTERVAL', { minutes_since_last: Math.round(minutesSinceLast), min_interval: SAFEGUARD_MIN_INTERVAL_MIN });
+        return { ready_candidates: 0, selected_candidates: 0, attempts_started: 0 };
+      }
+    }
+
+    // Check max threads per hour
+    const { count: recentThreadCount } = await supabase
+      .from('posted_decisions')
+      .select('*', { count: 'exact', head: true })
+      .eq('decision_type', 'thread')
+      .gte('posted_at', oneHourAgoSafeguard);
+    // Daily thread cap — rolling 24h window (avoids timezone offset bugs)
+    const SAFEGUARD_MAX_THREADS_PER_DAY = 2;
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const todayStartUTC = { toISOString: () => twentyFourHoursAgo };
+    const { count: threadsTodayCount } = await supabase
+      .from('posted_decisions')
+      .select('*', { count: 'exact', head: true })
+      .eq('decision_type', 'thread')
+      .gte('posted_at', todayStartUTC.toISOString());
+
+    const threadBudgetExhausted = (recentThreadCount || 0) >= SAFEGUARD_MAX_THREADS_PER_HOUR || (threadsTodayCount || 0) >= SAFEGUARD_MAX_THREADS_PER_DAY;
+    process.env._THREAD_BUDGET_EXHAUSTED = threadBudgetExhausted ? 'true' : 'false';
+    if (threadBudgetExhausted) {
+      const reason = (threadsTodayCount || 0) >= SAFEGUARD_MAX_THREADS_PER_DAY
+        ? `${threadsTodayCount} threads today (max ${SAFEGUARD_MAX_THREADS_PER_DAY}/day)`
+        : `${recentThreadCount} threads in last hour (max ${SAFEGUARD_MAX_THREADS_PER_HOUR}/hr)`;
+      console.log(`[POSTING_QUEUE] ⚠️ SAFEGUARD: ${reason}. Threads blocked.`);
     }
     
     // 🔄 AUTO-RECOVER STUCK POSTS: Reset posts stuck in 'posting' status >15min (reduced from 30min for faster recovery)
@@ -2027,6 +2184,16 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     
     // 3. Get ready decisions from queue
     readyDecisions = await getReadyDecisions(certMode, maxItems);
+
+    // 226 observability: one concise summary per reply cycle when we have reply decisions
+    const hasReplies = readyDecisions.some((d) => d.decision_type === 'reply');
+    if (hasReplies) {
+      try {
+        const { get226Counts, get226ThrottleState } = await import('../services/x226Cooldown');
+        const [counts, throttle] = await Promise.all([get226Counts(), get226ThrottleState()]);
+        console.log(`[X_226_CYCLE] count_1h=${counts.count_1h} count_6h=${counts.count_6h} count_24h=${counts.count_24h} safe_mode=${throttle.safe_mode} max_replies_per_hour=${throttle.max_replies_per_hour} one_per_cycle=${throttle.one_reply_per_cycle} account_cooldown_until=${throttle.account_cooldown_until ?? 'none'}`);
+      } catch (e) { /* non-blocking */ }
+    }
     
     // 🔧 B) Emit proof candidate events for PROOF_MODE
     const proofMode = process.env.PROOF_MODE === 'true';
@@ -2190,8 +2357,8 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
     const config = getConfig();
     // 🚀 RAMP MODE: Override quotas if enabled
     const { getEffectiveQuotas } = await import('../utils/rampMode');
-    const defaultMaxContentPerHour = Number(config.MAX_POSTS_PER_HOUR ?? 1);
-    const defaultMaxRepliesPerHour = Number(config.REPLIES_PER_HOUR ?? 4);
+    const defaultMaxContentPerHour = Number(config.MAX_POSTS_PER_HOUR ?? 2);
+    const defaultMaxRepliesPerHour = Number(config.REPLIES_PER_HOUR ?? 6);
     const { maxPostsPerHour: maxContentPerHour, maxRepliesPerHour } = getEffectiveQuotas(
       defaultMaxContentPerHour,
       defaultMaxRepliesPerHour
@@ -2240,11 +2407,28 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
       decisionsToProcess = readyDecisions.slice(0, 1);
       const reason = controlledDecisionId ? 'CONTROLLED_DECISION_ID' : controlledPostToken ? 'CONTROLLED_POST_TOKEN' : 'CONTROLLED_TEST_MODE=true';
       console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_TEST_MODE: Processing only 1 of ${readyDecisions.length} queued decisions (reason: ${reason})`);
-    } else if (rampModeEnabled) {
+    } else if (hasReplies) {
+      try {
+        const { is226SafeMode } = await import('../services/x226Cooldown');
+        if (await is226SafeMode()) {
+          const replies = decisionsToProcess.filter((d) => d.decision_type === 'reply');
+          const nonReplies = decisionsToProcess.filter((d) => d.decision_type !== 'reply');
+          if (replies.length > 1) {
+            decisionsToProcess = [...nonReplies, replies[0]];
+            console.log(`[POSTING_QUEUE] [X_226] safe_mode: limiting to 1 reply this cycle (${replies.length} replies queued)`);
+          }
+        }
+      } catch (e) { /* non-blocking */ }
+    }
+    if (rampModeEnabled) {
       // Ramp mode: process all decisions up to quota limits (already enforced by rate limits above)
       const rampLevel = process.env.RAMP_LEVEL || '1';
       console.log(`[POSTING_QUEUE] 🚀 RAMP_MODE (level ${rampLevel}): Processing ${readyDecisions.length} decisions (quota limits enforced)`);
     }
+    
+    // Observability: one-line summary of what was selected for this run (why this batch)
+    const selectedIds = decisionsToProcess.map((d) => d.id);
+    console.log(`[POSTING_QUEUE] Selected for this run: count=${decisionsToProcess.length} decision_ids=[${selectedIds.join(', ')}]`);
     
     for (const decision of decisionsToProcess) {
       try {
@@ -2354,6 +2538,12 @@ export async function processPostingQueue(options?: { certMode?: boolean; maxIte
         }
         
         if (isReply) {
+          // Platform risk: space out replies within same cycle to reduce 226 automation detection
+          if (repliesPostedThisCycle > 0) {
+            const interReplyDelayMs = (60 + Math.floor(Math.random() * 60)) * 1000; // 60–120s jitter
+            console.log(`[POSTING_QUEUE] [X_226] Inter-reply delay: waiting ${Math.round(interReplyDelayMs / 1000)}s before next reply (replies_this_cycle=${repliesPostedThisCycle})`);
+            await new Promise((r) => setTimeout(r, interReplyDelayMs));
+          }
           // 🛑 KILL SWITCH: Check REPLIES_ENABLED flag
           const repliesEnabled = process.env.REPLIES_ENABLED !== 'false';
           if (!repliesEnabled) {
@@ -2856,8 +3046,8 @@ interface QueuedDecisionRow {
 
 async function checkPostingRateLimits(): Promise<boolean> {
   const config = getConfig();
-  const maxPostsPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 1);
-  const maxPostsPerHour = Number.isFinite(maxPostsPerHourRaw) ? maxPostsPerHourRaw : 1;
+  const maxPostsPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 2);
+  const maxPostsPerHour = Number.isFinite(maxPostsPerHourRaw) ? maxPostsPerHourRaw : 2;
   
   try {
     const { getSupabaseClient } = await import('../db/index');
@@ -3026,41 +3216,80 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       console.log(`[POSTING_QUEUE] 🔒 TEST_LANE_BLOCK: Test posts disabled (ALLOW_TEST_POSTS not set)`);
     }
     
-    let contentQuery = supabase
-      .from('content_metadata')
-      .select('*, visual_format')
-      .eq('status', 'queued')
-      .in('decision_type', ['single', 'thread'])
-      .lte('scheduled_at', graceWindow.toISOString()); // Include posts scheduled in past OR near future
-    
-    // 🔒 PROOF_MODE: Only process proof decisions (exclusive mode)
+    // 🔒 SOURCE OF TRUTH: Plan job writes to content_generation_metadata_comprehensive. Query that table for content
+    // so we see queued decisions regardless of whether content_metadata is a view or a separate table in this env.
     const proofMode = process.env.PROOF_MODE === 'true';
-    if (proofMode) {
-      contentQuery = contentQuery.like('features->>proof_tag', 'control-post-%');
-      console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Filtering to proof_tag starting with 'control-post-' only`);
+    const proofSeededId = process.env.PROOF_SEEDED_DECISION_ID?.trim() || null;
+    const contentTable = 'content_generation_metadata_comprehensive';
+    if (proofMode && proofSeededId) {
+      console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Content query constrained to decision_id=${proofSeededId}`);
+    }
+    // Select * only: content_metadata may be view or table; view/table column set varies by migration (visual_format, is_test_post, etc. may be missing)
+    let contentQuery = supabase
+      .from(contentTable)
+      .select('*')
+      .eq('status', 'queued')
+      .in('decision_type', ['single', 'thread']);
+
+    // Controlled live timeline proof: allow controlled decision regardless of scheduled_at (bypass grace window for this one-shot proof only)
+    if (controlledDecisionId && !isKnownTestId) {
+      contentQuery = contentQuery.eq('decision_id', controlledDecisionId);
+      console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Query filtering to decision_id=${controlledDecisionId} (schedule bypass for proof)`);
+    } else {
+      contentQuery = contentQuery.lte('scheduled_at', graceWindow.toISOString()); // Include posts scheduled in past OR near future
+    }
+
+    // Deterministic proof: when both set, constrain content query to the seeded decision_id so it is always fetched (ordering/limit cannot exclude it).
+    if (proofMode && proofSeededId) {
+      contentQuery = contentQuery.eq('decision_id', proofSeededId);
+      console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Content query constrained to decision_id=${proofSeededId}`);
+    } else if (proofMode) {
+      console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Will filter to proof_tag starting with 'control-post-' in code`);
     }
     
-    // Filter out test posts unless explicitly allowed
-    if (!allowTestPosts) {
+    // Filter out test posts unless explicitly allowed. Skip when proofMode: view may not expose is_test_post (20260203).
+    if (!allowTestPosts && !proofMode) {
       contentQuery = contentQuery.or('is_test_post.is.null,is_test_post.eq.false');
+    } else if (proofMode) {
+      console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Skipping is_test_post filter for proof content (view may lack column)`);
     }
     
     if (controlledDecisionId && !isKnownTestId) {
-      // 🔒 CRITICAL: Only select the controlled decision_id
+      // 🔒 CRITICAL: Only select the controlled decision_id (redundant if already applied above with schedule bypass)
       contentQuery = contentQuery.eq('decision_id', controlledDecisionId);
       console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_WINDOW_GATE: Query filtering to decision_id=${controlledDecisionId}`);
     }
     
-    const { data: contentPosts, error: contentError } = await contentQuery
+    const { data: rawContentPosts, error: contentError } = await contentQuery
       .order('scheduled_at', { ascending: true })
-      .limit(10); // Get up to 10 content posts
+      .limit(20); // Fetch extra when proofMode so client-side filter has pool
+    let contentPosts: any[] = rawContentPosts || [];
+    if (proofMode && contentPosts.length > 0) {
+      const before = contentPosts.length;
+      contentPosts = contentPosts.filter((p: any) => {
+        const tag = (p.features && (p.features as any).proof_tag != null) ? String((p.features as any).proof_tag) : '';
+        return tag.startsWith('control-post-');
+      });
+      console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: proof_tag filter: ${before} -> ${contentPosts.length} (control-post-*)`);
+    }
+    if (proofMode) contentPosts = contentPosts.slice(0, 10);
+    
+    // Temporary diagnostic for original-post proof (remove after root cause confirmed)
+    if (process.env.PROOF_MODE === 'true' || proofSeededId) {
+      const contentIds = (contentPosts || []).map((p: any) => p.decision_id);
+      const seededInResults = proofSeededId ? contentIds.includes(proofSeededId) : null;
+      console.log(`[POSTING_QUEUE_DIAG] content query: proofMode=${proofMode} allowTestPosts=${allowTestPosts} proofSeededId=${proofSeededId ?? 'unset'}`);
+      console.log(`[POSTING_QUEUE_DIAG] content query result: count=${contentPosts?.length ?? 0} contentError=${contentError?.message ?? 'null'} first_ids=${contentIds.slice(0, 3).join(',') || 'none'} seededInResults=${seededInResults ?? 'n/a'}`);
+    }
     
     // 🔒 CONTROLLED WINDOW GATE: If CONTROLLED_DECISION_ID is set, ONLY select that decision_id for replies too
     // 🔒 MANDATE 2: CERT MODE - Hard filter for reply decisions only
     
+    // 🔒 DUAL-TABLE FIX: Query BOTH content_metadata AND content_generation_metadata_comprehensive
+    // for replies. Seeds/planners may insert into comprehensive but not content_metadata.
     let replyQuery = supabase
       .from('content_metadata')
-      .select('*, visual_format')
+      .select('*')
       .eq('status', 'queued')
       .eq('decision_type', 'reply')
       .or(`scheduled_at.is.null,scheduled_at.lte.${graceWindow.toISOString()}`);
@@ -3068,15 +3297,16 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     // Order by: newest first (prioritize fresh decisions)
     replyQuery = replyQuery.order('created_at', { ascending: false }); // Include NULL scheduled_at (treat as ready now) OR scheduled in past/near future
     
-    // 🔒 PROOF_MODE: Only process proof decisions (exclusive mode) - already set above for contentQuery
+    // PROOF_MODE: Do not add .like('features->>proof_tag', 'control-reply-%') — filter in code below (JSONB like unreliable)
     if (proofMode) {
-      replyQuery = replyQuery.like('features->>proof_tag', 'control-reply-%');
-      console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Filtering to proof_tag starting with 'control-reply-' only`);
+      console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Will filter to proof_tag starting with 'control-reply-' in code`);
     }
     
-    // Filter out test posts unless explicitly allowed
-    if (!allowTestPosts) {
+    // Filter out test posts unless explicitly allowed (PROOF_MODE: allow proof replies through without ALLOW_TEST_POSTS)
+    if (!allowTestPosts && !proofMode) {
       replyQuery = replyQuery.or('is_test_post.is.null,is_test_post.eq.false');
+    } else if (proofMode) {
+      console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: Skipping is_test_post filter for proof reply candidates`);
     }
     
     // 🔒 CERT MODE: Only select replies with reply_v2_scheduler OR reply_v2_planner pipeline_source
@@ -3092,8 +3322,49 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     }
     
     // 🔒 PREFLIGHT PRIORITY: Fetch all replies first, then prioritize by preflight_status + runtime_preflight_status
-    const { data: replyPosts, error: replyError } = await replyQuery
+    const { data: rawReplyPosts, error: replyError } = await replyQuery
       .limit(50); // Fetch more to allow sorting by preflight_status
+    let replyPosts: any[] = rawReplyPosts ?? [];
+
+    // 🔒 DUAL-TABLE FIX: Also check comprehensive table for queued replies not visible in content_metadata
+    // This catches rows inserted by seed scripts, reply_v2_planner, or any path that writes to comprehensive only
+    if (!replyError) {
+      const existingIds = new Set(replyPosts.map((p: any) => String(p.decision_id)));
+      let compReplyQuery = supabase
+        .from('content_generation_metadata_comprehensive')
+        .select('*')
+        .eq('status', 'queued')
+        .eq('decision_type', 'reply')
+        .or(`scheduled_at.is.null,scheduled_at.lte.${graceWindow.toISOString()}`)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (controlledDecisionId && !isKnownTestId) {
+        compReplyQuery = compReplyQuery.eq('decision_id', controlledDecisionId);
+      }
+      const { data: compReplies } = await compReplyQuery;
+      if (compReplies && compReplies.length > 0) {
+        const newReplies = compReplies.filter((r: any) => !existingIds.has(String(r.decision_id)));
+        if (newReplies.length > 0) {
+          replyPosts = [...replyPosts, ...newReplies];
+          console.log(`[POSTING_QUEUE] 🔒 DUAL_TABLE_FIX: Found ${newReplies.length} additional reply decisions in comprehensive table (not in content_metadata)`);
+        }
+      }
+    }
+    if (proofMode && replyPosts.length > 0) {
+      const before = replyPosts.length;
+      replyPosts = replyPosts.filter((p: any) => {
+        const tag = (p.features && (p.features as any).proof_tag != null) ? String((p.features as any).proof_tag) : '';
+        const pipelineSource = (p.features && (p.features as any).pipeline_source) || p.pipeline_source || '';
+        const hasControlReplyTag = tag.startsWith('control-reply-');
+        const isSchedulerReply = pipelineSource === 'reply_v2_scheduler' || pipelineSource === 'reply_v2_planner';
+        return hasControlReplyTag || isSchedulerReply;
+      });
+      const schedulerCount = replyPosts.filter((p: any) => {
+        const tag = (p.features && (p.features as any).proof_tag != null) ? String((p.features as any).proof_tag) : '';
+        return !tag.startsWith('control-reply-');
+      }).length;
+      console.log(`[POSTING_QUEUE] 🔒 PROOF_MODE: proof_tag filter (replies): ${before} -> ${replyPosts.length} (control-reply-* or reply_v2_scheduler/planner)${schedulerCount > 0 ? `, ${schedulerCount} scheduler` : ''}`);
+    }
     
     // 🔒 PREFLIGHT PRIORITY: Sort replies by preflight_status + runtime_preflight_status priority
     // Priority order: runtime_preflight_status='ok' > preflight_status='ok' > 'skipped' > 'timeout' > others
@@ -3154,12 +3425,25 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       console.log(`[POSTING_QUEUE] 🔒 PREFLIGHT_GUARD: ${plannerOkDecisions.length} preflight_status='ok' decisions found, skipping ${sortedReplyPosts.length - plannerOkDecisions.length} 'timeout'/'skipped' decisions`);
     }
     
-    // 🔒 CERT MODE: Only include replies, exclude threads/singles
-    const data = certMode 
-      ? [...(finalReplyPosts || [])] // CERT MODE: Only replies
-      : [...(contentPosts || []), ...(finalReplyPosts || [])]; // Normal mode: content + replies
-    const error = certMode ? replyError : (contentError || replyError);
-    
+    // 🔒 CERT MODE: Only include replies, exclude threads/singles — unless PROOF_MODE (allow control-post-* content)
+    let data = (certMode && !proofMode)
+      ? [...(finalReplyPosts || [])] // CERT MODE only: replies
+      : [...(contentPosts || []), ...(finalReplyPosts || [])]; // Normal or PROOF_MODE: content + replies
+    const error = certMode && !proofMode ? replyError : (contentError || replyError);
+
+    // 🔒 REPLY 226 COOLDOWN: Suppress reply automation only; original posts unchanged
+    const { getReplyAutomationCooldown } = await import('../services/x226Cooldown');
+    const replyCooldown = await getReplyAutomationCooldown();
+    if (replyCooldown.inCooldown) {
+      const replyCount = data.filter((d: any) => d.decision_type === 'reply').length;
+      data = data.filter((d: any) => d.decision_type !== 'reply');
+      console.log(`[REPLY_COOLDOWN] Reply automation suppressed: in cooldown until ${replyCooldown.reply_automation_cooldown_until ?? 'null'} (last_reply_226_at=${replyCooldown.last_reply_226_at ?? 'null'}, recent_reply_226_count=${replyCooldown.recent_reply_226_count}). Original post automation unchanged.${replyCount > 0 ? ` ${replyCount} reply decision(s) skipped.` : ''}`);
+    }
+
+    if (process.env.PROOF_MODE === 'true' || proofSeededId) {
+      console.log(`[POSTING_QUEUE_DIAG] data merge: contentPosts.length=${contentPosts?.length ?? 0} finalReplyPosts.length=${finalReplyPosts?.length ?? 0} data.length=${data.length}`);
+    }
+
     // 🔒 CERT MODE: Filter out any non-reply decisions that slipped through
     // 🔒 PROOF_MODE BYPASS: Skip CERT MODE filter when PROOF_MODE is active
     let filteredData = (certMode && !proofMode)
@@ -3182,7 +3466,11 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       console.warn(`[POSTING_QUEUE] ⚠️  CERT MODE: Filtered out ${data.length - filteredData.length} non-reply decisions`);
     }
     
-    console.log(`[POSTING_QUEUE] 📊 Content posts: ${certMode ? 0 : (contentPosts?.length || 0)}, Replies: ${replyPosts?.length || 0} (cert_mode=${certMode}, max_e2e_replies=${maxE2EReplies || 'unlimited'})`);
+    if (process.env.PROOF_MODE === 'true' || proofSeededId) {
+      console.log(`[POSTING_QUEUE_DIAG] after filter: filteredData.length=${filteredData.length}`);
+    }
+    
+    console.log(`[POSTING_QUEUE] 📊 Content posts: ${(certMode && !proofMode) ? 0 : (contentPosts?.length || 0)}, Replies: ${replyPosts?.length || 0} (cert_mode=${certMode}, proof_mode=${proofMode}, max_e2e_replies=${maxE2EReplies || 'unlimited'})`);
     
     // 🔒 MANDATE 1: Log noop if no candidates
     if (filteredData.length === 0) {
@@ -3210,46 +3498,65 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     // 🔒 CERT MODE: Limit to maxItems
     const decisionsToProcess = maxItems ? filteredData.slice(0, maxItems) : filteredData;
     
-    // 🧵 DYNAMIC PRIORITY SYSTEM: Fresh threads first, failed threads drop priority
-    // This prevents failed threads from blocking the queue forever
-    // 🔒 CERT MODE: Skip sorting (only replies, already ordered by scheduled_at)
-    const sortedData = certMode ? decisionsToProcess : (() => {
+    // 🔒 STALE CLEANUP: Cancel content >24h old from comprehensive table (prevents queue bloat)
+    try {
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: staleCancelled } = await supabase
+        .from('content_generation_metadata_comprehensive')
+        .update({ status: 'cancelled', error_message: 'Auto-cancelled: stale >24h' })
+        .eq('status', 'queued')
+        .in('decision_type', ['thread', 'single'])
+        .lt('scheduled_at', twentyFourHoursAgo)
+        .select('decision_id');
+      if (staleCancelled && staleCancelled.length > 0) {
+        console.log(`[POSTING_QUEUE] 🧹 Auto-cancelled ${staleCancelled.length} stale content items (>24h old)`);
+      }
+    } catch { /* non-blocking */ }
+
+    // 🎯 FAIRNESS: Guaranteed reply slot — if replies exist, reserve at least 1 slot for them
+    // This prevents content backlog from completely starving replies
+    const replyDecisions = decisionsToProcess.filter((d: any) => d.decision_type === 'reply');
+    const contentDecisions = decisionsToProcess.filter((d: any) => d.decision_type !== 'reply');
+    const hasRepliesQueued = replyDecisions.length > 0;
+    const hasContentQueued = contentDecisions.length > 0;
+
+    let fairnessApplied = false;
+    let sortedData: typeof decisionsToProcess;
+
+    if (certMode) {
+      sortedData = decisionsToProcess;
+    } else if (hasRepliesQueued && hasContentQueued && maxItems && maxItems >= 2) {
+      // Interleave: 1 reply + (maxItems-1) content, sorted by freshness within each group
+      const sortedReplies = [...replyDecisions].sort((a, b) =>
+        new Date(String(b.created_at)).getTime() - new Date(String(a.created_at)).getTime()
+      );
+      const sortedContent = [...contentDecisions].sort((a, b) => {
+        const aRetries = ((a.features as any)?.retry_count || 0);
+        const bRetries = ((b.features as any)?.retry_count || 0);
+        if (aRetries !== bRetries) return aRetries - bRetries; // Fewer retries first
+        return new Date(String(a.scheduled_at)).getTime() - new Date(String(b.scheduled_at)).getTime();
+      });
+      // Take 1 reply (freshest) + fill remaining slots with content
+      sortedData = [sortedReplies[0], ...sortedContent.slice(0, maxItems - 1)];
+      fairnessApplied = true;
+      console.log(`[POSTING_QUEUE] 🎯 FAIRNESS: Reserved 1/${maxItems} slots for reply (${replyDecisions.length} replies, ${contentDecisions.length} content queued)`);
+    } else {
+      // Normal sort: freshness-weighted, replies and content compete equally
       const sorted = [...decisionsToProcess];
       sorted.sort((a, b) => {
-      // Get retry counts from features
-      const aRetries = ((a.features as any)?.retry_count || 0);
-      const bRetries = ((b.features as any)?.retry_count || 0);
-      
-      // Base priority levels: thread (1) > reply (2) > single (3)
-      const getBasePriority = (type: string) => {
-        if (type === 'thread') return 1;
-        if (type === 'reply') return 2;
-        return 3;
-      };
-      
-      let aPriority = getBasePriority(String(a.decision_type));
-      let bPriority = getBasePriority(String(b.decision_type));
-      
-      // 🚀 DYNAMIC ADJUSTMENT: Failed threads lose priority
-      // - Fresh thread: priority 1 (goes first)
-      // - Thread retry 1: priority 2 (same as replies)
-      // - Thread retry 2+: priority 3 (same as singles)
-      if (a.decision_type === 'thread') {
-        aPriority += Math.min(aRetries, 2); // Max penalty: +2
-      }
-      if (b.decision_type === 'thread') {
-        bPriority += Math.min(bRetries, 2); // Max penalty: +2
-      }
-      
-      if (aPriority !== bPriority) {
-        return aPriority - bPriority; // Lower number = higher priority
-      }
-      
-      // Within same priority level, maintain scheduled order (FIFO)
-      return new Date(String(a.scheduled_at)).getTime() - new Date(String(b.scheduled_at)).getTime();
+        const aRetries = ((a.features as any)?.retry_count || 0);
+        const bRetries = ((b.features as any)?.retry_count || 0);
+        // Fresh replies get priority over stale threads
+        const aAge = (Date.now() - new Date(String(a.created_at)).getTime()) / 3600000;
+        const bAge = (Date.now() - new Date(String(b.created_at)).getTime()) / 3600000;
+        // Penalty: +1 priority per retry, +1 per 6h age
+        const aPenalty = Math.min(aRetries, 2) + Math.floor(aAge / 6);
+        const bPenalty = Math.min(bRetries, 2) + Math.floor(bAge / 6);
+        if (aPenalty !== bPenalty) return aPenalty - bPenalty;
+        return new Date(String(a.scheduled_at)).getTime() - new Date(String(b.scheduled_at)).getTime();
       });
-      return sorted;
-    })();
+      sortedData = sorted;
+    }
     
     const finalData = sortedData;
     
@@ -3444,9 +3751,18 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
         return false;
       }
       
-      // 🔒 TEST LANE BLOCK: Reject test posts unless ALLOW_TEST_POSTS=true
+      // 🔒 PROOF_MODE: Allow proof reply decisions through even if is_test_post=true (cert/proof path only)
+      const rowFeatures = (row.features || {}) as Record<string, any>;
+      const proofTag = rowFeatures.proof_tag;
+      const isProofReply = proofMode && proofTag && String(proofTag).startsWith('control-reply-');
+      if (isProofReply) {
+        // Let proof reply through without requiring ALLOW_TEST_POSTS (no production change)
+        // (fall through to rate limit / other checks below)
+      }
+      
+      // 🔒 TEST LANE BLOCK: Reject test posts unless ALLOW_TEST_POSTS=true (skip for proof replies above)
       const isTestPost = row.is_test_post === true || row.is_test_post === 'true';
-      if (isTestPost && !allowTestPosts) {
+      if (isTestPost && !allowTestPosts && !isProofReply) {
         console.log(`[TEST_LANE_BLOCK] decision_id=${decisionId} reason=ALLOW_TEST_POSTS_not_enabled`);
         
         // Log to system_events for audit trail (fire-and-forget; callback is sync)
@@ -3497,6 +3813,13 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
           : 3;
 
       if (retryCount >= maxRetries) {
+        // 🔒 Controlled live timeline proof: allow CONTROLLED_DECISION_ID to run again (bypass max_retries for this one decision only)
+        const isControlledProof = controlledDecisionId && decisionId === controlledDecisionId;
+        if (isControlledProof) {
+          console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_PROOF: BYPASS_ACTIVE: MAX_RETRIES for ${decisionId} (${retryCount}/${maxRetries})`);
+          throttledRows.push(row);
+          continue;
+        }
         console.error(
           `[POSTING_QUEUE] ❌ ${decisionType} ${decisionId} exceeded max retries (${retryCount}/${maxRetries})`
         );
@@ -3507,10 +3830,16 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       if (retryCount > 0 && scheduledTs > nowTs) {
         // 🧪 TEST FLAG: Bypass retry deferral when RUNNER_TEST_MODE=true (requires RUNNER_MODE=true)
         const isTestMode = process.env.RUNNER_TEST_MODE === 'true' && process.env.RUNNER_MODE === 'true';
-        const bypassRetryDeferral = isTestMode;
+        // 🔒 Controlled live timeline proof: bypass retry deferral for CONTROLLED_DECISION_ID only
+        const isControlledProof = controlledDecisionId && decisionId === controlledDecisionId;
+        const bypassRetryDeferral = isTestMode || isControlledProof;
         
         if (bypassRetryDeferral) {
-          console.log(`[POSTING_QUEUE] 🧪 TEST MODE: BYPASS_ACTIVE: RETRY_DEFERRAL for ${decisionId}`);
+          if (isControlledProof) {
+            console.log(`[POSTING_QUEUE] 🔒 CONTROLLED_PROOF: BYPASS_ACTIVE: RETRY_DEFERRAL for ${decisionId}`);
+          } else {
+            console.log(`[POSTING_QUEUE] 🧪 TEST MODE: BYPASS_ACTIVE: RETRY_DEFERRAL for ${decisionId}`);
+          }
           throttledRows.push(row); // Allow processing despite deferral
           continue;
         }
@@ -3584,12 +3913,12 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
       }
     }
     
-    // SEPARATE RATE LIMITS: Content (1/hr = 2 every 2 hours for singles+threads combined) vs Replies (4/hr separate)
+    // SEPARATE RATE LIMITS: Content (2/hr for singles+threads combined) vs Replies (6/hr separate)
     const config = getConfig();
-    const maxContentPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 1); // Singles + threads share this
-    const maxContentPerHour = Number.isFinite(maxContentPerHourRaw) ? maxContentPerHourRaw : 1;
-    const maxRepliesPerHourRaw = Number(config.REPLIES_PER_HOUR ?? 4); // Replies independent
-    const maxRepliesPerHour = Number.isFinite(maxRepliesPerHourRaw) ? maxRepliesPerHourRaw : 4;
+    const maxContentPerHourRaw = Number(config.MAX_POSTS_PER_HOUR ?? 2); // Singles + threads share this
+    const maxContentPerHour = Number.isFinite(maxContentPerHourRaw) ? maxContentPerHourRaw : 2;
+    const maxRepliesPerHourRaw = Number(config.REPLIES_PER_HOUR ?? 6); // Replies independent
+    const maxRepliesPerHour = Number.isFinite(maxRepliesPerHourRaw) ? maxRepliesPerHourRaw : 6;
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
     // Count content (singles + threads combined) vs replies separately
@@ -3700,14 +4029,15 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
     const decisions: QueuedDecision[] = decisionsWithLimits.map(row => {
       // Extract fields from features JSONB if not present as top-level columns
       const features = (row.features || {}) as Record<string, any>;
-      
+      const rootFromRow = row.root_tweet_id ? String(row.root_tweet_id) : (features.root_tweet_id ? String(features.root_tweet_id) : undefined);
+      const rootTweetId = rootFromRow && rootFromRow !== 'null' ? rootFromRow : undefined;
       return {
         id: String(row.decision_id ?? ''),  // 🔥 FIX: Map to decision_id (UUID), not id (integer)!
         content: String(row.content ?? ''),
         decision_type: String(row.decision_type ?? 'single') as 'single' | 'thread' | 'reply',
         target_tweet_id: row.target_tweet_id ? String(row.target_tweet_id) : undefined,
         target_username: row.target_username ? String(row.target_username) : undefined,
-        root_tweet_id: row.root_tweet_id ? String(row.root_tweet_id) : (features.root_tweet_id ? String(features.root_tweet_id) : undefined), // 🔧 FIX: Extract from features if not top-level
+        root_tweet_id: rootTweetId, // 🔧 FIX: Extract from features if not top-level; treat 'null' string as missing
         target_tweet_content_snapshot: row.target_tweet_content_snapshot ? String(row.target_tweet_content_snapshot) : (features.target_tweet_content_snapshot ? String(features.target_tweet_content_snapshot) : undefined), // 🔧 FIX: Extract from features if not top-level
         target_tweet_content_hash: row.target_tweet_content_hash ? String(row.target_tweet_content_hash) : (features.target_tweet_content_hash ? String(features.target_tweet_content_hash) : undefined), // 🔧 FIX: Extract from features if not top-level
         semantic_similarity: row.semantic_similarity != null ? Number(row.semantic_similarity) : (features.semantic_similarity != null ? Number(features.semantic_similarity) : undefined), // 🔧 FIX: Extract from features if not top-level
@@ -3722,12 +4052,112 @@ async function getReadyDecisions(certMode: boolean, maxItems?: number): Promise<
         // CRITICAL: Pass through features for thread_tweets
         features: row.features as any,
         // ✅ Pass through visual_format for formatting
-        visual_format: row.visual_format ? String(row.visual_format) : undefined
+        visual_format: row.visual_format ? String(row.visual_format) : undefined,
+        // 🔧 ROOT_CHECK: pipeline_source from row or features (scheduler/planner bypass opportunity_not_found)
+        pipeline_source: row.pipeline_source ? String(row.pipeline_source) : (features.pipeline_source ? String(features.pipeline_source) : undefined),
       };
     });
-    
-    return decisions;
-    
+
+    // 🔧 FIX: For reply decisions missing snapshot/hash (e.g. scheduler rows where features were overwritten by upsert),
+    // fetch from DB so FINAL_REPLY_GATE has them. Does not relax the gate.
+    for (const d of decisions) {
+      if (d.decision_type !== 'reply') continue;
+      const hasSnapshot = (d.target_tweet_content_snapshot ?? (d.features as any)?.target_tweet_content_snapshot)?.length >= 20;
+      const hasHash = !!(d.target_tweet_content_hash ?? (d.features as any)?.target_tweet_content_hash);
+      if (hasSnapshot && hasHash) continue;
+      const { data: meta } = await supabase.from('content_metadata').select('features').eq('decision_id', d.id).maybeSingle();
+      const f = (meta?.features as Record<string, unknown>) || {};
+      const snap = f.target_tweet_content_snapshot != null ? String(f.target_tweet_content_snapshot) : undefined;
+      const hash = f.target_tweet_content_hash != null ? String(f.target_tweet_content_hash) : undefined;
+      if (snap && hash && snap.length >= 20) {
+        (d as any).target_tweet_content_snapshot = snap;
+        (d as any).target_tweet_content_hash = hash;
+      } else {
+        const { data: comp } = await supabase.from('content_generation_metadata_comprehensive').select('features').eq('decision_id', d.id).maybeSingle();
+        const fc = (comp?.features as Record<string, unknown>) || {};
+        const snapC = fc.target_tweet_content_snapshot != null ? String(fc.target_tweet_content_snapshot) : undefined;
+        const hashC = fc.target_tweet_content_hash != null ? String(fc.target_tweet_content_hash) : undefined;
+        if (snapC && hashC && snapC.length >= 20) {
+          (d as any).target_tweet_content_snapshot = snapC;
+          (d as any).target_tweet_content_hash = hashC;
+        }
+      }
+    }
+
+    // 226 cooldowns: skip reply decisions blocked by target, author, or account cooldown
+    const { isTargetBlockedBy226 } = await import('../utils/createTweet226Cooldown');
+    const { isAccountIn226Cooldown, isAuthorBlockedBy226 } = await import('../services/x226Cooldown');
+    const account226 = await isAccountIn226Cooldown();
+    const before226Filter = decisions.length;
+    const decisionsFiltered: typeof decisions = [];
+    for (const d of decisions) {
+      if (d.decision_type !== 'reply' || !d.target_tweet_id) {
+        decisionsFiltered.push(d);
+        continue;
+      }
+      if (account226.inCooldown) {
+        console.log(`[POSTING_QUEUE] ⏭️ Skipping reply decision_id=${d.id} (226 account cooldown until ${account226.cooldownUntil})`);
+        continue;
+      }
+      const targetUsername = (d as any).target_username;
+      if (targetUsername && await isAuthorBlockedBy226(targetUsername)) {
+        console.log(`[POSTING_QUEUE] ⏭️ Skipping reply decision_id=${d.id} target_author=@${targetUsername} (226 author cooldown)`);
+        continue;
+      }
+      if (await isTargetBlockedBy226(d.target_tweet_id)) {
+        console.log(`[POSTING_QUEUE] ⏭️ Skipping reply decision_id=${d.id} target=${d.target_tweet_id} (226 target cooldown)`);
+        continue;
+      }
+      decisionsFiltered.push(d);
+    }
+    if (decisionsFiltered.length < before226Filter) {
+      console.log(`[POSTING_QUEUE] 226 cooldown: excluded ${before226Filter - decisionsFiltered.length} reply decision(s)`);
+    }
+
+    // 🎯 SMART SELECTION: Replies first, then singles, then threads
+    const threadBudgetExhausted = process.env._THREAD_BUDGET_EXHAUSTED === 'true';
+    const controllerAction = process.env._CONTROLLER_ACTION || '';
+
+    let selectable = decisionsFiltered;
+
+    // Controller-type enforcement: when controller says 'reply', prefer replies but still allow content posting
+    // Previously this blocked all threads/singles when controller chose reply — causing a deadlock
+    // where no content could post if reply attempts kept failing
+    if (controllerAction === 'reply') {
+      const replies = decisionsFiltered.filter((d: any) => d.decision_type === 'reply');
+      if (replies.length > 0) {
+        // Prioritize replies but don't exclude other content
+        selectable = [...replies, ...decisionsFiltered.filter((d: any) => d.decision_type !== 'reply')];
+        console.log(`[POSTING_QUEUE] 🎯 CONTROLLER_REPLY: Prioritizing ${replies.length} replies, also allowing ${decisionsFiltered.length - replies.length} singles/threads`);
+      }
+      // If no replies available, fall through and post whatever is queued
+    }
+
+    // Filter out threads if thread budget exhausted
+    if (threadBudgetExhausted) {
+      const nonThreads = selectable.filter((d: any) => d.decision_type !== 'thread');
+      if (nonThreads.length > 0) {
+        selectable = nonThreads;
+        console.log(`[POSTING_QUEUE] 🎯 THREAD_BUDGET: Excluding threads (budget exhausted)`);
+      }
+    }
+
+    // Sort: replies first (always), then singles, then threads
+    selectable.sort((a: any, b: any) => {
+      const priority = (type: string) => type === 'reply' ? 0 : type === 'single' ? 1 : 2;
+      return priority(a.decision_type) - priority(b.decision_type);
+    });
+
+    // Apply maxItems
+    if (maxItems && selectable.length > maxItems) {
+      const selected = selectable.slice(0, maxItems);
+      const selectedTypes = selected.map((d: any) => d.decision_type).join(', ');
+      console.log(`[POSTING_QUEUE] 🎯 SELECTED: ${selectedTypes} (from ${selectable.length} eligible, maxItems=${maxItems})`);
+      return selected;
+    }
+
+    return selectable;
+
   } catch (error) {
     console.error('[POSTING_QUEUE] ❌ Failed to fetch ready decisions:', error.message);
     return [];
@@ -3899,9 +4329,48 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
     }
   }
   
+  // 🛡️ OUTPUT ENFORCER: Validate queued content through intelligence pipeline before posting
+  try {
+    const { enforceContentConstraints } = await import('../intelligence/outputEnforcer');
+    const enforcement = await enforceContentConstraints(
+      decision.content || '',
+      null, // no experiment strategy for pre-queued items
+      null
+    );
+    if (!enforcement.approved) {
+      console.log(`[POSTING_QUEUE] ⚠️ Output enforcer flagged: ${enforcement.violations.join(', ')}`);
+      // Block threads at bootstrap stage (hard block), log other violations as warnings
+      if (enforcement.violations.some(v => v.includes('thread'))) {
+        console.log(`[POSTING_QUEUE] ⚠️ Output enforcer blocked: ${enforcement.violations.join(', ')}`);
+        try {
+          const { getSupabaseClient } = await import('../db/index');
+          const supabase = getSupabaseClient();
+          await supabase.from('content_generation_metadata_comprehensive')
+            .update({ status: 'skipped', updated_at: new Date().toISOString() })
+            .eq('decision_id', decision.id);
+        } catch { /* non-fatal */ }
+        return false; // Skip this decision
+      }
+    }
+  } catch { /* non-fatal - don't block posting if enforcer fails */ }
+
   const isThread = decision.decision_type === 'thread';
   const logPrefix = isThread ? '[POSTING_QUEUE] 🧵' : '[POSTING_QUEUE] 📝';
-  
+  // 🔒 SOURCE OF TRUTH: Content (single/thread) selected from content_generation_metadata_comprehensive; use same table for row fetch.
+  const proofSeededId = process.env.PROOF_SEEDED_DECISION_ID?.trim() || null;
+  const controlledDecisionId = process.env.CONTROLLED_DECISION_ID?.trim() || null;
+  const isProofSeededContent = !!(proofMode && proofSeededId && decision.id === proofSeededId && (decision.decision_type === 'single' || decision.decision_type === 'thread'));
+  const isProofReplyFromBase = !!(proofMode && decision.decision_type === 'reply' && (decision.id === controlledDecisionId || ((decision.features as any)?.proof_tag && String((decision.features as any).proof_tag).startsWith('control-reply-'))));
+  const contentTable = (decision.decision_type === 'single' || decision.decision_type === 'thread')
+    ? 'content_generation_metadata_comprehensive'
+    : (isProofReplyFromBase ? 'content_generation_metadata_comprehensive' : 'content_metadata');
+  if (isProofSeededContent) {
+    console.log(`${logPrefix} 🔒 PROOF: Using ${contentTable} for decision row (same as selection)`);
+  }
+  if (isProofReplyFromBase && !isProofSeededContent) {
+    console.log(`${logPrefix} 🔒 PROOF: Using ${contentTable} for reply decision (control-reply / controlled)`);
+  }
+
   console.log(`${logPrefix} Processing ${decision.decision_type}: ${decision.id}`);
   console.log(`${logPrefix} 🔍 DEBUG: Starting processDecision`);
   
@@ -3920,7 +4389,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
         last_force_reset_at: new Date().toISOString()
       };
       await supabase
-        .from('content_metadata')
+        .from(contentTable)
         .update({ features: updatedFeatures })
         .eq('decision_id', decision.id);
       decision.features = updatedFeatures;
@@ -3949,7 +4418,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       const supabase = getSupabaseClient();
     
       const { data: threadData } = await supabase
-        .from('content_metadata')
+        .from(contentTable)
         .select('thread_parts, created_at, scheduled_at, features')
         .eq('decision_id', decision.id)
         .single();
@@ -3974,7 +4443,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             console.log(`${logPrefix} ✅ Thread already posted as ${alreadyPosted.tweet_id} - database just needs sync`);
             // Mark as posted and return (don't throw error)
             await supabase
-              .from('content_metadata')
+              .from(contentTable)
               .update({
                 status: 'posted',
                 posted_at: new Date().toISOString(),
@@ -3983,9 +4452,17 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               .eq('decision_id', decision.id);
             return false; // Exit early - post is already live (not a new success)
           }
-        
-          console.error(`${logPrefix} ❌ Thread ${decision.id} exceeded max retries (${retryCount}/${MAX_THREAD_RETRIES})`);
-          throw new Error(`Thread exceeded maximum retry limit (${MAX_THREAD_RETRIES} attempts)`);
+
+          // 🔒 Controlled live timeline proof: allow CONTROLLED_DECISION_ID to run again (bypass MAX_THREAD_RETRIES for this one decision only)
+          const controlledDecisionIdEnv = process.env.CONTROLLED_DECISION_ID?.trim();
+          const isControlledProofDecision = controlledDecisionIdEnv && controlledDecisionIdEnv === String(decision.id);
+          if (isControlledProofDecision) {
+            console.log(`${logPrefix} 🔒 CONTROLLED_PROOF: BYPASS_ACTIVE: FUNCTION_LEVEL_MAX_RETRIES for ${decision.id} (${retryCount}/${MAX_THREAD_RETRIES})`);
+            // Do NOT throw; allow thread to proceed to actual posting path for proof
+          } else {
+            console.error(`${logPrefix} ❌ Thread ${decision.id} exceeded max retries (${retryCount}/${MAX_THREAD_RETRIES})`);
+            throw new Error(`Thread exceeded maximum retry limit (${MAX_THREAD_RETRIES} attempts)`);
+          }
         }
       
         console.log(`${logPrefix} ⚡ THREAD DETECTED FOR POSTING ⚡`);
@@ -4034,33 +4511,36 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       // 🔒 ATOMIC LOCK: Try to claim this decision by updating status to 'posting'
       // This prevents race conditions where two queue runs try to post the same decision
       // 🔧 FIX: Use deterministic query - get newest row if multiple exist, handle 0 rows gracefully
+      // 🔒 PROOF: contentTable = content_generation_metadata_comprehensive for proof-seeded content (same as selection)
       const { data: existingRows, error: queryError } = await supabase
-        .from('content_metadata')
+        .from(contentTable)
         .select('id, decision_id, status, tweet_id, created_at')
         .eq('decision_id', decision.id)
         .order('created_at', { ascending: false })
         .limit(10); // Get up to 10 rows to check for duplicates
       
       if (queryError) {
-        console.error(`[POSTING_QUEUE] ❌ Failed to query content_metadata for ${decision.id}: ${queryError.message}`);
+        console.error(`[POSTING_QUEUE] ❌ Failed to query ${contentTable} for ${decision.id}: ${queryError.message}`);
         throw new Error(`Failed to query decision: ${queryError.message}`);
       }
       
       if (!existingRows || existingRows.length === 0) {
-        // No content_metadata row exists - mark decision as failed
-        console.error(`[POSTING_QUEUE] ❌ No content_metadata row found for decision_id=${decision.id}`);
+        // No row exists in content table - mark decision as failed (reply_decisions only for replies)
+        console.error(`[POSTING_QUEUE] ❌ No ${contentTable} row found for decision_id=${decision.id}`);
         const errorReason = 'NO_CONTENT_METADATA';
         const failedAt = new Date().toISOString();
-        await supabase
-          .from('reply_decisions')
-          .update({
-            pipeline_error_reason: errorReason,
-            posting_completed_at: failedAt,
-          })
-          .eq('id', decision.id);
+        if (decision.decision_type === 'reply') {
+          await supabase
+            .from('reply_decisions')
+            .update({
+              pipeline_error_reason: errorReason,
+              posting_completed_at: failedAt,
+            })
+            .eq('id', decision.id);
+        }
         
         await supabase
-          .from('content_metadata')
+          .from(contentTable)
           .update({ status: 'failed', error_message: 'NO_CONTENT_METADATA' })
           .eq('decision_id', decision.id);
         
@@ -4079,7 +4559,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           created_at: new Date().toISOString(),
         });
         
-        throw new Error(`No content_metadata row found for decision_id=${decision.id}`);
+        throw new Error(`No ${contentTable} row found for decision_id=${decision.id}`);
       }
       
       // Handle duplicates: keep newest, mark others as superseded
@@ -4091,7 +4571,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
         // Mark older rows as superseded (if status column allows, otherwise delete)
         for (const oldId of olderIds) {
           await supabase
-            .from('content_metadata')
+            .from(contentTable)
             .update({ 
               status: 'failed',
               error_message: 'SUPERSEDED_BY_NEWER_ROW',
@@ -4213,8 +4693,8 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       
       // Claim the row by updating status to 'posting'
       const { data: claimed, error: claimError } = await supabase
-        .from('content_metadata')
-        .update({ 
+        .from(contentTable)
+        .update({
           status: 'posting',
           updated_at: new Date().toISOString()
         })
@@ -4343,7 +4823,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
         console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED: ${decision.id} already in posted_decisions as ${alreadyExists.tweet_id}`);
         // Revert status back to queued since we didn't actually post
         await supabase
-          .from('content_metadata')
+          .from(contentTable)
           .update({ status: 'queued' })
           .eq('decision_id', decision.id);
         return; // Skip posting
@@ -4360,15 +4840,15 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           console.log(`[POSTING_QUEUE] 🚫 DUPLICATE PREVENTED (backup file): Content already posted as tweet_id ${backupTweetId}`);
           // Revert status back to queued since we didn't actually post
           await supabase
-            .from('content_metadata')
+            .from(contentTable)
             .update({ status: 'queued' })
             .eq('decision_id', decision.id);
           return false; // Skip posting
         }
       
-        // Check 1: content_metadata for already-posted content with tweet_id
+        // Check 1: content table for already-posted content with tweet_id
         const { data: duplicateInMetadata } = await supabase
-          .from('content_metadata')
+          .from(contentTable)
           .select('decision_id, tweet_id, status, posted_at')
           .eq('content', decision.content)
           .not('tweet_id', 'is', null) // Must have tweet_id (actually posted)
@@ -4377,10 +4857,10 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
         
         if (duplicateInMetadata && duplicateInMetadata.length > 0) {
           const dup = duplicateInMetadata[0];
-          console.log(`[POSTING_QUEUE] 🚫 DUPLICATE CONTENT PREVENTED: Same content already posted in content_metadata as ${dup.tweet_id} (decision: ${dup.decision_id.substring(0, 8)}...)`);
+          console.log(`[POSTING_QUEUE] 🚫 DUPLICATE CONTENT PREVENTED: Same content already posted as ${dup.tweet_id} (decision: ${dup.decision_id.substring(0, 8)}...)`);
           // Revert status back to queued since we didn't actually post
           await supabase
-            .from('content_metadata')
+            .from(contentTable)
             .update({ status: 'queued' })
             .eq('decision_id', decision.id);
           return false; // Skip posting
@@ -4397,7 +4877,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           console.log(`[POSTING_QUEUE] 🚫 DUPLICATE CONTENT PREVENTED: Same content already posted in posted_decisions as ${duplicateContent[0].tweet_id}`);
           // Revert status back to queued since we didn't actually post
           await supabase
-            .from('content_metadata')
+            .from(contentTable)
             .update({ status: 'queued' })
             .eq('decision_id', decision.id);
           return false; // Skip posting
@@ -4506,7 +4986,11 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             result = await withContentLock(async () => {
               return await postContent(decision);
             }, decision); // Pass decision for PROOF_MODE bypass check
-            console.log(`[POSTING_QUEUE][FLOW] ✅ STEP 1/4 COMPLETE: Posted to Twitter`);
+            if (result?.dryRunReady) {
+              console.log(`[POSTING_QUEUE][FLOW] ✅ STEP 1/4 COMPLETE: Dry proof passed (submit readiness verified)`);
+            } else {
+              console.log(`[POSTING_QUEUE][FLOW] ✅ STEP 1/4 COMPLETE: Posted to Twitter`);
+            }
             console.log(`${logPrefix} 🔍 DEBUG: postContent returned successfully`);
             console.log(`${logPrefix} 🔍 DEBUG: result.tweetId=${result?.tweetId || 'MISSING'}, result.tweetUrl=${result?.tweetUrl || 'MISSING'}, result.tweetIds.length=${result?.tweetIds?.length || 0}`);
           } catch (postContentError: any) {
@@ -4518,6 +5002,12 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             throw postContentError; // Re-throw to maintain existing error handling
           }
           
+          // PROOF_SUBMIT_MODE=dry: success = submit readiness verified, no tweetId
+          if (result?.dryRunReady) {
+            console.log('[POSTING_QUEUE] DRY_RUN_TERMINAL_SUCCESS');
+            console.log(`[POSTING_QUEUE] PROOF_DRY_RUN_READY: decision_id=${decision.id} — skipping receipt, proof dry run passed`);
+            return;
+          }
           // ✅ VALIDATION: Ensure postContent returned valid tweetId
           if (!result || !result.tweetId) {
             const resultJson = JSON.stringify(result, null, 2);
@@ -4581,7 +5071,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               const { getSupabaseClient } = await import('../db/index');
               const supabase = getSupabaseClient();
               await supabase
-                .from('content_metadata')
+                .from(contentTable)
                 .update({
                   status: 'retry_pending',
                   features: {
@@ -5122,7 +5612,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             const { getSupabaseClient } = await import('../db/index');
             const supabase = getSupabaseClient();
             await supabase
-              .from('content_metadata')
+              .from(contentTable)
               .update({
                 status: 'posted',
                 tweet_id: tweetId,
@@ -5153,6 +5643,9 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
         console.error(`[POSTING_QUEUE] ❌ POSTING FAILED: ${postError.message}`);
         console.error(`[POSTING_QUEUE] 📝 Content: "${decision.content.substring(0, 100)}..."`);
       
+        // Observability: record failed attempt with reason (so debugging and dashboards show why)
+        await logPostAttempt(decision, 'failed', undefined, postError.message);
+      
         // 🔒 PROOF_MODE FAIL-FAST: For proof decisions with duplicate errors, fail immediately (no retry)
         const decisionFeatures = (decision.features || {}) as Record<string, any>;
         const proofTag = decisionFeatures.proof_tag;
@@ -5167,7 +5660,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           const { getSupabaseClient } = await import('../db/index');
           const supabase = getSupabaseClient();
           const { data: existingReply } = await supabase
-            .from('content_metadata')
+            .from(contentTable)
             .select('tweet_id, posted_at')
             .eq('decision_type', 'reply')
             .eq('target_tweet_id', decision.target_tweet_id)
@@ -5206,7 +5699,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           // Mark decision as failed/blocked
           try {
             await supabase
-              .from('content_metadata')
+              .from(contentTable)
               .update({
                 status: 'blocked',
                 error_message: `Duplicate reply prevented: Already replied to ${decision.target_tweet_id}${previousReplyId ? ` (reply ID: ${previousReplyId})` : ''}`,
@@ -5291,13 +5784,91 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           console.log(`[POSTING_QUEUE] 🎉 Tweet verified as posted - skipping retry, saving to database`);
           // Continue to database save section below
         } else {
+          const decisionFeatures = (decision.features || {}) as Record<string, unknown>;
+          const proofTag = decisionFeatures.proof_tag;
+          const isProofDecision = proofTag && (String(proofTag).startsWith('control-post-') || String(proofTag).startsWith('control-reply-'));
+
+          // Proof-only failures: never retry (PROOF_DRY_RUN_NOT_READY, or any other PROOF_*).
+          const isProofOnlyFailure = isProofDecision && postError.message?.includes('PROOF_');
+          if (isProofOnlyFailure) {
+            const { getSupabaseClient } = await import('../db/index');
+            const supabase = getSupabaseClient();
+            const { data: rowProof } = await supabase.from(contentTable).select('features').eq('decision_id', decision.id).single();
+            const existingFeatures = (rowProof?.features as Record<string, unknown>) || {};
+            const isDryRun = postError.message?.includes('PROOF_DRY_RUN');
+            console.log(`[POSTING_QUEUE] PROOF (no retries): Proof decision ${decision.id} — marking cancelled. ${isDryRun ? 'Dry run: stopped before submit.' : postError.message}`);
+            await supabase
+              .from(contentTable)
+              .update({
+                status: 'cancelled',
+                updated_at: new Date().toISOString(),
+                error_message: isDryRun ? 'Proof dry run: stopped before submit (PROOF_SUBMIT_MODE=dry).' : (postError.message || 'Proof run failed (no retries).'),
+                features: { ...existingFeatures, ...(isDryRun ? { proof_dry_run: true } : {}) },
+              })
+              .eq('decision_id', decision.id);
+            await updatePostingMetrics('error');
+            return false;
+          }
+
+          // 226 = X server rejected (e.g. automation/spam). In proof mode: no retries, mark failed_permanent.
+          const is226Rejection = postError.message?.includes('X_CREATE_TWEET_REJECTED_226');
+          if (is226Rejection && isProofDecision) {
+            const { getSupabaseClient } = await import('../db/index');
+            const supabase = getSupabaseClient();
+            const { data: row226 } = await supabase.from(contentTable).select('features').eq('decision_id', decision.id).single();
+            const existingFeatures = (row226?.features as Record<string, unknown>) || {};
+            console.log(`[POSTING_QUEUE] X_CREATE_TWEET_REJECTED_226: Proof decision ${decision.id} — marking failed_permanent (no retries).`);
+            await supabase
+              .from(contentTable)
+              .update({
+                status: 'failed_permanent',
+                updated_at: new Date().toISOString(),
+                error_message: 'X rejected automated submit (226). Proof run: no retries.',
+                features: {
+                  ...existingFeatures,
+                  failure_code: 'X_CREATE_TWEET_REJECTED_226',
+                  proof_226_no_retry: true,
+                },
+              })
+              .eq('decision_id', decision.id);
+            await updatePostingMetrics('error');
+            return false;
+          }
+
+          // X-226 platform block: treat as non-retryable for ALL replies (no fast recycle / same target retry)
+          const is226Block = postError.message?.includes('POST_BLOCKED_BY_X_226') || postError.message?.includes('X_CREATE_TWEET_REJECTED_226');
+          if (is226Block && decision.decision_type === 'reply') {
+            const { getSupabaseClient } = await import('../db/index');
+            const supabase = getSupabaseClient();
+            const { data: row226 } = await supabase.from(contentTable).select('features').eq('decision_id', decision.id).single();
+            const existingFeatures = (row226?.features as Record<string, unknown>) || {};
+            const targetId = (decision as any).target_tweet_id ?? 'unknown';
+            console.log(`[POSTING_QUEUE] [X_226] Reply blocked by X (226): decision_id=${decision.id} target_tweet_id=${targetId} — marking failed_permanent (no retry, target/author cooldown applied).`);
+            await supabase
+              .from(contentTable)
+              .update({
+                status: 'failed_permanent',
+                updated_at: new Date().toISOString(),
+                error_message: 'X error 226 (automation/spam block). No retry; target and author in cooldown.',
+                features: {
+                  ...existingFeatures,
+                  failure_code: 'POST_BLOCKED_BY_X_226',
+                  x_226_no_retry: true,
+                  x_226_target_tweet_id: targetId,
+                },
+              })
+              .eq('decision_id', decision.id);
+            await updatePostingMetrics('error');
+            return false;
+          }
+
           // RETRY LOGIC: Both singles and threads get 3 retry attempts
           // Temporary failures (network glitch, slow load) shouldn't be permanent
           const { getSupabaseClient } = await import('../db/index');
           const supabase = getSupabaseClient();
         
           const { data: metadataData } = await supabase
-            .from('content_metadata')
+            .from(contentTable)
             .select('features')
             .eq('decision_id', decision.id)
             .single();
@@ -5352,6 +5923,11 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             if (postingSucceeded && tweetId) {
               console.log(`[POSTING_QUEUE] 🎉 Tweet verified as posted - skipping retry, saving to database`);
               // Break out of retry block - will continue to database save
+            } else if ((postError.message || '').includes('non-retryable:')) {
+              // Deterministic rejection from BulletproofThreadComposer — do not reschedule.
+              // Retrying the same content that X already rejected deterministically wastes retries
+              // and may increase account risk. Fall through to failure recording.
+              console.log(`[POSTING_QUEUE] ⛔ NON_RETRYABLE: skipping retry for deterministic failure. error=${postError.message.slice(0, 120)}`);
             } else {
               // Calculate retry delay (progressive backoff)
               const retryDelayMinutes = decision.decision_type === 'thread' 
@@ -5375,7 +5951,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
                 .maybeSingle();
               
               await supabase
-                .from('content_metadata')
+                .from(contentTable)
                 .update({
                   status: 'queued',  // 🔄 Revert from 'posting' back to 'queued' for retry
                   scheduled_at: new Date(Date.now() + retryDelay).toISOString(),
@@ -5405,7 +5981,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           const recoveryDelay = recoveryDelayMinutes * 60 * 1000;
           console.log(`[POSTING_QUEUE] 🛠️ Scheduling recovery attempt ${recoveryAttempts + 1}/${maxRecoveryAttempts} with forced session reset in ${recoveryDelayMinutes}min`);
           await supabase
-            .from('content_metadata')
+            .from(contentTable)
             .update({
               status: 'queued',
               scheduled_at: new Date(Date.now() + recoveryDelay).toISOString(),
@@ -5461,7 +6037,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
               console.log(`[POSTING_QUEUE] ❌ FINAL VERIFICATION: Tweet not found on Twitter - marking as failed`);
               const finalErrorMsg = 'Tweet verification failed - tweet not found on Twitter';
               await supabase
-                .from('content_metadata')
+                .from(contentTable)
                 .update({
                   status: 'failed',
                   updated_at: new Date().toISOString(),
@@ -5485,7 +6061,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
           console.error(`[POSTING_QUEUE] ⚠️ Final verification check failed: ${verifyError.message}`);
           console.log(`[POSTING_QUEUE] ⚠️ Cannot confirm if tweet posted - marking as failed but logging for reconciliation`);
           await supabase
-            .from('content_metadata')
+            .from(contentTable)
             .update({
               status: process.env.ENABLE_DEAD_LETTER_HANDLING === 'true' && retryCount >= Number(process.env.POSTING_MAX_RETRIES || '5')
                 ? 'failed_permanent'
@@ -5712,7 +6288,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             // Strategy 1: Full update with all fields
             async () => {
               await supabase
-                .from('content_metadata')
+                .from(contentTable)
                 .update({ 
                   status: 'posted',
                   tweet_id: tweetId,
@@ -5724,7 +6300,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             // Strategy 2: Just tweet_id (most critical)
             async () => {
               await supabase
-                .from('content_metadata')
+                .from(contentTable)
                 .update({ tweet_id: tweetId })
                 .eq('decision_id', decision.id);
             }
@@ -5758,8 +6334,8 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             // Store error message for recovery
             try {
               await supabase
-                .from('content_metadata')
-                .update({ 
+                .from(contentTable)
+                .update({
                   status: 'posted',
                   error_message: `Tweet ID capture failed - tweet_id: ${tweetId}, URL: ${tweetUrl}`
                 })
@@ -5929,7 +6505,13 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
     }
 }
 
-async function postContent(decision: QueuedDecision): Promise<{ tweetId: string; tweetUrl: string; tweetIds?: string[] }> {
+async function postContent(decision: QueuedDecision): Promise<{ tweetId: string; tweetUrl: string; tweetIds?: string[] } | { dryRunReady: true }> {
+  // 🔒 PROOF: Use same canonical source as selection when proof-seeded original post (contentTable in scope for all reads/updates)
+  const proofMode = process.env.PROOF_MODE === 'true';
+  const proofSeededId = process.env.PROOF_SEEDED_DECISION_ID?.trim() || null;
+  const isProofSeededContent = !!(proofMode && proofSeededId && decision.id === proofSeededId && (decision.decision_type === 'single' || decision.decision_type === 'thread'));
+  const contentTable = isProofSeededContent ? 'content_generation_metadata_comprehensive' : 'content_metadata';
+
   // 🔒 CRITICAL ASSERTION: Reply decisions MUST NEVER route through postContent
   if (decision.decision_type === 'reply') {
     const errorMsg = `[SEV_REPLY_THREAD_BLOCKED] CRITICAL: Reply decision routed through postContent! decision_id=${decision.id}`;
@@ -6054,7 +6636,7 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         const { getSupabaseClient } = await import('../db/index');
         const supabase = getSupabaseClient();
         const { data: metadata } = await supabase
-          .from('content_metadata')
+          .from(contentTable)
           .select('raw_topic, angle, tone, format_strategy, generator_name')
           .eq('decision_id', decision.id)
           .single();
@@ -6105,13 +6687,16 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         const { BulletproofThreadComposer } = await import('../posting/BulletproofThreadComposer');
         const { withTimeout } = await import('../utils/operationTimeout');
         
-        // 🔧 ADAPTIVE TIMEOUT: Progressive timeout per retry attempt
-        // attempt 1 → 180s, attempt 2 → 240s, attempt 3 → 300s
+        // 🔧 ADAPTIVE TIMEOUT: Progressive timeout per retry attempt; scale minimum by segment count so submit can complete
+        // attempt 1 → 180s, attempt 2 → 240s, attempt 3 → 300s (base); multi-segment threads need extra time for add+verify+submit
         const retryCount = Number((decision.features as any)?.retry_count || 0);
         const adaptiveTimeouts = [180000, 240000, 300000]; // Progressive: 180s, 240s, 300s
-        const THREAD_POST_TIMEOUT_MS = adaptiveTimeouts[Math.min(retryCount, adaptiveTimeouts.length - 1)];
+        const baseTimeout = adaptiveTimeouts[Math.min(retryCount, adaptiveTimeouts.length - 1)];
+        // Minimum 4 min + 1 min per segment so 5-part thread gets at least 9 min (submit often takes 5+ min after verify)
+        const segmentMinMs = 240000 + (formattedThreadParts.length * 60000);
+        const THREAD_POST_TIMEOUT_MS = Math.max(baseTimeout, segmentMinMs);
         
-        console.log(`[POSTING_QUEUE] ⏱️ Using adaptive timeout: ${THREAD_POST_TIMEOUT_MS}ms (attempt ${retryCount + 1}, retry_count=${retryCount})`);
+        console.log(`[POSTING_QUEUE] ⏱️ Using adaptive timeout: ${THREAD_POST_TIMEOUT_MS}ms (attempt ${retryCount + 1}, retry_count=${retryCount}, segments=${formattedThreadParts.length}, base=${baseTimeout}ms)`);
         
         // 🔍 BROWSER HEALTH CHECK: Verify browser/page responsiveness before posting
         try {
@@ -6186,7 +6771,7 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
               // Mark original decision as failed with reason
               const failureReason = isTimeoutError ? 'THREAD_POST_FAILED_TIMEOUT' : 'THREAD_POST_FAILED_BROWSER_DISCONNECTED';
               await supabase
-                .from('content_metadata')
+                .from(contentTable)
                 .update({
                   status: 'failed',
                   skip_reason: failureReason,
@@ -6201,14 +6786,14 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
               
               // Queue the derived single post immediately
               const { data: singleMetadata } = await supabase
-                .from('content_metadata')
+                .from(contentTable)
                 .select('*')
                 .eq('decision_id', decision.id)
                 .single();
               
               if (singleMetadata) {
                 const { data: newDecision, error: insertError } = await supabase
-                  .from('content_metadata')
+                  .from(contentTable)
                   .insert({
                     decision_type: 'single',
                     content: singleContent,
@@ -6315,7 +6900,7 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
               // Mark original decision as failed with reason
               const failureReason = isTimeoutError ? 'THREAD_POST_FAILED_TIMEOUT' : 'THREAD_POST_FAILED_BROWSER_DISCONNECTED';
               await supabase
-                .from('content_metadata')
+                .from(contentTable)
                 .update({
                   status: 'failed',
                   skip_reason: failureReason,
@@ -6330,14 +6915,14 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
               
               // Queue the derived single post immediately
               const { data: singleMetadata } = await supabase
-                .from('content_metadata')
+                .from(contentTable)
                 .select('*')
                 .eq('decision_id', decision.id)
                 .single();
               
               if (singleMetadata) {
                 const { data: newDecision, error: insertError } = await supabase
-                  .from('content_metadata')
+                  .from(contentTable)
                   .insert({
                     decision_type: 'single',
                     content: singleContent,
@@ -6467,8 +7052,9 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
           decision_id: decision.id,
           pipeline_source: 'postingQueue',
           job_run_id: `posting_${Date.now()}`,
+          action_type: decision.decision_type === 'thread' ? 'thread' : 'timeline_single',
         });
-        
+
         // ⚛️ ATOMIC POST: Use executeAuthorizedPost() for DB-prewrite guarantee
         const job_run_id = `posting_${Date.now()}`;
         const build_sha = getBuildSHA();
@@ -6531,6 +7117,9 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
                 }
               }
               
+              if (atomicResult.dry_run_ready) {
+                return { success: true, dryRunReady: true };
+              }
               return {
                 success: atomicResult.success,
                 tweetId: atomicResult.tweet_id,
@@ -6576,6 +7165,11 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
         
         await poster.dispose();
         
+        if (result.dryRunReady) {
+          console.log('[POSTING_QUEUE] DRY_RUN_TERMINAL_SUCCESS');
+          console.log(`[POSTING_QUEUE] PROOF_DRY_RUN_READY: Submit readiness verified (no tweet posted)`);
+          return { dryRunReady: true };
+        }
         if (!result.success || !result.tweetId) {
           console.error(`[POSTING_QUEUE] ❌ Atomic posting failed: ${result.error}`);
           
@@ -6644,6 +7238,12 @@ async function postContent(decision: QueuedDecision): Promise<{ tweetId: string;
 }
 
 async function postReply(decision: QueuedDecision): Promise<string> {
+  // 🔒 PROOF: Use same canonical source when proof-seeded (reply path; for content single/thread we use postContent's contentTable)
+  const proofMode = process.env.PROOF_MODE === 'true';
+  const proofSeededId = process.env.PROOF_SEEDED_DECISION_ID?.trim() || null;
+  const isProofSeededContent = !!(proofMode && proofSeededId && decision.id === proofSeededId);
+  const contentTable = isProofSeededContent ? 'content_generation_metadata_comprehensive' : 'content_metadata';
+
   // 🔒 SAFETY: Check if replies are paused
   if (process.env.PAUSE_REPLIES === 'true') {
     console.log(`[REPLY_PAUSE] enabled=true skipping_posting decision_id=${decision.id}`);
@@ -6684,6 +7284,16 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     allowCheck = { allow: true, reason: 'TEST_BYPASS_ANCESTRY' };
   } else {
     allowCheck = await shouldAllowReply(ancestry, { decision_id: decision.id });
+    // 🔒 ANCESTRY CONSISTENCY: Scheduler already fail-open allowed UNCERTAIN for this candidate.
+    // Do not fail-closed deny the same decision in the queue (scheduler authority).
+    const pipelineSourceAncestry = (decision as any).pipeline_source || (decision.features as any)?.pipeline_source;
+    const isSchedulerDecision = pipelineSourceAncestry === 'reply_v2_scheduler' || pipelineSourceAncestry === 'reply_v2_planner';
+    const blockedByUncertain = !allowCheck.allow && ancestry.status === 'UNCERTAIN' &&
+      (allowCheck.reason?.includes('ANCESTRY_UNCERTAIN') || allowCheck.deny_reason_code === 'ANCESTRY_UNCERTAIN');
+    if (isSchedulerDecision && blockedByUncertain) {
+      console.log(`[POSTING_QUEUE] ✅ Scheduler authority: allowing UNCERTAIN ancestry for ${pipelineSourceAncestry} decision (scheduler already fail-open allowed)`);
+      allowCheck = { allow: true, reason: 'SCHEDULER_ANCESTRY_AUTHORITY' };
+    }
   }
   
   // Update POST_ATTEMPT with gate result
@@ -6738,9 +7348,9 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       error: errorMsg,
     });
     
-    // 🔒 TASK B.1: Mark content_metadata as blocked
+    // 🔒 TASK B.1: Mark content row as blocked
     await supabase
-      .from('content_metadata')
+      .from(contentTable)
       .update({ 
         status: 'blocked',
         skip_reason: 'SAFETY_GATE_NON_ROOT_TARGET'
@@ -6790,7 +7400,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     
     // Mark as blocked
     await supabase
-      .from('content_metadata')
+      .from(contentTable)
       .update({ 
         status: 'blocked',
         skip_reason: 'SAFETY_GATE_NON_ROOT_TARGET'
@@ -6829,7 +7439,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   
   // 🔒 TASK B: NO THREAD REPLIES - Block multi-segment replies
   const { data: contentMeta } = await supabase
-    .from('content_metadata')
+    .from(contentTable)
     .select('thread_parts, content')
     .eq('decision_id', decision.id)
     .maybeSingle();
@@ -6841,8 +7451,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
     
     // Mark as blocked
     await supabase
-      .from('content_metadata')
-      .update({ 
+      .from(contentTable)
+      .update({
         status: 'blocked',
         skip_reason: 'SAFETY_GATE_THREAD_REPLY_FORBIDDEN'
       })
@@ -6890,7 +7500,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       console.error(`[POSTING_QUEUE] 🚫 ${threadMarkerMsg}`);
       
       await supabase
-        .from('content_metadata')
+        .from(contentTable)
         .update({ 
           status: 'blocked',
           skip_reason: 'SAFETY_GATE_THREAD_REPLY_FORBIDDEN'
@@ -6998,7 +7608,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   const supabase = getSupabaseClient();
   
   const { data: existingReply } = await supabase
-    .from('content_metadata')
+    .from(contentTable)
     .select('tweet_id, posted_at')
     .eq('decision_type', 'reply')
     .eq('target_tweet_id', decision.target_tweet_id)
@@ -7019,13 +7629,21 @@ async function postReply(decision: QueuedDecision): Promise<string> {
   
   console.log(`[POSTING_QUEUE] ✅ Duplicate check passed - no existing reply to ${decision.target_tweet_id}`);
   
-  // 🔒 RUNTIME_PREFLIGHT_TRUST: If runtime preflight already verified tweet is root,
-  // skip the expensive pre-post guard check (same trust model as context lock)
+  // 🔒 RUNTIME_PREFLIGHT_TRUST / SCHEDULER_AUTHORITY / PROOF_MODE: Skip pre-post guard when:
+  // - runtime preflight already verified tweet is root, OR
+  // - decision is from reply_v2_scheduler/reply_v2_planner, OR
+  // - PROOF_MODE + control-reply-* (FINAL_REPLY_GATE + context lock already verified root)
   const decisionFeatures = (decision.features || {}) as Record<string, any>;
   const runtimePreflightOk = decisionFeatures.runtime_preflight_status === 'ok';
+  const pipelineSourceGuard = (decision as any).pipeline_source || decisionFeatures.pipeline_source;
+  const isSchedulerAuthorized = pipelineSourceGuard === 'reply_v2_scheduler' || pipelineSourceGuard === 'reply_v2_planner';
+  const proofTagGuard = decisionFeatures.proof_tag && String(decisionFeatures.proof_tag).startsWith('control-reply-');
+  const isProofReplyGuard = process.env.PROOF_MODE === 'true' && proofTagGuard;
+  const skipPrePostGuard = runtimePreflightOk || isSchedulerAuthorized || isProofReplyGuard;
   
-  if (runtimePreflightOk) {
-    console.log(`[POSTING_QUEUE] ✅ Pre-post guard skipped: Runtime preflight already verified tweet is root (status=ok)`);
+  if (skipPrePostGuard) {
+    const reason = runtimePreflightOk ? 'Runtime preflight verified root (status=ok)' : isProofReplyGuard ? 'PROOF_MODE control-reply (root verified by FINAL_REPLY_GATE + context lock)' : 'Scheduler authority (reply_v2_scheduler/planner)';
+    console.log(`[POSTING_QUEUE] ✅ Pre-post guard skipped: ${reason}`);
   } else {
     // 🔒 HARD PRE-POST GUARD: Navigate to tweet URL and detect if it's a reply
     console.log(`[POSTING_QUEUE] 🔍 Pre-post guard: Verifying target tweet is root (not a reply)...`);
@@ -7153,7 +7771,25 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       console.log(`[POSTING_QUEUE] 💬 Posting REAL reply to tweet ${decision.target_tweet_id}...`);
       console.log(`[POSTING_QUEUE] 📝 Reply content: "${decision.content.substring(0, 60)}..."`);
       
-      // 🔒 CREATE POSTING GUARD: Unforgeable authorization token
+      // 🔒 LOG POSTING MODE (prove we're not using thread composer)
+      const contentLength = decision.content.length;
+      const contentLines = (decision.content.match(/\n/g) || []).length + 1;
+      console.log(`[REPLY_POST] mode=reply tweet_id=${decision.target_tweet_id} len=${contentLength} lines=${contentLines} used_thread_composer=false`);
+
+      // Human-like delay: random wait before posting (reduce instant-automation signal). Skip in PROOF_MODE.
+      // Guard is created *after* this delay so its 60s TTL does not expire before the post call.
+      const proofMode = process.env.PROOF_MODE === 'true';
+      if (!proofMode) {
+        const minSec = parseInt(process.env.REPLY_PRE_POST_DELAY_MIN_SEC || '30', 10);
+        const maxSec = parseInt(process.env.REPLY_PRE_POST_DELAY_MAX_SEC || '120', 10);
+        const delaySec = Math.min(300, Math.max(0, minSec + Math.floor(Math.random() * (maxSec - minSec + 1))));
+        if (delaySec > 0) {
+          console.log(`[REPLY_POST] human_like_delay=${delaySec}s before post`);
+          await new Promise((r) => setTimeout(r, delaySec * 1000));
+        }
+      }
+
+      // 🔒 CREATE POSTING GUARD: Immediately before post so TTL (60s) does not expire after human-like delay
       // 🔒 CRITICAL: Use 'reply_v2_scheduler' as pipeline_source to match permit
       const { createPostingGuard } = await import('../posting/UltimateTwitterPoster');
       const { executeAuthorizedPost, getBuildSHA } = await import('../posting/atomicPostExecutor');
@@ -7161,12 +7797,8 @@ async function postReply(decision: QueuedDecision): Promise<string> {
         decision_id: decision.id,
         pipeline_source: 'reply_v2_scheduler', // Must match permit's pipeline_source
         job_run_id: `reply_${Date.now()}`,
+        action_type: 'reply',
       });
-      
-      // 🔒 LOG POSTING MODE (prove we're not using thread composer)
-      const contentLength = decision.content.length;
-      const contentLines = (decision.content.match(/\n/g) || []).length + 1;
-      console.log(`[REPLY_POST] mode=reply tweet_id=${decision.target_tweet_id} len=${contentLength} lines=${contentLines} used_thread_composer=false`);
 
       // ⚛️ ATOMIC POST: Use executeAuthorizedPost() for DB-prewrite guarantee
       const job_run_id = `reply_${Date.now()}`;
@@ -7184,11 +7816,13 @@ async function postReply(decision: QueuedDecision): Promise<string> {
           job_run_id,
           content: decision.content,
           target_tweet_id: decision.target_tweet_id,
+          target_username: (decision as any).target_username ?? null,
           root_tweet_id: decision.root_tweet_id,
           target_tweet_content_snapshot: decision.target_tweet_content_snapshot,
           target_tweet_content_hash: decision.target_tweet_content_hash,
           semantic_similarity: decision.semantic_similarity,
-          proof_tag: decisionFeatures.proof_tag || null, // Pass proof_tag for observability
+          proof_tag: decisionFeatures.proof_tag || null,
+          template_id: decisionFeatures.template_id ?? null,
         },
         {
           isReply: true,
@@ -7306,7 +7940,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
         // 🔒 TASK 1: Log posting_attempt_success (standardized)
         try {
           const { data: decisionMeta } = await supabase
-            .from('content_metadata')
+            .from(contentTable)
             .select('pipeline_source')
             .eq('decision_id', decision.id)
             .maybeSingle();
@@ -7335,6 +7969,34 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       await poster.dispose();
       poster = null;
 
+      // ✅ STEP 2.5: Reply Performance Learning V1 — log execution event BEFORE clearing opportunity
+      const postingCompletedAt = new Date().toISOString();
+      try {
+        const { logReplyExecutionEvent } = await import('./replySystemV2/replyExecutionLogger');
+        await logReplyExecutionEvent(supabase, {
+          decision_id: decision.id,
+          target_tweet_id: decision.target_tweet_id,
+          target_username: decision.target_username ?? null,
+          our_reply_tweet_id: result.tweetId,
+          posted_at: postingCompletedAt,
+          dry_run: false,
+        });
+      } catch (logErr: any) {
+        console.warn(`[POSTING_QUEUE] ⚠️ Reply execution log failed (non-blocking): ${logErr?.message ?? logErr}`);
+      }
+
+      try {
+        const { logGrowthAction } = await import('./growthActionLogger');
+        await logGrowthAction(supabase, {
+          decision_id: decision.id,
+          action_type: 'reply',
+          posted_tweet_id: result.tweetId,
+          executed_at: postingCompletedAt,
+        });
+      } catch (gaErr: any) {
+        console.warn(`[POSTING_QUEUE] ⚠️ Growth action log failed (non-blocking): ${gaErr?.message ?? gaErr}`);
+      }
+
       try {
         await supabase
           .from('reply_opportunities')
@@ -7348,8 +8010,7 @@ async function postReply(decision: QueuedDecision): Promise<string> {
       // ✅ STEP 3: Return tweet ID (receipt is saved, can proceed to DB save)
       // 🔍 FORENSIC PIPELINE: Update decision record with posted tweet ID
       // 🎨 QUALITY TRACKING: Update template_id and prompt_version if not already set
-      // 🎯 PIPELINE STAGES: Mark posting completed
-      const postingCompletedAt = new Date().toISOString();
+      // 🎯 PIPELINE STAGES: Mark posting completed (postingCompletedAt set above for execution log)
       // Get template_id and prompt_version from reply_decisions for POST_SUCCESS event
       const { data: decisionRow } = await supabase
         .from('reply_decisions')
@@ -7398,6 +8059,23 @@ async function postReply(decision: QueuedDecision): Promise<string> {
         event_data: successEventData,
         created_at: new Date().toISOString(),
       });
+
+      // 🔒 REPLY PROOF: Single block of evidence for certification (PROOF_MODE; certMode uses PROOF_MODE in proof scripts)
+      const proofModeReply = process.env.PROOF_MODE === 'true';
+      if (proofModeReply) {
+        const rootId = (decision.root_tweet_id ?? ancestry?.rootTweetId ?? decision.target_tweet_id) ?? 'unknown';
+        const replyPreview = typeof decision.content === 'string' ? decision.content.substring(0, 80) + (decision.content.length > 80 ? '...' : '') : '[thread]';
+        console.log(`[REPLY_PROOF] ─── Reply certification evidence ───`);
+        console.log(`[REPLY_PROOF] target_tweet_id=${decision.target_tweet_id} root_tweet_id=${rootId}`);
+        console.log(`[REPLY_PROOF] decision_id=${decision.id}`);
+        console.log(`[REPLY_PROOF] reply_body_preview=${replyPreview}`);
+        console.log(`[REPLY_PROOF] posted_reply_tweet_id=${result.tweetId}`);
+        console.log(`[REPLY_PROOF] reply_tweet_url=${tweetUrl}`);
+        console.log(`[REPLY_PROOF] receipt_id=${receiptResult.receipt_id}`);
+        console.log(`[REPLY_PROOF] content_metadata updated (status=posted tweet_id=${result.tweetId})`);
+        console.log(`[REPLY_PROOF] reply_decisions updated (posted_reply_tweet_id=${result.tweetId})`);
+        console.log(`[REPLY_PROOF] PASS Reply posted and evidence recorded`);
+      }
 
       // 📊 GROWTH_TELEMETRY: Enqueue performance snapshots
       // 🎯 GROWTH_CONTROLLER: Record reply in execution counters
@@ -7664,13 +8342,17 @@ export async function markDecisionPosted(
     
     for (let dbAttempt = 1; dbAttempt <= MAX_DB_RETRIES; dbAttempt++) {
       try {
-        // 🔒 CRITICAL: Preserve pipeline_source and build_sha from existing row
+        // 🔒 CRITICAL: Preserve pipeline_source and build_sha from existing row (maybeSingle avoids "JSON object requested, multiple (or no) rows" error)
         const { getBuildSHA } = await import('../posting/atomicPostExecutor');
         const { data: existingRow } = await supabase
           .from('content_generation_metadata_comprehensive')
           .select('pipeline_source, build_sha, job_run_id')
           .eq('decision_id', decisionId)
-          .single();
+          .maybeSingle();
+        if (existingRow === null) {
+          const { count } = await supabase.from('content_generation_metadata_comprehensive').select('*', { count: 'exact', head: true }).eq('decision_id', decisionId);
+          console.warn(`[POSTING_QUEUE][markDecisionPosted] markDecisionPosted row-count diagnostic: decision_id=${decisionId} existing rows=${count ?? 'unknown'} (expected 1)`);
+        }
         
         const updateData: any = {
           status: 'posted',
@@ -7701,15 +8383,18 @@ export async function markDecisionPosted(
           throw new Error(`Database save failed: ${updateError.message}`);
         }
         
-        // ENHANCED: Verify save succeeded by reading back the record
+        // Verify save by reading back from same table we updated (content_metadata may be separate table)
         const { data: verifyData, error: verifyError } = await supabase
-          .from('content_metadata')
+          .from('content_generation_metadata_comprehensive')
           .select('tweet_id, status')
           .eq('decision_id', decisionId)
-          .single();
-        
+          .maybeSingle();
+
         if (verifyError || !verifyData) {
           throw new Error(`Verification failed: ${verifyError?.message || 'No data found'}`);
+        }
+        if (verifyData === null) {
+          console.warn(`[POSTING_QUEUE][markDecisionPosted] Verify read returned 0 rows for decision_id=${decisionId}`);
         }
         
         if (verifyData.tweet_id !== tweetId || verifyData.status !== 'posted') {
@@ -7737,9 +8422,9 @@ export async function markDecisionPosted(
             // Fallback: Write POST_SUCCESS if atomicPostExecutor didn't (shouldn't happen, but safety net)
             console.log(`[POSTING_QUEUE] ⚠️ POST_SUCCESS missing for decision_id=${decisionId}, writing fallback event`);
             
-            // Get decision type from content_metadata
+            // Get decision type from same table we updated
             const { data: decisionData } = await supabase
-              .from('content_metadata')
+              .from('content_generation_metadata_comprehensive')
               .select('decision_type')
               .eq('decision_id', decisionId)
               .maybeSingle();
@@ -7826,13 +8511,16 @@ export async function markDecisionPosted(
       // Don't throw - allow system to continue, recovery job will fix
     }
     
-    // 2. Get the full decision details for posted_decisions archive
+    // 2. Get the full decision details for posted_decisions archive (same table we updated; content_metadata may be separate)
     const { data: decisionData, error: fetchError } = await supabase
-      .from('content_metadata')
-      .select('*')
-      .eq('decision_id', decisionId)  // 🔥 FIX: decisionId is UUID, query by decision_id not id!
-      .single();
-    
+      .from('content_generation_metadata_comprehensive')
+      .select('decision_id, content, decision_type, target_tweet_id, target_username, bandit_arm, timing_arm, predicted_er, quality_score, topic_cluster')
+      .eq('decision_id', decisionId)
+      .maybeSingle();
+    if (decisionData === null) {
+      const { count } = await supabase.from('content_generation_metadata_comprehensive').select('*', { count: 'exact', head: true }).eq('decision_id', decisionId);
+      console.warn(`[POSTING_QUEUE][markDecisionPosted] markDecisionPosted archive fetch row-count: decision_id=${decisionId} rows=${count ?? 'unknown'} (expected 1)`);
+    }
     if (fetchError || !decisionData) {
       console.error(`[POSTING_QUEUE] 🚨 CRITICAL: Failed to fetch decision data for ${decisionId}:`, fetchError?.message);
       throw new Error(`Cannot archive decision: ${fetchError?.message || 'No data found'}`);

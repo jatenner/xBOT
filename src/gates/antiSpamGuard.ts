@@ -128,7 +128,7 @@ export function checkSelfReply(authorHandle: string): AntiSpamResult {
  * Check hourly reply rate limit
  */
 export async function checkHourlyRateLimit(
-  maxRepliesPerHour: number = parseInt(process.env.MAX_REPLIES_PER_HOUR || '4')
+  maxRepliesPerHour: number = parseInt(process.env.MAX_REPLIES_PER_HOUR || '6')
 ): Promise<AntiSpamResult> {
   const supabase = getSupabaseClient();
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
