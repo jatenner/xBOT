@@ -279,25 +279,28 @@ export class TwitterSessionRecovery {
   }
 
   /**
-   * Get session file path
+   * Get session file path. When RUNNER_MODE use resolver so local executor never uses /app/data.
    */
   private getSessionPath(): string {
-    // Check multiple possible paths
+    if (process.env.RUNNER_MODE === 'true' || process.env.RUNNER_MODE === '1') {
+      const { resolveSessionPath } = require('./sessionPathResolver');
+      return resolveSessionPath();
+    }
     const paths = [
-      '/app/data/twitter_session.json', // Railway path
+      process.env.SESSION_CANONICAL_PATH,
+      '/app/data/twitter_session.json',
       process.env.TWITTER_SESSION_PATH,
-      path.join(process.cwd(), 'data', 'twitter_session.json'), // Local path
+      path.join(process.cwd(), 'data', 'twitter_session.json'),
       './data/twitter_session.json'
     ].filter(Boolean);
 
     for (const sessionPath of paths) {
-      if (fs.existsSync(sessionPath!)) {
-        return sessionPath!;
+      if (sessionPath && fs.existsSync(sessionPath)) {
+        return sessionPath;
       }
     }
 
-    // Return default Railway path
-    return '/app/data/twitter_session.json';
+    return process.env.SESSION_CANONICAL_PATH || path.join(process.cwd(), 'data', 'twitter_session.json');
   }
 
   /**

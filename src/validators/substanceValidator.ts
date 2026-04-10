@@ -208,6 +208,39 @@ export function validateSubstance(content: string | string[]): SubstanceValidati
 }
 
 /**
+ * Quality gate: Reject bland/generic posts before queueing.
+ * Catches one-liner clichés and generic advice with no specifics.
+ */
+export function validateBlandness(content: string | string[]): { isBland: boolean; reason?: string } {
+  const textToCheck = Array.isArray(content) ? content.join(' ') : content;
+  const text = textToCheck.toLowerCase().trim();
+
+  // Very short generic one-liners
+  if (text.length < 200) {
+    const genericPhrases = [
+      /^stay hydrated\.?$/i,
+      /^get enough sleep\.?$/i,
+      /^exercise regularly\.?$/i,
+      /^eat (healthy|well)\.?$/i,
+      /^drink (more )?water\.?$/i,
+      /^take care of yourself\.?$/i,
+      /^sleep is important\.?$/i,
+      /^move your body\.?$/i,
+    ];
+    if (genericPhrases.some((p) => p.test(text))) {
+      return { isBland: true, reason: 'Generic one-liner advice with no specifics' };
+    }
+  }
+
+  // Generic opener with no numbers or mechanism (e.g. "X is important for Y" only)
+  if (/^(sleep|exercise|nutrition|hydration|movement) is (important|key|critical) for/i.test(text) && !/\d+%|\d+x|n=\d+|\d+ (minutes|hours|days)|study|research|data|because|via|works by/i.test(text)) {
+    return { isBland: true, reason: 'Generic importance claim without data or mechanism' };
+  }
+
+  return { isBland: false };
+}
+
+/**
  * Validates that content answers any question it poses
  */
 export function validateCompleteness(content: string | string[]): boolean {

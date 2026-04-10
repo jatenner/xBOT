@@ -29,7 +29,7 @@ export async function checkRateLimits(): Promise<{
   const repliesThisHour = receipts?.filter(r => r.post_type === 'reply').length || 0;
   
   const MAX_POSTS_PER_HOUR = parseInt(process.env.MAX_POSTS_PER_HOUR || '2');
-  const MAX_REPLIES_PER_HOUR = parseInt(process.env.MAX_REPLIES_PER_HOUR || '4');
+  const MAX_REPLIES_PER_HOUR = parseInt(process.env.MAX_REPLIES_PER_HOUR || '6');
   
   const canPostContent = postsThisHour < MAX_POSTS_PER_HOUR;
   const canPostReply = repliesThisHour < MAX_REPLIES_PER_HOUR;

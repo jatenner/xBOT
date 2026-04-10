@@ -703,7 +703,9 @@ export function startHealthServer(): Promise<void> {
           res.json({
             valid: false,
             cookies: 0,
-            path: process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json',
+            path: (process.env.RUNNER_MODE === 'true' || process.env.RUNNER_MODE === '1')
+              ? require('./utils/sessionPathResolver').resolveSessionPath()
+              : (process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json'),
             source: 'none',
             updatedAt: 'never'
           });
@@ -1273,6 +1275,24 @@ app.get('/dashboard', async (req, res) => {
         </body>
       </html>
     `);
+  }
+});
+
+// 📊 DATA QUALITY DASHBOARD
+app.get('/dashboard/data-quality', async (req, res) => {
+  try {
+    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    const adminToken = process.env.ADMIN_TOKEN || 'xbot-admin-2025';
+    if (token !== adminToken) {
+      return res.status(401).send('<html><body style="font-family:Arial;text-align:center;padding:50px"><h1>Authentication Required</h1><p>Add ?token=YOUR_TOKEN</p></body></html>');
+    }
+    const { generateDataQualityHTML } = await import('./dashboard/dataQualityDashboard');
+    const html = await generateDataQualityHTML();
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error: any) {
+    console.error('Data quality dashboard error:', error.message);
+    res.status(500).send(`<html><body><h1>Dashboard Error</h1><p>${error.message}</p></body></html>`);
   }
 });
 

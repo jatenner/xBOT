@@ -41,7 +41,7 @@ export function getRampConfig(): RampConfig {
   const quotas: Record<1 | 2 | 3, { posts: number; replies: number }> = {
     1: { posts: 1, replies: 1 },  // Conservative start
     2: { posts: 2, replies: 2 },  // Moderate
-    3: { posts: 2, replies: 4 },  // Full production
+    3: { posts: 2, replies: 6 },  // Full production
   };
   
   const quota = quotas[rampLevel];

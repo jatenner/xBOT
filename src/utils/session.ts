@@ -2,9 +2,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { BrowserContext } from 'playwright';
 
-const SESSION_FILE = process.env.NODE_ENV === 'production' 
-  ? '/app/data/twitter_session.json' 
-  : path.join(process.cwd(), 'data', 'twitter_session.json');
+/** Session file path: use resolver when RUNNER_MODE so local executor never uses /app/data. */
+function getSessionFile(): string {
+  if (process.env.RUNNER_MODE === 'true' || process.env.RUNNER_MODE === '1') {
+    const { resolveSessionPath } = require('./sessionPathResolver');
+    return resolveSessionPath();
+  }
+  return process.env.NODE_ENV === 'production'
+    ? '/app/data/twitter_session.json'
+    : path.join(process.cwd(), 'data', 'twitter_session.json');
+}
 
 export interface StorageState {
   cookies: Array<{
@@ -24,26 +31,24 @@ export interface StorageState {
 }
 
 export function ensureSessionFromEnv(): string | null {
+  const sessionFile = getSessionFile();
   const b64 = process.env.TWITTER_SESSION_B64;
-  
+
   if (b64 && b64.trim().length > 0) {
-    console.log(`SESSION_LOADER: TWITTER_SESSION_B64 detected; writing ${SESSION_FILE}`);
-    
-    // Ensure directory exists
-    fs.mkdirSync(path.dirname(SESSION_FILE), { recursive: true });
-    
-    // Decode and write
+    console.log(`SESSION_LOADER: TWITTER_SESSION_B64 detected; writing ${sessionFile}`);
+
+    fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+
     const sessionData = Buffer.from(b64.trim(), 'base64').toString('utf8');
-    fs.writeFileSync(SESSION_FILE, sessionData);
-    
-    return SESSION_FILE;
+    fs.writeFileSync(sessionFile, sessionData);
+
+    return sessionFile;
   }
-  
-  // Fallback: check if file exists
-  if (fs.existsSync(SESSION_FILE)) {
-    return SESSION_FILE;
+
+  if (fs.existsSync(sessionFile)) {
+    return sessionFile;
   }
-  
+
   return null;
 }
 
@@ -64,12 +69,12 @@ export function loadSessionState(): StorageState | null {
 
 export function createContextWithSession(browser: any): Promise<BrowserContext> {
   const state = loadSessionState();
-  
+
   if (state) {
     const cookieCount = state.cookies?.length ?? 0;
-    console.log(`PLAYWRIGHT_STORAGE: loaded ${cookieCount} cookies (path: ${SESSION_FILE})`);
+    console.log(`PLAYWRIGHT_STORAGE: loaded ${cookieCount} cookies (path: ${getSessionFile()})`);
   }
-  
+
   return browser.newContext({
     storageState: state ?? undefined
   });

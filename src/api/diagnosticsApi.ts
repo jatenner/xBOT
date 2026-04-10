@@ -367,7 +367,7 @@ export async function getPostingMonitor(req: Request, res: Response): Promise<vo
       .order('posted_at', { ascending: true });
 
     const postsPerHourGoal = parseInt(process.env.MAX_POSTS_PER_HOUR || '2');
-    const repliesPerHourGoal = parseInt(process.env.REPLIES_PER_HOUR || '4');
+    const repliesPerHourGoal = parseInt(process.env.REPLIES_PER_HOUR || '6');
     const singlePosts = todayPosts?.filter(p => p.decision_type === 'single') || [];
     const replyPosts = todayPosts?.filter(p => p.decision_type === 'reply') || [];
     const postedToday = singlePosts.length;

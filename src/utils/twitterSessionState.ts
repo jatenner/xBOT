@@ -289,12 +289,15 @@ export async function saveStorageState(
   try {
     const storageState = await context.storageState();
     
-    // Use canonical path resolver
+    // Use canonical path resolver (RUNNER_MODE always gets repo-local path)
     const { resolveSessionPath } = require('./sessionPathResolver');
-    const canonicalPath = resolveSessionPath();
-    const savePath = customPath || canonicalPath;
-    
-    // Ensure directory exists (with recursive mkdir)
+    let savePath = customPath || resolveSessionPath();
+    if (process.env.RUNNER_MODE === 'true' || process.env.RUNNER_MODE === '1') {
+      if (savePath.startsWith('/app/data')) {
+        const { resolveRunnerProfileDir } = require('../infra/runnerProfile');
+        savePath = path.join(resolveRunnerProfileDir(), 'twitter_session.json');
+      }
+    }
     const dir = path.dirname(savePath);
     if (!fs.existsSync(dir)) {
       try {

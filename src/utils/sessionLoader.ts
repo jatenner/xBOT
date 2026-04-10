@@ -65,8 +65,12 @@ export class SessionLoader {
     // Log session fingerprint on load
     console.log(`[SESSION] has_b64=${hasB64} b64_len=${b64Len} b64_sha12=${b64Sha12}`);
     
-    // Ensure directory exists
-    const dir = path.dirname(canonicalPath);
+    // Ensure directory exists (never mkdir /app/data when RUNNER_MODE – use runner dir)
+    let dir = path.dirname(canonicalPath);
+    if ((process.env.RUNNER_MODE === 'true' || process.env.RUNNER_MODE === '1') && dir === '/app/data') {
+      const { resolveSessionPath } = require('./sessionPathResolver');
+      dir = path.dirname(resolveSessionPath());
+    }
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
@@ -202,9 +206,15 @@ export class SessionLoader {
   static saveStorageStateBack(storageState: SessionData): void {
     try {
       const { resolveSessionPath } = require('./sessionPathResolver');
-      const canonicalPath = resolveSessionPath();
+      let canonicalPath = resolveSessionPath();
+      // Never write to /app/data when RUNNER_MODE
+      if (process.env.RUNNER_MODE === 'true' || process.env.RUNNER_MODE === '1') {
+        if (canonicalPath.startsWith('/app/data')) {
+          const { resolveRunnerProfileDir } = require('../infra/runnerProfile');
+          canonicalPath = path.join(resolveRunnerProfileDir(), 'twitter_session.json');
+        }
+      }
       const dir = path.dirname(canonicalPath);
-      
       // Ensure directory exists (with recursive mkdir)
       if (!fs.existsSync(dir)) {
         try {

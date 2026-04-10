@@ -16,7 +16,7 @@ export interface RootTweetResolution {
   // 🔒 FAIL-CLOSED: Status and confidence tracking
   status: 'OK' | 'UNCERTAIN' | 'ERROR';
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
-  method: 'explicit_signals' | 'dom_verification' | 'json_extraction' | 'metadata' | 'fallback' | 'error' | 'skipped_overload';
+  method: 'explicit_signals' | 'dom_verification' | 'dom_verification_escalated' | 'json_extraction' | 'metadata' | 'fallback' | 'error' | 'skipped_overload';
   signals: {
     replying_to_text: boolean;
     social_context: boolean;
@@ -199,9 +199,13 @@ export async function resolveRootTweetId(tweetId: string): Promise<RootTweetReso
         details: articles.length 
       });
       
-      // Determine if reply: ANY positive signal = reply
-      const isReply = checks.some(c => c.found);
-      
+      // Determine if reply: strong signals (replying_to_text, social_context, main_article_reply_indicator)
+      // are definitive. multiple_articles alone is NOT reliable — root tweets with replies below
+      // them also have multiple article elements on the page. Only count multiple_articles if
+      // a strong signal also fires.
+      const strongSignals = checks.filter(c => c.signal !== 'multiple_articles' && c.found);
+      const isReply = strongSignals.length > 0;
+
       return { isReply, checks };
     });
     

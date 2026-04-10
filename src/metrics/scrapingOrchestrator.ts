@@ -114,14 +114,18 @@ export class ScrapingOrchestrator {
       }
       
       // STEP 1: Check cache (prevent duplicate scraping within same hour)
+      // Skip cache if cached result has null views (stale data from broken scraper)
       const cached = await this.checkCache(tweetId);
-      if (cached) {
-        console.log(`  ✅ CACHE_HIT: Using cached metrics`);
+      if (cached && cached.views !== null && cached.views !== undefined) {
+        console.log(`  ✅ CACHE_HIT: Using cached metrics (views=${cached.views})`);
         return {
           success: true,
           metrics: cached,
           cached: true
         };
+      }
+      if (cached) {
+        console.log(`  ⚠️ CACHE_SKIP: Cached result has null views, re-scraping`);
       }
       
       // STEP 2: Scrape using BulletproofScraper

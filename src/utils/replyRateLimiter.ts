@@ -8,7 +8,7 @@
 import { getSupabaseClient } from '../db/index';
 
 const REPLY_LOCK_ID = 987654321; // Unique lock ID for reply posting
-const REPLIES_PER_HOUR = 4;
+const REPLIES_PER_HOUR = 6;
 const LOCK_TIMEOUT_MS = 5000; // 5 seconds max to acquire lock
 
 export interface RateLimitResult {

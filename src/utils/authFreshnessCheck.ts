@@ -49,10 +49,11 @@ export async function checkAuthFreshness(page: Page): Promise<AuthFreshnessResul
     
     // Update auth_blocked flag (create table if needed)
     try {
-      await supabase.rpc('set_auth_blocked', {
+      const rpcResult = supabase.rpc('set_auth_blocked', {
         blocked: !whoami.logged_in,
         reason: whoami.reason,
-      }).catch(() => {
+      });
+      await (rpcResult as unknown as Promise<unknown>).catch(() => {
         // RPC might not exist, use system_events only
       });
     } catch (rpcErr) {

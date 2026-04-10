@@ -57,6 +57,16 @@ export async function recordDeterministicFailure(context: FailureContext): Promi
       errorCode = context.error_name?.replace(/[^a-zA-Z0-9_]/g, '_').substring(0, 50) || 'UNKNOWN';
     }
   }
+
+  // If errorCode resolved to the generic class name 'Error' (happens when Error subclasses are thrown
+  // and error_name === 'Error'), try to extract a stable code from the message prefix.
+  // Structured error messages use the pattern: UPPERCASE_CODE: human readable description
+  if (errorCode === 'Error' || errorCode === 'UNKNOWN') {
+    const msgPrefix = (context.error_message ?? '').split(':')[0].trim().replace(/[^a-zA-Z0-9_]/g, '_');
+    if (msgPrefix.length >= 4 && msgPrefix.length <= 50 && /^[A-Z]/.test(msgPrefix)) {
+      errorCode = msgPrefix;
+    }
+  }
   
   try {
     // 1. Write outcomes attempt row (if posting_attempts table exists)
@@ -166,24 +176,43 @@ export async function recordDeterministicFailure(context: FailureContext): Promi
 }
 
 /**
- * Detect if error is a 429 rate limit
+ * Detect if error is a confirmed 429 rate limit.
+ *
+ * IMPORTANT: This function must require EXPLICIT evidence of rate limiting.
+ * Do NOT match on messages that merely mention "rate limit" as a possibility
+ * (e.g. "possible rate limit, content violation, or X error" should NOT trigger this).
+ * Only match when the error is definitively caused by rate limiting.
  */
 export function is429Error(error: any): boolean {
   if (!error) return false;
-  
-  // Check HTTP status
+
+  // Explicit HTTP status code
   if (error.status === 429 || error.statusCode === 429) return true;
-  
-  // Check error message
+
   const message = String(error.message || error.toString() || '').toLowerCase();
+
+  // Our new accurate classification code (set by classifySubmitState)
+  if (message.includes('post_submit_rejected_rate_limit')) return true;
+
+  // Explicit X API / HTTP error patterns only
   return (
-    message.includes('429') ||
-    message.includes('rate limit') ||
-    message.includes('too many requests') ||
-    message.includes('rate-limited') ||
+    message.includes('http-429') ||
+    message.includes('http 429') ||
+    message.includes('status: 429') ||
+    message.includes('status 429') ||
+    message.includes('too many requests') ||       // standard HTTP 429 body
+    message.includes('rate limit exceeded') ||     // X API explicit rejection text
+    message.includes('rate_limit_exceeded') ||     // X API error code form
     message.includes('being ratelimited') ||
-    message.includes('code 88') || // X rate limit code
-    message.includes('http-429')
+    message.includes('rate-limited') ||
+    message.includes('code 88') ||                 // X rate limit error code
+    // Bare "429" only when it looks like an HTTP status context, not an incidental number
+    /\b429\b/.test(message) && (
+      message.includes('error') ||
+      message.includes('status') ||
+      message.includes('http') ||
+      message.includes('response')
+    )
   );
 }
 

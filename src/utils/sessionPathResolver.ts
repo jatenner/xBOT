@@ -1,62 +1,100 @@
 /**
  * 🎯 CENTRALIZED SESSION PATH RESOLVER
- * 
+ *
  * Single source of truth for resolving Twitter session file path:
  * 1. SESSION_CANONICAL_PATH env var (highest priority)
  * 2. /data/twitter_session.json if /data exists (Railway volume)
- * 3. /app/data/twitter_session.json (fallback)
+ * 3. RUNNER_MODE: .runner-profile/twitter_session.json (local Mac executor)
+ * 4. /app/data/twitter_session.json (Railway container fallback)
+ * 5. data/twitter_session.json under cwd (other local)
  */
 
 import fs from 'fs';
+import path from 'path';
+import { resolveRunnerProfileDir } from '../infra/runnerProfile';
 
 let resolvedPath: string | null = null;
+
+/** True when running as local Mac executor/runner (repo-local paths only, never /app/data). */
+function isRunnerMode(): boolean {
+  const v = process.env.RUNNER_MODE;
+  return v === 'true' || v === '1' || v === true;
+}
 
 /**
  * Resolve the canonical session file path
  * Priority:
- * 1. SESSION_CANONICAL_PATH env var
- * 2. /data/twitter_session.json if /data directory exists
- * 3. /app/data/twitter_session.json (fallback)
+ * 1. X_COOKIE_PATH env var (account-specific, for Shadow Mode multi-account)
+ * 2. SESSION_CANONICAL_PATH env var
+ * 3. RUNNER_MODE → .runner-profile/twitter_session.json (local executor; never use cache so we never return /app/data)
+ * 4. /data/twitter_session.json if /data directory exists (Railway volume)
+ * 5. /app/data/twitter_session.json if /app/data exists (Railway container)
+ * 6. cwd/data/twitter_session.json (local dev)
  */
 export function resolveSessionPath(): string {
+  // When RUNNER_MODE: always use repo-local runner path first (never /app/data or SESSION_CANONICAL_PATH)
+  if (isRunnerMode()) {
+    const runnerDir = resolveRunnerProfileDir();
+    const pathResolved = path.join(runnerDir, 'twitter_session.json');
+    resolvedPath = pathResolved;
+    return pathResolved;
+  }
+
+  // Cache for non-runner mode only
   if (resolvedPath) {
+    return ensureRunnerPathIfNeeded(resolvedPath);
+  }
+
+  // Priority 0: Account-specific cookie path (Shadow Mode multi-account)
+  if (process.env.X_COOKIE_PATH) {
+    resolvedPath = process.env.X_COOKIE_PATH;
     return resolvedPath;
   }
-  
-  // Priority 1: Explicit env var
+
+  // Priority 1: Explicit env var (not used in runner mode – handled above)
   if (process.env.SESSION_CANONICAL_PATH) {
     resolvedPath = process.env.SESSION_CANONICAL_PATH;
     return resolvedPath;
   }
-  
-  // Priority 2: Check if /data exists (Railway volume)
-  // 🎯 REQUIREMENT: If /data exists, MUST use it (it's a real volume)
+
+  // Priority 3: Check if /data exists (Railway volume)
   try {
     if (fs.existsSync('/data') && fs.statSync('/data').isDirectory()) {
-      // Check if writable
       try {
         fs.accessSync('/data', fs.constants.W_OK);
         resolvedPath = '/data/twitter_session.json';
         console.log(`[SESSION_PATH] ✅ Using Railway volume: /data/twitter_session.json`);
         return resolvedPath;
       } catch (accessError: any) {
-        // /data exists but not writable - log warning but still use it (may be permission issue)
         console.warn(`[SESSION_PATH] ⚠️ /data exists but not writable: ${accessError.message}, using anyway`);
         resolvedPath = '/data/twitter_session.json';
         return resolvedPath;
       }
-    } else {
-      // /data doesn't exist - log warning and use fallback
-      console.warn(`[SESSION_PATH] ⚠️ Railway volume /data not found, using fallback /app/data/twitter_session.json`);
     }
   } catch (e: any) {
     // /data doesn't exist or not accessible
-    console.warn(`[SESSION_PATH] ⚠️ Could not check /data: ${e.message}, using fallback`);
   }
-  
-  // Priority 3: Fallback to /app/data (always writable in Railway containers)
-  resolvedPath = '/app/data/twitter_session.json';
-  return resolvedPath;
+
+  // Priority 4: Railway container – /app/data exists
+  if (fs.existsSync('/app/data')) {
+    resolvedPath = '/app/data/twitter_session.json';
+    return ensureRunnerPathIfNeeded(resolvedPath);
+  }
+
+  // Priority 5: Other local (e.g. dev without runner) – cwd/data
+  resolvedPath = path.join(process.cwd(), 'data', 'twitter_session.json');
+  return ensureRunnerPathIfNeeded(resolvedPath);
+}
+
+/**
+ * Ensure returned path is never /app/data when RUNNER_MODE is set (safety net for any cached or legacy path).
+ */
+function ensureRunnerPathIfNeeded(resolved: string): string {
+  if (isRunnerMode() && resolved.startsWith('/app/data')) {
+    const runnerDir = resolveRunnerProfileDir();
+    return path.join(runnerDir, 'twitter_session.json');
+  }
+  return resolved;
 }
 
 /**

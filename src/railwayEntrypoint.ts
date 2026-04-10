@@ -2,13 +2,28 @@
  * 🚀 RAILWAY UNIFIED ENTRYPOINT
  * Single entrypoint for both worker and main services
  * MUST start health server IMMEDIATELY before any other initialization
+ *
+ * Env loading: same contract as verify-openai-key-resolution.ts (.env then .env.local override)
+ * so worker and verify always see the same OPENAI_API_KEY.
  */
 
-import 'dotenv/config';
+import { loadEnvForWorker } from './config/loadEnv';
+import { resolveAndSyncOpenAIApiKey } from './config/openaiApiKey';
+
+// 1. Load env FIRST (same order as verify script: .env then .env.local so .env.local wins)
+const { loaded: dotenvLoaded, cwd } = loadEnvForWorker();
+
+// 2. Resolve OpenAI API key ONCE and EARLY (before any OpenAI client or jobs)
+const _openaiProof = resolveAndSyncOpenAIApiKey({
+  cwd,
+  pid: process.pid,
+  dotenvLoaded,
+});
+
 import { createServer, Server } from 'http';
 import { randomUUID } from 'crypto';
 import * as os from 'os';
-import { isXActionsEnabled } from './safety/actionGate';
+import { isXActionsEnabled, getCooldownStatus } from './safety/actionGate';
 
 // 🏥 STEP 0: Start health server IMMEDIATELY (before anything else)
 let healthServer: Server | null = null;
@@ -113,6 +128,7 @@ function startHealthServer(): void {
       const gitSha = process.env.APP_VERSION ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? 'unknown';
       const migrationsEnabled = process.env.RUN_MIGRATIONS_ENABLED === 'true';
       const xActionsEnabled = isXActionsEnabled();
+      const cooldownStatus = getCooldownStatus();
       const uptimeSeconds = Math.floor(process.uptime());
 
       const payload: Record<string, unknown> = {
@@ -122,6 +138,7 @@ function startHealthServer(): void {
         git_sha: gitSha,
         migrations_enabled: migrationsEnabled,
         x_actions_enabled: xActionsEnabled,
+        cooldown_status: cooldownStatus,
         uptime_seconds: uptimeSeconds,
         sha: appCommitSha,
         build_time: appBuildTime,
@@ -139,6 +156,31 @@ function startHealthServer(): void {
       const jobsEnabled = serviceRole === 'worker' && !disableAllJobs;
       payload.jobs_enabled = jobsEnabled;
       res.end(JSON.stringify(payload));
+    } else if (req.url?.startsWith('/ops/proof')) {
+      // 🔒 OPS_PROOF: Protected by OPS_KEY - runs proof logic server-side
+      const opsKey = process.env.OPS_KEY;
+      const urlKey = req.url?.includes('?') ? new URL(req.url, 'http://localhost').searchParams.get('key') : null;
+      const headerKey = req.headers['x-ops-key'] ?? req.headers['authorization']?.toString().replace(/^Bearer\s+/i, '');
+      const providedKey = urlKey || headerKey;
+
+      if (!opsKey || opsKey !== providedKey) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'OPS_KEY required' }));
+        return;
+      }
+
+      const postOne = req.url.includes('post_one=true') || (req.headers['x-ops-post-one'] as string) === 'true';
+
+      try {
+        const { runOpsProof } = await import('./ops/opsProofRunner');
+        const { results, exitCode } = await runOpsProof({ postOne });
+        res.writeHead(exitCode === 0 ? 200 : 500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: exitCode === 0, results, exit_code: exitCode }));
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: msg }));
+      }
     } else if (req.url === '/metrics/replies') {
       // Reply decisions metrics endpoint
       try {
@@ -397,6 +439,8 @@ function startHealthServer(): void {
   })();
 
   healthServer.listen(port, host, () => {
+    // Structured log for launch-proof: one line greppable as success evidence
+    console.log(`[LAUNCH_GATE] health_server=ready port=${port} host=${host}`);
     console.log(`[HEALTH] Starting health server on ${host}:${port}...`);
     console.log(`[HEALTH] ✅ Listening on ${host}:${port}`);
     console.log(`[HEALTH] Git SHA: ${gitSha.substring(0, 8)}`);

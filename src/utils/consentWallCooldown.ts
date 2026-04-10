@@ -9,9 +9,9 @@ class ConsentWallCooldown {
   private recentWalls: number[] = []; // Timestamps of recent consent walls
   private cooldownUntil: number | null = null; // Timestamp when cooldown expires
 
-  private readonly WALL_THRESHOLD = 1; // First wall triggers cooldown (fail-closed)
-  private readonly WINDOW_MS = 10 * 60 * 1000; // 10 minutes
-  private readonly COOLDOWN_MS = 45 * 60 * 1000; // 45 minutes (30–60min range)
+  private readonly WALL_THRESHOLD = 3; // Trigger after 3 walls (not 2 — reduce false triggers)
+  private readonly WINDOW_MS = 5 * 60 * 1000; // 5 minutes (was 10 — tighter window)
+  private readonly COOLDOWN_MS = 3 * 60 * 1000; // 3 minutes (was 10 — faster recovery, system learns to route around)
   
   /**
    * Record a consent wall occurrence
