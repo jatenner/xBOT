@@ -52,6 +52,27 @@ async function isCDPRunning(): Promise<boolean> {
 }
 
 /**
+ * Log current page count for the CDP default context and trim to 1 page.
+ * No-op when not in CDP mode. Used by executor daemon for per-step page_count logs.
+ */
+export async function logPageCountAndTrim(step: string): Promise<void> {
+  if (RUNNER_BROWSER !== 'cdp' || !(await isCDPRunning())) return;
+  try {
+    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
+    const contexts = browser.contexts();
+    if (contexts.length === 0) return;
+    const context = contexts[0];
+    const pages = context.pages ? context.pages() : [];
+    const count = pages.length;
+    console.log(`[EXECUTOR_DAEMON] page_count step=${step} count=${count}`);
+    const { closeExtraPages } = await import('../executorGuard');
+    await closeExtraPages(context);
+  } catch (_) {
+    // Non-fatal: log and continue
+  }
+}
+
+/**
  * Launch persistent context using SYSTEM Chrome (for Mac Runner)
  * Supports CDP mode (connect to running Chrome) or direct launch
  */
@@ -60,8 +81,8 @@ export async function launchRunnerPersistent(headless: boolean = false): Promise
   if (RUNNER_BROWSER === 'cdp') {
     console.log(`[RUNNER_LAUNCHER] 🔌 CDP mode: connecting to Chrome on port ${CDP_PORT}`);
     
-    // 🔍 TASK 1: Log Chrome profile path
-    const CDP_PROFILE_DIR = path.join(RUNNER_PROFILE_DIR, '.chrome-cdp-profile');
+    // Log profile path (must match scripts/runner/chrome-cdp.ts: chrome-profile-bot)
+    const CDP_PROFILE_DIR = path.join(RUNNER_PROFILE_DIR, 'chrome-profile-bot');
     console.log(`[RUNNER_LAUNCHER] 📁 Chrome profile path: ${CDP_PROFILE_DIR}`);
     console.log(`[RUNNER_LAUNCHER] 📁 Profile directory (user-data-dir): ${CDP_PROFILE_DIR}`);
     
@@ -88,10 +109,20 @@ export async function launchRunnerPersistent(headless: boolean = false): Promise
         console.log(`[RUNNER_LAUNCHER] ✅ Created new context in CDP Chrome`);
       }
       
+      // Apply stealth patches — hides navigator.webdriver and other automation
+      // signals that cause X/Twitter to show a blank loading screen instead of content
+      try {
+        const { applyStealth } = await import('./stealth');
+        await applyStealth(context);
+        console.log(`[RUNNER_LAUNCHER] ✅ Stealth patches applied to CDP context`);
+      } catch (stealthErr: any) {
+        console.warn(`[RUNNER_LAUNCHER] ⚠️ Stealth apply failed (non-fatal): ${stealthErr.message}`);
+      }
+
       // 🛡️ TAB LEAK GUARDRAIL: Close extra pages, keep only 1 (HARD CAP: exits if > 3)
       await closeExtraPages(context);
       await logGuardState(context);
-      
+
       return context;
     } catch (error: any) {
       throw new Error(`Failed to connect to Chrome CDP: ${error.message}`);
@@ -166,6 +197,15 @@ export async function launchRunnerPersistent(headless: boolean = false): Promise
   checkStopSwitch();
   
   const ctx = await chromium.launchPersistentContext(RUNNER_PROFILE_DIR, launchOptions);
+
+  // Apply stealth patches — hides navigator.webdriver and other automation signals
+  try {
+    const { applyStealth } = await import('./stealth');
+    await applyStealth(ctx);
+    console.log(`[RUNNER_LAUNCHER] ✅ Stealth patches applied to launched context`);
+  } catch (stealthErr: any) {
+    console.warn(`[RUNNER_LAUNCHER] ⚠️ Stealth apply failed (non-fatal): ${stealthErr.message}`);
+  }
 
   // 🛡️ TAB LEAK GUARDRAIL: Close extra pages, keep only 1
   await closeExtraPages(ctx);

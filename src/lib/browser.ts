@@ -76,9 +76,11 @@ class BrowserManager {
         this.browser = await chromium.launch(launchOptions);
         
         // Create persistent context with session for authenticated scraping
-        const sessionPath = process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';
+        const sessionPath = (process.env.RUNNER_MODE === 'true' || process.env.RUNNER_MODE === '1')
+          ? (await import('../utils/sessionPathResolver')).resolveSessionPath()
+          : (process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json');
         const fs = await import('fs');
-        
+
         const contextOptions: any = {
           viewport: { width: 1280, height: 720 },
           userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -138,14 +140,16 @@ class BrowserManager {
     const browser = await this.getBrowser();
     if (!this.context) {
       // 🔑 CRITICAL FIX: Load Twitter session for authenticated scraping!
-      const sessionPath = process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';
+      const sessionPath = (process.env.RUNNER_MODE === 'true' || process.env.RUNNER_MODE === '1')
+        ? (await import('../utils/sessionPathResolver')).resolveSessionPath()
+        : (process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json');
       const fs = await import('fs');
-      
+
       const contextOptions: any = {
         viewport: { width: 1280, height: 720 },
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       };
-      
+
       // Load session if it exists (for authenticated analytics access)
       if (fs.existsSync(sessionPath)) {
         try {

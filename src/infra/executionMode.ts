@@ -5,6 +5,8 @@
  * All mode checks must use this module.
  */
 
+import { isShadowMode } from '../safety/shadowMode';
+
 /**
  * Get execution mode from environment
  * Default: 'control' (fail-closed)
@@ -55,4 +57,29 @@ export function getModeLabel(): string {
     return 'executor';
   }
   return 'control';
+}
+
+/**
+ * CDP mode: true when RUNNER_MODE=true and RUNNER_BROWSER=cdp (local authenticated executor path).
+ */
+export function isCdpExecutorMode(): boolean {
+  return isRunnerMode() && (process.env.RUNNER_BROWSER || '').toLowerCase() === 'cdp';
+}
+
+/**
+ * Log execution context for audit/debug (EXECUTION_MODE, RUNNER_MODE, BROWSER_POOL_MODE, auth source, SHADOW_MODE, local CDP active).
+ * Call at start of reply_v2 planner/audit runs so logs show the actual path used.
+ */
+export function logExecutionContext(tag = 'EXECUTION_CONTEXT'): void {
+  const executionMode = getExecutionMode();
+  const runnerMode = isRunnerMode();
+  const runnerBrowser = process.env.RUNNER_BROWSER || 'not set';
+  const cdpMode = isCdpExecutorMode();
+  const browserPoolMode = cdpMode ? 'CDP' : 'PLAYWRIGHT_LAUNCH';
+  const authSource = isExecutor() ? 'local_chrome_profile' : 'railway_cookie_blob';
+  const shadowMode = isShadowMode();
+  const localCdpActive = cdpMode;
+  console.log(
+    `[${tag}] EXECUTION_MODE=${executionMode} RUNNER_MODE=${runnerMode} RUNNER_BROWSER=${runnerBrowser} BROWSER_POOL_MODE=${browserPoolMode} auth_source=${authSource} SHADOW_MODE=${shadowMode} local_cdp_profile_active=${localCdpActive}`
+  );
 }

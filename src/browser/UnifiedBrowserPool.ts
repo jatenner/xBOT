@@ -17,6 +17,7 @@ import { createHash } from 'crypto';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import type { BrowserContextOptions } from 'playwright';
 import { loadTwitterStorageState, cloneStorageState, type TwitterStorageState } from '../utils/twitterSessionState';
+import { isShadowMode } from '../safety/shadowMode';
 
 const clamp = (value: number, min: number, max: number): number => {
   if (Number.isNaN(value)) return min;
@@ -106,6 +107,16 @@ export class UnifiedBrowserPool {
   
   // Pool instance identification
   public readonly poolInstanceUid: string;
+
+  /**
+   * Inject an external storage state (e.g. from daemon's authenticated context)
+   * into the pool so all new contexts inherit the cookies.
+   */
+  public injectExternalStorageState(storageState: any): void {
+    this.cachedStorageState = storageState;
+    this.sessionLoaded = true;
+    console.log(`[BROWSER_POOL] ✅ Injected external storage state (${storageState?.cookies?.length || 0} cookies)`);
+  }
   
   // Configuration
   private readonly MAX_CONTEXTS = MAX_CONTEXTS_CONFIG; // Tunable via BROWSER_MAX_CONTEXTS (default=2 for Railway stability)
@@ -813,19 +824,23 @@ export class UnifiedBrowserPool {
   }
 
   /**
-   * 🔄 Ensure browser and context are live, recreate if disconnected
+   * 🔄 Ensure browser and context are live, recreate if disconnected.
+   * Cold start: when browser is null, do NOT reset (nothing to reset); let createNewContext call initializeBrowser().
+   * Only reset when we had a browser but it disconnected (isConnected() === false).
    */
   private async ensureLiveContext(label?: string): Promise<void> {
-    // Check browser connection
-    if (!this.browser || !this.browser.isConnected()) {
+    if (!this.browser) {
+      // Cold start: no browser yet; avoid unnecessary reset (would clear state and still leave browser null)
+      if (label) {
+        console.log(`[BROWSER_POOL] cold_start (no browser yet) label=${label} — skipping reset, init will run in createNewContext`);
+      }
+      return;
+    }
+    if (!this.browser.isConnected()) {
       console.log(`[BROWSER_POOL][RECOVER] reason=browser_disconnected action=reset${label ? ` label=${label}` : ''}`);
       await this.resetPool();
       return;
     }
-
-    // Check if we can still create pages (context health check)
-    // If browser is connected but contexts are dead, we'll detect it during createNewContext
-    // For now, just ensure browser is connected
   }
 
   private openCircuitBreaker(reason: string, cooldownMs: number = this.CIRCUIT_BREAKER_TIMEOUT): void {
@@ -944,7 +959,11 @@ export class UnifiedBrowserPool {
     this.sessionLoaded = false;
 
     if (!this.sessionWarningLogged) {
-      console.warn('[BROWSER_POOL] ⚠️ No authenticated Twitter session detected - contexts will run unauthenticated');
+      if (isCdpMode()) {
+        console.log('[BROWSER_POOL] CDP mode: auth from Chrome profile (no TWITTER_SESSION_B64 needed)');
+      } else {
+        console.warn('[BROWSER_POOL] ⚠️ No authenticated Twitter session detected - contexts will run unauthenticated');
+      }
       this.sessionWarningLogged = true;
     }
 
@@ -1119,6 +1138,56 @@ export class UnifiedBrowserPool {
       }
     }
 
+    // 🔧 CDP MODE: Use existing default context (logged-in profile) instead of newContext()
+    if (isCdpMode() && this.browser?.isConnected()) {
+      const existing = this.browser.contexts();
+      if (existing.length > 0) {
+        const defaultContext = existing[0];
+        for (const h of this.contexts.values()) {
+          if (h.context === defaultContext) {
+            throw new Error('[BROWSER_POOL] CDP mode: default context already in pool; wait for it to be released');
+          }
+        }
+        console.log(`[BROWSER_POOL][CREATE_CONTEXT] CDP: using existing default profile context (authenticated, contexts=${existing.length})`);
+        const contextId = 'cdp-default';
+        const handle: ContextHandle = {
+          context: defaultContext,
+          inUse: true,
+          lastUsed: new Date(),
+          operationCount: 0,
+          maxOperations: this.MAX_OPERATIONS_PER_CONTEXT,
+          sessionAppliedVersion: -1,
+        };
+        this.contexts.set(contextId, handle);
+        this.metrics.contextsCreated++;
+        this.metrics.activeContexts = this.contexts.size;
+        this.contextActiveStartTimes.set(contextId, Date.now());
+        // Apply stealth patches to CDP context — hides navigator.webdriver and other
+        // automation signals that X/Twitter uses to reject posts from headless browsers
+        try {
+          const { applyStealth } = await import('../infra/playwright/stealth');
+          await applyStealth(defaultContext);
+          console.log(`[BROWSER_POOL][CREATE_CONTEXT] CDP: stealth patches applied`);
+        } catch (stealthErr: any) {
+          console.warn(`[BROWSER_POOL][CREATE_CONTEXT] CDP: stealth apply failed (non-fatal): ${stealthErr.message}`);
+        }
+        if (isShadowMode()) {
+          await defaultContext.route('**/*', (route) => {
+            const method = (route.request().method() || 'GET').toUpperCase();
+            if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+              console.error(`[SHADOW_MODE] 🛑 BLOCKED write request: ${method} ${route.request().url()}`);
+              route.abort('blockedbyclient');
+            } else {
+              route.continue();
+            }
+          });
+        }
+        const totalDuration = Date.now() - createStartTime;
+        console.log(`[BROWSER_POOL] ✅ Context adopted (CDP default, total: ${this.contexts.size}/${this.MAX_CONTEXTS}, duration_ms=${totalDuration})`);
+        return handle;
+      }
+    }
+
     const contextId = `ctx-${Date.now()}-${this.metrics.contextsCreated}`;
     console.log(`[BROWSER_POOL] 🆕 Creating context: ${contextId}`);
     
@@ -1182,6 +1251,21 @@ export class UnifiedBrowserPool {
       }
     }
 
+    // 🛡️ SHADOW_MODE: Block POST/PUT/PATCH/DELETE at network level (hard safeguard)
+    if (isShadowMode()) {
+      await context.route('**/*', (route) => {
+        const method = (route.request().method() || 'GET').toUpperCase();
+        if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+          const url = route.request().url();
+          console.error(`[SHADOW_MODE] 🛑 BLOCKED write request: ${method} ${url}`);
+          route.abort('blockedbyclient');
+          // Abort causes originating operation to fail; job will surface error
+        } else {
+          route.continue();
+        }
+      });
+    }
+
     const handle: ContextHandle = {
       context,
       inUse: true,
@@ -1229,6 +1313,8 @@ export class UnifiedBrowserPool {
     this.sessionLoaded = !!process.env.TWITTER_SESSION_B64;
     if (this.sessionLoaded) {
       console.log('[BROWSER_POOL] ✅ TWITTER_SESSION_B64 detected - sessions will be authenticated');
+    } else if (process.env.RUNNER_MODE === 'true') {
+      console.log('[BROWSER_POOL] Executor mode: session will be injected from daemon context');
     } else {
       console.warn('[BROWSER_POOL] ⚠️ TWITTER_SESSION_B64 not found - sessions will be unauthenticated');
     }
@@ -1262,8 +1348,9 @@ export class UnifiedBrowserPool {
         
         this.browser = await chromium.connectOverCDP(cdpEndpoint);
         const cdpConnectDuration = Date.now() - cdpConnectStart;
+        const contextCount = this.browser.contexts().length;
         console.log(`[BROWSER_POOL][INIT_BROWSER] chromium.connectOverCDP_success duration_ms=${cdpConnectDuration}`);
-        console.log(`[BROWSER_POOL][INIT_BROWSER] Connected to CDP Chrome (contexts: ${this.browser.contexts().length})`);
+        console.log(`[BROWSER_POOL][INIT_BROWSER] CDP_ENDPOINT=${cdpEndpoint} browser_exists=true contexts=${contextCount}`);
       } catch (error: any) {
         const cdpConnectDuration = Date.now() - cdpConnectStart;
         console.log(`[BROWSER_POOL][INIT_BROWSER] chromium.connectOverCDP_failed duration_ms=${cdpConnectDuration} error=${error.message}`);
@@ -1372,19 +1459,28 @@ export class UnifiedBrowserPool {
   }
 
   /**
-   * Close a specific context
+   * Close a specific context.
+   * CDP default context: do NOT call context.close() (it would disconnect the CDP browser); only remove from pool and recycle.
    */
   private async closeContext(handle: ContextHandle): Promise<void> {
     const contextId = Array.from(this.contexts.entries())
       .find(([_, h]) => h === handle)?.[0];
     
     if (contextId) {
+      if (contextId === 'cdp-default') {
+        // CDP mode: default context is the browser's only context; closing it would disconnect. Just remove from pool.
+        this.contexts.delete(contextId);
+        this.metrics.activeContexts = this.contexts.size;
+        handle.operationCount = 0; // Reset so same handle can be reused when re-acquired
+        console.log(`[BROWSER_POOL] CDP default context recycled (not closed) remaining=${this.contexts.size}`);
+        return;
+      }
       try {
         await handle.context.close();
         this.contexts.delete(contextId);
         this.metrics.contextsClosed++;
         this.metrics.activeContexts = this.contexts.size;
-        console.log(`[BROWSER_POOL] ✅ Context closed (remaining: ${this.contexts.size})`);
+        console.log(`[BROWSER_POOL] ✅ Context closed (id=${contextId} remaining: ${this.contexts.size})`);
       } catch (error: any) {
         console.warn(`[BROWSER_POOL] ⚠️ Error closing context: ${error.message}`);
       }
@@ -1409,20 +1505,31 @@ export class UnifiedBrowserPool {
    */
   private startWatchdog(): void {
     const WATCHDOG_INTERVAL = 10000; // Check every 10s
-    const ACQUIRE_WAIT_WARNING_MS = 15000; // Warn if waiting > 15s
+    const ACQUIRE_WAIT_WARNING_MS = 30000; // Warn if waiting > 30s (was 15s — too noisy)
+    const ACQUIRE_STALE_MS = 120000; // Auto-clean operations waiting > 2 min
     const CONTEXT_STUCK_MS = 90000; // Force-close contexts stuck > 90s
-    
+
     this.watchdogTimer = setInterval(() => {
       try {
         const now = Date.now();
-        
-        // Check acquire waits
+
+        // Check acquire waits — clean stale ones, warn about recent ones
+        let staleCount = 0;
         for (const [operationId, startTime] of this.acquireWaitStartTimes.entries()) {
           const waitTime = now - startTime;
-          if (waitTime > ACQUIRE_WAIT_WARNING_MS) {
-            const poolSnapshot = this.getPoolSnapshot();
-            console.warn(`[POOL_WATCHDOG] ⚠️ Long acquire wait detected: operation=${operationId} wait_ms=${waitTime} ${JSON.stringify(poolSnapshot)}`);
+          if (waitTime > ACQUIRE_STALE_MS) {
+            // Auto-clean: remove stale operations that will never complete
+            this.acquireWaitStartTimes.delete(operationId);
+            staleCount++;
+          } else if (waitTime > ACQUIRE_WAIT_WARNING_MS) {
+            // Only log first 3 to prevent spam
+            if (staleCount === 0) {
+              console.warn(`[POOL_WATCHDOG] ⚠️ Long acquire wait: operation=${operationId} wait_ms=${waitTime}`);
+            }
           }
+        }
+        if (staleCount > 0) {
+          console.log(`[POOL_WATCHDOG] 🧹 Cleaned ${staleCount} stale operations (waited > ${ACQUIRE_STALE_MS / 1000}s)`);
         }
         
         // Check stuck contexts

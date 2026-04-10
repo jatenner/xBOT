@@ -186,8 +186,10 @@ class BrowserManager {
           });
         }
 
-        // Load session if available
-        const sessionPath = process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json';
+        // Load session if available (use resolver when RUNNER_MODE so local executor never uses /app/data)
+        const sessionPath = (process.env.RUNNER_MODE === 'true' || process.env.RUNNER_MODE === '1')
+          ? (await import('../utils/sessionPathResolver')).resolveSessionPath()
+          : (process.env.SESSION_CANONICAL_PATH || '/app/data/twitter_session.json');
         let storageState: any = undefined;
         
         try {

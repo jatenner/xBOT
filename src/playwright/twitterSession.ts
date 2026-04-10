@@ -26,6 +26,18 @@ export interface ConsentWallResult {
   variant?: string; // Variant detected (e.g., 'iframe', 'overlay', 'banner')
   screenshotPath?: string; // Path to screenshot if failed
   htmlSnippet?: string; // Small HTML snippet for debugging
+  /** When wallType is consent, why it was classified (e.g. cookie_pattern vs generic_button). */
+  classificationReason?: string;
+}
+
+/** Element-level diagnostics for interstitials (buttons, dialogs) for logging and failure messages. */
+export interface InterstitialElementDiagnostics {
+  url: string;
+  hasComposer: boolean;
+  buttons: { tag: string; role: string | null; text: string; ariaLabel: string | null; visible: boolean }[];
+  dialogs: { role: string; ariaLabel: string | null; innerTextSnippet: string }[];
+  bodyTextSnippet: string;
+  consentRelatedText: string[];
 }
 
 /**
@@ -88,78 +100,156 @@ export async function saveTwitterState(context: BrowserContext): Promise<boolean
 }
 
 /**
- * Detect consent wall with multiple patterns
+ * Get interstitial element diagnostics (buttons, dialogs, body snippet) for logging and failure messages.
  */
-export async function detectConsentWall(page: Page): Promise<ConsentWallResult> {
+export async function getInterstitialElementDiagnostics(page: Page): Promise<InterstitialElementDiagnostics> {
+  const url = page.url();
+  const data = await page.evaluate(() => {
+    const hasComposeBox = !!document.querySelector('[data-testid="tweetTextarea_0"]') ||
+      !!document.querySelector('div[contenteditable="true"][role="textbox"]');
+    const bodyText = (document.body.textContent || '').slice(0, 2000);
+    const buttons: { tag: string; role: string | null; text: string; ariaLabel: string | null; visible: boolean }[] = [];
+    const allClickables = document.querySelectorAll('button, [role="button"], a[role="button"], input[type="submit"], [data-testid*="cookie" i]');
+    allClickables.forEach((el) => {
+      const text = (el.textContent || '').trim().slice(0, 80);
+      const ariaLabel = el.getAttribute('aria-label');
+      const role = el.getAttribute('role') || (el.tagName.toLowerCase() === 'button' ? 'button' : null);
+      const rect = el.getBoundingClientRect();
+      const visible = rect.width > 0 && rect.height > 0;
+      if (text || ariaLabel) {
+        buttons.push({
+          tag: el.tagName.toLowerCase(),
+          role,
+          text,
+          ariaLabel,
+          visible,
+        });
+      }
+    });
+    const dialogs = Array.from(document.querySelectorAll('[role="dialog"], [aria-modal="true"]')).map((d) => ({
+      role: d.getAttribute('role') || 'dialog',
+      ariaLabel: d.getAttribute('aria-label'),
+      innerTextSnippet: (d.textContent || '').trim().slice(0, 200),
+    }));
+    const consentRelatedText: string[] = [];
+    const consentPatterns = [
+      'Accept all cookies', 'Accept cookies', 'Cookie', 'cookie preferences', 'cookie settings',
+      'Accept all', 'Accept', 'Agree', 'Allow all', 'Allow', 'Continue', 'Got it', 'Okay', 'OK', 'Got it',
+    ];
+    consentPatterns.forEach((p) => {
+      if (bodyText.toLowerCase().includes(p.toLowerCase())) consentRelatedText.push(p);
+    });
+    return {
+      hasComposeBox,
+      bodyTextSnippet: bodyText.slice(0, 500),
+      buttons,
+      dialogs,
+      consentRelatedText,
+    };
+  });
+  return {
+    url,
+    hasComposer: data.hasComposeBox,
+    buttons: data.buttons,
+    dialogs: data.dialogs,
+    bodyTextSnippet: data.bodyTextSnippet,
+    consentRelatedText: data.consentRelatedText,
+  };
+}
+
+/**
+ * Detect consent wall with multiple patterns.
+ * On compose pages when composer is already visible, do NOT treat generic "Continue"/"Next" as consent
+ * (compose modal has those). Only treat as consent when there is a true cookie/privacy pattern.
+ */
+export async function detectConsentWall(page: Page, options?: { composePage?: boolean }): Promise<ConsentWallResult> {
   const diagnostics = await page.evaluate(() => {
-    const hasComposeBox = !!document.querySelector('[data-testid="tweetTextarea_0"]');
+    const hasComposeBox = !!document.querySelector('[data-testid="tweetTextarea_0"]') ||
+      !!document.querySelector('div[contenteditable="true"][role="textbox"]');
     const hasAccountMenu = !!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
     const bodyText = document.body.textContent || '';
-    
-    // Multiple consent wall patterns
-    const hasConsentWall = 
+    const composerVisible = hasComposeBox || hasAccountMenu;
+
+    // Cookie/consent-specific patterns only (true consent wall)
+    const hasCookieConsentPattern =
       bodyText.includes('Accept all cookies') ||
       bodyText.includes('Accept cookies') ||
-      bodyText.includes('Cookie') ||
       bodyText.includes('cookie preferences') ||
       bodyText.includes('cookie settings') ||
       !!document.querySelector('[role="dialog"][aria-label*="cookie" i]') ||
-      !!document.querySelector('[data-testid*="cookie" i]') ||
-      !!document.querySelector('button:has-text("Accept")') ||
-      !!document.querySelector('button:has-text("Accept all")');
-    
-    const hasLoginWall = 
+      !!document.querySelector('[data-testid*="cookie" i]');
+    // Generic button text that could be consent OR compose UI (Continue, Next, Got it, etc.)
+    const hasAcceptLikeButton = Array.from(document.querySelectorAll('button, [role="button"]')).some((el) => {
+      const t = (el.textContent || '').trim().toLowerCase();
+      const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+      return /accept|agree|allow|continue|ok(ay)?|got it|cookie/.test(t) || /accept|agree|allow|continue/.test(aria);
+    });
+    // When composer is visible, require cookie-specific pattern so we don't mistake compose modal for consent
+    const hasConsentWall = hasCookieConsentPattern ||
+      (bodyText.includes('Cookie') && !composerVisible) ||
+      (bodyText.includes('Got it') && !composerVisible) ||
+      (bodyText.includes('Accept all') && !composerVisible) ||
+      (!composerVisible && hasAcceptLikeButton);
+    const hasLoginWall =
       bodyText.includes('Sign in') ||
       bodyText.includes('Log in') ||
       !!document.querySelector('a[href*="/i/flow/login"]');
-    
-    const hasErrorWall = 
+    const hasErrorWall =
       bodyText.includes('Something went wrong') ||
       bodyText.includes('Try again');
-    
-    const hasRateLimit = 
+    const hasRateLimit =
       bodyText.includes('rate limit') ||
       bodyText.includes('Too many requests');
-    
     const tweetContainers = document.querySelectorAll('article[data-testid="tweet"]');
-    
+    let consent_reason = '';
+    if (hasConsentWall) {
+      if (hasCookieConsentPattern) consent_reason = 'cookie_or_privacy_pattern';
+      else if (composerVisible) consent_reason = 'composer_visible_generic_ignored';
+      else consent_reason = 'generic_accept_button_or_text';
+    }
     return {
       logged_in: hasComposeBox || hasAccountMenu,
       wall_detected: hasLoginWall || hasConsentWall || hasErrorWall || hasRateLimit,
       wall_type: hasLoginWall ? 'login' : hasConsentWall ? 'consent' : hasErrorWall ? 'error' : hasRateLimit ? 'rate_limit' : 'none',
       tweet_containers_found: tweetContainers.length,
+      consent_reason,
     };
   });
-  
-  // Only detect consent wall if containers are missing (wall is actually blocking)
   const containers = diagnostics.tweet_containers_found || 0;
-  const actuallyBlocked = diagnostics.wall_detected && diagnostics.wall_type === 'consent' && containers === 0;
-  
+  const composePage = options?.composePage === true;
+  const actuallyBlocked = diagnostics.wall_detected &&
+    (diagnostics.wall_type === 'consent' || diagnostics.wall_type === 'login') &&
+    (containers === 0 || (composePage && !diagnostics.logged_in));
   return {
     detected: actuallyBlocked,
     cleared: false,
     attempts: 0,
     wallType: diagnostics.wall_type as any,
+    classificationReason: (diagnostics as any).consent_reason || undefined,
   };
 }
 
 /**
- * Accept consent wall with multiple strategies
- * Returns true if consent was accepted and containers increased
+ * Accept consent wall with multiple strategies.
+ * When options.composePage is true, success = composer visible (tweetTextarea_0 or contenteditable textbox).
  */
-export async function acceptConsentWall(page: Page, maxAttempts: number = 3): Promise<ConsentWallResult> {
+export async function acceptConsentWall(
+  page: Page,
+  maxAttempts: number = 3,
+  options?: { composePage?: boolean }
+): Promise<ConsentWallResult> {
   const containersBefore = await page.evaluate(() => {
     return document.querySelectorAll('article[data-testid="tweet"]').length;
   });
-  
   const currentUrl = page.url();
   const initialUrl = currentUrl;
-  
-  // C1: Page-level click strategies (prioritize getByRole)
+  const composePage = options?.composePage === true;
+
+  // C1: Page-level click strategies (prioritize getByRole, then explicit text for X variants)
   const pageStrategies = [
-    { name: 'getByRole button accept/agree/allow/continue/ok', fn: async () => {
+    { name: 'getByRole button accept/agree/allow/continue/ok/got it', fn: async () => {
       try {
-        const button = page.getByRole('button', { name: /accept|agree|allow|continue|ok/i }).first();
+        const button = page.getByRole('button', { name: /accept|agree|allow|continue|ok(ay)?|got it/i }).first();
         if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
           await button.click({ timeout: 2000 });
           return true;
@@ -197,11 +287,61 @@ export async function acceptConsentWall(page: Page, maxAttempts: number = 3): Pr
       } catch {}
       return false;
     }},
+    { name: 'getByText Got it', fn: async () => {
+      try {
+        const el = page.getByText('Got it', { exact: false }).first();
+        if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await el.click({ timeout: 2000 });
+          return true;
+        }
+      } catch {}
+      return false;
+    }},
+    { name: 'getByText Okay', fn: async () => {
+      try {
+        const el = page.getByRole('button', { name: /^okay$/i }).first();
+        if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await el.click({ timeout: 2000 });
+          return true;
+        }
+      } catch {}
+      return false;
+    }},
+    { name: 'getByText Accept all', fn: async () => {
+      try {
+        const el = page.getByText('Accept all', { exact: false }).first();
+        if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await el.click({ timeout: 2000 });
+          return true;
+        }
+      } catch {}
+      return false;
+    }},
+    { name: 'getByText Continue', fn: async () => {
+      try {
+        const el = page.getByRole('button', { name: /^continue$/i }).first();
+        if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await el.click({ timeout: 2000 });
+          return true;
+        }
+      } catch {}
+      return false;
+    }},
+    { name: 'getByRole button OK', fn: async () => {
+      try {
+        const el = page.getByRole('button', { name: /^ok$/i }).first();
+        if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await el.click({ timeout: 2000 });
+          return true;
+        }
+      } catch {}
+      return false;
+    }},
   ];
-  
-  // C3: Fallback CSS selectors
+
+  // C3: Fallback CSS/locator strategies (role=button, data-testid, etc.)
   const fallbackStrategies = [
-    { name: 'CSS button:has-text("Accept")', fn: async () => {
+    { name: 'locator button Accept', fn: async () => {
       try {
         const button = page.locator('button:has-text("Accept")').first();
         if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -211,7 +351,7 @@ export async function acceptConsentWall(page: Page, maxAttempts: number = 3): Pr
       } catch {}
       return false;
     }},
-    { name: 'CSS button:has-text("Agree")', fn: async () => {
+    { name: 'locator button Agree', fn: async () => {
       try {
         const button = page.locator('button:has-text("Agree")').first();
         if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -221,7 +361,7 @@ export async function acceptConsentWall(page: Page, maxAttempts: number = 3): Pr
       } catch {}
       return false;
     }},
-    { name: 'CSS div[role="button"]:has-text("Accept")', fn: async () => {
+    { name: 'locator div[role=button] Accept', fn: async () => {
       try {
         const button = page.locator('div[role="button"]:has-text("Accept")').first();
         if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -231,12 +371,32 @@ export async function acceptConsentWall(page: Page, maxAttempts: number = 3): Pr
       } catch {}
       return false;
     }},
+    { name: 'locator span Got it', fn: async () => {
+      try {
+        const el = page.locator('span:has-text("Got it"), div:has-text("Got it")').first();
+        if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await el.click({ timeout: 2000 });
+          return true;
+        }
+      } catch {}
+      return false;
+    }},
+    { name: 'data-testid cookie accept', fn: async () => {
+      try {
+        const el = page.locator('[data-testid*="cookie" i]').filter({ has: page.locator('button, [role="button"]') }).first();
+        if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await el.locator('button, [role="button"]').first().click({ timeout: 2000 });
+          return true;
+        }
+      } catch {}
+      return false;
+    }},
   ];
   
-  // C2: Frame-level click helper
-  const tryFrameClick = async (frame: any, strategyName: string): Promise<boolean> => {
+  // C2: Frame-level click helper (include Got it / Okay for X consent iframes)
+  const tryFrameClick = async (frame: any, _strategyName: string): Promise<boolean> => {
     try {
-      const button = frame.getByRole('button', { name: /accept|agree|allow|continue|ok/i }).first();
+      const button = frame.getByRole('button', { name: /accept|agree|allow|continue|ok(ay)?|got it/i }).first();
       if (await button.isVisible({ timeout: 2000 }).catch(() => false)) {
         await button.click({ timeout: 2000 });
         return true;
@@ -271,12 +431,12 @@ export async function acceptConsentWall(page: Page, maxAttempts: number = 3): Pr
         ]).then(() => true),
         // Option 3: URL changes away from consent domain/path
         page.waitForFunction(
-          (initial) => {
+          (initial: string) => {
             const current = window.location.href;
             return !current.includes('/i/flow/consent') && current !== initial;
           },
-          { timeout: timeoutMs },
-          initialUrl
+          initialUrl,
+          { timeout: timeoutMs }
         ),
       ]);
       return true;

@@ -1045,13 +1045,62 @@ export class BulletproofTwitterScraper {
    */
   private async extractViewsIntelligent(tweetArticle: any): Promise<number | null> {
     try {
-      // Strategy 1: Look for direct "X Views" text pattern
+      // Strategy 1: Look for div/element with aria-label "X views" (current Twitter DOM)
+      const viewsFromAriaDiv = await tweetArticle.evaluate((article: Element) => {
+        const els = article.querySelectorAll('[aria-label]');
+        for (const el of Array.from(els)) {
+          const label = el.getAttribute('aria-label') || '';
+          const match = label.match(/^(\d[\d,\.]*[KkMm]?)\s+views?$/i);
+          if (match) {
+            return match[1];
+          }
+        }
+        return null;
+      });
+
+      if (viewsFromAriaDiv) {
+        const count = this.parseViewCount(viewsFromAriaDiv);
+        if (count !== null) {
+          console.log(`    ✅ VIEWS from aria-label div: ${count}`);
+          return count;
+        }
+      }
+
+      // Strategy 2: Look for analytics link textContent (e.g. "7 Views")
+      const analyticsLink = await tweetArticle.$('a[href*="/analytics"]');
+      if (analyticsLink) {
+        const linkText = await analyticsLink.evaluate((el: any) => el.textContent?.trim() || '');
+        console.log(`    🎯 VIEWS analytics link text: "${linkText}"`);
+
+        const textMatch = linkText.match(/(\d[\d,\.]*[KkMm]?)\s*Views?/i);
+        if (textMatch) {
+          const count = this.parseViewCount(textMatch[1]);
+          if (count !== null) {
+            console.log(`    ✅ VIEWS from analytics link text: ${count}`);
+            return count;
+          }
+        }
+
+        // Also try aria-label on the link itself (works on parent tweets)
+        const ariaLabel = await analyticsLink.evaluate((el: any) => el.getAttribute('aria-label'));
+        if (ariaLabel) {
+          console.log(`    🎯 VIEWS analytics aria-label: "${ariaLabel}"`);
+          const match = ariaLabel.match(/(\d[\d,\.]*[KkMm]?)\s+(?:View|view)/i);
+          if (match) {
+            const count = this.parseViewCount(match[1]);
+            if (count !== null) {
+              console.log(`    ✅ VIEWS from analytics aria-label: ${count}`);
+              return count;
+            }
+          }
+        }
+      }
+
+      // Strategy 3: Look for direct "X Views" text in a single span (legacy)
       const viewsText = await tweetArticle.evaluate((article: Element) => {
-        // Look for spans containing "Views" text
         const spans = Array.from(article.querySelectorAll('span'));
         for (const span of spans) {
           const text = span.textContent?.trim() || '';
-          // Match patterns like "8 Views", "1.2K Views", "5M Views"
           const match = text.match(/^(\d+(?:\.\d+)?[KkMm]?)\s+Views?$/i);
           if (match) {
             return match[1];
@@ -1059,47 +1108,33 @@ export class BulletproofTwitterScraper {
         }
         return null;
       });
-      
+
       if (viewsText) {
-        console.log(`    🎯 VIEWS found text: "${viewsText}"`);
-        
-        const lower = viewsText.toLowerCase();
-        let count: number;
-        if (lower.includes('k')) {
-          count = Math.floor(parseFloat(lower) * 1000);
-        } else if (lower.includes('m')) {
-          count = Math.floor(parseFloat(lower) * 1000000);
-        } else {
-          count = parseInt(viewsText.replace(/,/g, ''), 10);
-        }
-        
-        if (!isNaN(count)) {
+        const count = this.parseViewCount(viewsText);
+        if (count !== null) {
           console.log(`    ✅ VIEWS from direct text: ${count}`);
           return count;
         }
       }
 
-      // Strategy 2: Look for analytics link (fallback for older tweets)
-      const analyticsLink = await tweetArticle.$('a[href*="/analytics"]');
-      if (analyticsLink) {
-        const ariaLabel = await analyticsLink.evaluate((el: any) => el.getAttribute('aria-label'));
-        console.log(`    🎯 VIEWS aria-label: "${ariaLabel || 'none'}"`);
-        
-        if (ariaLabel) {
-          const match = ariaLabel.match(/(\d[\d,\.]*[KkMm]?)\s+(?:View|view)/i);
+      // Strategy 4: Look for group aria-label with views (e.g. "21 replies, 4 reposts, 138 likes, 6485 views")
+      const viewsFromGroup = await tweetArticle.evaluate((article: Element) => {
+        const els = article.querySelectorAll('[aria-label]');
+        for (const el of Array.from(els)) {
+          const label = el.getAttribute('aria-label') || '';
+          const match = label.match(/(\d[\d,\.]*[KkMm]?)\s+views/i);
           if (match) {
-            const text = match[1].toLowerCase();
-            let count: number;
-            if (text.includes('k')) {
-              count = Math.floor(parseFloat(text) * 1000);
-            } else if (text.includes('m')) {
-              count = Math.floor(parseFloat(text) * 1000000);
-            } else {
-              count = parseInt(text.replace(/,/g, ''), 10);
-            }
-            console.log(`    ✅ VIEWS from aria-label: ${count}`);
-            return count;
+            return match[1];
           }
+        }
+        return null;
+      });
+
+      if (viewsFromGroup) {
+        const count = this.parseViewCount(viewsFromGroup);
+        if (count !== null) {
+          console.log(`    ✅ VIEWS from group aria-label: ${count}`);
+          return count;
         }
       }
 
@@ -1108,6 +1143,19 @@ export class BulletproofTwitterScraper {
       console.log(`    ⚠️ VIEWS intelligent extraction failed: ${error}`);
       return null;
     }
+  }
+
+  private parseViewCount(text: string): number | null {
+    const lower = text.toLowerCase().replace(/,/g, '');
+    let count: number;
+    if (lower.includes('k')) {
+      count = Math.floor(parseFloat(lower) * 1000);
+    } else if (lower.includes('m')) {
+      count = Math.floor(parseFloat(lower) * 1000000);
+    } else {
+      count = parseInt(lower, 10);
+    }
+    return isNaN(count) ? null : count;
   }
 
   /**

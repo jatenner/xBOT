@@ -1,248 +1,326 @@
 /**
- * 🥷 STEALTH MODE - Make Playwright undetectable
- * Bypasses bot detection by mimicking real browser behavior
+ * 🥷 STEALTH MODE — Make Playwright undetectable on X/Twitter
+ *
+ * Covers: webdriver, chrome runtime, canvas, WebGL, audio, permissions,
+ * screen, battery, network, media devices, hardware, touch points.
+ *
+ * IMPORTANT: Human behavior functions (humanType, humanScroll, humanWait)
+ * are exported and MUST be used by posting code — don't use fill() or
+ * keyboard.type() directly.
  */
 
 import { BrowserContext, Page } from 'playwright';
+import { generateSessionFingerprint, type SessionFingerprint } from './stealthConfig';
+
+// Cache fingerprint per session so it stays consistent
+let sessionFingerprint: SessionFingerprint | null = null;
+
+function getFingerprint(): SessionFingerprint {
+  if (!sessionFingerprint) {
+    sessionFingerprint = generateSessionFingerprint();
+    console.log(`[STEALTH] Generated fingerprint: Chrome/${sessionFingerprint.chromeVersion} macOS ${sessionFingerprint.macosVersion} viewport=${sessionFingerprint.viewport.width}x${sessionFingerprint.viewport.height}`);
+  }
+  return sessionFingerprint;
+}
 
 /**
- * Apply stealth techniques to make browser undetectable
- * Enhanced for X.com (Twitter) anti-bot systems
+ * Apply comprehensive stealth to a browser context
  */
 export async function applyStealth(context: BrowserContext) {
-  // Add init scripts to mask automation
-  await context.addInitScript(() => {
-    // Remove webdriver flag completely
-    Object.defineProperty(navigator, 'webdriver', {
-      get: () => undefined,
-    });
-    
-    // Remove automation traces from window
-    delete (window as any).__webdriver_evaluate;
-    delete (window as any).__selenium_evaluate;
-    delete (window as any).__webdriver_script_function;
-    delete (window as any).__webdriver_script_func;
-    delete (window as any).__webdriver_script_fn;
-    delete (window as any).__fxdriver_evaluate;
-    delete (window as any).__driver_unwrapped;
-    delete (window as any).__webdriver_unwrapped;
-    delete (window as any).__driver_evaluate;
-    delete (window as any).__selenium_unwrapped;
-    delete (window as any).__fxdriver_unwrapped;
+  const fp = getFingerprint();
 
-    // Mock languages
-    Object.defineProperty(navigator, 'languages', {
-      get: () => ['en-US', 'en'],
-    });
+  await context.addInitScript((fingerprint: SessionFingerprint) => {
+    // === CORE: Remove webdriver flag ===
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
 
-    // Mock plugins
+    // === CORE: Remove ALL automation traces ===
+    const autoProps = [
+      '__webdriver_evaluate', '__selenium_evaluate', '__webdriver_script_function',
+      '__webdriver_script_func', '__webdriver_script_fn', '__fxdriver_evaluate',
+      '__driver_unwrapped', '__webdriver_unwrapped', '__driver_evaluate',
+      '__selenium_unwrapped', '__fxdriver_unwrapped', '_Selenium_IDE_Recorder',
+      '_selenium', 'calledSelenium', '__nightmare', '__phantomas',
+    ];
+    for (const prop of autoProps) {
+      try { delete (window as any)[prop]; } catch {}
+    }
+
+    // === HARDWARE: Realistic device properties ===
+    Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => fingerprint.hardwareConcurrency });
+    Object.defineProperty(navigator, 'deviceMemory', { get: () => fingerprint.deviceMemory });
+    Object.defineProperty(navigator, 'maxTouchPoints', { get: () => fingerprint.maxTouchPoints });
+    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+    Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
+    Object.defineProperty(navigator, 'vendor', { get: () => 'Google Inc.' });
+
+    // === SCREEN: Match viewport ===
+    Object.defineProperty(screen, 'width', { get: () => fingerprint.screen.width });
+    Object.defineProperty(screen, 'height', { get: () => fingerprint.screen.height });
+    Object.defineProperty(screen, 'availWidth', { get: () => fingerprint.screen.width });
+    Object.defineProperty(screen, 'availHeight', { get: () => fingerprint.screen.height - 25 }); // Menu bar
+    Object.defineProperty(screen, 'availTop', { get: () => 25 }); // macOS menu bar
+    Object.defineProperty(screen, 'availLeft', { get: () => 0 });
+    Object.defineProperty(screen, 'colorDepth', { get: () => 30 }); // macOS Retina
+    Object.defineProperty(screen, 'pixelDepth', { get: () => 30 });
+    Object.defineProperty(window, 'devicePixelRatio', { get: () => 2 }); // Retina
+
+    // === PLUGINS: Realistic Chrome plugins ===
     Object.defineProperty(navigator, 'plugins', {
-      get: () => [
-        {
-          0: { type: 'application/pdf' },
-          description: 'Portable Document Format',
-          filename: 'internal-pdf-viewer',
-          length: 1,
-          name: 'PDF Viewer',
-        },
-        {
-          0: { type: 'application/x-google-chrome-pdf' },
-          description: 'Portable Document Format',
-          filename: 'internal-pdf-viewer',
-          length: 1,
-          name: 'Chrome PDF Viewer',
-        },
-      ],
+      get: () => {
+        const plugins = [
+          { name: 'PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer', length: 1 },
+          { name: 'Chrome PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer', length: 1 },
+          { name: 'Chromium PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer', length: 1 },
+          { name: 'Microsoft Edge PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer', length: 1 },
+          { name: 'WebKit built-in PDF', description: 'Portable Document Format', filename: 'internal-pdf-viewer', length: 1 },
+        ];
+        (plugins as any).length = plugins.length;
+        (plugins as any).item = (i: number) => plugins[i];
+        (plugins as any).namedItem = (name: string) => plugins.find(p => p.name === name);
+        (plugins as any).refresh = () => {};
+        return plugins;
+      }
     });
 
-    // Mock chrome object with more realistic properties
+    // === CHROME OBJECT ===
     (window as any).chrome = {
       runtime: {
-        onConnect: null,
-        onMessage: null,
-        onStartup: null,
-        onInstalled: null,
-        onSuspend: null,
-        onSuspendCanceled: null,
-        onUpdateAvailable: null,
-        onBrowserUpdateAvailable: null,
-        onRestartRequired: null,
-        onPerformanceWarning: null,
-        connect: function() {},
-        sendMessage: function() {},
-        getURL: function() {},
+        onConnect: undefined, onMessage: undefined, onStartup: undefined,
+        connect: function() {}, sendMessage: function() {},
+        getURL: function(path: string) { return `chrome-extension://internal/${path}`; },
         getManifest: function() { return {}; },
-        reload: function() {},
-        requestUpdateCheck: function() {},
-        restart: function() {},
-        restartAfterDelay: function() {},
-        connectNative: function() {},
-        sendNativeMessage: function() {},
-        getPlatformInfo: function() {},
-        getPackageDirectoryEntry: function() {}
+        id: undefined,
       },
       loadTimes: function() {
         return {
-          requestTime: Date.now() / 1000 - Math.random() * 10,
-          startLoadTime: Date.now() / 1000 - Math.random() * 5,
-          commitLoadTime: Date.now() / 1000 - Math.random() * 3,
-          finishDocumentLoadTime: Date.now() / 1000 - Math.random() * 2,
-          finishLoadTime: Date.now() / 1000 - Math.random(),
-          firstPaintTime: Date.now() / 1000 - Math.random(),
+          requestTime: performance.now() / 1000,
+          startLoadTime: performance.now() / 1000 - Math.random() * 2,
+          commitLoadTime: performance.now() / 1000 - Math.random(),
+          finishDocumentLoadTime: performance.now() / 1000,
+          finishLoadTime: performance.now() / 1000,
+          firstPaintTime: performance.now() / 1000 - Math.random() * 0.5,
           firstPaintAfterLoadTime: 0,
-          navigationType: 'Other'
+          navigationType: 'Other',
         };
       },
       csi: function() {
-        return {
-          startE: Date.now() - Math.random() * 1000,
-          onloadT: Date.now() - Math.random() * 500,
-          pageT: Math.random() * 100,
-          tran: 15
-        };
+        return { startE: Date.now(), onloadT: Date.now(), pageT: performance.now(), tran: 15 };
       },
-      app: {
-        isInstalled: false,
-        InstallState: {
-          DISABLED: 'disabled',
-          INSTALLED: 'installed',
-          NOT_INSTALLED: 'not_installed'
-        },
-        RunningState: {
-          CANNOT_RUN: 'cannot_run',
-          READY_TO_RUN: 'ready_to_run',
-          RUNNING: 'running'
-        }
-      }
+      app: { isInstalled: false, InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' }, RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' } },
     };
 
-    // Override permissions
-    const originalQuery = window.navigator.permissions.query;
-    window.navigator.permissions.query = (parameters: any) =>
-      parameters.name === 'notifications'
-        ? Promise.resolve({ state: 'denied' } as PermissionStatus)
-        : originalQuery(parameters);
-
-    // Add realistic screen properties
-    Object.defineProperty(screen, 'availTop', { get: () => 0 });
-    Object.defineProperty(screen, 'availLeft', { get: () => 0 });
-    Object.defineProperty(screen, 'availWidth', { get: () => 1920 });
-    Object.defineProperty(screen, 'availHeight', { get: () => 1080 });
-
-    // Mock battery API with realistic values
-    (navigator as any).getBattery = () =>
-      Promise.resolve({
-        charging: Math.random() > 0.5,
-        chargingTime: Math.random() > 0.5 ? 0 : Math.random() * 7200,
-        dischargingTime: Math.random() * 28800 + 3600,
-        level: 0.8 + Math.random() * 0.2,
-        addEventListener: function() {},
-        removeEventListener: function() {},
-        dispatchEvent: function() { return true; }
-      });
-    
-    // Mock connection API
-    (navigator as any).connection = {
-      effectiveType: '4g',
-      rtt: 50 + Math.random() * 50,
-      downlink: 8 + Math.random() * 2,
-      saveData: false,
-      addEventListener: function() {},
-      removeEventListener: function() {},
-      dispatchEvent: function() { return true; }
+    // === PERMISSIONS ===
+    const origQuery = navigator.permissions.query.bind(navigator.permissions);
+    navigator.permissions.query = (desc: any) => {
+      if (desc.name === 'notifications') return Promise.resolve({ state: 'denied' } as PermissionStatus);
+      return origQuery(desc);
     };
-    
-    // Mock media devices
+
+    // === BATTERY ===
+    (navigator as any).getBattery = () => Promise.resolve({
+      charging: Math.random() > 0.4, chargingTime: 0,
+      dischargingTime: 10800 + Math.random() * 18000,
+      level: 0.65 + Math.random() * 0.35,
+      addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => true,
+    });
+
+    // === NETWORK ===
+    Object.defineProperty(navigator, 'connection', {
+      get: () => ({
+        effectiveType: '4g', rtt: 25 + Math.random() * 75,
+        downlink: 5 + Math.random() * 15, saveData: false,
+        addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => true,
+      })
+    });
+
+    // === MEDIA DEVICES ===
     if (navigator.mediaDevices) {
-      const originalEnumerateDevices = navigator.mediaDevices.enumerateDevices;
-      navigator.mediaDevices.enumerateDevices = function() {
-        return Promise.resolve([
-          { deviceId: 'default', groupId: 'group1', kind: 'audioinput' as MediaDeviceKind, label: 'Default - Microphone', toJSON: () => ({}) },
-          { deviceId: 'default', groupId: 'group2', kind: 'audiooutput' as MediaDeviceKind, label: 'Default - Speaker', toJSON: () => ({}) },
-          { deviceId: 'default', groupId: 'group3', kind: 'videoinput' as MediaDeviceKind, label: 'Default - Camera', toJSON: () => ({}) }
-        ] as MediaDeviceInfo[]);
-      };
+      navigator.mediaDevices.enumerateDevices = () => Promise.resolve([
+        { deviceId: 'default', groupId: 'g1', kind: 'audioinput' as MediaDeviceKind, label: 'MacBook Pro Microphone', toJSON: () => ({}) },
+        { deviceId: 'default', groupId: 'g2', kind: 'audiooutput' as MediaDeviceKind, label: 'MacBook Pro Speakers', toJSON: () => ({}) },
+        { deviceId: 'facetime', groupId: 'g3', kind: 'videoinput' as MediaDeviceKind, label: 'FaceTime HD Camera', toJSON: () => ({}) },
+      ] as MediaDeviceInfo[]);
     }
-    
-    // Override toString methods to hide automation
-    const originalToString = Function.prototype.toString;
-    Function.prototype.toString = function() {
-      if (this === navigator.webdriver) {
-        return 'function webdriver() { [native code] }';
-      }
-      return originalToString.call(this);
-    };
-  });
 
-  console.log('[STEALTH] ✅ Applied enhanced X.com bot detection evasion');
+    // === CANVAS FINGERPRINT PROTECTION ===
+    const origGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function(type: string, ...args: any[]) {
+      const ctx = origGetContext.call(this, type, ...args);
+      if (ctx && type === '2d') {
+        const origGetImageData = (ctx as CanvasRenderingContext2D).getImageData;
+        (ctx as CanvasRenderingContext2D).getImageData = function(sx, sy, sw, sh) {
+          const imageData = origGetImageData.call(this, sx, sy, sw, sh);
+          // Add consistent per-session noise
+          for (let i = 0; i < imageData.data.length; i += 4) {
+            imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + ((i * 7 + fingerprint.hardwareConcurrency) % 3 - 1)));
+          }
+          return imageData;
+        };
+      }
+      return ctx;
+    } as any;
+
+    // === WEBGL FINGERPRINT PROTECTION ===
+    const getParam = WebGLRenderingContext.prototype.getParameter;
+    WebGLRenderingContext.prototype.getParameter = function(pname: number) {
+      if (pname === 37445) return 'Apple'; // UNMASKED_VENDOR
+      if (pname === 37446) return 'Apple M1 Pro'; // UNMASKED_RENDERER
+      if (pname === 7938) return 'WebGL 1.0 (OpenGL ES 2.0 Chromium)'; // VERSION
+      if (pname === 35724) return 'WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)'; // SHADING_LANGUAGE_VERSION
+      return getParam.call(this, pname);
+    };
+
+    // === AUDIO FINGERPRINT PROTECTION ===
+    const origCreateOscillator = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function() {
+      const osc = origCreateOscillator.call(this);
+      const origConnect = osc.connect.bind(osc);
+      osc.connect = function(dest: any) {
+        // Add subtle noise to audio output for fingerprint variation
+        if (dest instanceof AudioDestinationNode) {
+          const gainNode = (osc as any).context.createGain();
+          gainNode.gain.value = 0.99 + Math.random() * 0.02; // Tiny variation
+          origConnect(gainNode);
+          gainNode.connect(dest);
+          return dest;
+        }
+        return origConnect(dest);
+      };
+      return osc;
+    };
+
+    // === FUNCTION.TOSTRING PROTECTION ===
+    const nativeToString = Function.prototype.toString;
+    const customFunctions = new Set<Function>();
+    Function.prototype.toString = function() {
+      if (customFunctions.has(this) || this === Function.prototype.toString) {
+        return 'function toString() { [native code] }';
+      }
+      return nativeToString.call(this);
+    };
+    customFunctions.add(Function.prototype.toString);
+
+  }, getFingerprint());
+
+  console.log('[STEALTH] ✅ Applied comprehensive stealth (webdriver, canvas, WebGL, audio, hardware, screen)');
 }
 
+// ===========================
+// HUMAN BEHAVIOR FUNCTIONS
+// These MUST be used by posting code
+// ===========================
+
 /**
- * Add human-like behaviors to a page
+ * Add background human behaviors to a page (mouse movements, scrolls)
  */
 export async function addHumanBehaviors(page: Page) {
-  // Random mouse movements
   await page.evaluate(() => {
-    let lastX = 0;
-    let lastY = 0;
-    
     const randomMove = () => {
       const x = Math.random() * window.innerWidth;
       const y = Math.random() * window.innerHeight;
-      
-      const event = new MouseEvent('mousemove', {
-        view: window,
-        bubbles: true,
-        cancelable: true,
-        clientX: x,
-        clientY: y,
-      });
-      
-      document.dispatchEvent(event);
-      lastX = x;
-      lastY = y;
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y, bubbles: true }));
     };
-
-    // Move mouse occasionally
     setInterval(randomMove, 3000 + Math.random() * 7000);
   });
-
-  console.log('[STEALTH] ✅ Added human behavior simulation');
+  console.log('[STEALTH] ✅ Human behaviors active (mouse movement)');
 }
 
 /**
- * Type text with human-like delays
+ * Type text like a human — variable delays, occasional pauses
  */
 export async function humanType(page: Page, selector: string, text: string) {
   const element = page.locator(selector).first();
-  await element.click(); // Focus first
-  await page.waitForTimeout(200 + Math.random() * 300);
-  
-  for (const char of text) {
-    await element.pressSequentially(char, { delay: 50 + Math.random() * 150 });
-  }
-  
-  await page.waitForTimeout(300 + Math.random() * 500);
-}
+  await element.click();
+  await page.waitForTimeout(300 + Math.random() * 500); // Pause after clicking
 
-/**
- * Random scroll behavior
- */
-export async function humanScroll(page: Page) {
-  await page.evaluate(() => {
-    window.scrollBy({
-      top: 100 + Math.random() * 200,
-      behavior: 'smooth',
-    });
-  });
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    // Variable typing speed: 40-180ms per character
+    const delay = 40 + Math.random() * 140;
+    await page.keyboard.type(char, { delay: 0 });
+    await page.waitForTimeout(delay);
+
+    // Occasional longer pause (thinking) every 15-30 characters
+    if (i > 0 && i % (15 + Math.floor(Math.random() * 15)) === 0) {
+      await page.waitForTimeout(500 + Math.random() * 1500);
+    }
+  }
+
+  // Pause after typing (reading over)
   await page.waitForTimeout(500 + Math.random() * 1000);
 }
 
 /**
- * Random wait that mimics human reading/thinking time
+ * Type text into an already-focused element with human-like variable delays.
+ * Use this instead of fill() or keyboard.type() with fixed delay.
+ * The element must already be focused/clicked before calling this.
  */
-export function humanWait(): Promise<void> {
-  const delay = 1000 + Math.random() * 3000; // 1-4 seconds
-  return new Promise(resolve => setTimeout(resolve, delay));
+export async function humanTypeIntoFocused(page: Page, text: string) {
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    // Variable typing speed: 35-160ms per character
+    const delay = 35 + Math.random() * 125;
+    await page.keyboard.type(char, { delay: 0 });
+    await page.waitForTimeout(delay);
+
+    // Occasional longer pause (thinking) every 15-30 characters
+    if (i > 0 && i % (15 + Math.floor(Math.random() * 15)) === 0) {
+      await page.waitForTimeout(400 + Math.random() * 1200);
+    }
+  }
+
+  // Brief pause after typing (reading over what was typed)
+  await page.waitForTimeout(300 + Math.random() * 700);
 }
 
+/**
+ * Scroll the page like a human
+ */
+export async function humanScroll(page: Page) {
+  const scrollAmount = 100 + Math.random() * 300;
+  await page.evaluate((amount) => {
+    window.scrollBy({ top: amount, behavior: 'smooth' });
+  }, scrollAmount);
+  await page.waitForTimeout(800 + Math.random() * 1500);
+}
+
+/**
+ * Wait like a human thinking/reading
+ */
+export function humanWait(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 3000));
+}
+
+/**
+ * Warm up the session — browse like a human before doing anything automated
+ * MUST be called after login, before any posting/replying
+ */
+export async function warmUpSession(page: Page) {
+  console.log('[STEALTH] 🔥 Starting warm-up session (30-60s of human-like browsing)...');
+
+  // 1. Scroll the timeline a few times
+  for (let i = 0; i < 3 + Math.floor(Math.random() * 3); i++) {
+    await humanScroll(page);
+    await page.waitForTimeout(2000 + Math.random() * 3000);
+  }
+
+  // 2. Maybe click on a tweet (just to view, not interact)
+  try {
+    const tweets = await page.$$('article[data-testid="tweet"]');
+    if (tweets.length > 3) {
+      const randomTweet = tweets[2 + Math.floor(Math.random() * Math.min(5, tweets.length - 2))];
+      await randomTweet.click();
+      await page.waitForTimeout(3000 + Math.random() * 4000);
+      await page.goBack();
+      await page.waitForTimeout(2000 + Math.random() * 2000);
+    }
+  } catch {
+    // Non-critical — tweet click failed, continue warm-up
+  }
+
+  // 3. Scroll back up
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  await page.waitForTimeout(2000 + Math.random() * 2000);
+
+  console.log('[STEALTH] ✅ Warm-up complete');
+}

@@ -1,8 +1,9 @@
 /**
  * 🔐 BULLETPROOF RAILWAY SESSION MANAGER
- * 
+ *
  * Unified session management for Railway deployment
  * Handles all session loading scenarios with proper fallbacks
+ * RUNNER_MODE: uses resolver only (never /app/data)
  */
 
 import fs from 'fs';
@@ -15,17 +16,25 @@ export interface SessionData {
   source?: 'file' | 'env' | 'none';
 }
 
-export class RailwaySessionManager {
-  private static instance: RailwaySessionManager;
-  private sessionCache: SessionData | null = null;
-  
-  // Railway-optimized paths
-  private readonly SESSION_PATHS = [
+function getSessionPaths(): string[] {
+  if (process.env.RUNNER_MODE === 'true' || process.env.RUNNER_MODE === '1') {
+    const { resolveSessionPath } = require('../../utils/sessionPathResolver');
+    return [resolveSessionPath(), '/tmp/xbot-session.json'].filter(Boolean);
+  }
+  return [
     '/tmp/xbot-session.json',
     process.env.XBOT_SESSION_PATH,
     './data/twitter_session.json',
     '/app/data/twitter_session.json'
   ].filter(Boolean) as string[];
+}
+
+export class RailwaySessionManager {
+  private static instance: RailwaySessionManager;
+  private sessionCache: SessionData | null = null;
+  private get SESSION_PATHS(): string[] {
+    return getSessionPaths();
+  }
 
   public static getInstance(): RailwaySessionManager {
     if (!RailwaySessionManager.instance) {
