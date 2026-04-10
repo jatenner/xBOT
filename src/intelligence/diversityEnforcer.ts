@@ -42,7 +42,11 @@ export class DiversityEnforcer {
         .limit(this.BLACKLIST_WINDOW);
       
       if (error) {
-        console.error('[DIVERSITY_ENFORCER] Error fetching topics:', error);
+        if (error.code === '42703' || (error as any).message?.includes('does not exist')) {
+          console.warn('[DIVERSITY_ENFORCER] Column raw_topic not in schema (compatibility mode), skipping topic diversity');
+        } else {
+          console.error('[DIVERSITY_ENFORCER] Error fetching topics:', error);
+        }
         return [];
       }
       
@@ -81,7 +85,11 @@ export class DiversityEnforcer {
         .limit(this.BLACKLIST_WINDOW);
       
       if (error) {
-        console.error('[DIVERSITY_ENFORCER] Error fetching angles:', error);
+        if (error.code === '42703' || (error as any).message?.includes('does not exist')) {
+          console.warn('[DIVERSITY_ENFORCER] Column angle not in schema (compatibility mode), skipping angle diversity');
+        } else {
+          console.error('[DIVERSITY_ENFORCER] Error fetching angles:', error);
+        }
         return [];
       }
       
@@ -120,7 +128,11 @@ export class DiversityEnforcer {
         .limit(this.BLACKLIST_WINDOW);
       
       if (error) {
-        console.error('[DIVERSITY_ENFORCER] Error fetching tones:', error);
+        if (error.code === '42703' || (error as any).message?.includes('does not exist')) {
+          console.warn('[DIVERSITY_ENFORCER] Column tone not in schema (compatibility mode), skipping tone diversity');
+        } else {
+          console.error('[DIVERSITY_ENFORCER] Error fetching tones:', error);
+        }
         return [];
       }
       
@@ -254,7 +266,11 @@ export class DiversityEnforcer {
         .limit(4); // Lighter window (4 vs 10 for topics/angles/tones)
       
       if (error) {
-        console.error('[DIVERSITY_ENFORCER] Error fetching format strategies:', error);
+        if (error.code === '42703' || (error as any).message?.includes('does not exist')) {
+          console.warn('[DIVERSITY_ENFORCER] Column format_strategy not in schema (compatibility mode), skipping format diversity');
+        } else {
+          console.error('[DIVERSITY_ENFORCER] Error fetching format strategies:', error);
+        }
         return [];
       }
       

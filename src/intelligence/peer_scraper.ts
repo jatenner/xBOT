@@ -438,6 +438,13 @@ export class PeerScrapingSystem {
           const embeddings = await this.getEmbedding(tweet.text);
           const extractedPatterns = await this.extractContentPatterns(tweet.text);
 
+          // Extract content features for external learning
+          let contentFeatures = {};
+          try {
+            const { extractContentFeatures } = await import('./contentFeatureExtractor');
+            contentFeatures = extractContentFeatures(tweet.text);
+          } catch { /* non-blocking */ }
+
           await this.supabase
             .from('peer_posts')
             .insert({
@@ -456,7 +463,7 @@ export class PeerScrapingSystem {
               engagement_rate: tweet.engagement_rate,
               normalized_engagement: tweet.normalized_engagement,
               embeddings,
-              extracted_patterns: extractedPatterns,
+              extracted_patterns: { ...extractedPatterns, content_features: contentFeatures },
               created_at: tweet.created_at.toISOString()
             });
         }

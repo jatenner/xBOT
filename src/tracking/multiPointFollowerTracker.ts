@@ -204,8 +204,9 @@ export class MultiPointFollowerTracker {
    */
   private async storeSnapshot(postId: string, phase: 'before' | '2h' | '24h' | '48h', followerCount: number): Promise<void> {
     const supabase = getSupabaseClient();
-    
-    // Store in follower_snapshots table
+    const hoursMap: Record<string, number> = { 'before': 0, '2h': 2, '24h': 24, '48h': 48 };
+
+    // Store in follower_snapshots table (existing behavior)
     await supabase
       .from('follower_snapshots')
       .insert({
@@ -215,6 +216,23 @@ export class MultiPointFollowerTracker {
         phase: phase,
         post_id: postId
       });
+
+    // ALSO write to post_follower_tracking (what metricsScraperJob reads for follower attribution)
+    // This fixes the table mismatch where snapshots were written to one table but read from another
+    try {
+      await supabase
+        .from('post_follower_tracking')
+        .upsert({
+          post_id: postId,
+          hours_after_post: hoursMap[phase],
+          follower_count: followerCount,
+          captured_at: new Date().toISOString()
+        }, { onConflict: 'post_id,hours_after_post' });
+      console.log(`[FOLLOWER_TRACKER] ✅ Synced to post_follower_tracking: post=${postId} phase=${phase} count=${followerCount}`);
+    } catch (err: any) {
+      // Non-fatal — follower_snapshots is the primary store
+      console.warn(`[FOLLOWER_TRACKER] ⚠️ post_follower_tracking sync failed (non-fatal): ${err.message}`);
+    }
   }
 
   /**

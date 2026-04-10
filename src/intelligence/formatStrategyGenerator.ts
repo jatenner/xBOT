@@ -276,7 +276,11 @@ Output JSON format (IMPORTANT: Escape any quotes in your strategy text):
         .limit(4); // Only last 4 (vs 10 for topics/angles/tones)
       
       if (error) {
-        console.error('[FORMAT_STRATEGY] Error fetching recent strategies:', error);
+        if (error.code === '42703' || (error as any).message?.includes('does not exist')) {
+          console.warn('[FORMAT_STRATEGY] Column format_strategy not in schema (compatibility mode)');
+        } else {
+          console.error('[FORMAT_STRATEGY] Error fetching recent strategies:', error);
+        }
         return [];
       }
       
@@ -317,7 +321,11 @@ Output JSON format (IMPORTANT: Escape any quotes in your strategy text):
         .limit(500); // Analyze recent 500 posts
       
       if (error || !data || data.length === 0) {
-        console.log('[FORMAT_STRATEGY] 📊 No performance data yet');
+        if (error?.code === '42703' || (error as any)?.message?.includes('does not exist')) {
+          console.warn('[FORMAT_STRATEGY] Column format_strategy not in schema (compatibility mode)');
+        } else {
+          console.log('[FORMAT_STRATEGY] 📊 No performance data yet');
+        }
         return [];
       }
       

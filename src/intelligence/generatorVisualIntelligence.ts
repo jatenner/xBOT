@@ -39,10 +39,12 @@ export async function getGeneratorVisualPatterns(
   // Learn from posts with HIGH views (aspirational goals), not just all posts
   // Goal: Exceed current best (200 views) by learning from top performers
   
+  // Select without visual_format so production schemas missing that column still work (use 'unknown' in analysis)
+  const cols = 'content, actual_engagement_rate, actual_impressions, posted_at';
   // Strategy 1: Get top performers (200+ views) - these are our ASPIRATIONAL TARGETS
   const { data: topPerformers, error: topError } = await supabase
     .from('content_metadata')
-    .select('content, visual_format, actual_engagement_rate, actual_impressions, posted_at')
+    .select(cols)
     .eq('generator_name', generator)
     .eq('status', 'posted')
     .not('actual_engagement_rate', 'is', null)
@@ -57,7 +59,7 @@ export async function getGeneratorVisualPatterns(
     
     const { data: mediumPerformers } = await supabase
       .from('content_metadata')
-      .select('content, visual_format, actual_engagement_rate, actual_impressions, posted_at')
+      .select(cols)
       .eq('generator_name', generator)
       .eq('status', 'posted')
       .not('actual_engagement_rate', 'is', null)
@@ -77,7 +79,7 @@ export async function getGeneratorVisualPatterns(
     
     const { data: recentPosts } = await supabase
       .from('content_metadata')
-      .select('content, visual_format, actual_engagement_rate, actual_impressions, posted_at')
+      .select(cols)
       .eq('generator_name', generator)
       .eq('status', 'posted')
       .not('actual_engagement_rate', 'is', null)

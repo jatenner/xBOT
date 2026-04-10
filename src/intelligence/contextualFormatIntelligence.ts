@@ -41,12 +41,13 @@ export async function getContextualFormatIntelligence(
   log({ op: 'contextual_format_query', generator, topic, tone, angle });
   
   const supabase = getSupabaseClient();
-  
+  // Omit visual_format so schemas without it still work (analyzeSuccessfulFormats uses post.visual_format || 'plain')
+  const cols = 'content, actual_engagement_rate, actual_impressions, posted_at';
   // 🚀 PRIORITY LEARNING: Get HIGH-PERFORMING posts first (200+ views = aspirational targets)
   // Strategy 1: Exact match (generator + topic + tone + angle) - HIGH PERFORMERS ONLY
   let { data: exactMatches } = await supabase
     .from('content_metadata')
-    .select('content, visual_format, actual_engagement_rate, actual_impressions, posted_at')
+    .select(cols)
     .eq('generator_name', generator)
     .eq('tone', tone)
     .eq('angle', angle)
@@ -63,7 +64,7 @@ export async function getContextualFormatIntelligence(
     // Try high-performers first (200+ views)
     const { data: broadMatches } = await supabase
       .from('content_metadata')
-      .select('content, visual_format, actual_engagement_rate, actual_impressions, posted_at')
+      .select(cols)
       .eq('generator_name', generator)
       .eq('tone', tone)
       .eq('status', 'posted')
@@ -83,7 +84,7 @@ export async function getContextualFormatIntelligence(
     
     const { data: generatorMatches } = await supabase
       .from('content_metadata')
-      .select('content, visual_format, actual_engagement_rate, actual_impressions, posted_at')
+      .select(cols)
       .eq('generator_name', generator)
       .eq('status', 'posted')
       .not('actual_engagement_rate', 'is', null)

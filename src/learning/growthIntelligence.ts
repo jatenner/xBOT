@@ -259,8 +259,25 @@ export async function buildGrowthIntelligencePackage(
       }
     }
     
+    // 🌐 Load external Twitter insights (from peer_posts via aggregator)
+    try {
+      const { getCachedInsights } = await import('../intelligence/twitterInsightAggregator');
+      const externalInsights = await getCachedInsights();
+      if (externalInsights) {
+        intelligence.externalInsights = {
+          topPerformingTopics: externalInsights.topPerformingTopics,
+          topPerformingHooks: externalInsights.topPerformingHooks,
+          viralExamples: externalInsights.viralExamples,
+          trendShifts: externalInsights.trendShifts,
+        };
+        console.log(`[GROWTH_INTEL] 🌐 External insights loaded: ${externalInsights.topPerformingTopics.length} topics, ${externalInsights.viralExamples.length} viral examples`);
+      }
+    } catch (extErr: any) {
+      console.warn(`[GROWTH_INTEL] ⚠️ External insights unavailable: ${extErr.message}`);
+    }
+
     console.log('[GROWTH_INTEL] ✅ Package built successfully');
-    
+
     return intelligence;
   } catch (error: any) {
     console.error('[GROWTH_INTEL] ❌ Error building package:', error.message);

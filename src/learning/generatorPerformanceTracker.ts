@@ -81,86 +81,59 @@ export class GeneratorPerformanceTracker {
     try {
       console.log(`📊 GENERATOR_TRACKER: Analyzing performance (last ${lookbackDays} days)...`);
 
-      const { data: performanceData, error } = await this.supabase.rpc('get_generator_performance', {
-        p_lookback_days: lookbackDays
-      }).catch(async () => {
-        // Fallback to manual query if RPC doesn't exist
-        const query = `
-          SELECT 
-            cm.generator_name as name,
-            COUNT(*) as total_posts,
-            COALESCE(SUM(o.followers_gained), 0) as total_followers_gained,
-            COALESCE(SUM(o.impressions), 0) as total_impressions,
-            COALESCE(
-              (SUM(o.followers_gained)::DECIMAL / NULLIF(SUM(o.impressions), 0) * 1000),
-              0
-            ) as f_per_1k,
-            COALESCE(AVG(o.engagement_rate), 0) as engagement_rate,
-            COALESCE(AVG(o.likes), 0) as avg_likes,
-            COALESCE(AVG(o.retweets), 0) as avg_retweets,
-            COALESCE(AVG(o.quote_tweets), 0) as avg_quote_tweets,
-            COALESCE(AVG(o.replies), 0) as avg_replies,
-            COALESCE(AVG(o.views), 0) as avg_views,
-            COALESCE(AVG(o.bookmarks), 0) as avg_bookmarks,
-            COALESCE(AVG(cm.quality_score), 0) as avg_quality_score,
-            COALESCE(AVG(o.first_hour_engagement), 0) as avg_first_hour_engagement,
-            COALESCE(AVG(o.virality_coefficient), 0) as avg_virality_coefficient,
-            COUNT(*) FILTER (
-              WHERE (o.followers_gained::DECIMAL / NULLIF(o.impressions, 0) * 1000) > 5
-            ) as viral_posts,
-            COUNT(*) FILTER (
-              WHERE o.followers_gained = 0 AND o.impressions > 100
-            ) as failed_posts,
-            COALESCE(gw.weight, 0) as current_weight,
-            COALESCE(gw.status, 'unknown') as status,
-            gw.last_used
-          FROM content_metadata cm
-          JOIN outcomes o ON cm.decision_id = o.decision_id
-          LEFT JOIN generator_weights gw ON cm.generator_name = gw.generator_name
-          WHERE cm.posted_at > NOW() - INTERVAL '${lookbackDays} days'
-            AND cm.generator_name IS NOT NULL
-            AND o.impressions > 0
-          GROUP BY cm.generator_name, gw.weight, gw.status, gw.last_used
-          ORDER BY f_per_1k DESC NULLS LAST;
-        `;
+      let performanceData: GeneratorStats[] | null = null;
+      let rpcError: { message: string } | null = null;
+      let usedRpc = false;
 
-        return await this.supabase.rpc('execute_sql', { sql: query }).catch(async () => {
-          // Final fallback: separate queries
-          const { data, error: queryError } = await this.supabase
-            .from('content_metadata')
-            .select(`
-              generator_name,
-              quality_score,
-              posted_at,
-              outcomes (
-                followers_gained,
-                impressions,
-                likes,
-                retweets,
-                quote_tweets,
-                replies,
-                views,
-                bookmarks,
-                first_hour_engagement,
-                engagement_rate,
-                virality_coefficient
-              )
-            `)
-            .gte('posted_at', new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString())
-            .not('generator_name', 'is', null);
-
-          if (queryError) throw queryError;
-          return { data: this.aggregatePerformanceData(data), error: null };
+      try {
+        const res = await this.supabase.rpc('get_generator_performance', {
+          p_lookback_days: lookbackDays
         });
-      });
-
-      if (error) {
-        console.error('❌ GENERATOR_TRACKER: Query failed:', error.message);
-        return [];
+        rpcError = res.error;
+        performanceData = res.data as GeneratorStats[] | null;
+        if (!res.error && res.data?.length) usedRpc = true;
+      } catch (e: any) {
+        rpcError = e?.message ? { message: e.message } : { message: String(e) };
       }
 
-      const stats = (performanceData as GeneratorStats[]) || [];
-      
+      if (rpcError || performanceData == null || performanceData.length === 0) {
+        // Explicit-join fallback: no schema-cache relationship (content_metadata ↔ outcomes).
+        // Query content then outcomes by decision_id and join in code.
+        const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString();
+        const contentTable = 'content_generation_metadata_comprehensive';
+        const { data: contentRows, error: contentErr } = await this.supabase
+          .from(contentTable)
+          .select('decision_id, generator_name, quality_score, posted_at')
+          .gte('posted_at', since)
+          .not('generator_name', 'is', null);
+
+        if (contentErr || !contentRows?.length) {
+          console.warn(`[GENERATOR_TRACKER] Explicit-join fallback: content query failed or empty: ${contentErr?.message || 'no rows'}`);
+          return [];
+        }
+        const decisionIds = contentRows.map((r: any) => r.decision_id).filter(Boolean);
+        const { data: outcomeRows, error: outcomesErr } = await this.supabase
+          .from('outcomes')
+          .select('decision_id, followers_gained, impressions, likes, retweets, quote_tweets, replies, views, bookmarks, first_hour_engagement, engagement_rate, virality_coefficient')
+          .in('decision_id', decisionIds);
+
+        if (outcomesErr) {
+          console.warn(`[GENERATOR_TRACKER] Explicit-join fallback: outcomes query failed: ${outcomesErr.message}`);
+        }
+        const outcomesByDecision = new Map<string, any>();
+        (outcomeRows || []).forEach((o: any) => outcomesByDecision.set(o.decision_id, o));
+        const joined = contentRows.map((c: any) => ({
+          generator_name: c.generator_name,
+          quality_score: c.quality_score,
+          posted_at: c.posted_at,
+          outcomes: outcomesByDecision.get(c.decision_id) ? [outcomesByDecision.get(c.decision_id)] : [],
+        }));
+        performanceData = this.aggregatePerformanceData(joined) as GeneratorStats[];
+        console.log(`[GENERATOR_TRACKER] Generator performance source: explicit-join fallback (content + outcomes by decision_id); content rows=${contentRows.length}, outcomes joined=${outcomeRows?.length ?? 0}`);
+      }
+
+      const stats = performanceData || [];
+      console.log(`[GENERATOR_TRACKER] Generator performance source: ${usedRpc ? 'RPC get_generator_performance' : 'explicit-join fallback (content + outcomes by decision_id)'}`);
       console.log(`✅ GENERATOR_TRACKER: Found ${stats.length} generators with data`);
       stats.forEach(stat => {
         console.log(`  ${stat.name}: ${stat.f_per_1k.toFixed(2)} F/1K (${stat.total_posts} posts)`);

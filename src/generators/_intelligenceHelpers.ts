@@ -73,6 +73,15 @@ export interface GrowthIntelligencePackage {
     viralExamples: { text: string; authorHandle: string; engagement: number; hookType: string; whyItWorks: string }[];
     trendShifts: string[];
   };
+
+  // 📊 Behavioral intelligence (from external brain behavioral analyzer)
+  behavioralInsights?: {
+    optimalReplyStyle: string;
+    provenHookPatterns: string[];
+    contentMixGuidance: string;
+    replyTimingGuidance: string;
+    targetingGuidance: string;
+  };
 }
 
 // Type alias for generators that accept growth intelligence
@@ -236,6 +245,29 @@ ${intelligence.visualFormattingInsights}
     }
   }
 
+  // Behavioral intelligence
+  if (intelligence.behavioralInsights) {
+    const bi = intelligence.behavioralInsights;
+    contextString += `📊 BEHAVIORAL INTELLIGENCE (proven from external account analysis):\n\n`;
+
+    if (bi.optimalReplyStyle) {
+      contextString += `  Reply style: ${bi.optimalReplyStyle}\n`;
+    }
+    if (bi.provenHookPatterns.length > 0) {
+      contextString += `  Proven hooks: ${bi.provenHookPatterns.join(', ')}\n`;
+    }
+    if (bi.replyTimingGuidance) {
+      contextString += `  Timing: ${bi.replyTimingGuidance}\n`;
+    }
+    if (bi.targetingGuidance) {
+      contextString += `  Targeting: ${bi.targetingGuidance}\n`;
+    }
+    if (bi.contentMixGuidance) {
+      contextString += `  Mix: ${bi.contentMixGuidance}\n`;
+    }
+    contextString += `\n`;
+  }
+
   // Recent posts (avoid repetition)
   if (intelligence.recentPosts && intelligence.recentPosts.length > 0) {
     contextString += `
@@ -390,6 +422,46 @@ NO emojis (max 1 if absolutely needed).
         contextString += `  • Testing "${exp.strategy_name}" (test #${exp.test_number}) — ${exp.verdict}\n`;
       }
       contextString += `\n`;
+    }
+
+    // Populate behavioral insights from external_patterns behavioral data
+    try {
+      const { getSupabaseClient } = await import('../db');
+      const supabase = getSupabaseClient();
+
+      const { data: behavioralPatterns } = await supabase
+        .from('external_patterns')
+        .select('pattern_type, combo_key, target_tier, hour_bucket, ext_avg_likes, ext_sample_count, direction, confidence')
+        .in('pattern_type', ['reply_timing', 'reply_targeting', 'content_mix', 'reply_behavior'])
+        .eq('direction', 'do_more')
+        .order('ext_avg_likes', { ascending: false })
+        .limit(10);
+
+      if (behavioralPatterns && behavioralPatterns.length > 0) {
+        const timing = behavioralPatterns.find(p => p.pattern_type === 'reply_timing');
+        const targeting = behavioralPatterns.find(p => p.pattern_type === 'reply_targeting');
+        const mix = behavioralPatterns.find(p => p.pattern_type === 'content_mix');
+
+        if (intelligence) {
+          intelligence.behavioralInsights = {
+            optimalReplyStyle: targeting
+              ? `Reply to accounts ${targeting.target_tier} your size for best engagement`
+              : '',
+            provenHookPatterns: [], // Populated from reply classification data as it accumulates
+            contentMixGuidance: mix
+              ? `Growing accounts at your range: ${Math.round((mix.ext_avg_engagement_rate ?? 0.7) * 100)}% replies, ${Math.round(mix.ext_avg_views ?? 20)}% originals, ${Math.round(mix.ext_avg_likes ?? 10)}% threads`
+              : '',
+            replyTimingGuidance: timing
+              ? `Replies within ${timing.hour_bucket} get the most engagement (${timing.ext_sample_count} samples)`
+              : '',
+            targetingGuidance: targeting
+              ? `Best target size: ${targeting.target_tier} your follower count (${targeting.ext_sample_count} samples, ${targeting.confidence} confidence)`
+              : '',
+          };
+        }
+      }
+    } catch {
+      // Behavioral enrichment is non-fatal
     }
   } catch {
     // Observatory enrichment is non-fatal

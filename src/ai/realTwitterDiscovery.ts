@@ -1353,7 +1353,6 @@ export class RealTwitterDiscovery {
       return [];
     } finally {
       try {
-        page.off('console', consoleListener);
         page.off('response', responseListener);
       } catch (e) {
         // Ignore if listener wasn't attached

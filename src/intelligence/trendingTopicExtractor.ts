@@ -59,7 +59,7 @@ export class TrendingTopicExtractor {
       const supabase = getSupabaseClient();
       const { data: opportunities, error } = await supabase
         .from('reply_opportunities')
-        .select('tweet_content, like_count, reply_count, tier, tweet_posted_at')
+        .select('target_tweet_content, like_count, reply_count, tier, tweet_posted_at')
         .gte('tweet_posted_at', twentyFourHoursAgo.toISOString())
         .gte('like_count', 2000) // Only truly viral tweets (2K+ likes)
         .eq('replied_to', false) // Not yet replied to (still active)
@@ -98,11 +98,11 @@ export class TrendingTopicExtractor {
    * 🧠 Use AI to extract health topics from viral tweets
    */
   private async extractTopicsFromTweets(
-    tweets: Array<{ tweet_content: string; like_count: number; reply_count: number; tier?: string | null }>
+    tweets: Array<{ target_tweet_content?: string; tweet_content?: string; like_count: number; reply_count: number; tier?: string | null }>
   ): Promise<TrendingTopic[]> {
     // Prepare tweet samples for AI analysis
     const tweetSamples = tweets.slice(0, 50).map(t => ({
-      content: String(t.tweet_content || '').substring(0, 200), // Truncate for prompt
+      content: String((t.target_tweet_content ?? t.tweet_content) || '').substring(0, 200), // Truncate for prompt
       likes: t.like_count || 0,
       tier: t.tier || 'unknown'
     }));
@@ -182,12 +182,12 @@ Return ONLY the JSON object, no other text.`;
    * 🔄 Fallback: Simple keyword-based extraction
    */
   private fallbackKeywordExtraction(
-    tweets: Array<{ tweet_content: string; like_count: number }>
+    tweets: Array<{ target_tweet_content?: string; tweet_content?: string; like_count: number }>
   ): TrendingTopic[] {
     const healthKeywords: Record<string, number> = {};
     
     tweets.forEach(tweet => {
-      const content = String(tweet.tweet_content || '').toLowerCase();
+      const content = String((tweet.target_tweet_content ?? tweet.tweet_content) || '').toLowerCase();
       const likes = tweet.like_count || 0;
       
       // Extract health keywords
@@ -209,10 +209,10 @@ Return ONLY the JSON object, no other text.`;
         topic,
         engagement,
         tweet_count: tweets.filter(t => 
-          String(t.tweet_content || '').toLowerCase().includes(topic)
+          String((t.target_tweet_content ?? t.tweet_content) || '').toLowerCase().includes(topic)
         ).length,
         avg_likes: engagement / tweets.filter(t => 
-          String(t.tweet_content || '').toLowerCase().includes(topic)
+          String((t.target_tweet_content ?? t.tweet_content) || '').toLowerCase().includes(topic)
         ).length,
         urgency_score: 7, // Default
         health_relevance: 8 // Default

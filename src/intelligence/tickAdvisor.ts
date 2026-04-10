@@ -32,6 +32,8 @@ export interface TickAdvice {
     ideal_length_range: [number, number];
     ideal_delay_minutes_max: number;
     avoid_angles: string[];
+    optimal_target_follower_range?: [number, number];
+    optimal_reply_delay_minutes?: number;
   };
   content_preferences: {
     preferred_formats: string[];
@@ -41,6 +43,13 @@ export interface TickAdvice {
   targeting_preferences: {
     preferred_tiers: string[];
     preferred_hour_buckets: string[];
+  };
+  recommended_content_mix?: {
+    reply_pct: number;
+    original_pct: number;
+    thread_pct: number;
+    source_range: string;
+    confidence: string;
   };
   experiment_nudge?: {
     hypothesis_id: string;
@@ -209,6 +218,83 @@ export async function getTickAdvice(): Promise<TickAdvice> {
     // (external_patterns doesn't store char_count directly, keep default)
     advice.reply_preferences.ideal_length_range = [80, 240];
     advice.reply_preferences.ideal_delay_minutes_max = 60;
+
+    // ─── Step 4b: Behavioral intelligence (reply timing, targeting, content mix) ───
+    try {
+      // Reply timing: which delay bucket performs best?
+      const { data: timingPatterns } = await supabase
+        .from('external_patterns')
+        .select('hour_bucket, ext_avg_likes, ext_sample_count, direction, confidence')
+        .eq('pattern_type', 'reply_timing')
+        .eq('direction', 'do_more')
+        .order('ext_avg_likes', { ascending: false })
+        .limit(1);
+
+      if (timingPatterns && timingPatterns.length > 0) {
+        const best = timingPatterns[0];
+        // Map bucket name to delay value
+        const delayMap: Record<string, number> = { '0-5min': 5, '5-15min': 15, '15-60min': 60, '1h+': 120 };
+        const optimalDelay = delayMap[best.hour_bucket] ?? 60;
+        advice.reply_preferences.optimal_reply_delay_minutes = optimalDelay;
+        advice.reply_preferences.ideal_delay_minutes_max = optimalDelay;
+
+        if (best.confidence !== 'low') {
+          advice.top_insights.push(`⚡ Replies within ${best.hour_bucket} get the most engagement (${best.ext_sample_count} samples)`);
+        }
+      }
+
+      // Reply targeting: which target size ratio works best?
+      const { data: targetPatterns } = await supabase
+        .from('external_patterns')
+        .select('target_tier, ext_avg_likes, ext_sample_count, direction, confidence')
+        .eq('pattern_type', 'reply_targeting')
+        .eq('direction', 'do_more')
+        .order('ext_avg_likes', { ascending: false })
+        .limit(1);
+
+      if (targetPatterns && targetPatterns.length > 0) {
+        const best = targetPatterns[0];
+        // Map target tier to follower range
+        const rangeMap: Record<string, [number, number]> = {
+          'peer': [0, 2],
+          'bigger_2-10x': [2, 10],
+          'bigger_10-100x': [10, 100],
+          'mega_100x+': [100, 1000],
+          'smaller': [0, 0.5],
+        };
+        const range = rangeMap[best.target_tier];
+        if (range) {
+          advice.reply_preferences.optimal_target_follower_range = range;
+        }
+
+        if (best.confidence !== 'low') {
+          advice.top_insights.push(`🎯 Best reply targets: accounts ${best.target_tier} your size (${best.ext_sample_count} samples)`);
+        }
+      }
+
+      // Content mix: optimal reply/original/thread ratio for our range
+      const { data: mixPatterns } = await supabase
+        .from('external_patterns')
+        .select('target_tier, ext_avg_engagement_rate, ext_avg_likes, ext_avg_views, ext_sample_count, confidence')
+        .eq('pattern_type', 'content_mix')
+        .eq('direction', 'do_more')
+        .order('ext_sample_count', { ascending: false })
+        .limit(1);
+
+      if (mixPatterns && mixPatterns.length > 0) {
+        const mix = mixPatterns[0];
+        advice.recommended_content_mix = {
+          reply_pct: Math.round((mix.ext_avg_engagement_rate ?? 0.7) * 100),
+          thread_pct: Math.round(mix.ext_avg_likes ?? 10),
+          original_pct: Math.round(mix.ext_avg_views ?? 20),
+          source_range: mix.target_tier ?? 'unknown',
+          confidence: mix.confidence ?? 'low',
+        };
+      }
+    } catch (e: any) {
+      // Behavioral intelligence is non-fatal
+      console.warn(`${TAG} Behavioral enrichment skipped: ${e.message}`);
+    }
 
     // ─── Step 5: growth_knowledge insights + causal labels from patterns ───
     try {
