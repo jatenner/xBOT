@@ -1687,6 +1687,21 @@ export class JobManager {
         15 * MINUTE
       );
 
+      // Observatory: Engagement baseline — per-author outperformance via viral_multiplier (every 120 min)
+      // Scheduling the previously-orphaned runEngagementBaseline. Populates brain_accounts.avg_likes_30d
+      // and brain_tweets.viral_multiplier — the 80/20 win for "was this tweet unusual for this author?"
+      this.scheduleStaggeredJob(
+        'observatory_engagement_baseline',
+        async () => {
+          await this.safeExecute('observatory_engagement_baseline', async () => {
+            const { runEngagementBaseline } = await import('../brain/observatory/engagementBaseline');
+            await runEngagementBaseline();
+          });
+        },
+        120 * MINUTE,
+        20 * MINUTE
+      );
+
       // Observatory: Strategy library builder — aggregates retrospectives into playbooks (every 6h)
       this.scheduleStaggeredJob(
         'observatory_strategy_builder',
