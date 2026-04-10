@@ -1702,6 +1702,53 @@ export class JobManager {
         20 * MINUTE
       );
 
+      // Observatory: Tweet-to-follower attribution — Phase B Gap 1 (every 60 min)
+      // For every brain_tweets row from a growing account, link it to the follower
+      // delta in the window between baseline and next snapshot. Enables the SQL-level
+      // answer to "which specific tweet drove the follower spike for this account"
+      this.scheduleStaggeredJob(
+        'observatory_tweet_attribution',
+        async () => {
+          await this.safeExecute('observatory_tweet_attribution', async () => {
+            const { runTweetAttribution } = await import('../brain/observatory/tweetAttributionJob');
+            await runTweetAttribution();
+          });
+        },
+        60 * MINUTE,
+        18 * MINUTE
+      );
+
+      // Observatory: Baseline builder — stratified engagement baselines (every 6h)
+      // Computes median + p25/p75 of views/likes by (tier, domain, posted_hour_utc)
+      // over rolling 30-day window. Feeds the outcome scorer.
+      this.scheduleStaggeredJob(
+        'observatory_baseline_builder',
+        async () => {
+          await this.safeExecute('observatory_baseline_builder', async () => {
+            const { runBaselineBuilder } = await import('../brain/observatory/baselineBuilder');
+            await runBaselineBuilder();
+          });
+        },
+        360 * MINUTE,
+        30 * MINUTE
+      );
+
+      // Observatory: Outcome scorer — per-tweet expected-vs-actual (every 30 min)
+      // Classifies every new brain_tweets row as breakout/above/expected/below/failure
+      // vs its stratified baseline. Falls back to per-author viral_multiplier when
+      // no stratified bucket matches. SOLE writer of brain_tweet_outcomes.
+      this.scheduleStaggeredJob(
+        'observatory_outcome_scorer',
+        async () => {
+          await this.safeExecute('observatory_outcome_scorer', async () => {
+            const { runOutcomeScorer } = await import('../brain/observatory/outcomeScorer');
+            await runOutcomeScorer();
+          });
+        },
+        30 * MINUTE,
+        25 * MINUTE
+      );
+
       // Observatory: Strategy library builder — aggregates retrospectives into playbooks (every 6h)
       this.scheduleStaggeredJob(
         'observatory_strategy_builder',
