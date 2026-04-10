@@ -1,23 +1,58 @@
 /**
  * 🔍 KEYWORD FEED
- * 
- * Searches/scrapes for health keywords
- * Pulls every 5-10 min
+ *
+ * Discovery buckets (broader reply universe):
+ * - direct_health: explicit health/fitness/nutrition
+ * - health_adjacent_lifestyle: productivity, burnout, sleep, routines, food/drink, focus
+ * - broad_viral_cultural: trending topics where health angle can fit
+ * Pulls every 5-10 min.
  */
 
 import { getSupabaseClient } from '../../db/index';
 import { UnifiedBrowserPool } from '../../browser/UnifiedBrowserPool';
+import type { DiscoveryBucket } from './discoveryBuckets';
 
-const HEALTH_KEYWORDS = [
-  'creatine', 'protein', 'ozempic', 'cholesterol',
-  'zone 2', 'VO2 max', 'sleep', 'cardio', 'strength',
-  'metabolism', 'insulin', 'glucose', 'keto', 'fasting',
-  'supplements', 'vitamins', 'minerals', 'hydration'
+/** Direct health/fitness/nutrition (core) — HIGH SIGNAL, judge almost always approves. */
+const DIRECT_HEALTH_KEYWORDS = [
+  // Core health/performance (very high judge approval rate)
+  'circadian rhythm', 'sleep quality', 'cold exposure', 'sunlight health',
+  'intermittent fasting', 'zone 2 cardio', 'VO2 max', 'creatine',
+  'protein intake', 'strength training', 'metabolic health',
+  // Nutrition (high signal)
+  'gut health', 'blood sugar', 'cholesterol', 'ozempic', 'insulin resistance',
+  'glucose spike', 'keto', 'fasting benefits', 'electrolytes',
+  // Recovery/longevity (high signal)
+  'sleep hygiene', 'recovery', 'longevity', 'healthspan', 'autophagy',
+  'inflammation', 'cortisol', 'testosterone', 'hormone health',
+  // Supplements/biohacking (moderate signal)
+  'supplements', 'magnesium', 'vitamin D', 'omega 3', 'ashwagandha',
 ];
+
+/** Health-adjacent lifestyle — MEDIUM SIGNAL, needs strong health angle. */
+const HEALTH_ADJACENT_LIFESTYLE_KEYWORDS = [
+  'morning routine', 'sleep deprivation', 'burnout recovery',
+  'mental clarity', 'brain fog', 'energy levels', 'focus hack',
+  'stress management', 'dopamine', 'caffeine', 'nootropics',
+];
+
+/** Broad viral/cultural — LOW SIGNAL, only if clear health angle. Reduced to save judge calls. */
+const BROAD_VIRAL_CULTURAL_KEYWORDS = [
+  'self care', 'exhausted', 'tired all the time',
+];
+
+/** All keywords with bucket; order defines cursor rotation. */
+const KEYWORDS_WITH_BUCKET: { keyword: string; bucket: DiscoveryBucket }[] = [
+  ...DIRECT_HEALTH_KEYWORDS.map((k) => ({ keyword: k, bucket: 'direct_health' as DiscoveryBucket })),
+  ...HEALTH_ADJACENT_LIFESTYLE_KEYWORDS.map((k) => ({ keyword: k, bucket: 'health_adjacent_lifestyle' as DiscoveryBucket })),
+  ...BROAD_VIRAL_CULTURAL_KEYWORDS.map((k) => ({ keyword: k, bucket: 'broad_viral_cultural' as DiscoveryBucket })),
+];
+
+/** Legacy flat list for cursor (same order as KEYWORDS_WITH_BUCKET). */
+const HEALTH_KEYWORDS = KEYWORDS_WITH_BUCKET.map((x) => x.keyword);
 
 const FETCH_INTERVAL_MINUTES = 5;
 const TWEETS_PER_KEYWORD = 10; // Top N tweets per keyword
-const KEYWORDS_PER_RUN = 2; // Hard cap: reduced to 2 keywords per run for faster completion
+const KEYWORDS_PER_RUN = 5; // Increased: cycle through keywords faster to find fresh targets
 
 export interface KeywordTweet {
   tweet_id: string;
@@ -28,6 +63,10 @@ export interface KeywordTweet {
   reply_count?: number;
   retweet_count?: number;
   keyword: string;
+  /** Discovery bucket for this tweet (from keyword list). */
+  discovery_bucket?: import('./discoveryBuckets').DiscoveryBucket;
+  /** When present (parsed from card text), used for target_followers/account_size_tier in sync. */
+  author_follower_count?: number | null;
 }
 
 /**
@@ -55,11 +94,11 @@ export async function fetchKeywordFeed(): Promise<KeywordTweet[]> {
   
   console.log(`[KEYWORD_FEED] 📍 Cursor position: ${cursorIndex} (processing ${keywordsPerRun} keywords)`);
   
-  // Get keywords for this run (rotate via cursor)
-  const keywordsToFetch = HEALTH_KEYWORDS.slice(cursorIndex, cursorIndex + keywordsPerRun);
-  const nextCursorIndex = (cursorIndex + keywordsPerRun) % HEALTH_KEYWORDS.length;
+  // Get keywords with bucket for this run (rotate via cursor)
+  const keywordsToFetch = KEYWORDS_WITH_BUCKET.slice(cursorIndex, cursorIndex + keywordsPerRun);
+  const nextCursorIndex = (cursorIndex + keywordsPerRun) % KEYWORDS_WITH_BUCKET.length;
   
-  console.log(`[KEYWORD_FEED] 📊 Processing keywords ${cursorIndex}-${cursorIndex + keywordsPerRun - 1} of ${HEALTH_KEYWORDS.length} total`);
+  console.log(`[KEYWORD_FEED] 📊 Processing keywords ${cursorIndex}-${cursorIndex + keywordsPerRun - 1} of ${KEYWORDS_WITH_BUCKET.length} total (buckets: ${[...new Set(keywordsToFetch.map((x) => x.bucket))].join(', ')})`);
   
   // 🔒 MANDATE 2: Per-source timebox (90s)
   const sourceTimeoutPromise = new Promise<never>((_, reject) => {
@@ -74,19 +113,19 @@ export async function fetchKeywordFeed(): Promise<KeywordTweet[]> {
     let extractionMs = 0;
     let dbWriteMs = 0;
     
-    // Fetch tweets for each keyword sequentially
-    for (const keyword of keywordsToFetch) {
+    // Fetch tweets for each keyword sequentially (tag with discovery_bucket)
+    for (const { keyword, bucket } of keywordsToFetch) {
       const keywordStartTime = Date.now();
       
       try {
         const browserStart = Date.now();
         const keywordTweets = await fetchKeywordTweets(keyword, pool);
         browserAcquireMs += Date.now() - browserStart;
-        
+        keywordTweets.forEach((t) => { t.discovery_bucket = bucket; });
         tweets.push(...keywordTweets);
         
         const keywordDuration = Date.now() - keywordStartTime;
-        console.log(`[KEYWORD_FEED] ✅ "${keyword}": ${keywordTweets.length} tweets (${keywordDuration}ms)`);
+        console.log(`[KEYWORD_FEED] ✅ "${keyword}" bucket=${bucket}: ${keywordTweets.length} tweets (${keywordDuration}ms)`);
         
         // Rate limit: wait between keywords
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -184,7 +223,10 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
       }
       
       // Search URL
-      const searchUrl = `https://x.com/search?q=${encodeURIComponent(keyword)}&src=typed_query&f=live`;
+      // Use min_faves:3 to filter out zero-engagement tweets from tiny accounts
+      // This dramatically improves candidate quality (5% → ~30%+ pass rate)
+      const qualityQuery = `${keyword} min_faves:3`;
+      const searchUrl = `https://x.com/search?q=${encodeURIComponent(qualityQuery)}&src=typed_query&f=live`;
       console.log(`[KEYWORD_FEED] 🔍 Searching for: ${keyword}`);
       
       await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -437,6 +479,19 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
           const timeElement = article.querySelector('time');
           const posted_at = timeElement?.getAttribute('datetime') || new Date().toISOString();
           
+          // Optional: parse follower count from card text (e.g. "1.2K Followers" in byline)
+          let author_follower_count = null;
+          const cardText = article.innerText || article.textContent || '';
+          const followerMatch = cardText.match(/([\d.,]+)\s*([KMB])?\s*Followers?/i) || cardText.match(/Followers?\s*([\d.,]+)\s*([KMB])?/i);
+          if (followerMatch) {
+            let n = parseFloat(followerMatch[1].replace(/,/g, ''));
+            const suffix = (followerMatch[2] || '').toUpperCase();
+            if (suffix === 'K') n *= 1e3;
+            else if (suffix === 'M') n *= 1e6;
+            else if (suffix === 'B') n *= 1e9;
+            if (Number.isFinite(n) && n >= 0) author_follower_count = Math.round(n);
+          }
+          
           results.push({
             tweet_id,
             author_username,
@@ -446,6 +501,7 @@ async function fetchKeywordTweets(keyword: string, pool: UnifiedBrowserPool): Pr
             reply_count: parseInt(replyCount.replace(/[^\d]/g, '')) || 0,
             retweet_count: parseInt(retweetCount.replace(/[^\d]/g, '')) || 0,
             keyword: keyword,
+            ...(author_follower_count != null ? { author_follower_count } : {}),
           });
         }
         

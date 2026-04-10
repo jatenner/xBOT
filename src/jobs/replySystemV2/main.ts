@@ -61,29 +61,31 @@ export async function replySystemV2Job(): Promise<void> {
       console.log(`[REPLY_V2] 🔒 PROOF_MODE: Skipping feed fetching and discovery`);
       // Still refresh queue and attempt scheduled reply (for proof decisions)
       const queueResult = await refreshCandidateQueue();
-      readyCandidates = queueResult.queued;
-      
+      readyCandidates = queueResult?.queued ?? 0;
+      const s = queueResult?.summary;
+      if (s) {
+        console.log(`[REPLY_CYCLE_SUMMARY] fetched=0 evaluated=0 passed_filters=0 root_confirmed=${s.root_confirmed} rejected_non_root=${s.rejected_non_root} rejected_freshness=${s.rejected_freshness} rejected_judge=${s.rejected_judge}${s.rejected_controlled_live != null ? ` rejected_controlled_live=${s.rejected_controlled_live}` : ''} queued=${s.queued} top_scores=[${(s.top_scores || []).join(',')}] sample_rejects=[${(s.sample_rejects || []).slice(0, 4).join('; ')}]`);
+      }
       const schedulerResult = await attemptScheduledReply();
-      if (schedulerResult.posted) {
+      if (schedulerResult?.posted) {
         selectedCandidates = 1;
         attemptsStarted = 1;
       }
-      
       // Skip performance metrics update in PROOF_MODE
       await emitReplyQueueTick();
       return;
     }
     
     // Step 1: Fetch and evaluate candidates
-    await runFullCycle();
+    const cycleResult = await runFullCycle();
     
     // Step 2: Refresh queue
     const queueResult = await refreshCandidateQueue();
-    readyCandidates = queueResult.queued;
+    readyCandidates = queueResult?.queued ?? 0;
     
     // Step 3: Attempt scheduled reply
     const schedulerResult = await attemptScheduledReply();
-    if (schedulerResult.posted) {
+    if (schedulerResult?.posted) {
       selectedCandidates = 1;
       attemptsStarted = 1;
     }
@@ -102,9 +104,20 @@ export async function replySystemV2Job(): Promise<void> {
       // Ignore heartbeat errors
     }
     
+    const postedTotal = schedulerResult?.posted ? 1 : 0;
+    const c = (cycleResult ?? {}) as { fetched_total?: number; evaluated_total?: number; passed_total?: number; queued_total?: number };
+    console.log(
+      `[REPLY_V2] reply_summary fetched_total=${c.fetched_total ?? 0} evaluated_total=${c.evaluated_total ?? 0} passed_total=${c.passed_total ?? 0} allow_total=0 deny_total=0 queued_total=${c.queued_total ?? 0} posted_total=${postedTotal} errors_total=0`
+    );
+    if (process.env.REPLY_CONTROLLED_LIVE === 'true') {
+      console.log('[REPLY_V2] 🎯 REPLY_CONTROLLED_LIVE was enabled (no explore, stricter queue gates, 1 candidate per tick)');
+    }
     console.log('[REPLY_V2] ✅ Job complete');
   } catch (error: any) {
     console.error(`[REPLY_V2] ❌ Job failed: ${error.message}`);
+    console.log(
+      '[REPLY_V2] reply_summary fetched_total=0 evaluated_total=0 passed_total=0 allow_total=0 deny_total=0 queued_total=0 posted_total=0 errors_total=1'
+    );
     
     // Emit tick with error
     await emitReplyQueueTick();

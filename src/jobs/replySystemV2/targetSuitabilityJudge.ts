@@ -15,7 +15,10 @@ export interface JudgeDecision {
   momentum: number; // 0-1: Engagement velocity signal
   audience_fit: number; // 0-1: Alignment with our audience
   spam_risk: number; // 0-1: Risk of spam/low-quality (lower is better)
+  /** 0-1: How natural/credible a health/performance reply angle is (broad viral needs this). */
+  health_angle_fit?: number;
   expected_views_bucket: 'low' | 'medium' | 'high' | 'viral'; // Expected view range
+  topic_category?: string; // Primary health topic classification
   decision: 'accept' | 'reject' | 'explore'; // Final decision
   reasons: string; // Human-readable explanation
 }
@@ -52,33 +55,38 @@ export async function judgeTargetSuitability(
   const acceptanceThreshold = controlState?.acceptance_threshold || 0.60;
   const explorationRate = controlState?.exploration_rate || 0.10;
   
-  const prompt = `You are a Twitter/X engagement expert evaluating a tweet for reply suitability.
+  const prompt = `You are evaluating whether @Neurix5 (a neuroscience/health expert) can write a valuable reply to this tweet.
+
+CRITICAL: Health connects to EVERYTHING. Sports = performance science. Travel = circadian disruption. Politics = public health. Food = nutrition. Work stress = cortisol. Sleep = brain function. Tech = health implications. You should almost ALWAYS find an angle.
 
 Tweet ID: ${tweetId}
 Author: @${authorUsername}
 Content: ${content.substring(0, 500)}
 Engagement: ${likeCount} likes, ${replyCount} replies, ${retweetCount} retweets
 Age: ${Math.round(ageMinutes)} minutes
-Velocity: ${velocity.toFixed(2)} engagements/minute
 
-Evaluate this tweet and return a JSON object with these exact fields:
+Return JSON:
 {
-  "relevance": <0-1>, // How relevant to health/fitness/nutrition/wellness topics
-  "replyability": <0-1>, // How suitable for generating an insightful reply (consider: is it a question? controversial? informative?)
-  "momentum": <0-1>, // Engagement velocity signal (normalize velocity: >10/min = 1.0, >1/min = 0.5, else = velocity/10)
-  "audience_fit": <0-1>, // Alignment with health-conscious audience (consider author credibility, topic fit)
-  "spam_risk": <0-1>, // Risk of spam/low-quality (0 = high quality, 1 = spam)
-  "expected_views_bucket": "<low|medium|high|viral>", // Expected 24h view range (low: <500, medium: 500-2000, high: 2000-10000, viral: >10000)
-  "decision": "<accept|reject|explore>", // accept = high quality, reject = low quality/spam, explore = borderline (use exploration_rate)
+  "relevance": <0-1>, // Can we add a health/science angle? Basketball=0.7 (sports science), cooking=0.9 (nutrition), politics=0.5 (stress/policy), pure meme=0.2
+  "replyability": <0-1>, // Can we write a short, specific, valuable reply? Questions and controversial takes are great.
+  "momentum": <0-1>, // Engagement velocity (>10/min=1.0, >1/min=0.5, else velocity/10)
+  "audience_fit": <0-1>, // Would the author's followers care about a health angle?
+  "spam_risk": <0-1>, // 0=quality, 1=spam/bot
+  "health_angle_fit": <0-1>, // How natural is the health connection? Direct health=1.0, sports/food=0.8, travel/work=0.6, politics=0.5, pure entertainment=0.2
+  "expected_views_bucket": "<low|medium|high|viral>",
+  "topic_category": "<sleep|nutrition|exercise|mental_health|longevity|stress|metabolism|recovery|neuroscience|performance|general_health|lifestyle|off_topic>",
+  "decision": "<accept|reject|explore>",
   "reasons": "<brief explanation>"
 }
 
 Rules:
-- relevance >= 0.6 AND replyability >= 0.5 AND spam_risk < 0.3 => accept
-- spam_risk >= 0.5 OR relevance < 0.3 => reject
-- Otherwise => explore (for exploration_rate candidates)
+- health_angle_fit >= 0.4 AND replyability >= 0.4 AND spam_risk < 0.4 => accept
+- spam_risk >= 0.6 OR (relevance < 0.15 AND health_angle_fit < 0.2) => reject
+- Otherwise => explore
 
-Return ONLY valid JSON, no markdown, no explanation.`;
+Be GENEROUS with accept. We're a new account that needs to post replies to grow. Only reject truly impossible angles (pure memes, foreign language, spam).
+
+Return ONLY valid JSON.`;
 
   const startTime = Date.now();
   
@@ -142,7 +150,8 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     if (!decision.decision || decision.relevance === undefined) {
       throw new Error(`Invalid judge response structure: ${JSON.stringify(decision)}`);
     }
-    
+    if (decision.health_angle_fit == null) decision.health_angle_fit = decision.relevance;
+
     // Apply adaptive threshold with exploration
     const finalDecision = applyAdaptiveThreshold(decision, acceptanceThreshold, explorationRate);
     
@@ -152,8 +161,8 @@ Return ONLY valid JSON, no markdown, no explanation.`;
     
   } catch (error: any) {
     const latency_ms = Date.now() - startTime;
-    
-    // Log error
+    const msg = error?.message ?? String(error);
+
     await logLLMUsage({
       model: 'gpt-4o-mini',
       purpose: 'target_judge',
@@ -161,21 +170,32 @@ Return ONLY valid JSON, no markdown, no explanation.`;
       output_tokens: 0,
       latency_ms,
       trace_ids: traceIds || {},
-      request_metadata: { error: error.message }
+      request_metadata: { error: msg }
     });
-    
-    console.error(`[JUDGE] ❌ Error judging ${tweetId}: ${error.message}`);
-    
-    // Fail-safe: return conservative rejection
+
+    console.error(`[JUDGE] ❌ Error judging ${tweetId}: ${msg}`);
+
+    // 429 / quota / rate-limit: throw so caller can fall back to heuristic scoring (do not hard-reject with 0/0)
+    const isRateLimitOrQuota =
+      msg.includes('429') ||
+      /quota|rate limit|rate_limit/i.test(msg) ||
+      (error?.status !== undefined && Number(error.status) === 429);
+    if (isRateLimitOrQuota) {
+      console.warn(`[JUDGE] ⚠️ Judge API rate-limit/quota (429) - caller should use heuristic fallback for ${tweetId}`);
+      throw error;
+    }
+
+    // Other errors: return conservative rejection (unchanged)
     return {
       relevance: 0,
       replyability: 0,
       momentum: 0,
       audience_fit: 0,
       spam_risk: 1.0,
+      health_angle_fit: 0,
       expected_views_bucket: 'low',
       decision: 'reject',
-      reasons: `Judge error: ${error.message}`
+      reasons: `Judge error: ${msg}`
     };
   }
 }
@@ -188,29 +208,34 @@ function applyAdaptiveThreshold(
   acceptanceThreshold: number,
   explorationRate: number
 ): JudgeDecision {
-  // Calculate composite score
+  // Use health_angle_fit as primary signal (can we ADD a health angle?)
+  // Not relevance (is this ABOUT health?) — health connects to everything
+  const healthAngle = decision.health_angle_fit ?? decision.relevance;
+
+  // Calculate composite score — health_angle_fit weighted highest
   const compositeScore = (
-    decision.relevance * 0.3 +
-    decision.replyability * 0.3 +
-    decision.momentum * 0.2 +
-    decision.audience_fit * 0.2
-  ) - (decision.spam_risk * 0.5); // Penalize spam
-  
-  // Hard rejections (never override)
-  if (decision.spam_risk >= 0.5 || decision.relevance < 0.2) {
+    healthAngle * 0.35 +
+    decision.replyability * 0.30 +
+    decision.momentum * 0.15 +
+    decision.audience_fit * 0.20
+  ) - (decision.spam_risk * 0.4);
+
+  // Hard rejections: only spam or truly zero health connection
+  if (decision.spam_risk >= 0.6 || (decision.relevance < 0.1 && healthAngle < 0.15)) {
     return { ...decision, decision: 'reject' };
   }
-  
-  // Accept if above threshold
-  if (compositeScore >= acceptanceThreshold) {
+
+  // Accept if above threshold (lowered from 0.6 default to 0.35 for bootstrap)
+  const effectiveThreshold = Math.min(acceptanceThreshold, 0.35);
+  if (compositeScore >= effectiveThreshold) {
     return { ...decision, decision: 'accept' };
   }
-  
-  // Exploration: randomly accept some candidates below threshold
-  if (Math.random() < explorationRate && compositeScore >= acceptanceThreshold * 0.7) {
+
+  // Exploration: randomly accept borderline candidates (generous at bootstrap)
+  if (Math.random() < Math.max(explorationRate, 0.25) && compositeScore >= effectiveThreshold * 0.6) {
     return { ...decision, decision: 'explore' };
   }
-  
+
   // Default: reject
   return { ...decision, decision: 'reject' };
 }

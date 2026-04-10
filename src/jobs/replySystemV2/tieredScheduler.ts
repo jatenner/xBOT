@@ -46,15 +46,25 @@ interface OutcomeData {
 // 🔒 TASK 4: Throughput knobs via env vars (safe, reversible)
 const REPLY_V2_TICK_SECONDS = parseInt(process.env.REPLY_V2_TICK_SECONDS || '900', 10); // Default: 15 min (900s)
 const POSTING_INTERVAL_MINUTES = REPLY_V2_TICK_SECONDS / 60;
-const TARGET_REPLIES_PER_HOUR = 4;
+const TARGET_REPLIES_PER_HOUR = 6;
 const TARGET_REPLIES_PER_TICK = Math.floor((TARGET_REPLIES_PER_HOUR * REPLY_V2_TICK_SECONDS) / 3600); // Replies per tick
 
 export interface SchedulerResult {
   posted: boolean;
+  decision_id?: string | null;
   candidate_tweet_id?: string;
   tier?: number;
   reason: string;
   behind_schedule: boolean;
+  scheduler_run_id?: string;
+  preflight_stats?: {
+    attempted: number;
+    ok: number;
+    timeout: number;
+    deleted: number;
+    cache_hits_ok: number;
+    cache_hits_bad: number;
+  };
   /** When false, caller should not count this as a consumed reply attempt slot */
   consumedSlot?: boolean;
 }
@@ -186,28 +196,21 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     }
   }
 
+  // 226 observability: one summary at start of each reply cycle
+  try {
+    const { get226Counts, get226ThrottleState } = await import('../../services/x226Cooldown');
+    const [counts, throttle] = await Promise.all([get226Counts(), get226ThrottleState()]);
+    console.log(`[X_226_CYCLE] scheduler count_1h=${counts.count_1h} count_6h=${counts.count_6h} count_24h=${counts.count_24h} safe_mode=${throttle.safe_mode} one_per_cycle=${throttle.one_reply_per_cycle}`);
+  } catch (_) { /* non-blocking */ }
+
   // 🔒 CONSENT WALL ROUTING: Skip ancestry if cooldown active (do not consume reply slot)
   const { getConsentWallCooldown } = await import('../../utils/consentWallCooldown');
-  if (getConsentWallCooldown().isCooldownActive()) {
+  const consentCooldownActive = getConsentWallCooldown().isCooldownActive();
+  if (consentCooldownActive) {
     const status = getConsentWallCooldown().getStatus();
-    console.log(`[SCHEDULER] SKIP_INFRA_CONSENT_COOLDOWN: cooldown active (${status.remainingSeconds ?? 0}s remaining), skipping ancestry - not consuming reply slot`);
-    try {
-      const { getSupabaseClient } = await import('../../db/index');
-      const s = getSupabaseClient();
-      await s.from('system_events').insert({
-        event_type: 'SKIP_INFRA_CONSENT_COOLDOWN',
-        severity: 'info',
-        message: 'Skipped reply attempt: consent wall cooldown active',
-        event_data: { remaining_seconds: status.remainingSeconds },
-        created_at: new Date().toISOString(),
-      });
-    } catch { /* non-blocking */ }
-    return {
-      posted: false,
-      reason: 'SKIP_INFRA_CONSENT_COOLDOWN',
-      behind_schedule: false,
-      consumedSlot: false,
-    };
+    console.log(`[SCHEDULER] CONSENT_COOLDOWN: active (${status.remainingSeconds ?? 0}s remaining) — will use cached ancestry only, not skipping reply`);
+    // Don't return early — continue with cached ancestry instead of live browser checks
+    // This allows replies to proceed using previously cached root status
   }
 
   const supabase = getSupabaseClient();
@@ -216,6 +219,10 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   
   // 🔒 REPLY_QUEUE instrumentation (executionMode and isExecutorMode already declared above)
   const runnerMode = process.env.RUNNER_MODE === 'true';
+  try {
+    const { logExecutionContext } = await import('../../infra/executionMode');
+    logExecutionContext('REPLY_QUEUE');
+  } catch (_) { /* non-blocking */ }
   console.log(`[REPLY_QUEUE] ✅ job_tick start EXECUTION_MODE=${executionMode} RUNNER_MODE=${runnerMode} isExecutorMode=${isExecutorMode}`);
   let readyCandidates = 0;
   let selectedCandidates = 0;
@@ -367,15 +374,19 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   // This ensures fresh root opportunities get evaluated before scheduler selects candidates
   const { refreshCandidateQueue } = await import('./queueManager');
   const queueRefreshResult = await refreshCandidateQueue();
-  if (queueRefreshResult.evaluated > 0 || queueRefreshResult.queued > 0) {
-    console.log(`[SCHEDULER] 🔄 Queue refreshed: evaluated=${queueRefreshResult.evaluated} queued=${queueRefreshResult.queued}`);
+  const refreshedEval = queueRefreshResult?.evaluated ?? 0;
+  const refreshedQueued = queueRefreshResult?.queued ?? 0;
+  if (refreshedEval > 0 || refreshedQueued > 0) {
+    console.log(`[SCHEDULER] 🔄 Queue refreshed: evaluated=${refreshedEval} queued=${refreshedQueued}`);
   }
   
   // Collect candidates from all tiers (try tier 1, then 2, then 3 if behind schedule)
-  // 🎯 P1: Collect more candidates for P1 proving lane
+  // 🎯 P1: Collect more candidates for P1 proving lane. 🎯 CONTROLLED_LIVE: One candidate only.
   const candidatesToTry: Array<{ candidate: any; tier: number }> = [];
   const p1Mode = process.env.P1_MODE === 'true' || process.env.REPLY_V2_ROOT_ONLY === 'true';
-  const maxCandidatesToCollect = p1Mode ? Math.max(PREFLIGHT_MAX_PER_CYCLE, 20) : 3;
+  const controlledLive = process.env.REPLY_CONTROLLED_LIVE === 'true';
+  const maxCandidatesToCollect = controlledLive ? 1 : (p1Mode ? Math.max(PREFLIGHT_MAX_PER_CYCLE, 20) : 3);
+  if (controlledLive) console.log('[SCHEDULER] 🎯 REPLY_CONTROLLED_LIVE: trying 1 candidate only');
   
   // Try tier 1 first (collect multiple if P1 mode)
   if (p1Mode) {
@@ -425,10 +436,32 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     }
   }
   
-  console.log(`[SCHEDULER] 📊 Collected ${candidatesToTry.length} candidates to try (P1 mode: ${p1Mode}, max attempts: ${PREFLIGHT_MAX_PER_CYCLE})`);
+  // 226 safe mode: prefer root-only and lower-engagement targets
+  let candidatesForPreflight = candidatesToTry;
+  try {
+    const { is226SafeMode } = await import('../../services/x226Cooldown');
+    if (await is226SafeMode() && candidatesToTry.length > 0) {
+      const ids = candidatesToTry.map((c) => c.candidate.candidate_tweet_id);
+      const { data: opps } = await supabase
+        .from('reply_opportunities')
+        .select('target_tweet_id, is_root_tweet, like_count, reply_count')
+        .in('target_tweet_id', ids);
+      const safeIds = new Set(
+        (opps || [])
+          .filter((o) => o.is_root_tweet === true && (o.like_count ?? 0) <= 2000 && (o.reply_count ?? 0) <= 500)
+          .map((o) => o.target_tweet_id)
+      );
+      if (safeIds.size < candidatesToTry.length) {
+        candidatesForPreflight = candidatesToTry.filter((c) => safeIds.has(c.candidate.candidate_tweet_id));
+        console.log(`[SCHEDULER] [X_226] safe_mode: filtered to root+low-engagement candidates ${candidatesToTry.length} → ${candidatesForPreflight.length}`);
+      }
+    }
+  } catch (_) { /* non-blocking */ }
+
+  console.log(`[SCHEDULER] 📊 Collected ${candidatesForPreflight.length} candidates to try (P1 mode: ${p1Mode}, max attempts: ${PREFLIGHT_MAX_PER_CYCLE})`);
   
   // Preflight tracking
-  let candidatesTotal = candidatesToTry.length;
+  let candidatesTotal = candidatesForPreflight.length;
   let cacheHitsOk = 0;
   let cacheHitsBad = 0;
   let preflightAttempted = 0;
@@ -451,7 +484,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
   };
   
   // 🎯 P1 VERIFIED-ONLY: If no verified candidates, skip probing
-  if (p1Mode && candidatesToTry.length === 0) {
+  if (p1Mode && candidatesForPreflight.length === 0) {
     console.log(`[SCHEDULER] 🎯 P1_PROBE_SUMMARY: attempted=0 ok=0 reason=no_verified_candidates`);
     return {
       posted: false,
@@ -460,9 +493,24 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     };
   }
   
-  for (let i = 0; i < Math.min(candidatesToTry.length, PREFLIGHT_MAX_PER_CYCLE); i++) {
-    const { candidate: cand, tier: candTier } = candidatesToTry[i];
-    
+  const { isTargetBlockedBy226 } = await import('../../utils/createTweet226Cooldown');
+  const { isAccountIn226Cooldown, isAuthorBlockedBy226 } = await import('../../services/x226Cooldown');
+  const account226 = await isAccountIn226Cooldown();
+  for (let i = 0; i < Math.min(candidatesForPreflight.length, PREFLIGHT_MAX_PER_CYCLE); i++) {
+    const { candidate: cand, tier: candTier } = candidatesForPreflight[i];
+    if (account226.inCooldown) {
+      console.log(`[SCHEDULER] ⏭️ Skipping candidate ${cand.candidate_tweet_id} (226 account cooldown until ${account226.cooldownUntil})`);
+      continue;
+    }
+    const authorUsername = cand.candidate_author_username ?? (candidatesForPreflight[i] as any).author_username;
+    if (authorUsername && await isAuthorBlockedBy226(authorUsername)) {
+      console.log(`[SCHEDULER] ⏭️ Skipping candidate ${cand.candidate_tweet_id} author=@${authorUsername} (226 author cooldown)`);
+      continue;
+    }
+    if (await isTargetBlockedBy226(cand.candidate_tweet_id)) {
+      console.log(`[SCHEDULER] ⏭️ Skipping candidate ${cand.candidate_tweet_id} (226 target cooldown)`);
+      continue;
+    }
     // Check cache first
     const { getCachedPreflight, cachePreflight } = await import('./preflightCache');
     const cached = await getCachedPreflight(cand.candidate_tweet_id);
@@ -522,181 +570,21 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         }
       }
       
-      // Non-P1 mode: use Railway probe (old logic)
+      // Control plane (Railway): no browser. Select candidate with preflight_status=skipped;
+      // executor (Mac Runner) will do runtime preflight when opening the tweet.
       if (!p1Mode) {
-        try {
-          const probeStart = Date.now();
-          const { UnifiedBrowserPool } = await import('../../browser/UnifiedBrowserPool');
-          const pool = UnifiedBrowserPool.getInstance();
-          
-          const probePage = await pool.withContext('preflight_probe', async (ctx) => {
-            const page = await ctx.newPage();
-            // Block heavy resources for speed
-            await page.route('**/*', (route: any) => {
-              const resourceType = route.request().resourceType();
-              if (['image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
-                route.abort();
-              } else {
-                route.continue();
-              }
-            });
-            return page;
-          }, 1);
-          
-          try {
-            await Promise.race([
-              probePage.goto(`https://x.com/i/status/${cand.candidate_tweet_id}`, {
-                waitUntil: 'domcontentloaded',
-                timeout: 3000 // 3s max for probe
-              }),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('PROBE_TIMEOUT')), 3000))
-            ]);
-            
-            await probePage.waitForTimeout(500); // Brief wait
-            
-            // Quick check for login wall/forbidden
-            const hasLoginWall = await probePage.evaluate(() => {
-              const content = document.body.textContent || '';
-              const title = document.title.toLowerCase();
-              return content.includes('Log in') || 
-                     content.includes('Sign in') ||
-                     title.includes('log in') ||
-                     title.includes('sign in') ||
-                     window.location.href.includes('/i/flow/login');
-            }).catch(() => false);
-            
-            const hasForbidden = await probePage.evaluate(() => {
-              const content = document.body.textContent || '';
-              return content.includes('forbidden') ||
-                     content.includes('403') ||
-                     content.includes('protected') ||
-                     content.includes('This account is protected');
-            }).catch(() => false);
-            
-            const probeLatency = Date.now() - probeStart;
-            
-            if (hasLoginWall || hasForbidden) {
-              probePassed = false;
-              const marker = hasLoginWall ? 'login_wall' : 'forbidden';
-              const accessibilityStatus = hasLoginWall ? 'login_wall' : 'forbidden';
-              
-              probeResults.attempted++;
-              if (hasLoginWall) {
-                probeResults.login_wall++;
-              } else {
-                probeResults.forbidden++;
-              }
-              
-              console.log(`[SCHEDULER] 🎯 P1_PROBE: Failed for ${cand.candidate_tweet_id} (${marker}, ${probeLatency}ms)`);
-              
-              // Log candidate source info
-              const { data: oppInfo } = await supabase
-                .from('reply_opportunities')
-                .select('target_username, harvest_source, harvest_source_detail, discovery_source, created_at, tweet_posted_at')
-                .eq('target_tweet_id', cand.candidate_tweet_id)
-                .maybeSingle();
-              
-              console.log(`[SCHEDULER] 📊 Candidate source: tweet_id=${cand.candidate_tweet_id} author=@${oppInfo?.target_username || 'unknown'} harvest_source=${oppInfo?.harvest_source || 'unknown'} discovery=${oppInfo?.discovery_source || 'unknown'}`);
-              
-              // Persist accessibility_status back to reply_opportunities
-              await supabase
-                .from('reply_opportunities')
-                .update({
-                  accessibility_status: accessibilityStatus,
-                  accessibility_checked_at: new Date().toISOString(),
-                  accessibility_reason: `Probe detected ${marker}`,
-                })
-                .eq('target_tweet_id', cand.candidate_tweet_id);
-
-              // 🚫 CANDIDATE QUARANTINE: Persist SKIP_PREFLIGHT_FORBIDDEN (7-day retry ban)
-              if (accessibilityStatus === 'forbidden') {
-                try {
-                  await supabase.from('system_events').insert({
-                    event_type: 'SKIP_PREFLIGHT_FORBIDDEN',
-                    severity: 'info',
-                    message: `Preflight forbidden: tweet ${cand.candidate_tweet_id} quarantined 7d`,
-                    event_data: { tweet_id: cand.candidate_tweet_id, marker, author: oppInfo?.target_username },
-                    created_at: new Date().toISOString(),
-                  });
-                } catch { /* non-blocking */ }
-              }
-              
-              // 🎯 P1: Track forbidden authors for future filtering
-              if (oppInfo?.target_username && accessibilityStatus === 'forbidden') {
-                const authorHandle = oppInfo.target_username.toLowerCase();
-                // Check if author already exists
-                const { data: existing } = await supabase
-                  .from('forbidden_authors')
-                  .select('author_handle, failure_count')
-                  .eq('author_handle', authorHandle)
-                  .maybeSingle();
-                
-                if (existing) {
-                  // Update existing record - increment failure count
-                  const newFailureCount = (existing.failure_count || 0) + 1;
-                  const existingReasons = Array.isArray(existing.failure_reasons) ? existing.failure_reasons : [];
-                  const newReasons = [...existingReasons, `Probe detected ${marker}`];
-                  
-                  await supabase
-                    .from('forbidden_authors')
-                    .update({
-                      failure_count: newFailureCount,
-                      last_seen_at: new Date().toISOString(),
-                      updated_at: new Date().toISOString(),
-                      failure_reasons: newReasons,
-                    })
-                    .eq('author_handle', authorHandle);
-                } else {
-                  // Insert new record
-                  await supabase
-                    .from('forbidden_authors')
-                    .insert({
-                      author_handle: authorHandle,
-                      first_seen_at: new Date().toISOString(),
-                      last_seen_at: new Date().toISOString(),
-                      failure_count: 1,
-                      failure_reasons: [`Probe detected ${marker}`],
-                      accessibility_status: 'forbidden',
-                      created_at: new Date().toISOString(),
-                      updated_at: new Date().toISOString(),
-                    });
-                }
-              }
-              
-              await cachePreflight(cand.candidate_tweet_id, {
-                status: 'protected',
-                checked_at: new Date().toISOString(),
-                reason: `Probe detected ${marker}`,
-                latency_ms: probeLatency,
-                marker: `probe_${marker}`,
-              });
-            } else {
-              probeResults.attempted++;
-              probeResults.ok++;
-              console.log(`[SCHEDULER] 🎯 P1_PROBE: Passed for ${cand.candidate_tweet_id} (${probeLatency}ms)`);
-              
-              // Mark as ok if probe passes
-              await supabase
-                .from('reply_opportunities')
-                .update({
-                  accessibility_status: 'ok',
-                  accessibility_checked_at: new Date().toISOString(),
-                  accessibility_reason: 'Probe passed',
-                })
-                .eq('target_tweet_id', cand.candidate_tweet_id);
-            }
-          } finally {
-            await pool.releasePage(probePage);
-          }
-        } catch (probeError: any) {
-          // Probe failed (timeout/error) - continue to full preflight
-          console.log(`[SCHEDULER] 🎯 P1_PROBE: Error/timeout for ${cand.candidate_tweet_id}, continuing to full preflight`);
-        }
+        console.log(`[SCHEDULER] 📋 CONTROL_PLANE: No browser preflight for ${cand.candidate_tweet_id} - selecting with preflight_status=skipped (executor will validate)`);
+        selectedCandidate = {
+          candidate: cand,
+          tier: candTier,
+          preflightStatus: 'skipped',
+          preflightOk: false,
+        };
+        break; // One decision per cycle; executor does runtime preflight
       }
       
-      // Skip full preflight if probe failed
+      // Skip full preflight if probe failed (P1 path only - probe not used in control plane)
       if (!probePassed) {
-        // Continue to next candidate (don't break - P1 mode tries up to N candidates)
         continue; // Try next candidate
       }
       
@@ -892,6 +780,8 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       decision_id: null,
       candidate_tweet_id: null,
       scheduler_run_id: schedulerRunId,
+      reason: 'no_candidates_after_preflight',
+      behind_schedule: false,
       preflight_stats: {
         attempted: preflightAttempted,
         ok: preflightOk,
@@ -1039,7 +929,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     console.log(`[SCHEDULER] 💓 Heartbeat: Fetching candidate data...`);
     const { data: fetchedCandidateData } = await supabase
       .from('candidate_evaluations')
-      .select('candidate_tweet_id, candidate_author_username, candidate_content, topic_relevance_score, velocity_score, recency_score, author_signal_score, predicted_tier, predicted_24h_views, overall_score')
+      .select('candidate_tweet_id, candidate_author_username, candidate_content, topic_relevance_score, velocity_score, recency_score, author_signal_score, predicted_tier, predicted_24h_views, overall_score, candidate_posted_at, candidate_like_count, candidate_reply_count, candidate_repost_count, ai_judge_decision')
       .eq('id', candidate.evaluation_id)
       .single();
     
@@ -1049,16 +939,25 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     
     if (!candidateData) {
       stageTimings.total_ms = Date.now() - candidateStartTime;
+      // Clean up orphaned queue entry instead of throwing
+      try {
+        await supabase.from('reply_candidate_queue')
+          .delete()
+          .eq('candidate_tweet_id', candidate.candidate_tweet_id);
+        console.log(`[SCHEDULER] 🧹 Cleaned orphaned queue entry: ${candidate.candidate_tweet_id} (evaluation_id ${candidate.evaluation_id} not found)`);
+      } catch (cleanupErr: any) {
+        console.warn(`[SCHEDULER] ⚠️ Orphan cleanup failed: ${cleanupErr.message}`);
+      }
       await logOutcome(supabase, schedulerRunId, {
         outcome_type: 'ERROR',
         candidate_tweet_id: candidate.candidate_tweet_id,
         candidate_id: candidate.evaluation_id,
-        url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
         error_stage: 'data_fetch',
-        error_message: 'Candidate data not found',
+        error_message: 'Candidate data not found — orphaned queue entry cleaned',
         stage_timings: stageTimings,
       });
-      throw new Error('Candidate data not found');
+      clearTimeout(watchdogTimer);
+      return; // Exit this attempt — next tick will try another candidate
     }
     
     // Use lease_id for traceability (already have queueId from getNextCandidateFromQueue)
@@ -1069,6 +968,40 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         .update({ scheduler_run_id: schedulerRunId })
         .eq('id', queueId)
         .eq('lease_id', candidateLeaseId); // Only update our lease
+    }
+    
+    // 🎯 LEARNING: Fetch discovery_source and ensure reply_opportunities has target_username/discovery_source for outcome aggregation
+    let discoverySourceForLearning: string = 'reply_v2_scheduler';
+    const { data: oppForLearning } = await supabase
+      .from('reply_opportunities')
+      .select('discovery_source, target_username')
+      .eq('target_tweet_id', candidate.candidate_tweet_id)
+      .maybeSingle();
+    if (oppForLearning?.discovery_source) discoverySourceForLearning = oppForLearning.discovery_source;
+    const usernameForLearning = candidateData.candidate_author_username || 'unknown';
+    if (oppForLearning) {
+      const updates: Record<string, unknown> = {};
+      if (!oppForLearning.target_username) updates.target_username = usernameForLearning;
+      if (!oppForLearning.discovery_source) updates.discovery_source = discoverySourceForLearning;
+      if (Object.keys(updates).length) {
+        await supabase.from('reply_opportunities').update(updates).eq('target_tweet_id', candidate.candidate_tweet_id);
+      }
+    } else {
+      await supabase.from('reply_opportunities').upsert(
+        {
+          target_tweet_id: candidate.candidate_tweet_id,
+          target_tweet_url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+          target_username: usernameForLearning,
+          target_tweet_content: (candidateData.candidate_content || '').substring(0, 500) || null,
+          tweet_posted_at: candidateData.candidate_posted_at || new Date().toISOString(),
+          replied_to: false,
+          is_root_tweet: true,
+          root_tweet_id: candidate.candidate_tweet_id,
+          discovery_source: discoverySourceForLearning,
+          status: 'pending',
+        },
+        { onConflict: 'target_tweet_id' }
+      );
     }
     
     // 🔒 TASK 2: Create decision in DRAFT/PENDING state FIRST (before generation)
@@ -1082,51 +1015,31 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     let isReplyFromFetch: boolean | undefined = undefined;
     
     if (planOnlyMode) {
-      // 🔒 SOFT PREFLIGHT: Use preflight status from candidate selection (already done above)
-      if (preflightOkFlag && preflightStatus === 'ok') {
-        // Preflight OK - we already fetched during preflight, but need text for snapshot
-        // Fetch fresh text for snapshot (we know tweet exists from preflight)
-        const { fetchTweetData } = await import('../../gates/contextLockVerifier');
-        try {
-          const preflightTweetData = await Promise.race([
-            fetchTweetData(candidate.candidate_tweet_id),
-            new Promise((_, reject) => {
-              setTimeout(() => reject(new Error('PREFLIGHT_TIMEOUT')), PREFLIGHT_TIMEOUT_MS);
-            }),
-          ]) as any;
-          
-          if (preflightTweetData && preflightTweetData.text && preflightTweetData.text.length >= 20) {
-            targetTweetContentSnapshot = preflightTweetData.text.trim();
-            snapshotSource = 'preflight_fetch';
-            snapshotLenLive = preflightTweetData.text.trim().length;
-            isReplyFromFetch = preflightTweetData.isReply || false;
-            console.log(`[SCHEDULER] ✅ PREFLIGHT: Tweet verified (${snapshotLenLive} chars), proceeding with planning`);
-          } else {
-            // Fallback to candidate content
-            targetTweetContentSnapshot = candidateData.candidate_content || '';
-            snapshotSource = 'candidate_extract';
-            snapshotLenLive = 0;
-            isReplyFromFetch = undefined;
-            console.log(`[SCHEDULER] ⚠️ PREFLIGHT OK but fetch failed, using candidate content`);
-          }
-        } catch (err: any) {
-          // Fallback to candidate content
-          targetTweetContentSnapshot = candidateData.candidate_content || '';
-          snapshotSource = 'candidate_extract';
-          snapshotLenLive = 0;
-          isReplyFromFetch = undefined;
-          console.log(`[SCHEDULER] ⚠️ PREFLIGHT OK but fetch error: ${err.message}, using candidate content`);
-        }
+      // Control plane never uses browser: use candidate content for snapshot; executor validates at runtime.
+      if (preflightStatus === 'skipped' || !preflightOkFlag) {
+        targetTweetContentSnapshot = candidateData.candidate_content || `Tweet ${candidate.candidate_tweet_id}`;
+        snapshotSource = 'candidate_extract';
+        snapshotLenLive = 0;
+        isReplyFromFetch = undefined;
+        console.log(`[SCHEDULER] 📋 CONTROL_PLANE: Using candidate content for snapshot (preflight=${preflightStatus}); executor will validate`);
+      } else if (preflightOkFlag && preflightStatus === 'ok') {
+        // P1 verified path: we have cached/verified ok but no browser on control plane - use candidate content
+        targetTweetContentSnapshot = candidateData.candidate_content || `Tweet ${candidate.candidate_tweet_id}`;
+        snapshotSource = 'candidate_extract';
+        snapshotLenLive = 0;
+        isReplyFromFetch = undefined;
+        console.log(`[SCHEDULER] 📋 CONTROL_PLANE: Using candidate content (preflight ok from cache/executor); no browser fetch`);
       } else {
-        // 🔒 STRICT: Preflight not OK - should not reach here (selectedCandidate only set if preflightOk=true)
-        // But handle gracefully if somehow we get here
-        console.error(`[SCHEDULER] ❌ CRITICAL: Preflight not OK (${preflightStatus}) but proceeding - this should not happen`);
-        throw new Error(`Preflight failed (${preflightStatus}) but decision creation attempted - strict mode violation`);
+        // Fallback for any other status
+        targetTweetContentSnapshot = candidateData.candidate_content || `Tweet ${candidate.candidate_tweet_id}`;
+        snapshotSource = 'candidate_extract';
+        snapshotLenLive = 0;
+        isReplyFromFetch = undefined;
       }
       
-      // 🔒 SOFT PREFLIGHT: Allow short content if preflight was skipped/timeout (let Mac Runner verify)
+      // 🔒 SOFT PREFLIGHT: Allow short content if preflight was skipped (let Mac Runner verify)
       if (!targetTweetContentSnapshot || targetTweetContentSnapshot.length < 20) {
-        if (preflightStatus === 'skipped' || preflightStatus === 'timeout') {
+        if ((preflightStatus as string) === 'skipped' || (preflightStatus as string) === 'timeout') {
           // Soft fallback - use candidate content even if short, let Mac Runner verify
           console.log(`[SCHEDULER] ⚠️ Content short (${targetTweetContentSnapshot?.length || 0} chars) but preflight=${preflightStatus}, proceeding with soft fallback`);
           targetTweetContentSnapshot = candidateData.candidate_content || `Tweet ${candidate.candidate_tweet_id}`;
@@ -1192,13 +1105,37 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         const errorMsg = fetchError.message.includes('TIMEOUT') 
           ? `fetch timed out after ${fetchElapsed}ms` 
           : fetchError.message;
-        console.warn(`[SCHEDULER] ⚠️ Failed to fetch live tweet text (${fetchElapsed}ms): ${errorMsg}, falling back to candidate content`);
-        
-        // If it's a timeout, log it but continue with fallback
-        if (fetchError.message.includes('TIMEOUT')) {
+        console.warn(`[SCHEDULER] ⚠️ Failed to fetch live tweet text (${fetchElapsed}ms): ${errorMsg}`);
+
+        // 🎯 EARLY ABORT: If tweet is gone (not just timeout), skip this candidate immediately
+        // This saves ~30s of generation + posting that would fail at CONTEXT_LOCK anyway
+        const isTimeout = fetchError.message.includes('TIMEOUT');
+        const isTweetGone = !isTimeout && (fetchElapsed < FETCH_TWEET_TIMEOUT_MS - 1000); // Completed fast but returned nothing = tweet deleted
+        if (isTweetGone) {
+          console.log(`[SCHEDULER] 🛑 EARLY_ABORT: Tweet ${candidate.candidate_tweet_id} appears deleted/inaccessible (fetch completed in ${fetchElapsed}ms with no content). Skipping.`);
+          clearTimeout(watchdogTimer);
+          stageTimings.total_ms = Date.now() - candidateStartTime;
+          if (candidateLeaseId) {
+            const { releaseLease } = await import('./queueManager');
+            await releaseLease(candidate.candidate_tweet_id, candidateLeaseId);
+          }
+          await logOutcome(supabase, schedulerRunId, {
+            outcome_type: 'SKIP',
+            candidate_tweet_id: candidate.candidate_tweet_id,
+            candidate_id: candidate.evaluation_id,
+            author_handle: candidateData.candidate_author_username,
+            url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
+            error_stage: 'fetch',
+            error_message: `EARLY_ABORT: tweet inaccessible (fetch=${fetchElapsed}ms)`,
+            stage_timings: stageTimings,
+          });
+          throw new Error(`EARLY_ABORT: tweet ${candidate.candidate_tweet_id} inaccessible`);
+        }
+
+        // Timeout or transient error: fall back to candidate content
+        if (isTimeout) {
           console.log(`[SCHEDULER] 💓 Heartbeat: Fetch timeout after ${fetchElapsed}ms - using fallback`);
         }
-        // Fallback to candidate content
         targetTweetContentSnapshot = candidateData.candidate_content || '';
         snapshotSource = 'candidate_extract';
         snapshotLenLive = 0;
@@ -1284,6 +1221,32 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       stageTimings.ancestry_ms = 0;
       console.log(`[SCHEDULER] 📋 PLAN_ONLY: Using fallback ancestry (assumed root) - skipping browser resolution`);
     } else {
+      // 🔒 ROOT STATUS FAST-PATH: If reply_opportunities already confirmed is_root_tweet=true,
+      // skip the browser navigation that triggers consent walls. The root status was verified
+      // during candidate scoring/enrichment — no need to re-verify via page navigation.
+      const { data: rootCheck } = await supabase
+        .from('reply_opportunities')
+        .select('is_root_tweet, target_in_reply_to_tweet_id')
+        .eq('target_tweet_id', candidate.candidate_tweet_id)
+        .maybeSingle();
+
+      const alreadyConfirmedRoot = rootCheck?.is_root_tweet === true && rootCheck?.target_in_reply_to_tweet_id == null;
+
+      if (alreadyConfirmedRoot) {
+        ancestry = {
+          targetTweetId: candidate.candidate_tweet_id,
+          targetInReplyToTweetId: null,
+          rootTweetId: candidate.candidate_tweet_id,
+          ancestryDepth: 0,
+          isRoot: true,
+          status: 'OK' as const,
+          confidence: 'MEDIUM' as const,
+          method: 'db_root_confirmed',
+          cache_hit: false,
+        };
+        stageTimings.ancestry_ms = 0;
+        console.log(`[SCHEDULER] ✅ ROOT FAST-PATH: Skipping browser ancestry — is_root_tweet=true confirmed in reply_opportunities`);
+      } else {
       // Add timeout and logging around ancestry resolution
       const ancestryStartTime = Date.now();
       const ANCESTRY_TIMEOUT_MS = 12000; // 12s hard timeout for ancestry
@@ -1341,8 +1304,9 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         
         throw new Error(`Ancestry resolution timeout: ${ancestryError.message}`);
       }
+      } // close alreadyConfirmedRoot else block
     }
-    
+
     const allowCheckStartTime = Date.now();
     console.log(`[SCHEDULER] 💓 Heartbeat: Starting allow check...`);
     
@@ -1705,36 +1669,42 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       .maybeSingle();
     
     if (!existingDecision) {
+      const buildSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
+      const pipelineSource = planOnlyMode ? 'reply_v2_planner' : 'reply_v2_scheduler';
       const { error: insertError1 } = await supabase
         .from('content_generation_metadata_comprehensive')
         .insert({
           decision_id: decisionId,
           decision_type: 'reply',
-          status: 'generating', // Status: generating → queued → posted
+          status: 'queued', // DB constraint allows queued→posting→posted; content filled when generated
           content: '[GENERATING...]', // Placeholder
+          generation_source: 'real', // Required NOT NULL; reply v2 is real LLM content
           target_tweet_id: candidate.candidate_tweet_id,
           target_username: candidateData.candidate_author_username, // Required for FINAL_REPLY_GATE
-          root_tweet_id: ancestry.rootTweetId, // 🔒 CRITICAL: Use resolved root tweet ID
-          target_tweet_content_snapshot: normalizedSnapshot, // 🔒 TASK 1: Populated from live fetch
-          target_tweet_content_hash: targetTweetContentHash, // 🔒 TASK 1: Populated from live fetch
-          pipeline_source: planOnlyMode ? 'reply_v2_planner' : 'reply_v2_scheduler',
-          build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
-          candidate_evaluation_id: candidate.evaluation_id,
-          queue_id: queueId,
-          scheduler_run_id: schedulerRunId,
+          root_tweet_id: ancestry.rootTweetId ?? candidate.candidate_tweet_id, // Resolved root or target-as-root (UNCERTAIN fail-open)
+          pipeline_source: pipelineSource, // Required for ROOT_CHECK (opportunity_not_found bypass)
+          features: {
+            target_tweet_content_snapshot: normalizedSnapshot,
+            target_tweet_content_hash: targetTweetContentHash,
+            pipeline_source: pipelineSource,
+            build_sha: buildSha,
+            candidate_evaluation_id: candidate.evaluation_id,
+            queue_id: queueId,
+            scheduler_run_id: schedulerRunId,
+            discovery_source: discoverySourceForLearning,
+          },
         });
       
       if (insertError1) {
         throw new Error(`Failed to insert decision: ${insertError1.message}`);
       }
     } else {
-      // Update existing decision with new snapshot/hash
+      // Update existing decision (set root_tweet_id for permit validation; snapshot/hash in features)
       await supabase
         .from('content_generation_metadata_comprehensive')
         .update({
-          target_tweet_content_snapshot: normalizedSnapshot,
-          target_tweet_content_hash: targetTweetContentHash,
-          status: 'generating',
+          status: 'queued',
+          root_tweet_id: ancestry.rootTweetId ?? candidate.candidate_tweet_id,
         })
         .eq('decision_id', decisionId);
     }
@@ -1759,40 +1729,56 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         score_bucket: getScoreBucket(candidateScore / 100),
       };
       
+      const buildSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown';
       const { error: insertError2 } = await supabase
         .from('content_metadata')
         .insert({
           decision_id: decisionId,
           decision_type: 'reply',
-          status: 'generating',
+          status: 'queued', // DB constraint: queued→posting→posted
           content: '[GENERATING...]',
+          generation_source: 'real', // Required NOT NULL; reply v2 is real LLM content
           target_tweet_id: candidate.candidate_tweet_id,
           target_username: candidateData.candidate_author_username, // Required for FINAL_REPLY_GATE
-          root_tweet_id: ancestry.rootTweetId, // 🔒 CRITICAL: Use resolved root tweet ID
-          target_tweet_content_snapshot: normalizedSnapshot, // 🔒 TASK 1: Populated from live fetch
-          target_tweet_content_hash: targetTweetContentHash, // 🔒 TASK 1: Populated from live fetch
           scheduled_at: scheduledAt, // 🔒 TASK 2: Set immediately so posting queue can pick it up
-          pipeline_source: 'reply_v2_scheduler',
-          build_sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_SHA || 'unknown',
           quality_score: candidate.overall_score / 100,
+          // Populate metadata columns for learning (not just features JSONB)
+          hook_type: selectedStrategy?.strategy_id || 'insight_punch',
+          strategy_id: selectedStrategy?.strategy_id || 'insight_punch',
+          generator_name: 'reply_adapter',
+          style: 'helpful',
+          topic_cluster: (candidateData as any)?.ai_judge_decision?.topic_category || String(candidateFeatures.topic_relevance || 0),
           features: {
             ...strategyFeatures,
             plan_mode: planOnlyMode ? 'railway' : 'runner', // 🎯 PLAN_ONLY: Mark execution mode
-          }, // 🎯 PHASE 6.4: Strategy attribution
+            root_tweet_id: ancestry.rootTweetId ?? candidate.candidate_tweet_id,
+            target_tweet_content_snapshot: normalizedSnapshot,
+            target_tweet_content_hash: targetTweetContentHash,
+            pipeline_source: 'reply_v2_scheduler',
+            build_sha: buildSha,
+            discovery_source: discoverySourceForLearning,
+            // Reply timing data for learning
+            target_tweet_posted_at: candidateData.candidate_posted_at || null,
+            reply_delay_minutes: candidateData.candidate_posted_at
+              ? Math.round((Date.now() - new Date(candidateData.candidate_posted_at).getTime()) / 60000)
+              : null,
+            target_reply_count: candidateData.candidate_reply_count ?? null,
+            target_like_count: candidateData.candidate_like_count ?? null,
+            target_repost_count: candidateData.candidate_repost_count ?? null,
+            target_topic: (candidateData as any)?.ai_judge_decision?.topic_category || null,
+          },
         });
-      
+
       if (insertError2) {
         throw new Error(`Failed to insert metadata: ${insertError2.message}`);
       }
     } else {
-      // Update existing metadata with new snapshot/hash
+      // Update existing metadata (snapshot/hash in features; view has no columns for them)
       await supabase
         .from('content_metadata')
         .update({
-          target_tweet_content_snapshot: normalizedSnapshot,
-          target_tweet_content_hash: targetTweetContentHash,
           scheduled_at: scheduledAt,
-          status: 'generating',
+          status: 'queued',
         })
         .eq('decision_id', decisionId);
     }
@@ -1942,9 +1928,11 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     
     // 🔒 CRITICAL: Check for required API keys BEFORE template selection
     // If missing, write decision row with FAILED status and exit gracefully
-    const openaiApiKey = process.env.OPENAI_API_KEY;
-    if (!openaiApiKey) {
-      console.error(`[SCHEDULER] ❌ Missing OPENAI_API_KEY - cannot generate reply`);
+    const openaiApiKey = (process.env.OPENAI_API_KEY || '').trim();
+    const openaiKeyPresent = openaiApiKey.length > 0 && openaiApiKey.startsWith('sk-');
+    console.log(`[SCHEDULER] OPENAI_API_KEY present=${!!openaiApiKey} valid_prefix=${openaiKeyPresent} (length=${openaiApiKey ? openaiApiKey.length : 0})`);
+    if (!openaiApiKey || !openaiKeyPresent) {
+      console.error(`[SCHEDULER] ❌ Missing or invalid OPENAI_API_KEY - cannot generate reply`);
       const templateSelectedAt = new Date().toISOString();
       await supabase
         .from('reply_decisions')
@@ -2038,6 +2026,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     
     // Generate reply content with fallback logic
     let replyContent: string;
+    let replyArchetype: string = 'unknown';
     let isFallback = false;
     let generationError: Error | null = null;
     let promptVersion = templateSelection.prompt_version;
@@ -2050,6 +2039,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
     const GENERATION_TIMEOUT_MS = 25000; // 25s hard timeout for OpenAI generation
     console.log(`[SCHEDULER] 💓 Heartbeat: Starting generation (timeout: ${GENERATION_TIMEOUT_MS}ms)...`);
     
+    let groundingCheck: { pass: boolean; grounding_evidence?: { matched_keyphrases: string[] }; reason?: string } | null = null;
     try {
       console.log(`[PIPELINE] decision_id=${decisionId} stage=generate ok=start detail=generating_reply cert_mode=${certMode}`);
       if (certMode) {
@@ -2087,6 +2077,18 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         // 🎯 PHASE 6.4: Build strategy prompt - the strategy template will be prepended to the base prompt
         const strategyPrompt = formatStrategyPrompt(selectedStrategy, '');
         
+        // 🌐 Load external insights for reply context (cached — lightweight read)
+        let externalInsightsContext = '';
+        try {
+          const { getCachedInsights } = await import('../../intelligence/twitterInsightAggregator');
+          const insights = await getCachedInsights();
+          if (insights && insights.topPerformingHooks.length > 0) {
+            const topHooks = insights.topPerformingHooks.slice(0, 3).map(h => `${h.hookType} (${(h.avgEngagement * 100).toFixed(1)}% ER)`).join(', ');
+            const topTopics = insights.topPerformingTopics.slice(0, 3).map(t => t.topic).join(', ');
+            externalInsightsContext = `Top-performing reply hooks right now: ${topHooks}. Trending health topics: ${topTopics}.`;
+          }
+        } catch { /* non-critical */ }
+
         const replyResult = await Promise.race([
           generateReplyContent({
             target_username: candidateData.candidate_author_username,
@@ -2094,10 +2096,11 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
             topic: keywords.join(', ') || 'health',
             angle: 'reply_context',
             tone: 'helpful',
-            model: 'gpt-4o-mini',
+            model: process.env.REPLY_GENERATION_MODEL || 'gpt-4o-mini',
             template_id: templateSelection.template_id, // 🎨 QUALITY TRACKING (maps to strategy_id)
             prompt_version: promptVersion, // 🎨 QUALITY TRACKING (maps to strategy_version)
             custom_prompt: strategyPrompt, // 🎯 PHASE 6.4: Use strategy prompt template (includes base instructions)
+            external_insights: externalInsightsContext, // 🌐 External Twitter intelligence
             reply_context: {
               target_text: normalizedSnapshot,
               root_text: replyContext.root_tweet_text || normalizedSnapshot,
@@ -2110,16 +2113,17 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
         ]) as any;
         
         replyContent = replyResult.content;
+        replyArchetype = replyResult.reply_archetype || 'unknown';
         const generationElapsed = Date.now() - generationStartTime;
         stageTimings.generation_ms = generationElapsed;
         console.log(`[SCHEDULER] 💓 Heartbeat: Generation completed in ${generationElapsed}ms`);
-        console.log(`[PIPELINE] decision_id=${decisionId} stage=generate ok=true detail=reply_generated length=${replyContent.length}`);
-        console.log(`[SCHEDULER] ✅ Reply generated: ${replyContent.length} chars`);
+        console.log(`[PIPELINE] decision_id=${decisionId} stage=generate ok=true detail=reply_generated length=${replyContent.length} archetype=${replyArchetype}`);
+        console.log(`[SCHEDULER] ✅ Reply generated: ${replyContent.length} chars archetype=${replyArchetype}`);
       }
       
       // 🔒 TASK 2: GROUNDING GUARANTEE - Verify reply references target tweet
       const { verifyContextGrounding } = await import('../../gates/replyContextGroundingGate');
-      const groundingCheck = verifyContextGrounding(
+      groundingCheck = verifyContextGrounding(
         replyContent,
         normalizedSnapshot,
         undefined, // extractedCaption - not available yet
@@ -2360,10 +2364,46 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       .from('content_metadata')
       .select('features, pipeline_source, status')
       .eq('decision_id', decisionId)
-      .single();
+      .maybeSingle();
     
     if (!existingMetadataForUpdate) {
-      throw new Error(`[SCHEDULER] ❌ Decision ${decisionId} not found in content_metadata`);
+      // Defensive: select returned null (e.g. RLS) but row may exist. Upsert so we don't fail on duplicate.
+      const strategyFeatures = {
+        strategy_id: selectedStrategy?.strategy_id || 'insight_punch',
+        strategy_version: String(selectedStrategy?.strategy_version || '1'),
+        selection_mode: strategySelection?.selectionMode || 'fallback',
+        strategy_description: selectedStrategy?.description || '',
+        reply_archetype: replyArchetype || 'unknown', // Archetype used for learning
+        targeting_score_total: candidateScore / 100,
+        topic_fit: candidateFeatures.topic_relevance || 0,
+        score_bucket: getScoreBucket(candidateScore / 100),
+        semantic_similarity: semanticSimilarity,
+        grounding_evidence: groundingCheck?.grounding_evidence,
+        pipeline_source: planOnlyMode ? 'reply_v2_planner' : 'reply_v2_scheduler',
+        plan_mode: planOnlyMode ? 'railway' : 'runner',
+        root_tweet_id: ancestry.rootTweetId ?? candidate.candidate_tweet_id,
+      };
+      const { error: upsertErr } = await supabase
+        .from('content_metadata')
+        .upsert(
+          {
+            decision_id: decisionId,
+            decision_type: 'reply',
+            status: 'queued',
+            content: replyContent,
+            generation_source: 'real',
+            target_tweet_id: candidate.candidate_tweet_id,
+            target_username: candidateData.candidate_author_username,
+            scheduled_at: new Date().toISOString(),
+            quality_score: candidate.overall_score / 100,
+            features: strategyFeatures,
+          },
+          { onConflict: 'decision_id' }
+        );
+      if (upsertErr) {
+        throw new Error(`[SCHEDULER] ❌ Decision ${decisionId} content_metadata upsert failed: ${upsertErr.message}`);
+      }
+      console.log(`[SCHEDULER] ⚠️ Upserted content_metadata for decision_id=${decisionId} (select had returned null)`);
     }
     
     const existingFeaturesForUpdate = (existingMetadataForUpdate?.features as any) || {};
@@ -2372,20 +2412,51 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       ? [...new Set([...existingReasonCodes, 'fallback_used'])]
       : existingReasonCodes;
     
-    const updatedFeatures = { 
-      ...existingFeaturesForUpdate, 
+    const updatedFeatures = {
+      ...existingFeaturesForUpdate,
       is_fallback: isFallback,
-      semantic_similarity: semanticSimilarity, // 🔒 TASK 2: Store in features JSONB (column doesn't exist in content_metadata)
-      reason_codes: updatedReasonCodes, // 🔒 TASK 3: Include fallback_used if fallback was used
+      reply_archetype: replyArchetype || existingFeaturesForUpdate.reply_archetype || 'unknown', // 🎯 Archetype learning
+      semantic_similarity: semanticSimilarity,
+      reason_codes: updatedReasonCodes,
     };
     
-    // Update content_generation_metadata_comprehensive
+    // Update content_generation_metadata_comprehensive (MERGE features to preserve snapshot/hash)
+    // Fetch existing features from comprehensive table first (content_metadata may not have the row)
+    let comprehensiveFeatures = updatedFeatures;
+    try {
+      const { data: existingComp } = await supabase
+        .from('content_generation_metadata_comprehensive')
+        .select('features')
+        .eq('decision_id', decisionId)
+        .maybeSingle();
+      if (existingComp?.features) {
+        comprehensiveFeatures = { ...(existingComp.features as any), ...updatedFeatures };
+      }
+    } catch { /* non-blocking — updatedFeatures is fine as fallback */ }
+
+    // 📊 Extract content features for learning
+    let contentFeatures = {};
+    try {
+      const { extractContentFeatures } = await import('../../intelligence/contentFeatureExtractor');
+      contentFeatures = extractContentFeatures(replyContent);
+    } catch { /* non-blocking */ }
+
+    // Calculate reply timing data for dedicated columns
+    const replyDelayMinutes = (candidateData as any)?.candidate_posted_at
+      ? Math.round((Date.now() - new Date((candidateData as any).candidate_posted_at).getTime()) / 60000)
+      : null;
+    const targetTweetPostedAt = (candidateData as any)?.candidate_posted_at || null;
+
     const { data: comprehensiveUpdate, error: updateError1 } = await supabase
       .from('content_generation_metadata_comprehensive')
       .update({
-        status: 'queued', // 🔒 TASK 3: Set to queued AFTER all fields populated
+        status: 'queued',
         content: replyContent,
-        semantic_similarity: semanticSimilarity, // 🔒 TASK 2: Populated after generation
+        semantic_similarity: semanticSimilarity,
+        features: { ...comprehensiveFeatures, content_features: contentFeatures },
+        content_features: contentFeatures,         // dedicated column for direct querying
+        reply_delay_minutes: replyDelayMinutes,    // how fast we replied
+        target_tweet_posted_at: targetTweetPostedAt, // when target was posted
       })
       .eq('decision_id', decisionId)
       .select('decision_id, status')
@@ -2430,18 +2501,33 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       score_bucket: getScoreBucket(candidateScore / 100),
     };
     
+    const pipelineSource = planOnlyMode ? 'reply_v2_planner' : (existingMetadataForUpdate?.pipeline_source || 'reply_v2_scheduler');
     const { data: metadataUpdate, error: updateError2 } = await supabase
       .from('content_metadata')
       .update({
         status: 'queued', // 🔒 TASK 3: Set to queued AFTER all fields populated
         content: replyContent,
-        features: { 
-          ...existingFeaturesForUpdate, 
-          ...updatedFeatures, 
+        // Update metadata columns with generation results
+        hook_type: selectedStrategy?.strategy_id || 'insight_punch',
+        strategy_id: selectedStrategy?.strategy_id || 'insight_punch',
+        generator_name: 'reply_adapter',
+        style: 'helpful',
+        structure_type: replyArchetype || 'unknown',
+        features: {
+          ...existingFeaturesForUpdate,
+          ...updatedFeatures,
           ...strategyFeatures,
           plan_mode: planOnlyMode ? 'railway' : 'runner', // 🎯 PLAN_ONLY: Mark execution mode
+          pipeline_source: pipelineSource, // Store in features (column may not exist on table)
+          discovery_source: discoverySourceForLearning,
+          // Content features for learning
+          ...(() => { try { const { extractContentFeatures } = require('../../utils/contentFeatureExtractor'); return { content_features: extractContentFeatures(replyContent) }; } catch { return {}; } })(),
+          // Reply timing data
+          target_reply_count: candidateData.candidate_reply_count ?? null,
+          target_like_count: candidateData.candidate_like_count ?? null,
+          target_repost_count: candidateData.candidate_repost_count ?? null,
+          candidate_age_minutes: candidateData.candidate_age_minutes ?? null,
         }, // 🎯 PHASE 6.4: Merge strategy attribution
-        pipeline_source: planOnlyMode ? 'reply_v2_planner' : (existingMetadataForUpdate?.pipeline_source || 'reply_v2_scheduler'), // Preserve or update pipeline_source
       })
       .eq('decision_id', decisionId)
       .select('decision_id, status, features')
@@ -2663,6 +2749,7 @@ export async function attemptScheduledReply(): Promise<SchedulerResult> {
       .from('reply_opportunities')
       .insert({
         target_tweet_id: candidate.candidate_tweet_id,
+        target_tweet_url: `https://x.com/i/status/${candidate.candidate_tweet_id}`,
         target_username: candidateData.candidate_author_username,
         target_tweet_content: candidateData.candidate_content,
         is_root_tweet: true,

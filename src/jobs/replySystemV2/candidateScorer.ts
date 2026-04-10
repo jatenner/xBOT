@@ -592,8 +592,35 @@ export async function scoreCandidate(
     healthAngleFitScore * 0.25 +
     conversationBoost / 0.15 * 0.20; // normalize conversationBoost (max 0.15) to 0-1 range
 
-  const overallScore = (opportunityAlpha * 0.5 + responseFit * 0.5) * 100;
-  
+  let overallScore = (opportunityAlpha * 0.5 + responseFit * 0.5) * 100;
+
+  // Behavioral targeting boost: if we have data on optimal target sizes,
+  // boost candidates that match the proven-optimal ratio
+  try {
+    const { getTickAdvice } = await import('../../intelligence/tickAdvisor');
+    const tickAdvice = await getTickAdvice();
+    const optimalRange = tickAdvice?.reply_preferences?.optimal_target_follower_range;
+
+    if (optimalRange && oppFollowers && oppFollowers > 0) {
+      // Get our follower count for ratio computation
+      const { data: selfModel } = await getSupabaseClient()
+        .from('self_model_state')
+        .select('follower_count')
+        .eq('id', 1)
+        .single();
+
+      const ourFollowers = selfModel?.follower_count ?? 1;
+      const ratio = oppFollowers / Math.max(ourFollowers, 1);
+
+      // If target is within the optimal ratio range, boost by up to 10%
+      if (ratio >= optimalRange[0] && ratio <= optimalRange[1]) {
+        overallScore *= 1.10; // 10% boost for behavioral-optimal targets
+      }
+    }
+  } catch {
+    // Behavioral boost is non-fatal
+  }
+
   // Predict 24h views (use judge bucket if available)
   let predicted24hViews: number;
   if (judgeDecision?.expected_views_bucket) {

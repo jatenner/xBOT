@@ -18,6 +18,7 @@ export interface PreflightCacheEntry {
   text_hash?: string;
   reason?: string;
   latency_ms?: number;
+  marker?: string;
 }
 
 const CACHE_TTL_MS = parseInt(process.env.PREFLIGHT_CACHE_TTL_MINUTES || '20', 10) * 60 * 1000;

@@ -45,7 +45,7 @@ async function safeEvaluate<T>(
 export async function fetchCuratedAccountsFeed(): Promise<CuratedTweet[]> {
   const startTime = Date.now();
   const SOURCE_TIMEOUT_MS = 90 * 1000; // 90 seconds per source
-  const ACCOUNTS_PER_RUN = 3; // Hard cap: reduced to 3 accounts per run for faster completion
+  const ACCOUNTS_PER_RUN = 8; // Increased: more fresh candidates per run to keep reply queue fresh
   
   console.log(`[CURATED_FEED] 📋 Fetching tweets from curated accounts (bounded: ${ACCOUNTS_PER_RUN} accounts/run)...`);
   
@@ -65,12 +65,13 @@ export async function fetchCuratedAccountsFeed(): Promise<CuratedTweet[]> {
   
   console.log(`[CURATED_FEED] 📍 Cursor position: ${cursorIndex} (processing ${accountsPerRun} accounts)`);
   
-  // Get all enabled accounts (ordered by signal_score)
+  // Get enabled accounts, prioritized by staleness (least recently fetched first)
+  // This ensures we check accounts most likely to have NEW tweets
   const { data: allAccounts, error: accountsError } = await supabase
     .from('curated_accounts')
-    .select('username, signal_score')
+    .select('username, signal_score, last_tweet_fetched_at')
     .eq('enabled', true)
-    .order('signal_score', { ascending: false });
+    .order('last_tweet_fetched_at', { ascending: true, nullsFirst: true });
   
   if (accountsError || !allAccounts || allAccounts.length === 0) {
     console.error(`[CURATED_FEED] ❌ No curated accounts found: ${accountsError?.message}`);
@@ -224,10 +225,13 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       await page.waitForTimeout(3000); // Wait for timeline to load
       timings.navigationMs = Date.now() - navStart;
       
-      // Get initial container count
-      const containersBefore = await safeEvaluate(page, () => {
-        return document.querySelectorAll('article[data-testid="tweet"]').length;
+      // Get initial container count (primary + fallback selectors for diagnostics)
+      const containersBeforeResult = await safeEvaluate(page, () => {
+        const articleTweet = document.querySelectorAll('article[data-testid="tweet"]').length;
+        const anyTweet = document.querySelectorAll('[data-testid="tweet"]').length;
+        return { article_tweet: articleTweet, any_tweet: anyTweet, primary: articleTweet };
       });
+      const containersBefore = containersBeforeResult?.primary ?? 0;
       
       // 🎯 CENTRALIZED: Ensure consent is accepted with retry
       const consentResult = await ensureConsentAccepted(page, async () => {
@@ -240,10 +244,49 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       const clickAttempted = consentResult.attempts;
       const matchedSelector: string | null = consentResult.matchedSelector || null;
       
-      // Log consent handling results
-      const containersAfter = await safeEvaluate(page, () => {
-        return document.querySelectorAll('article[data-testid="tweet"]').length;
+      // Post-consent: allow timeline to render and trigger lazy load
+      await page.waitForTimeout(2000);
+      await safeEvaluate(page, () => { window.scrollBy(0, 800); });
+      await page.waitForTimeout(2000);
+      
+      // Ensure Posts tab is active (profile may open on Replies or other tab)
+      try {
+        const postsTab = page.getByRole('tab', { name: /Posts/i });
+        const count = await postsTab.count();
+        if (count > 0) {
+          const isSelected = await postsTab.first().getAttribute('aria-selected');
+          if (isSelected !== 'true') {
+            await postsTab.first().click();
+            await page.waitForTimeout(3000);
+            console.log(`[CURATED_FEED] 📌 Clicked Posts tab for @${username}`);
+          }
+        }
+      } catch (tabErr: any) {
+        console.warn(`[CURATED_FEED] Posts tab click skipped for @${username}: ${tabErr?.message ?? tabErr}`);
+      }
+      
+      // Wait for primary column / timeline if present (X structure)
+      try {
+        await page.waitForSelector('[data-testid="primaryColumn"]', { timeout: 5000 });
+        await page.waitForTimeout(2000);
+      } catch (_) {
+        // optional
+      }
+      const finalUrl = page.url();
+      if (finalUrl !== profileUrl) {
+        console.log(`[CURATED_FEED] 📍 Final URL for @${username}: ${finalUrl}`);
+      }
+      
+      // Log consent handling results; use max of primary/fallback for container count
+      const containersAfterResult = await safeEvaluate(page, () => {
+        const articleTweet = document.querySelectorAll('article[data-testid="tweet"]').length;
+        const anyTweet = document.querySelectorAll('[data-testid="tweet"]').length;
+        return { article_tweet: articleTweet, any_tweet: anyTweet, primary: articleTweet, max: Math.max(articleTweet, anyTweet) };
       });
+      let containersAfter = containersAfterResult?.max ?? (containersAfterResult?.primary ?? 0);
+      let containersBySelector = containersAfterResult
+        ? { article_tweet: containersAfterResult.article_tweet, any_tweet: containersAfterResult.any_tweet }
+        : { article_tweet: 0, any_tweet: 0 };
       
       await supabase.from('system_events').insert({
         event_type: 'reply_v2_feed_consent_handling',
@@ -255,12 +298,15 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
           matched_selector: matchedSelector,
           containers_before: containersBefore,
           containers_after: containersAfter,
+          containers_by_selector: containersBySelector,
           consent_cleared: consentCleared,
+          page_url: profileUrl,
+          final_url: finalUrl,
         },
         created_at: new Date().toISOString(),
       });
       
-      // DIAGNOSTICS: Check login status and walls
+      // DIAGNOSTICS: Check login status, walls, and container counts by selector
       const diagnostics = await safeEvaluate(page, () => {
         const hasComposeBox = !!document.querySelector('[data-testid="tweetTextarea_0"]');
         const hasAccountMenu = !!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
@@ -274,18 +320,22 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
                              bodyText.includes('Try again');
         const hasRateLimit = bodyText.includes('rate limit') ||
                             bodyText.includes('Too many requests');
-        
-        const tweetContainers = document.querySelectorAll('article[data-testid="tweet"]');
-        
+        const articleTweet = document.querySelectorAll('article[data-testid="tweet"]').length;
+        const anyTweet = document.querySelectorAll('[data-testid="tweet"]').length;
+        // Detect if we're on a profile timeline (Posts tab): look for tab or main column
+        const tabSelected = document.querySelector('[role="tab"][aria-selected="true"]');
+        const tabLabel = tabSelected?.textContent?.trim() || null;
         return {
           logged_in: hasComposeBox || hasAccountMenu,
           wall_detected: hasLoginWall || hasConsentWall || hasErrorWall || hasRateLimit,
           wall_type: hasLoginWall ? 'login' : hasConsentWall ? 'consent' : hasErrorWall ? 'error' : hasRateLimit ? 'rate_limit' : 'none',
-          tweet_containers_found: tweetContainers.length,
+          tweet_containers_found: Math.max(articleTweet, anyTweet),
+          containers_by_selector: { article_tweet: articleTweet, any_tweet: anyTweet },
+          tab_label: tabLabel,
         };
       });
       
-      console.log(`[CURATED_FEED] 🔍 Diagnostics for @${username}:`, diagnostics);
+      console.log(`[CURATED_FEED] 🔍 Diagnostics for @${username}:`, diagnostics, 'containers_by_selector:', containersBySelector, 'page_url:', profileUrl, 'consent_cleared:', consentCleared);
       
       // Log diagnostics to system_events
       await supabase.from('system_events').insert({
@@ -295,12 +345,15 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
         event_data: {
           username,
           url: profileUrl,
+          page_url: profileUrl,
           ...diagnostics,
+          containers_by_selector: containersBySelector,
+          consent_cleared: consentCleared,
         },
         created_at: new Date().toISOString(),
       });
       
-      // Update diagnostics with containers_after
+      // Update diagnostics with containers_after for downstream logic
       diagnostics.tweet_containers_found = containersAfter;
       
       // If consent wall still detected after handling AND no containers found
@@ -391,19 +444,48 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
         return [];
       }
       
-      // Wait for tweets to appear (if not already found)
+      // When still 0 containers: scroll to top then down to trigger timeline lazy load
+      if (containersAfter === 0) {
+        await safeEvaluate(page, () => { window.scrollTo(0, 0); });
+        await page.waitForTimeout(1500);
+        await safeEvaluate(page, () => { window.scrollBy(0, 600); });
+        await page.waitForTimeout(3000);
+        const afterScroll = await safeEvaluate(page, () => ({
+          article_tweet: document.querySelectorAll('article[data-testid="tweet"]').length,
+          any_tweet: document.querySelectorAll('[data-testid="tweet"]').length,
+        }));
+        if ((afterScroll?.article_tweet ?? 0) + (afterScroll?.any_tweet ?? 0) > 0) {
+          containersBySelector.article_tweet = afterScroll?.article_tweet ?? 0;
+          containersBySelector.any_tweet = afterScroll?.any_tweet ?? 0;
+          containersAfter = Math.max(containersBySelector.article_tweet, containersBySelector.any_tweet);
+          console.log(`[CURATED_FEED] 📌 Containers after scroll-to-top: article_tweet=${containersBySelector.article_tweet} any_tweet=${containersBySelector.any_tweet}`);
+        }
+      }
+      
+      // Determine tweet selector: prefer primary; use fallback if primary yields 0
+      const primarySelector = 'article[data-testid="tweet"]';
+      const fallbackSelector = '[data-testid="tweet"]';
+      let tweetSelector = primarySelector;
       if (containersAfter === 0) {
         try {
-          await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 });
-        } catch (e) {
-          console.warn(`[CURATED_FEED] ⚠️ No tweets found for @${username} (selector timeout)`);
-          
-          const screenshotPath = `/tmp/feed_no_tweets_${username}_${Date.now()}.png`;
-          await page.screenshot({ path: screenshotPath, fullPage: true });
-          console.log(`[CURATED_FEED] 📸 Screenshot saved: ${screenshotPath}`);
-          
-          return [];
+          await page.waitForSelector(primarySelector, { timeout: 15000 });
+          tweetSelector = primarySelector;
+        } catch {
+          try {
+            await page.waitForSelector(fallbackSelector, { timeout: 5000 });
+            tweetSelector = fallbackSelector;
+            console.log(`[CURATED_FEED] 📌 Using fallback selector for @${username}: ${fallbackSelector}`);
+          } catch (e) {
+            console.warn(`[CURATED_FEED] ⚠️ No tweets found for @${username} (primary and fallback selector timeout)`);
+            const screenshotPath = `/tmp/feed_no_tweets_${username}_${Date.now()}.png`;
+            await page.screenshot({ path: screenshotPath, fullPage: true });
+            console.log(`[CURATED_FEED] 📸 Screenshot saved: ${screenshotPath}`);
+            return [];
+          }
         }
+      } else if (containersBySelector.article_tweet === 0 && containersBySelector.any_tweet > 0) {
+        tweetSelector = fallbackSelector;
+        console.log(`[CURATED_FEED] 📌 Using fallback selector for @${username}: ${fallbackSelector} (containers: any_tweet=${containersBySelector.any_tweet})`);
       }
       
       // Scroll to load more tweets
@@ -412,11 +494,27 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
       });
       await page.waitForTimeout(2000);
       
+      // Extract profile follower count once (for metadata richness)
+      const profileFollowers = await safeEvaluate(page, () => {
+        const bodyText = document.body?.innerText || document.body?.textContent || '';
+        const match = bodyText.match(/([\d.,]+)\s*([KMB])?\s*Followers?/i) || bodyText.match(/Followers?\s*([\d.,]+)\s*([KMB])?/i);
+        if (!match) return null;
+        let num = parseFloat(match[1].replace(/,/g, ''));
+        const suffix = (match[2] || '').toUpperCase();
+        if (suffix === 'K') num *= 1e3;
+        else if (suffix === 'M') num *= 1e6;
+        else if (suffix === 'B') num *= 1e9;
+        return Number.isFinite(num) && num >= 0 ? Math.round(num) : null;
+      });
+      if (profileFollowers != null) {
+        console.log(`[CURATED_FEED] 📊 Profile @${username} follower_count=${profileFollowers}`);
+      }
+      
       // 🔒 MANDATE 4: Track extraction timing
       const extractStart = Date.now();
-      // Extract tweets (FIXED: use single payload object)
-      const tweets = await safeEvaluate(page, (payload: { count: number; username: string }) => {
-        const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+      // Extract tweets using chosen selector (primary or fallback)
+      const tweets = await safeEvaluate(page, (payload: { count: number; username: string; tweet_selector: string; author_follower_count: number | null }) => {
+        const articles = Array.from(document.querySelectorAll(payload.tweet_selector));
         const results: any[] = [];
         
         for (let i = 0; i < Math.min(articles.length, payload.count); i++) {
@@ -480,11 +578,12 @@ async function fetchAccountTweets(username: string, pool: UnifiedBrowserPool): P
             like_count: parseInt(likeCount.replace(/[^\d]/g, '')) || 0,
             reply_count: parseInt(replyCount.replace(/[^\d]/g, '')) || 0,
             retweet_count: parseInt(retweetCount.replace(/[^\d]/g, '')) || 0,
+            author_follower_count: payload.author_follower_count ?? undefined,
           });
         }
         
         return results;
-      }, { count: TWEETS_PER_ACCOUNT, username });
+      }, { count: TWEETS_PER_ACCOUNT, username, tweet_selector: tweetSelector, author_follower_count: profileFollowers ?? null });
       
       timings.extractionMs = Date.now() - extractStart;
       extractedCount = tweets.length;

@@ -147,7 +147,22 @@ export async function fetchAndEvaluateCandidates(): Promise<{
   }
   
   console.log(`[ORCHESTRATOR] 🎛️ Using feed weights: ${JSON.stringify(feedWeights)}`);
-  
+
+  // Load brain-recommended target accounts (accounts 1-2 tiers above us, proven to drive growth)
+  let recommendedTargetUsernames: Set<string> = new Set();
+  try {
+    const { brainQuery } = await import('../../brain/brainQuery');
+    const targets = await brainQuery.getRecommendedTargets('reply', 30);
+    if (targets && targets.length > 0) {
+      recommendedTargetUsernames = new Set(targets.map((t: any) => (t.username || '').toLowerCase()));
+      if (recommendedTargetUsernames.size > 0) {
+        console.log(`[ORCHESTRATOR] 🧠 Loaded ${recommendedTargetUsernames.size} brain-recommended target accounts`);
+      }
+    }
+  } catch {
+    // Brain targets are non-fatal
+  }
+
   const includeDiscovered = process.env.REPLY_V2_DISCOVERED_ACCOUNTS_ENABLED === 'true';
   const includeBrain = process.env.BRAIN_FEEDS_ENABLED === 'true';
   const sources = [
@@ -301,7 +316,15 @@ export async function fetchAndEvaluateCandidates(): Promise<{
               undefined,
               oppInput
             );
-            
+
+            // Brain-recommended target boost: if this tweet's author is in the
+            // recommended targets list, boost the score by 15%
+            if (recommendedTargetUsernames.size > 0 && tweet.author_username) {
+              if (recommendedTargetUsernames.has(tweet.author_username.toLowerCase())) {
+                score.overall_score = Math.min(100, score.overall_score * 1.15);
+              }
+            }
+
             totalEvaluated++;
             
             // 🎯 ANALYTICS: Record DENY decision for scoring failures

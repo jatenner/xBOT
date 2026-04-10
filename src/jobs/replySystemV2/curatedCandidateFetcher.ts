@@ -61,8 +61,10 @@ export async function fetchCuratedCandidates(): Promise<{
     // Check if X API client exists
     let xApi: any = null;
     try {
-      const { XApiClient } = await import('../../posting/xApiClient');
-      xApi = new XApiClient();
+      const mod = await import('../../posting/xApiPoster');
+      const XApiClient = (mod as any).XApiClient ?? (mod as any).default;
+      xApi = XApiClient ? new XApiClient() : null;
+      if (!xApi) throw new Error('X API client not available');
     } catch (importError) {
       // X API client not available, skip
       throw new Error('X API client not available');
@@ -165,7 +167,7 @@ export async function fetchCuratedCandidates(): Promise<{
 
         if (insertError) {
           if (!insertError.message.includes('duplicate') && !insertError.message.includes('unique')) {
-            errors.push(`Insert error for ${opp.tweet_id}: ${insertError.message}`);
+            errors.push(`Insert error for ${opp.target_tweet_id}: ${insertError.message}`);
           }
         } else {
           queued++;

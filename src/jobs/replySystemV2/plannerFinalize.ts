@@ -29,6 +29,7 @@ export interface PlannerFinalizeFields {
   preflight_checked_at?: string; // When preflight was checked
   preflight_latency_ms?: number; // Preflight check latency
   preflight_reason?: string; // Reason for preflight status
+  preflight_marker?: string; // Optional marker (e.g. soft_preflight_fresh)
 }
 
 /**

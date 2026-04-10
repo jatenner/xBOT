@@ -529,14 +529,21 @@ export async function shouldAllowReply(ancestry: ReplyAncestry, context?: { cons
     const decisionId = context?.decision_id;
     
     if (decisionId) {
-      // Check if this is a proof decision
+      // Check if this is a proof decision (view first, then base table for ops_reply_proof)
       const { data: decisionMeta } = await supabase
         .from('content_metadata')
         .select('features')
         .eq('decision_id', decisionId)
         .maybeSingle();
-      
-      const decisionFeatures = (decisionMeta?.features || {}) as Record<string, any>;
+      let decisionFeatures = (decisionMeta?.features || {}) as Record<string, any>;
+      if (!decisionMeta?.features) {
+        const { data: compMeta } = await supabase
+          .from('content_generation_metadata_comprehensive')
+          .select('features')
+          .eq('decision_id', decisionId)
+          .maybeSingle();
+        decisionFeatures = (compMeta?.features || {}) as Record<string, any>;
+      }
       const proofTag = decisionFeatures.proof_tag;
       const isProofDecision = proofTag && String(proofTag).startsWith('control-reply-');
       
@@ -627,19 +634,24 @@ export async function shouldAllowReply(ancestry: ReplyAncestry, context?: { cons
         
         console.log(`[ANCESTRY] 🔍 Checking Reply V2 soft-pass for decision_id=${decisionId}: pipeline_source=${pipelineSource || 'null'} isReplyV2=${isReplyV2} runtime_preflight_status=${decisionFeatures.runtime_preflight_status || 'null'} runtimePreflightOk=${runtimePreflightOk}`);
         
-        if (isReplyV2 && runtimePreflightOk) {
-          console.log(`[ANCESTRY] ✅ SOFT-PASS UNCERTAIN for ReplyV2 runtime_ok decision_id=${decisionId} pipeline_source=${pipelineSource}`);
+        // Scheduler/planner authority: allow UNCERTAIN for reply_v2_scheduler and reply_v2_planner even without runtime_preflight_status (align with posting queue)
+        if (isReplyV2) {
+          const reason = runtimePreflightOk
+            ? `Reply V2 soft-pass: UNCERTAIN ancestry allowed for runtime_preflight_status=ok decision (pipeline_source=${pipelineSource})`
+            : `Scheduler authority: UNCERTAIN allowed for ${pipelineSource} (no runtime_preflight required)`;
+          console.log(`[ANCESTRY] ✅ SOFT-PASS UNCERTAIN for ReplyV2 decision_id=${decisionId} pipeline_source=${pipelineSource} runtime_ok=${runtimePreflightOk}`);
           
-          // Log soft-pass event
           await supabase.from('system_events').insert({
-            event_type: 'ANCESTRY_SOFTPASS_REPLYV2_RUNTIME_OK',
+            event_type: runtimePreflightOk ? 'ANCESTRY_SOFTPASS_REPLYV2_RUNTIME_OK' : 'ANCESTRY_SOFTPASS_REPLYV2_SCHEDULER_AUTHORITY',
             severity: 'info',
-            message: `Soft-pass UNCERTAIN ancestry for Reply V2 decision with runtime_preflight_status=ok`,
+            message: runtimePreflightOk
+              ? `Soft-pass UNCERTAIN ancestry for Reply V2 decision with runtime_preflight_status=ok`
+              : `Soft-pass UNCERTAIN ancestry for Reply V2 scheduler/planner decision (scheduler authority)`,
             event_data: {
               decision_id: decisionId,
               target_tweet_id: ancestry.targetTweetId,
               pipeline_source: pipelineSource,
-              runtime_preflight_status: 'ok',
+              runtime_preflight_status: decisionFeatures.runtime_preflight_status ?? null,
               ancestry_status: 'UNCERTAIN',
               ancestry_method: ancestry.method,
               ancestry_confidence: ancestry.confidence,
@@ -649,7 +661,7 @@ export async function shouldAllowReply(ancestry: ReplyAncestry, context?: { cons
           
           return {
             allow: true,
-            reason: `Reply V2 soft-pass: UNCERTAIN ancestry allowed for runtime_preflight_status=ok decision (pipeline_source=${pipelineSource})`,
+            reason,
           };
         }
       }

@@ -29,12 +29,14 @@ export interface ReplyGenerationRequest {
   template_id?: string; // 🎨 QUALITY TRACKING: Template to use
   prompt_version?: string; // 🎨 QUALITY TRACKING: Prompt version
   custom_prompt?: string; // 🎯 PHASE 6.4: Custom strategy prompt template
+  external_insights?: string; // 🌐 External Twitter intelligence context
 }
 
 export interface ReplyGenerationResult {
   content: string;
   generator_used: string;
-  is_fallback?: boolean; // 🔒 TASK 2: Indicate if this is a fallback generation
+  is_fallback?: boolean;
+  reply_archetype?: string; // Which archetype was used (for learning)
 }
 
 /**
@@ -50,7 +52,37 @@ export async function generateReplyContent(
   request: ReplyGenerationRequest
 ): Promise<ReplyGenerationResult> {
   const decision_id = uuidv4();
-  
+
+  // ── Load cached external intelligence (non-fatal) ──
+  let replyGuidance = '';
+  try {
+    const { getCachedIntelligence } = await import('../intelligence/externalPatternAnalyzer');
+    const intel = await getCachedIntelligence();
+    if (intel) {
+      const { generateReplyGuidance } = await import('../intelligence/externalPatternAnalyzer');
+      replyGuidance = await generateReplyGuidance(intel);
+    }
+  } catch { /* non-fatal — generate without intelligence */ }
+
+  // After existing replyGuidance loading, also load tick advice
+  try {
+    const { getTickAdvice } = await import('../intelligence/tickAdvisor');
+    const advice = await getTickAdvice();
+    if (advice && advice.reply_preferences && advice.confidence > 0.3) {
+      const prefs = advice.reply_preferences;
+      const adviceStr = [
+        prefs.preferred_angles.length ? `Preferred angles: ${prefs.preferred_angles.join(', ')}` : '',
+        prefs.preferred_tones.length ? `Preferred tones: ${prefs.preferred_tones.join(', ')}` : '',
+        prefs.ideal_length_range ? `Ideal length: ${prefs.ideal_length_range[0]}-${prefs.ideal_length_range[1]} chars` : '',
+        prefs.avoid_angles.length ? `Avoid: ${prefs.avoid_angles.join(', ')}` : '',
+        advice.top_insights.length ? `Key insight: ${advice.top_insights[0]}` : '',
+      ].filter(Boolean).join('. ');
+      if (adviceStr) {
+        replyGuidance = replyGuidance ? replyGuidance + ' ' + adviceStr : adviceStr;
+      }
+    }
+  } catch { /* non-fatal */ }
+
   // Extract keywords from parent tweet for context
   const keywords = extractKeywords(request.target_tweet_content);
   const keywordsStr = keywords.length > 0 ? keywords.join(', ') : 'health, wellness';
@@ -74,7 +106,7 @@ export async function generateReplyContent(
   // Use relevance_score if provided
   const relevanceScore = request.relevance_score ?? (isHealthTopic ? 0.7 : 0.3);
   
-  // Extract anchor terms from target tweet for prompt
+  // Extract anchor terms from target tweet for prompt (nouns, hashtags, numbers)
   const extractAnchors = (text: string): string[] => {
     const anchors: string[] = [];
     const hashtags = text.match(/#\w+/gi) || [];
@@ -96,13 +128,41 @@ export async function generateReplyContent(
     anchors.push(...uniqueWords);
     return anchors.slice(0, 8).slice(0, Math.max(3, anchors.length));
   };
-  
+
+  /** Mirror of replyContextGroundingGate extractKeyphrases so prompt requires phrases the gate will check */
+  const extractKeyphrasesForGrounding = (text: string): string[] => {
+    const stopwords = new Set([
+      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+      'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
+      'will', 'would', 'should', 'could', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those',
+      'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
+      'what', 'when', 'where', 'why', 'how', 'which', 'who', 'whom', 'whose'
+    ]);
+    const words = text
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 4 && !stopwords.has(w));
+    const phrases: string[] = [];
+    for (let i = 0; i < words.length - 1; i++) {
+      const phrase = `${words[i]} ${words[i + 1]}`;
+      if (phrase.length > 8) phrases.push(phrase);
+    }
+    return [...phrases, ...words].slice(0, 15);
+  };
+
   const tweetAnchors = extractAnchors(request.target_tweet_content);
-  
+  const gateKeyphrases = extractKeyphrasesForGrounding(request.target_tweet_content);
+
   // 🔒 BUILD CONTEXT STRING: Include full conversation context
   let contextString = `TARGET TWEET: "${request.target_tweet_content}"`;
+  if (gateKeyphrases.length > 0) {
+    contextString += `\n\nREQUIRED PHRASES/WORDS (use at least one VERBATIM in your reply—the system checks for these): ${gateKeyphrases.join(', ')}`;
+  } else if (tweetAnchors.length > 0) {
+    contextString += `\n\nREQUIRED PHRASES/WORDS (use at least one VERBATIM): ${tweetAnchors.slice(0, 5).join(', ')}`;
+  }
   if (tweetAnchors.length > 0) {
-    contextString += `\n\nKEY TERMS TO REFERENCE (use at least one): ${tweetAnchors.slice(0, 5).join(', ')}`;
+    contextString += `\n\nANCHORS (include at least one): ${tweetAnchors.slice(0, 5).join(', ')}`;
   }
   if (request.reply_context?.quoted_text) {
     contextString += `\n\nQUOTED TWEET (what they're responding to): "${request.reply_context.quoted_text}"`;
@@ -114,92 +174,111 @@ export async function generateReplyContent(
     contextString += `\n\nPREVIOUS TWEET IN THREAD: "${request.reply_context.thread_prev_text}"`;
   }
   
-  // 🎯 PHASE 6.4: Use custom strategy prompt if provided, otherwise use default
-  const basePrompt = `Generate a helpful, contextual reply to this tweet:
+  // 🎯 ARCHETYPE-FIRST REPLY GENERATION (with adaptive learning)
+  const maxChars = parseInt(process.env.REPLY_MAX_CHARS || '220', 10);
 
-${contextString}
-Author: @${request.target_username}
-Reply Intent: ${replyIntent}
-Health Relevance: ${relevanceScore >= 0.6 ? 'High' : relevanceScore >= 0.3 ? 'Medium' : 'Low'}
+  type ReplyArchetype = 'insight_addon' | 'reframe' | 'practical_implication' | 'sharp_one_liner' | 'mini_framework';
 
-YOUR REPLY MUST:`;
-  
-  // 🎯 PHASE 6.4: If custom_prompt provided, prepend it to base prompt; otherwise use default
-  // 🔒 PLAN_ONLY GROUNDING FIX: For planner decisions, require explicit token overlap
-  const isPlanOnly = request.template_id && request.template_id.startsWith('insight_');
-  const groundingRequirement = isPlanOnly
-    ? `1. **CRITICAL**: You MUST include 2-4 exact words or phrases from the target tweet in your reply. Quote them directly or use them naturally in context. Examples: if tweet says "meditation improves strength by 20%", your reply MUST include at least 2 of: "meditation", "strength", "20%", "improves". If you cannot do this, return {"content": "", "skip_reason": "no_concrete_detail"}.
-2. **MANDATORY**: Include at least ONE anchor term from the KEY TERMS list above (${tweetAnchors.slice(0, 5).join(', ')}).
-3. **MANDATORY**: Reference the specific claim or detail from the tweet (e.g., "That 20% improvement" or "The meditation practice you mentioned").`
-    : `1. **CRITICAL**: ALWAYS reference a SPECIFIC concrete detail from the target tweet (a claim, metric, term, intervention, mechanism, or named entity). If you cannot reference something specific, return {"content": "", "skip_reason": "no_concrete_detail"}.
-2. **MANDATORY**: Include at least ONE anchor term from the tweet (extract 3-8 key terms: nouns, phrases, hashtags, numbers, or keywords from the tweet text above).
-3. **MANDATORY**: Mention the tweet topic explicitly and reference at least one concrete detail from the tweet.`;
-  
-  const prompt = request.custom_prompt 
-    ? `${request.custom_prompt}\n\n${basePrompt}\n${groundingRequirement}`
-    : `${basePrompt}\n${groundingRequirement}
-4. Be 1-2 sentences, ≤220 characters (strict)
-5. Sound confident and human, like a real person replying
-6. Never roleplay as the author - don't use "we" or "our" unless the bot account (@SignalAndSynapse) is actually the author
-7. NO corporate voice: Avoid "we're excited", "thrilled", "honored", "proud to announce"
-8. NO emojis by default (unless the tweet is very casual/emoji-heavy)
-9. NO forced health tie-ins if tweet isn't health-related - match the tweet's actual topic
-10. NO generic congratulations for brand partnerships - only for personal milestones
-11. NO generic research openers like "Interestingly,", "Research shows", "Studies suggest"
-12. NO thread markers (🧵, 1/5, Part 1, etc.)
-13. NO generic abstract lines like "ecosystem of our BEING", "ripple effect of life" unless explicitly supported by tweet content
-14. Structure: 1 concrete point from tweet + 1 useful nuance/caution + 1 short question OR actionable suggestion
+  // Select archetype using epsilon-greedy adaptive learning
+  let archetype: ReplyArchetype;
+  let archetypeReason = '';
+  let archetypeMode = '';
+  try {
+    const { selectArchetypeAdaptive } = await import('../learning/archetypeLearning');
+    const selection = await selectArchetypeAdaptive(request.target_tweet_content.length, replyIntent);
+    archetype = selection.archetype;
+    archetypeReason = selection.reason;
+    archetypeMode = selection.mode;
+    console.log(`[REPLY_ADAPTER] 🎯 Adaptive archetype: ${archetype} mode=${archetypeMode} reason=${archetypeReason}`);
+    console.log(`[REPLY_ADAPTER] 📊 Archetype stats: ${JSON.stringify(selection.stats_snapshot)}`);
+  } catch (adaptiveErr: any) {
+    // Fallback to template-based selection if learning module fails
+    console.warn(`[REPLY_ADAPTER] ⚠️ Adaptive selection failed (${adaptiveErr.message}), using fallback`);
+    const templateId = request.template_id || '';
+    if (templateId === 'myth_correction' || replyIntent === 'disagree') archetype = 'reframe';
+    else if (templateId === 'question_hook') archetype = 'sharp_one_liner';
+    else if (request.target_tweet_content.length > 200) archetype = Math.random() < 0.4 ? 'mini_framework' : 'insight_addon';
+    else if (request.target_tweet_content.length < 80) archetype = Math.random() < 0.5 ? 'sharp_one_liner' : 'insight_addon';
+    else archetype = 'insight_addon';
+    archetypeReason = 'fallback';
+    archetypeMode = 'fallback';
+  }
 
-REPLY_INTENT GUIDANCE:
-- question: Ask a sharp, specific question related to their tweet topic
-- disagree: Politely challenge with evidence or alternative perspective (be respectful)
-- add_insight: Provide a concise, valuable insight or fact related to their point
-- agree+expand: Affirm their point, then add a related insight or question
+  const archetypeInstructions: Record<ReplyArchetype, string> = {
+    insight_addon: `Add one specific thing they didn't say. Not agreement — new information.
+Good: "The temperature drop is actually what triggers melatonin — 65°F is the sweet spot."
+Bad: "Great point about sleep! Temperature also matters."`,
 
-TONE RULES:
-- If partnership/announcement (NOT health-related): Skip generic congrats, ask a specific question about the announcement
-- If health topic: Reference the specific health point mentioned, add brief insight
-- If other topic: Match the tweet's topic exactly, don't force health angle
-- Always sound conversational, not academic or corporate
-- Be specific, not generic
+    reframe: `Flip their perspective. Same topic, different angle they hadn't considered.
+Good: "The leverage isn't the workout — it's the 23 hours after."
+Bad: "You make a good point, but consider another angle..."`,
 
-GOOD REPLY EXAMPLES:
-- "That's a great point about [specific thing from tweet]! Similar pattern seen in..." (references specific content)
-- "What's the biggest challenge you're tackling first?" (partnership hook, no generic congrats)
-- "Makes sense - when you consider how [specific aspect] works..." (builds on their idea)
-- "Exactly - and [specific research/insight] backs this up..." (affirms then adds value)
-- "Actually, [specific counterpoint] - here's why..." (respectful disagreement)
+    practical_implication: `Turn what they said into something someone can DO right now.
+Good: "That cortisol spike is why a 10-min walk before coffee changes your whole morning."
+Bad: "There are many practical implications of what you mentioned."`,
 
-BAD REPLY EXAMPLES:
-- "We're excited about this partnership!" (corporate voice, generic)
-- "Interestingly, health analytics show..." (generic health filler, no specific reference)
-- "Research shows sugar impacts..." (sounds like lecturing, no tweet reference)
-- "We should explore public health strategies..." (roleplaying as author, generic)
-- "Congrats on the partnership!" (generic, no value)
-- "Let's explore this topic..." (sounds like starting a thread)
-- "1/5 Start with..." (thread marker)
-- "🧵 Thread on this..." (thread marker)
+    sharp_one_liner: `ONE sentence. Maximum impact. Under 100 characters if possible.
+Good: "Your body doesn't count calories — it counts hormones."
+Bad: "While that's an interesting perspective, the real issue is that our bodies process things differently."`,
 
-Reply as if you're continuing THEIR conversation, not starting your own.
+    mini_framework: `Name 2-3 parts of what they described. Pattern, not advice.
+Good: "Two forces here: the habit (automatic) and the environment (what triggers it)."
+Bad: "This is a great framework. There are several key components to consider in this area."`,
+  };
 
-Format as JSON:
-{
-  "content": "Your reply text here"
-}`;
+  // Use strategy prompt if provided (Phase 6.4), otherwise fall back to archetype instructions
+  const strategyBlock = request.custom_prompt
+    ? `${request.custom_prompt}\n\nAdditional style guide: ${archetypeInstructions[archetype]}`
+    : `Write a reply. ${archetypeInstructions[archetype]}`;
+
+  const prompt = `@${request.target_username} tweeted: "${request.target_tweet_content}"
+
+${strategyBlock}
+${request.external_insights ? `\nCONTEXT FROM HEALTH TWITTER:\n${request.external_insights}\n` : ''}
+Hard rules:
+- Use a word from their tweet: ${gateKeyphrases.slice(0, 5).join(', ')}
+- Under ${maxChars} chars. Under 140 is better. One sentence is best.
+- Write like a smart person dashing off a reply, not a content creator crafting a post
+- NEVER start with "Great point", "Interesting", "Your point about", or "That's a great"
+- NEVER use the word "crucial" or "indeed" or "whilst"
+- No emojis, no thread markers
+
+JSON only: {"content": "your reply"}`;
+
+  console.log(`[REPLY_ADAPTER] archetype=${archetype} intent=${replyIntent} target=@${request.target_username}`);
 
   console.log(`[REPLY_ADAPTER] Generating reply for @${request.target_username} using model=${request.model || 'gpt-4o-mini'}`);
   console.log(`[REPLY_ADAPTER] Tweet text (truncated): "${request.target_tweet_content.substring(0, 80)}..."`);
-  console.log(`[REPLY_ADAPTER] Chosen anchors (${tweetAnchors.length}): ${tweetAnchors.slice(0, 5).join(', ')}`);
+  console.log(`[REPLY_ADAPTER] Grounding keyphrases (${gateKeyphrases.length}): ${gateKeyphrases.slice(0, 5).join(', ')}`);
+  console.log(`[REPLY_ADAPTER] Anchors (${tweetAnchors.length}): ${tweetAnchors.slice(0, 5).join(', ')}`);
   
   const response = await createBudgetedChatCompletion({
     model: request.model || 'gpt-4o-mini',
     messages: [
-      { role: 'system', content: 'You are a knowledgeable health enthusiast who provides genuine, evidence-based insights in replies. Always respond with valid JSON format. NEVER use thread markers or numbered lists in replies.' },
+      { role: 'system', content: `You are @${process.env.TWITTER_USERNAME || 'Neurix5'}. You reply like a smart friend who happens to know a lot about neuroscience and health. Short, punchy, specific. Never sound like an AI or a textbook.
+
+VOICE:
+- Casual. Conversational. Like a text message, not an essay.
+- Have opinions: "this is underrated", "most people get this wrong"
+- Be specific: "200mg magnesium glycinate" not "magnesium supplementation"
+- One insight per reply. Don't try to be comprehensive.
+- Under 100 chars is ideal. One sentence is perfect.
+
+NEVER:
+- Start with "Great point", "Interesting", "That's a great"
+- Use words like "crucial", "indeed", "whilst", "moreover"
+- Start with "Studies show" or "Research suggests"
+- Sound like a Wikipedia article
+
+GOOD: "the mechanism is actually cortisol suppressing melatonin — 200mg L-theanine fixes this"
+BAD: "This is a great point! Studies have shown that cortisol levels can impact melatonin production."
+${replyGuidance ? '\n\nDATA-DRIVEN GUIDANCE: ' + replyGuidance : ''}
+JSON only: {"content": "..."}` },
       { role: 'user', content: prompt }
     ],
-    temperature: 0.7,
+    temperature: 0.5, // Lower than 0.7: more focused output when heavily constrained
     top_p: 1.0,
-    max_tokens: 200,
+    max_tokens: 150, // Allow 2-3 sentence replies with specific health insights
     response_format: { type: 'json_object' }
   }, {
     purpose: 'reply_generation',
@@ -292,14 +371,44 @@ Format as JSON:
     replyTextLower.includes(anchor.toLowerCase())
   );
   
-  console.log(`[REPLY_ADAPTER] ✅ Generated reply: ${replyData.content.length} chars`);
-  console.log(`[REPLY_ADAPTER] Generated reply: "${replyData.content}"`);
+  let finalContent = replyData.content;
+  if (finalContent.length > maxChars) {
+    finalContent = finalContent.substring(0, maxChars).trim();
+    console.log(`[REPLY_ADAPTER] Trimmed reply to ${maxChars} chars (was ${replyData.content.length})`);
+  }
+
+  // ── Output enforcer: hard constraints on tick advisor recommendations ──
+  try {
+    const { enforceReplyConstraints } = await import('../intelligence/outputEnforcer');
+    const { getTickAdvice } = await import('../intelligence/tickAdvisor');
+    const advice = await getTickAdvice();
+    const enforcement = await enforceReplyConstraints(finalContent, advice);
+
+    if (!enforcement.approved) {
+      console.log(`[REPLY_ENFORCER] Violations: ${enforcement.violations.join(', ')}`);
+      // If reply is too long, try truncating at last sentence boundary
+      if (enforcement.violations.some(v => v.includes('too long')) && finalContent.length > 120) {
+        const sentences = finalContent.split(/[.!?]+/).filter(s => s.trim().length > 0);
+        if (sentences.length > 1) {
+          const shortened = sentences[0].trim() + '.';
+          if (shortened.length >= 20 && shortened.length <= 150) {
+            console.log(`[REPLY_ENFORCER] Auto-shortened: ${finalContent.length} → ${shortened.length} chars`);
+            finalContent = shortened;
+          }
+        }
+      }
+    }
+  } catch { /* non-fatal */ }
+
+  console.log(`[REPLY_ADAPTER] ✅ Generated reply: ${finalContent.length} chars archetype=${archetype}`);
+  console.log(`[REPLY_ADAPTER] Reply: "${finalContent}"`);
   console.log(`[REPLY_ADAPTER] Anchor check: matched=${matchedAnchors.length}/${tweetAnchors.length} anchors=${matchedAnchors.slice(0, 3).join(', ')}`);
-  
+
   return {
-    content: replyData.content,
+    content: finalContent,
     generator_used: 'reply_adapter',
-    is_fallback: false
+    is_fallback: false,
+    reply_archetype: archetype,
   };
 }
 

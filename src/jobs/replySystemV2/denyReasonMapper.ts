@@ -2,7 +2,7 @@
  * 🎯 ANALYTICS: Map filter reasons to structured deny_reason_code
  */
 
-export type DenyReasonCode = 
+export type DenyReasonCode =
   | 'NON_ROOT'
   | 'ANCESTRY_UNCERTAIN'
   | 'ANCESTRY_ERROR'
@@ -18,6 +18,11 @@ export type DenyReasonCode =
   | 'LOW_RELEVANCE'
   | 'LOW_AUTHOR_SIGNAL'
   | 'LOW_QUALITY_SCORE'
+  | 'LOW_VELOCITY'
+  | 'LOW_EXPECTED_VIEWS'
+  | 'ZERO_ENGAGEMENT'
+  | 'TWEET_TOO_OLD'
+  | 'INSUFFICIENT_TEXT'
   | 'CONSENT_WALL'
   | 'DUPLICATE_TOPIC'
   | 'RATE_LIMITED'
@@ -73,11 +78,28 @@ export function mapFilterReasonToDenyCode(filterReason: string): DenyReasonCode 
     return 'ANCESTRY_PARSE_FAIL';
   }
   
+  // Velocity/momentum filters (pre-judge cost savers)
+  if (reasonLower.includes('rejected_low_velocity') || reasonLower.includes('rejected_low_conversation')) {
+    return 'LOW_VELOCITY';
+  }
+  if (reasonLower.includes('rejected_low_expected_views')) {
+    return 'LOW_EXPECTED_VIEWS';
+  }
+  if (reasonLower.includes('zero_engagement_tiny_account')) {
+    return 'ZERO_ENGAGEMENT';
+  }
+  if (reasonLower.includes('insufficient_text')) {
+    return 'INSUFFICIENT_TEXT';
+  }
+  if (reasonLower.includes('p1_age_limit') || reasonLower.includes('tweet_too_old')) {
+    return 'TWEET_TOO_OLD';
+  }
+
   // Generic ancestry error (fallback)
   if (reasonLower.includes('ancestry_error') || reasonLower.includes('error') || reasonLower.includes('method_unknown')) {
     return 'ANCESTRY_ERROR';
   }
-  
+
   // Quality/relevance thresholds (non-safety, can be relaxed)
   if (reasonLower.includes('low_topic_relevance') || reasonLower.includes('relevance') || reasonLower.includes('judge_reject')) {
     return 'LOW_RELEVANCE';
@@ -111,4 +133,17 @@ export function mapFilterReasonToDenyCode(filterReason: string): DenyReasonCode 
   
   // Default
   return 'OTHER';
+}
+
+/** Fallout bucket for discovery quality logs (non_root, ancestry_uncertain, insufficient_text, low_velocity, missing_metadata, other). */
+export type FalloutBucket = 'non_root' | 'ancestry_uncertain' | 'insufficient_text' | 'low_velocity' | 'missing_metadata' | 'other';
+
+export function bucketFilterReasonForFallout(filterReason: string): FalloutBucket {
+  const r = (filterReason || '').toLowerCase();
+  if (r.includes('not_root_tweet') || r.includes('non_root')) return 'non_root';
+  if (r.includes('ancestry_uncertain') || r.includes('uncertain')) return 'ancestry_uncertain';
+  if (r.includes('insufficient_text')) return 'insufficient_text';
+  if (r.includes('rejected_low_velocity') || r.includes('rejected_low_conversation') || r.includes('rejected_low_expected_views') || r.includes('p1_age_limit')) return 'low_velocity';
+  if (r.includes('missing_metadata')) return 'missing_metadata';
+  return 'other';
 }

@@ -136,6 +136,16 @@ export async function updateReplyEngagement(
     console.error(`[ENGAGEMENT_TRACKER] ❌ Failed to update engagement: ${error.message}`);
   } else {
     console.log(`[ENGAGEMENT_TRACKER] ✅ Updated engagement for ${postedReplyTweetId}: likes=${metrics.likes}, replies=${metrics.replies}, retweets=${metrics.retweets}, views=${metrics.views}, reward_24h=${reward24h.toFixed(2)}`);
+    // Wire learning: run outcome aggregation so account/source performance tables stay current
+    try {
+      const { aggregateReplyOutcomes } = await import('./outcomeAggregation');
+      const agg = await aggregateReplyOutcomes();
+      if (agg.accounts_updated > 0 || agg.sources_updated > 0) {
+        console.log(`[ENGAGEMENT_TRACKER] 📊 Learning updated: accounts=${agg.accounts_updated} sources=${agg.sources_updated}`);
+      }
+    } catch (aggErr: any) {
+      console.warn(`[ENGAGEMENT_TRACKER] Outcome aggregation failed (non-fatal): ${aggErr.message}`);
+    }
   }
 }
 
