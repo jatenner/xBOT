@@ -5,6 +5,7 @@
 
 import OpenAI from 'openai';
 import { Redis } from 'ioredis';
+import { getResolvedOpenAIApiKey } from '../config/openaiApiKey';
 import { calculateTokenCost, estimateTokenCount, getModelRecommendations } from '../config/openai/pricing';
 import { getModelPricing } from '../config/openai/pricingSource';
 import { withExponentialBackoff, isQuotaExhausted } from './openaiRetry';
@@ -83,36 +84,11 @@ export class OpenAIBudgetedClient {
   };
   
   private constructor() {
-    // Clean and trim API key before creating client
-    let apiKey = process.env.OPENAI_API_KEY || '';
-    
-    // Remove leading/trailing whitespace
-    apiKey = apiKey.trim();
-    
-    // Remove quotes if present
-    if ((apiKey.startsWith('"') && apiKey.endsWith('"')) || 
-        (apiKey.startsWith("'") && apiKey.endsWith("'"))) {
-      apiKey = apiKey.slice(1, -1).trim();
-    }
-    
-    // Check for alternative env var names (prefer OPENAI_API_KEY)
-    if (!apiKey && process.env.OPENAI_KEY) {
-      apiKey = process.env.OPENAI_KEY.trim();
-      console.warn('[OPENAI_CLIENT] ⚠️ Using OPENAI_KEY instead of OPENAI_API_KEY');
-    }
-    
-    if (!apiKey && process.env.OPENAI_API_TOKEN) {
-      apiKey = process.env.OPENAI_API_TOKEN.trim();
-      console.warn('[OPENAI_CLIENT] ⚠️ Using OPENAI_API_TOKEN instead of OPENAI_API_KEY');
-    }
-    
+    const apiKey = getResolvedOpenAIApiKey();
     if (!apiKey) {
-      throw new Error('OPENAI_API_KEY not set - cannot initialize OpenAI client');
+      throw new Error('OPENAI_API_KEY not set - cannot initialize OpenAI client (check OPENAI_API_KEY, OPENAI_KEY, or OPENAI_API_TOKEN)');
     }
-    
-    this.openai = new OpenAI({
-      apiKey: apiKey
-    });
+    this.openai = new OpenAI({ apiKey });
     
     // Initialize config FIRST before any methods that use it
     this.config = {
@@ -460,6 +436,15 @@ export class OpenAIBudgetedClient {
   // Private helper methods
   
   private async enforcePreCallBudget(estimatedCost: number, purpose: string, model: string): Promise<void> {
+    // Audit-only bypass: allow target_judge during local/controlled audit without disabling budget globally
+    const auditBypass =
+      purpose === 'target_judge' &&
+      (process.env.REPLY_V2_AUDIT_LOCAL === 'true' || process.env.OPENAI_BUDGET_ALLOW_TARGET_JUDGE_FOR_AUDIT === 'true');
+    if (auditBypass) {
+      console.log(`BUDGET_GATE ALLOW (audit bypass): purpose=target_judge REPLY_V2_AUDIT_LOCAL or OPENAI_BUDGET_ALLOW_TARGET_JUDGE_FOR_AUDIT set`);
+      return;
+    }
+
     const status = await this.getBudgetStatus();
     
     if (status.isBlocked) {

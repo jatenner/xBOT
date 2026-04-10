@@ -59,8 +59,8 @@ const ConfigSchema = z.object({
     process.env.MAX_DAILY_POSTS ? parseInt(process.env.MAX_DAILY_POSTS) : 24
   ), // 24 posts per day = 1/hour × 24 hours (override via env var)
   REPLIES_PER_HOUR: z.number().default(
-    process.env.REPLIES_PER_HOUR ? parseInt(process.env.REPLIES_PER_HOUR) : 4
-  ), // 4 replies per hour (override via env var)
+    process.env.REPLIES_PER_HOUR ? parseInt(process.env.REPLIES_PER_HOUR) : 6
+  ), // 6 replies per hour (override via env var)
   
   // Security
   ADMIN_TOKEN: z.string().default('dev-admin-token')

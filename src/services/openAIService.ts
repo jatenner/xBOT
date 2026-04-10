@@ -9,7 +9,7 @@
  * - Error handling and retries
  */
 
-import { ENV } from '../config/env';
+import { getResolvedOpenAIApiKey } from '../config/openaiApiKey';
 import { log } from '../lib/logger';
 import OpenAI from 'openai';
 import { createBudgetedChatCompletion, createBudgetedChatCompletionStream, BudgetExceededError } from './openaiBudgetedClient';
@@ -72,7 +72,7 @@ export class OpenAIService {
 
   private constructor() {
     this.openai = new OpenAI({
-      apiKey: ENV.OPENAI_API_KEY,
+      apiKey: getResolvedOpenAIApiKey(),
       timeout: 30000, // 30 second timeout
       maxRetries: 3
     });

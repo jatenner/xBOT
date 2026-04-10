@@ -4,6 +4,7 @@
  */
 
 import OpenAI from 'openai';
+import { getResolvedOpenAIApiKey } from '../config/openaiApiKey';
 import { flags } from '../config/featureFlags';
 import { openCircuit, isCircuitOpen, getCircuitRemaining } from '../utils/circuitBreaker';
 import { sleep } from '../utils/time';
@@ -42,7 +43,7 @@ class ResilientOpenAIClient {
 
   constructor() {
     this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY!,
+      apiKey: getResolvedOpenAIApiKey(),
       organization: process.env.OPENAI_ORG,
       project: process.env.OPENAI_PROJECT,
     });

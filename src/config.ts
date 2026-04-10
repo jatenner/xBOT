@@ -68,7 +68,7 @@ export const config: Config = {
   
   // Rate Limits
   postsPerDay: parseInt(getEnvVar('POSTS_PER_DAY', '6')),
-  repliesPerHour: parseInt(getEnvVar('REPLIES_PER_HOUR', '4'))
+  repliesPerHour: parseInt(getEnvVar('REPLIES_PER_HOUR', '6'))
 };
 
 export default config;

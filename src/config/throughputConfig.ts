@@ -5,7 +5,7 @@
 
 export const THROUGHPUT_CONFIG = {
   // Reply rate targets
-  REPLIES_PER_HOUR_TARGET: 4,
+  REPLIES_PER_HOUR_TARGET: 6,
   MAX_REPLIES_PER_RUN: 1,
   DAILY_REPLY_CAP: 40,
   
