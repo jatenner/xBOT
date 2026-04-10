@@ -14,6 +14,7 @@
 import { getSupabaseClient } from '../../db';
 import { createBudgetedChatCompletion } from '../../services/openaiBudgetedClient';
 import { getPendingGrowthEvents } from '../db';
+import { getFollowerRange } from '../types';
 
 const LOG_PREFIX = '[observatory/retrospective]';
 const MAX_PER_RUN = 5;
@@ -31,6 +32,7 @@ interface PeriodStats {
   avg_word_count: number;
   top_reply_targets: string[];
   avg_reply_target_followers: number | null;
+  median_reply_delay_minutes: number | null;
   active_hours: Record<string, number>;
   top_topics: string[];
   hook_distribution: Record<string, number>;
@@ -161,6 +163,7 @@ async function analyzeGrowthEvent(
       external_correlations: { trending_topics: trendingDuringPeriod },
       analysis_summary: analysisSummary,
       analysis_model: analysisSummary ? 'gpt-4o-mini' : 'heuristic_only',
+      follower_range_at_growth: event.follower_range_at_detection ?? getFollowerRange(event.followers_at_detection),
     })
     .select('id')
     .single();
@@ -214,13 +217,33 @@ function computePeriodStats(tweets: any[], periodStart: Date, periodEnd: Date): 
     }
   }
 
-  // Reply targets (extract from reply tweets — look at parent tweet)
+  // Reply targets — use reply_to_username column (enriched by data pipeline)
+  // Falls back to @mention regex for tweets without reply_to_username
   const replyTargets: string[] = [];
-  // We don't have reply_to_user directly, but can infer from content @mentions
+  const replyDelays: number[] = [];
+  const replyTargetFollowers: number[] = [];
+
   for (const t of replyTweets) {
-    const mentions = ((t.content ?? '') as string).match(/@([a-zA-Z0-9_]+)/g);
-    if (mentions) replyTargets.push(...mentions.map(m => m.replace('@', '')));
+    // Prefer the structured reply_to_username field
+    if (t.reply_to_username) {
+      replyTargets.push(t.reply_to_username);
+    } else {
+      // Fallback: extract @mentions from content
+      const mentions = ((t.content ?? '') as string).match(/@([a-zA-Z0-9_]+)/g);
+      if (mentions) replyTargets.push(...mentions.map((m: string) => m.replace('@', '')));
+    }
+
+    // Collect reply delay data
+    if (t.reply_delay_minutes != null && t.reply_delay_minutes > 0) {
+      replyDelays.push(t.reply_delay_minutes);
+    }
+
+    // Collect target follower data
+    if (t.reply_target_followers != null && t.reply_target_followers > 0) {
+      replyTargetFollowers.push(t.reply_target_followers);
+    }
   }
+
   const targetCounts: Record<string, number> = {};
   for (const t of replyTargets) {
     targetCounts[t] = (targetCounts[t] ?? 0) + 1;
@@ -229,6 +252,16 @@ function computePeriodStats(tweets: any[], periodStart: Date, periodEnd: Date): 
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([name]) => name);
+
+  // Compute median reply delay
+  const medianReplyDelay = replyDelays.length >= 3
+    ? (() => { replyDelays.sort((a, b) => a - b); return replyDelays[Math.floor(replyDelays.length / 2)]; })()
+    : null;
+
+  // Compute average reply target followers
+  const avgReplyTargetFollowers = replyTargetFollowers.length >= 3
+    ? Math.round(replyTargetFollowers.reduce((s, v) => s + v, 0) / replyTargetFollowers.length)
+    : null;
 
   // Topic and hook distribution from content features
   const hookDist: Record<string, number> = {};
@@ -258,7 +291,8 @@ function computePeriodStats(tweets: any[], periodStart: Date, periodEnd: Date): 
     avg_replies: Math.round(avgReplies),
     avg_word_count: Math.round(avgWordCount),
     top_reply_targets: topTargets,
-    avg_reply_target_followers: null, // Would need joined data
+    avg_reply_target_followers: avgReplyTargetFollowers,
+    median_reply_delay_minutes: medianReplyDelay,
     active_hours: hourDist,
     top_topics: topics,
     hook_distribution: hookDist,
@@ -389,6 +423,40 @@ function identifyKeyChanges(before: PeriodStats, during: PeriodStats): KeyChange
       significance: 'low',
       description: `Peak posting hour shifted from ${beforePeakHour[0]}h to ${duringPeakHour[0]}h UTC`,
     });
+  }
+
+  // Reply speed change
+  if (before.median_reply_delay_minutes != null && during.median_reply_delay_minutes != null) {
+    const delayChange = during.median_reply_delay_minutes - before.median_reply_delay_minutes;
+    if (Math.abs(delayChange) > 10) {
+      changes.push({
+        dimension: 'reply_speed',
+        before_value: `${before.median_reply_delay_minutes} min median`,
+        during_value: `${during.median_reply_delay_minutes} min median`,
+        change_magnitude: delayChange / Math.max(before.median_reply_delay_minutes, 1),
+        significance: Math.abs(delayChange) > 30 ? 'high' : 'medium',
+        description: delayChange < 0
+          ? `Replies got faster: ${before.median_reply_delay_minutes}min → ${during.median_reply_delay_minutes}min median`
+          : `Replies got slower: ${before.median_reply_delay_minutes}min → ${during.median_reply_delay_minutes}min median`,
+      });
+    }
+  }
+
+  // Reply target size change
+  if (before.avg_reply_target_followers != null && during.avg_reply_target_followers != null) {
+    const sizeChange = (during.avg_reply_target_followers - before.avg_reply_target_followers) / Math.max(before.avg_reply_target_followers, 1);
+    if (Math.abs(sizeChange) > 0.5) {
+      changes.push({
+        dimension: 'reply_target_size',
+        before_value: before.avg_reply_target_followers,
+        during_value: during.avg_reply_target_followers,
+        change_magnitude: sizeChange,
+        significance: Math.abs(sizeChange) > 2 ? 'high' : 'medium',
+        description: sizeChange > 0
+          ? `Started replying to bigger accounts: avg ${before.avg_reply_target_followers} → ${during.avg_reply_target_followers} followers`
+          : `Started replying to smaller accounts: avg ${before.avg_reply_target_followers} → ${during.avg_reply_target_followers} followers`,
+      });
+    }
   }
 
   // Sort by significance

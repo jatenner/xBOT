@@ -320,4 +320,15 @@ async function upsertProfile(supabase: any, profile: {
       ...profile,
       profiled_at: new Date().toISOString(),
     }, { onConflict: 'username' });
+
+  // Propagate niche to brain_accounts for fast queries and downstream analytics
+  if (profile.niche) {
+    await supabase
+      .from('brain_accounts')
+      .update({
+        niche_cached: profile.niche,
+        account_type_cached: profile.account_type,
+      })
+      .eq('username', profile.username);
+  }
 }

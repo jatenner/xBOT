@@ -16,7 +16,7 @@
  */
 
 import { getSupabaseClient } from '../../db';
-import { GROWTH_THRESHOLDS, getAccountSizeBucket, type GrowthStatus } from '../types';
+import { GROWTH_THRESHOLDS, getAccountSizeBucket, getFollowerRange, type GrowthStatus } from '../types';
 
 const LOG_PREFIX = '[observatory/growth-detector]';
 
@@ -31,6 +31,7 @@ const CENSUS_FREQUENCY: Record<GrowthStatus, number> = {
 interface GrowthComputation {
   username: string;
   current_followers: number;
+  followers_7d_ago: number | null;  // for follower range comparison
   growth_rate_7d: number | null;   // % change over 7 days
   growth_rate_30d: number | null;  // % change over 30 days
   growth_acceleration: number | null; // is growth speeding up?
@@ -101,6 +102,11 @@ export async function runGrowthDetector(): Promise<{
 
           // Create a growth event for status upgrades to interesting/hot/explosive
           if (computation.new_status !== 'boring') {
+            // Compute follower range before the growth event from 7d-ago snapshot
+            const followerRangeBefore = computation.followers_7d_ago
+              ? getFollowerRange(computation.followers_7d_ago)
+              : getFollowerRange(computation.current_followers);
+
             await supabase.from('brain_growth_events').insert({
               username: computation.username,
               detected_at: new Date().toISOString(),
@@ -111,6 +117,9 @@ export async function runGrowthDetector(): Promise<{
               growth_phase_at_detection: getGrowthPhaseFromFollowers(computation.current_followers),
               followers_at_detection: computation.current_followers,
               retrospective_status: 'pending',
+              follower_range_at_detection: getFollowerRange(computation.current_followers),
+              follower_range_before: followerRangeBefore,
+              follower_range_after: getFollowerRange(computation.current_followers),
             });
             eventsCreated++;
 
@@ -269,6 +278,7 @@ async function computeGrowthForAccount(
   return {
     username,
     current_followers: currentFollowers,
+    followers_7d_ago: snap7d?.followers_count ?? null,
     growth_rate_7d: growthRate7d !== null ? Math.round(growthRate7d * 100) / 100 : null,
     growth_rate_30d: growthRate30d !== null ? Math.round(growthRate30d * 100) / 100 : null,
     growth_acceleration: acceleration !== null ? Math.round(acceleration * 100) / 100 : null,
