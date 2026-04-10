@@ -592,6 +592,158 @@ async function getEvidenceForPrompt(
 }
 
 // =============================================================================
+// 16. Follower Range Distribution
+// =============================================================================
+
+/**
+ * Returns the count of tracked accounts in each follower range bucket.
+ */
+async function getRangeDistribution(): Promise<Record<string, number>> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data } = await supabase
+      .from('brain_accounts')
+      .select('follower_range')
+      .eq('is_active', true)
+      .not('follower_range', 'is', null);
+
+    if (!data) return {};
+
+    const dist: Record<string, number> = {};
+    for (const row of data) {
+      const range = row.follower_range || 'unknown';
+      dist[range] = (dist[range] || 0) + 1;
+    }
+    return dist;
+  } catch (err: any) {
+    console.error(`${LOG_PREFIX} getRangeDistribution error: ${err.message}`);
+    return {};
+  }
+}
+
+// =============================================================================
+// 17. Growth Playbook by Follower Range
+// =============================================================================
+
+/**
+ * Returns strategies from brain_range_strategies for a specific follower range.
+ * Falls back to cross-niche if no niche-specific strategies exist.
+ */
+async function getGrowthPlaybookByRange(
+  followerRange: string,
+  niche?: string,
+  limit: number = 10,
+): Promise<any[]> {
+  try {
+    const supabase = getSupabaseClient();
+
+    // Try niche-specific first
+    if (niche) {
+      const { data: nicheStrategies } = await supabase
+        .from('brain_range_strategies')
+        .select('*')
+        .eq('follower_range', followerRange)
+        .eq('niche', niche)
+        .order('sample_size', { ascending: false })
+        .limit(limit);
+
+      if (nicheStrategies && nicheStrategies.length >= 3) {
+        return nicheStrategies;
+      }
+    }
+
+    // Fall back to cross-niche
+    const { data: strategies } = await supabase
+      .from('brain_range_strategies')
+      .select('*')
+      .eq('follower_range', followerRange)
+      .is('niche', null)
+      .order('sample_size', { ascending: false })
+      .limit(limit);
+
+    return strategies ?? [];
+  } catch (err: any) {
+    console.error(`${LOG_PREFIX} getGrowthPlaybookByRange error: ${err.message}`);
+    return [];
+  }
+}
+
+// =============================================================================
+// 18. Growth Examples by Range
+// =============================================================================
+
+/**
+ * Returns retrospective analyses filtered by follower range at time of growth.
+ */
+async function getGrowthExamplesByRange(
+  followerRange: string,
+  limit: number = 5,
+): Promise<any[]> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data } = await supabase
+      .from('brain_retrospective_analyses')
+      .select('*')
+      .eq('follower_range_at_growth', followerRange)
+      .not('analysis_summary', 'is', null)
+      .order('analyzed_at', { ascending: false })
+      .limit(limit);
+
+    return data ?? [];
+  } catch (err: any) {
+    console.error(`${LOG_PREFIX} getGrowthExamplesByRange error: ${err.message}`);
+    return [];
+  }
+}
+
+// =============================================================================
+// 19. Growth Attribution (range transition analysis)
+// =============================================================================
+
+/**
+ * Returns what accounts did to cross from one follower range to another.
+ * e.g. getGrowthAttribution('nano', 'small') → strategies for 0-500 → 2K-10K
+ */
+async function getGrowthAttribution(
+  fromRange: string,
+  toRange: string,
+  niche?: string,
+): Promise<any | null> {
+  try {
+    const supabase = getSupabaseClient();
+
+    // Try niche-specific first
+    if (niche) {
+      const { data: nicheTransition } = await supabase
+        .from('brain_range_transitions')
+        .select('*')
+        .eq('from_range', fromRange)
+        .eq('to_range', toRange)
+        .eq('niche', niche)
+        .single();
+
+      if (nicheTransition && nicheTransition.sample_size >= 3) {
+        return nicheTransition;
+      }
+    }
+
+    // Fall back to cross-niche
+    const { data: transition } = await supabase
+      .from('brain_range_transitions')
+      .select('*')
+      .eq('from_range', fromRange)
+      .eq('to_range', toRange)
+      .is('niche', null)
+      .single();
+
+    return transition ?? null;
+  } catch (err: any) {
+    console.error(`${LOG_PREFIX} getGrowthAttribution error: ${err.message}`);
+    return null;
+  }
+}
+
+// =============================================================================
 // Export as singleton object
 // =============================================================================
 
@@ -615,4 +767,10 @@ export const brainQuery = {
 
   // Evidence Packages
   getEvidenceForPrompt,
+
+  // Follower Range Intelligence
+  getRangeDistribution,
+  getGrowthPlaybookByRange,
+  getGrowthExamplesByRange,
+  getGrowthAttribution,
 };

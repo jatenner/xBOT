@@ -40,6 +40,7 @@ export interface RawScrapedTweet {
   is_thread?: boolean;
   thread_position?: number;
   parent_tweet_id?: string;
+  reply_to_username?: string;
 }
 
 export interface FeedResult {
@@ -116,6 +117,7 @@ export async function ingestFeedResults(results: FeedResult[]): Promise<{
         is_thread: raw.is_thread ?? false,
         thread_position: raw.thread_position ?? null,
         parent_tweet_id: raw.parent_tweet_id ?? null,
+        reply_to_username: raw.reply_to_username ?? null,
 
         views, likes, retweets, replies, bookmarks, quotes,
 
@@ -483,7 +485,7 @@ export async function extractTweetsFromPage(
             quotes: 0,
             author_followers: author_followers,
             tweet_type: is_reply ? 'reply' : 'original',
-            reply_to_user: reply_to_user
+            reply_to_username: reply_to_user
           });
         }
         return results;

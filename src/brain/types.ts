@@ -32,7 +32,8 @@ export type DiscoverySource =
   | 'mention_graph'
   | 'retweet_graph'
   | 'quote_graph'
-  | 'seed';
+  | 'seed'
+  | 'census_timeline';
 
 export type AccountDiscoveryMethod =
   | 'seed'
@@ -123,6 +124,9 @@ export interface BrainTweet {
   is_thread: boolean;
   thread_position: number | null;
   parent_tweet_id: string | null;
+  reply_to_username: string | null;
+  reply_delay_minutes: number | null;
+  reply_target_followers: number | null;
 
   // Raw metrics
   views: number;
@@ -693,4 +697,71 @@ export function getAccountSizeBucket(followers: number): string {
   if (followers < 5000) return 'small';
   if (followers < 50000) return 'medium';
   return 'large';
+}
+
+// =============================================================================
+// Follower Range — fine-grained bucketing for growth attribution
+// Distinct from getAccountSizeBucket (4 coarse buckets for growth thresholds)
+// and from GrowthPhase (which tracks OUR account's phase, not external accounts)
+// =============================================================================
+
+export type FollowerRange =
+  | 'nano'        // 0 – 500
+  | 'micro'       // 500 – 2,000
+  | 'small'       // 2,000 – 10,000
+  | 'mid'         // 10,000 – 50,000
+  | 'large'       // 50,000 – 200,000
+  | 'mega'        // 200,000 – 1,000,000
+  | 'celebrity';  // 1,000,000+
+
+export const FOLLOWER_RANGE_BOUNDS: Record<FollowerRange, { min: number; max: number }> = {
+  nano:      { min: 0,         max: 500 },
+  micro:     { min: 500,       max: 2_000 },
+  small:     { min: 2_000,     max: 10_000 },
+  mid:       { min: 10_000,    max: 50_000 },
+  large:     { min: 50_000,    max: 200_000 },
+  mega:      { min: 200_000,   max: 1_000_000 },
+  celebrity: { min: 1_000_000, max: Infinity },
+};
+
+export const FOLLOWER_RANGE_ORDER: FollowerRange[] = [
+  'nano', 'micro', 'small', 'mid', 'large', 'mega', 'celebrity',
+];
+
+export function getFollowerRange(followers: number): FollowerRange {
+  if (followers < 500) return 'nano';
+  if (followers < 2_000) return 'micro';
+  if (followers < 10_000) return 'small';
+  if (followers < 50_000) return 'mid';
+  if (followers < 200_000) return 'large';
+  if (followers < 1_000_000) return 'mega';
+  return 'celebrity';
+}
+
+export interface RangeStrategy {
+  id?: string;
+  follower_range: FollowerRange;
+  niche: string | null;
+  strategy_name: string;
+  strategy_category: string | null;
+  sample_size: number;
+  winning_patterns: Record<string, unknown>;
+  losing_patterns: Record<string, unknown>;
+  key_differentiators: Record<string, unknown>;
+  avg_growth_rate: number | null;
+  median_days_in_range: number | null;
+  confidence: string;
+}
+
+export interface RangeTransition {
+  id?: string;
+  from_range: FollowerRange;
+  to_range: FollowerRange;
+  niche: string | null;
+  sample_size: number;
+  avg_days_to_transition: number | null;
+  common_strategies: Record<string, unknown>;
+  content_patterns: Record<string, unknown>;
+  engagement_patterns: Record<string, unknown>;
+  timing_patterns: Record<string, unknown>;
 }

@@ -243,6 +243,38 @@ export async function runSelfModelUpdate(): Promise<void> {
     `+${followersGained7d} followers/7d, ` +
     `${working.length} working / ${decaying.length} decaying strategies`
   );
+
+  // ==========================================================================
+  // 8. Behavioral comparison: compare our behavior vs data-proven recommendations
+  // ==========================================================================
+  try {
+    const { data: behavioralPatterns } = await supabase
+      .from('external_patterns')
+      .select('pattern_type, target_tier, ext_avg_engagement_rate, ext_avg_likes, ext_avg_views, confidence')
+      .in('pattern_type', ['content_mix', 'reply_targeting'])
+      .eq('direction', 'do_more')
+      .in('confidence', ['medium', 'high'])
+      .limit(5);
+
+    if (behavioralPatterns && behavioralPatterns.length > 0) {
+      // Check content mix alignment
+      const mixPattern = behavioralPatterns.find((p: any) => p.pattern_type === 'content_mix');
+      if (mixPattern) {
+        const recommendedReplyPct = (mixPattern.ext_avg_engagement_rate ?? 0.7) * 100;
+        const ourTotal = (posts7d ?? 0) + (replies7d ?? 0);
+        const ourReplyPct = ourTotal > 0 ? ((replies7d ?? 0) / ourTotal) * 100 : 0;
+
+        if (ourTotal >= 5 && Math.abs(ourReplyPct - recommendedReplyPct) > 15) {
+          const direction = ourReplyPct < recommendedReplyPct ? 'more replies' : 'more original posts';
+          console.log(
+            `${LOG_PREFIX} Behavioral gap: Our reply ratio is ${ourReplyPct.toFixed(0)}% vs recommended ${recommendedReplyPct.toFixed(0)}%. Consider ${direction}.`
+          );
+        }
+      }
+    }
+  } catch {
+    // Behavioral comparison is non-fatal
+  }
 }
 
 // =============================================================================
