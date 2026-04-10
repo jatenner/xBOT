@@ -1,8 +1,14 @@
 /**
  * 🧠 MEMORY MONITOR
- * 
+ *
  * Monitors system memory usage and triggers automatic cleanup to prevent OOM crashes.
- * Critical for Railway's 512MB memory limit.
+ *
+ * Thresholds are derived from actual container memory limit at startup, rather than
+ * hardcoded for a specific plan. Set MEMORY_LIMIT_MB env var to override; otherwise
+ * it detects the effective limit from Node's RSS ceiling or falls back to a sensible
+ * default. This avoids the Railway OOM mode we hit before (hardcoded 512MB thresholds
+ * on a 2GB box would skip jobs at 331MB; hardcoded 1600MB on a 4GB box wastes half
+ * the capacity).
  */
 
 export interface MemoryStatus {
@@ -13,11 +19,47 @@ export interface MemoryStatus {
   externalMB: number;
 }
 
+function detectMemoryLimitMB(): number {
+  // 1. Explicit env override (preferred)
+  const envLimit = process.env.MEMORY_LIMIT_MB;
+  if (envLimit) {
+    const n = parseInt(envLimit, 10);
+    if (!isNaN(n) && n > 256) return n;
+  }
+
+  // 2. Node's --max-old-space-size (if set via NODE_OPTIONS) gives a hint at upper bound.
+  // getHeapStatistics().heap_size_limit is in bytes.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const v8 = require('v8');
+    const heapLimit = v8.getHeapStatistics().heap_size_limit;
+    if (heapLimit && heapLimit > 0) {
+      // Heap limit is typically ~75% of the container ceiling in practice; add headroom
+      const estimatedContainerMB = Math.round((heapLimit / (1024 * 1024)) * 1.33);
+      if (estimatedContainerMB > 512) return estimatedContainerMB;
+    }
+  } catch {}
+
+  // 3. Fallback: assume 2GB (conservative, matches old Railway Pro)
+  return 2048;
+}
+
+const MEMORY_LIMIT_MB = detectMemoryLimitMB();
+
 export class MemoryMonitor {
-  // 🔧 UPDATED for 2GB Railway Pro plan (was 512MB)
-  private static readonly WARNING_THRESHOLD = 1200; // MB - Start monitoring closely (60% of 2GB)
-  private static readonly CRITICAL_THRESHOLD = 1600; // MB - Emergency cleanup needed (80% of 2GB)
-  private static readonly EMERGENCY_THRESHOLD = 1800; // MB - Force cleanup or restart (90% of 2GB)
+  // Derive thresholds from actual container limit (not hardcoded for one plan)
+  private static readonly WARNING_THRESHOLD = Math.round(MEMORY_LIMIT_MB * 0.60); // 60%
+  private static readonly CRITICAL_THRESHOLD = Math.round(MEMORY_LIMIT_MB * 0.80); // 80%
+  private static readonly EMERGENCY_THRESHOLD = Math.round(MEMORY_LIMIT_MB * 0.90); // 90%
+
+  static getLimits(): { limitMB: number; warningMB: number; criticalMB: number; emergencyMB: number } {
+    return {
+      limitMB: MEMORY_LIMIT_MB,
+      warningMB: this.WARNING_THRESHOLD,
+      criticalMB: this.CRITICAL_THRESHOLD,
+      emergencyMB: this.EMERGENCY_THRESHOLD,
+    };
+  }
   
   /**
    * Check current memory usage

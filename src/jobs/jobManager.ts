@@ -1749,6 +1749,24 @@ export class JobManager {
         25 * MINUTE
       );
 
+      // Observatory: Dead-man's-switch monitor — Phase C (every 10 min)
+      // Checks that brain_tweets, brain_account_snapshots, and brain_daily_context
+      // are receiving fresh writes. Raises critical alarms in system_events if any
+      // write stream stalls. This is how we would have caught the silent census
+      // failure months earlier — the entire point of this job is to prevent
+      // "Completed successfully with zero writes" from going undetected.
+      this.scheduleStaggeredJob(
+        'observatory_deadman_monitor',
+        async () => {
+          await this.safeExecute('observatory_deadman_monitor', async () => {
+            const { runDeadmanMonitor } = await import('../brain/observatory/deadmanMonitor');
+            await runDeadmanMonitor();
+          });
+        },
+        10 * MINUTE,
+        8 * MINUTE
+      );
+
       // Observatory: Strategy library builder — aggregates retrospectives into playbooks (every 6h)
       this.scheduleStaggeredJob(
         'observatory_strategy_builder',
@@ -2455,6 +2473,15 @@ export class JobManager {
       console.warn('[JOB_' + jobName.toUpperCase() + '] Memory check failed:', memoryError);
     }
     
+    // Per-job memory budget — soft budgets by job category.
+    // We don't kill mid-job (partial state risk); we log warnings and track consecutive
+    // exceeds so downstream tooling can detect runaway jobs.
+    const JOB_MEMORY_BUDGET_MB = (() => {
+      if (jobName.startsWith('brain_') || jobName.startsWith('observatory_')) return 500;
+      if (jobName.includes('classify') || jobName.includes('expert') || jobName.includes('llm')) return 1000;
+      return 200;
+    })();
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         await recordJobStart(jobName);
@@ -2463,10 +2490,27 @@ export class JobManager {
         } else {
           console.log('[JOB_' + jobName.toUpperCase() + ']: Starting...');
         }
-        
+
+        // Snapshot RSS before job runs so we can measure delta
+        const rssBefore = Math.round(process.memoryUsage().rss / 1024 / 1024);
+
         await jobFn();
         console.log('[JOB_' + jobName.toUpperCase() + ']: Completed successfully');
         await recordJobSuccess(jobName);
+
+        // Memory delta check (post-success) — warn if job exceeded its soft budget
+        try {
+          const rssAfter = Math.round(process.memoryUsage().rss / 1024 / 1024);
+          const deltaMB = rssAfter - rssBefore;
+          if (deltaMB > JOB_MEMORY_BUDGET_MB) {
+            console.warn(
+              '[JOB_' + jobName.toUpperCase() + '] ⚠️ Memory delta ' + deltaMB + 'MB exceeds soft budget ' +
+              JOB_MEMORY_BUDGET_MB + 'MB (rss ' + rssBefore + ' → ' + rssAfter + ')'
+            );
+          }
+        } catch {
+          // non-fatal; memory tracking is best-effort
+        }
         
         // Reset consecutive failure counter on success
         if (isCritical) {

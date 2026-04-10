@@ -30,6 +30,35 @@ let brainBrowser: Browser | null = null;
 let anonContext: BrowserContext | null = null;
 let authContext: BrowserContext | null = null;
 
+// Context age tracking for self-healing recycle.
+// Long-lived browser contexts accumulate memory over hours of operation —
+// old contexts get recycled even if technically still working.
+let anonContextCreatedAt: number | null = null;
+let authContextCreatedAt: number | null = null;
+const CONTEXT_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+async function recycleContextIfStale(
+  which: 'anon' | 'auth'
+): Promise<void> {
+  const now = Date.now();
+  if (which === 'anon' && anonContext && anonContextCreatedAt) {
+    if (now - anonContextCreatedAt > CONTEXT_MAX_AGE_MS) {
+      console.log(`${LOG_PREFIX} Recycling anon context (age ${Math.round((now - anonContextCreatedAt) / 60000)}min)`);
+      try { await anonContext.close(); } catch {}
+      anonContext = null;
+      anonContextCreatedAt = null;
+    }
+  }
+  if (which === 'auth' && authContext && authContextCreatedAt) {
+    if (now - authContextCreatedAt > CONTEXT_MAX_AGE_MS) {
+      console.log(`${LOG_PREFIX} Recycling auth context (age ${Math.round((now - authContextCreatedAt) / 60000)}min)`);
+      try { await authContext.close(); } catch {}
+      authContext = null;
+      authContextCreatedAt = null;
+    }
+  }
+}
+
 const BROWSER_ARGS = [
   '--disable-blink-features=AutomationControlled',
   '--no-sandbox',
@@ -47,6 +76,8 @@ async function ensureBrowser(): Promise<Browser> {
   try { await brainBrowser?.close(); } catch {}
   anonContext = null;
   authContext = null;
+  anonContextCreatedAt = null;
+  authContextCreatedAt = null;
 
   console.log(`${LOG_PREFIX} Launching brain browser`);
   brainBrowser = await chromium.launch({ headless: true, args: BROWSER_ARGS });
@@ -60,12 +91,16 @@ async function ensureBrowser(): Promise<Browser> {
 export async function getBrainPage(): Promise<Page> {
   const browser = await ensureBrowser();
 
+  // Self-healing: recycle if context is too old (6h+)
+  await recycleContextIfStale('anon');
+
   if (!anonContext) {
     anonContext = await browser.newContext({
       userAgent: USER_AGENT,
       viewport: { width: 1280, height: 800 },
       locale: 'en-US',
     });
+    anonContextCreatedAt = Date.now();
   }
 
   return anonContext.newPage();
@@ -78,6 +113,9 @@ export async function getBrainPage(): Promise<Page> {
  */
 export async function getBrainAuthPage(): Promise<Page> {
   const browser = await ensureBrowser();
+
+  // Self-healing: recycle if context is too old (6h+)
+  await recycleContextIfStale('auth');
 
   if (!authContext) {
     // Load session from environment or file
@@ -119,6 +157,7 @@ export async function getBrainAuthPage(): Promise<Page> {
       locale: 'en-US',
       ...(storageState ? { storageState } : {}),
     });
+    authContextCreatedAt = Date.now();
   }
 
   return authContext.newPage();
@@ -133,6 +172,8 @@ export async function closeBrainBrowser(): Promise<void> {
   try { await brainBrowser?.close(); } catch {}
   anonContext = null;
   authContext = null;
+  anonContextCreatedAt = null;
+  authContextCreatedAt = null;
   brainBrowser = null;
   console.log(`${LOG_PREFIX} Brain browser closed`);
 }
