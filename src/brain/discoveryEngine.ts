@@ -443,77 +443,7 @@ export async function extractTweetsFromPage(
           if (!idMatch) continue;
           var tweet_id = idMatch[1];
 
-          // Detect tweet type: reply, thread, quote, or original
-          var is_reply = false;
-          var is_thread = false;
-          var is_quote = false;
-          var reply_to_user = null;
-
-          // Method 1: "Replying to" social context
-          var socialCtx = article.querySelector('[data-testid="socialContext"]');
-          if (socialCtx) {
-            var sctx = socialCtx.textContent || '';
-            if (/Replying to/i.test(sctx)) {
-              is_reply = true;
-              var replyLink = socialCtx.querySelector('a');
-              if (replyLink) {
-                var rh = replyLink.getAttribute('href') || '';
-                if (rh.match(/^\\/[a-zA-Z0-9_]+$/)) {
-                  reply_to_user = rh.replace('/', '');
-                }
-              }
-            }
-          }
-
-          // Method 2: Tweet URL contains /status/X where the status is a reply
-          // Check if the tweet article has a reply indicator in its link structure
-          if (!is_reply) {
-            var allLinks = article.querySelectorAll('a[href*="/status/"]');
-            for (var li = 0; li < allLinks.length; li++) {
-              var lhref = allLinks[li].getAttribute('href') || '';
-              // If there's a reply chain indicator, the URL structure differs
-              if (lhref.includes('/status/') && allLinks[li].getAttribute('aria-label') && /reply/i.test(allLinks[li].getAttribute('aria-label') || '')) {
-                is_reply = true;
-                break;
-              }
-            }
-          }
-
-          // Method 3: Content starts with @username — very likely a reply
-          // (this catches replies on /with_replies tab where social context may be absent)
-          if (!is_reply && content.match(/^@[a-zA-Z0-9_]/)) {
-            is_reply = true;
-            var mentionMatch = content.match(/^@([a-zA-Z0-9_]+)/);
-            if (mentionMatch && !reply_to_user) {
-              reply_to_user = mentionMatch[1];
-            }
-          }
-
-          // Method 4: Check for thread indicator ("Show this thread" or self-reply)
-          if (!is_reply && author_username !== 'unknown') {
-            // Self-reply = thread continuation
-            if (reply_to_user && reply_to_user.toLowerCase() === author_username.toLowerCase()) {
-              is_thread = true;
-              is_reply = false;
-            }
-          }
-
-          // Thread detection: "Show this thread" link or thread line connector
-          var threadLine = article.querySelector('[data-testid="tweet-thread-line"]');
-          if (threadLine) is_thread = true;
-
-          // Quote tweet detection: embedded tweet card
-          var quoteTweet = article.querySelector('[data-testid="quoteTweet"]');
-          if (quoteTweet) is_quote = true;
-
-          // Determine tweet_type
-          var detected_type = 'original';
-          if (is_quote) detected_type = 'quote';
-          else if (is_thread) detected_type = 'thread';
-          else if (is_reply) detected_type = 'reply';
-
-          if (skipReplies && is_reply) continue;
-
+          // Extract content FIRST (needed for reply detection below)
           var tweetTextEl = article.querySelector('[data-testid="tweetText"]');
           var content = '';
           if (tweetTextEl) {
@@ -538,6 +468,60 @@ export async function extractTweetsFromPage(
               break;
             }
           }
+
+          // Detect tweet type: reply, thread, quote, or original
+          // (runs AFTER content + author extraction so we can check content text)
+          var is_reply = false;
+          var is_thread = false;
+          var is_quote = false;
+          var reply_to_user = null;
+
+          // Method 1: "Replying to" social context
+          var socialCtx = article.querySelector('[data-testid="socialContext"]');
+          if (socialCtx) {
+            var sctx = socialCtx.textContent || '';
+            if (/Replying to/i.test(sctx)) {
+              is_reply = true;
+              var replyLink = socialCtx.querySelector('a');
+              if (replyLink) {
+                var rh = replyLink.getAttribute('href') || '';
+                if (rh.match(/^\\/[a-zA-Z0-9_]+$/)) {
+                  reply_to_user = rh.replace('/', '');
+                }
+              }
+            }
+          }
+
+          // Method 2: Content starts with @username — very likely a reply
+          if (!is_reply && content && content.match(/^@[a-zA-Z0-9_]/)) {
+            is_reply = true;
+            var mentionMatch = content.match(/^@([a-zA-Z0-9_]+)/);
+            if (mentionMatch && !reply_to_user) {
+              reply_to_user = mentionMatch[1];
+            }
+          }
+
+          // Method 3: Self-reply = thread continuation
+          if (is_reply && reply_to_user && author_username !== 'unknown' &&
+              reply_to_user.toLowerCase() === author_username.toLowerCase()) {
+            is_thread = true;
+            is_reply = false;
+          }
+
+          // Thread line connector
+          var threadLine = article.querySelector('[data-testid="tweet-thread-line"]');
+          if (threadLine) is_thread = true;
+
+          // Quote tweet: embedded tweet card
+          var quoteTweet = article.querySelector('[data-testid="quoteTweet"]');
+          if (quoteTweet) is_quote = true;
+
+          var detected_type = 'original';
+          if (is_quote) detected_type = 'quote';
+          else if (is_thread) detected_type = 'thread';
+          else if (is_reply) detected_type = 'reply';
+
+          if (skipReplies && is_reply) continue;
 
           // Parse metrics — try aria-label first (most reliable), then text content
           function pm(testId) {
