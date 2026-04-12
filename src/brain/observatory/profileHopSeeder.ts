@@ -25,7 +25,7 @@ import { getFollowerRange, FOLLOWER_RANGE_BOUNDS, type FollowerRange } from '../
 
 const LOG_PREFIX = '[observatory/profile-hop]';
 const MAX_CAMPAIGNS_PER_RUN = 2;
-const MAX_AUTO_HOPS_PER_RUN = 5; // Auto-hop from 5 growing/viral accounts per run
+const MAX_AUTO_HOPS_PER_RUN = 10; // Auto-hop from 10 accounts per run (every 5 min = 120 hops/hr)
 const MAX_SCROLL_ROUNDS = 5;
 
 export async function runProfileHopSeeder(): Promise<{
@@ -36,9 +36,32 @@ export async function runProfileHopSeeder(): Promise<{
   let campaignsProcessed = 0;
   let accountsDiscovered = 0;
 
+  // === RE-HOP RESET ===
+  // If we've hopped all accounts, reset hops older than 7 days so we can rediscover
+  // (people follow new accounts — their following lists change over time)
+  try {
+    const { count: unhopped } = await supabase
+      .from('brain_accounts')
+      .select('*', { count: 'exact', head: true })
+      .gte('followers_count', 500)
+      .is('last_hop_at', null);
+
+    if ((unhopped ?? 0) < 20) {
+      const resetCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { count: reset } = await supabase
+        .from('brain_accounts')
+        .update({ last_hop_at: null })
+        .lt('last_hop_at', resetCutoff)
+        .gte('followers_count', 500)
+        .select('*', { count: 'exact', head: true });
+      if ((reset ?? 0) > 0) {
+        console.log(`${LOG_PREFIX} Re-hop reset: cleared ${reset} stale hops (>7d old)`);
+      }
+    }
+  } catch {}
+
   // === AUTO-HOP MODE ===
-  // Automatically discover from growing/interesting accounts — no campaigns needed.
-  // Picks accounts that are growing or have high engagement that we haven't hopped yet.
+  // Automatically discover from ANY account with 500+ followers we haven't hopped yet.
   const autoDiscovered = await runAutoHop(supabase);
   accountsDiscovered += autoDiscovered;
 
@@ -113,13 +136,14 @@ export async function runProfileHopSeeder(): Promise<{
  * Tracks which accounts we've already hopped via a simple column on brain_accounts.
  */
 async function runAutoHop(supabase: any): Promise<number> {
-  // Find accounts worth hopping from:
-  // Growing accounts we haven't hopped yet, with enough followers to have an interesting list.
-  // Use is.null filter on last_hop_at to only hop accounts we haven't visited yet.
-  let hopCandidates: any[] = [];
+  // Find accounts worth hopping from — ANY account with 500+ followers we haven't hopped yet.
+  // A boring 100K health account has a great following list full of other health accounts.
+  // Growing accounts get priority (sorted first), but we don't ONLY hop from growing accounts.
+  let candidates: any[] = [];
 
   try {
-    const { data } = await supabase
+    // Priority 1: Growing accounts (most valuable following lists)
+    const { data: growingCandidates } = await supabase
       .from('brain_accounts')
       .select('username, followers_count, growth_status, primary_domain, follower_range')
       .eq('is_active', true)
@@ -127,55 +151,32 @@ async function runAutoHop(supabase: any): Promise<number> {
       .is('last_hop_at', null)
       .in('growth_status', ['interesting', 'hot', 'explosive'])
       .order('followers_count', { ascending: false })
-      .limit(MAX_AUTO_HOPS_PER_RUN * 3);
-    hopCandidates = data ?? [];
-  } catch {
-    // last_hop_at column may not exist yet — fall back to unfiltered query
-    const { data } = await supabase
-      .from('brain_accounts')
-      .select('username, followers_count, growth_status, primary_domain, follower_range')
-      .eq('is_active', true)
-      .gte('followers_count', 200)
-      .in('growth_status', ['interesting', 'hot', 'explosive'])
-      .order('followers_count', { ascending: false })
-      .limit(MAX_AUTO_HOPS_PER_RUN * 3);
-    hopCandidates = data ?? [];
-  }
+      .limit(MAX_AUTO_HOPS_PER_RUN);
+    candidates = growingCandidates ?? [];
 
-  // Fallback: if no growing accounts available, try high-tier accounts
-  let candidates = hopCandidates;
-  if (candidates.length < MAX_AUTO_HOPS_PER_RUN) {
-    let tierCandidates: any[] = [];
-    try {
-      const { data } = await supabase
-        .from('brain_accounts')
-        .select('username, followers_count, growth_status, primary_domain, follower_range')
-        .eq('is_active', true)
-        .gte('followers_count', 1000)
-        .is('last_hop_at', null)
-        .in('tier', ['S', 'A'])
-        .order('followers_count', { ascending: false })
-        .limit(MAX_AUTO_HOPS_PER_RUN - candidates.length);
-      tierCandidates = data ?? [];
-    } catch {
-      const { data } = await supabase
-        .from('brain_accounts')
-        .select('username, followers_count, growth_status, primary_domain, follower_range')
-        .eq('is_active', true)
-        .gte('followers_count', 1000)
-        .in('tier', ['S', 'A'])
-        .order('followers_count', { ascending: false })
-        .limit(MAX_AUTO_HOPS_PER_RUN - candidates.length);
-      tierCandidates = data ?? [];
-    }
-
-    if (tierCandidates.length > 0) {
+    // Priority 2: Fill remaining slots with ANY unhopped account with 500+ followers
+    if (candidates.length < MAX_AUTO_HOPS_PER_RUN) {
       const existingUsernames = new Set(candidates.map((c: any) => c.username));
-      candidates = [
-        ...candidates,
-        ...tierCandidates.filter((c: any) => !existingUsernames.has(c.username)),
-      ];
+      const { data: broadCandidates } = await supabase
+        .from('brain_accounts')
+        .select('username, followers_count, growth_status, primary_domain, follower_range')
+        .eq('is_active', true)
+        .gte('followers_count', 500)
+        .is('last_hop_at', null)
+        .order('followers_count', { ascending: false })
+        .limit((MAX_AUTO_HOPS_PER_RUN - candidates.length) * 2);
+
+      for (const c of broadCandidates ?? []) {
+        if (candidates.length >= MAX_AUTO_HOPS_PER_RUN) break;
+        if (!existingUsernames.has(c.username)) {
+          candidates.push(c);
+          existingUsernames.add(c.username);
+        }
+      }
     }
+  } catch (err: any) {
+    console.error(`${LOG_PREFIX} Auto-hop query error: ${err.message}`);
+    return 0;
   }
 
   if (candidates.length === 0) return 0;
