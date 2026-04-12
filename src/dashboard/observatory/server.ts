@@ -143,15 +143,24 @@ export async function getDatabaseData() {
     .order('followers_count', { ascending: false, nullsFirst: false })
     .limit(20);
 
-  // Fastest growing — min 100 followers to filter noise, exclude celebrities/bots
-  const { data: fastestGrowing } = await s.from('brain_accounts')
-    .select('username, followers_count, growth_rate_7d, growth_status, account_type_cached')
+  // Fastest growing by % — ALL sizes, no minimum. Small accounts repeating 2x growth = signal.
+  const { data: fastestGrowingPct } = await s.from('brain_accounts')
+    .select('username, followers_count, prev_followers_count, growth_rate_7d, growth_status, follower_range')
     .not('growth_rate_7d', 'is', null)
     .gt('growth_rate_7d', 0)
-    .gte('followers_count', 100)
     .not('account_type_cached', 'in', '("celebrity","bot","follow_farmer")')
     .order('growth_rate_7d', { ascending: false })
     .limit(20);
+
+  // Fastest growing by VOLUME — who gained the most raw followers this week
+  const { data: fastestGrowingVol } = await s.from('brain_accounts')
+    .select('username, followers_count, prev_followers_count, growth_rate_7d, growth_status, follower_range')
+    .not('growth_rate_7d', 'is', null)
+    .gt('growth_rate_7d', 0)
+    .gte('followers_count', 50)
+    .not('account_type_cached', 'in', '("celebrity","bot","follow_farmer")')
+    .order('followers_count', { ascending: false }) // Bigger accounts with any growth = more volume
+    .limit(100);
 
   return {
     table_counts: counts,
@@ -160,7 +169,15 @@ export async function getDatabaseData() {
     tweet_source_distribution: sourceDist,
     domain_distribution: domainDist,
     top_accounts_by_followers: topAccounts ?? [],
-    fastest_growing: fastestGrowing ?? [],
+    fastest_growing_pct: fastestGrowingPct ?? [],
+    fastest_growing_vol: (fastestGrowingVol ?? [])
+      .filter((a: any) => a.growth_rate_7d > 0 && a.prev_followers_count)
+      .sort((a: any, b: any) => {
+        const aGain = (a.followers_count ?? 0) - (a.prev_followers_count ?? a.followers_count ?? 0);
+        const bGain = (b.followers_count ?? 0) - (b.prev_followers_count ?? b.followers_count ?? 0);
+        return bGain - aGain;
+      })
+      .slice(0, 20),
   };
 }
 
@@ -369,9 +386,15 @@ export function getHTML(): string {
         <tbody id="topAccountsTable"></tbody></table>
       </div>
       <div class="table-card">
-        <h2>Fastest Growing This Week (100+ followers, no celebrities/bots)</h2>
-        <table><thead><tr><th>Account</th><th>Followers</th><th>Growth/Week</th><th>Status</th></tr></thead>
-        <tbody id="fastestGrowingTable"></tbody></table>
+        <h2>Fastest Growth Rate (%) — all sizes, repeating doublers = signal</h2>
+        <table><thead><tr><th>Account</th><th>Now</th><th>Was</th><th>+Gained</th><th>%/Week</th><th>Range</th></tr></thead>
+        <tbody id="fastestGrowingPctTable"></tbody></table>
+      </div>
+    </div>
+    <div class="table-card">
+      <h2>Most Followers Gained This Week (raw volume)</h2>
+      <table><thead><tr><th>Account</th><th>Now</th><th>Was</th><th>+Gained</th><th>%/Week</th><th>Range</th></tr></thead>
+      <tbody id="fastestGrowingVolTable"></tbody></table>
       </div>
     </div>
   </div>
@@ -555,10 +578,21 @@ async function loadDatabase() {
       '</td><td>' + (a.niche_cached || '—') + '</td></tr>'
     ).join('');
 
-    document.getElementById('fastestGrowingTable').innerHTML = (d.fastest_growing||[]).map(a =>
-      '<tr><td>@' + a.username + '</td><td>' + fmt(a.followers_count||0) + '</td><td style="color:#10b981;font-weight:700">' +
-      (a.growth_rate_7d ? '+' + a.growth_rate_7d.toFixed(1) + '%' : '—') + '</td><td>' + badge(a.growth_status) + '</td></tr>'
-    ).join('') || '<tr><td colspan="4" style="color:#666">No growth data yet — census needs time</td></tr>';
+    function growthRow(a) {
+      var now = a.followers_count || 0;
+      var was = a.prev_followers_count || now;
+      var gained = now - was;
+      return '<tr><td>@' + a.username + '</td><td>' + fmt(now) + '</td><td style="color:#888">' + fmt(was) + '</td>' +
+        '<td style="color:#10b981;font-weight:700">+' + fmt(gained > 0 ? gained : 0) + '</td>' +
+        '<td>' + (a.growth_rate_7d ? '+' + a.growth_rate_7d.toFixed(1) + '%' : '—') + '</td>' +
+        '<td>' + badge(a.follower_range || 'unknown') + '</td></tr>';
+    }
+
+    document.getElementById('fastestGrowingPctTable').innerHTML = (d.fastest_growing_pct||[]).map(growthRow).join('')
+      || '<tr><td colspan="6" style="color:#666">No growth data yet — census needs time</td></tr>';
+
+    document.getElementById('fastestGrowingVolTable').innerHTML = (d.fastest_growing_vol||[]).map(growthRow).join('')
+      || '<tr><td colspan="6" style="color:#666">No volume growth data yet</td></tr>';
   } catch(e) { console.error('DB load error:', e); }
 }
 
