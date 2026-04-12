@@ -17,10 +17,10 @@ import type { AccountDiscoveryMethod } from './types';
 
 const LOG_PREFIX = '[brain/account-discovery]';
 
-const VIRAL_LIKES_THRESHOLD = 50;  // Lower threshold to discover more accounts
-const HIGH_ENGAGEMENT_REPLY_LIKES = 20;
+const VIRAL_LIKES_THRESHOLD = 10;  // Very low — discover broadly, tier later
+const HIGH_ENGAGEMENT_REPLY_LIKES = 5;
 const BATCH_SIZE = 50;
-const MAX_IMMEDIATE_CENSUS = 20; // Max accounts to census immediately on discovery
+const MAX_IMMEDIATE_CENSUS = 30; // Max accounts to census immediately on discovery
 
 interface DiscoveredAccount {
   username: string;
@@ -34,14 +34,14 @@ export async function runAccountDiscovery(): Promise<{ accounts_discovered: numb
   const discovered: DiscoveredAccount[] = [];
   const seenUsernames = new Set<string>();
 
-  // 1. Viral author capture — authors of high-engagement tweets not yet in brain_accounts
+  // 1. Viral author capture — authors of tweets with any engagement not yet in brain_accounts
   try {
     const { data: viralTweets } = await supabase
       .from('brain_tweets')
       .select('author_username, author_followers')
       .gte('likes', VIRAL_LIKES_THRESHOLD)
-      .gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-      .limit(50);
+      .gt('created_at', new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString())
+      .limit(200);
 
     if (viralTweets) {
       for (const tweet of viralTweets) {
@@ -61,14 +61,14 @@ export async function runAccountDiscovery(): Promise<{ accounts_discovered: numb
     console.error(`${LOG_PREFIX} Viral author capture error:`, err.message);
   }
 
-  // 2. Mentioned accounts — extract @mentions from high-engagement tweets
+  // 2. Mentioned accounts — extract @mentions from ANY recent tweet (mentions = signal)
   try {
     const { data: mentionTweets } = await supabase
       .from('brain_tweets')
       .select('content, author_username')
-      .gte('likes', 50)
-      .gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-      .limit(100);
+      .gte('likes', 5)
+      .gt('created_at', new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString())
+      .limit(300);
 
     if (mentionTweets) {
       for (const tweet of mentionTweets) {
@@ -125,6 +125,36 @@ export async function runAccountDiscovery(): Promise<{ accounts_discovered: numb
     }
   } catch (err: any) {
     console.error(`${LOG_PREFIX} Frequent author extraction error:`, err.message);
+  }
+
+  // 4. Reply chain discovery — accounts replying to growing accounts are often in the same niche
+  try {
+    const { data: replyTweets } = await supabase
+      .from('brain_tweets')
+      .select('author_username, author_followers, reply_to_username')
+      .eq('tweet_type', 'reply')
+      .not('reply_to_username', 'is', null)
+      .gt('created_at', new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString())
+      .gte('likes', HIGH_ENGAGEMENT_REPLY_LIKES)
+      .limit(200);
+
+    if (replyTweets) {
+      for (const tweet of replyTweets) {
+        // The replier is interesting — they engage with known accounts
+        const username = tweet.author_username?.toLowerCase();
+        if (!username || seenUsernames.has(username)) continue;
+        seenUsernames.add(username);
+
+        discovered.push({
+          username,
+          followers_count: tweet.author_followers,
+          discovery_method: 'reply_tree',
+          discovered_from_username: tweet.reply_to_username,
+        });
+      }
+    }
+  } catch (err: any) {
+    console.error(`${LOG_PREFIX} Reply chain discovery error:`, err.message);
   }
 
   // Filter out accounts already in brain_accounts

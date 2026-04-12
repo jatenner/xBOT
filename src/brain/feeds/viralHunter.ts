@@ -106,7 +106,7 @@ export async function runViralHunter(): Promise<{ tweets_ingested: number; queri
           // Extract tweets
           const tweets = await extractTweetsFromPage(page, {
             maxTweets: MAX_TWEETS_PER_QUERY,
-            skipReplies: true,
+            skipReplies: false, // Capture viral replies — reply engagement data
           });
 
           if (tweets.length > 0) {

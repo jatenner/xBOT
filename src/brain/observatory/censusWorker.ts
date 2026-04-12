@@ -23,6 +23,7 @@ import { censusQueue, getQueuedAccounts, clearQueuedAccount } from './censusSche
 import { getFollowerRange } from '../types';
 import { lightweightCensusCheck, processLightweightResult } from './lightweightCensus';
 import { runCensusBatch } from './censusBrowserPool';
+import { detectAndStoreBioChange } from './bioChangeDetector';
 
 const LOG_PREFIX = '[observatory/census-worker]';
 const BATCH_SIZE = 100; // Up from 30 — parallel processing handles the load
@@ -148,10 +149,14 @@ async function runFullCensus(
   const nav = await brainGoto(page, profileUrl, 15000);
   if (!nav.success) throw new Error('Navigation failed');
 
-  // Extract follower and following counts
+  // Extract follower/following counts + profile metadata
   const metrics = await page.evaluate(`
     (function() {
-      var result = { followers: null, following: null, bio: null };
+      var result = {
+        followers: null, following: null, bio: null,
+        verified: false, joinDate: null, location: null,
+        pinnedTweetId: null, profileImageUrl: null
+      };
 
       var links = document.querySelectorAll('a[href*="/followers"], a[href*="/following"], a[href*="/verified_followers"]');
       for (var i = 0; i < links.length; i++) {
@@ -188,9 +193,55 @@ async function runFullCensus(
         }
       }
 
+      // Bio text
       var bioEl = document.querySelector('[data-testid="UserDescription"]');
       if (bioEl) {
         result.bio = (bioEl.textContent || '').trim().substring(0, 500);
+      }
+
+      // Verified badge
+      var verifiedBadge = document.querySelector('[data-testid="icon-verified"]');
+      if (!verifiedBadge) verifiedBadge = document.querySelector('svg[aria-label*="Verified"]');
+      if (!verifiedBadge) verifiedBadge = document.querySelector('[aria-label*="verified" i]');
+      if (verifiedBadge) result.verified = true;
+
+      // Join date — Twitter shows "Joined March 2020" on profile
+      var spans = document.querySelectorAll('[data-testid="UserProfileHeader_Items"] span');
+      for (var s = 0; s < spans.length; s++) {
+        var spanText = (spans[s].textContent || '').trim();
+        var joinMatch = spanText.match(/Joined\\s+(\\w+\\s+\\d{4})/i);
+        if (joinMatch) {
+          try {
+            result.joinDate = new Date(joinMatch[1] + ' 1').toISOString();
+          } catch(e) {}
+          break;
+        }
+      }
+
+      // Location — also in UserProfileHeader_Items
+      var locationEl = document.querySelector('[data-testid="UserLocation"]');
+      if (locationEl) {
+        result.location = (locationEl.textContent || '').trim().substring(0, 200);
+      }
+
+      // Profile image
+      var profileImg = document.querySelector('img[src*="profile_images"]');
+      if (profileImg) {
+        result.profileImageUrl = profileImg.getAttribute('src') || null;
+      }
+
+      // Pinned tweet
+      var pinnedLabel = document.querySelector('[data-testid="socialContext"]');
+      if (pinnedLabel && /Pinned/i.test(pinnedLabel.textContent || '')) {
+        var pinnedArticle = pinnedLabel.closest('article');
+        if (pinnedArticle) {
+          var pinnedLink = pinnedArticle.querySelector('a[href*="/status/"]');
+          if (pinnedLink) {
+            var pinnedHref = pinnedLink.getAttribute('href') || '';
+            var pinnedMatch = pinnedHref.match(/\\/status\\/(\\d+)/);
+            if (pinnedMatch) result.pinnedTweetId = pinnedMatch[1];
+          }
+        }
       }
 
       return result;
@@ -262,6 +313,16 @@ async function runFullCensus(
   const prevFollowers = existing?.followers_count ?? null;
   const isFirstSnapshot = !existing?.first_snapshot_at;
 
+  // Detect bio changes before inserting new snapshot
+  if (metrics.bio) {
+    try {
+      await detectAndStoreBioChange(username, metrics.bio, metrics.followers);
+    } catch (err: any) {
+      // Non-fatal — don't block census for bio change detection
+      console.warn(`${LOG_PREFIX} Bio change detection error for @${username}: ${err.message}`);
+    }
+  }
+
   // Insert snapshot
   await supabase.from('brain_account_snapshots').insert({
     username,
@@ -293,6 +354,13 @@ async function runFullCensus(
   if (metrics.bio) {
     updateData.bio_text = metrics.bio;
   }
+
+  // Store new profile fields (columns may not exist yet if migration hasn't run)
+  if (metrics.verified !== undefined) updateData.verified = metrics.verified;
+  if (metrics.joinDate) updateData.join_date = metrics.joinDate;
+  if (metrics.location) updateData.location = metrics.location;
+  if (metrics.pinnedTweetId) updateData.pinned_tweet_id = metrics.pinnedTweetId;
+  if (metrics.profileImageUrl) updateData.profile_image_url = metrics.profileImageUrl;
 
   if (metrics.followers && metrics.following && metrics.following > 0) {
     updateData.ff_ratio = Math.round((metrics.followers / metrics.following) * 100) / 100;

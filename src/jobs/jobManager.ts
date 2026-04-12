@@ -1935,6 +1935,32 @@ export class JobManager {
         120 * MINUTE,
         50 * MINUTE // 5 min after behavioral analyzer
       );
+
+      // Observatory: Posting frequency tracker — cadence changes over time (every 6h)
+      this.scheduleStaggeredJob(
+        'observatory_posting_frequency',
+        async () => {
+          await this.safeExecute('observatory_posting_frequency', async () => {
+            const { runPostingFrequencyTracker } = await import('../brain/observatory/postingFrequencyTracker');
+            await runPostingFrequencyTracker();
+          });
+        },
+        360 * MINUTE,
+        25 * MINUTE
+      );
+
+      // Observatory: Content evolution detector — strategy shifts vs growth (every 12h)
+      this.scheduleStaggeredJob(
+        'observatory_content_evolution',
+        async () => {
+          await this.safeExecute('observatory_content_evolution', async () => {
+            const { runContentEvolutionDetector } = await import('../brain/observatory/contentEvolutionDetector');
+            await runContentEvolutionDetector();
+          });
+        },
+        720 * MINUTE,
+        55 * MINUTE
+      );
     } else {
       console.log('[JOB_MANAGER] 🔭 Growth Observatory DISABLED (set GROWTH_OBSERVATORY_ENABLED=true to enable)');
     }

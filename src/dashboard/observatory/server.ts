@@ -305,8 +305,9 @@ function getHTML(): string {
 
 <div class="tabs">
   <div class="tab active" onclick="switchTab('live')"><span class="pulse"></span> Live Activity</div>
-  <div class="tab" onclick="switchTab('database')">📊 Database</div>
-  <div class="tab" onclick="switchTab('analysis')">🧠 Analysis</div>
+  <div class="tab" onclick="switchTab('database')">Database</div>
+  <div class="tab" onclick="switchTab('analysis')">Analysis</div>
+  <div class="tab" onclick="switchTab('intelligence')">Intelligence</div>
 </div>
 
 <div class="content">
@@ -392,10 +393,61 @@ function getHTML(): string {
         <tbody id="growthEventsAnalysis"></tbody></table>
       </div>
       <div class="table-card">
-        <h2>🏆 Top Tweets in Brain</h2>
+        <h2>Top Tweets in Brain</h2>
         <table><thead><tr><th>Author</th><th>Likes</th><th>Source</th><th>Content</th></tr></thead>
         <tbody id="topTweetsTable"></tbody></table>
       </div>
+    </div>
+  </div>
+
+  <!-- INTELLIGENCE TAB -->
+  <div id="intelligence" class="panel">
+    <div class="grid" id="intelStats"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="table-card">
+        <h2>Discovery Funnel</h2>
+        <div id="discoveryFunnel" class="bar-chart"></div>
+      </div>
+      <div class="table-card">
+        <h2>New Data Streams</h2>
+        <div id="newTableCounts" class="bar-chart"></div>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <h2>Top Hashtags by Engagement</h2>
+      <table><thead><tr><th>Hashtag</th><th>Uses</th><th>Avg Likes</th><th>Ranges</th></tr></thead>
+      <tbody id="hashtagsTable"></tbody></table>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="table-card">
+        <h2>Recent Bio Changes</h2>
+        <table><thead><tr><th>Account</th><th>Type</th><th>Followers</th><th>When</th></tr></thead>
+        <tbody id="bioChangesTable"></tbody></table>
+      </div>
+      <div class="table-card">
+        <h2>Content Strategy Shifts (Growth-Correlated)</h2>
+        <table><thead><tr><th>Account</th><th>Dimension</th><th>From</th><th>To</th><th>Growth</th></tr></thead>
+        <tbody id="evolutionTable"></tbody></table>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <h2>Accounts Accelerating Posting Frequency</h2>
+      <table><thead><tr><th>Account</th><th>Posts/Day (7d)</th><th>Change</th><th>Reply Ratio</th><th>Followers</th><th>Range</th></tr></thead>
+      <tbody id="frequencyTable"></tbody></table>
+    </div>
+
+    <div class="table-card">
+      <h2>Growth Leaderboard by Follower Range</h2>
+      <div id="rangeLeaderboard"></div>
+    </div>
+
+    <div class="table-card">
+      <h2>Live Ingest Feed</h2>
+      <div id="liveFeed" style="max-height:400px;overflow-y:auto;font-size:13px;font-family:monospace"></div>
     </div>
   </div>
 </div>
@@ -549,16 +601,239 @@ async function loadAnalysis() {
   } catch(e) { console.error('Analysis load error:', e); }
 }
 
+// Intelligence tab loader
+async function loadIntelligence() {
+  try {
+    const res = await fetch('/api/intelligence');
+    const d = await res.json();
+
+    // Stats cards
+    var funnel = d.discovery_funnel || {};
+    document.getElementById('intelStats').innerHTML =
+      '<div class="card"><h3>Discovery Funnel</h3><div class="value blue">' + fmt(funnel.total_discovered) + '</div><div class="sub">Total accounts discovered</div></div>' +
+      '<div class="card"><h3>Censused</h3><div class="value green">' + fmt(funnel.censused) + '</div><div class="sub">' + (funnel.total_discovered ? Math.round(funnel.censused/funnel.total_discovered*100) : 0) + '% of discovered</div></div>' +
+      '<div class="card"><h3>Classified</h3><div class="value orange">' + fmt(funnel.classified) + '</div><div class="sub">' + (funnel.total_discovered ? Math.round(funnel.classified/funnel.total_discovered*100) : 0) + '% profiled</div></div>' +
+      '<div class="card"><h3>Growing</h3><div class="value green">' + fmt(funnel.growing) + '</div><div class="sub">interesting + hot + explosive</div></div>';
+
+    // Discovery funnel bar chart
+    var funnelEl = document.getElementById('discoveryFunnel');
+    barChart(funnelEl, { 'Discovered': funnel.total_discovered, 'Censused': funnel.censused, 'Classified': funnel.classified, 'Growing': funnel.growing }, 'blue');
+
+    // New table counts
+    var ntc = d.new_table_counts || {};
+    var ntcEl = document.getElementById('newTableCounts');
+    barChart(ntcEl, {
+      'Hashtags': ntc['brain_tweet_hashtags'] ?? 0,
+      'Bio Changes': ntc['brain_bio_changes'] ?? 0,
+      'Frequency': ntc['brain_posting_frequency'] ?? 0,
+      'Evolution': ntc['brain_content_evolution'] ?? 0
+    }, 'green');
+
+    // Hashtags
+    document.getElementById('hashtagsTable').innerHTML = (d.top_hashtags||[]).map(function(h) {
+      var rangeStr = Object.entries(h.ranges||{}).map(function(e){return e[0]+':'+e[1]}).join(', ');
+      return '<tr><td>#' + h.hashtag + '</td><td>' + h.count + '</td><td>' + fmt(h.avg_likes) + '</td><td style="font-size:11px;color:#888">' + rangeStr + '</td></tr>';
+    }).join('');
+
+    // Bio changes
+    document.getElementById('bioChangesTable').innerHTML = (d.bio_changes||[]).map(function(b) {
+      return '<tr><td>@' + b.username + '</td><td>' + badge(b.change_type) + '</td><td>' + fmt(b.followers_at_change||0) + '</td><td style="color:#888">' + new Date(b.changed_at).toLocaleDateString() + '</td></tr>';
+    }).join('');
+
+    // Content evolution
+    document.getElementById('evolutionTable').innerHTML = (d.content_evolutions||[]).map(function(e) {
+      return '<tr><td>@' + e.username + '</td><td>' + e.dimension + '</td><td>' + (e.old_primary||'?') + '</td><td>' + (e.new_primary||'?') + '</td><td style="color:#10b981">+' + ((e.growth_rate_after||0)*100).toFixed(1) + '%</td></tr>';
+    }).join('');
+
+    // Frequency trends
+    document.getElementById('frequencyTable').innerHTML = (d.frequency_trends||[]).map(function(f) {
+      return '<tr><td>@' + f.username + '</td><td>' + (f.posts_per_day_7d||0).toFixed(1) + '</td><td style="color:#10b981">+' + (f.frequency_delta_7d||0).toFixed(1) + '/day</td><td>' + ((f.reply_ratio_7d||0)*100).toFixed(0) + '%</td><td>' + fmt(f.followers_at_measurement||0) + '</td><td>' + badge(f.follower_range) + '</td></tr>';
+    }).join('');
+
+    // Growth leaderboard by range
+    var lb = d.growth_leaderboard || {};
+    var lbHtml = '';
+    var ranges = ['nano','micro','small','mid','large','mega','celebrity'];
+    for (var ri = 0; ri < ranges.length; ri++) {
+      var r = ranges[ri];
+      var accounts = lb[r] || [];
+      if (accounts.length === 0) continue;
+      lbHtml += '<h3 style="color:#4fc3f7;margin:12px 0 6px;font-size:13px;text-transform:uppercase">' + r + '</h3>';
+      lbHtml += '<table><thead><tr><th>Account</th><th>Followers</th><th>7d Growth</th><th>Status</th></tr></thead><tbody>';
+      for (var ai = 0; ai < accounts.length; ai++) {
+        var a = accounts[ai];
+        lbHtml += '<tr><td>@' + a.username + '</td><td>' + fmt(a.followers_count||0) + '</td><td style="color:#10b981">+' + ((a.growth_rate_7d||0)).toFixed(1) + '%</td><td>' + badge(a.growth_status) + '</td></tr>';
+      }
+      lbHtml += '</tbody></table>';
+    }
+    document.getElementById('rangeLeaderboard').innerHTML = lbHtml;
+
+  } catch(e) { console.error('Intelligence load error:', e); }
+}
+
+// SSE live feed connection
+function connectLiveFeed() {
+  try {
+    var es = new EventSource('/api/stream');
+    var feedEl = document.getElementById('liveFeed');
+    es.onmessage = function(e) {
+      try {
+        var msg = JSON.parse(e.data);
+        if (msg.type === 'tweets' && msg.data) {
+          for (var i = 0; i < msg.data.length; i++) {
+            var t = msg.data[i];
+            var div = document.createElement('div');
+            div.style.cssText = 'padding:6px 8px;border-bottom:1px solid #1f2937;';
+            div.innerHTML = '<span style="color:#4fc3f7">@' + t.author_username + '</span> ' +
+              '<span style="color:#666">[' + (t.discovery_source||'?') + ']</span> ' +
+              '<span style="color:#10b981">' + fmt(t.likes||0) + 'L ' + fmt(t.views||0) + 'V</span> ' +
+              '<span>' + (t.content||'').substring(0,100) + '</span>';
+            feedEl.insertBefore(div, feedEl.firstChild);
+            if (feedEl.children.length > 50) feedEl.removeChild(feedEl.lastChild);
+          }
+        }
+      } catch(ee) {}
+    };
+    es.onerror = function() { setTimeout(connectLiveFeed, 5000); es.close(); };
+  } catch(e) {}
+}
+
 // Initial load
-loadLive(); loadDatabase(); loadAnalysis();
+loadLive(); loadDatabase(); loadAnalysis(); loadIntelligence();
+connectLiveFeed();
 
 // Auto-refresh
 setInterval(loadLive, 30000);
 setInterval(loadDatabase, 60000);
 setInterval(loadAnalysis, 120000);
+setInterval(loadIntelligence, 60000);
 </script>
 </body>
 </html>`;
+}
+
+// =============================================================================
+// INTELLIGENCE API — New data streams (hashtags, bio changes, frequency, evolution)
+// =============================================================================
+
+async function getIntelligenceData() {
+  const s = getSupabaseClient();
+  const d7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const d30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Top hashtags by engagement (last 30 days)
+  let topHashtags: any[] = [];
+  try {
+    const { data } = await s.from('brain_tweet_hashtags')
+      .select('hashtag, likes, views, follower_range')
+      .order('likes', { ascending: false })
+      .limit(200);
+    // Aggregate by hashtag
+    const agg: Record<string, { count: number; total_likes: number; total_views: number; ranges: Record<string, number> }> = {};
+    for (const row of data ?? []) {
+      if (!agg[row.hashtag]) agg[row.hashtag] = { count: 0, total_likes: 0, total_views: 0, ranges: {} };
+      agg[row.hashtag].count++;
+      agg[row.hashtag].total_likes += row.likes ?? 0;
+      agg[row.hashtag].total_views += row.views ?? 0;
+      if (row.follower_range) agg[row.hashtag].ranges[row.follower_range] = (agg[row.hashtag].ranges[row.follower_range] ?? 0) + 1;
+    }
+    topHashtags = Object.entries(agg)
+      .map(([tag, d]) => ({ hashtag: tag, count: d.count, avg_likes: Math.round(d.total_likes / d.count), total_views: d.total_views, ranges: d.ranges }))
+      .sort((a, b) => b.avg_likes - a.avg_likes)
+      .slice(0, 30);
+  } catch { /* table may not exist */ }
+
+  // Recent bio changes
+  let bioChanges: any[] = [];
+  try {
+    const { data } = await s.from('brain_bio_changes')
+      .select('username, change_type, old_bio, new_bio, followers_at_change, follower_range, changed_at')
+      .order('changed_at', { ascending: false })
+      .limit(20);
+    bioChanges = data ?? [];
+  } catch {}
+
+  // Posting frequency trends — accounts accelerating
+  let frequencyTrends: any[] = [];
+  try {
+    const { data } = await s.from('brain_posting_frequency')
+      .select('username, posts_per_day_7d, frequency_delta_7d, frequency_trend, reply_ratio_7d, followers_at_measurement, follower_range, measured_at')
+      .eq('frequency_trend', 'accelerating')
+      .order('frequency_delta_7d', { ascending: false })
+      .limit(20);
+    frequencyTrends = data ?? [];
+  } catch {}
+
+  // Content evolution events (growth-correlated only)
+  let contentEvolutions: any[] = [];
+  try {
+    const { data } = await s.from('brain_content_evolution')
+      .select('username, dimension, old_primary, new_primary, growth_rate_after, growth_correlated, follower_range, detected_at')
+      .eq('growth_correlated', true)
+      .order('detected_at', { ascending: false })
+      .limit(20);
+    contentEvolutions = data ?? [];
+  } catch {}
+
+  // Discovery funnel — how accounts flow through the pipeline
+  const { count: totalAccounts } = await s.from('brain_accounts').select('*', { count: 'exact', head: true });
+  const { count: withSnapshots } = await s.from('brain_accounts').select('*', { count: 'exact', head: true }).gte('snapshot_count', 1);
+  const { count: withClassifications } = await s.from('brain_account_profiles').select('*', { count: 'exact', head: true });
+  const { count: growing } = await s.from('brain_accounts').select('*', { count: 'exact', head: true }).in('growth_status', ['interesting', 'hot', 'explosive']);
+
+  // Follower range × growth status matrix
+  const { data: rangeGrowthData } = await s.from('brain_accounts')
+    .select('follower_range, growth_status')
+    .eq('is_active', true)
+    .not('follower_range', 'is', null);
+  const rangeGrowthMatrix: Record<string, Record<string, number>> = {};
+  for (const row of rangeGrowthData ?? []) {
+    const range = row.follower_range ?? 'unknown';
+    const status = row.growth_status ?? 'unknown';
+    if (!rangeGrowthMatrix[range]) rangeGrowthMatrix[range] = {};
+    rangeGrowthMatrix[range][status] = (rangeGrowthMatrix[range][status] ?? 0) + 1;
+  }
+
+  // Growth leaderboard by follower range
+  const ranges = ['nano', 'micro', 'small', 'mid', 'large', 'mega', 'celebrity'];
+  const growthLeaderboard: Record<string, any[]> = {};
+  for (const range of ranges) {
+    const { data } = await s.from('brain_accounts')
+      .select('username, followers_count, growth_rate_7d, growth_status')
+      .eq('follower_range', range)
+      .not('growth_rate_7d', 'is', null)
+      .gt('growth_rate_7d', 0)
+      .order('growth_rate_7d', { ascending: false })
+      .limit(5);
+    growthLeaderboard[range] = data ?? [];
+  }
+
+  // New table counts
+  const newTableCounts: Record<string, number> = {};
+  for (const table of ['brain_tweet_hashtags', 'brain_bio_changes', 'brain_posting_frequency', 'brain_content_evolution']) {
+    try {
+      const { count } = await s.from(table).select('*', { count: 'exact', head: true });
+      newTableCounts[table] = count ?? 0;
+    } catch {
+      newTableCounts[table] = -1; // Not yet created
+    }
+  }
+
+  return {
+    top_hashtags: topHashtags,
+    bio_changes: bioChanges,
+    frequency_trends: frequencyTrends,
+    content_evolutions: contentEvolutions,
+    discovery_funnel: {
+      total_discovered: totalAccounts ?? 0,
+      censused: withSnapshots ?? 0,
+      classified: withClassifications ?? 0,
+      growing: growing ?? 0,
+    },
+    range_growth_matrix: rangeGrowthMatrix,
+    growth_leaderboard: growthLeaderboard,
+    new_table_counts: newTableCounts,
+  };
 }
 
 // =============================================================================
@@ -581,6 +856,38 @@ const server = createServer(async (req, res) => {
       const data = await getAnalysisData();
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify(data));
+    } else if (url === '/api/intelligence') {
+      const data = await getIntelligenceData();
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify(data));
+    } else if (url === '/api/stream') {
+      // SSE endpoint for real-time tweet ingest
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.write('data: {"type":"connected"}\n\n');
+
+      const interval = setInterval(async () => {
+        try {
+          const s = getSupabaseClient();
+          const since = new Date(Date.now() - 30 * 1000).toISOString(); // Last 30 seconds
+          const { data: recentTweets } = await s.from('brain_tweets')
+            .select('tweet_id, author_username, content, likes, views, retweets, discovery_source, author_followers, posted_at')
+            .gte('created_at', since)
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+          if (recentTweets && recentTweets.length > 0) {
+            res.write(`data: ${JSON.stringify({ type: 'tweets', data: recentTweets })}\n\n`);
+          }
+        } catch {}
+      }, 10000); // Poll every 10s
+
+      req.on('close', () => clearInterval(interval));
+      return; // Don't end response — SSE stays open
     } else {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(getHTML());
@@ -593,5 +900,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n🔭 Growth Observatory Dashboard running at http://localhost:${PORT}\n`);
+  console.log(`\n Growth Observatory Dashboard running at http://localhost:${PORT}\n`);
 });

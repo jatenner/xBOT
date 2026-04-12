@@ -25,6 +25,7 @@ import { getFollowerRange, FOLLOWER_RANGE_BOUNDS, type FollowerRange } from '../
 
 const LOG_PREFIX = '[observatory/profile-hop]';
 const MAX_CAMPAIGNS_PER_RUN = 2;
+const MAX_AUTO_HOPS_PER_RUN = 5; // Auto-hop from 5 growing/viral accounts per run
 const MAX_SCROLL_ROUNDS = 5;
 
 export async function runProfileHopSeeder(): Promise<{
@@ -35,6 +36,13 @@ export async function runProfileHopSeeder(): Promise<{
   let campaignsProcessed = 0;
   let accountsDiscovered = 0;
 
+  // === AUTO-HOP MODE ===
+  // Automatically discover from growing/interesting accounts — no campaigns needed.
+  // Picks accounts that are growing or have high engagement that we haven't hopped yet.
+  const autoDiscovered = await runAutoHop(supabase);
+  accountsDiscovered += autoDiscovered;
+
+  // === CAMPAIGN MODE ===
   // Get active campaigns with seed accounts available
   const { data: campaigns } = await supabase
     .from('brain_seed_campaigns')
@@ -44,7 +52,7 @@ export async function runProfileHopSeeder(): Promise<{
     .limit(MAX_CAMPAIGNS_PER_RUN);
 
   if (!campaigns || campaigns.length === 0) {
-    return { campaigns_processed: 0, accounts_discovered: 0 };
+    return { campaigns_processed: campaignsProcessed, accounts_discovered: accountsDiscovered };
   }
 
   let page: any;
@@ -91,6 +99,251 @@ export async function runProfileHopSeeder(): Promise<{
   }
 
   return { campaigns_processed: campaignsProcessed, accounts_discovered: accountsDiscovered };
+}
+
+/**
+ * Auto-hop: discover accounts from growing/high-engagement accounts we already track.
+ * No campaigns needed — picks the best un-hopped accounts automatically.
+ *
+ * Prioritizes:
+ * 1. Hot/explosive growth accounts (these attract interesting followers)
+ * 2. Interesting growth accounts
+ * 3. High-tier (S/A) accounts with diverse followers
+ *
+ * Tracks which accounts we've already hopped via a simple column on brain_accounts.
+ */
+async function runAutoHop(supabase: any): Promise<number> {
+  // Find accounts worth hopping from:
+  // Growing accounts we haven't hopped yet, with enough followers to have an interesting list.
+  // Use is.null filter on last_hop_at to only hop accounts we haven't visited yet.
+  let hopCandidates: any[] = [];
+
+  try {
+    const { data } = await supabase
+      .from('brain_accounts')
+      .select('username, followers_count, growth_status, primary_domain, follower_range')
+      .eq('is_active', true)
+      .gte('followers_count', 200)
+      .is('last_hop_at', null)
+      .in('growth_status', ['interesting', 'hot', 'explosive'])
+      .order('followers_count', { ascending: false })
+      .limit(MAX_AUTO_HOPS_PER_RUN * 3);
+    hopCandidates = data ?? [];
+  } catch {
+    // last_hop_at column may not exist yet — fall back to unfiltered query
+    const { data } = await supabase
+      .from('brain_accounts')
+      .select('username, followers_count, growth_status, primary_domain, follower_range')
+      .eq('is_active', true)
+      .gte('followers_count', 200)
+      .in('growth_status', ['interesting', 'hot', 'explosive'])
+      .order('followers_count', { ascending: false })
+      .limit(MAX_AUTO_HOPS_PER_RUN * 3);
+    hopCandidates = data ?? [];
+  }
+
+  // Fallback: if no growing accounts available, try high-tier accounts
+  let candidates = hopCandidates;
+  if (candidates.length < MAX_AUTO_HOPS_PER_RUN) {
+    let tierCandidates: any[] = [];
+    try {
+      const { data } = await supabase
+        .from('brain_accounts')
+        .select('username, followers_count, growth_status, primary_domain, follower_range')
+        .eq('is_active', true)
+        .gte('followers_count', 1000)
+        .is('last_hop_at', null)
+        .in('tier', ['S', 'A'])
+        .order('followers_count', { ascending: false })
+        .limit(MAX_AUTO_HOPS_PER_RUN - candidates.length);
+      tierCandidates = data ?? [];
+    } catch {
+      const { data } = await supabase
+        .from('brain_accounts')
+        .select('username, followers_count, growth_status, primary_domain, follower_range')
+        .eq('is_active', true)
+        .gte('followers_count', 1000)
+        .in('tier', ['S', 'A'])
+        .order('followers_count', { ascending: false })
+        .limit(MAX_AUTO_HOPS_PER_RUN - candidates.length);
+      tierCandidates = data ?? [];
+    }
+
+    if (tierCandidates.length > 0) {
+      const existingUsernames = new Set(candidates.map((c: any) => c.username));
+      candidates = [
+        ...candidates,
+        ...tierCandidates.filter((c: any) => !existingUsernames.has(c.username)),
+      ];
+    }
+  }
+
+  if (candidates.length === 0) return 0;
+
+  let page: any;
+  try {
+    page = await getBrainPage();
+  } catch (err: any) {
+    console.error(`${LOG_PREFIX} Auto-hop: failed to get browser page: ${err.message}`);
+    return 0;
+  }
+
+  let totalDiscovered = 0;
+  let accountsHopped = 0;
+
+  try {
+    for (const candidate of candidates) {
+      if (accountsHopped >= MAX_AUTO_HOPS_PER_RUN) break;
+
+      try {
+        // Alternate between following and followers lists
+        const tab = accountsHopped % 2 === 0 ? 'following' : 'followers';
+        const url = `https://x.com/${candidate.username}/${tab}`;
+
+        const nav = await brainGoto(page, url, 15000);
+        if (!nav.success) continue;
+
+        // Wait for profile cards
+        try {
+          await page.waitForSelector('[data-testid="UserCell"]', { timeout: 8000 });
+        } catch {
+          // Mark as hopped to avoid retrying private/empty accounts
+          await supabase
+            .from('brain_accounts')
+            .update({ last_hop_at: new Date().toISOString() })
+            .eq('username', candidate.username);
+          continue;
+        }
+
+        // Scroll to load more
+        for (let i = 0; i < MAX_SCROLL_ROUNDS; i++) {
+          await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
+          await page.waitForTimeout(1500);
+        }
+
+        // Extract profile cards
+        const profiles = await page.evaluate(`
+          (function() {
+            var cells = document.querySelectorAll('[data-testid="UserCell"]');
+            var results = [];
+            for (var i = 0; i < cells.length; i++) {
+              var cell = cells[i];
+              var result = { username: null, displayName: null, followers: null, bio: null };
+              var links = cell.querySelectorAll('a[href^="/"]');
+              for (var j = 0; j < links.length; j++) {
+                var href = links[j].getAttribute('href') || '';
+                var match = href.match(/^\\/([A-Za-z0-9_]+)$/);
+                if (match && !['home', 'explore', 'notifications', 'messages', 'settings', 'i'].includes(match[1])) {
+                  result.username = match[1];
+                  break;
+                }
+              }
+              if (!result.username) continue;
+              var nameEl = cell.querySelector('span');
+              if (nameEl) result.displayName = (nameEl.textContent || '').trim();
+              var spans = cell.querySelectorAll('span');
+              for (var k = 0; k < spans.length; k++) {
+                var spanText = (spans[k].textContent || '').trim();
+                if (spanText.length > 30 && spanText !== result.displayName) {
+                  result.bio = spanText.substring(0, 300);
+                  break;
+                }
+              }
+              var cellText = cell.textContent || '';
+              var fMatch = cellText.match(/(\\d[\\d.,]*)\\s*([KMB])?\\s*(?:followers?)/i);
+              if (fMatch) {
+                var num = parseFloat(fMatch[1].replace(/,/g, ''));
+                var suffix = (fMatch[2] || '').toUpperCase();
+                if (suffix === 'K') num *= 1e3;
+                else if (suffix === 'M') num *= 1e6;
+                else if (suffix === 'B') num *= 1e9;
+                result.followers = Math.round(num);
+              }
+              results.push(result);
+            }
+            return results;
+          })()
+        `);
+
+        if (!profiles || profiles.length === 0) {
+          await supabase
+            .from('brain_accounts')
+            .update({ last_hop_at: new Date().toISOString() })
+            .eq('username', candidate.username);
+          continue;
+        }
+
+        // Batch check existing
+        const usernames = profiles
+          .filter((p: any) => p.username)
+          .map((p: any) => p.username.toLowerCase());
+
+        const { data: existingAccounts } = await supabase
+          .from('brain_accounts')
+          .select('username')
+          .in('username', usernames);
+
+        const existingSet = new Set((existingAccounts ?? []).map((a: any) => a.username.toLowerCase()));
+
+        // Insert new accounts
+        let discovered = 0;
+        for (const profile of profiles) {
+          if (!profile.username) continue;
+          const username = profile.username.toLowerCase();
+          if (existingSet.has(username)) continue;
+
+          const followerRange = profile.followers !== null ? getFollowerRange(profile.followers) : null;
+
+          await supabase.from('brain_accounts').upsert({
+            username,
+            display_name: profile.displayName || null,
+            followers_count: profile.followers,
+            bio_text: profile.bio || null,
+            follower_range: followerRange,
+            follower_range_at_first_snapshot: followerRange,
+            primary_domain: candidate.primary_domain || null,
+            discovery_method: 'seed',
+            discovered_from_username: candidate.username,
+            tier: 'C',
+            scrape_priority: 0.3,
+            is_active: true,
+            next_census_at: new Date(Date.now() + Math.random() * 48 * 60 * 60 * 1000).toISOString(),
+          }, { onConflict: 'username' });
+
+          existingSet.add(username);
+          discovered++;
+        }
+
+        // Mark as hopped
+        await supabase
+          .from('brain_accounts')
+          .update({ last_hop_at: new Date().toISOString() })
+          .eq('username', candidate.username);
+
+        totalDiscovered += discovered;
+        accountsHopped++;
+
+        console.log(
+          `${LOG_PREFIX} Auto-hop @${candidate.username} (${tab}): ` +
+          `${profiles.length} profiles seen, ${discovered} new accounts discovered`
+        );
+
+        // Delay between hops
+        await page.waitForTimeout(2000);
+
+      } catch (err: any) {
+        console.error(`${LOG_PREFIX} Auto-hop error for @${candidate.username}: ${err.message}`);
+      }
+    }
+  } finally {
+    try { await page.close(); } catch {}
+  }
+
+  if (totalDiscovered > 0) {
+    console.log(`${LOG_PREFIX} Auto-hop total: ${totalDiscovered} accounts from ${accountsHopped} hops`);
+  }
+
+  return totalDiscovered;
 }
 
 async function processCampaignHop(

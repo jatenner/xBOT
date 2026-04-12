@@ -7,8 +7,9 @@
  */
 
 import { upsertBrainTweets, upsertBrainAccounts } from './db';
-import { computeRatios, type BrainTweet, type DiscoverySource, type TweetType, type MediaType } from './types';
+import { computeRatios, getFollowerRange, type BrainTweet, type DiscoverySource, type TweetType, type MediaType } from './types';
 import { extractContentFeatures } from '../intelligence/contentFeatureExtractor';
+import { getSupabaseClient } from '../db';
 
 const LOG_PREFIX = '[brain/discovery]';
 
@@ -41,6 +42,9 @@ export interface RawScrapedTweet {
   thread_position?: number;
   parent_tweet_id?: string;
   reply_to_username?: string;
+
+  // Profile hints (optional)
+  is_verified?: boolean;
 }
 
 export interface FeedResult {
@@ -178,6 +182,9 @@ export async function ingestFeedResults(results: FeedResult[]): Promise<{
     }
   }
 
+  // Extract and store hashtags from ingested tweets
+  await extractAndStoreHashtags(allTweets);
+
   console.log(`${LOG_PREFIX} Ingested ${totalIngested}/${allTweets.length} tweets, discovered ${accountsDiscovered} accounts`);
 
   return {
@@ -185,6 +192,89 @@ export async function ingestFeedResults(results: FeedResult[]): Promise<{
     total_deduplicated: seenIds.size - totalIngested,
     accounts_discovered: accountsDiscovered,
   };
+}
+
+// =============================================================================
+// Hashtag Extraction
+// =============================================================================
+
+const HASHTAG_REGEX = /#([a-zA-Z0-9_\u00C0-\u024F\u1E00-\u1EFF]+)/g;
+
+function extractHashtags(content: string): string[] {
+  const tags = new Set<string>();
+  let match: RegExpExecArray | null;
+  // Reset regex state
+  HASHTAG_REGEX.lastIndex = 0;
+  while ((match = HASHTAG_REGEX.exec(content)) !== null) {
+    const tag = match[1].toLowerCase();
+    if (tag.length >= 2 && tag.length <= 100) {
+      tags.add(tag);
+    }
+  }
+  return Array.from(tags);
+}
+
+async function extractAndStoreHashtags(tweets: Partial<BrainTweet>[]): Promise<number> {
+  const rows: Array<{
+    tweet_id: string;
+    hashtag: string;
+    author_username: string;
+    posted_at: string | null;
+    likes: number;
+    views: number;
+    author_followers: number | null;
+    follower_range: string | null;
+  }> = [];
+
+  for (const tweet of tweets) {
+    if (!tweet.content || !tweet.tweet_id) continue;
+    const hashtags = extractHashtags(tweet.content);
+    if (hashtags.length === 0) continue;
+
+    const range = tweet.author_followers ? getFollowerRange(tweet.author_followers) : null;
+
+    for (const tag of hashtags) {
+      rows.push({
+        tweet_id: tweet.tweet_id,
+        hashtag: tag,
+        author_username: tweet.author_username ?? 'unknown',
+        posted_at: tweet.posted_at ?? null,
+        likes: tweet.likes ?? 0,
+        views: tweet.views ?? 0,
+        author_followers: tweet.author_followers ?? null,
+        follower_range: range,
+      });
+    }
+  }
+
+  if (rows.length === 0) return 0;
+
+  let stored = 0;
+  const supabase = getSupabaseClient();
+
+  for (let i = 0; i < rows.length; i += 50) {
+    const chunk = rows.slice(i, i + 50);
+    const { error } = await supabase
+      .from('brain_tweet_hashtags')
+      .upsert(chunk, { onConflict: 'tweet_id,hashtag', ignoreDuplicates: true });
+
+    if (error) {
+      // Table might not exist yet (migration not run) — log and continue
+      if (error.message?.includes('relation') || error.message?.includes('schema cache')) {
+        console.warn(`${LOG_PREFIX} brain_tweet_hashtags not ready yet — skipping hashtag storage`);
+        return 0;
+      }
+      console.error(`${LOG_PREFIX} hashtag upsert error:`, error.message);
+    } else {
+      stored += chunk.length;
+    }
+  }
+
+  if (stored > 0) {
+    console.log(`${LOG_PREFIX} Stored ${stored} hashtag entries from ${tweets.length} tweets`);
+  }
+
+  return stored;
 }
 
 // =============================================================================
@@ -353,26 +443,74 @@ export async function extractTweetsFromPage(
           if (!idMatch) continue;
           var tweet_id = idMatch[1];
 
-          // Detect if this tweet is a reply
+          // Detect tweet type: reply, thread, quote, or original
           var is_reply = false;
+          var is_thread = false;
+          var is_quote = false;
           var reply_to_user = null;
+
+          // Method 1: "Replying to" social context
           var socialCtx = article.querySelector('[data-testid="socialContext"]');
-          if (socialCtx && /Replying to/i.test(socialCtx.textContent || '')) {
-            is_reply = true;
-            // Try to extract who they're replying to
-            var replyLink = socialCtx.querySelector('a');
-            if (replyLink) {
-              var rh = replyLink.getAttribute('href') || '';
-              if (rh.match(/^\\/[a-zA-Z0-9_]+$/)) {
-                reply_to_user = rh.replace('/', '');
+          if (socialCtx) {
+            var sctx = socialCtx.textContent || '';
+            if (/Replying to/i.test(sctx)) {
+              is_reply = true;
+              var replyLink = socialCtx.querySelector('a');
+              if (replyLink) {
+                var rh = replyLink.getAttribute('href') || '';
+                if (rh.match(/^\\/[a-zA-Z0-9_]+$/)) {
+                  reply_to_user = rh.replace('/', '');
+                }
               }
             }
           }
-          // Also check for reply indicator in tweet text area
-          var replyIndicator = article.querySelector('[data-testid="tweet"] [data-testid="socialContext"]');
-          if (!is_reply && replyIndicator && /Replying/i.test(replyIndicator.textContent || '')) {
-            is_reply = true;
+
+          // Method 2: Tweet URL contains /status/X where the status is a reply
+          // Check if the tweet article has a reply indicator in its link structure
+          if (!is_reply) {
+            var allLinks = article.querySelectorAll('a[href*="/status/"]');
+            for (var li = 0; li < allLinks.length; li++) {
+              var lhref = allLinks[li].getAttribute('href') || '';
+              // If there's a reply chain indicator, the URL structure differs
+              if (lhref.includes('/status/') && allLinks[li].getAttribute('aria-label') && /reply/i.test(allLinks[li].getAttribute('aria-label') || '')) {
+                is_reply = true;
+                break;
+              }
+            }
           }
+
+          // Method 3: Content starts with @username — very likely a reply
+          // (this catches replies on /with_replies tab where social context may be absent)
+          if (!is_reply && content.match(/^@[a-zA-Z0-9_]/)) {
+            is_reply = true;
+            var mentionMatch = content.match(/^@([a-zA-Z0-9_]+)/);
+            if (mentionMatch && !reply_to_user) {
+              reply_to_user = mentionMatch[1];
+            }
+          }
+
+          // Method 4: Check for thread indicator ("Show this thread" or self-reply)
+          if (!is_reply && author_username !== 'unknown') {
+            // Self-reply = thread continuation
+            if (reply_to_user && reply_to_user.toLowerCase() === author_username.toLowerCase()) {
+              is_thread = true;
+              is_reply = false;
+            }
+          }
+
+          // Thread detection: "Show this thread" link or thread line connector
+          var threadLine = article.querySelector('[data-testid="tweet-thread-line"]');
+          if (threadLine) is_thread = true;
+
+          // Quote tweet detection: embedded tweet card
+          var quoteTweet = article.querySelector('[data-testid="quoteTweet"]');
+          if (quoteTweet) is_quote = true;
+
+          // Determine tweet_type
+          var detected_type = 'original';
+          if (is_quote) detected_type = 'quote';
+          else if (is_thread) detected_type = 'thread';
+          else if (is_reply) detected_type = 'reply';
 
           if (skipReplies && is_reply) continue;
 
@@ -440,22 +578,69 @@ export async function extractTweetsFromPage(
             if (bMatch) bookmarks = parseInt(bMatch[1].replace(/,/g, ''), 10) || 0;
           }
 
-          // Also try the group aria-label which has all metrics
-          // Twitter puts "X replies, Y reposts, Z likes, W bookmarks" on the action group
-          if (likes === 0 && retweets === 0) {
-            var actionGroup = article.querySelector('[role="group"]');
-            if (actionGroup) {
-              var groupAria = actionGroup.getAttribute('aria-label') || '';
+          // ALWAYS parse the group aria-label — it has ALL metrics including views
+          // Twitter puts "X replies, Y reposts, Z likes, W bookmarks, V views" on the action group
+          var views = 0;
+          var quotes = 0;
+          var actionGroup = article.querySelector('[role="group"]');
+          if (actionGroup) {
+            var groupAria = actionGroup.getAttribute('aria-label') || '';
+            // Parse views (most important metric we were missing)
+            var viewsMatch = groupAria.match(/(\\d[\\d,]*)\\s*view/i);
+            if (viewsMatch) views = parseInt(viewsMatch[1].replace(/,/g, ''), 10) || 0;
+            // Parse quotes
+            var quotesMatch = groupAria.match(/(\\d[\\d,]*)\\s*quote/i);
+            if (quotesMatch) quotes = parseInt(quotesMatch[1].replace(/,/g, ''), 10) || 0;
+            // Backfill likes/retweets/replies/bookmarks if individual selectors missed them
+            if (likes === 0) {
               var likesMatch = groupAria.match(/(\\d[\\d,]*)\\s*like/i);
-              var retweetsMatch = groupAria.match(/(\\d[\\d,]*)\\s*repost/i);
-              var repliesMatch = groupAria.match(/(\\d[\\d,]*)\\s*repl/i);
-              var bookmarksMatch = groupAria.match(/(\\d[\\d,]*)\\s*bookmark/i);
               if (likesMatch) likes = parseInt(likesMatch[1].replace(/,/g, ''), 10) || 0;
+            }
+            if (retweets === 0) {
+              var retweetsMatch = groupAria.match(/(\\d[\\d,]*)\\s*repost/i);
               if (retweetsMatch) retweets = parseInt(retweetsMatch[1].replace(/,/g, ''), 10) || 0;
+            }
+            if (replies_count === 0) {
+              var repliesMatch = groupAria.match(/(\\d[\\d,]*)\\s*repl/i);
               if (repliesMatch) replies_count = parseInt(repliesMatch[1].replace(/,/g, ''), 10) || 0;
+            }
+            if (bookmarks === 0) {
+              var bookmarksMatch = groupAria.match(/(\\d[\\d,]*)\\s*bookmark/i);
               if (bookmarksMatch) bookmarks = parseInt(bookmarksMatch[1].replace(/,/g, ''), 10) || 0;
             }
           }
+
+          // Also try analytics link for views (Twitter shows "X views" as a link)
+          if (views === 0) {
+            var analyticsLinks = article.querySelectorAll('a[href*="/analytics"]');
+            for (var al = 0; al < analyticsLinks.length; al++) {
+              var alText = (analyticsLinks[al].textContent || '').trim();
+              var alMatch = alText.match(/([\\d.,]+)\\s*([KMB])?/i);
+              if (alMatch) {
+                var vn = parseFloat(alMatch[1].replace(/,/g, ''));
+                var vs = (alMatch[2] || '').toUpperCase();
+                if (vs === 'K') vn *= 1e3;
+                else if (vs === 'M') vn *= 1e6;
+                else if (vs === 'B') vn *= 1e9;
+                if (Number.isFinite(vn) && vn > 0) views = Math.round(vn);
+                break;
+              }
+            }
+          }
+
+          // Detect verified badge
+          var is_verified = false;
+          var verifiedBadge = article.querySelector('[data-testid="icon-verified"]');
+          if (!verifiedBadge) verifiedBadge = article.querySelector('svg[aria-label*="Verified"]');
+          if (!verifiedBadge) verifiedBadge = article.querySelector('[aria-label*="verified" i]');
+          if (verifiedBadge) is_verified = true;
+
+          // Detect media type from tweet
+          var media_type = 'none';
+          if (article.querySelector('[data-testid="tweetPhoto"]')) media_type = 'image';
+          else if (article.querySelector('[data-testid="videoPlayer"]') || article.querySelector('video')) media_type = 'video';
+          else if (article.querySelector('[data-testid="card.wrapper"]')) media_type = 'link';
+          else if (article.querySelector('[data-testid="poll"]')) media_type = 'poll';
 
           var timeEl = article.querySelector('time');
           var posted_at = timeEl ? timeEl.getAttribute('datetime') : null;
@@ -480,12 +665,15 @@ export async function extractTweetsFromPage(
             likes: likes,
             retweets: retweets,
             replies: replies_count,
-            views: 0,
+            views: views,
             bookmarks: bookmarks,
-            quotes: 0,
+            quotes: quotes,
             author_followers: author_followers,
-            tweet_type: is_reply ? 'reply' : 'original',
-            reply_to_username: reply_to_user
+            tweet_type: detected_type,
+            reply_to_username: reply_to_user,
+            is_verified: is_verified,
+            is_thread: is_thread,
+            media_type: media_type
           });
         }
         return results;

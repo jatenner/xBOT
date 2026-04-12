@@ -67,7 +67,7 @@ export async function runBroadKeywordSearcher(): Promise<{ tweets_ingested: numb
           // Extract tweets
           const tweets = await extractTweetsFromPage(page, {
             maxTweets: TWEETS_PER_KEYWORD,
-            skipReplies: true,
+            skipReplies: false, // Capture replies — reply strategy is critical learning data
           });
 
           // Compute keyword performance stats

@@ -51,7 +51,7 @@ export async function runTrendingScraper(): Promise<{ tweets_ingested: number; t
         // Extract ALL tweets — no health filter, no engagement filter
         const tweets = await extractTweetsFromPage(page, {
           maxTweets: MAX_TWEETS,
-          skipReplies: true,
+          skipReplies: false, // Capture replies — content mix data
         });
 
         console.log(`${LOG_PREFIX} Extracted ${tweets.length} tweets, ${topics.length} trending topics`);

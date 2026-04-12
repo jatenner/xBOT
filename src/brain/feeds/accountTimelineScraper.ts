@@ -4,9 +4,13 @@
  * Scrapes timelines of accounts from brain_accounts table.
  * Prioritizes by staleness (least recently scraped first).
  * Domain-agnostic — scrapes any tracked account regardless of niche.
+ *
+ * PARALLELIZED: Uses brainBrowserPool.submitBatch to scrape across
+ * N parallel browsers (default 3). This 3x throughput vs sequential.
  */
 
-import { getBrainPage, brainGoto, waitForTweets } from './brainNavigator';
+import { submitBatch } from './brainBrowserPool';
+import { brainGoto, waitForTweets } from './brainNavigator';
 import {
   extractTweetsFromPage,
   extractFollowerCount,
@@ -20,12 +24,9 @@ const ACCOUNTS_PER_RUN = 50;
 const TWEETS_PER_ACCOUNT_DEFAULT = 15;
 const TWEETS_PER_ACCOUNT_HIGH_TIER = 30;
 const TWEETS_PER_ACCOUNT_LOW_TIER = 5;
-// Growing accounts get deep scraping — we need their FULL recent activity
 const TWEETS_PER_ACCOUNT_GROWING = 100;
-const DELAY_BETWEEN_ACCOUNTS_MS = 1500;
 
 export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: number; accounts_scraped: number }> {
-  // Get accounts ordered by staleness
   const accounts = await getAccountsForScraping(ACCOUNTS_PER_RUN);
   if (accounts.length === 0) {
     console.log(`${LOG_PREFIX} No accounts to scrape`);
@@ -36,107 +37,128 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
   const allResults: FeedResult[] = [];
   let accountsScraped = 0;
 
-  try {
-    const page = await getBrainPage();
-    await (async () => {
+  // Build parallel tasks — each account gets its own page from the pool
+  const tasks = accounts.map((account) => {
+    return async (page: any) => {
+      const username = account.username;
+      const profileUrl = `https://x.com/${username}`;
 
-      try {
-        for (const account of accounts) {
-          const username = account.username;
-          const profileUrl = `https://x.com/${username}`;
-
-          const nav = await brainGoto(page, profileUrl);
-          if (!nav.success) {
-            if (nav.loginWall) {
-              console.warn(`${LOG_PREFIX} Login wall for @${username}`);
-            }
-            await updateAccountAfterScrape(username, false, 0);
-            continue;
-          }
-
-          // Wait for tweets to load
-          const tweetCount = await waitForTweets(page, 10000);
-          if (tweetCount === 0) {
-            console.warn(`${LOG_PREFIX} No tweets found for @${username}`);
-            await updateAccountAfterScrape(username, false, 0);
-            continue;
-          }
-
-          // Extract follower count from profile
-          const followerCount = await extractFollowerCount(page);
-
-          // Growth-aware tweet depth: growing accounts get DEEP scraping
-          const isGrowing = (account as any).growth_status === 'hot' || (account as any).growth_status === 'explosive';
-          const isHighTier = account.tier === 'S' || account.tier === 'A';
-          const isLowTier = account.tier === 'C' || account.tier === 'dormant';
-          const tweetsToFetch = isGrowing
-            ? TWEETS_PER_ACCOUNT_GROWING
-            : isHighTier
-              ? TWEETS_PER_ACCOUNT_HIGH_TIER
-              : isLowTier
-                ? TWEETS_PER_ACCOUNT_LOW_TIER
-                : TWEETS_PER_ACCOUNT_DEFAULT;
-
-          // Scroll to load tweets — growing accounts need many scrolls for 100+ tweets
-          const scrollCount = isGrowing ? 12 : isHighTier ? 3 : 0;
-          for (let s = 0; s < scrollCount; s++) {
-            await page.evaluate(() => window.scrollBy(0, 1200));
-            await page.waitForTimeout(1500);
-          }
-
-          // Extract tweets from timeline
-          // ALWAYS capture replies for growing accounts — reply strategy is critical behavioral data
-          // Skip replies only for non-growing C/dormant accounts
-          const tweets = await extractTweetsFromPage(page, {
-            maxTweets: tweetsToFetch,
-            skipReplies: isLowTier && !isGrowing,
-          });
-
-          if (isGrowing) {
-            console.log(`${LOG_PREFIX} 🔥 GROWING @${username} (${(account as any).growth_status}): deep scrape ${tweets.length} tweets`);
-          }
-
-          // Enrich tweets with profile data
-          for (const tweet of tweets) {
-            tweet.author_username = username;
-            if (followerCount && !tweet.author_followers) {
-              tweet.author_followers = followerCount;
-            }
-          }
-
-          // Record scrape result
-          await updateAccountAfterScrape(username, true, tweets.length);
-
-          if (tweets.length > 0) {
-            allResults.push({
-              source: 'timeline',
-              feed_run_id: feedRunId,
-              tweets,
-            });
-          }
-
-          accountsScraped++;
-          console.log(`${LOG_PREFIX} @${username}: ${tweets.length} tweets, ${followerCount ?? '?'} followers`);
-
-          // Delay between accounts
-          if (accounts.indexOf(account) < accounts.length - 1) {
-            await page.waitForTimeout(DELAY_BETWEEN_ACCOUNTS_MS);
-          }
+      const nav = await brainGoto(page, profileUrl);
+      if (!nav.success) {
+        if (nav.loginWall) {
+          console.warn(`${LOG_PREFIX} Login wall for @${username}`);
         }
-      } finally {
-        await page.close();
+        await updateAccountAfterScrape(username, false, 0);
+        return;
       }
-    })();
 
-    // Ingest all results
+      const tweetCount = await waitForTweets(page, 10000);
+      if (tweetCount === 0) {
+        await updateAccountAfterScrape(username, false, 0);
+        return;
+      }
+
+      const followerCount = await extractFollowerCount(page);
+
+      // Growth-aware tweet depth
+      const isGrowing = (account as any).growth_status === 'hot' || (account as any).growth_status === 'explosive';
+      const isHighTier = account.tier === 'S' || account.tier === 'A';
+      const isLowTier = account.tier === 'C' || account.tier === 'dormant';
+      const tweetsToFetch = isGrowing
+        ? TWEETS_PER_ACCOUNT_GROWING
+        : isHighTier
+          ? TWEETS_PER_ACCOUNT_HIGH_TIER
+          : isLowTier
+            ? TWEETS_PER_ACCOUNT_LOW_TIER
+            : TWEETS_PER_ACCOUNT_DEFAULT;
+
+      // Scroll for more tweets
+      const scrollCount = isGrowing ? 12 : isHighTier ? 3 : 0;
+      for (let s = 0; s < scrollCount; s++) {
+        await page.evaluate('window.scrollBy(0, 1200)');
+        await page.waitForTimeout(1500);
+      }
+
+      const tweets = await extractTweetsFromPage(page, {
+        maxTweets: tweetsToFetch,
+        skipReplies: isLowTier && !isGrowing,
+      });
+
+      if (isGrowing) {
+        console.log(`${LOG_PREFIX} GROWING @${username} (${(account as any).growth_status}): deep scrape ${tweets.length} tweets`);
+      }
+
+      // Also scrape /with_replies tab for interesting+ accounts
+      // This is where reply strategy data lives — who they reply to, how often, etc.
+      let replyTweets: any[] = [];
+      const isInterestingPlus = isGrowing || (account as any).growth_status === 'interesting';
+      if (isInterestingPlus) {
+        try {
+          const replyNav = await brainGoto(page, `https://x.com/${username}/with_replies`, 12000);
+          if (replyNav.success) {
+            const replyCount = await waitForTweets(page, 8000);
+            if (replyCount > 0) {
+              // Scroll a few times to get more replies
+              for (let rs = 0; rs < 3; rs++) {
+                await page.evaluate('window.scrollBy(0, 1200)');
+                await page.waitForTimeout(1500);
+              }
+              replyTweets = await extractTweetsFromPage(page, {
+                maxTweets: isGrowing ? 50 : 20,
+                skipReplies: false,
+              });
+              // Mark author for any tweets from this user
+              for (const rt of replyTweets) {
+                rt.author_username = username;
+                if (followerCount && !rt.author_followers) rt.author_followers = followerCount;
+              }
+            }
+          }
+        } catch {
+          // Non-fatal — reply tab scraping is bonus data
+        }
+      }
+
+      const allTweets = [...tweets, ...replyTweets];
+
+      for (const tweet of allTweets) {
+        tweet.author_username = username;
+        if (followerCount && !tweet.author_followers) {
+          tweet.author_followers = followerCount;
+        }
+      }
+
+      await updateAccountAfterScrape(username, true, allTweets.length);
+
+      if (allTweets.length > 0) {
+        allResults.push({
+          source: 'timeline',
+          feed_run_id: feedRunId,
+          tweets: allTweets,
+        });
+      }
+
+      accountsScraped++;
+      console.log(`${LOG_PREFIX} @${username}: ${tweets.length} tweets, ${followerCount ?? '?'} followers`);
+    };
+  });
+
+  // Run in parallel across browser pool
+  try {
+    const { completed, errors } = await submitBatch('medium', tasks);
+    console.log(`${LOG_PREFIX} Parallel batch: ${completed} completed, ${errors} errors`);
+  } catch (err: any) {
+    console.error(`${LOG_PREFIX} Batch error: ${err.message}`);
+  }
+
+  // Ingest all collected results
+  if (allResults.length > 0) {
     const ingested = await ingestFeedResults(allResults);
-
     return {
       tweets_ingested: ingested.total_ingested,
       accounts_scraped: accountsScraped,
     };
-  } catch (err: any) {
-    console.error(`${LOG_PREFIX} Error:`, err.message);
-    return { tweets_ingested: 0, accounts_scraped: accountsScraped };
   }
+
+  return { tweets_ingested: 0, accounts_scraped: accountsScraped };
 }
