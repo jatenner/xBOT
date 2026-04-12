@@ -165,6 +165,27 @@ export async function ingestFeedResults(results: FeedResult[]): Promise<{
     totalIngested += count;
   }
 
+  // Also discover accounts mentioned in tweets (reply targets, @mentions)
+  for (const tweet of allTweets) {
+    // Add reply-to targets as discoverable accounts
+    if (tweet.reply_to_username) {
+      const replyTo = (tweet.reply_to_username as string).toLowerCase().replace(/^@/, '');
+      if (replyTo && !accountUsernames.has(replyTo)) {
+        accountUsernames.set(replyTo, { followers: null, following: null });
+      }
+    }
+    // Extract @mentions from content
+    if (tweet.content) {
+      const mentions = (tweet.content as string).match(/@([a-zA-Z0-9_]{1,15})/g) || [];
+      for (const mention of mentions) {
+        const username = mention.replace('@', '').toLowerCase();
+        if (username && !accountUsernames.has(username)) {
+          accountUsernames.set(username, { followers: null, following: null });
+        }
+      }
+    }
+  }
+
   // Discover new accounts (upsert with ignoreDuplicates)
   const newAccounts = Array.from(accountUsernames.entries()).map(([username, meta]) => ({
     username,

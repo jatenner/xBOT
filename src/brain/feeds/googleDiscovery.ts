@@ -97,6 +97,18 @@ const DISCOVERY_QUERIES = [
   // Humor / Entertainment
   'site:x.com comedian funny tweets',
   'site:x.com memes humor viral',
+
+  // Small/new accounts — catch people at the START of their journey
+  'site:x.com "just started" health account',
+  'site:x.com "new account" fitness tips',
+  'site:x.com "building in public" startup',
+  'site:x.com "day 1" content creator',
+  'site:x.com "growing my account" tips',
+  'site:x.com "0 to" followers twitter growth',
+  'site:x.com "first 100 followers"',
+  'site:x.com "started tweeting" health',
+  'site:x.com "twitter journey" growth',
+  'site:x.com "small account" engagement',
 ];
 
 let queryRotationIndex = 0;
