@@ -5,12 +5,11 @@
  * Prioritizes by staleness (least recently scraped first).
  * Domain-agnostic — scrapes any tracked account regardless of niche.
  *
- * PARALLELIZED: Uses brainBrowserPool.submitBatch to scrape across
- * N parallel browsers (default 3). This 3x throughput vs sequential.
+ * Uses anonymous browsing — profile pages are public on Twitter.
+ * Also visits /with_replies tab for growing accounts to capture reply strategy data.
  */
 
-import { submitBatch } from './brainBrowserPool';
-import { brainGoto, waitForTweets } from './brainNavigator';
+import { getBrainPage, brainGoto, waitForTweets } from './brainNavigator';
 import {
   extractTweetsFromPage,
   extractFollowerCount,
@@ -20,11 +19,12 @@ import {
 import { getAccountsForScraping, updateAccountAfterScrape } from '../db';
 
 const LOG_PREFIX = '[brain/feed/timeline]';
-const ACCOUNTS_PER_RUN = 50;
+const ACCOUNTS_PER_RUN = 20; // Reduced from 50 — fits in 5min window with reply tab scraping
 const TWEETS_PER_ACCOUNT_DEFAULT = 15;
 const TWEETS_PER_ACCOUNT_HIGH_TIER = 30;
 const TWEETS_PER_ACCOUNT_LOW_TIER = 5;
 const TWEETS_PER_ACCOUNT_GROWING = 100;
+const DELAY_BETWEEN_ACCOUNTS_MS = 1500;
 
 export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: number; accounts_scraped: number }> {
   const accounts = await getAccountsForScraping(ACCOUNTS_PER_RUN);
@@ -37,31 +37,36 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
   const allResults: FeedResult[] = [];
   let accountsScraped = 0;
 
-  // Build parallel tasks — each account gets its own page from the pool
-  const tasks = accounts.map((account) => {
-    return async (page: any) => {
+  let page: any;
+  try {
+    page = await getBrainPage(); // Anonymous — profiles are public
+  } catch (err: any) {
+    console.error(`${LOG_PREFIX} Failed to get browser page: ${err.message}`);
+    return { tweets_ingested: 0, accounts_scraped: 0 };
+  }
+
+  try {
+    for (const account of accounts) {
       const username = account.username;
       const profileUrl = `https://x.com/${username}`;
 
       const nav = await brainGoto(page, profileUrl);
       if (!nav.success) {
-        if (nav.loginWall) {
-          console.warn(`${LOG_PREFIX} Login wall for @${username}`);
-        }
         await updateAccountAfterScrape(username, false, 0);
-        return;
+        continue;
       }
 
       const tweetCount = await waitForTweets(page, 10000);
       if (tweetCount === 0) {
         await updateAccountAfterScrape(username, false, 0);
-        return;
+        continue;
       }
 
       const followerCount = await extractFollowerCount(page);
 
       // Growth-aware tweet depth
       const isGrowing = (account as any).growth_status === 'hot' || (account as any).growth_status === 'explosive';
+      const isInteresting = (account as any).growth_status === 'interesting';
       const isHighTier = account.tier === 'S' || account.tier === 'A';
       const isLowTier = account.tier === 'C' || account.tier === 'dormant';
       const tweetsToFetch = isGrowing
@@ -79,9 +84,10 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
         await page.waitForTimeout(1500);
       }
 
+      // ALWAYS capture replies — they're critical behavioral data
       const tweets = await extractTweetsFromPage(page, {
         maxTweets: tweetsToFetch,
-        skipReplies: isLowTier && !isGrowing,
+        skipReplies: false,
       });
 
       if (isGrowing) {
@@ -89,16 +95,13 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
       }
 
       // Also scrape /with_replies tab for interesting+ accounts
-      // This is where reply strategy data lives — who they reply to, how often, etc.
       let replyTweets: any[] = [];
-      const isInterestingPlus = isGrowing || (account as any).growth_status === 'interesting';
-      if (isInterestingPlus) {
+      if (isGrowing || isInteresting) {
         try {
           const replyNav = await brainGoto(page, `https://x.com/${username}/with_replies`, 12000);
           if (replyNav.success) {
-            const replyCount = await waitForTweets(page, 8000);
-            if (replyCount > 0) {
-              // Scroll a few times to get more replies
+            const rc = await waitForTweets(page, 8000);
+            if (rc > 0) {
               for (let rs = 0; rs < 3; rs++) {
                 await page.evaluate('window.scrollBy(0, 1200)');
                 await page.waitForTimeout(1500);
@@ -107,15 +110,10 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
                 maxTweets: isGrowing ? 50 : 20,
                 skipReplies: false,
               });
-              // Mark author for any tweets from this user
-              for (const rt of replyTweets) {
-                rt.author_username = username;
-                if (followerCount && !rt.author_followers) rt.author_followers = followerCount;
-              }
             }
           }
         } catch {
-          // Non-fatal — reply tab scraping is bonus data
+          // Non-fatal
         }
       }
 
@@ -139,19 +137,19 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
       }
 
       accountsScraped++;
-      console.log(`${LOG_PREFIX} @${username}: ${tweets.length} tweets, ${followerCount ?? '?'} followers`);
-    };
-  });
+      const replyCount = replyTweets.length;
+      console.log(`${LOG_PREFIX} @${username}: ${tweets.length} tweets + ${replyCount} replies, ${followerCount ?? '?'} followers`);
 
-  // Run in parallel across browser pool
-  try {
-    const { completed, errors } = await submitBatch('medium', tasks);
-    console.log(`${LOG_PREFIX} Parallel batch: ${completed} completed, ${errors} errors`);
-  } catch (err: any) {
-    console.error(`${LOG_PREFIX} Batch error: ${err.message}`);
+      // Delay between accounts
+      if (accounts.indexOf(account) < accounts.length - 1) {
+        await page.waitForTimeout(DELAY_BETWEEN_ACCOUNTS_MS);
+      }
+    }
+  } finally {
+    try { await page.close(); } catch {}
   }
 
-  // Ingest all collected results
+  // Ingest all results
   if (allResults.length > 0) {
     const ingested = await ingestFeedResults(allResults);
     return {
