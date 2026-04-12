@@ -112,14 +112,25 @@ export async function getDatabaseData() {
     tiers[a.tier ?? 'C'] = (tiers[a.tier ?? 'C'] ?? 0) + 1;
   }
 
-  // Tweet sources
-  const { data: sources } = await s.from('brain_tweets')
-    .select('discovery_source')
-    .limit(10000);
+  // Follower range distribution — what sizes of accounts are we watching?
+  const { data: rangeData } = await s.from('brain_accounts')
+    .select('follower_range')
+    .eq('is_active', true)
+    .not('follower_range', 'is', null);
 
-  const sourceDist: Record<string, number> = {};
-  for (const t of sources ?? []) {
-    sourceDist[t.discovery_source] = (sourceDist[t.discovery_source] ?? 0) + 1;
+  const rangeDist: Record<string, number> = {};
+  const rangeLabels: Record<string, string> = {
+    'nano': '0-500',
+    'micro': '500-2K',
+    'small': '2K-10K',
+    'mid': '10K-50K',
+    'large': '50K-200K',
+    'mega': '200K-1M',
+    'celebrity': '1M+',
+  };
+  for (const a of rangeData ?? []) {
+    const label = rangeLabels[a.follower_range] || a.follower_range;
+    rangeDist[label] = (rangeDist[label] ?? 0) + 1;
   }
 
   // Classification domains
@@ -174,7 +185,7 @@ export async function getDatabaseData() {
     table_counts: counts,
     growth_status_distribution: growthDist,
     tier_distribution: tiers,
-    tweet_source_distribution: sourceDist,
+    follower_range_distribution: rangeDist,
     domain_distribution: domainDist,
     top_accounts_by_followers: topAccounts ?? [],
     fastest_growing_pct: fastestGrowingPct ?? [],
@@ -379,7 +390,7 @@ export function getHTML(): string {
     </div>
     <div class="grid">
       <div class="table-card">
-        <h2>Where Tweets Come From</h2>
+        <h2>Accounts by Follower Size (who are we watching?)</h2>
         <div id="sourceChart" class="bar-chart"></div>
       </div>
       <div class="table-card">
@@ -577,7 +588,7 @@ async function loadDatabase() {
 
     barChart(document.getElementById('growthStatusChart'), d.growth_status_distribution, 'green');
     barChart(document.getElementById('tierChart'), d.tier_distribution, 'blue');
-    barChart(document.getElementById('sourceChart'), d.tweet_source_distribution, 'purple');
+    barChart(document.getElementById('sourceChart'), d.follower_range_distribution, 'purple');
     barChart(document.getElementById('domainChart'), d.domain_distribution, 'orange');
 
     document.getElementById('topAccountsTable').innerHTML = (d.top_accounts_by_followers||[]).map(a =>
