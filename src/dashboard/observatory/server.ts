@@ -20,7 +20,7 @@ const PORT = parseInt(process.env.OBSERVATORY_DASHBOARD_PORT || '3333');
 // API Endpoints
 // =============================================================================
 
-async function getLiveData() {
+export async function getLiveData() {
   const s = getSupabaseClient();
   const now = Date.now();
   const oneHourAgo = new Date(now - 60 * 60 * 1000).toISOString();
@@ -75,7 +75,7 @@ async function getLiveData() {
   };
 }
 
-async function getDatabaseData() {
+export async function getDatabaseData() {
   const s = getSupabaseClient();
 
   // Table counts
@@ -157,7 +157,7 @@ async function getDatabaseData() {
   };
 }
 
-async function getAnalysisData() {
+export async function getAnalysisData() {
   const s = getSupabaseClient();
 
   // Strategy library
@@ -222,7 +222,7 @@ async function getAnalysisData() {
 // HTML Dashboard
 // =============================================================================
 
-function getHTML(): string {
+export function getHTML(): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -483,7 +483,7 @@ function barChart(container, data, color) {
 
 async function loadLive() {
   try {
-    const res = await fetch('/api/live');
+    const res = await fetch((window.__obsBase||'') + '/api/live');
     const d = await res.json();
 
     document.getElementById('liveStats').innerHTML =
@@ -514,7 +514,7 @@ async function loadLive() {
 
 async function loadDatabase() {
   try {
-    const res = await fetch('/api/database');
+    const res = await fetch((window.__obsBase||'') + '/api/database');
     const d = await res.json();
 
     const total = Object.values(d.table_counts).reduce((s,v) => s + v, 0);
@@ -551,7 +551,7 @@ async function loadDatabase() {
 
 async function loadAnalysis() {
   try {
-    const res = await fetch('/api/analysis');
+    const res = await fetch((window.__obsBase||'') + '/api/analysis');
     const d = await res.json();
 
     const sm = d.self_model;
@@ -604,7 +604,7 @@ async function loadAnalysis() {
 // Intelligence tab loader
 async function loadIntelligence() {
   try {
-    const res = await fetch('/api/intelligence');
+    const res = await fetch((window.__obsBase||'') + '/api/intelligence');
     const d = await res.json();
 
     // Stats cards
@@ -674,7 +674,7 @@ async function loadIntelligence() {
 // SSE live feed connection
 function connectLiveFeed() {
   try {
-    var es = new EventSource('/api/stream');
+    var es = new EventSource((window.__obsBase||'') + '/api/stream');
     var feedEl = document.getElementById('liveFeed');
     es.onmessage = function(e) {
       try {
@@ -716,7 +716,7 @@ setInterval(loadIntelligence, 60000);
 // INTELLIGENCE API — New data streams (hashtags, bio changes, frequency, evolution)
 // =============================================================================
 
-async function getIntelligenceData() {
+export async function getIntelligenceData() {
   const s = getSupabaseClient();
   const d7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const d30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -840,6 +840,12 @@ async function getIntelligenceData() {
 // Server
 // =============================================================================
 
+// Only start standalone server if run directly (not imported as module)
+const isStandalone = require.main === module || process.argv[1]?.includes('observatory/server');
+if (!isStandalone) {
+  // Imported as module — don't start standalone server
+} else {
+
 const server = createServer(async (req, res) => {
   const url = req.url || '/';
 
@@ -902,3 +908,5 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`\n Growth Observatory Dashboard running at http://localhost:${PORT}\n`);
 });
+
+} // end isStandalone

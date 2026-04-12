@@ -1485,6 +1485,15 @@ app.get('/api/metrics', async (req, res) => {
       }
     });
 
+    // Mount observatory dashboard on /observatory
+    try {
+      const { mountObservatory } = require('./dashboard/observatory/mount');
+      mountObservatory(app);
+      console.log('Observatory dashboard mounted at /observatory');
+    } catch (err: any) {
+      console.warn('Observatory dashboard mount failed (non-fatal):', err.message);
+    }
+
     // Start server with maximum resilience
     healthServerStatus.server = app.listen(healthServerStatus.port, healthServerStatus.host, () => {
       console.log(`✅ Health server READY on http://${healthServerStatus.host}:${healthServerStatus.port}`);
