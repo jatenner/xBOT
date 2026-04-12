@@ -60,6 +60,71 @@ export async function runAccountProfiler(): Promise<{
     console.warn(`${LOG_PREFIX} Heuristic pass error: ${err.message}`);
   }
 
+  // === NICHE INFERENCE PASS: Set niche from classified tweets (free, no AI needed) ===
+  // If an account has 5+ classified tweets, compute their dominant domain/sub_domain
+  let nicheInferred = 0;
+  try {
+    const { data: noNiche } = await supabase
+      .from('brain_accounts')
+      .select('username')
+      .eq('is_active', true)
+      .is('niche_cached', null)
+      .gte('tweets_collected_count', 5)
+      .limit(100);
+
+    if (noNiche && noNiche.length > 0) {
+      for (const acct of noNiche) {
+        // Get this account's classified tweets
+        const { data: tweetIds } = await supabase
+          .from('brain_tweets')
+          .select('tweet_id')
+          .eq('author_username', acct.username)
+          .limit(50);
+
+        if (!tweetIds || tweetIds.length < 3) continue;
+
+        const { data: classifications } = await supabase
+          .from('brain_classifications')
+          .select('domain, sub_domain')
+          .in('tweet_id', tweetIds.map((t: any) => t.tweet_id));
+
+        if (!classifications || classifications.length < 3) continue;
+
+        // Find dominant domain and sub_domain
+        const domainCounts: Record<string, number> = {};
+        const subDomainCounts: Record<string, number> = {};
+        for (const c of classifications) {
+          if (c.domain && c.domain !== 'other') {
+            domainCounts[c.domain] = (domainCounts[c.domain] ?? 0) + 1;
+          }
+          if (c.sub_domain) {
+            subDomainCounts[c.sub_domain] = (subDomainCounts[c.sub_domain] ?? 0) + 1;
+          }
+        }
+
+        const topDomain = Object.entries(domainCounts).sort((a, b) => b[1] - a[1])[0];
+        const topSubDomain = Object.entries(subDomainCounts).sort((a, b) => b[1] - a[1])[0];
+
+        if (topDomain) {
+          const niche = topSubDomain ? `${topDomain[0]}/${topSubDomain[0]}` : topDomain[0];
+          await supabase
+            .from('brain_accounts')
+            .update({
+              niche_cached: niche,
+              primary_domain: topDomain[0],
+            })
+            .eq('username', acct.username);
+          nicheInferred++;
+        }
+      }
+      if (nicheInferred > 0) {
+        console.log(`${LOG_PREFIX} Niche inference: set niche for ${nicheInferred} accounts from their tweet classifications`);
+      }
+    }
+  } catch (err: any) {
+    console.warn(`${LOG_PREFIX} Niche inference error: ${err.message}`);
+  }
+
   // === DEEP PASS: AI classification for growing accounts (niche, voice, style) ===
   const { data: accounts } = await supabase
     .from('brain_accounts')
