@@ -131,18 +131,22 @@ export async function getDatabaseData() {
     domainDist[c.domain ?? 'unknown'] = (domainDist[c.domain ?? 'unknown'] ?? 0) + 1;
   }
 
-  // Top 20 accounts by followers
+  // Top 20 accounts — exclude celebrities (1M+), focus on learnable creators
   const { data: topAccounts } = await s.from('brain_accounts')
     .select('username, followers_count, growth_rate_7d, growth_status, niche_cached, account_type_cached')
     .eq('is_active', true)
+    .lt('followers_count', 1000000) // Skip celebrities — their growth is fame, not strategy
+    .gte('followers_count', 100)    // Skip empty/bot accounts
     .order('followers_count', { ascending: false, nullsFirst: false })
     .limit(20);
 
-  // Top 20 fastest growing
+  // Fastest growing — min 100 followers (filter out noise like 4→8 = "100% growth")
   const { data: fastestGrowing } = await s.from('brain_accounts')
     .select('username, followers_count, growth_rate_7d, growth_status')
     .not('growth_rate_7d', 'is', null)
     .gt('growth_rate_7d', 0)
+    .gte('followers_count', 100)    // Must have real audience
+    .lt('followers_count', 1000000) // Skip celebrities
     .order('growth_rate_7d', { ascending: false })
     .limit(20);
 
@@ -357,12 +361,12 @@ export function getHTML(): string {
     </div>
     <div class="grid">
       <div class="table-card">
-        <h2>Biggest Accounts We Track</h2>
+        <h2>Top Creators We Track (under 1M, skip celebrities)</h2>
         <table><thead><tr><th>Account</th><th>Followers</th><th>Growth/Week</th><th>Status</th><th>Niche</th></tr></thead>
         <tbody id="topAccountsTable"></tbody></table>
       </div>
       <div class="table-card">
-        <h2>Fastest Growing This Week</h2>
+        <h2>Fastest Growing Creators This Week (100+ followers, not celebrities)</h2>
         <table><thead><tr><th>Account</th><th>Followers</th><th>Growth/Week</th><th>Status</th></tr></thead>
         <tbody id="fastestGrowingTable"></tbody></table>
       </div>
