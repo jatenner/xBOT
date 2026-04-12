@@ -410,6 +410,56 @@ function startHealthServer(): void {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: error.message }));
       }
+    } else if (req.url === '/observatory' || req.url === '/observatory/') {
+      // Observatory dashboard — full HTML page
+      try {
+        const { getHTML } = await import('./dashboard/observatory/server');
+        let html = getHTML();
+        html = html.replace('<script>', '<script>window.__obsBase="/observatory";\n');
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(html);
+      } catch (err: any) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Observatory failed: ' + err.message);
+      }
+    } else if (req.url?.startsWith('/observatory/api/')) {
+      // Observatory API endpoints
+      try {
+        const endpoint = req.url.replace('/observatory/api/', '');
+        const obs = await import('./dashboard/observatory/server');
+        let data: any;
+        if (endpoint === 'live') data = await obs.getLiveData();
+        else if (endpoint === 'database') data = await obs.getDatabaseData();
+        else if (endpoint === 'analysis') data = await obs.getAnalysisData();
+        else if (endpoint === 'intelligence') data = await obs.getIntelligenceData();
+        else if (endpoint === 'stream') {
+          // SSE stream
+          res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+          res.write('data: {"type":"connected"}\n\n');
+          const { getSupabaseClient } = await import('./db');
+          const iv = setInterval(async () => {
+            try {
+              const s = getSupabaseClient();
+              const since = new Date(Date.now() - 30000).toISOString();
+              const { data: tweets } = await s.from('brain_tweets')
+                .select('tweet_id, author_username, content, likes, views, retweets, discovery_source, author_followers')
+                .gte('created_at', since).order('created_at', { ascending: false }).limit(10);
+              if (tweets?.length) res.write(`data: ${JSON.stringify({ type: 'tweets', data: tweets })}\n\n`);
+            } catch {}
+          }, 10000);
+          req.on('close', () => clearInterval(iv));
+          return;
+        } else {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('not found');
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify(data));
+      } catch (err: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
     } else {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('not found');
