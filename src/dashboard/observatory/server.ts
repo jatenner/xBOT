@@ -131,22 +131,25 @@ export async function getDatabaseData() {
     domainDist[c.domain ?? 'unknown'] = (domainDist[c.domain ?? 'unknown'] ?? 0) + 1;
   }
 
-  // Top 20 accounts — exclude celebrities (1M+), focus on learnable creators
+  // Top 20 accounts — exclude AI-classified celebrities, keep everyone else
+  // The accountProfiler classifies accounts as: content_creator, celebrity, brand, follow_farmer, bot, dormant, viewer
+  // We skip 'celebrity' (fame-based growth, not strategy) and 'bot'/'follow_farmer' (fake growth)
+  // Accounts not yet profiled (account_type_cached IS NULL) are included — most are real creators
   const { data: topAccounts } = await s.from('brain_accounts')
     .select('username, followers_count, growth_rate_7d, growth_status, niche_cached, account_type_cached')
     .eq('is_active', true)
-    .lt('followers_count', 1000000) // Skip celebrities — their growth is fame, not strategy
-    .gte('followers_count', 100)    // Skip empty/bot accounts
+    .gte('followers_count', 100)
+    .not('account_type_cached', 'in', '("celebrity","bot","follow_farmer")')
     .order('followers_count', { ascending: false, nullsFirst: false })
     .limit(20);
 
-  // Fastest growing — min 100 followers (filter out noise like 4→8 = "100% growth")
+  // Fastest growing — min 100 followers to filter noise, exclude celebrities/bots
   const { data: fastestGrowing } = await s.from('brain_accounts')
-    .select('username, followers_count, growth_rate_7d, growth_status')
+    .select('username, followers_count, growth_rate_7d, growth_status, account_type_cached')
     .not('growth_rate_7d', 'is', null)
     .gt('growth_rate_7d', 0)
-    .gte('followers_count', 100)    // Must have real audience
-    .lt('followers_count', 1000000) // Skip celebrities
+    .gte('followers_count', 100)
+    .not('account_type_cached', 'in', '("celebrity","bot","follow_farmer")')
     .order('growth_rate_7d', { ascending: false })
     .limit(20);
 
@@ -361,12 +364,12 @@ export function getHTML(): string {
     </div>
     <div class="grid">
       <div class="table-card">
-        <h2>Top Creators We Track (under 1M, skip celebrities)</h2>
+        <h2>Top Accounts (celebrities, bots, follow-farmers filtered out)</h2>
         <table><thead><tr><th>Account</th><th>Followers</th><th>Growth/Week</th><th>Status</th><th>Niche</th></tr></thead>
         <tbody id="topAccountsTable"></tbody></table>
       </div>
       <div class="table-card">
-        <h2>Fastest Growing Creators This Week (100+ followers, not celebrities)</h2>
+        <h2>Fastest Growing This Week (100+ followers, no celebrities/bots)</h2>
         <table><thead><tr><th>Account</th><th>Followers</th><th>Growth/Week</th><th>Status</th></tr></thead>
         <tbody id="fastestGrowingTable"></tbody></table>
       </div>
