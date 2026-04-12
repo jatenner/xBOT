@@ -62,12 +62,99 @@ export async function getLiveData() {
     .order('growth_rate_7d', { ascending: false })
     .limit(10);
 
+  // === DAILY KPIs ===
+
+  // New accounts discovered today
+  const { count: newAccountsToday } = await s.from('brain_accounts')
+    .select('*', { count: 'exact', head: true })
+    .gte('discovered_at', oneDayAgo);
+
+  // Total accounts
+  const { count: totalAccounts } = await s.from('brain_accounts')
+    .select('*', { count: 'exact', head: true });
+
+  // Tweets scraped today (total)
+  const { count: tweetsToday } = await s.from('brain_tweets')
+    .select('*', { count: 'exact', head: true })
+    .gte('created_at', oneDayAgo);
+
+  // Replies scraped today
+  const { count: repliesToday } = await s.from('brain_tweets')
+    .select('*', { count: 'exact', head: true })
+    .eq('tweet_type', 'reply')
+    .gte('created_at', oneDayAgo);
+
+  // Originals today
+  const { count: originalsToday } = await s.from('brain_tweets')
+    .select('*', { count: 'exact', head: true })
+    .eq('tweet_type', 'original')
+    .gte('created_at', oneDayAgo);
+
+  // Threads today
+  const { count: threadsToday } = await s.from('brain_tweets')
+    .select('*', { count: 'exact', head: true })
+    .eq('tweet_type', 'thread')
+    .gte('created_at', oneDayAgo);
+
+  // Quotes today
+  const { count: quotesToday } = await s.from('brain_tweets')
+    .select('*', { count: 'exact', head: true })
+    .eq('tweet_type', 'quote')
+    .gte('created_at', oneDayAgo);
+
+  // Tweets with views > 0 today (proves view extraction works)
+  const { count: tweetsWithViews } = await s.from('brain_tweets')
+    .select('*', { count: 'exact', head: true })
+    .gt('views', 0)
+    .gte('created_at', oneDayAgo);
+
+  // Census checks today
+  const { count: censusToday } = await s.from('brain_account_snapshots')
+    .select('*', { count: 'exact', head: true })
+    .gte('checked_at', oneDayAgo);
+
+  // Hashtags extracted today
+  let hashtagsToday = 0;
+  try {
+    const { count } = await s.from('brain_tweet_hashtags')
+      .select('*', { count: 'exact', head: true })
+      .gte('created_at', oneDayAgo);
+    hashtagsToday = count ?? 0;
+  } catch {}
+
+  // Classifications today
+  const { count: classifiedToday } = await s.from('brain_classifications')
+    .select('*', { count: 'exact', head: true })
+    .gte('classified_at', oneDayAgo);
+
+  // Totals (all time)
+  const { count: totalTweets } = await s.from('brain_tweets')
+    .select('*', { count: 'exact', head: true });
+  const { count: totalReplies } = await s.from('brain_tweets')
+    .select('*', { count: 'exact', head: true })
+    .eq('tweet_type', 'reply');
+
   return {
     timestamp: new Date().toISOString(),
     last_hour: {
       tweets_ingested: tweetsLastHour ?? 0,
       accounts_censused: censusLastHour ?? 0,
       tweets_classified: classifiedLastHour ?? 0,
+    },
+    daily: {
+      new_accounts: newAccountsToday ?? 0,
+      total_accounts: totalAccounts ?? 0,
+      tweets_scraped: tweetsToday ?? 0,
+      replies_scraped: repliesToday ?? 0,
+      originals_scraped: originalsToday ?? 0,
+      threads_scraped: threadsToday ?? 0,
+      quotes_scraped: quotesToday ?? 0,
+      tweets_with_views: tweetsWithViews ?? 0,
+      census_checks: censusToday ?? 0,
+      hashtags_extracted: hashtagsToday,
+      tweets_classified: classifiedToday ?? 0,
+      total_tweets_all_time: totalTweets ?? 0,
+      total_replies_all_time: totalReplies ?? 0,
     },
     growth_events_today: growthEventsToday ?? [],
     hot_accounts: hotAccounts ?? [],
@@ -357,9 +444,13 @@ export function getHTML(): string {
   <!-- TAB 1: LIVE -->
   <div id="live" class="panel active">
     <div class="grid" id="liveStats"></div>
+    <div class="table-card" style="margin-bottom:16px">
+      <h2>Today's KPIs (last 24 hours)</h2>
+      <div class="grid" id="dailyKpis"></div>
+    </div>
     <div class="grid">
       <div class="table-card">
-        <h2>🔥 Growing Accounts Right Now</h2>
+        <h2>Growing Accounts Right Now</h2>
         <table><thead><tr><th>Account</th><th>Followers</th><th>Growth/Week</th><th>Status</th></tr></thead>
         <tbody id="hotAccountsTable"></tbody></table>
       </div>
@@ -540,6 +631,19 @@ async function loadLive() {
       '<div class="card"><h3>Follower Checks This Hour</h3><div class="value green">' + d.last_hour.accounts_censused + '</div><div class="sub">Accounts visited to check if follower count changed</div></div>' +
       '<div class="card"><h3>Tweets AI-Analyzed This Hour</h3><div class="value orange">' + d.last_hour.tweets_classified + '</div><div class="sub">Tweets scored by AI for hook type, tone, format, domain</div></div>' +
       '<div class="card"><h3>Growth Spikes Today</h3><div class="value">' + d.growth_events_today.length + '</div><div class="sub">Accounts whose follower growth suddenly accelerated</div></div>';
+
+    // Daily KPIs
+    var dy = d.daily || {};
+    var replyPct = dy.tweets_scraped > 0 ? Math.round(dy.replies_scraped / dy.tweets_scraped * 100) : 0;
+    document.getElementById('dailyKpis').innerHTML =
+      '<div class="card"><h3>New Accounts Discovered</h3><div class="value green">' + fmt(dy.new_accounts) + '</div><div class="sub">today / ' + fmt(dy.total_accounts) + ' total tracked</div></div>' +
+      '<div class="card"><h3>Tweets Scraped Today</h3><div class="value blue">' + fmt(dy.tweets_scraped) + '</div><div class="sub">' + fmt(dy.total_tweets_all_time) + ' all time</div></div>' +
+      '<div class="card"><h3>Replies Scraped Today</h3><div class="value">' + fmt(dy.replies_scraped) + '</div><div class="sub">' + replyPct + '% of tweets are replies / ' + fmt(dy.total_replies_all_time) + ' all time</div></div>' +
+      '<div class="card"><h3>Originals / Threads / Quotes</h3><div class="value">' + fmt(dy.originals_scraped) + '</div><div class="sub">' + fmt(dy.threads_scraped) + ' threads, ' + fmt(dy.quotes_scraped) + ' quotes today</div></div>' +
+      '<div class="card"><h3>Tweets With Views Data</h3><div class="value">' + fmt(dy.tweets_with_views) + '</div><div class="sub">view counts successfully extracted (was 0 before today)</div></div>' +
+      '<div class="card"><h3>Follower Checks Today</h3><div class="value green">' + fmt(dy.census_checks) + '</div><div class="sub">profiles visited to track follower changes</div></div>' +
+      '<div class="card"><h3>AI Classifications Today</h3><div class="value orange">' + fmt(dy.tweets_classified) + '</div><div class="sub">tweets analyzed for hook, tone, format, niche</div></div>' +
+      '<div class="card"><h3>Hashtags Extracted Today</h3><div class="value">' + fmt(dy.hashtags_extracted) + '</div><div class="sub">individual #hashtag entries from scraped tweets</div></div>';
 
     document.getElementById('hotAccountsTable').innerHTML = d.hot_accounts.map(a =>
       '<tr><td>@' + a.username + '</td><td>' + fmt(a.followers_count||0) + '</td><td>' +
