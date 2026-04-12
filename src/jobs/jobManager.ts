@@ -1406,33 +1406,14 @@ export class JobManager {
     if (process.env.BRAIN_FEEDS_ENABLED === 'true') {
       console.log('[JOB_MANAGER] 🧠 Brain feeds ENABLED — registering brain jobs');
 
-      // Brain: Trending scraper — Explore page, no filters (every 10 min)
-      this.scheduleStaggeredJob(
-        'brain_trending',
-        async () => {
-          await this.safeExecute('brain_trending', async () => {
-            const { runTrendingScraper } = await import('../brain/feeds/trendingScraper');
-            await runTrendingScraper();
-          });
-        },
-        10 * MINUTE,
-        30 * 1000 // 30s delay
-      );
+      // -----------------------------------------------------------------------
+      // ANONYMOUS-ONLY FEEDS — no auth, no login, just public profile scraping
+      // Twitter blocks search/explore/foryou without login, so we ONLY use
+      // feeds that visit public profile pages: timelines + profile hops.
+      // -----------------------------------------------------------------------
 
-      // Brain: Keyword searcher — self-expanding pool (every 10 min)
-      this.scheduleStaggeredJob(
-        'brain_keywords',
-        async () => {
-          await this.safeExecute('brain_keywords', async () => {
-            const { runBroadKeywordSearcher } = await import('../brain/feeds/broadKeywordSearcher');
-            await runBroadKeywordSearcher();
-          });
-        },
-        10 * MINUTE,
-        1 * MINUTE // 60s delay
-      );
-
-      // Brain: Account timeline scraper — staleness-ordered (every 10 min)
+      // Brain: Account timeline scraper — THE primary data source (every 5 min)
+      // Visits public profiles, grabs tweets + replies. Parallelized across 3 browsers.
       this.scheduleStaggeredJob(
         'brain_timelines',
         async () => {
@@ -1441,37 +1422,17 @@ export class JobManager {
             await runAccountTimelineScraper();
           });
         },
-        10 * MINUTE,
-        2 * MINUTE // 120s delay
+        5 * MINUTE,
+        30 * 1000 // 30s delay — highest priority, runs first
       );
 
-      // Brain: For You scraper — algorithm feed (every 15 min)
-      this.scheduleStaggeredJob(
-        'brain_foryou',
-        async () => {
-          await this.safeExecute('brain_foryou', async () => {
-            const { runForYouScraper } = await import('../brain/feeds/forYouScraper');
-            await runForYouScraper();
-          });
-        },
-        15 * MINUTE,
-        3 * MINUTE // 180s delay
-      );
+      // NOTE: Trending, keyword search, For You, and viral hunter are DISABLED.
+      // They require Twitter login (search/explore pages are auth-gated).
+      // The brain runs completely anonymously — no account needed.
+      // All discovery happens through: timelines + profile hops + account discovery engine.
 
-      // Brain: Viral hunter — specifically hunts mega-viral tweets across all domains (every 20 min)
-      this.scheduleStaggeredJob(
-        'brain_viral_hunter',
-        async () => {
-          await this.safeExecute('brain_viral_hunter', async () => {
-            const { runViralHunter } = await import('../brain/feeds/viralHunter');
-            await runViralHunter();
-          });
-        },
-        20 * MINUTE,
-        4 * MINUTE // 240s delay — staggers after foryou
-      );
-
-      // Brain: Account discovery — auto-expand pool (every 30 min)
+      // Brain: Account discovery — auto-expand pool from existing tweets (every 15 min)
+      // DB-only: mines brain_tweets for new authors, mentions, reply chains. No browser needed.
       this.scheduleStaggeredJob(
         'brain_discover_accounts',
         async () => {
@@ -1480,8 +1441,8 @@ export class JobManager {
             await runAccountDiscovery();
           });
         },
-        30 * MINUTE,
-        4 * MINUTE // 240s delay
+        15 * MINUTE,
+        2 * MINUTE
       );
 
       // Brain: Account tiering — percentile re-tier (every 24h)
@@ -1832,7 +1793,9 @@ export class JobManager {
         5 * MINUTE
       );
 
-      // Observatory: Profile hop seeder — discover accounts from following/followers lists (every 10 min)
+      // Observatory: Profile hop seeder — PRIMARY discovery engine (every 5 min)
+      // Visits public following/followers lists of growing accounts.
+      // Auto-hop mode: picks 5 growing accounts per run, discovers 50-250 new accounts.
       this.scheduleStaggeredJob(
         'observatory_profile_hop_seeder',
         async () => {
@@ -1841,8 +1804,8 @@ export class JobManager {
             await runProfileHopSeeder();
           });
         },
-        10 * MINUTE,
-        7 * MINUTE
+        5 * MINUTE,
+        1 * MINUTE // Fire quickly — discovery is the bottleneck
       );
 
       // Observatory: Niche diversity tracker — coverage matrix + auto-campaigns (every 60 min)
