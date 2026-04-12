@@ -1426,10 +1426,24 @@ export class JobManager {
         30 * 1000 // 30s delay — highest priority, runs first
       );
 
+      // Brain: Google-based account discovery — mass discovery without Twitter login (every 5 min)
+      // Searches Google for "site:x.com [niche]" to find Twitter profiles.
+      // 5 queries/run × ~10-20 new accounts/query = 50-100 new accounts per run.
+      this.scheduleStaggeredJob(
+        'brain_google_discovery',
+        async () => {
+          await this.safeExecute('brain_google_discovery', async () => {
+            const { runGoogleDiscovery } = await import('../brain/feeds/googleDiscovery');
+            await runGoogleDiscovery();
+          });
+        },
+        5 * MINUTE,
+        2 * MINUTE // 2min delay — let timeline scraper start first
+      );
+
       // NOTE: Trending, keyword search, For You, and viral hunter are DISABLED.
       // They require Twitter login (search/explore pages are auth-gated).
-      // The brain runs completely anonymously — no account needed.
-      // All discovery happens through: timelines + profile hops + account discovery engine.
+      // Discovery now runs through: Google search + timelines + account discovery engine.
 
       // Brain: Account discovery — auto-expand pool from existing tweets (every 15 min)
       // DB-only: mines brain_tweets for new authors, mentions, reply chains. No browser needed.
