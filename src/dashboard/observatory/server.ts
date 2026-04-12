@@ -337,32 +337,32 @@ export function getHTML(): string {
     <div class="grid" id="dbStats"></div>
     <div class="grid">
       <div class="table-card">
-        <h2>📊 Growth Status Distribution</h2>
+        <h2>How Are Tracked Accounts Growing?</h2>
         <div id="growthStatusChart" class="bar-chart"></div>
       </div>
       <div class="table-card">
-        <h2>🏷️ Tier Distribution</h2>
+        <h2>Account Quality Tiers (by engagement)</h2>
         <div id="tierChart" class="bar-chart"></div>
       </div>
     </div>
     <div class="grid">
       <div class="table-card">
-        <h2>📡 Tweet Sources</h2>
+        <h2>Where Tweets Come From</h2>
         <div id="sourceChart" class="bar-chart"></div>
       </div>
       <div class="table-card">
-        <h2>🌐 Domains Classified</h2>
+        <h2>What Niches Are These Accounts In?</h2>
         <div id="domainChart" class="bar-chart"></div>
       </div>
     </div>
     <div class="grid">
       <div class="table-card">
-        <h2>🏆 Top Accounts by Followers</h2>
+        <h2>Biggest Accounts We Track</h2>
         <table><thead><tr><th>Account</th><th>Followers</th><th>Growth/Week</th><th>Status</th><th>Niche</th></tr></thead>
         <tbody id="topAccountsTable"></tbody></table>
       </div>
       <div class="table-card">
-        <h2>🚀 Fastest Growing</h2>
+        <h2>Fastest Growing This Week</h2>
         <table><thead><tr><th>Account</th><th>Followers</th><th>Growth/Week</th><th>Status</th></tr></thead>
         <tbody id="fastestGrowingTable"></tbody></table>
       </div>
@@ -487,10 +487,10 @@ async function loadLive() {
     const d = await res.json();
 
     document.getElementById('liveStats').innerHTML =
-      '<div class="card"><h3>Tweets Ingested (1h)</h3><div class="value blue">' + d.last_hour.tweets_ingested + '</div></div>' +
-      '<div class="card"><h3>Accounts Censused (1h)</h3><div class="value green">' + d.last_hour.accounts_censused + '</div></div>' +
-      '<div class="card"><h3>Tweets Classified (1h)</h3><div class="value orange">' + d.last_hour.tweets_classified + '</div></div>' +
-      '<div class="card"><h3>Growth Events Today</h3><div class="value">' + d.growth_events_today.length + '</div></div>';
+      '<div class="card"><h3>Tweets Scraped This Hour</h3><div class="value blue">' + d.last_hour.tweets_ingested + '</div><div class="sub">New tweets pulled from account timelines right now</div></div>' +
+      '<div class="card"><h3>Follower Checks This Hour</h3><div class="value green">' + d.last_hour.accounts_censused + '</div><div class="sub">Accounts visited to check if follower count changed</div></div>' +
+      '<div class="card"><h3>Tweets AI-Analyzed This Hour</h3><div class="value orange">' + d.last_hour.tweets_classified + '</div><div class="sub">Tweets scored by AI for hook type, tone, format, domain</div></div>' +
+      '<div class="card"><h3>Growth Spikes Today</h3><div class="value">' + d.growth_events_today.length + '</div><div class="sub">Accounts whose follower growth suddenly accelerated</div></div>';
 
     document.getElementById('hotAccountsTable').innerHTML = d.hot_accounts.map(a =>
       '<tr><td>@' + a.username + '</td><td>' + fmt(a.followers_count||0) + '</td><td>' +
@@ -517,19 +517,25 @@ async function loadDatabase() {
     const res = await fetch((window.__obsBase||'') + '/api/database');
     const d = await res.json();
 
-    const total = Object.values(d.table_counts).reduce((s,v) => s + v, 0);
-    const accounts = d.table_counts['brain_accounts'] || 0;
-    const snapshots = d.table_counts['brain_account_snapshots'] || 0;
+    var tweets = d.table_counts['brain_tweets'] || 0;
+    var accounts = d.table_counts['brain_accounts'] || 0;
+    var snapshots = d.table_counts['brain_account_snapshots'] || 0;
+    var classifications = d.table_counts['brain_classifications'] || 0;
+    var growthEvents = d.table_counts['brain_growth_events'] || 0;
+    var retros = d.table_counts['brain_retrospective_analyses'] || 0;
+    var classRate = tweets > 0 ? Math.round(classifications / tweets * 100) : 0;
+    var gd = d.growth_status_distribution || {};
+    var growing = (gd['interesting']||0) + (gd['hot']||0) + (gd['explosive']||0);
 
     document.getElementById('dbStats').innerHTML =
-      '<div class="card"><h3>Total Rows</h3><div class="value">' + fmt(total) + '</div></div>' +
-      '<div class="card"><h3>Accounts Tracked</h3><div class="value blue">' + fmt(accounts) + '</div></div>' +
-      '<div class="card"><h3>Tweets Collected</h3><div class="value green">' + fmt(d.table_counts['brain_tweets']||0) + '</div></div>' +
-      '<div class="card"><h3>Follower Snapshots</h3><div class="value orange">' + fmt(snapshots) + '</div></div>' +
-      '<div class="card"><h3>Classifications</h3><div class="value">' + fmt(d.table_counts['brain_classifications']||0) + '</div></div>' +
-      '<div class="card"><h3>Growth Events</h3><div class="value">' + fmt(d.table_counts['brain_growth_events']||0) + '</div></div>' +
-      '<div class="card"><h3>Retrospectives</h3><div class="value">' + fmt(d.table_counts['brain_retrospective_analyses']||0) + '</div></div>' +
-      '<div class="card"><h3>Strategy Playbooks</h3><div class="value">' + fmt(d.table_counts['brain_strategy_library']||0) + '</div></div>';
+      '<div class="card"><h3>Twitter Accounts We Watch</h3><div class="value blue">' + fmt(accounts) + '</div><div class="sub">Public profiles scraped for tweets, bios, follower counts</div></div>' +
+      '<div class="card"><h3>Tweets Scraped</h3><div class="value green">' + fmt(tweets) + '</div><div class="sub">Every tweet from watched accounts — content, likes, views, replies, timing</div></div>' +
+      '<div class="card"><h3>Follower Snapshots</h3><div class="value orange">' + fmt(snapshots) + '</div><div class="sub">Follower count checks over time — how we detect who is growing</div></div>' +
+      '<div class="card"><h3>Accounts Growing Right Now</h3><div class="value green">' + fmt(growing) + '</div><div class="sub">' + (gd['explosive']||0) + ' explosive, ' + (gd['hot']||0) + ' hot, ' + (gd['interesting']||0) + ' interesting</div></div>' +
+      '<div class="card"><h3>Tweets AI-Classified</h3><div class="value">' + fmt(classifications) + '</div><div class="sub">' + classRate + '% coverage — each tweet scored on hook type, tone, format, domain</div></div>' +
+      '<div class="card"><h3>Growth Events Detected</h3><div class="value">' + fmt(growthEvents) + '</div><div class="sub">Times an account\\'s follower growth suddenly accelerated</div></div>' +
+      '<div class="card"><h3>Growth Analyzed</h3><div class="value">' + fmt(retros) + '</div><div class="sub">Deep analyses of WHAT changed when an account started growing</div></div>' +
+      '<div class="card"><h3>Accounts Not Yet Checked</h3><div class="value red">' + fmt(gd['unknown']||0) + '</div><div class="sub">Discovered but no follower snapshot yet — census will reach them</div></div>';
 
     barChart(document.getElementById('growthStatusChart'), d.growth_status_distribution, 'green');
     barChart(document.getElementById('tierChart'), d.tier_distribution, 'blue');
