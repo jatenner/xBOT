@@ -28,7 +28,11 @@
 import { getSupabaseClient } from '../../db';
 
 const LOG_PREFIX = '[observatory/engagement-baseline]';
-const MIN_TWEETS_FOR_BASELINE = 5;
+// Lowered 2026-04-12 from 5 → 3. With ~6K accounts and ~40K tweets, only 91 accounts
+// (1.5%) had 5+ tweets, leaving 98.5% of authors with no per-author baseline. Dropping
+// to 3 should multiply qualifying accounts and give the outcome scorer more fallback
+// coverage for the per_author_fallback path.
+const MIN_TWEETS_FOR_BASELINE = 3;
 
 export async function runEngagementBaseline(): Promise<{
   accounts_computed: number;

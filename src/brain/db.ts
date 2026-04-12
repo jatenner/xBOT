@@ -82,16 +82,24 @@ export async function getBrainTweetsForRescrape(limit: number = 20): Promise<Pic
 
 export async function getBrainTweetsForClassification(limit: number = 50): Promise<Pick<BrainTweet, 'tweet_id' | 'content' | 'author_username' | 'author_followers' | 'likes' | 'views' | 'viral_multiplier'>[]> {
   // Classify ALL tweets — winners AND failures. To understand Twitter we need the
-  // full spectrum. Prioritize: mega-viral first, then solid, then average, then low.
-  // This ensures we learn from the best AND worst tweets.
-
-  // Strategy: fetch unclassified tweets ordered by likes DESC (biggest wins first)
-  // This means the backlog naturally processes mega-viral → solid → average → failures
+  // full spectrum. The previous strategy ordered by likes DESC and got stuck:
+  // once the top 450 by likes were classified, new high-like tweets only trickled
+  // in at ~11/day, while 10K+ tweets/day were being scraped — so 99.9% of tweets
+  // were never classified and the stratified engagement baselines stayed empty.
+  //
+  // New strategy (2026-04-12): fetch the most RECENT unclassified tweets. This
+  // guarantees every tweet eventually gets classified as it comes in, and the
+  // stratified buckets (tier × domain × hour) actually fill up.
+  //
+  // Per-tweet outperformance for "biggest wins" is already covered by viral_multiplier
+  // (set by engagementBaseline) and brain_tweet_outcomes (set by outcomeScorer), so
+  // we don't lose the "find the breakouts" capability — we just stop letting it block
+  // baseline-spectrum classification.
   const { data: tweets } = await supabase()
     .from('brain_tweets')
     .select('tweet_id, content, author_username, author_followers, likes, views, viral_multiplier')
-    .order('likes', { ascending: false })
-    .limit(limit * 3); // Overfetch to account for already-classified
+    .order('scraped_at', { ascending: false })
+    .limit(limit * 5); // Overfetch heavily to account for already-classified recent tweets
 
   if (!tweets || tweets.length === 0) return [];
 

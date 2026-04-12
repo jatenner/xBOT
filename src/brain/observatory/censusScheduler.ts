@@ -131,17 +131,22 @@ export async function clearQueuedAccount(username: string): Promise<void> {
 }
 
 function getCensusFrequency(growthStatus: string | null, followerRange: string | null): number {
+  // Census cadence — tightened 2026-04-12 after dead-man monitor caught the queue stalling.
+  // The new parallel census worker drains a 3K backlog in <1h, so we can afford much
+  // more frequent re-checks. Previous values (168h boring, 48h unknown) left the worker
+  // idle for 24-72h windows because nothing was due. New values keep the worker
+  // continuously busy and produce dense follower trajectories on every account.
   switch (growthStatus) {
     case 'explosive': return 6;
     case 'hot': return 12;
     case 'interesting': return 24;
     case 'boring': {
       // Scale-aware: tiny and huge accounts get checked less often
-      if (followerRange === 'nano' || followerRange === 'micro') return 336; // 2 weeks
-      if (followerRange === 'large' || followerRange === 'mega' || followerRange === 'celebrity') return 336;
-      return 168; // weekly for small/mid
+      if (followerRange === 'nano' || followerRange === 'micro') return 48; // every 2 days
+      if (followerRange === 'large' || followerRange === 'mega' || followerRange === 'celebrity') return 48;
+      return 24; // daily for small/mid (was weekly)
     }
     case 'unknown':
-    default: return 48; // 2 days for unknowns (need 2nd snapshot for growth detection)
+    default: return 12; // every 12h for unknowns (was 48h — need fast 2nd snapshot for growth detection)
   }
 }
