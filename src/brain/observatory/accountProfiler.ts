@@ -18,7 +18,8 @@ import { createBudgetedChatCompletion } from '../../services/openaiBudgetedClien
 import type { AccountType } from '../types';
 
 const LOG_PREFIX = '[observatory/profiler]';
-const MAX_ACCOUNTS_PER_RUN = 10;
+const MAX_AI_ACCOUNTS_PER_RUN = 10;  // AI classification (costs money)
+const MAX_HEURISTIC_PER_RUN = 200;   // Heuristic-only (free, instant)
 const PROFILE_STALE_DAYS = 14;
 
 export async function runAccountProfiler(): Promise<{
@@ -28,16 +29,47 @@ export async function runAccountProfiler(): Promise<{
   const supabase = getSupabaseClient();
   const staleCutoff = new Date(Date.now() - PROFILE_STALE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  // Find growing accounts without profiles or with stale profiles
+  // === FAST PASS: Heuristic-only classification for ALL unclassified accounts ===
+  // This tags celebrities, bots, brands, follow-farmers instantly without AI.
+  // Runs on accounts that have follower data but no account_type_cached yet.
+  let heuristicTagged = 0;
+  try {
+    const { data: unclassified } = await supabase
+      .from('brain_accounts')
+      .select('username, followers_count, following_count, ff_ratio, bio_text')
+      .eq('is_active', true)
+      .is('account_type_cached', null)
+      .not('followers_count', 'is', null)
+      .gte('followers_count', 1) // Need at least some follower data
+      .limit(MAX_HEURISTIC_PER_RUN);
+
+    if (unclassified && unclassified.length > 0) {
+      for (const account of unclassified) {
+        const hType = classifyAccountTypeHeuristic(account);
+        await supabase
+          .from('brain_accounts')
+          .update({ account_type_cached: hType })
+          .eq('username', account.username);
+        heuristicTagged++;
+      }
+      if (heuristicTagged > 0) {
+        console.log(`${LOG_PREFIX} Fast pass: tagged ${heuristicTagged} accounts via heuristic (${unclassified.length} checked)`);
+      }
+    }
+  } catch (err: any) {
+    console.warn(`${LOG_PREFIX} Heuristic pass error: ${err.message}`);
+  }
+
+  // === DEEP PASS: AI classification for growing accounts (niche, voice, style) ===
   const { data: accounts } = await supabase
     .from('brain_accounts')
     .select('username, followers_count, following_count, ff_ratio, bio_text, growth_status, growth_rate_7d')
     .in('growth_status', ['interesting', 'hot', 'explosive'])
     .eq('is_active', true)
-    .limit(MAX_ACCOUNTS_PER_RUN * 3);
+    .limit(MAX_AI_ACCOUNTS_PER_RUN * 3);
 
   if (!accounts || accounts.length === 0) {
-    return { profiled: 0, errors: 0 };
+    return { profiled: heuristicTagged, errors: 0 };
   }
 
   // Filter to those needing profiling
@@ -53,7 +85,7 @@ export async function runAccountProfiler(): Promise<{
     const profiledAt = profileMap.get(a.username);
     if (!profiledAt) return true; // Never profiled
     return new Date(profiledAt) < new Date(staleCutoff); // Stale profile
-  }).slice(0, MAX_ACCOUNTS_PER_RUN);
+  }).slice(0, MAX_AI_ACCOUNTS_PER_RUN);
 
   if (needsProfile.length === 0) {
     return { profiled: 0, errors: 0 };
