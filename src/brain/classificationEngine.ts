@@ -47,7 +47,14 @@ const STAGE2_MODEL = 'gpt-4o-mini';
 const CLASSIFICATION_PROMPT = `You are a Twitter content analyst. Classify each tweet on the following dimensions.
 
 For each tweet, return a JSON object with:
-- domain: one of: health, tech, finance, business, politics, entertainment, sports, science, crypto, personal_dev, humor, news, culture, other
+- domain: broad category, one of: health, tech, finance, business, politics, entertainment, sports, science, crypto, personal_dev, humor, news, culture, other
+- sub_domain: specific niche within the domain. Examples:
+  health: nutrition, fitness, mental_health, longevity, sleep, supplements, biohacking, weight_loss, hormones, gut_health, neuroscience, yoga, meditation, skincare
+  tech: AI, programming, startups, SaaS, cybersecurity, web3, robotics, data_science, product_management, devops
+  finance: investing, trading, real_estate, personal_finance, wealth_building, taxes, retirement, budgeting, crypto_trading
+  business: entrepreneurship, marketing, sales, ecommerce, leadership, consulting, freelancing, branding, copywriting
+  personal_dev: productivity, habits, mindset, self_improvement, career, relationships, communication, reading, stoicism
+  Use your best judgment for sub_domains not listed. Be specific.
 - hook_type: one of: contrarian, myth_bust, question, surprising_stat, personal_story, bold_claim, curiosity_gap, controversy, social_proof, how_to, analogy, observation, list, hot_take, data_driven, other
 - tone: one of: authoritative, casual, provocative, educational, vulnerable, humorous, urgent, inspirational, conversational, analytical, other
 - format: one of: one_liner, short, medium, long, thread, list, story, data_driven, question, hot_take, tutorial, framework, analogy, meme_text, other
@@ -103,6 +110,7 @@ export async function runStage2Classification(): Promise<{ classified: number; e
         const dbRecords: Partial<BrainClassification>[] = classifications.map((c, idx) => ({
           tweet_id: batch[idx].tweet_id,
           domain: c.domain,
+          sub_domain: c.sub_domain || null,
           domain_confidence: 0.8, // gpt-4o-mini is generally confident
           hook_type: c.hook_type,
           tone: c.tone,
