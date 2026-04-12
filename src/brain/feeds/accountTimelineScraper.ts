@@ -19,7 +19,7 @@ import {
 import { getAccountsForScraping, updateAccountAfterScrape } from '../db';
 
 const LOG_PREFIX = '[brain/feed/timeline]';
-const ACCOUNTS_PER_RUN = 20; // Reduced from 50 — fits in 5min window with reply tab scraping
+const ACCOUNTS_PER_RUN = 30; // ~30 accounts per 5-min window, each yields 5-15 new author discoveries
 const TWEETS_PER_ACCOUNT_DEFAULT = 15;
 const TWEETS_PER_ACCOUNT_HIGH_TIER = 30;
 const TWEETS_PER_ACCOUNT_LOW_TIER = 5;
