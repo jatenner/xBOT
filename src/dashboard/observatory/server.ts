@@ -143,14 +143,22 @@ export async function getDatabaseData() {
     .order('followers_count', { ascending: false, nullsFirst: false })
     .limit(20);
 
-  // Fastest growing by % — ALL sizes, no minimum. Small accounts repeating 2x growth = signal.
-  const { data: fastestGrowingPct } = await s.from('brain_accounts')
+  // Fastest growing by % — only accounts where we have REAL before/after data
+  // prev_followers_count must differ from followers_count (actual observed gain)
+  const { data: rawFastestPct } = await s.from('brain_accounts')
     .select('username, followers_count, prev_followers_count, growth_rate_7d, growth_status, follower_range')
     .not('growth_rate_7d', 'is', null)
     .gt('growth_rate_7d', 0)
+    .not('prev_followers_count', 'is', null)
     .not('account_type_cached', 'in', '("celebrity","bot","follow_farmer")')
     .order('growth_rate_7d', { ascending: false })
-    .limit(20);
+    .limit(80);
+  // Filter: only show if actual gain > 0
+  const fastestGrowingPct = (rawFastestPct ?? []).filter((a: any) =>
+    a.prev_followers_count != null &&
+    a.followers_count != null &&
+    a.followers_count > a.prev_followers_count
+  ).slice(0, 20);
 
   // Fastest growing by VOLUME — who gained the most raw followers this week
   const { data: fastestGrowingVol } = await s.from('brain_accounts')
