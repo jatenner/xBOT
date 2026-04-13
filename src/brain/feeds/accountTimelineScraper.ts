@@ -19,7 +19,7 @@ import {
 import { getAccountsForScraping, updateAccountAfterScrape } from '../db';
 
 const LOG_PREFIX = '[brain/feed/timeline]';
-const ACCOUNTS_PER_RUN = 30; // ~30 accounts per 5-min window, each yields 5-15 new author discoveries
+const ACCOUNTS_PER_RUN = 15; // 15 accounts × 2 pages each (Posts + with_replies) fits in 5-min window
 const TWEETS_PER_ACCOUNT_DEFAULT = 15;
 const TWEETS_PER_ACCOUNT_HIGH_TIER = 30;
 const TWEETS_PER_ACCOUNT_LOW_TIER = 5;
@@ -94,20 +94,23 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
         console.log(`${LOG_PREFIX} GROWING @${username} (${(account as any).growth_status}): deep scrape ${tweets.length} tweets`);
       }
 
-      // Also scrape /with_replies tab for interesting+ accounts
+      // Scrape /with_replies tab for ALL accounts — reply data is critical
+      // The Posts tab filters out replies. /with_replies shows everything.
+      // This is how we learn reply strategy: who they reply to, how often, what they say.
       let replyTweets: any[] = [];
-      if (isGrowing || isInteresting) {
+      {
         try {
           const replyNav = await brainGoto(page, `https://x.com/${username}/with_replies`, 12000);
           if (replyNav.success) {
             const rc = await waitForTweets(page, 8000);
             if (rc > 0) {
-              for (let rs = 0; rs < 3; rs++) {
+              const replyScrolls = isGrowing ? 5 : isHighTier ? 3 : 1;
+              for (let rs = 0; rs < replyScrolls; rs++) {
                 await page.evaluate('window.scrollBy(0, 1200)');
                 await page.waitForTimeout(1500);
               }
               replyTweets = await extractTweetsFromPage(page, {
-                maxTweets: isGrowing ? 50 : 20,
+                maxTweets: isGrowing ? 50 : isHighTier ? 20 : 10,
                 skipReplies: false,
               });
             }
