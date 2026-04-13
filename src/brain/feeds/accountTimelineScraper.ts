@@ -100,9 +100,16 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
       let replyTweets: any[] = [];
       {
         try {
-          const replyNav = await brainGoto(page, `https://x.com/${username}/with_replies`, 12000);
+          const replyUrl = `https://x.com/${username}/with_replies`;
+          const replyNav = await brainGoto(page, replyUrl, 12000);
+          if (!replyNav.success) {
+            console.log(`${LOG_PREFIX} @${username}: /with_replies nav failed (loginWall=${replyNav.loginWall})`);
+          }
           if (replyNav.success) {
             const rc = await waitForTweets(page, 8000);
+            if (rc === 0) {
+              console.log(`${LOG_PREFIX} @${username}: /with_replies loaded but 0 tweet articles found`);
+            }
             if (rc > 0) {
               const replyScrolls = isGrowing ? 5 : isHighTier ? 3 : 1;
               for (let rs = 0; rs < replyScrolls; rs++) {
