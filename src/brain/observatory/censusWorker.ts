@@ -24,6 +24,7 @@ import { getFollowerRange } from '../types';
 import { lightweightCensusCheck, processLightweightResult } from './lightweightCensus';
 import { runCensusBatch } from './censusBrowserPool';
 import { detectAndStoreBioChange } from './bioChangeDetector';
+import { extractBioFeatures } from '../../intelligence/bioFeatureExtractor';
 
 const LOG_PREFIX = '[observatory/census-worker]';
 const BATCH_SIZE = 100; // Up from 30 — parallel processing handles the load
@@ -353,6 +354,11 @@ async function runFullCensus(
 
   if (metrics.bio) {
     updateData.bio_text = metrics.bio;
+    // Extract structured bio features for pattern analysis
+    try {
+      const bioFeatures = extractBioFeatures(metrics.bio);
+      updateData.bio_features = bioFeatures;
+    } catch {}
   }
 
   // Store new profile fields (columns may not exist yet if migration hasn't run)

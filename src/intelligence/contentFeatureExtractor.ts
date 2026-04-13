@@ -35,6 +35,24 @@ export interface ContentFeatures {
   contains_mechanism: boolean;   // contains "because", "which causes", "leading to", "triggers"
   contains_specific_data: boolean; // contains %, mg, ml, hours, studies, research
   readability: 'simple' | 'moderate' | 'technical';
+
+  // CTA detection — "follow for more", "RT if you agree", "save this"
+  has_cta: boolean;
+  cta_type: string | null; // 'follow', 'retweet', 'save', 'link', 'reply', 'share', null
+
+  // Line break formatting — visual structure
+  line_break_count: number;
+  char_utilization_pct: number;  // % of 280 char limit used
+
+  // Closing pattern (last 5 words — "link in bio", "follow for more")
+  closing_pattern: string;
+
+  // Mention targets extracted
+  mentioned_usernames: string[];
+
+  // Thread/list signals
+  has_numbered_list: boolean;  // "1. ... 2. ... 3. ..."
+  has_thread_hook: boolean;    // contains "thread", "🧵", "a thread"
 }
 
 const MECHANISM_WORDS = ['because', 'which causes', 'leading to', 'triggers', 'results in', 'due to', 'mechanism', 'pathway', 'receptor', 'enzyme', 'hormone'];
@@ -57,6 +75,9 @@ export function extractContentFeatures(text: string): ContentFeatures {
       avg_word_length: 0, starts_with_number: false, starts_with_question: false,
       starts_with_bold_claim: false, contains_mechanism: false,
       contains_specific_data: false, readability: 'simple',
+      has_cta: false, cta_type: null, line_break_count: 0,
+      char_utilization_pct: 0, closing_pattern: '', mentioned_usernames: [],
+      has_numbered_list: false, has_thread_hook: false,
     };
   }
 
@@ -80,6 +101,42 @@ export function extractContentFeatures(text: string): ContentFeatures {
 
   // Readability: simple (<5 avg word len), technical (>7), moderate (between)
   const readability = avgWordLen < 5 ? 'simple' : avgWordLen > 7 ? 'technical' : 'moderate';
+
+  // CTA detection
+  const CTA_PATTERNS: Array<{ pattern: RegExp; type: string }> = [
+    { pattern: /follow\s+(me|for|if|us)/i, type: 'follow' },
+    { pattern: /rt\s+(if|this)|retweet\s+(if|this)/i, type: 'retweet' },
+    { pattern: /save\s+this|bookmark\s+this/i, type: 'save' },
+    { pattern: /link\s+in\s+bio|check.*link|click.*link/i, type: 'link' },
+    { pattern: /reply\s+(with|below|if)|drop\s+(a|your)/i, type: 'reply' },
+    { pattern: /share\s+this|send\s+this/i, type: 'share' },
+    { pattern: /like\s+if\s+you|like\s+this\s+if/i, type: 'like' },
+  ];
+
+  let hasCta = false;
+  let ctaType: string | null = null;
+  for (const cta of CTA_PATTERNS) {
+    if (cta.pattern.test(text)) {
+      hasCta = true;
+      ctaType = cta.type;
+      break;
+    }
+  }
+
+  // Closing pattern (last 5 words)
+  const closingPattern = words.slice(-5).join(' ').toLowerCase();
+
+  // Mentioned usernames
+  const mentionedUsernames = mentions.map((m: string) => m.replace('@', '').toLowerCase());
+
+  // Thread hook detection
+  const hasThreadHook = /\bthread\b|🧵|a thread/i.test(text);
+
+  // Numbered list
+  const hasNumberedList = /^\d+[.)]\s/m.test(text);
+
+  // Line breaks
+  const lineBreakCount = (text.match(/\n/g) || []).length;
 
   return {
     char_count: text.length,
@@ -110,5 +167,13 @@ export function extractContentFeatures(text: string): ContentFeatures {
     contains_mechanism: MECHANISM_WORDS.some(w => textLower.includes(w)),
     contains_specific_data: SPECIFIC_DATA_PATTERNS.test(text),
     readability,
+    has_cta: hasCta,
+    cta_type: ctaType,
+    line_break_count: lineBreakCount,
+    char_utilization_pct: Math.round((text.length / 280) * 100),
+    closing_pattern: closingPattern,
+    mentioned_usernames: mentionedUsernames.slice(0, 10),
+    has_numbered_list: hasNumberedList,
+    has_thread_hook: hasThreadHook,
   };
 }
