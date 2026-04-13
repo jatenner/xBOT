@@ -86,6 +86,15 @@ export async function runGrowthDetector(): Promise<{
       const freqHours = CENSUS_FREQUENCY[computation.new_status];
       updateData.next_census_at = new Date(Date.now() + freqHours * 60 * 60 * 1000).toISOString();
 
+      // When growth is detected, IMMEDIATELY prioritize for tweet scraping
+      // so the timeline scraper picks this account up in the next cycle (5 min)
+      if (computation.new_status === 'hot' || computation.new_status === 'explosive') {
+        updateData.scrape_priority = 1.0;  // Max priority
+        updateData.last_scraped_at = null; // Force immediate rescrape by clearing staleness
+      } else if (computation.new_status === 'interesting') {
+        updateData.scrape_priority = 0.9;
+      }
+
       await supabase
         .from('brain_accounts')
         .update(updateData)

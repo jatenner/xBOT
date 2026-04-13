@@ -217,12 +217,15 @@ export async function upsertBrainAccounts(accounts: Partial<BrainAccount>[]): Pr
 }
 
 export async function getAccountsForScraping(limit: number = 8): Promise<(Pick<BrainAccount, 'username' | 'tier' | 'last_scraped_at' | 'scrape_priority'> & { growth_status?: string })[]> {
-  // Priority 1: Growing accounts (hot/explosive) — scrape these FIRST and DEEPLY
+  // Priority 1: Growing accounts (interesting/hot/explosive) — scrape these FIRST
+  // Sort by scrape_priority DESC (growth detector sets 1.0 for hot/explosive)
+  // then by staleness (last_scraped_at null = never scraped = highest priority)
   const { data: growing } = await supabase()
     .from('brain_accounts')
     .select('username, tier, last_scraped_at, scrape_priority, growth_status')
     .eq('is_active', true)
-    .in('growth_status', ['hot', 'explosive'])
+    .in('growth_status', ['interesting', 'hot', 'explosive'])
+    .order('scrape_priority', { ascending: false })
     .order('last_scraped_at', { ascending: true, nullsFirst: true })
     .limit(Math.min(10, limit));
 
