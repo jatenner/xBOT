@@ -120,7 +120,10 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
         }
       }
 
-      const allTweets = [...tweets, ...replyTweets];
+      // Deduplicate — /with_replies may overlap with Posts tab
+      const seenTweetIds = new Set(tweets.map(t => t.tweet_id).filter(Boolean));
+      const uniqueReplies = replyTweets.filter(t => t.tweet_id && !seenTweetIds.has(t.tweet_id));
+      const allTweets = [...tweets, ...uniqueReplies];
 
       for (const tweet of allTweets) {
         tweet.author_username = username;
@@ -140,8 +143,10 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
       }
 
       accountsScraped++;
-      const replyCount = replyTweets.length;
-      console.log(`${LOG_PREFIX} @${username}: ${tweets.length} tweets + ${replyCount} replies, ${followerCount ?? '?'} followers`);
+      const replyTabTotal = replyTweets.length;
+      const uniqueReplyCount = uniqueReplies.length;
+      const detectedReplies = allTweets.filter(t => (t as any).tweet_type === 'reply').length;
+      console.log(`${LOG_PREFIX} @${username}: ${tweets.length} posts + ${replyTabTotal} from reply tab (${uniqueReplyCount} new, ${detectedReplies} detected as replies), ${followerCount ?? '?'} followers`);
 
       // Delay between accounts
       if (accounts.indexOf(account) < accounts.length - 1) {
