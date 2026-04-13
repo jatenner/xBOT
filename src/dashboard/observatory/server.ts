@@ -438,6 +438,7 @@ export function getHTML(): string {
   <div class="tab" onclick="switchTab('database')">Database</div>
   <div class="tab" onclick="switchTab('analysis')">Analysis</div>
   <div class="tab" onclick="switchTab('intelligence')">Intelligence</div>
+  <div class="tab" onclick="switchTab('playbooks')">Playbooks</div>
 </div>
 
 <div class="content">
@@ -588,6 +589,21 @@ export function getHTML(): string {
     <div class="table-card">
       <h2>Live Ingest Feed</h2>
       <div id="liveFeed" style="max-height:400px;overflow-y:auto;font-size:13px;font-family:monospace"></div>
+    </div>
+  </div>
+
+  <!-- PLAYBOOKS TAB -->
+  <div id="playbooks" class="panel">
+    <div class="grid" id="playbookStats"></div>
+
+    <div class="table-card">
+      <h2>Growth Stories — How Accounts Actually Grew</h2>
+      <div id="growthStories" style="max-height:600px;overflow-y:auto"></div>
+    </div>
+
+    <div class="table-card">
+      <h2>Range Playbooks — The Recipe for Each Growth Stage</h2>
+      <div id="rangePlaybooks"></div>
     </div>
   </div>
 </div>
@@ -868,8 +884,95 @@ function connectLiveFeed() {
   } catch(e) {}
 }
 
+// Playbooks tab loader
+async function loadPlaybooks() {
+  try {
+    var res = await fetch((window.__obsBase||'') + '/api/playbooks');
+    var d = await res.json();
+
+    // Stats cards
+    var ww = d.whats_working || {};
+    document.getElementById('playbookStats').innerHTML =
+      '<div class="card"><h3>Top Hook Type This Week</h3><div class="value blue">' + (ww.top_hook_type || 'gathering data...') + '</div><div class="sub">Highest engagement from growing accounts</div></div>' +
+      '<div class="card"><h3>Best Posting Hour (UTC)</h3><div class="value green">' + (ww.best_posting_hour_utc != null ? ww.best_posting_hour_utc + ':00' : '...') + '</div><div class="sub">Most likes from growing accounts this week</div></div>' +
+      '<div class="card"><h3>Growth Stories</h3><div class="value orange">' + (ww.stories_count || 0) + '</div><div class="sub">Accounts with auto-generated growth narratives</div></div>' +
+      '<div class="card"><h3>Playbooks Computed</h3><div class="value">' + (ww.playbooks_count || 0) + '</div><div class="sub">Cross-dimensional growth recipes</div></div>';
+
+    // Growth stories
+    var storiesHtml = '';
+    var stories = d.stories || [];
+    if (stories.length === 0) {
+      storiesHtml = '<div style="color:#666;padding:20px;text-align:center">No growth stories yet — stories are generated when accounts cross follower range boundaries (nano→micro, micro→small, etc). As more accounts grow, stories will appear here automatically.</div>';
+    }
+    for (var si = 0; si < stories.length; si++) {
+      var s = stories[si];
+      var cs = s.content_summary || {};
+      storiesHtml += '<div class="insight-card">';
+      storiesHtml += '<div class="author" style="font-size:16px">' + (s.story_headline || '@' + s.username) + '</div>';
+      storiesHtml += '<div style="margin:8px 0;font-size:12px;color:#888">' + (s.from_range||'?') + ' → ' + (s.to_range||'?') + ' | ' + fmt(s.from_followers||0) + ' → ' + fmt(s.to_followers||0) + ' followers | ' + Math.round(s.days_elapsed||0) + ' days</div>';
+      storiesHtml += '<div style="display:flex;gap:16px;margin:8px 0;font-size:13px">';
+      storiesHtml += '<span style="color:#4fc3f7">' + (cs.posts_per_day||'?') + ' posts/day</span>';
+      storiesHtml += '<span style="color:#10b981">' + Math.round((cs.reply_ratio||0)*100) + '% replies</span>';
+      storiesHtml += '<span style="color:#f59e0b">avg ' + (cs.avg_likes||0) + ' likes</span>';
+      storiesHtml += '</div>';
+      if (s.story_narrative) {
+        storiesHtml += '<div class="summary" style="white-space:pre-wrap;margin-top:10px;border-top:1px solid #1f2937;padding-top:10px">' + s.story_narrative.replace(/\\*\\*/g, '').substring(0, 800) + '</div>';
+      }
+      storiesHtml += '</div>';
+    }
+    document.getElementById('growthStories').innerHTML = storiesHtml;
+
+    // Range playbooks
+    var pbHtml = '';
+    var playbooks = d.playbooks || [];
+    if (playbooks.length === 0) {
+      pbHtml = '<div style="color:#666;padding:20px;text-align:center">No playbooks computed yet — the pattern engine runs every 6 hours and needs 5+ accounts that crossed each range boundary. As the account pool grows and more accounts transition between ranges, playbooks will appear here.</div>';
+    }
+    for (var pi = 0; pi < playbooks.length; pi++) {
+      var p = playbooks[pi];
+      pbHtml += '<div class="insight-card" style="margin-bottom:16px">';
+      pbHtml += '<div style="display:flex;justify-content:space-between;align-items:center">';
+      pbHtml += '<div class="author" style="font-size:15px">' + p.from_range + ' → ' + p.to_range + (p.niche ? ' (' + p.niche + ')' : ' (all niches)') + '</div>';
+      pbHtml += '<div>' + badge(p.confidence) + ' <span style="color:#888;font-size:12px">n=' + p.sample_size + '</span></div>';
+      pbHtml += '</div>';
+      pbHtml += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:12px;font-size:13px">';
+      // Volume
+      pbHtml += '<div><div style="color:#888;font-size:11px;text-transform:uppercase">Volume</div>';
+      pbHtml += '<div>' + (p.avg_posts_per_day != null ? p.avg_posts_per_day.toFixed(1) + ' posts/day' : '—') + '</div>';
+      pbHtml += '<div>' + (p.avg_replies_per_day != null ? p.avg_replies_per_day.toFixed(1) + ' replies/day' : '—') + '</div>';
+      pbHtml += '<div>Reply ratio: ' + (p.reply_ratio != null ? Math.round(p.reply_ratio*100) + '%' : '—') + '</div></div>';
+      // Content
+      pbHtml += '<div><div style="color:#888;font-size:11px;text-transform:uppercase">Content</div>';
+      pbHtml += '<div>Avg ' + (p.avg_word_count_posts != null ? Math.round(p.avg_word_count_posts) : '?') + ' words/post</div>';
+      pbHtml += '<div>Avg ' + Math.round(p.avg_likes||0) + ' likes</div>';
+      pbHtml += '<div>CTA rate: ' + (p.cta_usage_rate != null ? Math.round(p.cta_usage_rate*100) + '%' : '—') + '</div></div>';
+      // Timing
+      pbHtml += '<div><div style="color:#888;font-size:11px;text-transform:uppercase">Timing</div>';
+      pbHtml += '<div>Best hours: ' + (p.best_posting_hours_utc ? p.best_posting_hours_utc.map(function(h){return h+':00'}).join(', ') : '—') + '</div>';
+      pbHtml += '<div>Avg ' + Math.round(p.avg_days_to_transition||0) + ' days to transition</div></div>';
+      pbHtml += '</div>';
+      // Top hooks
+      if (p.top_hook_types) {
+        var hooks = Object.entries(p.top_hook_types).sort(function(a,b){return b[1]-a[1]}).slice(0,5);
+        pbHtml += '<div style="margin-top:10px;font-size:12px;color:#888">Top hooks: ' + hooks.map(function(h){return h[0]+' ('+Math.round(h[1]*100)+'%)'}).join(', ') + '</div>';
+      }
+      // Key differentiators
+      if (p.key_differentiators) {
+        pbHtml += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #1f2937;font-size:13px;color:#10b981">';
+        for (var dk in p.key_differentiators) {
+          pbHtml += '<div>→ ' + p.key_differentiators[dk] + '</div>';
+        }
+        pbHtml += '</div>';
+      }
+      pbHtml += '</div>';
+    }
+    document.getElementById('rangePlaybooks').innerHTML = pbHtml;
+
+  } catch(e) { console.error('Playbooks load error:', e); }
+}
+
 // Initial load
-loadLive(); loadDatabase(); loadAnalysis(); loadIntelligence();
+loadLive(); loadDatabase(); loadAnalysis(); loadIntelligence(); loadPlaybooks();
 connectLiveFeed();
 
 // Auto-refresh
@@ -877,6 +980,7 @@ setInterval(loadLive, 30000);
 setInterval(loadDatabase, 60000);
 setInterval(loadAnalysis, 120000);
 setInterval(loadIntelligence, 60000);
+setInterval(loadPlaybooks, 120000);
 </script>
 </body>
 </html>`;
@@ -1009,6 +1113,99 @@ export async function getIntelligenceData() {
 // =============================================================================
 // Server
 // =============================================================================
+
+// =============================================================================
+// PLAYBOOKS API — Growth playbooks + growth stories
+// =============================================================================
+
+export async function getPlaybookData() {
+  const s = getSupabaseClient();
+
+  // Growth stories (most recent 20)
+  let stories: any[] = [];
+  try {
+    const { data } = await s.from('brain_growth_stories')
+      .select('*')
+      .order('generated_at', { ascending: false })
+      .limit(20);
+    stories = data ?? [];
+  } catch {}
+
+  // Growth playbooks
+  let playbooks: any[] = [];
+  try {
+    const { data } = await s.from('brain_growth_playbooks')
+      .select('*')
+      .order('sample_size', { ascending: false });
+    playbooks = data ?? [];
+  } catch {}
+
+  // What's working now — top hook types from last 7 days (growing accounts only)
+  const d7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  let topHookThisWeek: string | null = null;
+  let bestHourThisWeek: number | null = null;
+  try {
+    // Get growing accounts
+    const { data: growingAccts } = await s.from('brain_accounts')
+      .select('username')
+      .in('growth_status', ['interesting', 'hot', 'explosive'])
+      .limit(100);
+
+    if (growingAccts && growingAccts.length > 0) {
+      const usernames = growingAccts.map((a: any) => a.username);
+
+      // Get their recent tweets
+      const { data: recentTweets } = await s.from('brain_tweets')
+        .select('tweet_id, posted_hour_utc, likes')
+        .in('author_username', usernames)
+        .gte('created_at', d7)
+        .order('likes', { ascending: false })
+        .limit(200);
+
+      if (recentTweets && recentTweets.length > 0) {
+        // Best posting hour
+        const hourCounts: Record<number, { count: number; totalLikes: number }> = {};
+        for (const t of recentTweets) {
+          if (t.posted_hour_utc != null) {
+            if (!hourCounts[t.posted_hour_utc]) hourCounts[t.posted_hour_utc] = { count: 0, totalLikes: 0 };
+            hourCounts[t.posted_hour_utc].count++;
+            hourCounts[t.posted_hour_utc].totalLikes += t.likes ?? 0;
+          }
+        }
+        const sortedHours = Object.entries(hourCounts).sort((a, b) => b[1].totalLikes - a[1].totalLikes);
+        bestHourThisWeek = sortedHours.length > 0 ? Number(sortedHours[0][0]) : null;
+
+        // Top hook type
+        const tweetIds = recentTweets.map((t: any) => t.tweet_id).slice(0, 100);
+        const { data: classifs } = await s.from('brain_classifications')
+          .select('hook_type')
+          .in('tweet_id', tweetIds);
+
+        if (classifs && classifs.length > 0) {
+          const hookCounts: Record<string, number> = {};
+          for (const c of classifs) {
+            if (c.hook_type && c.hook_type !== 'other') {
+              hookCounts[c.hook_type] = (hookCounts[c.hook_type] ?? 0) + 1;
+            }
+          }
+          const sorted = Object.entries(hookCounts).sort((a, b) => b[1] - a[1]);
+          topHookThisWeek = sorted.length > 0 ? sorted[0][0] : null;
+        }
+      }
+    }
+  } catch {}
+
+  return {
+    stories,
+    playbooks,
+    whats_working: {
+      top_hook_type: topHookThisWeek,
+      best_posting_hour_utc: bestHourThisWeek,
+      stories_count: stories.length,
+      playbooks_count: playbooks.length,
+    },
+  };
+}
 
 // Only start standalone server if run directly (not imported as module)
 const isStandalone = require.main === module || process.argv[1]?.includes('observatory/server');

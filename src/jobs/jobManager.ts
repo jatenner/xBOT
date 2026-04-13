@@ -1938,6 +1938,32 @@ export class JobManager {
         720 * MINUTE,
         55 * MINUTE
       );
+
+      // Observatory: Pattern engine — cross-dimensional growth playbooks (every 6h)
+      this.scheduleStaggeredJob(
+        'observatory_pattern_engine',
+        async () => {
+          await this.safeExecute('observatory_pattern_engine', async () => {
+            const { runPatternEngine } = await import('../brain/observatory/patternEngine');
+            await runPatternEngine();
+          });
+        },
+        360 * MINUTE,
+        27 * MINUTE
+      );
+
+      // Observatory: Growth story generator — auto-narrate how accounts grew (every 2h)
+      this.scheduleStaggeredJob(
+        'observatory_growth_stories',
+        async () => {
+          await this.safeExecute('observatory_growth_stories', async () => {
+            const { runGrowthStoryGenerator } = await import('../brain/observatory/growthStoryGenerator');
+            await runGrowthStoryGenerator();
+          });
+        },
+        120 * MINUTE,
+        52 * MINUTE
+      );
     } else {
       console.log('[JOB_MANAGER] 🔭 Growth Observatory DISABLED (set GROWTH_OBSERVATORY_ENABLED=true to enable)');
     }

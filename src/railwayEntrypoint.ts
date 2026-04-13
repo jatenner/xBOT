@@ -432,6 +432,7 @@ function startHealthServer(): void {
         else if (endpoint === 'database') data = await obs.getDatabaseData();
         else if (endpoint === 'analysis') data = await obs.getAnalysisData();
         else if (endpoint === 'intelligence') data = await obs.getIntelligenceData();
+        else if (endpoint === 'playbooks') data = await obs.getPlaybookData();
         else if (endpoint === 'stream') {
           // SSE stream
           res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });

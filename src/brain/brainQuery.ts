@@ -744,6 +744,38 @@ async function getGrowthAttribution(
 }
 
 // =============================================================================
+// Pattern Engine + Growth Stories
+// =============================================================================
+
+async function getPlaybookForTransition(fromRange: string, toRange: string, niche?: string): Promise<any> {
+  const supabase = getSupabaseClient();
+  let query = supabase
+    .from('brain_growth_playbooks')
+    .select('*')
+    .eq('from_range', fromRange)
+    .eq('to_range', toRange);
+
+  if (niche) {
+    query = query.eq('niche', niche);
+  } else {
+    query = query.is('niche', null);
+  }
+
+  const { data } = await query.single();
+  return data;
+}
+
+async function getRecentGrowthStories(limit: number = 10): Promise<any[]> {
+  const supabase = getSupabaseClient();
+  const { data } = await supabase
+    .from('brain_growth_stories')
+    .select('*')
+    .order('generated_at', { ascending: false })
+    .limit(limit);
+  return data ?? [];
+}
+
+// =============================================================================
 // Export as singleton object
 // =============================================================================
 
@@ -773,4 +805,8 @@ export const brainQuery = {
   getGrowthPlaybookByRange,
   getGrowthExamplesByRange,
   getGrowthAttribution,
+
+  // Pattern Engine + Growth Stories
+  getPlaybookForTransition,
+  getRecentGrowthStories,
 };
