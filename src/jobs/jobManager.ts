@@ -1412,8 +1412,8 @@ export class JobManager {
       // feeds that visit public profile pages: timelines + profile hops.
       // -----------------------------------------------------------------------
 
-      // Brain: Account timeline scraper — THE primary data source (every 5 min)
-      // Visits public profiles, grabs tweets + replies. Parallelized across 3 browsers.
+      // Brain: Account timeline scraper — THE primary data source (every 3 min)
+      // Visits public profiles, grabs tweets. Growing accounts scraped first.
       this.scheduleStaggeredJob(
         'brain_timelines',
         async () => {
@@ -1422,7 +1422,7 @@ export class JobManager {
             await runAccountTimelineScraper();
           });
         },
-        5 * MINUTE,
+        3 * MINUTE,
         30 * 1000 // 30s delay — highest priority, runs first
       );
 

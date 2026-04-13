@@ -19,12 +19,12 @@ import {
 import { getAccountsForScraping, updateAccountAfterScrape } from '../db';
 
 const LOG_PREFIX = '[brain/feed/timeline]';
-const ACCOUNTS_PER_RUN = 15; // 15 accounts × 2 pages each (Posts + with_replies) fits in 5-min window
+const ACCOUNTS_PER_RUN = 20; // 20 accounts per run, growing accounts get both tabs
 const TWEETS_PER_ACCOUNT_DEFAULT = 15;
 const TWEETS_PER_ACCOUNT_HIGH_TIER = 30;
 const TWEETS_PER_ACCOUNT_LOW_TIER = 5;
 const TWEETS_PER_ACCOUNT_GROWING = 100;
-const DELAY_BETWEEN_ACCOUNTS_MS = 1500;
+const DELAY_BETWEEN_ACCOUNTS_MS = 1000;
 
 export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: number; accounts_scraped: number }> {
   const accounts = await getAccountsForScraping(ACCOUNTS_PER_RUN);
@@ -94,38 +94,10 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
         console.log(`${LOG_PREFIX} GROWING @${username} (${(account as any).growth_status}): deep scrape ${tweets.length} tweets`);
       }
 
-      // Scrape /with_replies tab for ALL accounts — reply data is critical
-      // The Posts tab filters out replies. /with_replies shows everything.
-      // This is how we learn reply strategy: who they reply to, how often, what they say.
+      // NOTE: /with_replies tab is BLOCKED for anonymous users (loads but 0 tweets).
+      // Replies are only captured from the Posts tab when they appear there.
+      // To get full reply data, a read-only Twitter session is needed.
       let replyTweets: any[] = [];
-      {
-        try {
-          const replyUrl = `https://x.com/${username}/with_replies`;
-          const replyNav = await brainGoto(page, replyUrl, 12000);
-          if (!replyNav.success) {
-            console.log(`${LOG_PREFIX} @${username}: /with_replies nav failed (loginWall=${replyNav.loginWall})`);
-          }
-          if (replyNav.success) {
-            const rc = await waitForTweets(page, 8000);
-            if (rc === 0) {
-              console.log(`${LOG_PREFIX} @${username}: /with_replies loaded but 0 tweet articles found`);
-            }
-            if (rc > 0) {
-              const replyScrolls = isGrowing ? 5 : isHighTier ? 3 : 1;
-              for (let rs = 0; rs < replyScrolls; rs++) {
-                await page.evaluate('window.scrollBy(0, 1200)');
-                await page.waitForTimeout(1500);
-              }
-              replyTweets = await extractTweetsFromPage(page, {
-                maxTweets: isGrowing ? 50 : isHighTier ? 20 : 10,
-                skipReplies: false,
-              });
-            }
-          }
-        } catch {
-          // Non-fatal
-        }
-      }
 
       // Deduplicate — /with_replies may overlap with Posts tab
       const seenTweetIds = new Set(tweets.map(t => t.tweet_id).filter(Boolean));
