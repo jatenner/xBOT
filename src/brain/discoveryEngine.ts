@@ -108,6 +108,18 @@ export async function ingestFeedResults(results: FeedResult[]): Promise<{
       // Detect media if not provided
       const mediaType = raw.media_type ?? detectMediaType(raw.content);
 
+      // Algorithm signal ratios
+      const bookmarkSaveRate = likes > 0 ? Math.round((bookmarks / likes) * 1000) / 1000 : null;
+      const conversationRatio = likes > 0 ? Math.round((replies / likes) * 1000) / 1000 : null;
+      const shareRatio = likes > 0 ? Math.round((retweets / likes) * 1000) / 1000 : null;
+      const isRatiod = replies > 0 && likes > 0 && replies > likes * 2; // More replies than 2x likes = ratiod
+
+      // Composite algo score: high views relative to followers + high save rate + conversation
+      const viralMult = ratios.viral_multiplier ?? 0;
+      const algoScore = viralMult > 0
+        ? Math.round((viralMult * (1 + (bookmarkSaveRate ?? 0) * 2 + (conversationRatio ?? 0))) * 100) / 100
+        : null;
+
       const brainTweet: Partial<BrainTweet> = {
         tweet_id: raw.tweet_id,
         author_username: raw.author_username.toLowerCase().replace(/^@/, ''),
@@ -126,6 +138,13 @@ export async function ingestFeedResults(results: FeedResult[]): Promise<{
         views, likes, retweets, replies, bookmarks, quotes,
 
         ...ratios,
+
+        // Algorithm signals
+        bookmark_save_rate: bookmarkSaveRate,
+        conversation_ratio: conversationRatio,
+        share_ratio: shareRatio,
+        is_ratiod: isRatiod,
+        algo_score: algoScore,
 
         posted_at: raw.posted_at ?? null,
         posted_hour_utc: postedHourUtc,
