@@ -35,16 +35,27 @@ const PHASE_TO_RELEVANT_TIERS: Record<GrowthPhase, AccountTier[]> = {
 // Main Query: Top patterns for our phase
 // =============================================================================
 
+export interface ContentTypeStrategy {
+  recommended_hooks: PhasePattern[];
+  recommended_tones: PhasePattern[];
+  recommended_formats: PhasePattern[];
+  recommended_triggers: PhasePattern[];
+}
+
 export interface PhaseAdvice {
   growth_phase: GrowthPhase;
   follower_count: number;
   relevant_tiers: AccountTier[];
+  // Legacy combined (for backward compatibility)
   recommended_hooks: PhasePattern[];
   recommended_tones: PhasePattern[];
   recommended_formats: PhasePattern[];
   recommended_triggers: PhasePattern[];
   recommended_hours: TimingWindow[];
   strategy_notes: string[];
+  // NEW: separated strategies
+  reply_strategy: ContentTypeStrategy;
+  content_strategy: ContentTypeStrategy;
 }
 
 export async function getPhaseAdvice(): Promise<PhaseAdvice | null> {
@@ -58,6 +69,7 @@ export async function getPhaseAdvice(): Promise<PhaseAdvice | null> {
   const relevantTiers = PHASE_TO_RELEVANT_TIERS[selfModel.growth_phase];
 
   // Query brain_tweets joined with brain_classifications for relevant tiers
+  // NOW includes tweet_type to separate reply patterns from content patterns
   const { data: classified } = await supabase
     .from('brain_classifications')
     .select(`
@@ -70,12 +82,20 @@ export async function getPhaseAdvice(): Promise<PhaseAdvice | null> {
         views,
         engagement_rate,
         author_tier,
-        posted_hour_utc
+        posted_hour_utc,
+        tweet_type
       )
     `)
     .in('brain_tweets.author_tier', relevantTiers)
     .not('hook_type', 'is', null)
-    .limit(2000);
+    .limit(3000);
+
+  const emptyStrategy: ContentTypeStrategy = {
+    recommended_hooks: [],
+    recommended_tones: [],
+    recommended_formats: [],
+    recommended_triggers: [],
+  };
 
   if (!classified || classified.length === 0) {
     console.log(`${LOG_PREFIX} No classified data for tiers ${relevantTiers.join(',')}`);
@@ -89,10 +109,12 @@ export async function getPhaseAdvice(): Promise<PhaseAdvice | null> {
       recommended_triggers: [],
       recommended_hours: [],
       strategy_notes: getPhaseNotes(selfModel.growth_phase),
+      reply_strategy: emptyStrategy,
+      content_strategy: emptyStrategy,
     };
   }
 
-  // Flatten for aggregation
+  // Flatten for aggregation — now includes tweet_type
   const rows = classified.map((c: any) => ({
     hook_type: c.hook_type,
     tone: c.tone,
@@ -103,14 +125,37 @@ export async function getPhaseAdvice(): Promise<PhaseAdvice | null> {
     engagement_rate: c.brain_tweets?.engagement_rate ?? 0,
     author_tier: c.brain_tweets?.author_tier ?? 'C',
     posted_hour_utc: c.brain_tweets?.posted_hour_utc,
+    tweet_type: c.brain_tweets?.tweet_type ?? 'original',
   }));
 
-  // Aggregate by each dimension
+  // ── Split by tweet_type ──
+  const replyRows = rows.filter(r => r.tweet_type === 'reply');
+  const originalRows = rows.filter(r => r.tweet_type !== 'reply');
+
+  console.log(`${LOG_PREFIX} Phase data: ${originalRows.length} originals + ${replyRows.length} replies (tiers: ${relevantTiers.join(',')})`);
+
+  // ── Aggregate ALL (combined — backward compat) ──
   const recommendedHooks = aggregateByDimension(rows, 'hook_type', relevantTiers);
   const recommendedTones = aggregateByDimension(rows, 'tone', relevantTiers);
   const recommendedFormats = aggregateByDimension(rows, 'format', relevantTiers);
   const recommendedTriggers = aggregateByDimension(rows, 'emotional_trigger', relevantTiers);
   const recommendedHours = aggregateByHour(rows, relevantTiers);
+
+  // ── Aggregate REPLIES only ──
+  const replyStrategy: ContentTypeStrategy = {
+    recommended_hooks: aggregateByDimension(replyRows, 'hook_type', relevantTiers),
+    recommended_tones: aggregateByDimension(replyRows, 'tone', relevantTiers),
+    recommended_formats: aggregateByDimension(replyRows, 'format', relevantTiers),
+    recommended_triggers: aggregateByDimension(replyRows, 'emotional_trigger', relevantTiers),
+  };
+
+  // ── Aggregate ORIGINALS only ──
+  const contentStrategy: ContentTypeStrategy = {
+    recommended_hooks: aggregateByDimension(originalRows, 'hook_type', relevantTiers),
+    recommended_tones: aggregateByDimension(originalRows, 'tone', relevantTiers),
+    recommended_formats: aggregateByDimension(originalRows, 'format', relevantTiers),
+    recommended_triggers: aggregateByDimension(originalRows, 'emotional_trigger', relevantTiers),
+  };
 
   return {
     growth_phase: selfModel.growth_phase,
@@ -122,6 +167,8 @@ export async function getPhaseAdvice(): Promise<PhaseAdvice | null> {
     recommended_triggers: recommendedTriggers,
     recommended_hours: recommendedHours,
     strategy_notes: getPhaseNotes(selfModel.growth_phase),
+    reply_strategy: replyStrategy,
+    content_strategy: contentStrategy,
   };
 }
 
@@ -209,6 +256,13 @@ function aggregateByHour(rows: any[], relevantTiers: AccountTier[]): TimingWindo
 
     const lowestTier = relevantTiers[0] ?? 'C';
 
+    // Sample-size-driven confidence. A "best hour" backed by 5 data points
+    // is a guess; 50 data points is a signal. Downstream consumers can
+    // filter out low-confidence timing windows when they want certainty.
+    let confidence: 'high' | 'medium' | 'low' = 'low';
+    if (g.ers.length >= 50) confidence = 'high';
+    else if (g.ers.length >= 15) confidence = 'medium';
+
     windows.push({
       hour_utc: hour,
       day_of_week: null,
@@ -216,6 +270,7 @@ function aggregateByHour(rows: any[], relevantTiers: AccountTier[]): TimingWindo
       avg_views: Math.round(avgViews),
       sample_size: g.ers.length,
       account_tier: lowestTier as AccountTier,
+      confidence,
     });
   }
 

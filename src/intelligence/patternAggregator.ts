@@ -352,10 +352,25 @@ function percentileRank(values: number[], value: number): number {
 
 // ─── Confidence + Direction ───
 
-function computeConfidence(extSample: number, intSample: number): 'high' | 'medium' | 'low' {
-  if (extSample >= 20 && intSample >= 5) return 'high';
-  if (extSample >= 10 || intSample >= 3) return 'medium';
-  return 'low';
+function computeConfidence(
+  extSample: number,
+  intSample: number,
+  avgRecencyDays: number | null = null,
+): 'high' | 'medium' | 'low' {
+  let tier: 'high' | 'medium' | 'low';
+  if (extSample >= 20 && intSample >= 5) tier = 'high';
+  else if (extSample >= 10 || intSample >= 3) tier = 'medium';
+  else tier = 'low';
+
+  // Stale data drops one confidence tier. A pattern mined from 45-day-old
+  // tweets is less reliable than the same pattern from last week — Twitter
+  // algorithm + taste shifts too fast to trust old signal at high confidence.
+  if (avgRecencyDays != null && avgRecencyDays > 30) {
+    if (tier === 'high') tier = 'medium';
+    else if (tier === 'medium') tier = 'low';
+  }
+
+  return tier;
 }
 
 function computeDirection(combinedScore: number, totalSample: number): string {
@@ -464,7 +479,7 @@ export async function runPatternAggregation(): Promise<{ patternsUpdated: number
 
     const extSample = ext?.count ?? 0;
     const intSample = int?.count ?? 0;
-    const confidence = computeConfidence(extSample, intSample);
+    const confidence = computeConfidence(extSample, intSample, ext?.avg_recency_days ?? null);
     const direction = computeDirection(combinedScore, extSample + intSample);
 
     // Improvement 5: Causal status

@@ -61,10 +61,15 @@ async function getOptimalTimingWindows(): Promise<TimingWindow[]> {
 
   return advice.recommended_hours.map(window => {
     const isSelfProven = selfHours.includes(window.hour_utc);
+    if (!isSelfProven) return window;
+    // External pattern confirmed by our own posting data — promote one tier
+    // and boost effective sample size so it sorts above unconfirmed windows.
+    const bumpedConfidence: 'high' | 'medium' | 'low' =
+      window.confidence === 'low' ? 'medium' : 'high';
     return {
       ...window,
-      // Boost confidence if our own data confirms this hour
-      sample_size: isSelfProven ? window.sample_size + 100 : window.sample_size,
+      sample_size: window.sample_size + 100,
+      confidence: bumpedConfidence,
     };
   }).sort((a, b) => b.sample_size - a.sample_size);
 }
@@ -498,7 +503,15 @@ async function getGrowthPlaybook(phase?: string): Promise<any[]> {
     .eq('stage', targetPhase)
     .order('win_rate', { ascending: false, nullsFirst: false });
 
-  return data ?? [];
+  if (!data || data.length === 0) return [];
+
+  // Sort: high confidence first, then medium, then low — within each band
+  // preserve the win_rate order we got from the DB. Consumers that want
+  // experimental / low-confidence recommendations can still see them, just
+  // after the high-confidence ones.
+  const rank = (c: string | null | undefined): number =>
+    c === 'high' ? 0 : c === 'medium' ? 1 : 2;
+  return [...data].sort((a, b) => rank(a.confidence) - rank(b.confidence));
 }
 
 /**
@@ -779,6 +792,64 @@ async function getRecentGrowthStories(limit: number = 10): Promise<any[]> {
 // Export as singleton object
 // =============================================================================
 
+// =============================================================================
+// Cohort Matching (NEW)
+// =============================================================================
+
+async function findSimilarAccounts(username: string, limit: number = 10): Promise<any[]> {
+  const supabase = getSupabaseClient();
+  const { data: account } = await supabase
+    .from('brain_accounts')
+    .select('follower_range, niche_cached, growth_rate_7d, avg_engagement_rate_30d, tweet_frequency_daily')
+    .eq('username', username)
+    .single();
+
+  if (!account) return [];
+
+  const { getSimilarAccounts } = await import('./cohortMatcher');
+  return getSimilarAccounts({
+    follower_range: account.follower_range,
+    niche: account.niche_cached,
+    growth_rate_7d: account.growth_rate_7d,
+    avg_engagement_rate_30d: account.avg_engagement_rate_30d,
+    tweet_frequency_daily: account.tweet_frequency_daily,
+  }, limit);
+}
+
+// =============================================================================
+// Stage-Based Growth Playbooks (NEW)
+// =============================================================================
+
+/**
+ * Get the playbook for a specific stage transition (e.g. "500" → "1000").
+ * Returns what successful accounts did vs what stalled accounts did.
+ */
+async function getStagePlaybook(fromStage: string, toStage: string): Promise<any | null> {
+  const supabase = getSupabaseClient();
+  const { data } = await supabase
+    .from('brain_stage_playbooks')
+    .select('*')
+    .eq('from_stage', fromStage)
+    .eq('to_stage', toStage)
+    .single();
+
+  return data ?? null;
+}
+
+/**
+ * Get all detected stage transitions for a specific account.
+ */
+async function getStageTransitions(username: string): Promise<any[]> {
+  const supabase = getSupabaseClient();
+  const { data } = await supabase
+    .from('brain_stage_transitions')
+    .select('*')
+    .eq('username', username)
+    .order('from_stage', { ascending: true });
+
+  return data ?? [];
+}
+
 export const brainQuery = {
   // Original brain v2
   getTopPatternsForOurPhase,
@@ -809,4 +880,11 @@ export const brainQuery = {
   // Pattern Engine + Growth Stories
   getPlaybookForTransition,
   getRecentGrowthStories,
+
+  // Cohort Matching
+  findSimilarAccounts,
+
+  // Stage-Based Growth Playbooks (NEW)
+  getStagePlaybook,
+  getStageTransitions,
 };

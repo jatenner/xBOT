@@ -33,7 +33,8 @@ export type DiscoverySource =
   | 'retweet_graph'
   | 'quote_graph'
   | 'seed'
-  | 'census_timeline';
+  | 'census_timeline'
+  | 'backfill';
 
 export type AccountDiscoveryMethod =
   | 'seed'
@@ -476,6 +477,7 @@ export interface TimingWindow {
   avg_views: number;
   sample_size: number;
   account_tier: AccountTier;
+  confidence: 'high' | 'medium' | 'low';
 }
 
 export interface TrendingTopic {

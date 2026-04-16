@@ -9,7 +9,7 @@
  * Also visits /with_replies tab for growing accounts to capture reply strategy data.
  */
 
-import { getBrainPage, brainGoto, waitForTweets } from './brainNavigator';
+import { getBrainPage, getBrainAuthPage, brainGoto, waitForTweets } from './brainNavigator';
 import {
   extractTweetsFromPage,
   extractFollowerCount,
@@ -24,6 +24,8 @@ const TWEETS_PER_ACCOUNT_DEFAULT = 15;
 const TWEETS_PER_ACCOUNT_HIGH_TIER = 30;
 const TWEETS_PER_ACCOUNT_LOW_TIER = 5;
 const TWEETS_PER_ACCOUNT_GROWING = 100;
+const TWEETS_FROM_WITH_REPLIES_TAB = 60;
+const WITH_REPLIES_SCROLL_COUNT = 8;
 const DELAY_BETWEEN_ACCOUNTS_MS = 1000;
 
 export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: number; accounts_scraped: number }> {
@@ -44,6 +46,14 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
     console.error(`${LOG_PREFIX} Failed to get browser page: ${err.message}`);
     return { tweets_ingested: 0, accounts_scraped: 0 };
   }
+
+  // Lazy-init an authed page only when we first hit a growing account.
+  // The auth context uses a read-only burner session (TWITTER_SESSION_B64)
+  // to access /with_replies, which is blocked for anonymous users.
+  let authPage: any = null;
+  let authPageUnavailable = false;
+  let replyTabSuccess = 0;
+  let replyTabFailures = 0;
 
   try {
     for (const account of accounts) {
@@ -94,10 +104,47 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
         console.log(`${LOG_PREFIX} GROWING @${username} (${(account as any).growth_status}): deep scrape ${tweets.length} tweets`);
       }
 
-      // NOTE: /with_replies tab is BLOCKED for anonymous users (loads but 0 tweets).
-      // Replies are only captured from the Posts tab when they appear there.
-      // To get full reply data, a read-only Twitter session is needed.
+      // /with_replies tab — captures the OUTBOUND reply graph (this account's replies
+      // to other accounts). Blocked for anonymous users, so we use an authed read-only
+      // burner session. Gated to growing accounts (interesting/hot/explosive) to limit
+      // session heat and auth-page load.
       let replyTweets: any[] = [];
+      const shouldFetchWithReplies = isGrowing || isInteresting;
+      if (shouldFetchWithReplies && !authPageUnavailable) {
+        if (!authPage) {
+          try {
+            authPage = await getBrainAuthPage();
+          } catch (err: any) {
+            console.warn(`${LOG_PREFIX} Auth page unavailable, skipping /with_replies: ${err.message}`);
+            authPageUnavailable = true;
+          }
+        }
+        if (authPage) {
+          const wrUrl = `https://x.com/${username}/with_replies`;
+          const wrNav = await brainGoto(authPage, wrUrl);
+          if (wrNav.loginWall) {
+            console.warn(`${LOG_PREFIX} Auth session hit login wall — disabling /with_replies for this run`);
+            authPageUnavailable = true;
+          } else if (wrNav.success) {
+            const wrTweetCount = await waitForTweets(authPage, 10000);
+            if (wrTweetCount > 0) {
+              for (let s = 0; s < WITH_REPLIES_SCROLL_COUNT; s++) {
+                await authPage.evaluate('window.scrollBy(0, 1200)');
+                await authPage.waitForTimeout(1500);
+              }
+              replyTweets = await extractTweetsFromPage(authPage, {
+                maxTweets: TWEETS_FROM_WITH_REPLIES_TAB,
+                skipReplies: false,
+              });
+              replyTabSuccess++;
+            } else {
+              replyTabFailures++;
+            }
+          } else {
+            replyTabFailures++;
+          }
+        }
+      }
 
       // Deduplicate — /with_replies may overlap with Posts tab
       const seenTweetIds = new Set(tweets.map(t => t.tweet_id).filter(Boolean));
@@ -134,6 +181,12 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
     }
   } finally {
     try { await page.close(); } catch {}
+    if (authPage) {
+      try { await authPage.close(); } catch {}
+    }
+    if (replyTabSuccess + replyTabFailures > 0) {
+      console.log(`${LOG_PREFIX} /with_replies summary: ${replyTabSuccess} ok, ${replyTabFailures} failed`);
+    }
   }
 
   // Ingest all results

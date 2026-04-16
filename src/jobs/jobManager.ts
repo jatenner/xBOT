@@ -1125,6 +1125,19 @@ export class JobManager {
       15 * MINUTE  // Start after 15 minutes
     );
 
+    // 🩺 ACCOUNT HEALTH SCORER — tracks suspension-risk metrics (every 15 min)
+    this.scheduleStaggeredJob(
+      'account_health_scorer',
+      async () => {
+        await this.safeExecute('account_health_scorer', async () => {
+          const { runHealthScorer } = await import('../safety/healthScorer');
+          await runHealthScorer();
+        });
+      },
+      15 * MINUTE,
+      3 * MINUTE
+    );
+
     // 🤖 AUTONOMOUS HEALTH MONITOR - every 15 minutes, offset 5 min (self-healing system)
     // 🔧 NEW: Autonomous diagnosis and self-healing
     this.scheduleStaggeredJob(
@@ -1412,7 +1425,7 @@ export class JobManager {
       // feeds that visit public profile pages: timelines + profile hops.
       // -----------------------------------------------------------------------
 
-      // Brain: Account timeline scraper — THE primary data source (every 3 min)
+      // Brain: Account timeline scraper (every 15 min — reduced from 3 min for safety)
       // Visits public profiles, grabs tweets. Growing accounts scraped first.
       this.scheduleStaggeredJob(
         'brain_timelines',
@@ -1422,13 +1435,11 @@ export class JobManager {
             await runAccountTimelineScraper();
           });
         },
-        3 * MINUTE,
-        30 * 1000 // 30s delay — highest priority, runs first
+        15 * MINUTE,
+        30 * 1000
       );
 
-      // Brain: Google-based account discovery — mass discovery without Twitter login (every 5 min)
-      // Searches Google for "site:x.com [niche]" to find Twitter profiles.
-      // 5 queries/run × ~10-20 new accounts/query = 50-100 new accounts per run.
+      // Brain: Google-based account discovery (every 30 min — reduced from 5 min for safety)
       this.scheduleStaggeredJob(
         'brain_google_discovery',
         async () => {
@@ -1437,8 +1448,8 @@ export class JobManager {
             await runGoogleDiscovery();
           });
         },
-        5 * MINUTE,
-        2 * MINUTE // 2min delay — let timeline scraper start first
+        30 * MINUTE,
+        2 * MINUTE
       );
 
       // NOTE: Trending, keyword search, For You, and viral hunter are DISABLED.
@@ -1586,7 +1597,7 @@ export class JobManager {
     if (process.env.GROWTH_OBSERVATORY_ENABLED === 'true') {
       console.log('[JOB_MANAGER] 🔭 Growth Observatory ENABLED — registering observatory jobs');
 
-      // Observatory: Census scheduler — picks accounts due for follower check (every 5 min)
+      // Observatory: Census scheduler — picks accounts due for follower check (every 15 min — reduced from 5 min)
       this.scheduleStaggeredJob(
         'observatory_census_scheduler',
         async () => {
@@ -1595,11 +1606,11 @@ export class JobManager {
             await runCensusScheduler();
           });
         },
-        5 * MINUTE,
+        15 * MINUTE,
         1 * MINUTE
       );
 
-      // Observatory: Census worker — visits profiles, grabs follower counts (every 2 min)
+      // Observatory: Census worker — visits profiles, grabs follower counts (every 30 min — reduced from 2 min)
       this.scheduleStaggeredJob(
         'observatory_census_worker',
         async () => {
@@ -1608,7 +1619,7 @@ export class JobManager {
             await runCensusWorker();
           });
         },
-        2 * MINUTE,
+        30 * MINUTE,
         2 * MINUTE
       );
       // Observatory: Growth detector — compares snapshots, detects acceleration (every 30 min)
@@ -1622,6 +1633,34 @@ export class JobManager {
         },
         30 * MINUTE,
         5 * MINUTE
+      );
+
+      // Observatory: Backfill worker — deep-scrapes history of accounts that
+      // crossed a growth threshold, capturing the pre-growth period (every 30 min)
+      this.scheduleStaggeredJob(
+        'observatory_backfill_worker',
+        async () => {
+          await this.safeExecute('observatory_backfill_worker', async () => {
+            const { runBackfillWorker } = await import('../brain/observatory/backfillWorker');
+            await runBackfillWorker();
+          });
+        },
+        30 * MINUTE,
+        9 * MINUTE
+      );
+
+      // Brain: Reply tree scraper — inbound reply graph for notable tweets
+      // on growing accounts (every 20 min, populates external_reply_patterns)
+      this.scheduleStaggeredJob(
+        'brain_reply_tree_scraper',
+        async () => {
+          await this.safeExecute('brain_reply_tree_scraper', async () => {
+            const { runReplyTreeScraper } = await import('../brain/feeds/replyTreeScraper');
+            await runReplyTreeScraper();
+          });
+        },
+        20 * MINUTE,
+        11 * MINUTE
       );
 
       // Observatory: Content archiver — scrapes timelines of growing accounts (every 15 min)
@@ -1937,6 +1976,32 @@ export class JobManager {
         },
         720 * MINUTE,
         55 * MINUTE
+      );
+
+      // Observatory: Stage transition detector — detect follower threshold crossings (every 2h)
+      this.scheduleStaggeredJob(
+        'observatory_stage_transitions',
+        async () => {
+          await this.safeExecute('observatory_stage_transitions', async () => {
+            const { runStageTransitionDetector } = await import('../brain/observatory/stageTransitionDetector');
+            await runStageTransitionDetector();
+          });
+        },
+        120 * MINUTE,
+        20 * MINUTE
+      );
+
+      // Observatory: Stage playbook builder — compare successful vs stalled transitions (every 6h)
+      this.scheduleStaggeredJob(
+        'observatory_stage_playbooks',
+        async () => {
+          await this.safeExecute('observatory_stage_playbooks', async () => {
+            const { runStagePlaybookBuilder } = await import('../brain/observatory/stagePlaybookBuilder');
+            await runStagePlaybookBuilder();
+          });
+        },
+        360 * MINUTE,
+        25 * MINUTE
       );
 
       // Observatory: Pattern engine — cross-dimensional growth playbooks (every 6h)
