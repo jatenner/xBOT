@@ -129,6 +129,27 @@ export async function runAccountTiering(): Promise<{
       .eq('username', update.username);
   }
 
+  // Propagate tier to brain_tweets.author_tier. This column is set NULL at
+  // ingest (discoveryEngine.ts:128) and was never backfilled — which silently
+  // disabled every tier-stratified query in phaseAdvisor, tickAdvisor, and
+  // the analytics engine. Group the update by tier so each covers many rows.
+  let tweetsTiered = 0;
+  for (const tier of ['S', 'A', 'B', 'C', 'dormant'] as AccountTier[]) {
+    const usernames = tierUpdates.filter(u => u.tier === tier).map(u => u.username);
+    if (usernames.length === 0) continue;
+    const CHUNK = 500;
+    for (let i = 0; i < usernames.length; i += CHUNK) {
+      const slice = usernames.slice(i, i + CHUNK);
+      const { error, count } = await supabase
+        .from('brain_tweets')
+        .update({ author_tier: tier }, { count: 'exact' })
+        .in('author_username', slice);
+      if (!error) tweetsTiered += count ?? 0;
+      else console.warn(`${LOG_PREFIX} tier backfill chunk failed: ${error.message}`);
+    }
+  }
+  console.log(`${LOG_PREFIX} Propagated tiers to ${tweetsTiered} brain_tweets rows`);
+
   // Count tiers
   const tiers: Record<string, number> = {};
   for (const u of tierUpdates) {
