@@ -10,6 +10,30 @@ import { calculateTokenCost, estimateTokenCount, getModelRecommendations } from 
 import { getModelPricing } from '../config/openai/pricingSource';
 import { withExponentialBackoff, isQuotaExhausted } from './openaiRetry';
 
+// Content-generation LLM purposes. When POSTING_DISABLED=true these produce
+// output that will never ship, so we gate them entirely. Brain/learning calls
+// (classification, external analysis) are NOT in this list — they're valuable
+// regardless of whether we post.
+const CONTENT_GENERATION_PURPOSES = new Set<string>([
+  'dynamic_topic_generation',
+  'format_strategy_generation',
+  'angle_generation',
+  'tone_generation',
+  'viral_thread_generation',
+  'ai_visual_formatting',
+  'medical_safety_check',
+  'medical_safety_rewrite',
+]);
+const CONTENT_GENERATION_PREFIXES = ['content_auto_improver', 'content_generation', 'post_generation'];
+
+function isContentGenerationPurpose(purpose: string): boolean {
+  if (CONTENT_GENERATION_PURPOSES.has(purpose)) return true;
+  for (const prefix of CONTENT_GENERATION_PREFIXES) {
+    if (purpose.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
 // Typed errors
 export class BudgetExceededError extends Error {
   constructor(
@@ -443,6 +467,20 @@ export class OpenAIBudgetedClient {
     if (auditBypass) {
       console.log(`BUDGET_GATE ALLOW (audit bypass): purpose=target_judge REPLY_V2_AUDIT_LOCAL or OPENAI_BUDGET_ALLOW_TARGET_JUDGE_FOR_AUDIT set`);
       return;
+    }
+
+    // Content-generation gate: when POSTING_DISABLED=true the bot can't post,
+    // so content-planning LLM calls produce output that will never be used.
+    // Blocking them frees daily budget for brain/learning calls (classification,
+    // external tweet analysis) that remain valuable even with no posting account.
+    if (process.env.POSTING_DISABLED === 'true' && isContentGenerationPurpose(purpose)) {
+      console.log(`BUDGET_GATE DENY (posting disabled): purpose=${purpose} model=${model} — skipping content-gen call`);
+      throw new BudgetExceededError(
+        0,
+        0,
+        estimatedCost,
+        `Content generation blocked: POSTING_DISABLED=true (purpose=${purpose})`,
+      );
     }
 
     const status = await this.getBudgetStatus();

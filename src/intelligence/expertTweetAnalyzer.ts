@@ -405,7 +405,7 @@ Return JSON in this exact format:
 
     const response = await createBudgetedChatCompletion(
       {
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',

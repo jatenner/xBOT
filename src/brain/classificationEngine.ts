@@ -40,32 +40,27 @@ const LOG_PREFIX = '[brain/classify]';
 // Stage 2: AI Batch Classification
 // =============================================================================
 
-const STAGE2_BATCH_SIZE = 15; // More per batch = fewer API calls
-const STAGE2_MAX_PER_RUN = 150; // Classify aggressively to keep up with 15K tweets/day
+const STAGE2_BATCH_SIZE = 20; // Larger batches = fewer API calls, better cost efficiency
+const STAGE2_MAX_PER_RUN = 200; // Increased from 150 to improve coverage rate
 const STAGE2_MODEL = 'gpt-4o-mini';
 
-const CLASSIFICATION_PROMPT = `You are a Twitter content analyst. Classify each tweet on the following dimensions.
+// Compressed from ~400 to ~220 tokens. [ORIGINAL]/[REPLY] tag is inline per-tweet
+// instead of in the system prompt — saves ~50 tokens per call at 840 calls/day.
+const CLASSIFICATION_PROMPT = `Classify each tweet. Return JSON array, one object per tweet, same order.
+[ORIGINAL]=standalone post (content strategy). [REPLY]=response (reply strategy).
 
-For each tweet, return a JSON object with:
-- domain: broad category, one of: health, tech, finance, business, politics, entertainment, sports, science, crypto, personal_dev, humor, news, culture, other
-- sub_domain: specific niche within the domain. Examples:
-  health: nutrition, fitness, mental_health, longevity, sleep, supplements, biohacking, weight_loss, hormones, gut_health, neuroscience, yoga, meditation, skincare
-  tech: AI, programming, startups, SaaS, cybersecurity, web3, robotics, data_science, product_management, devops
-  finance: investing, trading, real_estate, personal_finance, wealth_building, taxes, retirement, budgeting, crypto_trading
-  business: entrepreneurship, marketing, sales, ecommerce, leadership, consulting, freelancing, branding, copywriting
-  personal_dev: productivity, habits, mindset, self_improvement, career, relationships, communication, reading, stoicism
-  Use your best judgment for sub_domains not listed. Be specific.
-- hook_type: one of: contrarian, myth_bust, question, surprising_stat, personal_story, bold_claim, curiosity_gap, controversy, social_proof, how_to, analogy, observation, list, hot_take, data_driven, other
-- tone: one of: authoritative, casual, provocative, educational, vulnerable, humorous, urgent, inspirational, conversational, analytical, other
-- format: one of: one_liner, short, medium, long, thread, list, story, data_driven, question, hot_take, tutorial, framework, analogy, meme_text, other
-- emotional_trigger: one of: fear, curiosity, anger, hope, humor, surprise, outrage, inspiration, fomo, empathy, nostalgia, belonging, identity, other
-- specificity: one of: vague, moderate, specific, hyper_specific
-- actionability: one of: none, low, moderate, high
-- identity_signal: one of: none, aspirational, tribal, contrarian, expert, relatable (does sharing this make the sharer look smart/informed/funny?)
-- controversy_level: 0.0 to 1.0
-- novelty_level: 0.0 to 1.0
-
-Return a JSON array with one object per tweet, in the same order as input.`;
+Fields per object:
+- domain: health|tech|finance|business|politics|entertainment|sports|science|crypto|personal_dev|humor|news|culture|other
+- sub_domain: specific niche (free text)
+- hook_type: contrarian|myth_bust|question|surprising_stat|personal_story|bold_claim|curiosity_gap|controversy|social_proof|how_to|analogy|observation|list|hot_take|data_driven|other
+- tone: authoritative|casual|provocative|educational|vulnerable|humorous|urgent|inspirational|conversational|analytical|other
+- format: one_liner|short|medium|long|thread|list|story|data_driven|question|hot_take|tutorial|framework|analogy|meme_text|other
+- emotional_trigger: fear|curiosity|anger|hope|humor|surprise|outrage|inspiration|fomo|empathy|nostalgia|belonging|identity|other
+- specificity: vague|moderate|specific|hyper_specific
+- actionability: none|low|moderate|high
+- identity_signal: none|aspirational|tribal|contrarian|expert|relatable
+- controversy_level: 0.0-1.0
+- novelty_level: 0.0-1.0`;
 
 interface Stage2Input {
   tweet_id: string;
@@ -73,10 +68,13 @@ interface Stage2Input {
   author_username: string;
   likes: number;
   views: number;
+  tweet_type?: string;
+  reply_to_username?: string;
 }
 
 interface Stage2Output {
   domain: Domain;
+  sub_domain?: string;
   hook_type: HookType;
   tone: Tone;
   format: ContentFormat;
@@ -140,9 +138,12 @@ export async function runStage2Classification(): Promise<{ classified: number; e
 }
 
 async function classifyBatch(tweets: Stage2Input[]): Promise<Stage2Output[]> {
-  const tweetTexts = tweets.map((t, i) =>
-    `Tweet ${i + 1} (@${t.author_username}, ${t.likes} likes, ${t.views} views):\n"${t.content.substring(0, 500)}"`
-  ).join('\n\n');
+  const tweetTexts = tweets.map((t, i) => {
+    const isReply = t.tweet_type === 'reply';
+    const typeLabel = isReply ? '[REPLY]' : '[ORIGINAL]';
+    const replyContext = isReply && t.reply_to_username ? ` replying to @${t.reply_to_username}` : '';
+    return `Tweet ${i + 1} ${typeLabel} (@${t.author_username}${replyContext}, ${t.likes} likes, ${t.views} views):\n"${t.content.substring(0, 500)}"`;
+  }).join('\n\n');
 
   const metadata: CallMetadata = {
     purpose: 'brain_stage2_classification',
@@ -201,9 +202,58 @@ async function classifyBatch(tweets: Stage2Input[]): Promise<Stage2Output[]> {
     // Validate and sanitize each result
     return results.slice(0, tweets.length).map(sanitizeClassification);
   } catch (err: any) {
-    console.error(`${LOG_PREFIX} Stage 2 JSON parse error:`, err.message, content?.substring(0, 200));
+    // The API call already cost money — try to salvage any valid JSON objects
+    // inside the malformed response (truncation, trailing garbage, etc.).
+    // Recovers partial batch yield that would otherwise be 100% loss.
+    const salvaged = salvagePartialObjects(content);
+    if (salvaged.length > 0) {
+      console.warn(`${LOG_PREFIX} Stage 2 JSON parse failed but salvaged ${salvaged.length}/${tweets.length} objects: ${err.message}`);
+      return salvaged.slice(0, tweets.length).map(sanitizeClassification);
+    }
+    console.error(`${LOG_PREFIX} Stage 2 JSON parse error (no salvage):`, err.message, content?.substring(0, 200));
     return [];
   }
+}
+
+// Extract any balanced-brace JSON objects from a malformed string. Handles the
+// common gpt-4o-mini failure modes: truncation at max_tokens, trailing commas,
+// surrounding prose, code fences.
+function salvagePartialObjects(raw: string | null | undefined): any[] {
+  if (!raw) return [];
+  const objects: any[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        const candidate = raw.slice(start, i + 1);
+        try {
+          const parsed = JSON.parse(candidate);
+          // Only keep objects that look like classifications (have domain+hook_type)
+          if (parsed && typeof parsed === 'object' && parsed.domain && parsed.hook_type) {
+            objects.push(parsed);
+          }
+        } catch {
+          // Silently skip unparseable candidates
+        }
+        start = -1;
+      }
+    }
+  }
+  return objects;
 }
 
 function sanitizeClassification(raw: any): Stage2Output {
