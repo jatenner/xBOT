@@ -46,12 +46,59 @@ const toNumberWithFallback = (value: unknown, fallback = 0): number => {
   return parsed === null ? fallback : parsed;
 };
 
+interface MetricsScraperRunContext {
+  runner_mode: boolean;
+  status: string;
+  eligible_count: number;
+  scraped_count: number;
+  updated_count: number;
+  skipped_count: number;
+  failed_count: number;
+  skip_reason: string | null;
+  error_message: string | null;
+}
+
+async function logMetricsScraperRun(ctx: MetricsScraperRunContext, startedAtMs: number): Promise<void> {
+  try {
+    const supabase = getSupabaseClient();
+    await supabase.from('metrics_scraper_runs').insert({
+      runner_mode: ctx.runner_mode,
+      status: ctx.status,
+      eligible_count: ctx.eligible_count,
+      scraped_count: ctx.scraped_count,
+      updated_count: ctx.updated_count,
+      skipped_count: ctx.skipped_count,
+      failed_count: ctx.failed_count,
+      duration_ms: Date.now() - startedAtMs,
+      skip_reason: ctx.skip_reason,
+      error_message: ctx.error_message
+    });
+  } catch (err: any) {
+    // Never let run-logging failures affect the job itself.
+    console.warn('[METRICS_JOB] ⚠️ Failed to write metrics_scraper_runs row:', err?.message || err);
+  }
+}
+
 export async function metricsScraperJob(): Promise<void> {
   log({ op: 'metrics_scraper_start' });
   if (!process.env.USE_ANALYTICS_PAGE) {
     process.env.USE_ANALYTICS_PAGE = 'false';
   }
-  
+
+  const runStartedAtMs = Date.now();
+  const runContext: MetricsScraperRunContext = {
+    runner_mode: process.env.RUNNER_MODE === 'true',
+    status: 'unknown',
+    eligible_count: 0,
+    scraped_count: 0,
+    updated_count: 0,
+    skipped_count: 0,
+    failed_count: 0,
+    skip_reason: null,
+    error_message: null
+  };
+
+  try {
   // ✅ MEMORY OPTIMIZATION: Check memory before starting
   try {
     const { isMemorySafeForOperation } = await import('../utils/memoryOptimization');
@@ -59,6 +106,8 @@ export async function metricsScraperJob(): Promise<void> {
     if (!memoryCheck.safe) {
       console.warn(`[METRICS_JOB] ⚠️ Low memory (${memoryCheck.currentMB}MB), skipping this run`);
       log({ op: 'metrics_scraper_skipped', reason: 'low_memory', memoryMB: memoryCheck.currentMB });
+      runContext.status = 'skipped_memory';
+      runContext.skip_reason = `low_memory_${memoryCheck.currentMB}MB`;
       return;
     }
   } catch (error) {
@@ -184,11 +233,14 @@ export async function metricsScraperJob(): Promise<void> {
     
     if (postsError) {
       console.error('[METRICS_JOB] ❌ Failed to fetch posts:', postsError.message);
+      runContext.status = 'error_fetch';
+      runContext.error_message = postsError.message;
       return;
     }
-    
+
     if (!posts || posts.length === 0) {
       console.log('[METRICS_JOB] ℹ️ No recent posts to scrape');
+      runContext.status = 'skipped_no_posts';
       return;
     }
     
@@ -272,8 +324,13 @@ export async function metricsScraperJob(): Promise<void> {
       }
     }
     
+    runContext.eligible_count = posts.length;
+
     if (postsToScrape.length === 0) {
       console.log(`[METRICS_JOB] ℹ️ No posts need scraping (${skipped} skipped, ${failed} failed pre-filter)`);
+      runContext.status = 'skipped_all_filtered';
+      runContext.skipped_count = skipped;
+      runContext.failed_count = failed;
       return;
     }
     
@@ -291,11 +348,15 @@ export async function metricsScraperJob(): Promise<void> {
     // 🔒 BROWSER SEMAPHORE: Acquire ONE browser lock for ALL tweets (BATCHED)
     const { withBrowserLock, BrowserPriority } = await import('../browser/BrowserSemaphore');
     
+    runContext.scraped_count = postsToProcess.length;
+
     // 🔒 RAILWAY GATE: Playwright scraping only runs on Mac Runner
     if (process.env.RUNNER_MODE !== 'true') {
       console.log('[METRICS_SCRAPER] ⏭️  Skipping Playwright scraping on Railway (RUNNER_MODE not set)');
       console.log('[METRICS_SCRAPER] proof_run executor=false reason=RUNNER_MODE_not_set selected_eligible=' + postsToProcess.length + ' updated=0');
-      return; // Skip silently - metrics can be fetched via API if needed
+      runContext.status = 'skipped_not_runner';
+      runContext.skip_reason = 'RUNNER_MODE_not_set';
+      return; // Intentional: Railway is control plane; Mac runner owns scraping.
     }
     console.log('[METRICS_SCRAPER] proof_run executor=true RUNNER_MODE=true selected_eligible=' + postsToProcess.length);
     await withBrowserLock('metrics_batch', BrowserPriority.METRICS, async () => {
@@ -535,7 +596,25 @@ export async function metricsScraperJob(): Promise<void> {
             let followers2hAfter: number | undefined;
             let followers48hAfter: number | undefined;
             let hoursSincePostAttribution: number | undefined;
-            
+            let baselineStatus: string | null = null;
+
+            // 🎯 PHASE 0.2: If baseline capture failed/timed out/was disabled, don't pretend
+            // the follower signal is valid. Leave follower fields undefined so v2 falls back
+            // to engagement-only and primary_objective_score stays NULL (excluded from learning).
+            try {
+              const { data: baselineRow } = await supabase
+                .from('content_generation_metadata_comprehensive')
+                .select('baseline_status')
+                .eq('decision_id', post.decision_id)
+                .maybeSingle();
+              baselineStatus = baselineRow?.baseline_status ?? null;
+            } catch (baselineReadErr: any) {
+              console.warn(`[METRICS_JOB] ⚠️ Could not read baseline_status for ${post.decision_id}: ${baselineReadErr?.message || baselineReadErr}`);
+            }
+
+            if (baselineStatus && baselineStatus !== 'success') {
+              console.log(`[METRICS_JOB] ⏭️ Skipping follower attribution for ${post.decision_id}: baseline_status=${baselineStatus}`);
+            } else {
             try {
               const { data: followerTracking } = await supabase
                 .from('post_follower_tracking')
@@ -588,7 +667,8 @@ export async function metricsScraperJob(): Promise<void> {
             } catch (followerError: any) {
               console.warn(`[METRICS_JOB] ⚠️ Follower attribution failed: ${followerError.message}`);
             }
-            
+            } // end of: baseline_status === 'success' branch
+
             // 🎯 v2 UPGRADE: Calculate v2 objective metrics
             let v2Metrics: {
               followers_gained_weighted: number | null;
@@ -697,6 +777,7 @@ export async function metricsScraperJob(): Promise<void> {
               bookmarks: bookmarksNullable,
               impressions: viewsNullable, // Map views to impressions
               engagement_rate: engagementRate, // ✅ Store engagement_rate for v2 calculations
+              er_calculated: engagementRate, // ✅ feedbackLoop.ts reads this column
               profile_clicks: profileClicksValue, // 📊 Save Profile visits from analytics page
               first_hour_engagement: isFirstHour ? totalEngagement : null,
               followers_gained: followersGained, // ✅ Store raw followers_gained
@@ -1058,6 +1139,11 @@ export async function metricsScraperJob(): Promise<void> {
       }
     });
     
+    runContext.status = 'completed';
+    runContext.updated_count = updated;
+    runContext.skipped_count = skipped;
+    runContext.failed_count = failed;
+
     console.log(`[METRICS_JOB] ✅ Metrics collection complete: ${updated} updated, ${skipped} skipped, ${failed} failed`);
     console.log('[METRICS_SCRAPER] proof_run executor=true selected_eligible=' + postsToProcess.length + ' updated=' + updated + ' failed=' + failed + (updated === 0 && postsToProcess.length > 0 ? ' reason=see_logs_above' : ''));
     console.log(`[METRICS_JOB][SUMMARY]`, {
@@ -1134,7 +1220,9 @@ export async function metricsScraperJob(): Promise<void> {
     
   } catch (error: any) {
     console.error('[METRICS_JOB] ❌ Metrics collection failed:', error.message);
-    
+    runContext.status = 'crashed';
+    runContext.error_message = error?.message || String(error);
+
     // 🔒 HARDENING: Alert on crash
     try {
       const { sendDiscordAlert } = await import('../monitoring/discordAlerts');
@@ -1148,7 +1236,7 @@ export async function metricsScraperJob(): Promise<void> {
     } catch (alertError) {
       console.error('[METRICS_JOB] Failed to send Discord alert:', alertError);
     }
-    
+
     // Capture error in Sentry if available
     if (Sentry?.captureException) {
       try {
@@ -1160,7 +1248,7 @@ export async function metricsScraperJob(): Promise<void> {
         // Ignore Sentry errors
       }
     }
-    
+
     throw error;
   }
   };
@@ -1176,6 +1264,9 @@ export async function metricsScraperJob(): Promise<void> {
     );
   } else {
     return await executeJob();
+  }
+  } finally {
+    await logMetricsScraperRun(runContext, runStartedAtMs);
   }
 }
 
