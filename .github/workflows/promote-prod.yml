@@ -32,9 +32,9 @@ jobs:
           node-version: '18'
 
       - name: Install Supabase CLI
-        run: |
-          curl -sSfL https://supabase.com/install.sh | sh
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
 
       - name: Verify Supabase CLI
         run: supabase --version
