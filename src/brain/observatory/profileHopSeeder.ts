@@ -28,6 +28,29 @@ const MAX_CAMPAIGNS_PER_RUN = 2;
 const MAX_AUTO_HOPS_PER_RUN = 10; // Auto-hop from 10 accounts per run (every 5 min = 120 hops/hr)
 const MAX_SCROLL_ROUNDS = 5;
 
+// Discovery circuit breaker. The brain has 32K+ accounts and adds 300/hr from
+// discovery feeds, but only deepens 80–500/hr — so new accounts accumulate
+// faster than any account gets re-scraped, creating the wide+shallow trap.
+// When the active pool exceeds this threshold, pause discovery entirely until
+// pruner+tier daemon bring it back down.
+const DISCOVERY_PAUSE_THRESHOLD = parseInt(
+  process.env.BRAIN_DISCOVERY_PAUSE_THRESHOLD || '30000',
+  10,
+);
+
+async function isDiscoveryPaused(supabase: any): Promise<{ paused: boolean; activeTotal: number }> {
+  try {
+    const { data } = await supabase
+      .from('brain_pool_stats')
+      .select('active_total')
+      .single();
+    const activeTotal = (data?.active_total as number) ?? 0;
+    return { paused: activeTotal >= DISCOVERY_PAUSE_THRESHOLD, activeTotal };
+  } catch {
+    return { paused: false, activeTotal: 0 };
+  }
+}
+
 export async function runProfileHopSeeder(): Promise<{
   campaigns_processed: number;
   accounts_discovered: number;
@@ -35,6 +58,18 @@ export async function runProfileHopSeeder(): Promise<{
   const supabase = getSupabaseClient();
   let campaignsProcessed = 0;
   let accountsDiscovered = 0;
+
+  // ── DISCOVERY CIRCUIT BREAKER ──
+  // Pause new account adds when the active pool is already saturated.
+  // The brain needs depth, not more breadth.
+  const breaker = await isDiscoveryPaused(supabase);
+  if (breaker.paused) {
+    console.log(
+      `${LOG_PREFIX} ⏸️  Discovery paused: active_total=${breaker.activeTotal} ≥ threshold=${DISCOVERY_PAUSE_THRESHOLD}. ` +
+      `Pruner + tier daemon will bring this down before discovery resumes.`,
+    );
+    return { campaigns_processed: 0, accounts_discovered: 0 };
+  }
 
   // === RE-HOP RESET ===
   // If we've hopped all accounts, reset hops older than 7 days so we can rediscover

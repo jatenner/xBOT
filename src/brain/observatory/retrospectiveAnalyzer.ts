@@ -17,7 +17,9 @@ import { getPendingGrowthEvents } from '../db';
 import { getFollowerRange } from '../types';
 
 const LOG_PREFIX = '[observatory/retrospective]';
-const MAX_PER_RUN = 5;
+// Lifted 5→20 — the analyzer was 9× behind the detector (1,330 events,
+// 198 analyzed). At gpt-4o-mini ~$0.005 per analysis that's ~$0.10/run.
+const MAX_PER_RUN = parseInt(process.env.BRAIN_RETROSPECTIVE_MAX_PER_RUN || '20', 10);
 const BEFORE_PERIOD_DAYS = 14; // Look 14 days before growth started
 
 interface PeriodStats {

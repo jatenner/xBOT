@@ -274,6 +274,71 @@ export async function ingestFeedResults(results: FeedResult[]): Promise<{
     }
   }
 
+  // Enqueue log-spaced engagement re-captures (5m/15m/1h/6h/24h/7d) for new
+  // tweets from S/A-tier accounts. This is the per-tweet engagement curve
+  // that cascade-prediction models (Cheng 2014, Hawkes/TiDeH) require.
+  // Lower-tier accounts skip this — the depth budget is reserved for the
+  // accounts the tier daemon has selected as worth deeply tracking.
+  const RECAPTURE_FRESHNESS_MS = 60 * 60 * 1000; // 1h — tweet must still be in the algo's first-distribution window
+  const RECAPTURE_AGE_BUCKETS: Array<{ bucket: string; minutes: number }> = [
+    { bucket: '5m', minutes: 5 },
+    { bucket: '15m', minutes: 15 },
+    { bucket: '1h', minutes: 60 },
+    { bucket: '6h', minutes: 360 },
+    { bucket: '24h', minutes: 1440 },
+    { bucket: '7d', minutes: 10080 },
+  ];
+  const newTweetUsernames = Array.from(new Set(
+    allTweets
+      .filter(t => !existingIds.has(t.tweet_id!))
+      .map(t => (t.author_username as string)?.toLowerCase())
+      .filter(Boolean) as string[]
+  ));
+  let tierByUsername = new Map<string, string>();
+  if (newTweetUsernames.length > 0) {
+    const { data: tierRows } = await supa
+      .from('brain_accounts')
+      .select('username, tier')
+      .in('username', newTweetUsernames);
+    tierByUsername = new Map(
+      (tierRows ?? [])
+        .filter((r: any) => r.tier === 'S' || r.tier === 'A')
+        .map((r: any) => [String(r.username).toLowerCase(), String(r.tier)]),
+    );
+  }
+  const recaptureRows: any[] = [];
+  for (const t of allTweets) {
+    if (existingIds.has(t.tweet_id!)) continue;
+    const username = (t.author_username as string)?.toLowerCase();
+    if (!username) continue;
+    const tier = tierByUsername.get(username);
+    if (!tier) continue; // skip non-S/A
+    const postedAt = t.posted_at ? new Date(t.posted_at as string) : null;
+    if (!postedAt || isNaN(postedAt.getTime())) continue;
+    // Only enqueue for genuinely fresh tweets — the 5m/15m buckets aren't
+    // meaningful for tweets we discovered hours after they were posted.
+    if (Date.now() - postedAt.getTime() > RECAPTURE_FRESHNESS_MS) continue;
+    for (const { bucket, minutes } of RECAPTURE_AGE_BUCKETS) {
+      recaptureRows.push({
+        tweet_id: t.tweet_id,
+        age_bucket: bucket,
+        due_at: new Date(postedAt.getTime() + minutes * 60_000).toISOString(),
+        account_tier: tier,
+      });
+    }
+  }
+  if (recaptureRows.length > 0) {
+    for (let i = 0; i < recaptureRows.length; i += 200) {
+      const chunk = recaptureRows.slice(i, i + 200);
+      const { error } = await supa
+        .from('pending_engagement_recaptures')
+        .upsert(chunk, { onConflict: 'tweet_id,age_bucket', ignoreDuplicates: true });
+      if (error && !error.message?.includes('schema cache')) {
+        console.warn(`${LOG_PREFIX} engagement-recapture enqueue chunk error: ${error.message}`);
+      }
+    }
+  }
+
   // Also discover accounts mentioned in tweets (reply targets, @mentions)
   for (const tweet of allTweets) {
     // Add reply-to targets as discoverable accounts
