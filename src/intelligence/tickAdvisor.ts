@@ -78,6 +78,19 @@ function uniqueNonAny(values: (string | null | undefined)[]): string[] {
   return Array.from(set);
 }
 
+// Stable-sort brain-source rows to the front. Within each source group,
+// the input order (already sorted by combined_score / ext_avg_likes) is
+// preserved. Brain-source patterns come from richer signal (algo_score,
+// velocity_15m), so we prefer them when both sources have rows for the
+// same dimension combo.
+function preferBrain<T extends { source?: string | null }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => {
+    const aBrain = a.source === 'brain' ? 0 : 1;
+    const bBrain = b.source === 'brain' ? 0 : 1;
+    return aBrain - bBrain;
+  });
+}
+
 function confidenceToNumber(c: string): number {
   if (c === 'high') return 1.0;
   if (c === 'medium') return 0.6;
@@ -134,7 +147,7 @@ export async function getTickAdvice(): Promise<TickAdvice> {
       // Try stage-filtered first
       const { data: stageData, error: stageErr } = await supabase
         .from('external_patterns')
-        .select('pattern_type, angle, tone, format, hour_bucket, topic, target_tier, combined_score, confidence, causal_status, avg_recency_days')
+        .select('pattern_type, angle, tone, format, hour_bucket, topic, target_tier, combined_score, confidence, causal_status, avg_recency_days, source')
         .eq('direction', 'do_more')
         .eq('our_stage', ourStage)
         .in('confidence', ['medium', 'high'])
@@ -142,18 +155,18 @@ export async function getTickAdvice(): Promise<TickAdvice> {
         .limit(50);
 
       if (!stageErr && stageData && stageData.length >= 3) {
-        doMorePatterns = stageData;
+        doMorePatterns = preferBrain(stageData);
       } else {
         // Fall back to unfiltered
         const { data, error } = await supabase
           .from('external_patterns')
-          .select('pattern_type, angle, tone, format, hour_bucket, topic, target_tier, combined_score, confidence, causal_status, avg_recency_days')
+          .select('pattern_type, angle, tone, format, hour_bucket, topic, target_tier, combined_score, confidence, causal_status, avg_recency_days, source')
           .eq('direction', 'do_more')
           .in('confidence', ['medium', 'high'])
           .order('combined_score', { ascending: false })
           .limit(50);
 
-        if (!error && data) doMorePatterns = data;
+        if (!error && data) doMorePatterns = preferBrain(data);
       }
     } catch (e: any) {
       console.warn(`${TAG} do_more query failed: ${e.message}`);
@@ -178,11 +191,11 @@ export async function getTickAdvice(): Promise<TickAdvice> {
     try {
       const { data, error } = await supabase
         .from('external_patterns')
-        .select('angle, tone, format, causal_status, avg_recency_days')
+        .select('angle, tone, format, causal_status, avg_recency_days, source')
         .eq('direction', 'do_less')
         .limit(30);
 
-      if (!error && data) doLessPatterns = data;
+      if (!error && data) doLessPatterns = preferBrain(data);
     } catch (e: any) {
       console.warn(`${TAG} do_less query failed: ${e.message}`);
     }
@@ -194,13 +207,13 @@ export async function getTickAdvice(): Promise<TickAdvice> {
     try {
       const { data, error } = await supabase
         .from('external_patterns')
-        .select('angle, tone, format, ext_avg_reply_likes, combined_score, confidence, causal_status, avg_recency_days')
+        .select('angle, tone, format, ext_avg_reply_likes, combined_score, confidence, causal_status, avg_recency_days, source')
         .eq('pattern_type', 'reply')
         .eq('direction', 'do_more')
         .order('combined_score', { ascending: false })
         .limit(20);
 
-      if (!error && data) replyDoMore = data;
+      if (!error && data) replyDoMore = preferBrain(data);
     } catch (e: any) {
       console.warn(`${TAG} reply do_more query failed: ${e.message}`);
     }
@@ -222,13 +235,14 @@ export async function getTickAdvice(): Promise<TickAdvice> {
     // ─── Step 4b: Behavioral intelligence (reply timing, targeting, content mix) ───
     try {
       // Reply timing: which delay bucket performs best?
-      const { data: timingPatterns } = await supabase
+      const { data: timingPatternsRaw } = await supabase
         .from('external_patterns')
-        .select('hour_bucket, ext_avg_likes, ext_sample_count, direction, confidence')
+        .select('hour_bucket, ext_avg_likes, ext_sample_count, direction, confidence, source')
         .eq('pattern_type', 'reply_timing')
         .eq('direction', 'do_more')
         .order('ext_avg_likes', { ascending: false })
-        .limit(1);
+        .limit(5);
+      const timingPatterns = timingPatternsRaw ? preferBrain(timingPatternsRaw) : null;
 
       if (timingPatterns && timingPatterns.length > 0) {
         const best = timingPatterns[0];
@@ -244,13 +258,14 @@ export async function getTickAdvice(): Promise<TickAdvice> {
       }
 
       // Reply targeting: which target size ratio works best?
-      const { data: targetPatterns } = await supabase
+      const { data: targetPatternsRaw } = await supabase
         .from('external_patterns')
-        .select('target_tier, ext_avg_likes, ext_sample_count, direction, confidence')
+        .select('target_tier, ext_avg_likes, ext_sample_count, direction, confidence, source')
         .eq('pattern_type', 'reply_targeting')
         .eq('direction', 'do_more')
         .order('ext_avg_likes', { ascending: false })
-        .limit(1);
+        .limit(5);
+      const targetPatterns = targetPatternsRaw ? preferBrain(targetPatternsRaw) : null;
 
       if (targetPatterns && targetPatterns.length > 0) {
         const best = targetPatterns[0];
@@ -273,13 +288,14 @@ export async function getTickAdvice(): Promise<TickAdvice> {
       }
 
       // Content mix: optimal reply/original/thread ratio for our range
-      const { data: mixPatterns } = await supabase
+      const { data: mixPatternsRaw } = await supabase
         .from('external_patterns')
-        .select('target_tier, ext_avg_engagement_rate, ext_avg_likes, ext_avg_views, ext_sample_count, confidence')
+        .select('target_tier, ext_avg_engagement_rate, ext_avg_likes, ext_avg_views, ext_sample_count, confidence, source')
         .eq('pattern_type', 'content_mix')
         .eq('direction', 'do_more')
         .order('ext_sample_count', { ascending: false })
-        .limit(1);
+        .limit(5);
+      const mixPatterns = mixPatternsRaw ? preferBrain(mixPatternsRaw) : null;
 
       if (mixPatterns && mixPatterns.length > 0) {
         const mix = mixPatterns[0];

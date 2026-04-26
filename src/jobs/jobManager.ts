@@ -1496,7 +1496,10 @@ export class JobManager {
         6 * MINUTE // 360s delay
       );
 
-      // Brain: Stage 2 AI classification — batch classify above-threshold tweets (every 15 min)
+      // Brain: Stage 2 AI classification — batch classify above-threshold tweets
+      // Cadence tunable via BRAIN_STAGE2_INTERVAL_MIN (default 15, clamped 5–60).
+      const BRAIN_STAGE2_INTERVAL_MIN = Math.max(5, Math.min(60,
+        parseInt(process.env.BRAIN_STAGE2_INTERVAL_MIN || '15', 10) || 15));
       this.scheduleStaggeredJob(
         'brain_classify_stage2',
         async () => {
@@ -1505,7 +1508,7 @@ export class JobManager {
             await brainClassifyStage2Job();
           });
         },
-        15 * MINUTE,
+        BRAIN_STAGE2_INTERVAL_MIN * MINUTE,
         7 * MINUTE // 420s delay
       );
 
@@ -1661,6 +1664,37 @@ export class JobManager {
         },
         20 * MINUTE,
         11 * MINUTE
+      );
+
+      // Observatory: Reply-author engagement checker — captures the 75x ranker
+      // signal (parent author replying back to a captured reply). Walks parent
+      // threads from external_reply_patterns within last 24h. (every 60 min)
+      this.scheduleStaggeredJob(
+        'observatory_reply_author_check',
+        async () => {
+          await this.safeExecute('observatory_reply_author_check', async () => {
+            const { runReplyAuthorEngagementChecker } = await import('../brain/observatory/replyAuthorEngagementChecker');
+            await runReplyAuthorEngagementChecker();
+          });
+        },
+        60 * MINUTE,
+        14 * MINUTE
+      );
+
+      // Observatory: Velocity snapshot worker — captures +5m/+15m/+60m
+      // engagement velocity from the pending_velocity_snapshots queue.
+      // Polls every 30s for tight precision on the +5m bucket. Cheap when
+      // idle (single indexed SELECT). Crash-safe via claim-and-reclaim.
+      this.scheduleStaggeredJob(
+        'observatory_velocity_worker',
+        async () => {
+          await this.safeExecute('observatory_velocity_worker', async () => {
+            const { runVelocitySnapshotWorker } = await import('../brain/observatory/velocitySnapshotWorker');
+            await runVelocitySnapshotWorker();
+          });
+        },
+        30 * 1000, // every 30 seconds
+        30 * 1000  // start after 30s
       );
 
       // Observatory: Content archiver — scrapes timelines of growing accounts (every 15 min)

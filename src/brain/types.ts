@@ -170,6 +170,22 @@ export interface BrainTweet {
   // Content features
   content_features: ContentFeatures | null;
 
+  // Algorithm signals (migration 20260413100000_brain_algorithm_signals.sql)
+  bookmark_save_rate: number | null;
+  conversation_ratio: number | null;
+  share_ratio: number | null;
+  is_ratiod: boolean | null;
+  algo_score: number | null;
+  first_scrape_likes: number | null;
+  first_scrape_at: string | null;
+
+  // Algorithm signals v2 (migration 20260425000000_brain_algorithm_signals_v2.sql)
+  author_followers_at_post_time: number | null;
+  parent_engagement_at_post_time: Record<string, number> | null;
+  velocity_5m: number | null;
+  velocity_15m: number | null;
+  velocity_60m: number | null;
+
   created_at: string;
 }
 

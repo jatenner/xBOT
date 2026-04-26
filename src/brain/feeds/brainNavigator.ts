@@ -16,6 +16,7 @@
  */
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { applyStealth } from '../../infra/playwright/stealth';
 
 const LOG_PREFIX = '[brain/nav]';
 
@@ -100,6 +101,9 @@ export async function getBrainPage(): Promise<Page> {
       viewport: { width: 1280, height: 800 },
       locale: 'en-US',
     });
+    try { await applyStealth(anonContext); } catch (e: any) {
+      console.warn(`${LOG_PREFIX} applyStealth failed on anon context: ${e.message}`);
+    }
     anonContextCreatedAt = Date.now();
   }
 
@@ -157,6 +161,9 @@ export async function getBrainAuthPage(): Promise<Page> {
       locale: 'en-US',
       ...(storageState ? { storageState } : {}),
     });
+    try { await applyStealth(authContext); } catch (e: any) {
+      console.warn(`${LOG_PREFIX} applyStealth failed on auth context: ${e.message}`);
+    }
     authContextCreatedAt = Date.now();
   }
 
