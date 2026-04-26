@@ -1717,6 +1717,55 @@ export class JobManager {
         30 * 1000  // start after 30s
       );
 
+      // Observatory: Engagement re-capture worker — log-spaced cascade curves
+      // for S/A-tier external tweets at 5m/15m/1h/6h/24h/7d. The unit of
+      // analysis every cascade-prediction paper uses (Cheng 2014 / Hawkes /
+      // TiDeH). Polls every 60s. Cheap when idle.
+      this.scheduleStaggeredJob(
+        'observatory_engagement_recapture',
+        async () => {
+          await this.safeExecute('observatory_engagement_recapture', async () => {
+            const { runEngagementRecaptureWorker } = await import('../brain/observatory/engagementRecaptureWorker');
+            await runEngagementRecaptureWorker();
+          });
+        },
+        60 * 1000, // every 60 seconds
+        45 * 1000  // start after 45s
+      );
+
+      // Observatory: Tier promotion/demotion daemon — recomputes account
+      // tiers daily based on a learned composite signal (z-scored growth +
+      // engagement). Hard caps S=200, A=600, B=1500. Audit trail in
+      // brain_account_tier_history. The architectural unlock that converts
+      // the brain from static-tier into adaptive-tier.
+      this.scheduleStaggeredJob(
+        'observatory_tier_daemon',
+        async () => {
+          await this.safeExecute('observatory_tier_daemon', async () => {
+            const { runTierDaemon } = await import('../brain/observatory/tierDaemon');
+            await runTierDaemon();
+          });
+        },
+        24 * 60 * MINUTE, // every 24 hours
+        17 * MINUTE       // initial run 17 minutes after boot
+      );
+
+      // Observatory: Account pruner — weekly cleanup of accounts that have
+      // produced no actionable signal (zero tweets after 30d, zero engagement
+      // after 60d, dormant 90d+). Keeps the active pool from growing
+      // unbounded; protects S/A tier from automatic deactivation.
+      this.scheduleStaggeredJob(
+        'observatory_account_pruner',
+        async () => {
+          await this.safeExecute('observatory_account_pruner', async () => {
+            const { runAccountPruner } = await import('../brain/observatory/accountPruner');
+            await runAccountPruner();
+          });
+        },
+        7 * 24 * 60 * MINUTE, // every 7 days
+        25 * MINUTE           // initial run 25 minutes after boot
+      );
+
       // Observatory: Content archiver — scrapes timelines of growing accounts (every 15 min)
       this.scheduleStaggeredJob(
         'observatory_content_archiver',

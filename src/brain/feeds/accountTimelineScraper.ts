@@ -22,9 +22,15 @@ import type { Page } from 'playwright';
 
 const LOG_PREFIX = '[brain/feed/timeline]';
 const ACCOUNTS_PER_RUN = 20; // 20 accounts per run, growing accounts get both tabs
+
+// Tweet-depth caps per account-tier (in tweets per visit). Was 5 for low-tier
+// historically, which combined with 88% of accounts being C-tier produced a
+// brain-wide median of 5 tweets/account — far below the ~50 threshold the
+// growth-attribution literature (Cheng 2014, Gilbert 2013) requires for
+// distributional change-detection. Now: low-tier still gets a meaningful read.
 const TWEETS_PER_ACCOUNT_DEFAULT = 15;
 const TWEETS_PER_ACCOUNT_HIGH_TIER = 30;
-const TWEETS_PER_ACCOUNT_LOW_TIER = 5;
+const TWEETS_PER_ACCOUNT_LOW_TIER = 30;   // was 5
 const TWEETS_PER_ACCOUNT_GROWING = 100;
 const TWEETS_FROM_WITH_REPLIES_TAB = 60;
 const WITH_REPLIES_SCROLL_COUNT = 8;
@@ -83,7 +89,9 @@ export async function runAccountTimelineScraper(): Promise<{ tweets_ingested: nu
           ? TWEETS_PER_ACCOUNT_LOW_TIER
           : TWEETS_PER_ACCOUNT_DEFAULT;
 
-    const scrollCount = isGrowing ? 12 : isHighTier ? 3 : 0;
+    // Scroll depth must match tweetsToFetch — without scrolls, X loads only ~10
+    // tweets initially, capping ingestion regardless of the per-account quota.
+    const scrollCount = isGrowing ? 12 : isHighTier ? 4 : isLowTier ? 3 : 2;
     for (let s = 0; s < scrollCount; s++) {
       await page.evaluate('window.scrollBy(0, 1200)');
       await page.waitForTimeout(1500);

@@ -36,12 +36,26 @@ import type {
 
 const LOG_PREFIX = '[brain/classify]';
 
+// Clamped env parser — mirrors pattern used in src/browser/UnifiedBrowserPool.ts:27
+function parseEnvInt(key: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[key];
+  if (!raw) return fallback;
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
 // =============================================================================
 // Stage 2: AI Batch Classification
 // =============================================================================
 
-const STAGE2_BATCH_SIZE = 20; // Larger batches = fewer API calls, better cost efficiency
-const STAGE2_MAX_PER_RUN = 200; // Increased from 150 to improve coverage rate
+// BATCH_SIZE capped at 40 to avoid JSON truncation under gpt-4o-mini's default output limit.
+// MAX_PER_RUN controls how many tweets Stage 2 will attempt per job run.
+const STAGE2_BATCH_SIZE = parseEnvInt('BRAIN_STAGE2_BATCH_SIZE', 20, 10, 40);
+// Lifted default 200→600 to clear the classification backlog (currently 14% of
+// 115K tweets are classified; pattern engine starves until this catches up).
+// At gpt-4o-mini ~$0.002/tweet that's ~$1.20/run; at 2hr cadence ~$15/day.
+const STAGE2_MAX_PER_RUN = parseEnvInt('BRAIN_STAGE2_MAX_PER_RUN', 600, 50, 1000);
 const STAGE2_MODEL = 'gpt-4o-mini';
 
 // Compressed from ~400 to ~220 tokens. [ORIGINAL]/[REPLY] tag is inline per-tweet
@@ -157,6 +171,9 @@ async function classifyBatch(tweets: Stage2Input[]): Promise<Stage2Output[]> {
       { role: 'user', content: `Classify these ${tweets.length} tweets:\n\n${tweetTexts}\n\nReturn a JSON array with ${tweets.length} objects.` },
     ],
     temperature: 0.2,
+    // Budget ~180 output tokens/tweet so larger batches don't truncate under the
+    // default cap. Capped at 4000 to stay within gpt-4o-mini response limits.
+    max_tokens: Math.min(4000, tweets.length * 180),
     response_format: { type: 'json_object' },
   }, metadata);
 

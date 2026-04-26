@@ -80,7 +80,7 @@ export async function getBrainTweetsForRescrape(limit: number = 20): Promise<Pic
   return data ?? [];
 }
 
-export async function getBrainTweetsForClassification(limit: number = 50): Promise<Pick<BrainTweet, 'tweet_id' | 'content' | 'author_username' | 'author_followers' | 'likes' | 'views' | 'viral_multiplier'>[]> {
+export async function getBrainTweetsForClassification(limit: number = 50): Promise<Pick<BrainTweet, 'tweet_id' | 'content' | 'author_username' | 'author_followers' | 'likes' | 'views' | 'viral_multiplier' | 'tweet_type' | 'reply_to_username'>[]> {
   // Classify ALL tweets — winners AND failures. To understand Twitter we need the
   // full spectrum. The previous strategy ordered by likes DESC and got stuck:
   // once the top 450 by likes were classified, new high-like tweets only trickled
@@ -97,9 +97,9 @@ export async function getBrainTweetsForClassification(limit: number = 50): Promi
   // baseline-spectrum classification.
   const { data: tweets } = await supabase()
     .from('brain_tweets')
-    .select('tweet_id, content, author_username, author_followers, likes, views, viral_multiplier')
+    .select('tweet_id, content, author_username, author_followers, likes, views, viral_multiplier, tweet_type, reply_to_username')
     .order('scraped_at', { ascending: false })
-    .limit(limit * 5); // Overfetch heavily to account for already-classified recent tweets
+    .limit(limit * 8); // Overfetch heavily to account for already-classified recent tweets
 
   if (!tweets || tweets.length === 0) return [];
 
@@ -201,12 +201,60 @@ export async function getSnapshotsForTweet(tweetId: string): Promise<BrainTweetS
 // brain_accounts
 // =============================================================================
 
+// Discovery circuit breaker default. The active brain pool currently has 32K+
+// accounts but only ~1,800 in S/A tier (the only tiers we deeply track). Adding
+// more breadth doesn't help — depth does. When the pool exceeds this threshold,
+// new-account inserts are dropped (existing-account updates still flow through).
+const DISCOVERY_PAUSE_THRESHOLD = parseInt(
+  process.env.BRAIN_DISCOVERY_PAUSE_THRESHOLD || '30000',
+  10,
+);
+
+// Cache active-account count briefly so we don't hit DB on every upsert.
+let _poolCheckedAt = 0;
+let _poolActiveCount = 0;
+async function getActivePoolCount(): Promise<number> {
+  const now = Date.now();
+  if (now - _poolCheckedAt < 60_000) return _poolActiveCount;
+  try {
+    const { count } = await supabase()
+      .from('brain_accounts')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_active', true);
+    _poolActiveCount = count ?? 0;
+    _poolCheckedAt = now;
+  } catch {}
+  return _poolActiveCount;
+}
+
 export async function upsertBrainAccounts(accounts: Partial<BrainAccount>[]): Promise<number> {
   if (accounts.length === 0) return 0;
 
+  // ── Discovery circuit breaker ──
+  // When the pool is over threshold, only allow updates to accounts that
+  // already exist; drop new inserts. This stops the wide-shallow trap.
+  const activeCount = await getActivePoolCount();
+  let toUpsert = accounts;
+  if (activeCount >= DISCOVERY_PAUSE_THRESHOLD) {
+    const usernames = accounts.map(a => a.username).filter(Boolean) as string[];
+    if (usernames.length > 0) {
+      const { data: existing } = await supabase()
+        .from('brain_accounts')
+        .select('username')
+        .in('username', usernames);
+      const existingSet = new Set((existing ?? []).map((r: any) => r.username));
+      toUpsert = accounts.filter(a => a.username && existingSet.has(a.username));
+      const dropped = accounts.length - toUpsert.length;
+      if (dropped > 0) {
+        console.log(`[brain/db] Discovery paused (active=${activeCount} ≥ ${DISCOVERY_PAUSE_THRESHOLD}): dropped ${dropped} new-account inserts`);
+      }
+    }
+  }
+  if (toUpsert.length === 0) return 0;
+
   const { data, error } = await supabase()
     .from('brain_accounts')
-    .upsert(accounts, { onConflict: 'username', ignoreDuplicates: false })
+    .upsert(toUpsert, { onConflict: 'username', ignoreDuplicates: false })
     .select('username');
 
   if (error) {
