@@ -112,13 +112,32 @@ export class JobManager {
       }
     };
     
+    // Wallclock guard against a hung jobFn. If a job's jobFn never returns
+    // (e.g. wedged browser CDP socket), isRunning would stay true forever and
+    // every subsequent timer firing would skip with previous_run_in_progress
+    // — exactly the failure pattern observed Apr 24 2026 across brain feeds.
+    // We auto-clear the flag after a generous max-runtime so the next firing
+    // can proceed; the stuck call is left to GC.
+    let runStartedAt: number | null = null;
+    const STUCK_FLAG_RESET_MS = 15 * 60 * 1000; // 15 min — generous for any single job
+
     const executeJob = async (phase: 'initial' | 'recurring') => {
       if (isRunning) {
-        console.warn('[JOB_' + name.toUpperCase() + '] Previous run still executing, skipping ' + phase + ' trigger');
-        await recordJobSkip(name, 'previous_run_in_progress');
-        return;
+        // Self-heal: if isRunning has been true for an unreasonable duration,
+        // assume the previous call is wedged/forgotten and force-clear the flag.
+        if (runStartedAt && Date.now() - runStartedAt > STUCK_FLAG_RESET_MS) {
+          const stuckMin = Math.round((Date.now() - runStartedAt) / 60000);
+          console.error('[JOB_' + name.toUpperCase() + '] isRunning stuck for ' + stuckMin + 'min — force-clearing flag (previous call abandoned)');
+          isRunning = false;
+          runStartedAt = null;
+        } else {
+          console.warn('[JOB_' + name.toUpperCase() + '] Previous run still executing, skipping ' + phase + ' trigger');
+          await recordJobSkip(name, 'previous_run_in_progress');
+          return;
+        }
       }
       isRunning = true;
+      runStartedAt = Date.now();
       try {
         await logTimerFired(phase);
         console.log('[JOB_' + name.toUpperCase() + '] Timer fired (' + phase + '), calling jobFn...');
@@ -151,6 +170,7 @@ export class JobManager {
         throw error; // Re-throw to let safeExecute handle retries
       } finally {
         isRunning = false;
+        runStartedAt = null;
       }
     };
 

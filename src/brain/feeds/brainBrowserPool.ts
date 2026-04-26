@@ -22,6 +22,18 @@ const LOG_PREFIX = '[brain/pool]';
 const BROWSER_COUNT = parseInt(process.env.BRAIN_BROWSER_COUNT || '3', 10);
 const AUTH_BROWSER_COUNT = parseInt(process.env.BRAIN_AUTH_BROWSER_COUNT || '1', 10);
 const MAX_OPS_PER_BROWSER = 200;
+// Hard cap on a single task. A wedged X page or stalled CDP socket would
+// otherwise hold the browser forever and cause the parent job's isRunning
+// flag to never reset (resulting in `previous_run_in_progress` skips on every
+// subsequent firing — exactly what happened to brain_timelines on Apr 24).
+const TASK_TIMEOUT_MS = parseInt(process.env.BRAIN_TASK_TIMEOUT_MS || '120000', 10);
+
+function withTimeoutPool<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
+    p.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
 const BROWSER_ARGS = [
   '--disable-blink-features=AutomationControlled',
   '--no-sandbox',
@@ -174,6 +186,7 @@ async function processQueue(): Promise<void> {
 
 async function executeTask(pooled: PooledBrowser, task: QueuedTask): Promise<void> {
   let page: Page | null = null;
+  let timedOut = false;
 
   try {
     // Check if browser needs recycling
@@ -182,15 +195,29 @@ async function executeTask(pooled: PooledBrowser, task: QueuedTask): Promise<voi
     }
 
     page = await pooled.context.newPage();
-    await task.execute(page);
+    try {
+      await withTimeoutPool(task.execute(page), TASK_TIMEOUT_MS, `pool task on browser ${pooled.id}`);
+    } catch (err: any) {
+      if (String(err.message || err).includes('timeout')) {
+        timedOut = true;
+        console.warn(`${LOG_PREFIX} task timed out on browser ${pooled.id} — will recycle`);
+      }
+      throw err;
+    }
     pooled.ops++;
     task.resolve();
   } catch (err: any) {
     task.reject(err);
   } finally {
     try { await page?.close(); } catch {}
+    // If the task timed out, the browser may be in a wedged state. Recycle
+    // proactively so subsequent tasks don't inherit the stuck process.
+    if (timedOut) {
+      try { await recycleBrowser(pooled); } catch (e: any) {
+        console.warn(`${LOG_PREFIX} recycle-after-timeout failed: ${e.message}`);
+      }
+    }
     pooled.busy = false;
-    // Check if more tasks are waiting
     if (taskQueue.length > 0) {
       processQueue().catch(() => {});
     }
@@ -432,6 +459,7 @@ async function processAuthQueue(): Promise<void> {
 
 async function executeAuthTask(pooled: PooledBrowser, task: QueuedTask): Promise<void> {
   let page: Page | null = null;
+  let timedOut = false;
 
   try {
     if (pooled.ops >= MAX_OPS_PER_BROWSER) {
@@ -439,13 +467,26 @@ async function executeAuthTask(pooled: PooledBrowser, task: QueuedTask): Promise
     }
 
     page = await pooled.context.newPage();
-    await task.execute(page);
+    try {
+      await withTimeoutPool(task.execute(page), TASK_TIMEOUT_MS, `auth pool task on browser ${pooled.id}`);
+    } catch (err: any) {
+      if (String(err.message || err).includes('timeout')) {
+        timedOut = true;
+        console.warn(`${LOG_PREFIX} auth task timed out on browser ${pooled.id} — will recycle`);
+      }
+      throw err;
+    }
     pooled.ops++;
     task.resolve();
   } catch (err: any) {
     task.reject(err);
   } finally {
     try { await page?.close(); } catch {}
+    if (timedOut) {
+      try { await recycleAuthBrowser(pooled); } catch (e: any) {
+        console.warn(`${LOG_PREFIX} auth recycle-after-timeout failed: ${e.message}`);
+      }
+    }
     pooled.busy = false;
     if (authTaskQueue.length > 0) {
       processAuthQueue().catch(() => {});

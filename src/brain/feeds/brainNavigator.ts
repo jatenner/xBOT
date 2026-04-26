@@ -31,12 +31,28 @@ let brainBrowser: Browser | null = null;
 let anonContext: BrowserContext | null = null;
 let authContext: BrowserContext | null = null;
 
-// Context age tracking for self-healing recycle.
-// Long-lived browser contexts accumulate memory over hours of operation —
-// old contexts get recycled even if technically still working.
+// Age tracking. A browser/context that's alive but unresponsive (e.g. IPC wedge,
+// CDP socket stalled) won't be caught by isConnected() — Playwright reports
+// connected even when the process is hung. We force-recycle by wallclock too.
+let brainBrowserCreatedAt: number | null = null;
 let anonContextCreatedAt: number | null = null;
 let authContextCreatedAt: number | null = null;
 const CONTEXT_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours
+const BROWSER_MAX_AGE_MS = 12 * 60 * 60 * 1000; // 12 hours
+const BROWSER_PROBE_TIMEOUT_MS = 8000; // sanity probe must succeed in <8s
+const PAGE_ACQUIRE_TIMEOUT_MS = 30_000; // total budget for getBrainPage / getBrainAuthPage
+
+/**
+ * Wrap a promise with a timeout. On timeout the rejected error is thrown,
+ * but the underlying promise keeps running (we cannot cancel it from here —
+ * the caller must arrange cleanup separately).
+ */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
+    p.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
 
 async function recycleContextIfStale(
   which: 'anon' | 'auth'
@@ -69,8 +85,47 @@ const BROWSER_ARGS = [
 
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
+/**
+ * Verify the browser is actually responsive — not just "isConnected".
+ * Catches the failure mode where the browser process is alive but the CDP
+ * socket / IPC is wedged (typical after long uptime or upstream X timeout).
+ * Returns true on success; false on timeout/throw.
+ */
+async function probeBrowser(b: Browser): Promise<boolean> {
+  try {
+    await withTimeout(
+      (async () => {
+        const ctx = await b.newContext();
+        try { await ctx.close(); } catch {}
+      })(),
+      BROWSER_PROBE_TIMEOUT_MS,
+      'browser probe'
+    );
+    return true;
+  } catch (e: any) {
+    console.warn(`${LOG_PREFIX} browser probe failed: ${e.message}`);
+    return false;
+  }
+}
+
 async function ensureBrowser(): Promise<Browser> {
-  if (brainBrowser?.isConnected()) return brainBrowser;
+  // Wallclock age check — force-recycle stale browsers.
+  if (brainBrowser && brainBrowserCreatedAt && Date.now() - brainBrowserCreatedAt > BROWSER_MAX_AGE_MS) {
+    console.log(`${LOG_PREFIX} Browser too old (${Math.round((Date.now() - brainBrowserCreatedAt) / 60000)}min) — forcing recycle`);
+    try { await brainBrowser.close(); } catch {}
+    brainBrowser = null;
+    brainBrowserCreatedAt = null;
+  }
+
+  // Connection check + responsiveness probe. isConnected() alone is not enough:
+  // Playwright reports connected even when the underlying process has hung.
+  if (brainBrowser?.isConnected()) {
+    if (await probeBrowser(brainBrowser)) {
+      return brainBrowser;
+    }
+    // Probe failed — browser is wedged. Tear it all down.
+    console.warn(`${LOG_PREFIX} Browser unresponsive — recycling`);
+  }
 
   try { await anonContext?.close(); } catch {}
   try { await authContext?.close(); } catch {}
@@ -79,43 +134,91 @@ async function ensureBrowser(): Promise<Browser> {
   authContext = null;
   anonContextCreatedAt = null;
   authContextCreatedAt = null;
+  brainBrowser = null;
+  brainBrowserCreatedAt = null;
 
   console.log(`${LOG_PREFIX} Launching brain browser`);
-  brainBrowser = await chromium.launch({ headless: true, args: BROWSER_ARGS });
+  brainBrowser = await withTimeout(
+    chromium.launch({ headless: true, args: BROWSER_ARGS }),
+    20_000,
+    'chromium.launch'
+  );
+  brainBrowserCreatedAt = Date.now();
   return brainBrowser;
 }
 
 /**
  * Get a page from the ANONYMOUS context.
  * For profile/timeline scraping — no login needed.
+ *
+ * Wrapped in a hard timeout: callers cannot hang indefinitely. On timeout we
+ * tear the browser down so the next call gets a fresh one (recovery from
+ * wedged-but-isConnected state).
  */
 export async function getBrainPage(): Promise<Page> {
-  const browser = await ensureBrowser();
-
-  // Self-healing: recycle if context is too old (6h+)
-  await recycleContextIfStale('anon');
-
-  if (!anonContext) {
-    anonContext = await browser.newContext({
-      userAgent: USER_AGENT,
-      viewport: { width: 1280, height: 800 },
-      locale: 'en-US',
-    });
-    try { await applyStealth(anonContext); } catch (e: any) {
-      console.warn(`${LOG_PREFIX} applyStealth failed on anon context: ${e.message}`);
+  return withTimeout(
+    (async () => {
+      const browser = await ensureBrowser();
+      await recycleContextIfStale('anon');
+      if (!anonContext) {
+        anonContext = await browser.newContext({
+          userAgent: USER_AGENT,
+          viewport: { width: 1280, height: 800 },
+          locale: 'en-US',
+        });
+        try { await applyStealth(anonContext); } catch (e: any) {
+          console.warn(`${LOG_PREFIX} applyStealth failed on anon context: ${e.message}`);
+        }
+        anonContextCreatedAt = Date.now();
+      }
+      return anonContext.newPage();
+    })(),
+    PAGE_ACQUIRE_TIMEOUT_MS,
+    'getBrainPage'
+  ).catch(async (e: any) => {
+    // Hard reset on timeout — kill the (likely wedged) browser so next caller gets a fresh one.
+    if (String(e.message || e).includes('timeout')) {
+      console.error(`${LOG_PREFIX} getBrainPage hard timeout — force-resetting browser`);
+      try { await brainBrowser?.close(); } catch {}
+      brainBrowser = null;
+      brainBrowserCreatedAt = null;
+      anonContext = null;
+      anonContextCreatedAt = null;
+      authContext = null;
+      authContextCreatedAt = null;
     }
-    anonContextCreatedAt = Date.now();
-  }
-
-  return anonContext.newPage();
+    throw e;
+  });
 }
 
 /**
  * Get a page from the AUTHENTICATED context.
  * For search/explore — X.com requires login for these pages.
  * READ-ONLY: never writes, posts, or engages.
+ *
+ * Same hard-timeout + force-reset semantics as getBrainPage.
  */
 export async function getBrainAuthPage(): Promise<Page> {
+  return withTimeout(
+    _getBrainAuthPageInner(),
+    PAGE_ACQUIRE_TIMEOUT_MS,
+    'getBrainAuthPage'
+  ).catch(async (e: any) => {
+    if (String(e.message || e).includes('timeout')) {
+      console.error(`${LOG_PREFIX} getBrainAuthPage hard timeout — force-resetting browser`);
+      try { await brainBrowser?.close(); } catch {}
+      brainBrowser = null;
+      brainBrowserCreatedAt = null;
+      anonContext = null;
+      anonContextCreatedAt = null;
+      authContext = null;
+      authContextCreatedAt = null;
+    }
+    throw e;
+  });
+}
+
+async function _getBrainAuthPageInner(): Promise<Page> {
   const browser = await ensureBrowser();
 
   // Self-healing: recycle if context is too old (6h+)
@@ -182,6 +285,7 @@ export async function closeBrainBrowser(): Promise<void> {
   anonContextCreatedAt = null;
   authContextCreatedAt = null;
   brainBrowser = null;
+  brainBrowserCreatedAt = null;
   console.log(`${LOG_PREFIX} Brain browser closed`);
 }
 
