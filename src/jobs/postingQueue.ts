@@ -4890,6 +4890,19 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
       // 📊 INTELLIGENCE LAYER: Capture follower count BEFORE posting
       // 🎯 ENHANCED: Use MultiPointFollowerTracker for accurate attribution
       // 🚨 POSTING PRIORITY: Skip follower baseline if disabled via env flag
+      // 🎯 PHASE 0.2: Record baseline_status on every path so learning can
+      //    distinguish "didn't measure" from "measured zero gain".
+      const markBaselineStatus = async (status: 'failed' | 'timeout' | 'disabled', errorMsg?: string) => {
+        try {
+          await supabase
+            .from('content_generation_metadata_comprehensive')
+            .update({ baseline_status: status, baseline_error: errorMsg ?? null })
+            .eq('decision_id', decision.id);
+        } catch (err: any) {
+          console.warn(`[POSTING_QUEUE] ⚠️ Failed to persist baseline_status=${status}: ${err?.message || err}`);
+        }
+      };
+
       if (process.env.DISABLE_FOLLOWER_BASELINE !== 'true') {
         try {
           console.log(`${logPrefix} 🔍 Capturing follower baseline`);
@@ -4898,6 +4911,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
 
           let baselineTimedOut = false;
           let baselineTimeoutHandle: NodeJS.Timeout | null = null;
+          let baselineFailedReason: string | null = null;
 
           const baselinePromise = tracker.captureBaseline(decision.id);
 
@@ -4920,6 +4934,7 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
                 if (!baselineTimedOut) {
                   console.log(`${logPrefix} 🔍 DEBUG: Follower baseline captured`);
                 }
+                // Success path: captureBaseline has already written baseline_status='success'.
               },
               (error: any) => {
                 if (baselineTimeoutHandle) {
@@ -4927,17 +4942,27 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
                   baselineTimeoutHandle = null;
                 }
                 if (!baselineTimedOut) {
-                  console.warn(`[POSTING_QUEUE] ⚠️ Follower baseline capture failed: ${error.message}`);
+                  baselineFailedReason = error?.message || String(error);
+                  console.warn(`[POSTING_QUEUE] ⚠️ Follower baseline capture failed: ${baselineFailedReason}`);
                 }
               }
             ),
             timeoutPromise
           ]);
+
+          if (baselineTimedOut) {
+            await markBaselineStatus('timeout', `timed out after ${FOLLOWER_BASELINE_TIMEOUT_MS}ms`);
+          } else if (baselineFailedReason) {
+            await markBaselineStatus('failed', baselineFailedReason);
+          }
         } catch (attrError: any) {
-          console.warn(`[POSTING_QUEUE] ⚠️ Follower capture failed: ${attrError.message}`);
+          const reason = attrError?.message || String(attrError);
+          console.warn(`[POSTING_QUEUE] ⚠️ Follower capture failed: ${reason}`);
+          await markBaselineStatus('failed', reason);
         }
       } else {
         console.log(`[FOLLOWER_TRACKER] ⏭️ Baseline disabled via env (DISABLE_FOLLOWER_BASELINE=true)`);
+        await markBaselineStatus('disabled', 'DISABLE_FOLLOWER_BASELINE=true');
       }
     
       // ═══════════════════════════════════════════════════════════
@@ -5458,6 +5483,28 @@ async function processDecision(decision: QueuedDecision): Promise<boolean> {
             return false; // Skip this decision (return early from processDecision)
           }
           
+          // ═══════════════════════════════════════════════════════════════════════
+          // 🔒 NOVELTY GATE — Block content too similar to recent posts
+          // ═══════════════════════════════════════════════════════════════════════
+          try {
+            const { enforceNoveltyGate } = await import('../content/noveltyGuard');
+            const noveltyResult = await enforceNoveltyGate(decision.content);
+            if (!noveltyResult.pass) {
+              console.log(`[NOVELTY_BLOCK] decision_id=${decision.id} reason=${noveltyResult.reason}`);
+              try {
+                const { getSupabaseClient } = await import('../db/index');
+                const supabase = getSupabaseClient();
+                await supabase.from('content_generation_metadata_comprehensive')
+                  .update({ status: 'blocked', skip_reason: noveltyResult.reason })
+                  .eq('decision_id', decision.id);
+              } catch (e) { /* non-critical */ }
+              return false;
+            }
+          } catch (noveltyError: any) {
+            console.error(`[NOVELTY_GATE] ⛔ Error — failing CLOSED: ${noveltyError.message}`);
+            return false;
+          }
+
           // All gates passed - proceed to invariant check
           // ═══════════════════════════════════════════════════════════════════════
           // 🔒 PRE-POST INVARIANT CHECK - SKIP (NOT CRASH) ON FAILURE

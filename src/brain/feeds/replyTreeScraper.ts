@@ -148,6 +148,7 @@ interface ExtractedReply {
   tweet_id: string | null;
   author_username: string;
   author_followers: number | null;
+  author_is_verified: boolean;
   text: string;
   likes: number;
   views: number;
@@ -248,10 +249,17 @@ async function extractReplyTree(page: any): Promise<ExtractedReply[]> {
         var timeEl = article.querySelector('time');
         var postedAt = timeEl ? timeEl.getAttribute('datetime') : null;
 
+        // Verified badge — mirror discoveryEngine.ts logic
+        var verifiedBadge = article.querySelector('[data-testid="icon-verified"]');
+        if (!verifiedBadge) verifiedBadge = article.querySelector('svg[aria-label*="Verified"]');
+        if (!verifiedBadge) verifiedBadge = article.querySelector('[aria-label*="verified" i]');
+        var authorIsVerified = !!verifiedBadge;
+
         results.push({
           tweet_id: tweetId,
           author_username: author,
           author_followers: followers,
+          author_is_verified: authorIsVerified,
           text: text.substring(0, 2000),
           likes: likes,
           views: views,
@@ -300,6 +308,7 @@ async function persistReplies(
         reply_tweet_id: r.tweet_id,
         reply_author_username: r.author_username,
         reply_author_followers: r.author_followers,
+        reply_author_is_verified: r.author_is_verified,
         reply_text: r.text,
         reply_likes: r.likes,
         reply_views: r.views,

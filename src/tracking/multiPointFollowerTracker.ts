@@ -50,21 +50,27 @@ export class MultiPointFollowerTracker {
   async captureBaseline(postId: string): Promise<number> {
     try {
       console.log(`[FOLLOWER_TRACKER] 📸 Capturing baseline for post ${postId}...`);
-      
+
       const followerCount = await getCurrentFollowerCount();
-      
+
       // Store snapshot
       await this.storeSnapshot(postId, 'before', followerCount);
-      
-      // Update content_metadata
+
+      // Persist baseline + status atomically. Write to base table so the update
+      // is unambiguous (the content_metadata view's updatability depends on
+      // whether the column is exposed, which has bitten us historically).
       const supabase = getSupabaseClient();
       await supabase
-        .from('content_metadata')
-        .update({ followers_before: followerCount })
+        .from('content_generation_metadata_comprehensive')
+        .update({
+          followers_before: followerCount,
+          baseline_status: 'success',
+          baseline_error: null
+        })
         .eq('decision_id', postId);
-      
+
       console.log(`[FOLLOWER_TRACKER] ✅ Baseline captured: ${followerCount} followers`);
-      
+
       return followerCount;
     } catch (error: any) {
       console.error(`[FOLLOWER_TRACKER] ❌ Failed to capture baseline:`, error.message);

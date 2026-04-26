@@ -32,6 +32,7 @@
     "db:check:opps": "tsx scripts/db-check-opportunity-constraints.ts",
     "db:migrate": "tsx scripts/db/apply-migrations.ts",
     "db:verify": "tsx scripts/ops/verify-migration.ts",
+    "smoke:brain": "tsx scripts/brain/smoke-check.ts",
     "db:test-privileges": "tsx scripts/db/test-privileges.ts",
     "seed:stats": "tsx scripts/seed-stats-top.ts",
     "opps:backfill": "tsx scripts/backfill-opportunity-scores.ts",

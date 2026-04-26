@@ -264,6 +264,135 @@ async function fetchExternalReplyPatterns(): Promise<Map<string, DimensionGroup>
   return result;
 }
 
+// ─── Source 4: Brain tweets (richer signal — algo_score, velocity, bookmark_save_rate) ───
+// Brain combo_keys are prefixed with "brain:" so they don't collide with vi-source rows.
+// tickAdvisor prefers source='brain' rows when both exist (via ORDER BY).
+
+async function fetchBrainTweetPatterns(): Promise<Map<string, DimensionGroup & { source_trust_weight: number; avg_recency_days: number }>> {
+  const supabase = getSupabaseClient();
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: tweets, error } = await supabase
+    .from('brain_tweets')
+    .select('tweet_id, engagement_rate, likes, viral_multiplier, algo_score, bookmark_save_rate, conversation_ratio, share_ratio, velocity_15m, scraped_at, posted_at, posted_hour_utc, author_tier')
+    .gte('scraped_at', thirtyDaysAgo)
+    .not('engagement_rate', 'is', null)
+    .order('scraped_at', { ascending: false })
+    .limit(5000);
+
+  if (error || !tweets || tweets.length === 0) {
+    if (error) console.warn(`${TAG} brain_tweets fetch failed: ${error.message}`);
+    return new Map();
+  }
+
+  const tweetIds = (tweets as any[]).map(t => t.tweet_id).filter(Boolean);
+  const { data: classifications } = tweetIds.length > 0
+    ? await supabase
+        .from('brain_classifications')
+        .select('tweet_id, domain, hook_type, tone, format')
+        .in('tweet_id', tweetIds.slice(0, 1000))
+    : { data: [] as any[] };
+
+  const classMap = new Map<string, any>();
+  for (const c of (classifications ?? [])) {
+    if ((c as any).tweet_id) classMap.set((c as any).tweet_id, c);
+  }
+
+  const now = Date.now();
+  const groups = new Map<string, {
+    weighted_score_sum: number;
+    recency_weight_sum: number;
+    likes: number[];
+    viral_count: number;
+    count: number;
+    days_old_sum: number;
+    velocity_sum: number;
+    velocity_count: number;
+    key_parts: Pick<DimensionGroup, 'pattern_type' | 'angle' | 'tone' | 'format' | 'hour_bucket' | 'topic' | 'target_tier'>;
+  }>();
+
+  for (const row of tweets as any[]) {
+    const cls = classMap.get(row.tweet_id);
+    if (!cls) continue; // brain-source patterns require classification
+
+    const hb = hourBucket(row.posted_hour_utc ?? 12);
+    const parts = {
+      pattern_type: 'external_tweet',
+      angle: cls.hook_type || 'any',
+      tone: cls.tone || 'any',
+      format: cls.format || 'any',
+      hour_bucket: hb,
+      topic: cls.domain || 'any',
+      target_tier: row.author_tier || 'any',
+    };
+    // Prefix with "brain:" so it doesn't collide with vi-source combo_keys.
+    const key = 'brain:' + comboKey(parts);
+
+    if (!groups.has(key)) {
+      groups.set(key, {
+        weighted_score_sum: 0,
+        recency_weight_sum: 0,
+        likes: [],
+        viral_count: 0,
+        count: 0,
+        days_old_sum: 0,
+        velocity_sum: 0,
+        velocity_count: 0,
+        key_parts: parts,
+      });
+    }
+    const g = groups.get(key)!;
+
+    // Recency decay (same as vi source)
+    const dateRef = row.scraped_at || row.posted_at;
+    const daysOld = dateRef ? (now - new Date(dateRef).getTime()) / (24 * 60 * 60 * 1000) : 15;
+    const recencyWeight = Math.exp(-daysOld / 14);
+    g.days_old_sum += daysOld;
+
+    // Use algo_score when present (richer composite); fall back to engagement_rate.
+    const score = row.algo_score != null
+      ? Number(row.algo_score)
+      : Number(row.engagement_rate) || 0;
+
+    g.weighted_score_sum += score * recencyWeight;
+    g.recency_weight_sum += recencyWeight;
+    g.likes.push(Number(row.likes) || 0);
+    if (Number(row.viral_multiplier) >= 5) g.viral_count++;
+
+    if (row.velocity_15m != null) {
+      g.velocity_sum += Number(row.velocity_15m);
+      g.velocity_count++;
+    }
+
+    g.count++;
+  }
+
+  const result = new Map<string, DimensionGroup & { source_trust_weight: number; avg_recency_days: number }>();
+  for (const [key, g] of Array.from(groups.entries())) {
+    const avgScore = g.recency_weight_sum > 0 ? g.weighted_score_sum / g.recency_weight_sum : 0;
+    const avgLikes = g.count > 0 ? g.likes.reduce((a, b) => a + b, 0) / g.count : 0;
+    const avgRecencyDays = g.count > 0 ? g.days_old_sum / g.count : 0;
+    result.set(key, {
+      ...g.key_parts,
+      avg_engagement: avgScore,
+      avg_likes: avgLikes,
+      count: g.count,
+      breakout_rate: g.count > 0 ? g.viral_count / g.count : 0,
+      avg_views: 0,
+      avg_reward: 0,
+      avg_followers_gained: 0,
+      avg_reply_likes: 0,
+      avg_outperformance: g.velocity_count > 0 ? g.velocity_sum / g.velocity_count : 0,
+      // brain source has no per-row trust score; treat as 1.0 (the brain itself is the trust anchor)
+      source_trust_weight: 1.0,
+      avg_recency_days: avgRecencyDays,
+    });
+  }
+
+  console.log(`${TAG} brain_tweets: ${tweets.length} rows -> ${result.size} groups`);
+  return result;
+}
+
 // ─── Source 3: Growth ledger (internal data) ───
 
 async function fetchGrowthLedgerPatterns(): Promise<Map<string, DimensionGroup>> {
@@ -390,8 +519,8 @@ export async function runPatternAggregation(): Promise<{ patternsUpdated: number
   const our_stage = inferOurStage(followerCount);
   console.log(`${TAG} Account stage: ${our_stage} (${followerCount} followers)`);
 
-  // Fetch all three sources in parallel
-  const [extTweets, extReplies, internal] = await Promise.all([
+  // Fetch all sources in parallel (brain_tweets is the new 4th source).
+  const [extTweets, extReplies, internal, brainTweets] = await Promise.all([
     fetchExternalTweetPatterns().catch(err => {
       console.warn(`${TAG} External tweets fetch failed: ${err.message}`);
       return new Map<string, DimensionGroup>();
@@ -404,11 +533,18 @@ export async function runPatternAggregation(): Promise<{ patternsUpdated: number
       console.warn(`${TAG} Growth ledger fetch failed: ${err.message}`);
       return new Map<string, DimensionGroup>();
     }),
+    fetchBrainTweetPatterns().catch(err => {
+      console.warn(`${TAG} brain_tweets fetch failed: ${err.message}`);
+      return new Map<string, DimensionGroup>();
+    }),
   ]);
 
-  // Merge external sources (carry over trust/recency/contrast metadata)
+  // Merge external sources (carry over trust/recency/contrast metadata).
+  // Brain-source rows live under 'brain:'-prefixed keys so they're side-by-side
+  // with vi-source rows; tickAdvisor's ORDER BY (source='brain') prefers them.
   const extAll = new Map<string, DimensionGroup & { source_trust_weight?: number; avg_recency_days?: number; loser_sample_count?: number; contrast_ratio?: number }>();
   for (const [k, v] of Array.from(extTweets.entries())) extAll.set(k, v as any);
+  for (const [k, v] of Array.from(brainTweets.entries())) extAll.set(k, v as any);
   for (const [k, v] of Array.from(extReplies.entries())) {
     if (extAll.has(k)) {
       const existing = extAll.get(k)!;
@@ -485,8 +621,13 @@ export async function runPatternAggregation(): Promise<{ patternsUpdated: number
     // Improvement 5: Causal status
     const causal_status = (ext && int) ? 'tested_candidate' : 'observed_correlation';
 
+    // Source discriminator: brain combo_keys are prefixed; everything else is vi.
+    // tickAdvisor uses this column to prefer richer brain-source signal.
+    const source = key.startsWith('brain:') ? 'brain' : 'vi';
+
     rows.push({
       combo_key: key,
+      source,
       pattern_type: ref.pattern_type,
       angle: ref.angle,
       tone: ref.tone,

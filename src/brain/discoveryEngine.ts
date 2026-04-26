@@ -176,12 +176,102 @@ export async function ingestFeedResults(results: FeedResult[]): Promise<{
     return { total_ingested: 0, total_deduplicated: 0, accounts_discovered: 0 };
   }
 
+  // ── Identify which incoming tweet_ids are NEW (not yet in brain_tweets) ──
+  // Causal columns (author_followers_at_post_time, parent_engagement_at_post_time,
+  // first_scrape_*) and the velocity-snapshot queue must only fire on first scrape.
+  // Re-discoveries leave those values intact.
+  const supa = getSupabaseClient();
+  const incomingIds = allTweets.map(t => t.tweet_id!).filter(Boolean);
+  const existingIds = new Set<string>();
+  if (incomingIds.length > 0) {
+    for (let i = 0; i < incomingIds.length; i += 200) {
+      const slice = incomingIds.slice(i, i + 200);
+      const { data: existing } = await supa
+        .from('brain_tweets')
+        .select('tweet_id')
+        .in('tweet_id', slice);
+      (existing ?? []).forEach((r: any) => existingIds.add(r.tweet_id));
+    }
+  }
+
+  // Look up parent metrics for new replies — enables parent_engagement_at_post_time
+  const newReplyParentIds = Array.from(new Set(
+    allTweets
+      .filter(t => !existingIds.has(t.tweet_id!) && t.tweet_type === 'reply' && t.parent_tweet_id)
+      .map(t => t.parent_tweet_id as string)
+  ));
+  const parentMetricsById = new Map<string, Record<string, number>>();
+  if (newReplyParentIds.length > 0) {
+    for (let i = 0; i < newReplyParentIds.length; i += 200) {
+      const slice = newReplyParentIds.slice(i, i + 200);
+      const { data: parents } = await supa
+        .from('brain_tweets')
+        .select('tweet_id, likes, replies, views, retweets, bookmarks')
+        .in('tweet_id', slice);
+      (parents ?? []).forEach((p: any) => {
+        parentMetricsById.set(p.tweet_id, {
+          likes: p.likes ?? 0,
+          replies: p.replies ?? 0,
+          views: p.views ?? 0,
+          retweets: p.retweets ?? 0,
+          bookmarks: p.bookmarks ?? 0,
+        });
+      });
+    }
+  }
+
+  // Tag NEW tweets with causal-snapshot fields. Existing tweets are left alone
+  // so the upsert-on-conflict doesn't overwrite first-scrape values.
+  const nowIso = new Date().toISOString();
+  for (const t of allTweets) {
+    if (existingIds.has(t.tweet_id!)) continue;
+    if (t.author_followers != null) {
+      (t as any).author_followers_at_post_time = t.author_followers;
+    }
+    (t as any).first_scrape_likes = t.likes ?? 0;
+    (t as any).first_scrape_at = nowIso;
+    if (t.tweet_type === 'reply' && t.parent_tweet_id && parentMetricsById.has(t.parent_tweet_id as string)) {
+      (t as any).parent_engagement_at_post_time = parentMetricsById.get(t.parent_tweet_id as string);
+    }
+  }
+
   // Batch upsert tweets (chunks of 50)
   let totalIngested = 0;
   for (let i = 0; i < allTweets.length; i += 50) {
     const chunk = allTweets.slice(i, i + 50);
     const count = await upsertBrainTweets(chunk);
     totalIngested += count;
+  }
+
+  // Enqueue velocity snapshots for fresh new tweets (posted within last 90 min,
+  // so even the +60m bucket fires before the algo's first-distribution window
+  // closes). Idempotent via UNIQUE (tweet_id, target_offset_min).
+  const VELOCITY_FRESHNESS_MS = 90 * 60 * 1000;
+  const VELOCITY_OFFSETS_MIN = [5, 15, 60];
+  const velocityRows: any[] = [];
+  for (const t of allTweets) {
+    if (existingIds.has(t.tweet_id!)) continue;
+    const postedAt = t.posted_at ? new Date(t.posted_at as string) : null;
+    if (!postedAt || isNaN(postedAt.getTime())) continue;
+    if (Date.now() - postedAt.getTime() > VELOCITY_FRESHNESS_MS) continue;
+    for (const offset of VELOCITY_OFFSETS_MIN) {
+      velocityRows.push({
+        tweet_id: t.tweet_id,
+        target_offset_min: offset,
+        due_at: new Date(postedAt.getTime() + offset * 60_000).toISOString(),
+      });
+    }
+  }
+  if (velocityRows.length > 0) {
+    for (let i = 0; i < velocityRows.length; i += 200) {
+      const chunk = velocityRows.slice(i, i + 200);
+      const { error } = await supa
+        .from('pending_velocity_snapshots')
+        .upsert(chunk, { onConflict: 'tweet_id,target_offset_min', ignoreDuplicates: true });
+      if (error && !error.message?.includes('schema cache')) {
+        console.warn(`${LOG_PREFIX} velocity enqueue chunk error: ${error.message}`);
+      }
+    }
   }
 
   // Also discover accounts mentioned in tweets (reply targets, @mentions)

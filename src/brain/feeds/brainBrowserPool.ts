@@ -15,11 +15,25 @@
  */
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { applyStealth } from '../../infra/playwright/stealth';
 
 const LOG_PREFIX = '[brain/pool]';
 
 const BROWSER_COUNT = parseInt(process.env.BRAIN_BROWSER_COUNT || '3', 10);
+const AUTH_BROWSER_COUNT = parseInt(process.env.BRAIN_AUTH_BROWSER_COUNT || '1', 10);
 const MAX_OPS_PER_BROWSER = 200;
+// Hard cap on a single task. A wedged X page or stalled CDP socket would
+// otherwise hold the browser forever and cause the parent job's isRunning
+// flag to never reset (resulting in `previous_run_in_progress` skips on every
+// subsequent firing — exactly what happened to brain_timelines on Apr 24).
+const TASK_TIMEOUT_MS = parseInt(process.env.BRAIN_TASK_TIMEOUT_MS || '120000', 10);
+
+function withTimeoutPool<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
+    p.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
 const BROWSER_ARGS = [
   '--disable-blink-features=AutomationControlled',
   '--no-sandbox',
@@ -81,6 +95,9 @@ async function ensureInitialized(): Promise<void> {
         viewport: { width: 1280, height: 800 },
         locale: 'en-US',
       });
+      try { await applyStealth(context); } catch (e: any) {
+        console.warn(`${LOG_PREFIX} applyStealth failed on anon ${i}: ${e.message}`);
+      }
 
       browsers.push({
         id: i,
@@ -118,6 +135,9 @@ async function recycleBrowser(pooled: PooledBrowser): Promise<void> {
       viewport: { width: 1280, height: 800 },
       locale: 'en-US',
     });
+    try { await applyStealth(context); } catch (e: any) {
+      console.warn(`${LOG_PREFIX} applyStealth failed on anon recycle ${id}: ${e.message}`);
+    }
 
     pooled.browser = browser;
     pooled.context = context;
@@ -166,6 +186,7 @@ async function processQueue(): Promise<void> {
 
 async function executeTask(pooled: PooledBrowser, task: QueuedTask): Promise<void> {
   let page: Page | null = null;
+  let timedOut = false;
 
   try {
     // Check if browser needs recycling
@@ -174,15 +195,29 @@ async function executeTask(pooled: PooledBrowser, task: QueuedTask): Promise<voi
     }
 
     page = await pooled.context.newPage();
-    await task.execute(page);
+    try {
+      await withTimeoutPool(task.execute(page), TASK_TIMEOUT_MS, `pool task on browser ${pooled.id}`);
+    } catch (err: any) {
+      if (String(err.message || err).includes('timeout')) {
+        timedOut = true;
+        console.warn(`${LOG_PREFIX} task timed out on browser ${pooled.id} — will recycle`);
+      }
+      throw err;
+    }
     pooled.ops++;
     task.resolve();
   } catch (err: any) {
     task.reject(err);
   } finally {
     try { await page?.close(); } catch {}
+    // If the task timed out, the browser may be in a wedged state. Recycle
+    // proactively so subsequent tasks don't inherit the stuck process.
+    if (timedOut) {
+      try { await recycleBrowser(pooled); } catch (e: any) {
+        console.warn(`${LOG_PREFIX} recycle-after-timeout failed: ${e.message}`);
+      }
+    }
     pooled.busy = false;
-    // Check if more tasks are waiting
     if (taskQueue.length > 0) {
       processQueue().catch(() => {});
     }
@@ -255,6 +290,11 @@ export function getPoolStatus(): {
   browsers_idle: number;
   queue_length: number;
   total_ops: number;
+  auth_browsers_total: number;
+  auth_browsers_busy: number;
+  auth_browsers_idle: number;
+  auth_queue_length: number;
+  auth_total_ops: number;
 } {
   return {
     browsers_total: browsers.length,
@@ -262,6 +302,11 @@ export function getPoolStatus(): {
     browsers_idle: browsers.filter(b => !b.busy).length,
     queue_length: taskQueue.length,
     total_ops: browsers.reduce((sum, b) => sum + b.ops, 0),
+    auth_browsers_total: authBrowsers.length,
+    auth_browsers_busy: authBrowsers.filter(b => b.busy).length,
+    auth_browsers_idle: authBrowsers.filter(b => !b.busy).length,
+    auth_queue_length: authTaskQueue.length,
+    auth_total_ops: authBrowsers.reduce((sum, b) => sum + b.ops, 0),
   };
 }
 
@@ -269,14 +314,232 @@ export function getPoolStatus(): {
  * Shutdown the pool gracefully.
  */
 export async function shutdownPool(): Promise<void> {
-  console.log(`${LOG_PREFIX} Shutting down ${browsers.length} browsers...`);
-  for (const pooled of browsers) {
+  console.log(`${LOG_PREFIX} Shutting down ${browsers.length} anon + ${authBrowsers.length} auth browsers...`);
+  for (const pooled of [...browsers, ...authBrowsers]) {
     try {
       await pooled.context.close();
       await pooled.browser.close();
     } catch {}
   }
   browsers = [];
+  authBrowsers = [];
   initialized = false;
+  authInitialized = false;
   console.log(`${LOG_PREFIX} Pool shutdown complete`);
+}
+
+// =============================================================================
+// AUTH POOL — for /with_replies, /search, /explore (auth-required pages)
+// Loads cookies from TWITTER_SESSION_B64 (or twitter_session.b64 file).
+// Read-only operations only — never posts.
+// =============================================================================
+
+let authBrowsers: PooledBrowser[] = [];
+const authTaskQueue: QueuedTask[] = [];
+let authInitialized = false;
+let authProcessing = false;
+
+async function loadAuthStorageState(): Promise<any | undefined> {
+  const sessionB64 = process.env.TWITTER_SESSION_B64;
+  if (sessionB64) {
+    try {
+      return JSON.parse(Buffer.from(sessionB64, 'base64').toString('utf-8'));
+    } catch (e: any) {
+      console.warn(`${LOG_PREFIX} Auth pool: failed to parse TWITTER_SESSION_B64: ${e.message}`);
+    }
+  }
+  try {
+    const fs = await import('fs');
+    const path = await import('path');
+    const sessionPath = path.join(process.cwd(), 'twitter_session.b64');
+    if (fs.existsSync(sessionPath)) {
+      const raw = fs.readFileSync(sessionPath, 'utf-8').trim();
+      return JSON.parse(Buffer.from(raw, 'base64').toString('utf-8'));
+    }
+  } catch {}
+  return undefined;
+}
+
+async function ensureAuthInitialized(): Promise<void> {
+  if (authInitialized && authBrowsers.length > 0) return;
+
+  const storageState = await loadAuthStorageState();
+  if (!storageState) {
+    console.warn(`${LOG_PREFIX} Auth pool: no session — auth tasks will hit login walls`);
+  } else {
+    console.log(`${LOG_PREFIX} Auth pool: loaded session (${storageState.cookies?.length ?? 0} cookies)`);
+  }
+
+  authBrowsers = [];
+  for (let i = 0; i < AUTH_BROWSER_COUNT; i++) {
+    try {
+      const browser = await chromium.launch({ headless: true, args: BROWSER_ARGS });
+      const context = await browser.newContext({
+        userAgent: USER_AGENT,
+        viewport: { width: 1280, height: 800 },
+        locale: 'en-US',
+        ...(storageState ? { storageState } : {}),
+      });
+      try { await applyStealth(context); } catch (e: any) {
+        console.warn(`${LOG_PREFIX} applyStealth failed on auth ${i}: ${e.message}`);
+      }
+
+      authBrowsers.push({
+        id: 1000 + i, // distinguish from anon ids in logs
+        browser,
+        context,
+        ops: 0,
+        createdAt: Date.now(),
+        busy: false,
+      });
+    } catch (err: any) {
+      console.error(`${LOG_PREFIX} Failed to create auth browser ${i}: ${err.message}`);
+    }
+  }
+
+  authInitialized = true;
+  console.log(`${LOG_PREFIX} Auth pool ready: ${authBrowsers.length}/${AUTH_BROWSER_COUNT} browsers`);
+}
+
+function getAvailableAuthBrowser(): PooledBrowser | null {
+  return authBrowsers.find(b => !b.busy && b.browser.isConnected()) || null;
+}
+
+async function recycleAuthBrowser(pooled: PooledBrowser): Promise<void> {
+  const id = pooled.id;
+  const storageState = await loadAuthStorageState();
+  try { await pooled.context.close(); } catch {}
+  try { await pooled.browser.close(); } catch {}
+
+  try {
+    const browser = await chromium.launch({ headless: true, args: BROWSER_ARGS });
+    const context = await browser.newContext({
+      userAgent: USER_AGENT,
+      viewport: { width: 1280, height: 800 },
+      locale: 'en-US',
+      ...(storageState ? { storageState } : {}),
+    });
+    try { await applyStealth(context); } catch (e: any) {
+      console.warn(`${LOG_PREFIX} applyStealth failed on auth recycle ${id}: ${e.message}`);
+    }
+
+    pooled.browser = browser;
+    pooled.context = context;
+    pooled.ops = 0;
+    pooled.createdAt = Date.now();
+    pooled.busy = false;
+
+    console.log(`${LOG_PREFIX} Auth browser ${id} recycled`);
+  } catch (err: any) {
+    console.error(`${LOG_PREFIX} Failed to recycle auth browser ${id}: ${err.message}`);
+    authBrowsers = authBrowsers.filter(b => b.id !== id);
+  }
+}
+
+async function processAuthQueue(): Promise<void> {
+  if (authProcessing) return;
+  authProcessing = true;
+
+  try {
+    while (authTaskQueue.length > 0) {
+      const browser = getAvailableAuthBrowser();
+      if (!browser) break;
+
+      authTaskQueue.sort((a, b) => b.priorityNum - a.priorityNum || a.queuedAt - b.queuedAt);
+
+      const task = authTaskQueue.shift()!;
+      browser.busy = true;
+
+      executeAuthTask(browser, task).catch(() => {});
+    }
+  } finally {
+    authProcessing = false;
+  }
+}
+
+async function executeAuthTask(pooled: PooledBrowser, task: QueuedTask): Promise<void> {
+  let page: Page | null = null;
+  let timedOut = false;
+
+  try {
+    if (pooled.ops >= MAX_OPS_PER_BROWSER) {
+      await recycleAuthBrowser(pooled);
+    }
+
+    page = await pooled.context.newPage();
+    try {
+      await withTimeoutPool(task.execute(page), TASK_TIMEOUT_MS, `auth pool task on browser ${pooled.id}`);
+    } catch (err: any) {
+      if (String(err.message || err).includes('timeout')) {
+        timedOut = true;
+        console.warn(`${LOG_PREFIX} auth task timed out on browser ${pooled.id} — will recycle`);
+      }
+      throw err;
+    }
+    pooled.ops++;
+    task.resolve();
+  } catch (err: any) {
+    task.reject(err);
+  } finally {
+    try { await page?.close(); } catch {}
+    if (timedOut) {
+      try { await recycleAuthBrowser(pooled); } catch (e: any) {
+        console.warn(`${LOG_PREFIX} auth recycle-after-timeout failed: ${e.message}`);
+      }
+    }
+    pooled.busy = false;
+    if (authTaskQueue.length > 0) {
+      processAuthQueue().catch(() => {});
+    }
+  }
+}
+
+/**
+ * Submit an auth task — runs against a context loaded with the burner session.
+ * READ-ONLY by convention. Used for /with_replies, /search, /explore.
+ */
+export async function submitTaskAuth(
+  priority: TaskPriority,
+  execute: (page: Page) => Promise<void>,
+): Promise<void> {
+  await ensureAuthInitialized();
+
+  if (authBrowsers.length === 0) {
+    throw new Error('Auth pool unavailable: no browsers initialized');
+  }
+
+  const priorityNum = priority === 'high' ? 3 : priority === 'medium' ? 2 : 1;
+
+  return new Promise<void>((resolve, reject) => {
+    authTaskQueue.push({
+      priority,
+      priorityNum,
+      execute,
+      resolve,
+      reject,
+      queuedAt: Date.now(),
+    });
+
+    processAuthQueue().catch(() => {});
+  });
+}
+
+/**
+ * Submit a batch of auth tasks. Runs in parallel across auth browsers (default 1).
+ */
+export async function submitBatchAuth(
+  priority: TaskPriority,
+  tasks: ((page: Page) => Promise<void>)[],
+): Promise<{ completed: number; errors: number }> {
+  let completed = 0;
+  let errors = 0;
+
+  const promises = tasks.map(task =>
+    submitTaskAuth(priority, task)
+      .then(() => { completed++; })
+      .catch(() => { errors++; })
+  );
+
+  await Promise.all(promises);
+  return { completed, errors };
 }
